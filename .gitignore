@@ -19,3 +19,4 @@ data.json
 
 # Local docs (not part of the distributed plugin)
 docs/
+AGENTS.md
