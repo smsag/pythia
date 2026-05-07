@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { App } from "obsidian";
-import type { Conversation } from "../models/types";
+import { App, Notice } from "obsidian";
+import type { Conversation, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
@@ -71,7 +71,7 @@ export class AnthropicService implements LLMProvider {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void
 	): Promise<void> {
 		this.abort();
@@ -80,9 +80,18 @@ export class AnthropicService implements LLMProvider {
 		let fullText = "";
 
 		try {
-			const attachedContent = await buildAttachedNotesContent(this.app, attachedNotes);
+			const { content: attachedContent, missingNotes: missingAttached } =
+				await buildAttachedNotesContent(this.app, attachedNotes);
 			const userContent = newMessage + attachedContent;
-			const systemPrompt = await buildSystemPrompt(this.app, conversation);
+			const { prompt: systemPrompt, missingNotes: missingContext } =
+				await buildSystemPrompt(this.app, conversation);
+
+			const allMissing = [...missingAttached, ...missingContext];
+			if (allMissing.length > 0) {
+				new Notice(
+					`Warning: ${allMissing.length} context note(s) not found and were skipped.`
+				);
+			}
 
 			const historyMessages: ApiMessage[] = conversation.messages.map(
 				(m) => ({ role: m.role, content: m.content })
@@ -119,8 +128,12 @@ export class AnthropicService implements LLMProvider {
 				onToken(text);
 			});
 
-			await stream.finalMessage();
-			onComplete(fullText);
+			const finalMsg = await stream.finalMessage();
+			const tokenUsage: TokenUsage = {
+				inputTokens: finalMsg.usage.input_tokens,
+				outputTokens: finalMsg.usage.output_tokens,
+			};
+			onComplete(fullText, tokenUsage);
 		} catch (error) {
 			const isAbort =
 				error instanceof Error &&

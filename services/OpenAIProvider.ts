@@ -1,6 +1,6 @@
 import OpenAI from "openai";
-import { App } from "obsidian";
-import type { Conversation } from "../models/types";
+import { App, Notice } from "obsidian";
+import type { Conversation, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
@@ -80,7 +80,7 @@ export class OpenAIProvider implements LLMProvider {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void
 	): Promise<void> {
 		this.abort();
@@ -89,9 +89,18 @@ export class OpenAIProvider implements LLMProvider {
 		let fullText = "";
 
 		try {
-			const attachedContent = await buildAttachedNotesContent(this.app, attachedNotes);
+			const { content: attachedContent, missingNotes: missingAttached } =
+				await buildAttachedNotesContent(this.app, attachedNotes);
 			const userContent = newMessage + attachedContent;
-			const systemPrompt = await buildSystemPrompt(this.app, conversation);
+			const { prompt: systemPrompt, missingNotes: missingContext } =
+				await buildSystemPrompt(this.app, conversation);
+
+			const allMissing = [...missingAttached, ...missingContext];
+			if (allMissing.length > 0) {
+				new Notice(
+					`Warning: ${allMissing.length} context note(s) not found and were skipped.`
+				);
+			}
 
 			const model = conversation.model || this.settings.defaultOpenAIModel;
 			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
@@ -139,22 +148,32 @@ export class OpenAIProvider implements LLMProvider {
 					max_tokens: 4096,
 					messages: apiMessages,
 					stream: true,
+					stream_options: { include_usage: true },
 				},
 				{ signal: this.abortController.signal }
 			);
 
+			let tokenUsage: TokenUsage | undefined;
 			for await (const chunk of stream) {
 				const delta = chunk.choices[0]?.delta?.content ?? "";
 				if (delta) {
 					fullText += delta;
 					onToken(delta);
 				}
+				if (chunk.usage) {
+					tokenUsage = {
+						inputTokens: chunk.usage.prompt_tokens,
+						outputTokens: chunk.usage.completion_tokens,
+					};
+				}
 			}
 
-			onComplete(fullText);
+			onComplete(fullText, tokenUsage);
 		} catch (error) {
 			const isAbort =
-				error instanceof Error && error.name === "AbortError";
+				error instanceof Error &&
+				(error.name === "AbortError" ||
+					error.name === "APIUserAbortError");
 			if (isAbort) {
 				onComplete(fullText);
 			} else {

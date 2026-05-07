@@ -217,6 +217,19 @@
   color: #c88c10;
 }
 
+/* ── Token count label ───────────────────────────────────────── */
+.pythia-token-count {
+  font-size: 0.62em;
+  color: var(--text-faint);
+  line-height: 1;
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 13px 2px 0;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
 /* ── Favorite pill variant ───────────────────────────────────── */
 .pythia-favorite-pill .pythia-pill-label {
   cursor: pointer;

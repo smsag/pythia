@@ -17,12 +17,18 @@ export interface Conversation {
 	favorites?: Favorite[];   // starred assistant messages
 }
 
+export interface TokenUsage {
+	inputTokens: number;
+	outputTokens: number;
+}
+
 export interface Message {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
 	timestamp: string;        // ISO 8601
 	attachedNotes?: string[]; // notes attached to this specific message
+	tokenUsage?: TokenUsage;  // token counts for assistant messages
 }
 
 export interface Favorite {

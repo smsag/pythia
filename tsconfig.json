@@ -11,5 +11,6 @@
     "lib": ["ES2018", "DOM", "DOM.Iterable"],
     "esModuleInterop": true
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

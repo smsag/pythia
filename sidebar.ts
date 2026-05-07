@@ -5,12 +5,13 @@ import {
 	Notice,
 	WorkspaceLeaf,
 } from "obsidian";
-import type { Conversation, Favorite, Message } from "./models/types";
+import type { Conversation, Favorite, Message, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
+import { classifyApiError } from "./services/apiError";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -357,6 +358,7 @@ export class PythiaSidebarView extends ItemView {
 				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
 			});
 			star.addEventListener("click", () => this.onStarClick(msg, star));
+			if (msg.tokenUsage) this.renderTokenCount(row, msg.tokenUsage);
 		}
 
 		return bubble;
@@ -499,6 +501,13 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
+	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
+		const fmt = (n: number) => n.toLocaleString();
+		const el = row.createEl("span", { cls: "pythia-token-count" });
+		el.setText(`↑${fmt(usage.inputTokens)} ↓${fmt(usage.outputTokens)}`);
+		el.title = `Input: ${fmt(usage.inputTokens)} tokens · Output: ${fmt(usage.outputTokens)} tokens`;
+	}
+
 	private scrollToMessage(messageId: string): void {
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
@@ -569,10 +578,13 @@ export class PythiaSidebarView extends ItemView {
 		// Determine default folder from template output_folder or scratch
 		let defaultFolder = this.plugin.settings.scratchFolder;
 		if (conv?.templateId) {
-			const tpl = await this.plugin.templateLoader.loadTemplate(
-				this.app.vault.getAbstractFileByPath(conv.templateId) as any
-			);
-			if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
+			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
+			if (tplFile) {
+				const tpl = await this.plugin.templateLoader.loadTemplate(
+					tplFile as any
+				);
+				if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
+			}
 		}
 
 		const defaultPath = `${defaultFolder}/${date}-${safeName}.md`;
@@ -607,8 +619,12 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
+		// Capture the conversation reference now so callbacks always write to the
+		// correct conversation, even if the user switches mid-stream.
+		const conv = this.activeConversation;
+
 		const cap = this.plugin.settings.maxMessagesPerSession;
-		if (cap > 0 && this.activeConversation.messages.length >= cap) {
+		if (cap > 0 && conv.messages.length >= cap) {
 			new Notice(
 				`Message limit reached (${cap}). Start a new conversation or raise the limit in Settings → Pythia.`
 			);
@@ -632,7 +648,7 @@ export class PythiaSidebarView extends ItemView {
 					? [...this.pendingAttachedNotes]
 					: undefined,
 		};
-		this.activeConversation.messages.push(userMsg);
+		conv.messages.push(userMsg);
 		await this.appendMessageBubble(userMsg);
 
 		const attachedNotes = [...this.pendingAttachedNotes];
@@ -643,11 +659,11 @@ export class PythiaSidebarView extends ItemView {
 		const { appendToken, finalize } = this.createStreamingBubble();
 
 		await this.plugin.llmRouter.streamMessage(
-			this.activeConversation,
+			conv,
 			text,
 			attachedNotes,
 			appendToken,
-			async (fullText) => {
+			async (fullText, tokenUsage) => {
 				await finalize(fullText);
 
 				if (fullText) {
@@ -656,31 +672,52 @@ export class PythiaSidebarView extends ItemView {
 						role: "assistant",
 						content: fullText,
 						timestamp: new Date().toISOString(),
+						tokenUsage,
 					};
-					this.activeConversation!.messages.push(assistantMsg);
-					// Add star button to the finalized streaming bubble's row
+					conv.messages.push(assistantMsg);
+					// Wire the star button only when conv is still the displayed conversation
 					const rows = this.messagesEl.querySelectorAll(".pythia-message-assistant");
 					const lastRow = rows[rows.length - 1] as HTMLElement | null;
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
-						const star = lastRow.createEl("button", {
-							cls: "pythia-star",
-							text: "☆",
-							attr: { title: "Add to favorites" },
-						});
-						star.addEventListener("click", () =>
-							this.onStarClick(assistantMsg, star)
-						);
+						if (this.activeConversation?.id === conv.id) {
+							const star = lastRow.createEl("button", {
+								cls: "pythia-star",
+								text: "☆",
+								attr: { title: "Add to favorites" },
+							});
+							star.addEventListener("click", () =>
+								this.onStarClick(assistantMsg, star)
+							);
+							if (tokenUsage) this.renderTokenCount(lastRow, tokenUsage);
+						}
 					}
-					await this.plugin.conversationStore.save(
-						this.activeConversation!
-					);
+					await this.plugin.conversationStore.save(conv);
 				}
 
 				this.setStreamingState(false);
 			},
 			(error) => {
-				new Notice(`Pythia error: ${error.message}`);
+				const errClass = classifyApiError(error);
+				const model = conv.model ?? "";
+				let msg: string;
+				switch (errClass) {
+					case "model_not_found":
+						msg = `Model "${model}" not found. Open settings to change it.`;
+						break;
+					case "invalid_key":
+						msg = "API key rejected. Check Settings → Pythia.";
+						break;
+					case "rate_limit":
+						msg = "Rate limit hit. Try again in a moment.";
+						break;
+					case "network":
+						msg = "Network error. Check your internet connection.";
+						break;
+					default:
+						msg = error.message;
+				}
+				new Notice(msg);
 				this.setStreamingState(false);
 			}
 		);

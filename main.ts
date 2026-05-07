@@ -126,6 +126,11 @@ export default class PythiaPlugin extends Plugin {
 					DEFAULT_SETTINGS.anthropicSecretName,
 					plaintext
 				);
+			} else {
+				new Notice(
+					"Could not migrate your Anthropic API key. Please re-enter it in Settings → Pythia.",
+					8000
+				);
 			}
 			delete saved.encryptedApiKey;
 			needsMigrationSave = true;
@@ -139,13 +144,32 @@ export default class PythiaPlugin extends Plugin {
 					DEFAULT_SETTINGS.openaiSecretName,
 					plaintext
 				);
+			} else {
+				new Notice(
+					"Could not migrate your OpenAI API key. Please re-enter it in Settings → Pythia.",
+					8000
+				);
 			}
 			delete saved.encryptedOpenAIKey;
 			needsMigrationSave = true;
 		}
 
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
-		this.conversations = (data.conversations ?? []) as Conversation[];
+		const rawConversations = (data.conversations ?? []) as unknown[];
+		this.conversations = rawConversations.filter(
+			(c): c is Conversation =>
+				c !== null &&
+				typeof c === "object" &&
+				typeof (c as Record<string, unknown>).id === "string" &&
+				Array.isArray((c as Record<string, unknown>).messages)
+		);
+		if (this.conversations.length < rawConversations.length) {
+			console.warn(
+				`[Pythia] Dropped ${
+					rawConversations.length - this.conversations.length
+				} malformed conversation(s) from data.json`
+			);
+		}
 
 		// Read keys from Obsidian SecretStorage (synchronous, vault-scoped)
 		this.plaintextApiKey =
@@ -330,9 +354,13 @@ export default class PythiaPlugin extends Plugin {
 
 					if (mode === "summary") {
 						if (!conv.summaryText) {
-							if (!this.plaintextApiKey) {
+							const hasKey =
+								conv.provider === "openai"
+									? !!this.plaintextOpenAIKey
+									: !!this.plaintextApiKey;
+							if (!hasKey) {
 								new Notice(
-									"Set your API key in settings before generating a summary."
+									"Set your API key in Settings → Pythia before generating a summary."
 								);
 								return;
 							}

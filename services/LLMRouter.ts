@@ -1,4 +1,4 @@
-import type { Conversation, Provider } from "../models/types";
+import type { Conversation, Provider, TokenUsage } from "../models/types";
 import type { LLMProvider } from "./LLMProvider";
 import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
@@ -31,7 +31,7 @@ export class LLMRouter {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void
 	): Promise<void> {
 		return this.get(conversation).streamMessage(

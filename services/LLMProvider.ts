@@ -1,4 +1,4 @@
-import type { Conversation } from "../models/types";
+import type { Conversation, TokenUsage } from "../models/types";
 
 export interface LLMProvider {
 	updateApiKey(key: string): void;
@@ -8,7 +8,7 @@ export interface LLMProvider {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void
 	): Promise<void>;
 	generateSummary(conversation: Conversation): Promise<string>;
