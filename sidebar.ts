@@ -2,6 +2,7 @@ import {
 	App,
 	ItemView,
 	MarkdownRenderer,
+	MarkdownView,
 	Notice,
 	WorkspaceLeaf,
 } from "obsidian";
@@ -33,6 +34,8 @@ export class PythiaSidebarView extends ItemView {
 	private inputEl!: HTMLTextAreaElement;
 	private sendBtn!: HTMLButtonElement;
 	private stopBtn!: HTMLButtonElement;
+	private selectionToolbar!: HTMLElement;
+	private onSelectionChange!: () => void;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -66,6 +69,9 @@ export class PythiaSidebarView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.plugin.llmRouter.abort();
+		if (this.onSelectionChange) {
+			document.removeEventListener("selectionchange", this.onSelectionChange);
+		}
 	}
 
 	// ──────────────────────────────────────────────
@@ -112,10 +118,6 @@ export class PythiaSidebarView extends ItemView {
 		const header = container.createDiv({ cls: "pythia-header" });
 
 		const titleRow = header.createDiv({ cls: "pythia-title-row" });
-		titleRow.createEl("span", {
-			cls: "pythia-icon",
-			text: "🤖",
-		});
 		this.convNameEl = titleRow.createEl("button", {
 			cls: "pythia-conv-name",
 			text: "No conversation",
@@ -163,7 +165,47 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
+		// ── Selection toolbar ────────────────────────────
+		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
+		this.selectionToolbar.style.display = "none";
 
+		const copyBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: "Copy",
+			attr: { title: "Copy selection" },
+		});
+		copyBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault(); // keep selection alive
+			this.onCopySelection();
+		});
+		copyBtn.addEventListener("touchstart", (e) => {
+			e.preventDefault();
+			this.onCopySelection();
+		}, { passive: false });
+
+		const insertBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: "Insert into note",
+			attr: { title: "Insert at cursor in active note" },
+		});
+		insertBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			this.onInsertIntoNote();
+		});
+		insertBtn.addEventListener("touchstart", (e) => {
+			e.preventDefault();
+			this.onInsertIntoNote();
+		}, { passive: false });
+
+		// Wire selection detection
+		this.onSelectionChange = () => this.handleSelectionChange();
+		document.addEventListener("selectionchange", this.onSelectionChange);
+		this.messagesEl.addEventListener("mouseup", () =>
+			setTimeout(() => this.handleSelectionChange(), 10)
+		);
+		this.messagesEl.addEventListener("touchend", () =>
+			setTimeout(() => this.handleSelectionChange(), 300)
+		);
 		// ── Input area ───────────────────────────
 		const inputArea = container.createDiv({ cls: "pythia-input-area" });
 
@@ -352,7 +394,7 @@ export class PythiaSidebarView extends ItemView {
 			const isFav = this.activeConversation?.favorites?.some(
 				(f) => f.messageId === msg.id
 			) ?? false;
-			const star = row.createEl("button", {
+			const star = bubble.createEl("button", {
 				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
 				text: isFav ? "★" : "☆",
 				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
@@ -681,7 +723,8 @@ export class PythiaSidebarView extends ItemView {
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
 						if (this.activeConversation?.id === conv.id) {
-							const star = lastRow.createEl("button", {
+							const bubbleEl = lastRow.querySelector(".pythia-bubble") as HTMLElement | null;
+							const star = (bubbleEl ?? lastRow).createEl("button", {
 								cls: "pythia-star",
 								text: "☆",
 								attr: { title: "Add to favorites" },
@@ -721,6 +764,65 @@ export class PythiaSidebarView extends ItemView {
 				this.setStreamingState(false);
 			}
 		);
+	}
+
+	// ──────────────────────────────────────────────
+	// Selection toolbar
+	// ──────────────────────────────────────────────
+
+	private handleSelectionChange(): void {
+		const sel = window.getSelection();
+		const text = sel?.toString().trim() ?? "";
+
+		if (!text || !sel || sel.rangeCount === 0) {
+			this.selectionToolbar.style.display = "none";
+			return;
+		}
+
+		// Only show toolbar when selection is inside the messages area
+		const range = sel.getRangeAt(0);
+		if (!this.messagesEl.contains(range.commonAncestorContainer)) {
+			this.selectionToolbar.style.display = "none";
+			return;
+		}
+
+		// Position the toolbar above the selection
+		const rect = range.getBoundingClientRect();
+		const containerRect = this.containerEl.getBoundingClientRect();
+
+		const top = rect.top - containerRect.top - 40;
+		const left = Math.min(
+			rect.left - containerRect.left + rect.width / 2 - 60,
+			containerRect.width - 128
+		);
+
+		this.selectionToolbar.style.display = "flex";
+		this.selectionToolbar.style.top = `${Math.max(4, top)}px`;
+		this.selectionToolbar.style.left = `${Math.max(4, left)}px`;
+	}
+
+	private onCopySelection(): void {
+		const text = window.getSelection()?.toString() ?? "";
+		if (!text) return;
+		navigator.clipboard.writeText(text).then(() => {
+			new Notice("Copied");
+			this.selectionToolbar.style.display = "none";
+		}).catch(() => {
+			new Notice("Copy failed");
+		});
+	}
+
+	private onInsertIntoNote(): void {
+		const text = window.getSelection()?.toString() ?? "";
+		if (!text) return;
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) {
+			new Notice("No active note to insert into.");
+			return;
+		}
+		view.editor.replaceSelection(text);
+		this.selectionToolbar.style.display = "none";
+		new Notice("Inserted into note");
 	}
 
 	private setStreamingState(streaming: boolean): void {

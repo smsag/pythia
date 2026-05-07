@@ -5,6 +5,7 @@
 
 /* ── View container ────────────────────────────────────────── */
 .pythia-view {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -93,6 +94,7 @@
   letter-spacing: 0.05em;
   padding-top: 3px;
   flex-shrink: 0;
+  min-width: 64px;
 }
 
 /* ── Pills ──────────────────────────────────────────────────── */
@@ -131,6 +133,7 @@
   all: unset;
   cursor: pointer;
   color: var(--text-faint);
+  background: transparent;
   font-size: 1.1em;
   line-height: 1;
   padding: 0 1px;
@@ -202,9 +205,16 @@
   font-size: 1em;
   line-height: 1;
   color: var(--text-faint);
-  flex-shrink: 0;
-  align-self: flex-start;
-  padding: 10px 2px 0;
+  background: transparent;
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
   transition: color 0.15s;
 }
 .pythia-star:hover {
@@ -240,8 +250,9 @@
 
 /* ── Message bubbles ────────────────────────────────────────── */
 .pythia-bubble {
+  position: relative;
   max-width: 85%;
-  padding: 8px 12px;
+  padding: 9px 13px;
   border-radius: 12px;
   font-size: 0.9em;
   line-height: 1.55;
@@ -281,6 +292,36 @@
 .pythia-bubble ol {
   padding-left: 20px;
   margin: 4px 0;
+}
+
+/* ── Selection toolbar ─────────────────────────────────────── */
+.pythia-sel-toolbar {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  z-index: 100;
+  pointer-events: all;
+}
+
+.pythia-sel-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.78em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.pythia-sel-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 /* Streaming cursor animation */
