@@ -188,4 +188,18 @@ export class OpenAIProvider implements LLMProvider {
 
 		return response.choices[0]?.message?.content ?? "";
 	}
+
+	async generateFavoriteName(content: string): Promise<string> {
+		const client = this.getClient();
+		const excerpt = content.slice(0, 500);
+		const response = await client.chat.completions.create({
+			model: "gpt-4o-mini",
+			max_tokens: 20,
+			messages: [{
+				role: "user",
+				content: `Give this assistant response a concise 2-5 word title capturing its key topic. Reply with ONLY the title, no punctuation, no quotes.\n\nResponse:\n${excerpt}`,
+			}],
+		});
+		return response.choices[0]?.message?.content?.trim() ?? "Starred message";
+	}
 }

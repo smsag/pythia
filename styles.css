@@ -74,7 +74,8 @@
 }
 
 /* ── Context notes section ──────────────────────────────────── */
-.pythia-context-section {
+.pythia-context-section,
+.pythia-favorites-section {
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
@@ -182,6 +183,8 @@
 /* ── Message rows ───────────────────────────────────────────── */
 .pythia-message {
   display: flex;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .pythia-message-user {
@@ -190,6 +193,36 @@
 
 .pythia-message-assistant {
   justify-content: flex-start;
+}
+
+/* ── Star button ─────────────────────────────────────────────── */
+.pythia-star {
+  all: unset;
+  cursor: pointer;
+  font-size: 1em;
+  line-height: 1;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 10px 2px 0;
+  transition: color 0.15s;
+}
+.pythia-star:hover {
+  color: var(--text-muted);
+}
+.pythia-star-active {
+  color: #e8a820;
+}
+.pythia-star-active:hover {
+  color: #c88c10;
+}
+
+/* ── Favorite pill variant ───────────────────────────────────── */
+.pythia-favorite-pill .pythia-pill-label {
+  cursor: pointer;
+}
+.pythia-favorite-pill .pythia-pill-label:hover {
+  color: var(--text-normal);
 }
 
 /* ── Message bubbles ────────────────────────────────────────── */

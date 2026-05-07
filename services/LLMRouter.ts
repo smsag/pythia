@@ -47,4 +47,8 @@ export class LLMRouter {
 	generateSummary(conversation: Conversation): Promise<string> {
 		return this.get(conversation).generateSummary(conversation);
 	}
+
+	generateFavoriteName(content: string, provider: Provider): Promise<string> {
+		return this.providers[provider].generateFavoriteName(content);
+	}
 }

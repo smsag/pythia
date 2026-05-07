@@ -10,8 +10,10 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Streaming chat** — responses rendered token-by-token in the sidebar panel
 - **Conversation storage** — full history saved in `data.json`; optional summary notes written to your vault
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
+- **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
 - **Save output** — write any response directly to a new vault note
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
+- **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.11.4)
 
 ## Commands
 
@@ -45,6 +47,18 @@ You are helping write job applications for senior roles…
 ```
 
 Place templates in the configured templates folder (default: `Pythia/Templates/`). The plugin discovers them automatically.
+
+## Chat input
+
+| Key | Action |
+|---|---|
+| `Enter` | Send message |
+| `Shift+Enter` | Insert new line |
+
+## Context vs. attached notes
+
+- **Context notes** (top of window) — injected into the system prompt on every message for the lifetime of the conversation. Set via template or the `+` button in the Context section.
+- **Attached notes** ("Attach note" button) — appended inline to one specific message only, then cleared.
 
 ## Vault Structure
 

@@ -160,4 +160,19 @@ export class AnthropicService implements LLMProvider {
 		const block = response.content[0];
 		return block.type === "text" ? block.text : "";
 	}
+
+	async generateFavoriteName(content: string): Promise<string> {
+		const client = this.getClient();
+		const excerpt = content.slice(0, 500);
+		const response = await client.messages.create({
+			model: "claude-haiku-3-5",
+			max_tokens: 20,
+			messages: [{
+				role: "user",
+				content: `Give this assistant response a concise 2-5 word title capturing its key topic. Reply with ONLY the title, no punctuation, no quotes.\n\nResponse:\n${excerpt}`,
+			}],
+		});
+		const block = response.content[0];
+		return block.type === "text" ? block.text.trim() : "Starred message";
+	}
 }

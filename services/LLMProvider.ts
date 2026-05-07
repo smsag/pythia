@@ -12,4 +12,5 @@ export interface LLMProvider {
 		onError: (error: Error) => void
 	): Promise<void>;
 	generateSummary(conversation: Conversation): Promise<string>;
+	generateFavoriteName(content: string): Promise<string>;
 }

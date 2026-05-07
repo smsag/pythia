@@ -14,6 +14,7 @@ export interface Conversation {
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryNote?: string;     // vault path to the human-readable summary note
 	messages: Message[];
+	favorites?: Favorite[];   // starred assistant messages
 }
 
 export interface Message {
@@ -22,6 +23,11 @@ export interface Message {
 	content: string;
 	timestamp: string;        // ISO 8601
 	attachedNotes?: string[]; // notes attached to this specific message
+}
+
+export interface Favorite {
+	messageId: string;  // refers to Message.id
+	name: string;       // LLM-generated short title
 }
 
 export interface PythiaTemplate {

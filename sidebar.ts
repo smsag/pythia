@@ -5,7 +5,7 @@ import {
 	Notice,
 	WorkspaceLeaf,
 } from "obsidian";
-import type { Conversation, Message } from "./models/types";
+import type { Conversation, Favorite, Message } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -25,6 +25,8 @@ export class PythiaSidebarView extends ItemView {
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
 	private contextPillsEl!: HTMLElement;
+	private favoritesPillsEl!: HTMLElement;
+	private favoritesSectionEl!: HTMLElement;
 	private attachedPillsEl!: HTMLElement;
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
@@ -78,6 +80,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderHeader();
 		this.updateModelBadge();
 		this.renderContextPills();
+		this.renderFavoritesBar();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 	}
@@ -144,6 +147,19 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-pills",
 		});
 
+		// ── Favorites ─────────────────────────────
+		this.favoritesSectionEl = container.createDiv({
+			cls: "pythia-favorites-section",
+		});
+		this.favoritesSectionEl.createEl("span", {
+			cls: "pythia-section-label",
+			text: "Favorites",
+		});
+		this.favoritesPillsEl = this.favoritesSectionEl.createDiv({
+			cls: "pythia-pills",
+		});
+		this.favoritesSectionEl.style.display = "none";
+
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
 
@@ -159,10 +175,10 @@ export class PythiaSidebarView extends ItemView {
 		// Textarea
 		this.inputEl = inputArea.createEl("textarea", {
 			cls: "pythia-input",
-			attr: { placeholder: "Type a message… (Ctrl+Enter to send)" },
+			attr: { placeholder: "Type a message… (Enter to send, Shift+Enter for new line)" },
 		});
 		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
-			if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
 				this.sendMessage();
 			}
@@ -318,26 +334,31 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 		for (const msg of this.activeConversation.messages) {
-			await this.appendMessageBubble(msg.role, msg.content);
+			await this.appendMessageBubble(msg);
 		}
 		this.scrollToBottom();
 	}
 
-	private async appendMessageBubble(
-		role: "user" | "assistant",
-		content: string
-	): Promise<HTMLElement> {
+	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		const row = this.messagesEl.createDiv({
-			cls: `pythia-message pythia-message-${role}`,
+			cls: `pythia-message pythia-message-${msg.role}`,
+			attr: { "data-msg-id": msg.id },
 		});
 		const bubble = row.createDiv({ cls: "pythia-bubble" });
-		await MarkdownRenderer.render(
-			this.app,
-			content,
-			bubble,
-			"",
-			this
-		);
+		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+
+		if (msg.role === "assistant") {
+			const isFav = this.activeConversation?.favorites?.some(
+				(f) => f.messageId === msg.id
+			) ?? false;
+			const star = row.createEl("button", {
+				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
+				text: isFav ? "★" : "☆",
+				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
+			});
+			star.addEventListener("click", () => this.onStarClick(msg, star));
+		}
+
 		return bubble;
 	}
 
@@ -375,6 +396,114 @@ export class PythiaSidebarView extends ItemView {
 
 	private scrollToBottom(): void {
 		this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+	}
+
+	// ──────────────────────────────────────────────
+	// Favorites
+	// ──────────────────────────────────────────────
+
+	private renderFavoritesBar(): void {
+		this.favoritesPillsEl.empty();
+		const favs = this.activeConversation?.favorites;
+		if (!favs || favs.length === 0) {
+			this.favoritesSectionEl.style.display = "none";
+			return;
+		}
+		this.favoritesSectionEl.style.display = "";
+		for (const fav of favs) {
+			const pill = this.favoritesPillsEl.createEl("span", {
+				cls: "pythia-pill pythia-favorite-pill",
+			});
+			const label = pill.createEl("span", {
+				cls: "pythia-pill-label",
+				text: `★ ${fav.name}`,
+				attr: { title: fav.name },
+			});
+			label.addEventListener("click", () =>
+				this.scrollToMessage(fav.messageId)
+			);
+			const x = pill.createEl("button", {
+				cls: "pythia-pill-remove",
+				text: "×",
+				attr: { title: "Remove favorite" },
+			});
+			x.addEventListener("click", () =>
+				this.removeFavorite(fav.messageId)
+			);
+		}
+	}
+
+	private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void> {
+		if (!this.activeConversation) return;
+		const conv = this.activeConversation;
+		const existing = conv.favorites?.findIndex((f) => f.messageId === msg.id) ?? -1;
+
+		if (existing >= 0) {
+			// Already favorited — remove
+			await this.removeFavorite(msg.id);
+			starEl.setText("☆");
+			starEl.removeClass("pythia-star-active");
+			starEl.title = "Add to favorites";
+			return;
+		}
+
+		// Add with placeholder name
+		if (!conv.favorites) conv.favorites = [];
+		const placeholder: Favorite = { messageId: msg.id, name: "…" };
+		conv.favorites.push(placeholder);
+		await this.plugin.conversationStore.save(conv);
+		starEl.setText("★");
+		starEl.addClass("pythia-star-active");
+		starEl.title = "Remove from favorites";
+		this.renderFavoritesBar();
+
+		// Background name generation
+		try {
+			const name = await this.plugin.llmRouter.generateFavoriteName(
+				msg.content,
+				conv.provider ?? "anthropic"
+			);
+			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
+			if (fav) {
+				fav.name = name;
+				await this.plugin.conversationStore.save(conv);
+				this.renderFavoritesBar();
+			}
+		} catch {
+			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
+			if (fav) {
+				fav.name = msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
+				await this.plugin.conversationStore.save(conv);
+				this.renderFavoritesBar();
+			}
+		}
+	}
+
+	private async removeFavorite(messageId: string): Promise<void> {
+		if (!this.activeConversation) return;
+		const conv = this.activeConversation;
+		conv.favorites = (conv.favorites ?? []).filter(
+			(f) => f.messageId !== messageId
+		);
+		await this.plugin.conversationStore.save(conv);
+		this.renderFavoritesBar();
+		// Update the star button in the DOM
+		const row = this.messagesEl.querySelector(
+			`[data-msg-id="${messageId}"]`
+		) as HTMLElement | null;
+		const star = row?.querySelector(".pythia-star") as HTMLButtonElement | null;
+		if (star) {
+			star.setText("☆");
+			star.removeClass("pythia-star-active");
+			star.title = "Add to favorites";
+		}
+	}
+
+	private scrollToMessage(messageId: string): void {
+		const row = this.messagesEl.querySelector(
+			`[data-msg-id="${messageId}"]`
+		) as HTMLElement | null;
+		row?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
 
 	// ──────────────────────────────────────────────
@@ -504,7 +633,7 @@ export class PythiaSidebarView extends ItemView {
 					: undefined,
 		};
 		this.activeConversation.messages.push(userMsg);
-		await this.appendMessageBubble("user", text);
+		await this.appendMessageBubble(userMsg);
 
 		const attachedNotes = [...this.pendingAttachedNotes];
 		this.pendingAttachedNotes = [];
@@ -529,6 +658,20 @@ export class PythiaSidebarView extends ItemView {
 						timestamp: new Date().toISOString(),
 					};
 					this.activeConversation!.messages.push(assistantMsg);
+					// Add star button to the finalized streaming bubble's row
+					const rows = this.messagesEl.querySelectorAll(".pythia-message-assistant");
+					const lastRow = rows[rows.length - 1] as HTMLElement | null;
+					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
+						lastRow.setAttribute("data-msg-id", assistantMsg.id);
+						const star = lastRow.createEl("button", {
+							cls: "pythia-star",
+							text: "☆",
+							attr: { title: "Add to favorites" },
+						});
+						star.addEventListener("click", () =>
+							this.onStarClick(assistantMsg, star)
+						);
+					}
 					await this.plugin.conversationStore.save(
 						this.activeConversation!
 					);
