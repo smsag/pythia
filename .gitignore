@@ -1,0 +1,21 @@
+# Build output
+main.js
+main.js.map
+
+# Dependencies
+node_modules/
+
+# Plugin runtime data — contains encrypted API keys and conversation history
+data.json
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/settings.json
+
+# Local docs (not part of the distributed plugin)
+docs/
