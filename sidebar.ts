@@ -393,7 +393,8 @@ export class PythiaSidebarView extends ItemView {
 			cls: `pythia-message pythia-message-${msg.role}`,
 			attr: { "data-msg-id": msg.id },
 		});
-		const bubble = row.createDiv({ cls: "pythia-bubble" });
+		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
+		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble" });
 		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
 
 		if (msg.role === "assistant") {
@@ -406,7 +407,7 @@ export class PythiaSidebarView extends ItemView {
 				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
 			});
 			star.addEventListener("click", () => this.onStarClick(msg, star));
-			if (msg.tokenUsage) this.renderTokenCount(row, msg.tokenUsage);
+			if (msg.tokenUsage) this.renderTokenCount(bubbleCol, msg.tokenUsage);
 		}
 
 		return bubble;
@@ -416,15 +417,18 @@ export class PythiaSidebarView extends ItemView {
 	private createStreamingBubble(): {
 		appendToken: (text: string) => void;
 		finalize: (fullText: string) => Promise<void>;
+		bubbleCol: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({
 			cls: "pythia-message pythia-message-assistant",
 		});
-		const bubble = row.createDiv({ cls: "pythia-bubble pythia-streaming" });
+		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
+		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble pythia-streaming" });
 		const textNode = document.createTextNode("");
 		bubble.appendChild(textNode);
 
 		return {
+			bubbleCol,
 			appendToken: (text: string) => {
 				textNode.textContent = (textNode.textContent ?? "") + text;
 				this.scrollToBottom();
@@ -704,7 +708,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderAttachedPills();
 
 		// Streaming assistant bubble
-		const { appendToken, finalize } = this.createStreamingBubble();
+		const { appendToken, finalize, bubbleCol: streamingBubbleCol } = this.createStreamingBubble();
 
 		await this.plugin.llmRouter.streamMessage(
 			conv,
@@ -729,8 +733,8 @@ export class PythiaSidebarView extends ItemView {
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
 						if (this.activeConversation?.id === conv.id) {
-							const bubbleEl = lastRow.querySelector(".pythia-bubble") as HTMLElement | null;
-							const star = (bubbleEl ?? lastRow).createEl("button", {
+							const bubbleEl = streamingBubbleCol.querySelector(".pythia-bubble") as HTMLElement | null;
+							const star = (bubbleEl ?? streamingBubbleCol).createEl("button", {
 								cls: "pythia-star",
 								text: "☆",
 								attr: { title: "Add to favorites" },
@@ -738,7 +742,7 @@ export class PythiaSidebarView extends ItemView {
 							star.addEventListener("click", () =>
 								this.onStarClick(assistantMsg, star)
 							);
-							if (tokenUsage) this.renderTokenCount(lastRow, tokenUsage);
+							if (tokenUsage) this.renderTokenCount(streamingBubbleCol, tokenUsage);
 						}
 					}
 					await this.plugin.conversationStore.save(conv);

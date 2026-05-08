@@ -356,6 +356,19 @@ export default class PythiaPlugin extends Plugin {
 		return leaf.view as PythiaSidebarView;
 	}
 
+	private async activateInLeftSidebar(): Promise<PythiaSidebarView> {
+		const { workspace } = this.app;
+		let leaf = workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0] as
+			| WorkspaceLeaf
+			| undefined;
+		if (!leaf) {
+			leaf = workspace.getLeftLeaf(false) ?? workspace.getLeaf(true);
+			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
+		}
+		workspace.revealLeaf(leaf);
+		return leaf.view as PythiaSidebarView;
+	}
+
 	private getSidebarView(): PythiaSidebarView | null {
 		const leaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
 		return leaf ? (leaf.view as PythiaSidebarView) : null;
@@ -458,6 +471,28 @@ export default class PythiaPlugin extends Plugin {
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 		new Notice(`Attached "${activeFile.name}" as context.`);
+	}
+
+	private async cmdNewConversationFromClipboard(): Promise<void> {
+		let text: string;
+		try {
+			text = await navigator.clipboard.readText();
+		} catch {
+			new Notice(
+				"Could not read clipboard. Grant clipboard access and try again."
+			);
+			return;
+		}
+		text = text.trim();
+		if (!text) {
+			new Notice("Clipboard is empty.");
+			return;
+		}
+		const date = new Date().toISOString().slice(0, 10);
+		const conv = await this.createConversation(`Conversation ${date}`);
+		const view = await this.activateView();
+		await view.setActiveConversation(conv);
+		view.prefillInput(text);
 	}
 
 	private async cmdResumeConversation(): Promise<void> {

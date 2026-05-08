@@ -13,6 +13,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
 - **Save output** — write any response directly to a new vault note
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
+- **Context menus** — right-click selected text in the editor or any file in the Explorer to open a conversation instantly
+- **Deep-link URIs** — open, create, or resume conversations via `obsidian://pythia` links from anywhere
 - **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.11.4)
 
 ## Commands
@@ -22,9 +24,16 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: New conversation` | Blank conversation, no context |
 | `Pythia: New conversation from template` | Pick a template → loads system prompt + context notes |
 | `Pythia: New conversation with current note` | Active note auto-injected as context |
+| `Pythia: New conversation from clipboard` | Pre-fills the input with current clipboard text |
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
 | `Pythia: Save response as note` | Save last response (or selection) as a new vault note |
-| `Pythia: Open sidebar` | Open / focus the chat sidebar |
+| `Pythia: Open sidebar` | Open / focus the chat sidebar (right panel) |
+| `Pythia: Open in left sidebar` | Open / focus the chat sidebar (left panel) |
+
+### Context menus
+
+- **Editor** — select any text in a note, right-click → **Send to Pythia**: opens a new conversation with the selected text pre-filled in the input.
+- **File Explorer** — right-click any file → **Chat about this note**: opens a new conversation with that file injected as a context note.
 
 ## Templates
 
@@ -47,6 +56,34 @@ You are helping write job applications for senior roles…
 ```
 
 Place templates in the configured templates folder (default: `Pythia/Templates/`). The plugin discovers them automatically.
+
+## Recommended hotkeys
+
+Obsidian does not support plugin-defined default hotkeys, so assign these manually in **Settings → Hotkeys**:
+
+| Suggested binding | Command |
+|---|---|
+| `Cmd/Ctrl + Shift + P` | `Pythia: Open sidebar` |
+| `Cmd/Ctrl + Shift + N` | `Pythia: New conversation` |
+| `Cmd/Ctrl + Shift + V` | `Pythia: New conversation from clipboard` |
+
+## Deep-link URIs
+
+Use `obsidian://pythia` links to open Pythia from browsers, Shortcuts automations, or vault notes:
+
+| URI | Behaviour |
+|---|---|
+| `obsidian://pythia` | Open the sidebar |
+| `obsidian://pythia?action=open` | Open the sidebar (explicit) |
+| `obsidian://pythia?action=new` | Create a new blank conversation |
+| `obsidian://pythia?action=resume&id=<uuid>` | Open a specific conversation by ID |
+| `obsidian://pythia?action=template&name=<name>` | Create a conversation from a named template |
+
+Vault note example:
+
+```markdown
+[Open Job Application chat](obsidian://pythia?action=template&name=Job%20Application)
+```
 
 ## Chat input
 
