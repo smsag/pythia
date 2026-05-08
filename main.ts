@@ -46,6 +46,12 @@ export default class PythiaPlugin extends Plugin {
 			(leaf) => new PythiaSidebarView(leaf, this)
 		);
 
+		// Pin the view into the sidebar layout on first run (and re-pin if the
+		// user closes the tab). onLayoutReady fires after the workspace layout
+		// has been fully restored from disk, so we only create a new leaf when
+		// one isn't already present in the saved layout.
+		this.app.workspace.onLayoutReady(() => this.initLeaf());
+
 		// Ribbon icon
 		this.addRibbonIcon("bot", "Pythia", () =>
 			this.activateView()
@@ -342,6 +348,19 @@ export default class PythiaPlugin extends Plugin {
 	// ──────────────────────────────────────────────
 	// View management
 	// ──────────────────────────────────────────────
+
+	/** Called once on layout-ready. Creates the sidebar leaf on first install
+	 *  (or after the user manually closed the tab). Obsidian then persists the
+	 *  leaf in its workspace layout, so subsequent launches restore it without
+	 *  hitting this branch. */
+	private initLeaf(): void {
+		if (this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE).length) {
+			return; // already present in the restored layout
+		}
+		this.app.workspace.getRightLeaf(false)?.setViewState({
+			type: PYTHIA_VIEW_TYPE,
+		});
+	}
 
 	async activateView(): Promise<PythiaSidebarView> {
 		const { workspace } = this.app;
