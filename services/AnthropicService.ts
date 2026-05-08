@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { App, Notice } from "obsidian";
-import type { Conversation, TokenUsage } from "../models/types";
+import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
+import { getToolDefinitions } from "./ToolHandler";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
@@ -72,7 +73,8 @@ export class AnthropicService implements LLMProvider {
 		attachedNotes: string[],
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
-		onError: (error: Error) => void
+		onError: (error: Error) => void,
+		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
 		this.abort();
 		this.abortController = new AbortController();
@@ -97,41 +99,89 @@ export class AnthropicService implements LLMProvider {
 				(m) => ({ role: m.role, content: m.content })
 			);
 
-			const apiMessages = normalizeMessages([
-				...historyMessages,
-				{ role: "user" as const, content: userContent },
-			]);
-
 			const model = conversation.model || this.settings.defaultAnthropicModel;
 			const maxTokens = 4096;
 
 			if (this.settings.debugMode) {
 				console.log("[Pythia] Anthropic API call →", {
 					model,
-					messages: apiMessages.length,
+					messages: historyMessages.length + 1,
 					systemPromptChars: systemPrompt.length,
+					tools: !!onToolCall,
 				});
 			}
 
-			const stream = this.getClient().messages.stream(
-				{
-					model,
-					max_tokens: maxTokens,
-					...(systemPrompt ? { system: systemPrompt } : {}),
-					messages: apiMessages,
-				},
-				{ signal: this.abortController.signal }
-			);
+			// Build mutable message array for the tool-use loop
+			const loopMessages: Anthropic.MessageParam[] = normalizeMessages([
+				...historyMessages,
+				{ role: "user" as const, content: userContent },
+			]).map((m) => ({ role: m.role, content: m.content }));
 
-			stream.on("text", (text) => {
-				fullText += text;
-				onToken(text);
-			});
+			// Map tool definitions to Anthropic format (only when caller supports tool use)
+			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
+				? getToolDefinitions(this.settings.scratchFolder).map((def) => ({
+						name: def.name,
+						description: def.description,
+						input_schema: def.inputSchema as Anthropic.Tool.InputSchema,
+				  }))
+				: undefined;
 
-			const finalMsg = await stream.finalMessage();
+			let totalInputTokens = 0;
+			let totalOutputTokens = 0;
+
+			while (true) {
+				const stream = this.getClient().messages.stream(
+					{
+						model,
+						max_tokens: maxTokens,
+						...(systemPrompt ? { system: systemPrompt } : {}),
+						messages: loopMessages,
+						...(anthropicTools ? { tools: anthropicTools } : {}),
+					},
+					{ signal: this.abortController.signal }
+				);
+
+				stream.on("text", (text) => {
+					fullText += text;
+					onToken(text);
+				});
+
+				const finalMsg = await stream.finalMessage();
+				totalInputTokens += finalMsg.usage.input_tokens;
+				totalOutputTokens += finalMsg.usage.output_tokens;
+
+				if (finalMsg.stop_reason === "tool_use" && onToolCall) {
+					// Push assistant turn with its content blocks
+					loopMessages.push({
+						role: "assistant",
+						content: finalMsg.content as Anthropic.MessageParam["content"],
+					});
+
+					// Execute each tool and collect results
+					const toolResults: Anthropic.ToolResultBlockParam[] = [];
+					for (const block of finalMsg.content) {
+						if (block.type === "tool_use") {
+							const result = await onToolCall({
+								id: block.id,
+								name: block.name,
+								input: block.input as Record<string, unknown>,
+							});
+							toolResults.push({
+								type: "tool_result",
+								tool_use_id: block.id,
+								content: result,
+							});
+						}
+					}
+					loopMessages.push({ role: "user", content: toolResults });
+				} else {
+					break;
+				}
+			}
+
 			const tokenUsage: TokenUsage = {
-				inputTokens: finalMsg.usage.input_tokens,
-				outputTokens: finalMsg.usage.output_tokens,
+				inputTokens: totalInputTokens,
+				outputTokens: totalOutputTokens,
 			};
 			onComplete(fullText, tokenUsage);
 		} catch (error) {

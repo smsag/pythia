@@ -5,15 +5,17 @@ import {
 	MarkdownView,
 	Notice,
 	setIcon,
+	TFile,
 	WorkspaceLeaf,
 } from "obsidian";
-import type { Conversation, Favorite, Message, TokenUsage } from "./models/types";
+import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { classifyApiError } from "./services/apiError";
+import { executeToolCall } from "./services/ToolHandler";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -38,6 +40,14 @@ export class PythiaSidebarView extends ItemView {
 	private selectionToolbar!: HTMLElement;
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
+
+	// Inline note suggest state (# trigger)
+	private hashPos: number | null = null;
+	private suggestDropdown: HTMLElement | null = null;
+	private suggestActiveIdx = 0;
+	private suggestItems: TFile[] = [];
+	private suggestOutsideHandler: ((e: MouseEvent) => void) | null = null;
+	private inputAreaEl!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -87,6 +97,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
 		}
+		this.dismissSuggest();
 	}
 
 	// ──────────────────────────────────────────────
@@ -229,6 +240,7 @@ export class PythiaSidebarView extends ItemView {
 		);
 		// ── Input area ───────────────────────────
 		const inputArea = container.createDiv({ cls: "pythia-input-area" });
+		this.inputAreaEl = inputArea;
 
 		// Pending attached notes row
 		const attachRow = inputArea.createDiv({ cls: "pythia-attach-row" });
@@ -242,11 +254,35 @@ export class PythiaSidebarView extends ItemView {
 			attr: { placeholder: "Type a message… (Enter to send, Shift+Enter for new line)" },
 		});
 		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+			// Intercept navigation keys when the inline suggest dropdown is open
+			if (this.suggestDropdown) {
+				if (e.key === "ArrowDown") {
+					e.preventDefault();
+					this.moveSuggestSelection(1);
+					return;
+				}
+				if (e.key === "ArrowUp") {
+					e.preventDefault();
+					this.moveSuggestSelection(-1);
+					return;
+				}
+				if (e.key === "Enter") {
+					e.preventDefault();
+					this.commitSuggestSelection();
+					return;
+				}
+				if (e.key === "Escape") {
+					e.preventDefault();
+					this.dismissSuggest();
+					return;
+				}
+			}
 			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
 				this.sendMessage();
 			}
 		});
+		this.inputEl.addEventListener("input", () => this.onInputChange());
 
 		// Buttons row
 		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
@@ -658,6 +694,145 @@ export class PythiaSidebarView extends ItemView {
 		}).open();
 	}
 
+	// ──────────────────────────────────────────────
+	// # inline note picker
+	// ──────────────────────────────────────────────
+
+	private onInputChange(): void {
+		const el = this.inputEl;
+		const val = el.value;
+		const cursor = el.selectionStart ?? val.length;
+
+		// Find the most recent '#' preceded by start-of-string or whitespace
+		let triggerPos: number | null = null;
+		for (let i = cursor - 1; i >= 0; i--) {
+			if (val[i] === "#") {
+				if (i === 0 || /\s/.test(val[i - 1])) {
+					triggerPos = i;
+					break;
+				}
+			}
+			// Stop scanning once we cross whitespace without finding '#'
+			if (/\s/.test(val[i])) break;
+		}
+
+		if (triggerPos === null) {
+			this.dismissSuggest();
+			return;
+		}
+
+		this.hashPos = triggerPos;
+		const query = val.slice(triggerPos + 1, cursor);
+		this.showSuggest(query);
+	}
+
+	private showSuggest(query: string): void {
+		const q = query.toLowerCase();
+		const allFiles = this.app.vault.getMarkdownFiles();
+
+		this.suggestItems = allFiles
+			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
+			.sort((a, b) => {
+				// Boost files where the base name matches
+				const aName = a.basename.toLowerCase().includes(q);
+				const bName = b.basename.toLowerCase().includes(q);
+				if (aName && !bName) return -1;
+				if (!aName && bName) return 1;
+				return 0;
+			})
+			.slice(0, 8);
+
+		if (this.suggestItems.length === 0) {
+			this.dismissSuggest();
+			return;
+		}
+
+		if (!this.suggestDropdown) {
+			this.suggestDropdown = this.inputAreaEl.createDiv({
+				cls: "pythia-inline-suggest",
+			});
+			this.suggestOutsideHandler = (e: MouseEvent) => {
+				if (
+					!this.suggestDropdown?.contains(e.target as Node) &&
+					e.target !== this.inputEl
+				) {
+					this.dismissSuggest();
+				}
+			};
+			document.addEventListener("mousedown", this.suggestOutsideHandler);
+		}
+
+		this.suggestActiveIdx = Math.min(
+			this.suggestActiveIdx,
+			Math.max(0, this.suggestItems.length - 1)
+		);
+		this.renderSuggestDropdown();
+	}
+
+	private renderSuggestDropdown(): void {
+		if (!this.suggestDropdown) return;
+		this.suggestDropdown.empty();
+		for (let i = 0; i < this.suggestItems.length; i++) {
+			const file = this.suggestItems[i];
+			const row = this.suggestDropdown.createDiv({
+				cls:
+					i === this.suggestActiveIdx
+						? "pythia-suggest-item pythia-suggest-item--active"
+						: "pythia-suggest-item",
+			});
+			row.createSpan({ cls: "pythia-suggest-name", text: file.basename });
+			const folder = file.parent?.path ?? "";
+			if (folder && folder !== "/") {
+				row.createSpan({ cls: "pythia-suggest-folder", text: folder });
+			}
+			row.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				this.suggestActiveIdx = i;
+				this.commitSuggestSelection();
+			});
+		}
+	}
+
+	private moveSuggestSelection(delta: number): void {
+		if (!this.suggestDropdown || this.suggestItems.length === 0) return;
+		this.suggestActiveIdx =
+			(this.suggestActiveIdx + delta + this.suggestItems.length) %
+			this.suggestItems.length;
+		this.renderSuggestDropdown();
+	}
+
+	private commitSuggestSelection(): void {
+		const file = this.suggestItems[this.suggestActiveIdx];
+		if (!file || this.hashPos === null) {
+			this.dismissSuggest();
+			return;
+		}
+		const val = this.inputEl.value;
+		const cursor = this.inputEl.selectionStart ?? val.length;
+		// Remove the #query fragment from the textarea
+		this.inputEl.value = val.slice(0, this.hashPos) + val.slice(cursor);
+		this.inputEl.setSelectionRange(this.hashPos, this.hashPos);
+		// Attach the note
+		if (!this.pendingAttachedNotes.includes(file.path)) {
+			this.pendingAttachedNotes.push(file.path);
+			this.renderAttachedPills();
+		}
+		this.dismissSuggest();
+	}
+
+	private dismissSuggest(): void {
+		this.hashPos = null;
+		this.suggestActiveIdx = 0;
+		if (this.suggestDropdown) {
+			this.suggestDropdown.remove();
+			this.suggestDropdown = null;
+		}
+		if (this.suggestOutsideHandler) {
+			document.removeEventListener("mousedown", this.suggestOutsideHandler);
+			this.suggestOutsideHandler = null;
+		}
+	}
+
 	private async onSaveResponse(): Promise<void> {
 		const lastResponse = this.getLastAssistantMessage();
 		if (!lastResponse) {
@@ -755,6 +930,57 @@ export class PythiaSidebarView extends ItemView {
 		// Streaming assistant bubble
 		const { appendToken, finalize, bubbleCol: streamingBubbleCol } = this.createStreamingBubble();
 
+		// Tool call handler — creates a status chip in the message area
+		const onToolCall = this.plugin.settings.enableNoteCreation
+			? async (call: ToolCall): Promise<string> => {
+					const pathText =
+						typeof call.input["path"] === "string"
+							? call.input["path"]
+							: call.name;
+					const chipEl = this.messagesEl.createDiv({
+						cls: "pythia-tool-call pythia-tool-call--pending",
+					});
+					chipEl.createSpan({ cls: "pythia-tool-call-spinner" });
+					chipEl.createSpan({
+						cls: "pythia-tool-call-label",
+						text: `Creating note: ${pathText}`,
+					});
+					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+					const result = await executeToolCall(
+						this.plugin.app,
+						this.plugin.settings,
+						call
+					);
+
+					chipEl.empty();
+					chipEl.removeClass("pythia-tool-call--pending");
+					if (result.startsWith("Error")) {
+						chipEl.addClass("pythia-tool-call--error");
+						chipEl.createSpan({ text: result });
+					} else {
+						chipEl.addClass("pythia-tool-call--done");
+						const notePath =
+							typeof call.input["path"] === "string"
+								? call.input["path"]
+								: "";
+						const noteName =
+							notePath.split("/").pop()?.replace(/\.md$/, "") ??
+							notePath;
+						const link = chipEl.createEl("a", {
+							cls: "pythia-tool-call-link",
+							text: `✓ Created [[${noteName}]]`,
+						});
+						link.addEventListener("click", (e) => {
+							e.preventDefault();
+							this.app.workspace.openLinkText(noteName, "");
+						});
+					}
+
+					return result;
+			  }
+			: undefined;
+
 		await this.plugin.llmRouter.streamMessage(
 			conv,
 			text,
@@ -817,7 +1043,8 @@ export class PythiaSidebarView extends ItemView {
 				}
 				new Notice(msg);
 				this.setStreamingState(false);
-			}
+			},
+			onToolCall
 		);
 	}
 

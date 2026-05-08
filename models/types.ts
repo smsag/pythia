@@ -52,3 +52,15 @@ export interface PluginData {
 	settings: Record<string, unknown>;
 	conversations: Conversation[];
 }
+
+export interface ToolDefinition {
+	name: string;
+	description: string;
+	inputSchema: Record<string, unknown>;
+}
+
+export interface ToolCall {
+	id: string;
+	name: string;
+	input: Record<string, unknown>;
+}

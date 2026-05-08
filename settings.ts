@@ -21,6 +21,8 @@ export interface PythiaSettings {
 	defaultResumeMode: "full" | "summary";
 	/** Soft cap on messages per conversation session. 0 = unlimited. */
 	maxMessagesPerSession: number;
+	/** When true, passes a create_note tool to the LLM so it can write vault notes. */
+	enableNoteCreation: boolean;
 	debugMode: boolean;
 }
 
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	autoSaveSummary: true,
 	defaultResumeMode: "summary",
 	maxMessagesPerSession: 100,
+	enableNoteCreation: true,
 	debugMode: false,
 };
 
@@ -209,6 +212,24 @@ export class PythiaSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.debugMode)
 					.onChange(async (value) => {
 						this.plugin.settings.debugMode = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		// ── Features ───────────────────────────────────────────────────────
+		containerEl.createEl("h3", { text: "Features" });
+
+		new Setting(containerEl)
+			.setName("Allow AI to create notes")
+			.setDesc(
+				"Pass a create_note tool to the AI so it can write vault notes on request. " +
+				"When enabled, you can ask Pythia to create a note in plain language."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableNoteCreation)
+					.onChange(async (value) => {
+						this.plugin.settings.enableNoteCreation = value;
 						await this.plugin.saveSettings();
 					})
 			);

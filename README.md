@@ -12,6 +12,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
 - **Save output** — write any response directly to a new vault note
+- **AI note creation** — ask Pythia to create a vault note in plain language (e.g. *"Create a note summarising our discussion at Research/Topic.md"*); a status chip confirms creation with a clickable link
+- **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
 - **Context menus** — right-click selected text in the editor or any file in the Explorer to open a conversation instantly
 - **Deep-link URIs** — open, create, or resume conversations via `obsidian://pythia` links from anywhere
@@ -91,6 +93,7 @@ Vault note example:
 |---|---|
 | `Enter` | Send message |
 | `Shift+Enter` | Insert new line |
+| `#query` | Fuzzy-search vault notes; `↑↓` to navigate, `↵` to attach, `Esc` to dismiss |
 
 ## Context vs. attached notes
 
@@ -122,6 +125,8 @@ vault/
 | Auto-save summary | `true` | Write summary note on conversation end |
 | Default resume mode | `summary` | `full` or `summary` |
 | Max messages per session | `100` | Soft cap; 0 = unlimited |
+| Debug mode | `false` | Log API calls and payloads to the developer console |
+| Allow AI to create notes | `true` | Pass a `create_note` tool to the LLM so it can write vault notes on request |
 
 API keys are stored in Obsidian's native `SecretStorage` API (vault-scoped, never written to `data.json`). The settings tab uses `SecretComponent` to let you select or create a named secret. Only the secret's name (e.g. `pythia-anthropic`) is stored in `data.json` — the value never leaves SecretStorage.
 
