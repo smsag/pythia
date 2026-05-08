@@ -4,6 +4,7 @@ import {
 	MarkdownRenderer,
 	MarkdownView,
 	Notice,
+	setIcon,
 	WorkspaceLeaf,
 } from "obsidian";
 import type { Conversation, Favorite, Message, TokenUsage } from "./models/types";
@@ -250,12 +251,6 @@ export class PythiaSidebarView extends ItemView {
 		// Buttons row
 		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
 
-		const attachBtn = btnRow.createEl("button", {
-			cls: "pythia-btn",
-			text: "Attach note",
-		});
-		attachBtn.addEventListener("click", () => this.onAttachNote());
-
 		this.sendBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-primary",
 			text: "Send",
@@ -271,10 +266,19 @@ export class PythiaSidebarView extends ItemView {
 			this.plugin.llmRouter.abort();
 		});
 
-		const saveBtn = btnRow.createEl("button", {
-			cls: "pythia-btn",
-			text: "Save response",
+		const attachBtn = btnRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon",
+			attr: { title: "Attach note" },
 		});
+		attachBtn.style.marginLeft = "auto";
+		setIcon(attachBtn, "paperclip");
+		attachBtn.addEventListener("click", () => this.onAttachNote());
+
+		const saveBtn = btnRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon",
+			attr: { title: "Save response" },
+		});
+		setIcon(saveBtn, "save");
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
 	}
 
@@ -332,8 +336,6 @@ export class PythiaSidebarView extends ItemView {
 			});
 		}
 
-		const sep = this.messagesEl.createDiv({ cls: "pythia-summary-sep" });
-		sep.setText("• • •");
 	}
 
 	private renderContextPills(): void {

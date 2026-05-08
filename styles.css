@@ -196,19 +196,10 @@
   font-size: 0.85em;
   margin-top: 4px;
   display: block;
+  background: transparent !important;
 }
 .pythia-summary-toggle:hover {
   text-decoration: underline;
-}
-
-.pythia-summary-sep {
-  flex-shrink: 0;
-  text-align: center;
-  color: var(--text-faint);
-  font-size: 0.75em;
-  letter-spacing: 8px;
-  padding: 10px 0 2px;
-  user-select: none;
 }
 
 /* ── Messages area ──────────────────────────────────────────── */
@@ -484,6 +475,19 @@
 }
 .pythia-btn-danger:hover {
   filter: brightness(1.1);
+}
+
+.pythia-btn-icon {
+  padding: 5px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.pythia-btn-icon svg {
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
 }
 
 /* ── Settings — folder picker display ───────────────────────── */
