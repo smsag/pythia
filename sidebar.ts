@@ -37,8 +37,6 @@ export class PythiaSidebarView extends ItemView {
 	private selectionToolbar!: HTMLElement;
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
-	private summaryBannerEl!: HTMLElement;
-	private summarySepEl!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -104,7 +102,6 @@ export class PythiaSidebarView extends ItemView {
 		this.updateModelBadge();
 		this.renderContextPills();
 		this.renderFavoritesBar();
-		this.renderSummaryBanner();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 	}
@@ -185,13 +182,6 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-pills",
 		});
 		this.favoritesSectionEl.style.display = "none";
-
-		// ── Summary banner ───────────────────────
-		this.summaryBannerEl = container.createDiv({ cls: "pythia-summary-banner" });
-		this.summaryBannerEl.style.display = "none";
-		this.summarySepEl = container.createDiv({ cls: "pythia-summary-sep" });
-		this.summarySepEl.setText("• • •");
-		this.summarySepEl.style.display = "none";
 
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
@@ -319,29 +309,19 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	private renderSummaryBanner(): void {
-		this.summaryBannerEl.empty();
-		const summary = this.activeConversation?.summaryText?.trim();
-		if (!summary) {
-			this.summaryBannerEl.style.display = "none";
-			this.summarySepEl.style.display = "none";
-			return;
-		}
-
-		this.summaryBannerEl.style.display = "";
-		this.summarySepEl.style.display = "";
-
-		const header = this.summaryBannerEl.createDiv({ cls: "pythia-summary-header" });
+	private renderSummaryBanner(summary: string): void {
+		const banner = this.messagesEl.createDiv({ cls: "pythia-summary-banner" });
+		const header = banner.createDiv({ cls: "pythia-summary-header" });
 		header.createEl("span", { text: "↩ Summary" });
 
 		const LIMIT = 300;
 		const isTruncatable = summary.length > LIMIT;
-		const bodyEl = this.summaryBannerEl.createDiv({ cls: "pythia-summary-body" });
+		const bodyEl = banner.createDiv({ cls: "pythia-summary-body" });
 		bodyEl.setText(isTruncatable ? summary.slice(0, LIMIT) + "…" : summary);
 
 		if (isTruncatable) {
 			let expanded = false;
-			const toggle = this.summaryBannerEl.createEl("button", {
+			const toggle = banner.createEl("button", {
 				cls: "pythia-summary-toggle",
 				text: "Show more",
 			});
@@ -351,6 +331,9 @@ export class PythiaSidebarView extends ItemView {
 				toggle.setText(expanded ? "Show less" : "Show more");
 			});
 		}
+
+		const sep = this.messagesEl.createDiv({ cls: "pythia-summary-sep" });
+		sep.setText("• • •");
 	}
 
 	private renderContextPills(): void {
@@ -435,6 +418,8 @@ export class PythiaSidebarView extends ItemView {
 			this.renderEmptyState();
 			return;
 		}
+		const summary = this.activeConversation.summaryText?.trim();
+		if (summary) this.renderSummaryBanner(summary);
 		if (this.activeConversation.messages.length === 0) {
 			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
 			hint.createEl("p", { text: "Start the conversation below." });
@@ -614,7 +599,7 @@ export class PythiaSidebarView extends ItemView {
 	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
 		const fmt = (n: number) => n.toLocaleString();
 		const el = row.createEl("span", { cls: "pythia-token-count" });
-		el.setText(`↑${fmt(usage.inputTokens)} ↓${fmt(usage.outputTokens)}`);
+		el.setText(`↑${fmt(usage.inputTokens)} tokens  ↓${fmt(usage.outputTokens)} tokens`);
 		el.title = `Input: ${fmt(usage.inputTokens)} tokens · Output: ${fmt(usage.outputTokens)} tokens`;
 	}
 

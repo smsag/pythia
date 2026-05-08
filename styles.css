@@ -37,8 +37,9 @@
   all: unset;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.95em;
+  font-size: 1.05em;
   color: var(--text-normal);
+  background: transparent !important;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -217,7 +218,7 @@
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -258,8 +259,8 @@
   color: var(--text-faint);
   background: transparent !important;
   position: absolute;
-  top: -4px;
-  left: -4px;
+  top: -10px;
+  left: -10px;
   width: 21px;
   height: 21px;
   display: flex;
