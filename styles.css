@@ -161,6 +161,46 @@
   color: var(--interactive-accent);
 }
 
+/* ── Summary banner ─────────────────────────────────────────── */
+.pythia-summary-banner {
+  flex-shrink: 0;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 8px 12px;
+  font-size: 0.82em;
+}
+
+.pythia-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pythia-summary-body {
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pythia-summary-toggle {
+  all: unset;
+  cursor: pointer;
+  color: var(--interactive-accent);
+  font-size: 0.85em;
+  margin-top: 4px;
+  display: block;
+}
+.pythia-summary-toggle:hover {
+  text-decoration: underline;
+}
+
 /* ── Messages area ──────────────────────────────────────────── */
 .pythia-messages {
   flex: 1;

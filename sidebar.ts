@@ -37,6 +37,7 @@ export class PythiaSidebarView extends ItemView {
 	private selectionToolbar!: HTMLElement;
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
+	private summaryBannerEl!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -102,6 +103,7 @@ export class PythiaSidebarView extends ItemView {
 		this.updateModelBadge();
 		this.renderContextPills();
 		this.renderFavoritesBar();
+		this.renderSummaryBanner();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 	}
@@ -182,6 +184,10 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-pills",
 		});
 		this.favoritesSectionEl.style.display = "none";
+
+		// ── Summary banner ───────────────────────
+		this.summaryBannerEl = container.createDiv({ cls: "pythia-summary-banner" });
+		this.summaryBannerEl.style.display = "none";
 
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
@@ -306,6 +312,38 @@ export class PythiaSidebarView extends ItemView {
 			this.templateLabelEl.setText(`Template: ${tplName}`);
 		} else {
 			this.templateLabelEl.setText("");
+		}
+	}
+
+	private renderSummaryBanner(): void {
+		this.summaryBannerEl.empty();
+		const summary = this.activeConversation?.summaryText?.trim();
+		if (!summary) {
+			this.summaryBannerEl.style.display = "none";
+			return;
+		}
+
+		this.summaryBannerEl.style.display = "";
+
+		const header = this.summaryBannerEl.createDiv({ cls: "pythia-summary-header" });
+		header.createEl("span", { text: "↩ Summary" });
+
+		const LIMIT = 300;
+		const isTruncatable = summary.length > LIMIT;
+		const bodyEl = this.summaryBannerEl.createDiv({ cls: "pythia-summary-body" });
+		bodyEl.setText(isTruncatable ? summary.slice(0, LIMIT) + "…" : summary);
+
+		if (isTruncatable) {
+			let expanded = false;
+			const toggle = this.summaryBannerEl.createEl("button", {
+				cls: "pythia-summary-toggle",
+				text: "Show more",
+			});
+			toggle.addEventListener("click", () => {
+				expanded = !expanded;
+				bodyEl.setText(expanded ? summary : summary.slice(0, LIMIT) + "…");
+				toggle.setText(expanded ? "Show less" : "Show more");
+			});
 		}
 	}
 
