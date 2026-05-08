@@ -121,6 +121,12 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => this.cmdNewConversationFromClipboard(),
 		});
 
+		this.addCommand({
+			id: "delete-conversation",
+			name: "Delete current conversation",
+			callback: () => this.cmdDeleteConversation(),
+		});
+
 		// ── Context menus ────────────────────────────────────────────────────
 
 		// Editor context menu: appears when text is selected in a note
@@ -448,6 +454,12 @@ export default class PythiaPlugin extends Plugin {
 
 	async cmdNewConversationFromSidebar(): Promise<void> {
 		await this.cmdNewConversation();
+	}
+
+	async cmdDeleteConversation(): Promise<void> {
+		const view = this.getSidebarView();
+		if (!view) return;
+		await view.handleDeleteConversation();
 	}
 
 	private async cmdNewConversation(): Promise<void> {

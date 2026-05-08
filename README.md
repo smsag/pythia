@@ -17,6 +17,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
 - **Context menus** — right-click selected text in the editor or any file in the Explorer to open a conversation instantly
 - **Browse conversations** — open any past conversation directly from the Command Palette, no resume-mode step
+- **Delete conversation** — remove any conversation from `data.json` via the sidebar trash button or the Command Palette (confirmation required)
 - **Browse favorites** — fuzzy-search all starred responses across every conversation and jump directly to one from the Command Palette
 - **Deep-link URIs** — open, create, or resume conversations via `obsidian://pythia` links from anywhere
 - **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.11.4)
@@ -32,6 +33,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
 | `Pythia: Browse conversations` | Fuzzy-search all conversations and open one directly |
 | `Pythia: Browse favorites` | Fuzzy-search all starred responses across every conversation and jump to one |
+| `Pythia: Delete current conversation` | Delete the active conversation (shows a confirmation dialog) |
 | `Pythia: Save response as note` | Save last response (or selection) as a new vault note |
 | `Pythia: Open sidebar` | Open / focus the chat sidebar (right panel) |
 | `Pythia: Open in left sidebar` | Open / focus the chat sidebar (left panel) |

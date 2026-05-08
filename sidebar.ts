@@ -17,6 +17,7 @@ import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { classifyApiError } from "./services/apiError";
 import { executeToolCall } from "./services/ToolHandler";
+import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -176,6 +177,15 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(newConvBtn, "plus");
 		newConvBtn.addEventListener("click", () =>
 			this.plugin.cmdNewConversationFromSidebar()
+		);
+
+		const deleteConvBtn = titleRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon pythia-delete-conv-btn",
+			attr: { title: "Delete conversation" },
+		});
+		setIcon(deleteConvBtn, "trash");
+		deleteConvBtn.addEventListener("click", () =>
+			this.handleDeleteConversation()
 		);
 
 		this.templateLabelEl = header.createDiv({
@@ -773,6 +783,24 @@ export class PythiaSidebarView extends ItemView {
 
 		new ConversationSuggestModal(this.app, convs, async (conv) => {
 			await this.setActiveConversation(conv);
+		}).open();
+	}
+
+	async handleDeleteConversation(): Promise<void> {
+		if (!this.activeConversation) return;
+		const toDelete = this.activeConversation;
+
+		new DeleteConversationModal(this.app, toDelete, async () => {
+			await this.plugin.conversationStore.delete(toDelete.id);
+			new Notice("Conversation deleted.");
+
+			const remaining = this.plugin.conversations;
+			if (remaining.length > 0) {
+				const next = remaining[remaining.length - 1];
+				await this.setActiveConversation(next);
+			} else {
+				await this.plugin.cmdNewConversationFromSidebar();
+			}
 		}).open();
 	}
 
