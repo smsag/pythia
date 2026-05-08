@@ -207,6 +207,25 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.favoritesSectionEl.style.display = "none";
 
+		// ── Summary note ──────────────────────────
+		this.summaryNoteSectionEl = container.createDiv({
+			cls: "pythia-summary-note-section",
+		});
+		this.summaryNoteSectionEl.createEl("span", {
+			cls: "pythia-section-label",
+			text: "Summary note:",
+		});
+		this.summaryNotePathEl = this.summaryNoteSectionEl.createEl("span", {
+			cls: "pythia-summary-note-path",
+		});
+		const moveBtn = this.summaryNoteSectionEl.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon pythia-summary-note-move",
+			attr: { title: "Move summary note to another folder" },
+		});
+		setIcon(moveBtn, "folder-open");
+		moveBtn.addEventListener("click", () => this.onMoveSummaryNote());
+		this.summaryNoteSectionEl.style.display = "none";
+
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
 		// ── Selection toolbar ────────────────────────────
@@ -1045,6 +1064,9 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage) => {
+				// Reset the button immediately so the user can type again while
+				// the markdown render and persistence happen in the background.
+				this.setStreamingState(false);
 				await finalize(fullText);
 
 				if (fullText) {
@@ -1076,8 +1098,6 @@ export class PythiaSidebarView extends ItemView {
 					}
 					await this.plugin.conversationStore.save(conv);
 				}
-
-				this.setStreamingState(false);
 			},
 			(error) => {
 				const errClass = classifyApiError(error);

@@ -107,7 +107,10 @@ export class OpenAIProvider implements LLMProvider {
 			const model = conversation.model || this.settings.defaultOpenAIModel;
 			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
 
-			const historyMessages: OAIMessage[] = conversation.messages.map(
+			// Exclude the last message — it was just pushed by the caller before
+			// invoking streamMessage, so we must not include it in history or it
+			// would be sent twice (once in the history, once as the new message).
+			const historyMessages: OAIMessage[] = conversation.messages.slice(0, -1).map(
 				(m) => ({ role: m.role as "user" | "assistant", content: m.content })
 			);
 

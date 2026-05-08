@@ -95,7 +95,10 @@ export class AnthropicService implements LLMProvider {
 				);
 			}
 
-			const historyMessages: ApiMessage[] = conversation.messages.map(
+			// Exclude the last message — it was just pushed by the caller before
+			// invoking streamMessage, so we must not include it in history or it
+			// would be sent twice (once in the history, once as the new message).
+			const historyMessages: ApiMessage[] = conversation.messages.slice(0, -1).map(
 				(m) => ({ role: m.role, content: m.content })
 			);
 
