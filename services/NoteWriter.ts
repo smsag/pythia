@@ -72,6 +72,28 @@ ${summary}${outputSection}
 		return file.path;
 	}
 
+	/** Prepend a timestamped entry to the inbox note, creating it if needed. */
+	async prependToInbox(text: string, inboxPath: string): Promise<void> {
+		const now = new Date();
+		const dd = String(now.getDate()).padStart(2, "0");
+		const mm = String(now.getMonth() + 1).padStart(2, "0");
+		const yy = String(now.getFullYear()).slice(2);
+		const hh = String(now.getHours()).padStart(2, "0");
+		const min = String(now.getMinutes()).padStart(2, "0");
+		const timestamp = `${dd}.${mm}.${yy}, ${hh}:${min}`;
+
+		const entry = `${timestamp}\n${text}\n\n---\n`;
+
+		const normalized = inboxPath.replace(/\\/g, "/");
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		const currentContent =
+			existing instanceof TFile
+				? await this.app.vault.read(existing)
+				: "";
+
+		await this.writeNote(entry + currentContent, inboxPath);
+	}
+
 	/** Ensure all folders in a path exist, creating them recursively. */
 	private async ensureFolder(folderPath: string): Promise<void> {
 		const parts = folderPath.split("/").filter(Boolean);

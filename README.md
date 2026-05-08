@@ -11,7 +11,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Conversation storage** — full history saved in `data.json`; conversations are automatically given a short AI-generated title after the first exchange; optional summary notes written to your vault
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
-- **Save output** — write any response directly to a new vault note
+- **Save output** — write any response directly to a new vault note; select any text in the chat to **Copy**, **Insert into note**, or **Save to inbox** (prepends the selection with a timestamp to a configurable inbox note)
 - **AI note creation** — ask Pythia to create a vault note in plain language (e.g. *"Create a note summarising our discussion at Research/Topic.md"*); a status chip confirms creation with a clickable link
 - **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation

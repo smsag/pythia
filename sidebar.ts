@@ -260,6 +260,20 @@ export class PythiaSidebarView extends ItemView {
 			this.onInsertIntoNote();
 		}, { passive: false });
 
+		const inboxBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: "Save to inbox",
+			attr: { title: "Prepend to inbox note with timestamp" },
+		});
+		inboxBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			this.onSaveToInbox();
+		});
+		inboxBtn.addEventListener("touchstart", (e) => {
+			e.preventDefault();
+			this.onSaveToInbox();
+		}, { passive: false });
+
 		// Wire selection detection
 		this.onSelectionChange = () => this.handleSelectionChange();
 		document.addEventListener("selectionchange", this.onSelectionChange);
@@ -1203,6 +1217,19 @@ export class PythiaSidebarView extends ItemView {
 		view.editor.replaceSelection(text);
 		this.selectionToolbar.style.display = "none";
 		new Notice("Inserted into note");
+	}
+
+	private async onSaveToInbox(): Promise<void> {
+		const text = window.getSelection()?.toString() ?? "";
+		if (!text) return;
+		const inboxPath = this.plugin.settings.inboxNote || "Pythia/Inbox.md";
+		try {
+			await this.plugin.noteWriter.prependToInbox(text, inboxPath);
+			this.selectionToolbar.style.display = "none";
+			new Notice("Saved to inbox");
+		} catch (e) {
+			new Notice(`Failed to save to inbox: ${e instanceof Error ? e.message : String(e)}`);
+		}
 	}
 
 	private setStreamingState(streaming: boolean): void {

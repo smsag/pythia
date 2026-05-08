@@ -23,6 +23,8 @@ export interface PythiaSettings {
 	maxMessagesPerSession: number;
 	/** When true, passes a create_note tool to the LLM so it can write vault notes. */
 	enableNoteCreation: boolean;
+	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
+	inboxNote: string;
 	debugMode: boolean;
 }
 
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	defaultResumeMode: "summary",
 	maxMessagesPerSession: 100,
 	enableNoteCreation: true,
+	inboxNote: "Pythia/Inbox.md",
 	debugMode: false,
 };
 
@@ -154,6 +157,19 @@ export class PythiaSettingTab extends PluginSettingTab {
 			"Where ad-hoc conversation notes are saved.",
 			"scratchFolder"
 		);
+
+		new Setting(containerEl)
+			.setName("Inbox note")
+			.setDesc("Note that receives timestamped entries from the 'Save to inbox' selection action.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Pythia/Inbox.md")
+					.setValue(this.plugin.settings.inboxNote)
+					.onChange(async (value) => {
+						this.plugin.settings.inboxNote = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
 
 		// ── Behaviour ─────────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Behaviour" });
