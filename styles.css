@@ -325,7 +325,7 @@
 }
 
 .pythia-message-assistant .pythia-bubble {
-  background: var(--background-secondary);
+  background: transparent;
   color: var(--text-normal);
   border-bottom-left-radius: 3px;
 }
@@ -440,7 +440,8 @@
   align-items: center;
 }
 
-.pythia-btn {
+/* Scoped to .pythia-view so our specificity beats Obsidian mobile overrides */
+.pythia-view .pythia-btn {
   all: unset;
   cursor: pointer;
   padding: 5px 12px;
@@ -451,40 +452,41 @@
   background: var(--background-secondary);
   color: var(--text-muted);
   white-space: nowrap;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.1s, color 0.1s;
 }
-.pythia-btn:hover {
+.pythia-view .pythia-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
-.pythia-btn-primary {
+.pythia-view .pythia-btn-primary {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   border-color: transparent;
 }
-.pythia-btn-primary:hover {
+.pythia-view .pythia-btn-primary:hover {
   filter: brightness(1.1);
   color: var(--text-on-accent);
 }
 
-.pythia-btn-danger {
+.pythia-view .pythia-btn-danger {
   background: var(--background-modifier-error);
   color: var(--text-error);
   border-color: transparent;
 }
-.pythia-btn-danger:hover {
+.pythia-view .pythia-btn-danger:hover {
   filter: brightness(1.1);
 }
 
-.pythia-btn-icon {
+.pythia-view .pythia-btn-icon {
   padding: 5px 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   line-height: 1;
 }
-.pythia-btn-icon svg {
+.pythia-view .pythia-btn-icon svg {
   width: 15px;
   height: 15px;
   pointer-events: none;
