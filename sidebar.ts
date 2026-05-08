@@ -483,20 +483,24 @@ export class PythiaSidebarView extends ItemView {
 			cls: `pythia-message pythia-message-${msg.role}`,
 			attr: { "data-msg-id": msg.id },
 		});
-		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
-		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble" });
-		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
 
 		if (msg.role === "assistant") {
 			const isFav = this.activeConversation?.favorites?.some(
 				(f) => f.messageId === msg.id
 			) ?? false;
-			const star = bubble.createEl("button", {
+			const star = row.createEl("button", {
 				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
 				text: isFav ? "★" : "☆",
 				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
 			});
 			star.addEventListener("click", () => this.onStarClick(msg, star));
+		}
+
+		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
+		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble" });
+		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+
+		if (msg.role === "assistant") {
 			if (msg.tokenUsage) this.renderTokenCount(bubbleCol, msg.tokenUsage);
 		}
 

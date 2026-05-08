@@ -254,15 +254,14 @@
   line-height: 1;
   color: var(--text-faint);
   background: transparent !important;
-  position: absolute;
-  top: -10px;
-  left: -10px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 9px; /* align with first text line (matches bubble top padding) */
   width: 21px;
   height: 21px;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1;
   transition: color 0.15s;
 }
 .pythia-star:hover {
