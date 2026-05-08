@@ -998,6 +998,8 @@ export class PythiaSidebarView extends ItemView {
 					: undefined,
 		};
 		conv.messages.push(userMsg);
+		// Remove the "Start the conversation below." hint if still present
+		this.messagesEl.querySelector(".pythia-empty")?.remove();
 		await this.appendMessageBubble(userMsg);
 
 		const attachedNotes = [...this.pendingAttachedNotes];
