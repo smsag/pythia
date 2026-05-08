@@ -261,8 +261,10 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-pills pythia-attached-pills",
 		});
 
-		// Textarea
-		this.inputEl = inputArea.createEl("textarea", {
+		// Textarea + overlaid button row wrapper
+		const inputWrapper = inputArea.createDiv({ cls: "pythia-input-wrapper" });
+
+		this.inputEl = inputWrapper.createEl("textarea", {
 			cls: "pythia-input",
 			attr: { placeholder: "Type a message… (Enter to send, Shift+Enter for new line)" },
 		});
@@ -297,19 +299,21 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.inputEl.addEventListener("input", () => this.onInputChange());
 
-		// Buttons row
-		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
+		// Buttons row — absolutely positioned inside the wrapper
+		const btnRow = inputWrapper.createDiv({ cls: "pythia-btn-row" });
 
 		this.sendBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-primary",
-			text: "Send",
+			cls: "pythia-btn pythia-btn-icon pythia-btn-primary",
+			attr: { title: "Send (Enter)" },
 		});
+		setIcon(this.sendBtn, "arrow-right");
 		this.sendBtn.addEventListener("click", () => this.sendMessage());
 
 		this.stopBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-danger",
-			text: "Stop",
+			cls: "pythia-btn pythia-btn-icon pythia-btn-danger",
+			attr: { title: "Stop" },
 		});
+		setIcon(this.stopBtn, "square");
 		this.stopBtn.style.display = "none";
 		this.stopBtn.addEventListener("click", () => {
 			this.plugin.llmRouter.abort();
@@ -319,7 +323,6 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-btn pythia-btn-icon",
 			attr: { title: "Attach note" },
 		});
-		attachBtn.style.marginLeft = "auto";
 		setIcon(attachBtn, "paperclip");
 		attachBtn.addEventListener("click", () => this.onAttachNote());
 

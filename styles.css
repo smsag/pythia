@@ -17,7 +17,7 @@
 /* ── Header ─────────────────────────────────────────────────── */
 .pythia-header {
   flex-shrink: 0;
-  padding: 10px 12px 6px;
+  padding: 6px 10px 4px;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -456,14 +456,19 @@
 .pythia-input-area {
   flex-shrink: 0;
   border-top: 1px solid var(--background-modifier-border);
-  padding: 8px 10px;
+  padding: 6px 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .pythia-attach-row {
   min-height: 0;
+}
+
+/* Wrapper makes the textarea+buttons a single relative stacking context */
+.pythia-input-wrapper {
+  position: relative;
 }
 
 .pythia-input {
@@ -471,7 +476,7 @@
   resize: none;
   min-height: 72px;
   max-height: 180px;
-  padding: 8px 10px;
+  padding: 8px 10px 36px; /* bottom clearance for overlaid buttons */
   border-radius: 8px;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
@@ -491,11 +496,18 @@
   cursor: not-allowed;
 }
 
-/* ── Button row ─────────────────────────────────────────────── */
+/* ── Button row (overlaid bottom-right of textarea) ──────────── */
 .pythia-btn-row {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
   display: flex;
-  gap: 6px;
+  gap: 3px;
   align-items: center;
+  pointer-events: none; /* row itself transparent to clicks */
+}
+.pythia-btn-row > * {
+  pointer-events: all; /* but each button is clickable */
 }
 
 /* Scoped to .pythia-view so our specificity beats Obsidian mobile overrides */
