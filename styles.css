@@ -502,12 +502,20 @@
   bottom: 5px;
   right: 5px;
   display: flex;
-  gap: 3px;
+  gap: 2px;
   align-items: center;
   pointer-events: none; /* row itself transparent to clicks */
 }
 .pythia-btn-row > * {
   pointer-events: all; /* but each button is clickable */
+}
+
+.pythia-btn-separator {
+  width: 1px;
+  height: 14px;
+  background: var(--background-modifier-border);
+  margin: 0 3px;
+  flex-shrink: 0;
 }
 
 /* Scoped to .pythia-view so our specificity beats Obsidian mobile overrides */

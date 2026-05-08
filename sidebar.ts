@@ -39,7 +39,6 @@ export class PythiaSidebarView extends ItemView {
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
 	private sendBtn!: HTMLButtonElement;
-	private stopBtn!: HTMLButtonElement;
 	private selectionToolbar!: HTMLElement;
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
@@ -302,23 +301,6 @@ export class PythiaSidebarView extends ItemView {
 		// Buttons row — absolutely positioned inside the wrapper
 		const btnRow = inputWrapper.createDiv({ cls: "pythia-btn-row" });
 
-		this.sendBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-btn-primary",
-			attr: { title: "Send (Enter)" },
-		});
-		setIcon(this.sendBtn, "arrow-right");
-		this.sendBtn.addEventListener("click", () => this.sendMessage());
-
-		this.stopBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-btn-danger",
-			attr: { title: "Stop" },
-		});
-		setIcon(this.stopBtn, "square");
-		this.stopBtn.style.display = "none";
-		this.stopBtn.addEventListener("click", () => {
-			this.plugin.llmRouter.abort();
-		});
-
 		const attachBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon",
 			attr: { title: "Attach note" },
@@ -332,6 +314,20 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(saveBtn, "save");
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
+
+		btnRow.createEl("span", { cls: "pythia-btn-separator" });
+
+		this.sendBtn = btnRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-primary",
+			text: "Senden",
+		});
+		this.sendBtn.addEventListener("click", () => {
+			if (this.isStreaming) {
+				this.plugin.llmRouter.abort();
+			} else {
+				this.sendMessage();
+			}
+		});
 	}
 
 	private renderEmptyState(): void {
@@ -1172,8 +1168,15 @@ export class PythiaSidebarView extends ItemView {
 
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
-		this.sendBtn.style.display = streaming ? "none" : "";
-		this.stopBtn.style.display = streaming ? "" : "none";
+		if (streaming) {
+			this.sendBtn.setText("Anfrage abbrechen");
+			this.sendBtn.removeClass("pythia-btn-primary");
+			this.sendBtn.addClass("pythia-btn-danger");
+		} else {
+			this.sendBtn.setText("Senden");
+			this.sendBtn.removeClass("pythia-btn-danger");
+			this.sendBtn.addClass("pythia-btn-primary");
+		}
 		this.inputEl.disabled = streaming;
 	}
 }
