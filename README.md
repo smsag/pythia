@@ -8,7 +8,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Template system** — define system prompts and auto-attached context notes in vault markdown files (frontmatter-driven)
 - **Context injection** — attach any vault note as context for a conversation, manually or via template
 - **Streaming chat** — responses rendered token-by-token in the sidebar panel
-- **Conversation storage** — full history saved in `data.json`; optional summary notes written to your vault
+- **Conversation storage** — full history saved in `data.json`; conversations are automatically given a short AI-generated title after the first exchange; optional summary notes written to your vault
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
 - **Save output** — write any response directly to a new vault note
@@ -16,6 +16,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
 - **Context menus** — right-click selected text in the editor or any file in the Explorer to open a conversation instantly
+- **Browse conversations** — open any past conversation directly from the Command Palette, no resume-mode step
+- **Browse favorites** — fuzzy-search all starred responses across every conversation and jump directly to one from the Command Palette
 - **Deep-link URIs** — open, create, or resume conversations via `obsidian://pythia` links from anywhere
 - **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.11.4)
 
@@ -28,6 +30,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: New conversation with current note` | Active note auto-injected as context |
 | `Pythia: New conversation from clipboard` | Pre-fills the input with current clipboard text |
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
+| `Pythia: Browse conversations` | Fuzzy-search all conversations and open one directly |
+| `Pythia: Browse favorites` | Fuzzy-search all starred responses across every conversation and jump to one |
 | `Pythia: Save response as note` | Save last response (or selection) as a new vault note |
 | `Pythia: Open sidebar` | Open / focus the chat sidebar (right panel) |
 | `Pythia: Open in left sidebar` | Open / focus the chat sidebar (left panel) |

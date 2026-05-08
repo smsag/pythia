@@ -301,4 +301,19 @@ export class OpenAIProvider implements LLMProvider {
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "Starred message";
 	}
+
+	async generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string> {
+		const client = this.getClient();
+		const userExcerpt = userMessage.slice(0, 300);
+		const assistantExcerpt = assistantMessage.slice(0, 300);
+		const response = await client.chat.completions.create({
+			model: "gpt-4o-mini",
+			max_tokens: 20,
+			messages: [{
+				role: "user",
+				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+			}],
+		});
+		return response.choices[0]?.message?.content?.trim() ?? "New Conversation";
+	}
 }

@@ -718,7 +718,7 @@ export class PythiaSidebarView extends ItemView {
 		el.title = `Input: ${fmt(usage.inputTokens)} tokens · Output: ${fmt(usage.outputTokens)} tokens`;
 	}
 
-	private scrollToMessage(messageId: string): void {
+	scrollToMessage(messageId: string): void {
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
 		) as HTMLElement | null;
@@ -1102,8 +1102,22 @@ export class PythiaSidebarView extends ItemView {
 						}
 					}
 					await this.plugin.conversationStore.save(conv);
-				}
-			},
+
+					// Auto-title: after the first exchange, replace the default
+					// date-based name with a short LLM-generated title.
+					if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
+						this.plugin.llmRouter
+							.generateConversationTitle(userMsg.content, fullText, conv.provider)
+							.then(async (title) => {
+								conv.name = title;
+								await this.plugin.conversationStore.save(conv);
+								if (this.activeConversation?.id === conv.id) {
+									this.convNameEl.setText(conv.name + " ▾");
+								}
+							})
+							.catch(() => { /* keep date name on failure */ });
+					}
+				}			},
 			(error) => {
 				const errClass = classifyApiError(error);
 				const model = conv.model ?? "";

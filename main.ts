@@ -2,7 +2,7 @@ import { Editor, Menu, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
 import type { Conversation, Provider } from "./models/types";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
-import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
+import { ConversationSuggestModal, FavoritesSuggestModal } from "./suggest/ConversationSuggest";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ResumeModeModal } from "./suggest/ResumeModeModal";
 import { InputModal } from "./suggest/InputModal";
@@ -89,6 +89,18 @@ export default class PythiaPlugin extends Plugin {
 			id: "resume-conversation",
 			name: "Resume conversation",
 			callback: () => this.cmdResumeConversation(),
+		});
+
+		this.addCommand({
+			id: "browse-conversations",
+			name: "Browse conversations",
+			callback: () => this.cmdBrowseConversations(),
+		});
+
+		this.addCommand({
+			id: "browse-favorites",
+			name: "Browse favorites",
+			callback: () => this.cmdBrowseFavorites(),
 		});
 
 		this.addCommand({
@@ -516,6 +528,42 @@ export default class PythiaPlugin extends Plugin {
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 		view.prefillInput(text);
+	}
+
+	private async cmdBrowseConversations(): Promise<void> {
+		if (this.conversations.length === 0) {
+			new Notice("No conversations found.");
+			return;
+		}
+
+		new ConversationSuggestModal(
+			this.app,
+			this.conversations,
+			async (conv) => {
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+			}
+		).open();
+	}
+
+	private async cmdBrowseFavorites(): Promise<void> {
+		const hasFavorites = this.conversations.some(
+			(c) => (c.favorites?.length ?? 0) > 0
+		);
+		if (!hasFavorites) {
+			new Notice("No favorites found.");
+			return;
+		}
+
+		new FavoritesSuggestModal(
+			this.app,
+			this.conversations,
+			async (conv, messageId) => {
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				view.scrollToMessage(messageId);
+			}
+		).open();
 	}
 
 	private async cmdResumeConversation(): Promise<void> {

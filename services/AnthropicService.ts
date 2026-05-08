@@ -241,4 +241,20 @@ export class AnthropicService implements LLMProvider {
 		const block = response.content[0];
 		return block.type === "text" ? block.text.trim() : "Starred message";
 	}
+
+	async generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string> {
+		const client = this.getClient();
+		const userExcerpt = userMessage.slice(0, 300);
+		const assistantExcerpt = assistantMessage.slice(0, 300);
+		const response = await client.messages.create({
+			model: "claude-haiku-3-5",
+			max_tokens: 20,
+			messages: [{
+				role: "user",
+				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+			}],
+		});
+		const block = response.content[0];
+		return block.type === "text" ? block.text.trim() : "New Conversation";
+	}
 }
