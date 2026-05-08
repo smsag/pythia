@@ -36,6 +36,7 @@ export class PythiaSidebarView extends ItemView {
 	private stopBtn!: HTMLButtonElement;
 	private selectionToolbar!: HTMLElement;
 	private onSelectionChange!: () => void;
+	private lastMarkdownView: MarkdownView | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -56,6 +57,19 @@ export class PythiaSidebarView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.buildUI();
+
+		// Track the most-recently-active MarkdownView so insert-into-note
+		// works even after focus has shifted to this sidebar.
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", (leaf) => {
+				if (leaf?.view instanceof MarkdownView) {
+					this.lastMarkdownView = leaf.view as MarkdownView;
+				}
+			})
+		);
+		const current = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (current) this.lastMarkdownView = current;
+
 		const convs = this.plugin.conversations;
 		if (convs.length > 0) {
 			await this.setActiveConversation(
@@ -825,7 +839,8 @@ export class PythiaSidebarView extends ItemView {
 	private onInsertIntoNote(): void {
 		const text = window.getSelection()?.toString() ?? "";
 		if (!text) return;
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const view = this.lastMarkdownView
+			?? this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
 			new Notice("No active note to insert into.");
 			return;
