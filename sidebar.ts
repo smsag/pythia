@@ -170,7 +170,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
 			attr: { title: "New conversation" },
 		});
-		setIcon(newConvBtn, "pencil");
+		setIcon(newConvBtn, "plus");
 		newConvBtn.addEventListener("click", () =>
 			this.plugin.cmdNewConversationFromSidebar()
 		);
