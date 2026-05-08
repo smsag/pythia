@@ -105,6 +105,12 @@ export class PythiaSidebarView extends ItemView {
 		return null;
 	}
 
+	prefillInput(text: string): void {
+		if (!this.inputEl) return;
+		this.inputEl.value = text;
+		this.inputEl.focus();
+	}
+
 	// ──────────────────────────────────────────────
 	// UI construction
 	// ──────────────────────────────────────────────

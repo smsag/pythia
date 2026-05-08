@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Editor, Menu, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
 import type { Conversation, Provider } from "./models/types";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
@@ -89,6 +89,127 @@ export default class PythiaPlugin extends Plugin {
 			id: "save-response-as-note",
 			name: "Save response as note",
 			callback: () => this.cmdSaveResponseAsNote(),
+		});
+
+		this.addCommand({
+			id: "open-in-left-sidebar",
+			name: "Open in left sidebar",
+			callback: () => this.activateInLeftSidebar(),
+		});
+
+		this.addCommand({
+			id: "new-conversation-from-clipboard",
+			name: "New conversation from clipboard",
+			callback: () => this.cmdNewConversationFromClipboard(),
+		});
+
+		// ── Context menus ────────────────────────────────────────────────────
+
+		// Editor context menu: appears when text is selected in a note
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
+				const selection = editor.getSelection();
+				if (!selection) return;
+				menu.addItem((item) => {
+					item
+						.setTitle("Send to Pythia")
+						.setIcon("bot")
+						.onClick(async () => {
+							const date = new Date().toISOString().slice(0, 10);
+							const conv = await this.createConversation(
+								`Conversation ${date}`
+							);
+							const view = await this.activateView();
+							await view.setActiveConversation(conv);
+							view.prefillInput(selection);
+						});
+				});
+			})
+		);
+
+		// File Explorer context menu: appears on any file
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu: Menu, file) => {
+				if (!(file instanceof TFile)) return;
+				menu.addItem((item) => {
+					item
+						.setTitle("Chat about this note")
+						.setIcon("bot")
+						.onClick(async () => {
+							const date = new Date().toISOString().slice(0, 10);
+							const conv = await this.createConversation(
+								`${file.basename} ${date}`,
+								"",
+								[file.path]
+							);
+							const view = await this.activateView();
+							await view.setActiveConversation(conv);
+							new Notice(`Attached "${file.name}" as context.`);
+						});
+				});
+			})
+		);
+
+		// ── Deep-link URI handler: obsidian://pythia ─────────────────────────
+		this.registerObsidianProtocolHandler("pythia", async (params) => {
+			const action = params.action ?? "open";
+
+			if (action === "open") {
+				await this.activateView();
+				return;
+			}
+
+			if (action === "new") {
+				const date = new Date().toISOString().slice(0, 10);
+				const conv = await this.createConversation(`Conversation ${date}`);
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				return;
+			}
+
+			if (action === "resume") {
+				if (!params.id) {
+					new Notice("Pythia URI: missing 'id' parameter.");
+					return;
+				}
+				const conv = this.conversationStore.getById(params.id);
+				if (!conv) {
+					new Notice(`Pythia: conversation "${params.id}" not found.`);
+					return;
+				}
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				return;
+			}
+
+			if (action === "template") {
+				if (!params.name) {
+					new Notice("Pythia URI: missing 'name' parameter.");
+					return;
+				}
+				const templates = await this.templateLoader.loadTemplates();
+				const tpl = templates.find((t) => t.name === params.name);
+				if (!tpl) {
+					new Notice(`Pythia: template "${params.name}" not found.`);
+					return;
+				}
+				const date = new Date().toISOString().slice(0, 10);
+				const conv = await this.createConversation(
+					`${tpl.name} ${date}`,
+					tpl.systemPrompt,
+					[...tpl.contextNotes],
+					tpl.id,
+					tpl.provider,
+					tpl.model
+				);
+				if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+				await this.conversationStore.save(conv);
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				return;
+			}
+
+			new Notice(`Pythia: unknown action "${action}".`);
 		});
 	}
 
@@ -228,7 +349,7 @@ export default class PythiaPlugin extends Plugin {
 			| WorkspaceLeaf
 			| undefined;
 		if (!leaf) {
-			leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
+			leaf = workspace.getRightLeaf(true) ?? workspace.getLeaf(true);
 			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
 		}
 		workspace.revealLeaf(leaf);
