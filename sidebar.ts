@@ -38,6 +38,7 @@ export class PythiaSidebarView extends ItemView {
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 	private summaryBannerEl!: HTMLElement;
+	private summarySepEl!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -188,6 +189,9 @@ export class PythiaSidebarView extends ItemView {
 		// ── Summary banner ───────────────────────
 		this.summaryBannerEl = container.createDiv({ cls: "pythia-summary-banner" });
 		this.summaryBannerEl.style.display = "none";
+		this.summarySepEl = container.createDiv({ cls: "pythia-summary-sep" });
+		this.summarySepEl.setText("• • •");
+		this.summarySepEl.style.display = "none";
 
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
@@ -320,10 +324,12 @@ export class PythiaSidebarView extends ItemView {
 		const summary = this.activeConversation?.summaryText?.trim();
 		if (!summary) {
 			this.summaryBannerEl.style.display = "none";
+			this.summarySepEl.style.display = "none";
 			return;
 		}
 
 		this.summaryBannerEl.style.display = "";
+		this.summarySepEl.style.display = "";
 
 		const header = this.summaryBannerEl.createDiv({ cls: "pythia-summary-header" });
 		header.createEl("span", { text: "↩ Summary" });

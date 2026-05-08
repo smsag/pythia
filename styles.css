@@ -133,7 +133,7 @@
   all: unset;
   cursor: pointer;
   color: var(--text-faint);
-  background: transparent;
+  background: transparent !important;
   font-size: 1.1em;
   line-height: 1;
   padding: 0 1px;
@@ -164,8 +164,7 @@
 /* ── Summary banner ─────────────────────────────────────────── */
 .pythia-summary-banner {
   flex-shrink: 0;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
+
   padding: 8px 12px;
   font-size: 0.82em;
 }
@@ -199,6 +198,16 @@
 }
 .pythia-summary-toggle:hover {
   text-decoration: underline;
+}
+
+.pythia-summary-sep {
+  flex-shrink: 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.75em;
+  letter-spacing: 8px;
+  padding: 10px 0 2px;
+  user-select: none;
 }
 
 /* ── Messages area ──────────────────────────────────────────── */
@@ -244,15 +253,15 @@
 .pythia-star {
   all: unset;
   cursor: pointer;
-  font-size: 1em;
+  font-size: 1.15em;
   line-height: 1;
   color: var(--text-faint);
   background: transparent !important;
   position: absolute;
-  top: -9px;
-  left: -9px;
-  width: 18px;
-  height: 18px;
+  top: -4px;
+  left: -4px;
+  width: 21px;
+  height: 21px;
   display: flex;
   align-items: center;
   justify-content: center;
