@@ -256,7 +256,20 @@
   justify-content: flex-start;
 }
 
-/* ── Star button ─────────────────────────────────────────────── */
+/* ── Bubble footer (star + pipe + tokens) ─────────────────────── */
+.pythia-bubble-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pythia-bubble-pipe {
+  color: var(--text-faint);
+  font-size: 0.72em;
+  user-select: none;
+}
+
+/* ── Star button ────────────────────────────────────────────────── */
 .pythia-star {
   all: unset;
   cursor: pointer;
@@ -265,8 +278,6 @@
   color: var(--text-faint);
   background: transparent !important;
   flex-shrink: 0;
-  align-self: flex-start;
-  margin-top: 9px; /* align with first text line (matches bubble top padding) */
   width: 21px;
   height: 21px;
   display: flex;
@@ -289,7 +300,7 @@
   font-size: 0.62em;
   color: var(--text-faint);
   line-height: 1;
-  padding: 2px 2px 0;
+
   white-space: nowrap;
   letter-spacing: 0.01em;
   user-select: none;
@@ -307,7 +318,7 @@
 .pythia-bubble-col {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   max-width: 85%;
 }
 

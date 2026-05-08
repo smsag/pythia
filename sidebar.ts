@@ -484,24 +484,25 @@ export class PythiaSidebarView extends ItemView {
 			attr: { "data-msg-id": msg.id },
 		});
 
-		if (msg.role === "assistant") {
-			const isFav = this.activeConversation?.favorites?.some(
-				(f) => f.messageId === msg.id
-			) ?? false;
-			const star = row.createEl("button", {
-				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
-				text: isFav ? "★" : "☆",
-				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
-			});
-			star.addEventListener("click", () => this.onStarClick(msg, star));
-		}
-
 		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
 		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble" });
 		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
 
 		if (msg.role === "assistant") {
-			if (msg.tokenUsage) this.renderTokenCount(bubbleCol, msg.tokenUsage);
+			const isFav = this.activeConversation?.favorites?.some(
+				(f) => f.messageId === msg.id
+			) ?? false;
+			const footer = bubbleCol.createDiv({ cls: "pythia-bubble-footer" });
+			const star = footer.createEl("button", {
+				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
+				text: isFav ? "★" : "☆",
+				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
+			});
+			star.addEventListener("click", () => this.onStarClick(msg, star));
+			if (msg.tokenUsage) {
+				footer.createSpan({ cls: "pythia-bubble-pipe", text: "|" });
+				this.renderTokenCount(footer, msg.tokenUsage);
+			}
 		}
 
 		return bubble;
