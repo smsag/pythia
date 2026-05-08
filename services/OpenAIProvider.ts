@@ -167,7 +167,8 @@ export class OpenAIProvider implements LLMProvider {
 			let lastTokenUsage: TokenUsage | undefined;
 
 			while (true) {
-				const stream = await this.getClient().chat.completions.create(
+				const stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> =
+					await this.getClient().chat.completions.create(
 					{
 						model,
 						max_tokens: 4096,
