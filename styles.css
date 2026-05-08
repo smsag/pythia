@@ -177,6 +177,39 @@
   color: var(--interactive-accent);
 }
 
+/* ── Summary note row ───────────────────────────────────────── */
+.pythia-summary-note-section {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  min-height: 28px;
+  overflow: hidden;
+}
+
+.pythia-summary-note-path {
+  flex: 1;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.pythia-summary-note-move {
+  flex-shrink: 0;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--text-faint);
+}
+.pythia-summary-note-move:hover {
+  color: var(--text-muted);
+}
+
 /* ── Summary banner ─────────────────────────────────────────── */
 .pythia-summary-banner {
   flex-shrink: 0;

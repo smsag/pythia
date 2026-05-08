@@ -14,6 +14,7 @@ import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
+import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { classifyApiError } from "./services/apiError";
 import { executeToolCall } from "./services/ToolHandler";
 
@@ -32,6 +33,8 @@ export class PythiaSidebarView extends ItemView {
 	private contextPillsEl!: HTMLElement;
 	private favoritesPillsEl!: HTMLElement;
 	private favoritesSectionEl!: HTMLElement;
+	private summaryNoteSectionEl!: HTMLElement;
+	private summaryNotePathEl!: HTMLElement;
 	private attachedPillsEl!: HTMLElement;
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
@@ -114,6 +117,7 @@ export class PythiaSidebarView extends ItemView {
 		this.updateModelBadge();
 		this.renderContextPills();
 		this.renderFavoritesBar();
+		this.renderSummaryNoteRow();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 	}
@@ -550,6 +554,47 @@ export class PythiaSidebarView extends ItemView {
 	// ──────────────────────────────────────────────
 	// Favorites
 	// ──────────────────────────────────────────────
+
+	private renderSummaryNoteRow(): void {
+		const path = this.activeConversation?.summaryNote;
+		if (!path) {
+			this.summaryNoteSectionEl.style.display = "none";
+			return;
+		}
+		this.summaryNoteSectionEl.style.display = "";
+		const fileName = path.split("/").pop() ?? path;
+		this.summaryNotePathEl.setText(fileName);
+		this.summaryNotePathEl.title = path;
+	}
+
+	private async onMoveSummaryNote(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv?.summaryNote) return;
+		const currentPath = conv.summaryNote;
+		const file = this.app.vault.getAbstractFileByPath(currentPath);
+		if (!(file instanceof TFile)) {
+			new Notice(`File not found: ${currentPath}`);
+			return;
+		}
+		new FolderSuggestModal(this.app, async (folder) => {
+			const fileName = currentPath.split("/").pop() ?? currentPath;
+			const newPath = folder.isRoot() ? fileName : `${folder.path}/${fileName}`;
+			try {
+				await this.app.fileManager.renameFile(file, newPath);
+				// Update contextNotes references and summaryNote
+				conv.summaryNote = newPath;
+				conv.contextNotes = conv.contextNotes.map((p) =>
+					p === currentPath ? newPath : p
+				);
+				await this.plugin.conversationStore.save(conv);
+				this.renderSummaryNoteRow();
+				this.renderContextPills();
+				new Notice(`Moved to ${newPath}`);
+			} catch (e) {
+				new Notice(`Move failed: ${e instanceof Error ? e.message : String(e)}`);
+			}
+		}).open();
+	}
 
 	private renderFavoritesBar(): void {
 		this.favoritesPillsEl.empty();

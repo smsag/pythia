@@ -601,11 +601,13 @@ export default class PythiaPlugin extends Plugin {
 						const summary = conv.summaryText
 							? conv.summaryText
 							: `Conversation: ${conv.name}`;
-						await this.noteWriter.saveSummaryNote(
+						const summaryPath = await this.noteWriter.saveSummaryNote(
 							conv,
 							summary,
 							path
 						);
+						conv.summaryNote = summaryPath;
+						await this.conversationStore.save(conv);
 					}
 				} catch (e) {
 					new Notice(
