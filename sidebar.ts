@@ -1084,8 +1084,8 @@ export class PythiaSidebarView extends ItemView {
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
 						if (this.activeConversation?.id === conv.id) {
-							const bubbleEl = streamingBubbleCol.querySelector(".pythia-bubble") as HTMLElement | null;
-							const star = (bubbleEl ?? streamingBubbleCol).createEl("button", {
+							const footer = streamingBubbleCol.createDiv({ cls: "pythia-bubble-footer" });
+							const star = footer.createEl("button", {
 								cls: "pythia-star",
 								text: "☆",
 								attr: { title: "Add to favorites" },
@@ -1093,7 +1093,10 @@ export class PythiaSidebarView extends ItemView {
 							star.addEventListener("click", () =>
 								this.onStarClick(assistantMsg, star)
 							);
-							if (tokenUsage) this.renderTokenCount(streamingBubbleCol, tokenUsage);
+							if (tokenUsage) {
+								footer.createSpan({ cls: "pythia-bubble-pipe", text: "|" });
+								this.renderTokenCount(footer, tokenUsage);
+							}
 						}
 					}
 					await this.plugin.conversationStore.save(conv);
