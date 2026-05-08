@@ -69,6 +69,11 @@
   color: var(--text-normal);
 }
 
+.pythia-new-conv-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .pythia-template-label {
   font-size: 0.78em;
   color: var(--text-muted);

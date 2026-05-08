@@ -415,6 +415,10 @@ export default class PythiaPlugin extends Plugin {
 	// Commands
 	// ──────────────────────────────────────────────
 
+	async cmdNewConversationFromSidebar(): Promise<void> {
+		await this.cmdNewConversation();
+	}
+
 	private async cmdNewConversation(): Promise<void> {
 		const date = new Date().toISOString().slice(0, 10);
 		const conv = await this.createConversation(`Conversation ${date}`);

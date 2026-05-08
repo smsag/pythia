@@ -166,6 +166,15 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.style.display = "none";
 		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
 
+		const newConvBtn = titleRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
+			attr: { title: "New conversation" },
+		});
+		setIcon(newConvBtn, "pencil");
+		newConvBtn.addEventListener("click", () =>
+			this.plugin.cmdNewConversationFromSidebar()
+		);
+
 		this.templateLabelEl = header.createDiv({
 			cls: "pythia-template-label",
 		});
