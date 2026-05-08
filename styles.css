@@ -86,11 +86,12 @@
 .pythia-favorites-section {
   flex-shrink: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--background-modifier-border);
   min-height: 32px;
+  overflow: hidden;
 }
 
 .pythia-section-label {
@@ -107,9 +108,17 @@
 /* ── Pills ──────────────────────────────────────────────────── */
 .pythia-pills {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex: 1;
+  min-width: 0;
+}
+.pythia-pills::-webkit-scrollbar {
+  display: none;
 }
 
 .pythia-pill {
