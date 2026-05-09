@@ -552,12 +552,13 @@ export class PythiaSidebarView extends ItemView {
 		const header = banner.createDiv({ cls: "pythia-summary-header" });
 		header.createEl("span", { text: "↩ Summary" });
 
-		const LIMIT = 300;
-		const isTruncatable = summary.length > LIMIT;
 		const bodyEl = banner.createDiv({ cls: "pythia-summary-body" });
-		bodyEl.setText(isTruncatable ? summary.slice(0, LIMIT) + "…" : summary);
+		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
 
-		if (isTruncatable) {
+		// Truncate via CSS max-height; toggle button reveals the rest
+		const CHAR_LIMIT = 300;
+		if (summary.length > CHAR_LIMIT) {
+			bodyEl.addClass("pythia-summary-body--collapsed");
 			let expanded = false;
 			const toggle = banner.createEl("button", {
 				cls: "pythia-summary-toggle",
@@ -565,11 +566,10 @@ export class PythiaSidebarView extends ItemView {
 			});
 			toggle.addEventListener("click", () => {
 				expanded = !expanded;
-				bodyEl.setText(expanded ? summary : summary.slice(0, LIMIT) + "…");
+				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
 				toggle.setText(expanded ? "Show less" : "Show more");
 			});
 		}
-
 	}
 
 	private renderContextPills(): void {

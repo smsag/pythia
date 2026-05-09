@@ -253,8 +253,14 @@
 .pythia-summary-body {
   color: var(--text-muted);
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+.pythia-summary-body--collapsed {
+  max-height: 6em;
+  overflow: hidden;
+}
+.pythia-summary-body p {
+  margin: 0 0 4px 0;
 }
 
 .pythia-summary-toggle {
@@ -265,6 +271,8 @@
   margin-top: 4px;
   display: block;
   background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 .pythia-summary-toggle:hover {
   text-decoration: underline;
