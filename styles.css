@@ -308,7 +308,7 @@
 /* ── Bubble footer (star + pipe + tokens) ─────────────────────── */
 .pythia-bubble-footer {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 4px;
 }
 
@@ -327,11 +327,6 @@
   color: var(--text-faint);
   background: transparent !important;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: color 0.15s;
 }
 .pythia-star:hover {
