@@ -25,6 +25,7 @@ export class PythiaSidebarView extends ItemView {
 	private plugin: PythiaPlugin;
 	private activeConversation: Conversation | null = null;
 	private isStreaming = false;
+	private autoScroll = true;
 	private pendingAttachedNotes: string[] = [];
 
 	// DOM elements
@@ -238,6 +239,11 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
+		this.messagesEl.addEventListener("scroll", () => {
+			const el = this.messagesEl;
+			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+			if (distFromBottom > 50) this.autoScroll = false;
+		});
 		// ── Selection toolbar ────────────────────────────
 		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
 		this.selectionToolbar.style.display = "none";
@@ -584,13 +590,18 @@ export class PythiaSidebarView extends ItemView {
 					"",
 					this
 				);
-				this.scrollToBottom();
+				// Re-engage auto-scroll and force-scroll to bottom after the
+				// markdown DOM has been laid out (rAF fires after paint).
+				this.autoScroll = true;
+				requestAnimationFrame(() => this.scrollToBottom(true));
 			},
 		};
 	}
 
-	private scrollToBottom(): void {
-		this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+	private scrollToBottom(force = false): void {
+		if (force || this.autoScroll) {
+			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+		}
 	}
 
 	// ──────────────────────────────────────────────
@@ -1263,6 +1274,7 @@ export class PythiaSidebarView extends ItemView {
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
 		if (streaming) {
+			this.autoScroll = true;
 			this.sendBtn.setText("Anfrage abbrechen");
 			this.sendBtn.removeClass("pythia-btn-primary");
 			this.sendBtn.addClass("pythia-btn-danger");
