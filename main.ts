@@ -698,49 +698,52 @@ export default class PythiaPlugin extends Plugin {
 
 	private async cmdSaveResponseAsNote(): Promise<void> {
 		const view = this.getSidebarView();
-		const response = view?.getLastAssistantMessage();
-		if (!response) {
-			new Notice("No assistant response to save. Open the sidebar first.");
+		const conv = view?.getActiveConversation();
+		if (!conv || conv.messages.length === 0) {
+			new Notice("No messages to save. Open the sidebar first.");
 			return;
 		}
 
-		const conv = view!.getActiveConversation();
+		const savedCount = conv.lastSavedMessageCount ?? 0;
+		const slice = conv.messages.slice(savedCount);
+		if (slice.length === 0) {
+			new Notice("Nothing new to save since last save.");
+			return;
+		}
+
 		const date = new Date().toISOString().slice(0, 10);
-		const safeName = (conv?.name ?? "response").replace(
-			/[\\/:*?"<>|]/g,
-			"-"
-		);
+		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
 
 		let defaultFolder = this.settings.scratchFolder;
-		if (conv?.templateId) {
-			const tplFile = this.app.vault.getAbstractFileByPath(
-				conv.templateId
-			);
+		if (conv.templateId) {
+			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
 			if (tplFile) {
-				const tpl = await this.templateLoader.loadTemplate(
-					tplFile as any
-				);
+				const tpl = await this.templateLoader.loadTemplate(tplFile as any);
 				if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
 			}
 		}
 
-		const defaultPath = `${defaultFolder}/${date}-${safeName}.md`;
+		const freshDefault = `${defaultFolder}/${date}-${safeName}.md`;
+		const suggestedPath = conv.savedNotePath ?? freshDefault;
 
 		new InputModal(
 			this.app,
-			"Save response as note",
+			"Save conversation to note",
 			"File path",
-			defaultPath,
+			suggestedPath,
 			async (filePath) => {
 				const path = filePath.endsWith(".md")
 					? filePath
 					: filePath + ".md";
 				try {
-					await this.noteWriter.writeNote(response, path);
+					await this.noteWriter.appendConversationSlice(slice, path);
+					conv.savedNotePath = path;
+					conv.lastSavedMessageCount = conv.messages.length;
+					await this.conversationStore.save(conv);
 					new Notice(`Saved to ${path}`);
 
 					// Optionally auto-save summary note alongside the output
-					if (this.settings.autoSaveSummary && conv) {
+					if (this.settings.autoSaveSummary) {
 						const summary = conv.summaryText
 							? conv.summaryText
 							: `Conversation: ${conv.name}`;

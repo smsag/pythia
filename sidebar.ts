@@ -1225,22 +1225,25 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private async onSaveResponse(): Promise<void> {
-		const lastResponse = this.getLastAssistantMessage();
-		if (!lastResponse) {
-			new Notice("No assistant response to save.");
+		const conv = this.activeConversation;
+		if (!conv || conv.messages.length === 0) {
+			new Notice("No messages to save.");
 			return;
 		}
 
-		const conv = this.activeConversation;
+		const savedCount = conv.lastSavedMessageCount ?? 0;
+		const slice = conv.messages.slice(savedCount);
+		if (slice.length === 0) {
+			new Notice("Nothing new to save since last save.");
+			return;
+		}
+
 		const date = new Date().toISOString().slice(0, 10);
-		const safeName = (conv?.name ?? "response").replace(
-			/[\\/:*?"<>|]/g,
-			"-"
-		);
+		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
 
 		// Determine default folder from template output_folder or scratch
 		let defaultFolder = this.plugin.settings.scratchFolder;
-		if (conv?.templateId) {
+		if (conv.templateId) {
 			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
 			if (tplFile) {
 				const tpl = await this.plugin.templateLoader.loadTemplate(
@@ -1250,19 +1253,23 @@ export class PythiaSidebarView extends ItemView {
 			}
 		}
 
-		const defaultPath = `${defaultFolder}/${date}-${safeName}.md`;
+		const freshDefault = `${defaultFolder}/${date}-${safeName}.md`;
+		const suggestedPath = conv.savedNotePath ?? freshDefault;
 
 		new InputModal(
 			this.app,
-			"Save response as note",
+			"Save conversation to note",
 			"File path",
-			defaultPath,
+			suggestedPath,
 			async (filePath) => {
 				const path = filePath.endsWith(".md")
 					? filePath
 					: filePath + ".md";
 				try {
-					await this.plugin.noteWriter.writeNote(lastResponse, path);
+					await this.plugin.noteWriter.appendConversationSlice(slice, path);
+					conv.savedNotePath = path;
+					conv.lastSavedMessageCount = conv.messages.length;
+					await this.plugin.conversationStore.save(conv);
 					new Notice(`Saved to ${path}`);
 				} catch (e) {
 					new Notice(

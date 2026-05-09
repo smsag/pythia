@@ -15,6 +15,8 @@ export interface Conversation {
 	summaryNote?: string;     // vault path to the human-readable summary note
 	messages: Message[];
 	favorites?: Favorite[];   // starred assistant messages
+	savedNotePath?: string;           // vault path last saved to via save button
+	lastSavedMessageCount?: number;   // messages.length at the time of last save
 }
 
 export interface TokenUsage {

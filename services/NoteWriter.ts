@@ -1,5 +1,5 @@
 import { App, TFile } from "obsidian";
-import type { Conversation } from "../models/types";
+import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 
 export class NoteWriter {
@@ -92,6 +92,43 @@ ${summary}${outputSection}
 				: "";
 
 		await this.writeNote(entry + currentContent, inboxPath);
+	}
+
+	/** Append a slice of conversation messages to a vault note under a timestamp heading.
+	 *  If the file exists the block is appended; if not, it is created. */
+	async appendConversationSlice(messages: Message[], filePath: string): Promise<void> {
+		const now = new Date();
+		const dd = String(now.getDate()).padStart(2, "0");
+		const mm = String(now.getMonth() + 1).padStart(2, "0");
+		const yyyy = now.getFullYear();
+		const hh = String(now.getHours()).padStart(2, "0");
+		const min = String(now.getMinutes()).padStart(2, "0");
+		const heading = `## ${dd}.${mm}.${yyyy}, ${hh}:${min}`;
+
+		const lines: string[] = [heading, ""];
+		for (const msg of messages) {
+			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
+			lines.push(`${label} ${msg.content}`, "");
+		}
+		const block = lines.join("\n").trimEnd();
+
+		const normalized = filePath.replace(/\\/g, "/");
+		if (normalized.split("/").some((seg) => seg === "..")) {
+			throw new Error(`Invalid file path: "${filePath}" contains path traversal segments.`);
+		}
+
+		const dir = normalized.includes("/")
+			? normalized.substring(0, normalized.lastIndexOf("/"))
+			: "";
+		if (dir) await this.ensureFolder(dir);
+
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		if (existing instanceof TFile) {
+			const current = await this.app.vault.read(existing);
+			await this.app.vault.modify(existing, current + "\n\n" + block);
+		} else {
+			await this.app.vault.create(normalized, block);
+		}
 	}
 
 	/** Ensure all folders in a path exist, creating them recursively. */
