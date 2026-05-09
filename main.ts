@@ -183,9 +183,10 @@ export default class PythiaPlugin extends Plugin {
 									return;
 								}
 								const date = new Date().toISOString().slice(0, 10);
+								const folderPrompt = `The following notes are from the vault folder "${file.name}". Use their contents to answer the user's questions.`;
 								const conv = await this.createConversation(
 									`${file.name} ${date}`,
-									"",
+									folderPrompt,
 									paths
 								);
 								const view = await this.activateView();
@@ -199,65 +200,72 @@ export default class PythiaPlugin extends Plugin {
 
 		// ── Deep-link URI handler: obsidian://pythia ─────────────────────────
 		this.registerObsidianProtocolHandler("pythia", async (params) => {
-			// params.action is always "pythia" (the handler name) — use params.cmd
+			// params.action is always "pythia" (the handler name) — use params.cmd.
+			// Obsidian does not await async protocol handlers, so errors would be
+			// silently swallowed without this try/catch.
+			try {
 			const action = params.cmd ?? "open";
 
-			if (action === "open") {
-				await this.activateView();
-				return;
-			}
-
-			if (action === "new") {
-				const date = new Date().toISOString().slice(0, 10);
-				const conv = await this.createConversation(`Conversation ${date}`);
-				const view = await this.activateView();
-				await view.setActiveConversation(conv);
-				return;
-			}
-
-			if (action === "resume") {
-				if (!params.id) {
-					new Notice("Pythia URI: missing 'id' parameter.");
+				if (action === "open") {
+					await this.activateView();
 					return;
 				}
-				const conv = this.conversationStore.getById(params.id);
-				if (!conv) {
-					new Notice(`Pythia: conversation "${params.id}" not found.`);
-					return;
-				}
-				const view = await this.activateView();
-				await view.setActiveConversation(conv);
-				return;
-			}
 
-			if (action === "template") {
-				if (!params.name) {
-					new Notice("Pythia URI: missing 'name' parameter.");
+					if (action === "new") {
+					const date = new Date().toISOString().slice(0, 10);
+					const conv = await this.createConversation(`Conversation ${date}`);
+					const view = await this.activateView();
+					await view.setActiveConversation(conv);
 					return;
 				}
-				const templates = await this.templateLoader.loadTemplates();
-				const tpl = templates.find((t) => t.name === params.name);
-				if (!tpl) {
-					new Notice(`Pythia: template "${params.name}" not found.`);
-					return;
-				}
-				const date = new Date().toISOString().slice(0, 10);
-				const conv = await this.createConversation(
-					`${tpl.name} ${date}`,
-					tpl.systemPrompt,
-					[...tpl.contextNotes],
-					tpl.id,
-					tpl.provider,
-					tpl.model
-				);
-				if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-				await this.conversationStore.save(conv);
-				const view = await this.activateView();
-				await view.setActiveConversation(conv);
-				return;
-			}
 
-			new Notice(`Pythia: unknown action "${action}".`);
+				if (action === "resume") {
+					if (!params.id) {
+						new Notice("Pythia URI: missing 'id' parameter.");
+						return;
+					}
+					const conv = this.conversationStore.getById(params.id);
+					if (!conv) {
+						new Notice(`Pythia: conversation "${params.id}" not found.`);
+						return;
+					}
+					const view = await this.activateView();
+					await view.setActiveConversation(conv);
+					return;
+				}
+
+				if (action === "template") {
+					if (!params.name) {
+						new Notice("Pythia URI: missing 'name' parameter.");
+						return;
+					}
+					const templates = await this.templateLoader.loadTemplates();
+					const tpl = templates.find((t) => t.name === params.name);
+					if (!tpl) {
+						new Notice(`Pythia: template "${params.name}" not found.`);
+						return;
+					}
+					const date = new Date().toISOString().slice(0, 10);
+					const conv = await this.createConversation(
+						`${tpl.name} ${date}`,
+						tpl.systemPrompt,
+						[...tpl.contextNotes],
+						tpl.id,
+						tpl.provider,
+						tpl.model
+					);
+					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+					await this.conversationStore.save(conv);
+					const view = await this.activateView();
+					await view.setActiveConversation(conv);
+					return;
+				}
+
+					new Notice(`Pythia: unknown action "${action}".`);
+			} catch (err) {
+				new Notice(`Pythia deep link error: ${err instanceof Error ? err.message : String(err)}`);
+				console.error("[Pythia] protocol handler error", err);
+			}
 		});
 	}
 
@@ -423,7 +431,7 @@ export default class PythiaPlugin extends Plugin {
 		let leaf = workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0] as
 			| WorkspaceLeaf
 			| undefined;
-		if (!leaf) {
+		if (!leaf || !(leaf.view instanceof PythiaSidebarView)) {
 			// false = reuse the existing right-sidebar split rather than
 			// creating a new horizontal split (which would produce a second icon).
 			leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);

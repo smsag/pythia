@@ -1,5 +1,6 @@
 import {
 	App,
+	FuzzySuggestModal,
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
@@ -36,6 +37,43 @@ function getFilesInFolder(folder: TFolder): TFile[] {
 	};
 	walk(folder);
 	return results;
+}
+
+/** Unified picker: lists folders first, then all markdown files. Selecting a
+ * folder expands to all its .md files; selecting a file returns it directly. */
+class NoteOrFolderSuggestModal extends FuzzySuggestModal<TFile | TFolder> {
+	private onChoose: (item: TFile | TFolder) => void;
+
+	constructor(app: App, onChoose: (item: TFile | TFolder) => void) {
+		super(app);
+		this.onChoose = onChoose;
+		this.setPlaceholder("Search notes or folders…");
+		this.setInstructions([
+			{ command: "↑↓", purpose: "to navigate" },
+			{ command: "↵", purpose: "to attach" },
+			{ command: "esc", purpose: "to dismiss" },
+		]);
+	}
+
+	getItems(): (TFile | TFolder)[] {
+		const folders: TFolder[] = [];
+		const walk = (folder: TFolder) => {
+			if (!folder.isRoot()) folders.push(folder);
+			for (const child of folder.children) {
+				if (child instanceof TFolder) walk(child);
+			}
+		};
+		walk(this.app.vault.getRoot());
+		return [...folders, ...this.app.vault.getMarkdownFiles()];
+	}
+
+	getItemText(item: TFile | TFolder): string {
+		return item instanceof TFolder ? `📁 ${item.path}` : item.path;
+	}
+
+	onChooseItem(item: TFile | TFolder): void {
+		this.onChoose(item);
+	}
 }
 
 const MODEL_ABBREVIATIONS: Record<string, string> = {
@@ -304,7 +342,8 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryNoteSectionEl.style.display = "none";
 
 		// ── Messages ─────────────────────────────
-		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
+		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
+		this.messagesEl = messagesWrapper.createDiv({ cls: "pythia-messages" });
 		this.messagesEl.addEventListener("scroll", () => {
 			if (this.isScrolling) return; // programmatic scroll — ignore
 			const el = this.messagesEl;
@@ -367,7 +406,7 @@ export class PythiaSidebarView extends ItemView {
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
 		// ── TOC bar (floats over bottom-right of messages area) ──
-		const tocBar = this.messagesEl.createDiv({ cls: "pythia-toc-bar" });
+		const tocBar = messagesWrapper.createDiv({ cls: "pythia-toc-bar" });
 		this.tocBtnEl = tocBar.createEl("button", {
 			cls: "pythia-toc-btn",
 			text: "↑",
@@ -539,43 +578,31 @@ export class PythiaSidebarView extends ItemView {
 		const addBtn = this.contextPillsEl.createEl("button", {
 			cls: "pythia-pill-add",
 			text: "+",
-			attr: { title: "Attach a vault note as context" },
+			attr: { title: "Attach a note or folder as permanent context" },
 		});
 		addBtn.addEventListener("click", () => {
-			new NoteSuggestModal(this.app, async (file) => {
+			new NoteOrFolderSuggestModal(this.app, async (item) => {
 				if (!this.activeConversation) return;
-				if (
-					!this.activeConversation.contextNotes.includes(file.path)
-				) {
-					this.activeConversation.contextNotes.push(file.path);
-					await this.plugin.conversationStore.save(
-						this.activeConversation
-					);
-					this.renderContextPills();
-				}
-			}).open();
-		});
-
-		const addFolderBtn = this.contextPillsEl.createEl("button", {
-			cls: "pythia-pill-add",
-			text: "📁",
-			attr: { title: "Attach all notes in a folder as context" },
-		});
-		addFolderBtn.addEventListener("click", () => {
-			new FolderSuggestModal(this.app, async (folder) => {
-				if (!this.activeConversation) return;
-				const files = getFilesInFolder(folder);
-				let added = 0;
-				for (const f of files) {
-					if (!this.activeConversation.contextNotes.includes(f.path)) {
-						this.activeConversation.contextNotes.push(f.path);
-						added++;
+				if (item instanceof TFolder) {
+					const files = getFilesInFolder(item);
+					let added = 0;
+					for (const f of files) {
+						if (!this.activeConversation.contextNotes.includes(f.path)) {
+							this.activeConversation.contextNotes.push(f.path);
+							added++;
+						}
 					}
-				}
-				if (added > 0) {
-					await this.plugin.conversationStore.save(this.activeConversation);
-					this.renderContextPills();
-					new Notice(`Added ${added} note${added === 1 ? "" : "s"} from "${folder.name}" as context.`);
+					if (added > 0) {
+						await this.plugin.conversationStore.save(this.activeConversation);
+						this.renderContextPills();
+						new Notice(`Added ${added} note${added === 1 ? "" : "s"} from "${item.name}" as context.`);
+					}
+				} else {
+					if (!this.activeConversation.contextNotes.includes(item.path)) {
+						this.activeConversation.contextNotes.push(item.path);
+						await this.plugin.conversationStore.save(this.activeConversation);
+						this.renderContextPills();
+					}
 				}
 			}).open();
 		});

@@ -269,9 +269,17 @@
   text-decoration: underline;
 }
 
-/* ── Messages area ──────────────────────────────────────────── */
-.pythia-messages {
+/* ── Messages wrapper (non-scrolling, anchors TOC button) ─── */
+.pythia-messages-wrapper {
   flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Messages area ──────────────────────────────── */
+.pythia-messages {
+  height: 100%;
   overflow-y: auto;
   padding: 12px;
   display: flex;
@@ -279,7 +287,6 @@
   gap: 12px;
   user-select: text;
   -webkit-user-select: text;
-  position: relative; /* anchor for floating TOC button */
 }
 
 .pythia-empty {
