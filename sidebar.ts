@@ -821,7 +821,13 @@ export class PythiaSidebarView extends ItemView {
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
 		) as HTMLElement | null;
-		row?.scrollIntoView({ behavior: "smooth", block: "center" });
+		if (!row) return;
+		// Scroll messagesEl directly so the row appears at the top of the
+		// visible area. scrollIntoView() targets the wrong scroll ancestor on
+		// iOS and uses block:"center" which hides the start of long messages.
+		const TOP_MARGIN = 8;
+		const rowTop = row.offsetTop - this.messagesEl.offsetTop;
+		this.messagesEl.scrollTo({ top: rowTop - TOP_MARGIN, behavior: "smooth" });
 	}
 
 	private toggleTocPopover(viewRoot: HTMLElement, tocBar: HTMLElement): void {
