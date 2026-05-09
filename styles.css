@@ -49,6 +49,9 @@
   font-size: 1.05em;
   color: var(--text-normal);
   background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
   flex: 1;
   white-space: nowrap;
   overflow-x: auto;
@@ -328,6 +331,8 @@
   line-height: 1;
   color: var(--text-faint);
   background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
   flex-shrink: 0;
   transition: color 0.15s;
 }
@@ -670,7 +675,11 @@
   max-height: 90vh;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-
+/* Strip macOS Electron box-shadow/border from inputs and selects inside modals */
+.pythia-modal input,
+.pythia-modal select {
+  box-shadow: none !important;
+}
 .pythia-modal-desc {
   color: var(--text-muted);
   margin-bottom: 16px;
