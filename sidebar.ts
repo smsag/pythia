@@ -6,6 +6,7 @@ import {
 	Notice,
 	setIcon,
 	TFile,
+	TFolder,
 	WorkspaceLeaf,
 } from "obsidian";
 import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
@@ -20,6 +21,22 @@ import { executeToolCall } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
+
+/** Recursively collect all markdown files under a folder. */
+function getFilesInFolder(folder: TFolder): TFile[] {
+	const results: TFile[] = [];
+	const walk = (f: TFolder) => {
+		for (const child of f.children) {
+			if (child instanceof TFile && child.extension === "md") {
+				results.push(child);
+			} else if (child instanceof TFolder) {
+				walk(child);
+			}
+		}
+	};
+	walk(folder);
+	return results;
+}
 
 const MODEL_ABBREVIATIONS: Record<string, string> = {
 	"claude-opus-4":     "Opus 4",
@@ -65,7 +82,7 @@ export class PythiaSidebarView extends ItemView {
 	private hashPos: number | null = null;
 	private suggestDropdown: HTMLElement | null = null;
 	private suggestActiveIdx = 0;
-	private suggestItems: TFile[] = [];
+	private suggestItems: (TFile | TFolder)[] = [];
 	private suggestOutsideHandler: ((e: MouseEvent) => void) | null = null;
 	private inputAreaEl!: HTMLElement;
 	private tocBtnEl!: HTMLButtonElement;
@@ -538,6 +555,30 @@ export class PythiaSidebarView extends ItemView {
 				}
 			}).open();
 		});
+
+		const addFolderBtn = this.contextPillsEl.createEl("button", {
+			cls: "pythia-pill-add",
+			text: "📁",
+			attr: { title: "Attach all notes in a folder as context" },
+		});
+		addFolderBtn.addEventListener("click", () => {
+			new FolderSuggestModal(this.app, async (folder) => {
+				if (!this.activeConversation) return;
+				const files = getFilesInFolder(folder);
+				let added = 0;
+				for (const f of files) {
+					if (!this.activeConversation.contextNotes.includes(f.path)) {
+						this.activeConversation.contextNotes.push(f.path);
+						added++;
+					}
+				}
+				if (added > 0) {
+					await this.plugin.conversationStore.save(this.activeConversation);
+					this.renderContextPills();
+					new Notice(`Added ${added} note${added === 1 ? "" : "s"} from "${folder.name}" as context.`);
+				}
+			}).open();
+		});
 	}
 
 	private renderAttachedPills(): void {
@@ -992,19 +1033,30 @@ export class PythiaSidebarView extends ItemView {
 
 	private showSuggest(query: string): void {
 		const q = query.toLowerCase();
-		const allFiles = this.app.vault.getMarkdownFiles();
 
-		this.suggestItems = allFiles
+		const matchingFolders = this.app.vault.getAllFolders()
+			.filter((f) => f.path !== "/" && (q === "" || f.path.toLowerCase().includes(q)))
+			.sort((a, b) => {
+				const aName = a.name.toLowerCase().includes(q);
+				const bName = b.name.toLowerCase().includes(q);
+				if (aName && !bName) return -1;
+				if (!aName && bName) return 1;
+				return 0;
+			})
+			.slice(0, 3);
+
+		const matchingFiles = this.app.vault.getMarkdownFiles()
 			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
 			.sort((a, b) => {
-				// Boost files where the base name matches
 				const aName = a.basename.toLowerCase().includes(q);
 				const bName = b.basename.toLowerCase().includes(q);
 				if (aName && !bName) return -1;
 				if (!aName && bName) return 1;
 				return 0;
 			})
-			.slice(0, 8);
+			.slice(0, 8 - matchingFolders.length);
+
+		this.suggestItems = [...matchingFolders, ...matchingFiles];
 
 		if (this.suggestItems.length === 0) {
 			this.dismissSuggest();
@@ -1037,17 +1089,23 @@ export class PythiaSidebarView extends ItemView {
 		if (!this.suggestDropdown) return;
 		this.suggestDropdown.empty();
 		for (let i = 0; i < this.suggestItems.length; i++) {
-			const file = this.suggestItems[i];
+			const item = this.suggestItems[i];
+			const isFolder = item instanceof TFolder;
 			const row = this.suggestDropdown.createDiv({
 				cls:
 					i === this.suggestActiveIdx
 						? "pythia-suggest-item pythia-suggest-item--active"
 						: "pythia-suggest-item",
 			});
-			row.createSpan({ cls: "pythia-suggest-name", text: file.basename });
-			const folder = file.parent?.path ?? "";
-			if (folder && folder !== "/") {
-				row.createSpan({ cls: "pythia-suggest-folder", text: folder });
+			const label = isFolder ? `📁 ${item.name}` : (item as TFile).basename;
+			row.createSpan({ cls: "pythia-suggest-name", text: label });
+			if (!isFolder) {
+				const folder = (item as TFile).parent?.path ?? "";
+				if (folder && folder !== "/") {
+					row.createSpan({ cls: "pythia-suggest-folder", text: folder });
+				}
+			} else {
+				row.createSpan({ cls: "pythia-suggest-folder", text: item.path });
 			}
 			row.addEventListener("mousedown", (e) => {
 				e.preventDefault();
@@ -1066,8 +1124,8 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private commitSuggestSelection(): void {
-		const file = this.suggestItems[this.suggestActiveIdx];
-		if (!file || this.hashPos === null) {
+		const item = this.suggestItems[this.suggestActiveIdx];
+		if (!item || this.hashPos === null) {
 			this.dismissSuggest();
 			return;
 		}
@@ -1076,11 +1134,20 @@ export class PythiaSidebarView extends ItemView {
 		// Remove the #query fragment from the textarea
 		this.inputEl.value = val.slice(0, this.hashPos) + val.slice(cursor);
 		this.inputEl.setSelectionRange(this.hashPos, this.hashPos);
-		// Attach the note
-		if (!this.pendingAttachedNotes.includes(file.path)) {
-			this.pendingAttachedNotes.push(file.path);
-			this.renderAttachedPills();
+		// Attach file(s)
+		if (item instanceof TFolder) {
+			const files = getFilesInFolder(item);
+			for (const f of files) {
+				if (!this.pendingAttachedNotes.includes(f.path)) {
+					this.pendingAttachedNotes.push(f.path);
+				}
+			}
+		} else {
+			if (!this.pendingAttachedNotes.includes(item.path)) {
+				this.pendingAttachedNotes.push(item.path);
+			}
 		}
+		this.renderAttachedPills();
 		this.dismissSuggest();
 	}
 

@@ -1,4 +1,4 @@
-import { Editor, Menu, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import { Editor, Menu, Notice, Plugin, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
 import type { Conversation, Provider } from "./models/types";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
@@ -154,23 +154,46 @@ export default class PythiaPlugin extends Plugin {
 		// File Explorer context menu: appears on any file
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
-				if (!(file instanceof TFile)) return;
-				menu.addItem((item) => {
-					item
-						.setTitle("Chat about this note")
-						.setIcon("bot")
-						.onClick(async () => {
-							const date = new Date().toISOString().slice(0, 10);
-							const conv = await this.createConversation(
-								`${file.basename} ${date}`,
-								"",
-								[file.path]
-							);
-							const view = await this.activateView();
-							await view.setActiveConversation(conv);
-							new Notice(`Attached "${file.name}" as context.`);
-						});
-				});
+				if (file instanceof TFile) {
+					menu.addItem((item) => {
+						item
+							.setTitle("Chat about this note")
+							.setIcon("bot")
+							.onClick(async () => {
+								const date = new Date().toISOString().slice(0, 10);
+								const conv = await this.createConversation(
+									`${file.basename} ${date}`,
+									"",
+									[file.path]
+								);
+								const view = await this.activateView();
+								await view.setActiveConversation(conv);
+								new Notice(`Attached "${file.name}" as context.`);
+							});
+					});
+				} else if (file instanceof TFolder) {
+					menu.addItem((item) => {
+						item
+							.setTitle("Chat about this folder")
+							.setIcon("bot")
+							.onClick(async () => {
+								const paths = this.getFilesInFolder(file).map((f) => f.path);
+								if (paths.length === 0) {
+									new Notice("No markdown files found in this folder.");
+									return;
+								}
+								const date = new Date().toISOString().slice(0, 10);
+								const conv = await this.createConversation(
+									`${file.name} ${date}`,
+									"",
+									paths
+								);
+								const view = await this.activateView();
+								await view.setActiveConversation(conv);
+								new Notice(`Attached ${paths.length} note${paths.length === 1 ? "" : "s"} from "${file.name}" as context.`);
+							});
+					});
+				}
 			})
 		);
 
@@ -431,6 +454,22 @@ export default class PythiaPlugin extends Plugin {
 	// ──────────────────────────────────────────────
 	// Conversation factory
 	// ──────────────────────────────────────────────
+
+	/** Recursively collect all markdown files under a folder. */
+	getFilesInFolder(folder: TFolder): TFile[] {
+		const results: TFile[] = [];
+		const walk = (f: TFolder) => {
+			for (const child of f.children) {
+				if (child instanceof TFile && child.extension === "md") {
+					results.push(child);
+				} else if (child instanceof TFolder) {
+					walk(child);
+				}
+			}
+		};
+		walk(folder);
+		return results;
+	}
 
 	async createConversation(
 		name: string,
