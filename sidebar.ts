@@ -349,8 +349,8 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.addEventListener("touchend", () =>
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
-		// ── TOC bar ──────────────────────────────
-		const tocBar = container.createDiv({ cls: "pythia-toc-bar" });
+		// ── TOC bar (floats over bottom-right of messages area) ──
+		const tocBar = this.messagesEl.createDiv({ cls: "pythia-toc-bar" });
 		this.tocBtnEl = tocBar.createEl("button", {
 			cls: "pythia-toc-btn",
 			text: "↑",
