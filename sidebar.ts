@@ -356,7 +356,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.tocBtnEl.addEventListener("click", (e) => {
 			e.stopPropagation();
-			this.toggleTocPopover(tocBar);
+			this.toggleTocPopover(container, tocBar);
 		});
 
 		// ── Input area ───────────────────────────
@@ -820,7 +820,7 @@ export class PythiaSidebarView extends ItemView {
 		row?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
 
-	private toggleTocPopover(tocBar: HTMLElement): void {
+	private toggleTocPopover(viewRoot: HTMLElement, tocBar: HTMLElement): void {
 		if (this.tocPopoverEl) {
 			this.tocPopoverEl.remove();
 			this.tocPopoverEl = null;
@@ -832,8 +832,21 @@ export class PythiaSidebarView extends ItemView {
 			? conv.messages.filter((m) => m.role === "user")
 			: [];
 
-		const popover = tocBar.createDiv({ cls: "pythia-toc-popover" });
+		// Append to the root view element so it isn't clipped by intermediate
+		// overflow:hidden / overflow:auto ancestors (messages container, etc.).
+		const popover = viewRoot.createDiv({ cls: "pythia-toc-popover" });
 		this.tocPopoverEl = popover;
+
+		// Position the popover above the TOC bar using getBoundingClientRect.
+		const positionPopover = () => {
+			const barRect = tocBar.getBoundingClientRect();
+			const rootRect = viewRoot.getBoundingClientRect();
+			const popoverHeight = Math.min(popover.scrollHeight, 240);
+			const bottom = rootRect.bottom - barRect.top + 4;
+			popover.style.position = "absolute";
+			popover.style.bottom = `${bottom}px`;
+			popover.style.right = "8px";
+		};
 
 		if (userMessages.length === 0) {
 			popover.createDiv({
@@ -846,24 +859,31 @@ export class PythiaSidebarView extends ItemView {
 					cls: "pythia-toc-item",
 					text: msg.chapterName ?? "…",
 				});
-				item.addEventListener("click", () => {
+				// Use mousedown so Obsidian's global click interceptors can't block it
+				item.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
 					this.scrollToMessage(msg.id);
-					this.tocPopoverEl?.remove();
+					popover.remove();
 					this.tocPopoverEl = null;
+					document.removeEventListener("mousedown", onOutside, true);
 				});
 			}
 		}
 
-		// Close on click outside
+		// Position after the DOM is laid out
+		requestAnimationFrame(positionPopover);
+
+		// Close on mousedown outside (capture so it fires before any Obsidian handlers)
 		const onOutside = (e: MouseEvent) => {
 			if (!popover.contains(e.target as Node) && e.target !== this.tocBtnEl) {
 				popover.remove();
 				this.tocPopoverEl = null;
-				document.removeEventListener("click", onOutside, true);
+				document.removeEventListener("mousedown", onOutside, true);
 			}
 		};
-		// Defer so the current click doesn't immediately close it
-		setTimeout(() => document.addEventListener("click", onOutside, true), 0);
+		// Defer so the button's own mousedown doesn't immediately close it
+		setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 	}
 
 	// ──────────────────────────────────────────────

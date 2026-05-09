@@ -485,8 +485,6 @@
 
 .pythia-toc-popover {
   position: absolute;
-  bottom: calc(100% + 4px);
-  right: 8px;
   min-width: 180px;
   max-width: 260px;
   max-height: 240px;
