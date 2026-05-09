@@ -176,7 +176,8 @@ export default class PythiaPlugin extends Plugin {
 
 		// ── Deep-link URI handler: obsidian://pythia ─────────────────────────
 		this.registerObsidianProtocolHandler("pythia", async (params) => {
-			const action = params.action ?? "open";
+			// params.action is always "pythia" (the handler name) — use params.cmd
+			const action = params.cmd ?? "open";
 
 			if (action === "open") {
 				await this.activateView();

@@ -1408,7 +1408,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.activeConversation) {
 			const conv = this.activeConversation;
 			const vault = encodeURIComponent(this.app.vault.getName());
-			const uri = `obsidian://pythia?vault=${vault}&action=resume&id=${encodeURIComponent(conv.id)}`;
+			const uri = `obsidian://pythia?vault=${vault}&cmd=resume&id=${encodeURIComponent(conv.id)}`;
 			insertion += `\n\n[↗ ${conv.name}](${uri})`;
 		}
 		view.editor.replaceSelection(insertion);
@@ -1424,7 +1424,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.activeConversation) {
 			const conv = this.activeConversation;
 			const vault = encodeURIComponent(this.app.vault.getName());
-			const uri = `obsidian://pythia?vault=${vault}&action=resume&id=${encodeURIComponent(conv.id)}`;
+			const uri = `obsidian://pythia?vault=${vault}&cmd=resume&id=${encodeURIComponent(conv.id)}`;
 			entry += `\n\n[↗ ${conv.name}](${uri})`;
 		}
 		try {
