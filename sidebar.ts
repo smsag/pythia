@@ -341,8 +341,8 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.inputEl.addEventListener("input", () => this.onInputChange());
 
-		// Buttons row — absolutely positioned inside the wrapper
-		const btnRow = inputWrapper.createDiv({ cls: "pythia-btn-row" });
+		// Buttons row — below the textarea in normal document flow
+		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
 
 		const attachBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon",
