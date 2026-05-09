@@ -156,8 +156,12 @@ export class PythiaSidebarView extends ItemView {
 			this.onViewportResize = () => this.adjustForKeyboard();
 			window.visualViewport.addEventListener("resize", this.onViewportResize);
 			window.visualViewport.addEventListener("scroll", this.onViewportResize);
-			// Run once immediately to fix at-rest gap
-			requestAnimationFrame(() => this.adjustForKeyboard());
+			// Run once immediately to fix at-rest gap; double-rAF guards against
+			// iOS WKWebView applying safe-area insets after the first paint.
+			requestAnimationFrame(() => {
+				this.adjustForKeyboard();
+				requestAnimationFrame(() => this.adjustForKeyboard());
+			});
 		}
 
 		// Track the most-recently-active MarkdownView so insert-into-note
