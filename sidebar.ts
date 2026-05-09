@@ -488,6 +488,17 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.inputEl.addEventListener("input", () => this.onInputChange());
 
+		// iOS keyboard avoidance fallback: visualViewport resize events are
+		// unreliable in some WKWebView versions. Focus/blur fire unconditionally,
+		// so use them as a supplement. 300 ms gives the keyboard slide-in
+		// animation time to finish before we measure.
+		this.inputEl.addEventListener("focus", () => {
+			setTimeout(() => this.adjustForKeyboard(), 300);
+		});
+		this.inputEl.addEventListener("blur", () => {
+			setTimeout(() => this.adjustForKeyboard(), 300);
+		});
+
 		// Buttons row — below the textarea in normal document flow
 		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
 
