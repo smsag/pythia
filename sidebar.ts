@@ -756,17 +756,26 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	/** iOS keyboard avoidance. Computes how many px the container bottom
-	 *  overhangs the visual viewport and applies that as padding-bottom so
-	 *  the input area rises above the keyboard (and above Obsidian's own
-	 *  bottom chrome when the keyboard is closed). */
+	 *  overhangs the visual viewport and constrains the container height
+	 *  so the input area stays above the keyboard (and Obsidian's own
+	 *  bottom chrome at rest). Resets height before measuring so repeated
+	 *  calls are idempotent. */
 	private adjustForKeyboard(): void {
 		const vv = window.visualViewport;
 		if (!vv) return;
 		const container = this.containerEl.children[1] as HTMLElement;
+		// Clear both the old padding approach and any previously set height
+		// before measuring, so we always read the natural layout dimensions.
+		container.style.paddingBottom = '';
+		container.style.height = '';
+		const rect = container.getBoundingClientRect();
 		const visibleBottom = vv.offsetTop + vv.height;
-		const containerBottom = container.getBoundingClientRect().bottom;
-		const overlap = Math.round(containerBottom - visibleBottom);
-		container.style.paddingBottom = overlap > 0 ? `${overlap}px` : "";
+		const overflow = Math.round(rect.bottom - visibleBottom);
+		if (overflow > 0) {
+			// Shrink the container to fit within the visual viewport.
+			// container.offsetHeight is the natural height (read after reset).
+			container.style.height = `${container.offsetHeight - overflow}px`;
+		}
 	}
 
 	// ──────────────────────────────────────────────
