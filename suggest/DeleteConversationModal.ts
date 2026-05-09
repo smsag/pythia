@@ -12,6 +12,7 @@ export class DeleteConversationModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: "Delete conversation" });
 		contentEl.createEl("p", {

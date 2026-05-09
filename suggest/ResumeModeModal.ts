@@ -16,6 +16,7 @@ export class ResumeModeModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: "Resume conversation" });
 		contentEl.createEl("p", {

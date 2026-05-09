@@ -669,6 +669,13 @@
   font-family: var(--font-monospace);
   vertical-align: middle;
 }
+/* ── Pythia modals: shrink to content on mobile (no fixed-height gap) ─────── */
+.pythia-modal {
+  height: auto !important;
+  max-height: 90vh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 .pythia-modal-desc {
   color: var(--text-muted);
   margin-bottom: 16px;

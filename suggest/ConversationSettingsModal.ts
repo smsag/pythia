@@ -26,6 +26,7 @@ export class ConversationSettingsModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.createEl("h3", { text: "Conversation settings" });

@@ -22,6 +22,7 @@ export class InputModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: this.heading });
 
