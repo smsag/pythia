@@ -219,15 +219,6 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.style.display = "none";
 		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
 
-		const newConvBtn = titleRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
-			attr: { title: "New conversation" },
-		});
-		setIcon(newConvBtn, "plus");
-		newConvBtn.addEventListener("click", () =>
-			this.plugin.cmdNewConversationFromSidebar()
-		);
-
 		const deleteConvBtn = titleRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon pythia-delete-conv-btn",
 			attr: { title: "Delete conversation" },
@@ -235,6 +226,15 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(deleteConvBtn, "trash");
 		deleteConvBtn.addEventListener("click", () =>
 			this.handleDeleteConversation()
+		);
+
+		const newConvBtn = titleRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
+			attr: { title: "New conversation" },
+		});
+		setIcon(newConvBtn, "plus");
+		newConvBtn.addEventListener("click", () =>
+			this.plugin.cmdNewConversationFromSidebar()
 		);
 
 		this.templateLabelEl = header.createDiv({
