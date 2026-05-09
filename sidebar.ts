@@ -1218,18 +1218,22 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Position the toolbar above the selection
+		// Position the toolbar below the selection so it doesn't compete with
+		// the iOS native copy/paste popover, which always appears above.
 		const rect = range.getBoundingClientRect();
 		const containerRect = this.containerEl.getBoundingClientRect();
 
-		const top = rect.top - containerRect.top - 40;
+		const toolbarH = 36; // approximate toolbar height
+		const top = rect.bottom - containerRect.top + 8;
 		const left = Math.min(
 			rect.left - containerRect.left + rect.width / 2 - 60,
 			containerRect.width - 128
 		);
 
 		this.selectionToolbar.style.display = "flex";
-		this.selectionToolbar.style.top = `${Math.max(4, top)}px`;
+		// Clamp so the toolbar doesn't overflow below the container.
+		const maxTop = containerRect.height - toolbarH - 4;
+		this.selectionToolbar.style.top = `${Math.min(Math.max(4, top), maxTop)}px`;
 		this.selectionToolbar.style.left = `${Math.max(4, left)}px`;
 	}
 
