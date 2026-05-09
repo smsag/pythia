@@ -41,6 +41,7 @@ export class PythiaSidebarView extends ItemView {
 	private activeConversation: Conversation | null = null;
 	private isStreaming = false;
 	private autoScroll = true;
+	private isScrolling = false;
 	private pendingAttachedNotes: string[] = [];
 
 	// DOM elements
@@ -288,6 +289,7 @@ export class PythiaSidebarView extends ItemView {
 		// ── Messages ─────────────────────────────
 		this.messagesEl = container.createDiv({ cls: "pythia-messages" });
 		this.messagesEl.addEventListener("scroll", () => {
+			if (this.isScrolling) return; // programmatic scroll — ignore
 			const el = this.messagesEl;
 			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 			if (distFromBottom > 50) this.autoScroll = false;
@@ -660,7 +662,9 @@ export class PythiaSidebarView extends ItemView {
 
 	private scrollToBottom(force = false): void {
 		if (force || this.autoScroll) {
+			this.isScrolling = true;
 			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+			requestAnimationFrame(() => { this.isScrolling = false; });
 		}
 	}
 
