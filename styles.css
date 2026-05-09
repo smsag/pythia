@@ -69,7 +69,8 @@
   color: var(--text-normal);
 }
 
-.pythia-new-conv-btn {
+.pythia-new-conv-btn,
+.pythia-delete-conv-btn {
   flex-shrink: 0;
   border-color: transparent !important;
   background: transparent !important;
@@ -571,11 +572,13 @@
   line-height: 1;
   background: transparent;
   border-color: transparent;
+  box-shadow: none !important;
   opacity: 0.45;
   transition: opacity 0.15s ease;
 }
 .pythia-view .pythia-btn-icon:hover {
   background: transparent;
+  box-shadow: none !important;
   opacity: 0.75;
 }
 .pythia-view .pythia-btn-icon svg {
