@@ -331,4 +331,17 @@ export class OpenAIProvider implements LLMProvider {
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "New Conversation";
 	}
+
+	async summarizeNotes(content: string): Promise<string> {
+		const client = this.getClient();
+		const response = await client.chat.completions.create({
+			model: "gpt-4o-mini",
+			max_tokens: 1024,
+			messages: [{
+				role: "user",
+				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.\n\n${content}`,
+			}],
+		});
+		return response.choices[0]?.message?.content?.trim() ?? "";
+	}
 }

@@ -272,4 +272,18 @@ export class AnthropicService implements LLMProvider {
 		const block = response.content[0];
 		return block.type === "text" ? block.text.trim() : "New Conversation";
 	}
+
+	async summarizeNotes(content: string): Promise<string> {
+		const client = this.getClient();
+		const response = await client.messages.create({
+			model: "claude-haiku-3-5",
+			max_tokens: 1024,
+			messages: [{
+				role: "user",
+				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.\n\n${content}`,
+			}],
+		});
+		const block = response.content[0];
+		return block.type === "text" ? block.text.trim() : "";
+	}
 }

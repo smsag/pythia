@@ -61,4 +61,8 @@ export class LLMRouter {
 	generateConversationTitle(userMessage: string, assistantMessage: string, provider: Provider): Promise<string> {
 		return this.providers[provider].generateConversationTitle(userMessage, assistantMessage);
 	}
+
+	summarizeNotes(content: string, provider: Provider): Promise<string> {
+		return this.providers[provider].summarizeNotes(content);
+	}
 }

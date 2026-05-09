@@ -169,6 +169,27 @@ export default class PythiaPlugin extends Plugin {
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								new Notice(`Attached "${file.name}" as context.`);
+								// Generate a summary of the note in the background and
+								// inject it as the summary banner once ready.
+								;(async () => {
+									try {
+										const content = await this.app.vault.read(file);
+										const summary = await this.llmRouter.summarizeNotes(
+											content.slice(0, 20000),
+											conv.provider
+										);
+										if (summary) {
+											conv.summaryText = summary;
+											await this.conversationStore.save(conv);
+											const currentView = this.getSidebarView();
+											if (currentView?.getActiveConversation()?.id === conv.id) {
+												await currentView.setActiveConversation(conv, false);
+											}
+										}
+									} catch (e) {
+										new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
+									}
+								})();
 							});
 					});
 				} else if (file instanceof TFolder) {
@@ -192,6 +213,34 @@ export default class PythiaPlugin extends Plugin {
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								new Notice(`Attached ${paths.length} note${paths.length === 1 ? "" : "s"} from "${file.name}" as context.`);
+								// Generate a summary of all files in the background and
+								// inject it as the summary banner once ready.
+								;(async () => {
+									try {
+										const files = this.getFilesInFolder(file);
+										const CAP = 20000;
+										let combined = "";
+										for (const f of files) {
+											if (combined.length >= CAP) break;
+											const text = await this.app.vault.read(f);
+											combined += `# [[${f.basename}]]\n${text}\n\n`;
+										}
+										const summary = await this.llmRouter.summarizeNotes(
+											combined.slice(0, CAP),
+											conv.provider
+										);
+										if (summary) {
+											conv.summaryText = summary;
+											await this.conversationStore.save(conv);
+											const currentView = this.getSidebarView();
+											if (currentView?.getActiveConversation()?.id === conv.id) {
+												await currentView.setActiveConversation(conv, false);
+											}
+										}
+									} catch (e) {
+										new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
+									}
+								})();
 							});
 					});
 				}

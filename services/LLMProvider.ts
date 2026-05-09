@@ -16,4 +16,5 @@ export interface LLMProvider {
 	generateFavoriteName(content: string): Promise<string>;
 	generateChapterName(content: string): Promise<string>;
 	generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string>;
+	summarizeNotes(content: string): Promise<string>;
 }
