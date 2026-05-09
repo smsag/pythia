@@ -21,6 +21,21 @@ import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
+const MODEL_ABBREVIATIONS: Record<string, string> = {
+	"claude-opus-4":     "Opus 4",
+	"claude-sonnet-4-6": "Sonnet 4.6",
+	"claude-haiku-3-5":  "Haiku 3.5",
+	"gpt-4o":            "GPT-4o",
+	"gpt-4o-mini":       "GPT-4o mini",
+	"o3":                "o3",
+	"o3-mini":           "o3 mini",
+	"o4-mini":           "o4 mini",
+};
+
+function abbreviateModel(model: string): string {
+	return MODEL_ABBREVIATIONS[model] ?? model;
+}
+
 export class PythiaSidebarView extends ItemView {
 	private plugin: PythiaPlugin;
 	private activeConversation: Conversation | null = null;
@@ -769,10 +784,8 @@ export class PythiaSidebarView extends ItemView {
 			this.modelBadgeEl.style.display = "none";
 			return;
 		}
-		const provider = this.activeConversation.provider ?? "anthropic";
 		const model = this.activeConversation.model ?? "";
-		const providerLabel = provider === "openai" ? "OpenAI" : "Anthropic";
-		this.modelBadgeEl.setText(`${model} · ${providerLabel}`);
+		this.modelBadgeEl.setText(abbreviateModel(model));
 		this.modelBadgeEl.style.display = "";
 	}
 

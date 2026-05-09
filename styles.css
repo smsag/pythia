@@ -42,10 +42,14 @@
   background: transparent !important;
   flex: 1;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 2px 4px;
   border-radius: 4px;
+}
+.pythia-conv-name::-webkit-scrollbar {
+  display: none;
 }
 .pythia-conv-name:hover {
   background: var(--background-modifier-hover);
