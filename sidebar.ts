@@ -1286,8 +1286,15 @@ export class PythiaSidebarView extends ItemView {
 		const text = window.getSelection()?.toString() ?? "";
 		if (!text) return;
 		const inboxPath = this.plugin.settings.inboxNote || "Pythia/Inbox.md";
+		let entry = text;
+		if (this.activeConversation) {
+			const conv = this.activeConversation;
+			const vault = encodeURIComponent(this.app.vault.getName());
+			const uri = `obsidian://pythia?vault=${vault}&action=resume&id=${encodeURIComponent(conv.id)}`;
+			entry += `\n\n[↗ ${conv.name}](${uri})`;
+		}
 		try {
-			await this.plugin.noteWriter.prependToInbox(text, inboxPath);
+			await this.plugin.noteWriter.prependToInbox(entry, inboxPath);
 			this.selectionToolbar.style.display = "none";
 			new Notice("Saved to inbox");
 		} catch (e) {
