@@ -370,14 +370,28 @@ export default class PythiaPlugin extends Plugin {
 	/** Called once on layout-ready. Creates the sidebar leaf on first install
 	 *  (or after the user manually closed the tab). Obsidian then persists the
 	 *  leaf in its workspace layout, so subsequent launches restore it without
-	 *  hitting this branch. */
+	 *  hitting this branch.
+	 *
+	 *  We use iterateAllLeaves instead of getLeavesOfType because during a
+	 *  hot-reload (BRAT update) the existing leaf's view hasn't been
+	 *  re-instantiated yet, so getLeavesOfType returns 0 and a second leaf
+	 *  would be created. iterateAllLeaves inspects the raw view-state type,
+	 *  which is always present. Any extras accumulated from previous
+	 *  hot-reloads are detached here to keep the sidebar clean. */
 	private initLeaf(): void {
-		if (this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE).length) {
-			return; // already present in the restored layout
-		}
-		this.app.workspace.getRightLeaf(false)?.setViewState({
-			type: PYTHIA_VIEW_TYPE,
+		const { workspace } = this.app;
+		const existing: WorkspaceLeaf[] = [];
+		workspace.iterateAllLeaves((leaf) => {
+			if (leaf.getViewState().type === PYTHIA_VIEW_TYPE) {
+				existing.push(leaf);
+			}
 		});
+		// Deduplicate: keep the first, detach any extras from hot-reloads.
+		for (let i = 1; i < existing.length; i++) {
+			existing[i].detach();
+		}
+		if (existing.length >= 1) return;
+		workspace.getRightLeaf(false)?.setViewState({ type: PYTHIA_VIEW_TYPE });
 	}
 
 	async activateView(): Promise<PythiaSidebarView> {
@@ -386,7 +400,9 @@ export default class PythiaPlugin extends Plugin {
 			| WorkspaceLeaf
 			| undefined;
 		if (!leaf) {
-			leaf = workspace.getRightLeaf(true) ?? workspace.getLeaf(true);
+			// false = reuse the existing right-sidebar split rather than
+			// creating a new horizontal split (which would produce a second icon).
+			leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
 			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
 		}
 		workspace.revealLeaf(leaf);
