@@ -125,6 +125,7 @@ export class PythiaSidebarView extends ItemView {
 	private inputAreaEl!: HTMLElement;
 	private tocBtnEl!: HTMLButtonElement;
 	private tocPopoverEl: HTMLElement | null = null;
+	private onViewportResize: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -145,6 +146,19 @@ export class PythiaSidebarView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.buildUI();
+
+		// iOS keyboard avoidance: the layout viewport doesn't shrink when the
+		// soft keyboard appears, but visualViewport does. Compensate by applying
+		// padding-bottom equal to the overlap between the container bottom and
+		// the visible area bottom. Also corrects the at-rest gap from Obsidian's
+		// own bottom chrome (tab bar, home indicator).
+		if (window.visualViewport) {
+			this.onViewportResize = () => this.adjustForKeyboard();
+			window.visualViewport.addEventListener("resize", this.onViewportResize);
+			window.visualViewport.addEventListener("scroll", this.onViewportResize);
+			// Run once immediately to fix at-rest gap
+			requestAnimationFrame(() => this.adjustForKeyboard());
+		}
 
 		// Track the most-recently-active MarkdownView so insert-into-note
 		// works even after focus has shifted to this sidebar.
@@ -173,6 +187,11 @@ export class PythiaSidebarView extends ItemView {
 		this.plugin.llmRouter.abort();
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
+		}
+		if (window.visualViewport && this.onViewportResize) {
+			window.visualViewport.removeEventListener("resize", this.onViewportResize);
+			window.visualViewport.removeEventListener("scroll", this.onViewportResize);
+			this.onViewportResize = null;
 		}
 		this.dismissSuggest();
 	}
@@ -734,6 +753,20 @@ export class PythiaSidebarView extends ItemView {
 			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
 			requestAnimationFrame(() => { this.isScrolling = false; });
 		}
+	}
+
+	/** iOS keyboard avoidance. Computes how many px the container bottom
+	 *  overhangs the visual viewport and applies that as padding-bottom so
+	 *  the input area rises above the keyboard (and above Obsidian's own
+	 *  bottom chrome when the keyboard is closed). */
+	private adjustForKeyboard(): void {
+		const vv = window.visualViewport;
+		if (!vv) return;
+		const container = this.containerEl.children[1] as HTMLElement;
+		const visibleBottom = vv.offsetTop + vv.height;
+		const containerBottom = container.getBoundingClientRect().bottom;
+		const overlap = Math.round(containerBottom - visibleBottom);
+		container.style.paddingBottom = overlap > 0 ? `${overlap}px` : "";
 	}
 
 	// ──────────────────────────────────────────────
