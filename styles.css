@@ -459,6 +459,66 @@
   50% { opacity: 0; }
 }
 
+/* ── TOC bar ─────────────────────────────────────────────────── */
+.pythia-toc-bar {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding: 0 8px 2px;
+}
+
+.pythia-toc-btn {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 1px 7px;
+}
+.pythia-toc-btn:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.pythia-toc-popover {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 8px;
+  min-width: 180px;
+  max-width: 260px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  padding: 4px 0;
+}
+
+.pythia-toc-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pythia-toc-item:hover {
+  background: var(--background-modifier-hover);
+}
+.pythia-toc-placeholder {
+  color: var(--text-muted);
+  cursor: default;
+}
+.pythia-toc-placeholder:hover {
+  background: none;
+}
+
 /* ── Input area ─────────────────────────────────────────────── */
 .pythia-input-area {
   flex-shrink: 0;

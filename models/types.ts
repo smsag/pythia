@@ -29,6 +29,7 @@ export interface Message {
 	timestamp: string;        // ISO 8601
 	attachedNotes?: string[]; // notes attached to this specific message
 	tokenUsage?: TokenUsage;  // token counts for assistant messages
+	chapterName?: string;     // 3-5 word LLM-generated title for user messages
 }
 
 export interface Favorite {

@@ -67,6 +67,8 @@ export class PythiaSidebarView extends ItemView {
 	private suggestItems: TFile[] = [];
 	private suggestOutsideHandler: ((e: MouseEvent) => void) | null = null;
 	private inputAreaEl!: HTMLElement;
+	private tocBtnEl!: HTMLButtonElement;
+	private tocPopoverEl: HTMLElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -129,6 +131,11 @@ export class PythiaSidebarView extends ItemView {
 	): Promise<void> {
 		this.activeConversation = conversation;
 		this.pendingAttachedNotes = [];
+		// Close any open TOC popover when switching conversations
+		if (this.tocPopoverEl) {
+			this.tocPopoverEl.remove();
+			this.tocPopoverEl = null;
+		}
 		this.renderHeader();
 		this.updateModelBadge();
 		this.renderContextPills();
@@ -136,10 +143,36 @@ export class PythiaSidebarView extends ItemView {
 		this.renderSummaryNoteRow();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
+		// Back-fill chapter names for any user messages that don't have one yet
+		this.backfillChapterNames(conversation);
 	}
 
 	getActiveConversation(): Conversation | null {
 		return this.activeConversation;
+	}
+
+	private backfillChapterNames(conversation: Conversation): void {
+		const missing = conversation.messages.filter(
+			(m) => m.role === "user" && !m.chapterName
+		);
+		if (missing.length === 0) return;
+		Promise.all(
+			missing.map(async (msg) => {
+				try {
+					const name = await this.plugin.llmRouter.generateChapterName(
+						msg.content,
+						conversation.provider
+					);
+					if (name) msg.chapterName = name;
+				} catch {
+					// Silently ignore — chapter name is non-critical
+				}
+			})
+		).then(async () => {
+			if (missing.some((m) => m.chapterName)) {
+				await this.plugin.conversationStore.save(conversation);
+			}
+		}).catch(() => { /* ignore persistence errors */ });
 	}
 
 	getLastAssistantMessage(): string | null {
@@ -314,6 +347,18 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.addEventListener("touchend", () =>
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
+		// ── TOC bar ──────────────────────────────
+		const tocBar = container.createDiv({ cls: "pythia-toc-bar" });
+		this.tocBtnEl = tocBar.createEl("button", {
+			cls: "pythia-toc-btn",
+			text: "↑",
+			attr: { title: "Show chapters" },
+		});
+		this.tocBtnEl.addEventListener("click", (e) => {
+			e.stopPropagation();
+			this.toggleTocPopover(tocBar);
+		});
+
 		// ── Input area ───────────────────────────
 		const inputArea = container.createDiv({ cls: "pythia-input-area" });
 		this.inputAreaEl = inputArea;
@@ -775,6 +820,52 @@ export class PythiaSidebarView extends ItemView {
 		row?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
 
+	private toggleTocPopover(tocBar: HTMLElement): void {
+		if (this.tocPopoverEl) {
+			this.tocPopoverEl.remove();
+			this.tocPopoverEl = null;
+			return;
+		}
+
+		const conv = this.activeConversation;
+		const userMessages = conv
+			? conv.messages.filter((m) => m.role === "user")
+			: [];
+
+		const popover = tocBar.createDiv({ cls: "pythia-toc-popover" });
+		this.tocPopoverEl = popover;
+
+		if (userMessages.length === 0) {
+			popover.createDiv({
+				cls: "pythia-toc-item pythia-toc-placeholder",
+				text: "No chapters yet",
+			});
+		} else {
+			for (const msg of userMessages) {
+				const item = popover.createDiv({
+					cls: "pythia-toc-item",
+					text: msg.chapterName ?? "…",
+				});
+				item.addEventListener("click", () => {
+					this.scrollToMessage(msg.id);
+					this.tocPopoverEl?.remove();
+					this.tocPopoverEl = null;
+				});
+			}
+		}
+
+		// Close on click outside
+		const onOutside = (e: MouseEvent) => {
+			if (!popover.contains(e.target as Node) && e.target !== this.tocBtnEl) {
+				popover.remove();
+				this.tocPopoverEl = null;
+				document.removeEventListener("click", onOutside, true);
+			}
+		};
+		// Defer so the current click doesn't immediately close it
+		setTimeout(() => document.addEventListener("click", onOutside, true), 0);
+	}
+
 	// ──────────────────────────────────────────────
 	// Event handlers
 	// ──────────────────────────────────────────────
@@ -1182,6 +1273,19 @@ export class PythiaSidebarView extends ItemView {
 								}
 							})
 							.catch(() => { /* keep date name on failure */ });
+					}
+
+					// Generate chapter name for the user message (fire-and-forget)
+					if (!userMsg.chapterName) {
+						this.plugin.llmRouter
+							.generateChapterName(userMsg.content, conv.provider)
+							.then(async (name) => {
+								if (name) {
+									userMsg.chapterName = name;
+									await this.plugin.conversationStore.save(conv);
+								}
+							})
+							.catch(() => { /* chapter name is non-critical */ });
 					}
 				}			},
 			(error) => {
