@@ -310,6 +310,7 @@
   display: flex;
   align-items: baseline;
   gap: 4px;
+  padding-left: 13px; /* match .pythia-bubble horizontal padding */
 }
 
 .pythia-bubble-pipe {
