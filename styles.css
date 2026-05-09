@@ -168,6 +168,8 @@
   cursor: pointer;
   color: var(--text-faint);
   background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   font-size: 1.1em;
   line-height: 1;
   padding: 0 1px;
@@ -466,6 +468,8 @@
   padding: 3px 8px;
   border-radius: 5px;
   background: transparent;
+  border: none !important;
+  box-shadow: none !important;
   color: var(--text-muted);
   white-space: nowrap;
   transition: background 0.12s, color 0.12s;
