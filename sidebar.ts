@@ -1270,7 +1270,14 @@ export class PythiaSidebarView extends ItemView {
 			new Notice("No active note to insert into.");
 			return;
 		}
-		view.editor.replaceSelection(text);
+		let insertion = text;
+		if (this.activeConversation) {
+			const conv = this.activeConversation;
+			const vault = encodeURIComponent(this.app.vault.getName());
+			const uri = `obsidian://pythia?vault=${vault}&action=resume&id=${encodeURIComponent(conv.id)}`;
+			insertion += `\n\n[↗ ${conv.name}](${uri})`;
+		}
+		view.editor.replaceSelection(insertion);
 		this.selectionToolbar.style.display = "none";
 		new Notice("Inserted into note");
 	}
