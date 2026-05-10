@@ -158,6 +158,7 @@ export default class PythiaPlugin extends Plugin {
 					menu.addItem((item) => {
 						item
 							.setTitle("Chat about this note")
+							.setSection("action")
 							.setIcon("bot")
 							.onClick(async () => {
 								const date = new Date().toISOString().slice(0, 10);
@@ -196,6 +197,7 @@ export default class PythiaPlugin extends Plugin {
 					menu.addItem((item) => {
 						item
 							.setTitle("Chat about this folder")
+							.setSection("action")
 							.setIcon("bot")
 							.onClick(async () => {
 								const paths = this.getFilesInFolder(file).map((f) => f.path);
