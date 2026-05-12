@@ -5,8 +5,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 ## Features
 
 - **Command palette workflows** — start, resume, and manage AI conversations without leaving Obsidian
-- **Template system** — define system prompts and auto-attached context notes in vault markdown files (frontmatter-driven)
-- **Context injection** — attach any vault note as context for a conversation, manually or via template
+- **Template system** — define system prompts in vault markdown files (frontmatter-driven)
+- **Reference row** — a compact pill strip that auto-appears when a conversation has associated vault files (saved notes, summary notes); click a pill to open the file, × to delete it
 - **Streaming chat** — responses rendered token-by-token in the sidebar panel
 - **Conversation storage** — full history saved in `data.json`; conversations are automatically given a short AI-generated title after the first exchange; optional summary notes written to your vault
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
@@ -27,7 +27,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | Command | Description |
 |---|---|
 | `Pythia: New conversation` | Blank conversation, no context |
-| `Pythia: New conversation from template` | Pick a template → loads system prompt + context notes |
+| `Pythia: New conversation from template` | Pick a template → loads system prompt |
 | `Pythia: New conversation with current note` | Active note auto-injected as context |
 | `Pythia: New conversation from clipboard` | Pre-fills the input with current clipboard text |
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
@@ -101,10 +101,18 @@ Vault note example:
 | `Shift+Enter` | Insert new line |
 | `#query` | Fuzzy-search vault notes; `↑↓` to navigate, `↵` to attach, `Esc` to dismiss |
 
-## Context vs. attached notes
+## Reference row
 
-- **Context notes** (top of window) — injected into the system prompt on every message for the lifetime of the conversation. Set via template or the `+` button in the Context section.
-- **Attached notes** ("Attach note" button) — appended inline to one specific message only, then cleared.
+The **Reference** strip appears at the top of the sidebar whenever a conversation has associated vault files — a saved note (💾) or an auto-generated summary note. Each file is shown as a pill:
+
+- **Click the filename** — opens the file in the editor.
+- **× button** — shows a confirmation dialog, then permanently deletes the file from the vault and clears the link.
+
+The row hides itself automatically when there are no associated files.
+
+## Attached notes
+
+**Attached notes** (the "Attach note" button or `#` trigger) are appended inline to one specific message only, then cleared automatically.
 
 ## Vault Structure
 

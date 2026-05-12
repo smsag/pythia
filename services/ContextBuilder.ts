@@ -2,42 +2,20 @@ import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
 
 /**
- * Builds the full system prompt string from a conversation's system prompt,
- * context notes, and optional summary. Shared across all LLM providers.
- *
- * Returns the assembled prompt alongside any note paths that could not be
- * resolved in the vault (renamed, moved, or deleted notes).
+ * Builds the system prompt from a conversation's system prompt text and
+ * optional summary. Context notes are no longer injected here — they are
+ * displayed as Reference links in the UI only and never sent to the LLM.
  */
 export async function buildSystemPrompt(
 	app: App,
 	conversation: Conversation
 ): Promise<{ prompt: string; missingNotes: string[] }> {
 	const parts: string[] = [];
-	const missingNotes: string[] = [];
 
 	if (conversation.systemPrompt) {
 		parts.push(
 			`<system_prompt>\n${conversation.systemPrompt}\n</system_prompt>`
 		);
-	}
-
-	if (conversation.contextNotes.length > 0) {
-		const contextParts: string[] = [];
-		for (const notePath of conversation.contextNotes) {
-			const file = app.vault.getAbstractFileByPath(notePath);
-			if (file instanceof TFile) {
-				const content = await app.vault.read(file);
-				const filename = notePath.split("/").pop() ?? notePath;
-				contextParts.push(
-					`<note name="${filename}">\n${content}\n</note>`
-				);
-			} else {
-				missingNotes.push(notePath);
-			}
-		}
-		if (contextParts.length > 0) {
-			parts.push(`<context>\n${contextParts.join("\n\n")}\n</context>`);
-		}
 	}
 
 	if (conversation.summaryText) {
@@ -46,7 +24,7 @@ export async function buildSystemPrompt(
 		);
 	}
 
-	return { prompt: parts.join("\n\n"), missingNotes };
+	return { prompt: parts.join("\n\n"), missingNotes: [] };
 }
 
 /**

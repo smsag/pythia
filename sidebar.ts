@@ -4,6 +4,7 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
+	Modal,
 	Notice,
 	setIcon,
 	TFile,
@@ -16,7 +17,6 @@ import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
-import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { classifyApiError } from "./services/apiError";
 import { executeToolCall } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
@@ -39,41 +39,32 @@ function getFilesInFolder(folder: TFolder): TFile[] {
 	return results;
 }
 
-/** Unified picker: lists folders first, then all markdown files. Selecting a
- * folder expands to all its .md files; selecting a file returns it directly. */
-class NoteOrFolderSuggestModal extends FuzzySuggestModal<TFile | TFolder> {
-	private onChoose: (item: TFile | TFolder) => void;
+/** Confirm-then-delete a vault file. */class DeleteFileModal extends Modal {
+	private fileName: string;
+	private onConfirm: () => void;
 
-	constructor(app: App, onChoose: (item: TFile | TFolder) => void) {
+	constructor(app: App, fileName: string, onConfirm: () => void) {
 		super(app);
-		this.onChoose = onChoose;
-		this.setPlaceholder("Search notes or folders…");
-		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to attach" },
-			{ command: "esc", purpose: "to dismiss" },
-		]);
+		this.fileName = fileName;
+		this.onConfirm = onConfirm;
 	}
 
-	getItems(): (TFile | TFolder)[] {
-		const folders: TFolder[] = [];
-		const walk = (folder: TFolder) => {
-			if (!folder.isRoot()) folders.push(folder);
-			for (const child of folder.children) {
-				if (child instanceof TFolder) walk(child);
-			}
-		};
-		walk(this.app.vault.getRoot());
-		return [...folders, ...this.app.vault.getMarkdownFiles()];
+	onOpen(): void {
+		this.modalEl.addClass("pythia-modal");
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "Delete file" });
+		contentEl.createEl("p", {
+			text: `Delete "${this.fileName}" from the vault? This cannot be undone.`,
+			cls: "pythia-modal-desc",
+		});
+		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
+		const deleteBtn = buttons.createEl("button", { text: "Delete", cls: "mod-warning" });
+		deleteBtn.addEventListener("click", () => { this.onConfirm(); this.close(); });
+		const cancelBtn = buttons.createEl("button", { text: "Cancel" });
+		cancelBtn.addEventListener("click", () => this.close());
 	}
 
-	getItemText(item: TFile | TFolder): string {
-		return item instanceof TFolder ? `📁 ${item.path}` : item.path;
-	}
-
-	onChooseItem(item: TFile | TFolder): void {
-		this.onChoose(item);
-	}
+	onClose(): void { this.contentEl.empty(); }
 }
 
 const MODEL_ABBREVIATIONS: Record<string, string> = {
@@ -103,11 +94,10 @@ export class PythiaSidebarView extends ItemView {
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
-	private contextPillsEl!: HTMLElement;
+	private referencePillsEl!: HTMLElement;
+	private referenceSectionEl!: HTMLElement;
 	private favoritesPillsEl!: HTMLElement;
 	private favoritesSectionEl!: HTMLElement;
-	private summaryNoteSectionEl!: HTMLElement;
-	private summaryNotePathEl!: HTMLElement;
 	private attachedPillsEl!: HTMLElement;
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
@@ -217,9 +207,8 @@ export class PythiaSidebarView extends ItemView {
 		}
 		this.renderHeader();
 		this.updateModelBadge();
-		this.renderContextPills();
+		this.renderReferencePills();
 		this.renderFavoritesBar();
-		this.renderSummaryNoteRow();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 		// Back-fill chapter names for any user messages that don't have one yet
@@ -320,17 +309,18 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pythia-template-label",
 		});
 
-		// ── Context notes ────────────────────────
-		const contextSection = container.createDiv({
+		// ── Reference (saved notes) ────────────────────────
+		this.referenceSectionEl = container.createDiv({
 			cls: "pythia-context-section",
 		});
-		contextSection.createEl("span", {
+		this.referenceSectionEl.createEl("span", {
 			cls: "pythia-section-label",
-			text: "Context",
+			text: "Reference",
 		});
-		this.contextPillsEl = contextSection.createDiv({
+		this.referencePillsEl = this.referenceSectionEl.createDiv({
 			cls: "pythia-pills",
 		});
+		this.referenceSectionEl.style.display = "none";
 
 		// ── Favorites ─────────────────────────────
 		this.favoritesSectionEl = container.createDiv({
@@ -345,24 +335,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.favoritesSectionEl.style.display = "none";
 
-		// ── Summary note ──────────────────────────
-		this.summaryNoteSectionEl = container.createDiv({
-			cls: "pythia-summary-note-section",
-		});
-		this.summaryNoteSectionEl.createEl("span", {
-			cls: "pythia-section-label",
-			text: "Summary note:",
-		});
-		this.summaryNotePathEl = this.summaryNoteSectionEl.createEl("span", {
-			cls: "pythia-summary-note-path",
-		});
-		const moveBtn = this.summaryNoteSectionEl.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-summary-note-move",
-			attr: { title: "Move summary note to another folder" },
-		});
-		setIcon(moveBtn, "folder-open");
-		moveBtn.addEventListener("click", () => this.onMoveSummaryNote());
-		this.summaryNoteSectionEl.style.display = "none";
+		// (Summary note row removed — summary note now shown in Reference row)
 
 		// ── Messages ─────────────────────────────
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
@@ -587,59 +560,44 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	private renderContextPills(): void {
-		this.contextPillsEl.empty();
-		if (!this.activeConversation) return;
-
-		for (const notePath of this.activeConversation.contextNotes) {
-			this.addPill(
-				this.contextPillsEl,
-				notePath.split("/").pop() ?? notePath,
-				async () => {
-					if (!this.activeConversation) return;
-					this.activeConversation.contextNotes =
-						this.activeConversation.contextNotes.filter(
-							(n) => n !== notePath
-						);
-					await this.plugin.conversationStore.save(
-						this.activeConversation
-					);
-					this.renderContextPills();
-				}
-			);
+	private renderReferencePills(): void {
+		this.referencePillsEl.empty();
+		const conv = this.activeConversation;
+		const refs: { path: string; clearField: () => void }[] = [];
+		if (conv?.savedNotePath) {
+			refs.push({ path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
+		}
+		if (conv?.summaryNote) {
+			refs.push({ path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
 		}
 
-		const addBtn = this.contextPillsEl.createEl("button", {
-			cls: "pythia-pill-add",
-			text: "+",
-			attr: { title: "Attach a note or folder as permanent context" },
-		});
-		addBtn.addEventListener("click", () => {
-			new NoteOrFolderSuggestModal(this.app, async (item) => {
-				if (!this.activeConversation) return;
-				if (item instanceof TFolder) {
-					const files = getFilesInFolder(item);
-					let added = 0;
-					for (const f of files) {
-						if (!this.activeConversation.contextNotes.includes(f.path)) {
-							this.activeConversation.contextNotes.push(f.path);
-							added++;
-						}
-					}
-					if (added > 0) {
-						await this.plugin.conversationStore.save(this.activeConversation);
-						this.renderContextPills();
-						new Notice(`Added ${added} note${added === 1 ? "" : "s"} from "${item.name}" as context.`);
-					}
+		this.referenceSectionEl.style.display = refs.length > 0 ? "" : "none";
+		if (refs.length === 0) return;
+
+		for (const ref of refs) {
+			const fileName = ref.path.split("/").pop() ?? ref.path;
+			const pill = this.referencePillsEl.createEl("span", { cls: "pythia-pill" });
+			const label = pill.createEl("span", { text: fileName, cls: "pythia-pill-label", attr: { title: ref.path } });
+			label.style.cursor = "pointer";
+			label.addEventListener("click", async () => {
+				const file = this.app.vault.getAbstractFileByPath(ref.path);
+				if (file instanceof TFile) {
+					await this.app.workspace.getLeaf(false).openFile(file);
 				} else {
-					if (!this.activeConversation.contextNotes.includes(item.path)) {
-						this.activeConversation.contextNotes.push(item.path);
-						await this.plugin.conversationStore.save(this.activeConversation);
-						this.renderContextPills();
-					}
+					new Notice(`File not found: ${ref.path}`);
 				}
-			}).open();
-		});
+			});
+			const x = pill.createEl("button", { cls: "pythia-pill-remove", text: "×" });
+			x.addEventListener("click", () => {
+				new DeleteFileModal(this.app, fileName, async () => {
+					const file = this.app.vault.getAbstractFileByPath(ref.path);
+					if (file instanceof TFile) await this.app.vault.trash(file, true);
+					ref.clearField();
+					if (conv) await this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
+				}).open();
+			});
+		}
 	}
 
 	private renderAttachedPills(): void {
@@ -796,47 +754,6 @@ export class PythiaSidebarView extends ItemView {
 	// ──────────────────────────────────────────────
 	// Favorites
 	// ──────────────────────────────────────────────
-
-	private renderSummaryNoteRow(): void {
-		const path = this.activeConversation?.summaryNote;
-		if (!path) {
-			this.summaryNoteSectionEl.style.display = "none";
-			return;
-		}
-		this.summaryNoteSectionEl.style.display = "";
-		const fileName = path.split("/").pop() ?? path;
-		this.summaryNotePathEl.setText(fileName);
-		this.summaryNotePathEl.title = path;
-	}
-
-	private async onMoveSummaryNote(): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv?.summaryNote) return;
-		const currentPath = conv.summaryNote;
-		const file = this.app.vault.getAbstractFileByPath(currentPath);
-		if (!(file instanceof TFile)) {
-			new Notice(`File not found: ${currentPath}`);
-			return;
-		}
-		new FolderSuggestModal(this.app, async (folder) => {
-			const fileName = currentPath.split("/").pop() ?? currentPath;
-			const newPath = folder.isRoot() ? fileName : `${folder.path}/${fileName}`;
-			try {
-				await this.app.fileManager.renameFile(file, newPath);
-				// Update contextNotes references and summaryNote
-				conv.summaryNote = newPath;
-				conv.contextNotes = conv.contextNotes.map((p) =>
-					p === currentPath ? newPath : p
-				);
-				await this.plugin.conversationStore.save(conv);
-				this.renderSummaryNoteRow();
-				this.renderContextPills();
-				new Notice(`Moved to ${newPath}`);
-			} catch (e) {
-				new Notice(`Move failed: ${e instanceof Error ? e.message : String(e)}`);
-			}
-		}).open();
-	}
 
 	private renderFavoritesBar(): void {
 		this.favoritesPillsEl.empty();
@@ -1294,6 +1211,7 @@ export class PythiaSidebarView extends ItemView {
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = conv.messages.length;
 					await this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
 					new Notice(`Saved to ${path}`);
 				} catch (e) {
 					new Notice(
