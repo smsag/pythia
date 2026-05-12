@@ -791,7 +791,7 @@
 
 .pythia-suggest-item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 6px 12px;
   cursor: pointer;
@@ -814,4 +814,17 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.pythia-suggest-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--interactive-accent);
+}
+.pythia-suggest-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.5;
+  pointer-events: none;
 }

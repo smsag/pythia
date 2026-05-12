@@ -219,6 +219,13 @@ export class PythiaSidebarView extends ItemView {
 		return this.activeConversation;
 	}
 
+	attachNoteToInput(path: string): void {
+		if (!this.pendingAttachedNotes.includes(path)) {
+			this.pendingAttachedNotes.push(path);
+			this.renderAttachedPills();
+		}
+	}
+
 	private backfillChapterNames(conversation: Conversation): void {
 		const missing = conversation.messages.filter(
 			(m) => m.role === "user" && !m.chapterName
@@ -1098,7 +1105,9 @@ export class PythiaSidebarView extends ItemView {
 						? "pythia-suggest-item pythia-suggest-item--active"
 						: "pythia-suggest-item",
 			});
-			const label = isFolder ? `📁 ${item.name}` : (item as TFile).basename;
+			const iconEl = row.createSpan({ cls: "pythia-suggest-icon" });
+			setIcon(iconEl, isFolder ? "folder" : "file");
+			const label = isFolder ? item.name : (item as TFile).basename;
 			row.createSpan({ cls: "pythia-suggest-name", text: label });
 			if (!isFolder) {
 				const folder = (item as TFile).parent?.path ?? "";

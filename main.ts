@@ -165,11 +165,11 @@ export default class PythiaPlugin extends Plugin {
 								const conv = await this.createConversation(
 									`${file.basename} ${date}`,
 									"",
-									[file.path]
+									[]
 								);
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
-								new Notice(`Attached "${file.name}" as context.`);
+								view.attachNoteToInput(file.path);
 								// Generate a summary of the note in the background and
 								// inject it as the summary banner once ready.
 								;(async () => {
@@ -206,15 +206,14 @@ export default class PythiaPlugin extends Plugin {
 									return;
 								}
 								const date = new Date().toISOString().slice(0, 10);
-								const folderPrompt = `The following notes are from the vault folder "${file.name}". Use their contents to answer the user's questions.`;
 								const conv = await this.createConversation(
 									`${file.name} ${date}`,
-									folderPrompt,
-									paths
+									"",
+									[]
 								);
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
-								new Notice(`Attached ${paths.length} note${paths.length === 1 ? "" : "s"} from "${file.name}" as context.`);
+								for (const p of paths) view.attachNoteToInput(p);
 								// Generate a summary of all files in the background and
 								// inject it as the summary banner once ready.
 								;(async () => {
