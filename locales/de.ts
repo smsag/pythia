@@ -14,6 +14,11 @@ const de: Strings = {
 	showLess:                   "Weniger anzeigen",
 	regenerateSummaryTooltip:   "Zusammenfassung neu erstellen",
 
+	// ── Fork banner ───────────────────────────────────────────────────────────
+	forkedFromLabel:            "Verzweigt von",
+	forkSummaryGenerating:      "Zusammenfassung wird generiert…",
+	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
+
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Referenz",
 	favoritesSection: "Favoriten",
@@ -38,6 +43,7 @@ const de: Strings = {
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",
 	inboxBtn: "Im Posteingang speichern",
+	forkBtn:  "Verzweigen",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",

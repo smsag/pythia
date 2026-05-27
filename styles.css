@@ -10,7 +10,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  font-size: max(var(--font-text-size), 13px);
+  font-size: var(--font-text-size);
   color: var(--text-normal);
 }
 
@@ -70,7 +70,7 @@
 .pythia-model-badge {
   all: unset;
   cursor: pointer;
-  font-size: 0.77em;
+  font-size: 0.72em;
   color: var(--text-muted);
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
@@ -234,48 +234,20 @@
 /* ── Summary banner ─────────────────────────────────────────── */
 .pythia-summary-banner {
   flex-shrink: 0;
-  padding: 8px 12px;
-}
-
-.pythia-summary-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  color: var(--text-muted);
-  font-size: 0.78em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.pythia-summary-refresh {
-  all: unset;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 3px;
-  opacity: 0.4;
-  transition: opacity 0.15s ease;
-}
-.pythia-summary-refresh:hover {
-  opacity: 0.75;
-  background: var(--background-modifier-hover);
-}
-.pythia-summary-refresh svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.5;
+  padding: 8px 12px 8px 10px;
+  border-left: 2px solid var(--text-faint);
+  background: var(--background-secondary);
+  border-radius: 0 6px 6px 0;
 }
 
 .pythia-summary-body {
-  color: var(--text-muted);
-  font-size: 0.88em;
-  line-height: 1.5;
+  color: var(--text-normal);
+  font-size: 0.9em;
+  line-height: 1.6;
   word-break: break-word;
 }
 .pythia-summary-body--collapsed {
-  max-height: 2em;
+  max-height: 3.5em;
   overflow: hidden;
 }
 .pythia-summary-body p {
@@ -287,12 +259,15 @@
 .pythia-summary-body h4,
 .pythia-summary-body h5,
 .pythia-summary-body h6 {
-  font-size: 0.95em;
+  font-size: 1em;
   font-weight: 600;
-  margin: 6px 0 2px 0;
+  margin: 10px 0 6px 0;
   color: var(--text-muted);
   border: none;
   padding: 0;
+}
+.pythia-summary-body :first-child {
+  margin-top: 0;
 }
 .pythia-summary-body ul,
 .pythia-summary-body ol {
@@ -318,6 +293,45 @@
   text-decoration: underline;
 }
 
+/* ── Fork banner ────────────────────────────────────────────── */
+.pythia-fork-banner {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 0.82em;
+  border-left: 2px solid var(--interactive-accent);
+  margin-bottom: 4px;
+}
+.pythia-fork-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.pythia-fork-icon svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.5;
+  vertical-align: middle;
+}
+.pythia-fork-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.pythia-fork-source-link {
+  color: var(--interactive-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+.pythia-fork-source-link:hover {
+  text-decoration: underline;
+}
+
 /* ── Messages wrapper (non-scrolling, anchors TOC button) ─── */
 .pythia-messages-wrapper {
   flex: 1;
@@ -333,9 +347,14 @@
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.pythia-message + .pythia-message-user,
+.pythia-message-user + .pythia-message {
+  margin-top: 10px;
 }
 
 .pythia-empty {
@@ -404,7 +423,7 @@
 
 /* ── Token count label ───────────────────────────────────────── */
 .pythia-token-count {
-  font-size: 0.72em;
+  font-size: 0.75em;
   color: var(--text-faint);
   line-height: 1;
 
@@ -442,8 +461,8 @@
   position: relative;
   padding: 9px 13px;
   border-radius: 12px;
-  font-size: 0.9em;
-  line-height: 1.55;
+  font-size: 0.95em;
+  line-height: 1.6;
   word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
@@ -457,7 +476,7 @@
 }
 
 .pythia-message-assistant .pythia-bubble {
-  background: transparent;
+  background: var(--background-secondary);
   color: var(--text-normal);
   border-bottom-left-radius: 3px;
 }

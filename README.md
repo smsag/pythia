@@ -82,16 +82,28 @@ Use `obsidian://pythia` links to open Pythia from browsers, Shortcuts automation
 | URI | Behaviour |
 |---|---|
 | `obsidian://pythia` | Open the sidebar |
-| `obsidian://pythia?action=open` | Open the sidebar (explicit) |
-| `obsidian://pythia?action=new` | Create a new blank conversation |
-| `obsidian://pythia?action=resume&id=<uuid>` | Open a specific conversation by ID |
-| `obsidian://pythia?action=template&name=<name>` | Create a conversation from a named template |
+| `obsidian://pythia?cmd=open` | Open the sidebar (explicit) |
+| `obsidian://pythia?cmd=new` | Create a new blank conversation |
+| `obsidian://pythia?cmd=resume&id=<uuid>` | Open a specific conversation by ID |
+| `obsidian://pythia?cmd=template&name=<name>` | Create a conversation from a named template |
 
 Vault note example:
 
 ```markdown
-[Open Job Application chat](obsidian://pythia?action=template&name=Job%20Application)
+[Open Job Application chat](obsidian://pythia?cmd=template&name=Job%20Application)
 ```
+
+### Resume link in saved notes
+
+When you save a conversation to a vault note for the first time, Pythia automatically adds a `pythia` property to the note's frontmatter:
+
+```yaml
+---
+pythia: "obsidian://pythia?vault=MyVault&cmd=resume&id=abc123"
+---
+```
+
+Obsidian renders this as a clickable link in the note's **Properties** panel — click it to reopen that conversation in Pythia.
 
 ## Chat input
 
@@ -136,6 +148,7 @@ vault/
 | Templates folder | `Pythia/Templates` | Scanned for `pythia_template: true` |
 | Conversations folder | `Pythia/Conversations` | Where summary notes are saved |
 | Scratch folder | `Pythia/Scratch` | For ad-hoc conversations |
+| Inbox note | `Pythia/Inbox.md` | Target file for "Save to inbox" — selections are prepended with a timestamp |
 | Auto-save summary | `true` | Write summary note on conversation end |
 | Default resume mode | `summary` | `full` or `summary` |
 | Max messages per session | `100` | Soft cap; 0 = unlimited |

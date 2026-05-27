@@ -12,6 +12,11 @@ const en = {
 	showLess:                   "Show less",
 	regenerateSummaryTooltip:   "Regenerate summary",
 
+	// ── Fork banner ───────────────────────────────────────────────────────────
+	forkedFromLabel:            "Forked from",
+	forkSummaryGenerating:      "Generating fork summary…",
+	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
+
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Reference",
 	favoritesSection: "Favorites",
@@ -36,6 +41,7 @@ const en = {
 	copyBtn:     "Copy",
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",
+	forkBtn:     "Fork",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",

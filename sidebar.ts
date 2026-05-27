@@ -191,6 +191,10 @@ export class PythiaSidebarView extends ItemView {
 		return this.activeConversation;
 	}
 
+	getActiveConversationId(): string | undefined {
+		return this.activeConversation?.id;
+	}
+
 	attachNoteToInput(path: string): void {
 		if (!this.pendingAttachedNotes.includes(path)) {
 			this.pendingAttachedNotes.push(path);
@@ -360,6 +364,20 @@ export class PythiaSidebarView extends ItemView {
 			this.onSaveToInbox();
 		}, { passive: false });
 
+		const forkBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("forkBtn"),
+			attr: { title: t("forkBtn") },
+		});
+		forkBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			this.onForkConversation();
+		});
+		forkBtn.addEventListener("touchstart", (e) => {
+			e.preventDefault();
+			this.onForkConversation();
+		}, { passive: false });
+
 		this.onSelectionChange = () => this.handleSelectionChange();
 		document.addEventListener("selectionchange", this.onSelectionChange);
 		this.messagesEl.addEventListener("mouseup", () =>
@@ -493,15 +511,6 @@ export class PythiaSidebarView extends ItemView {
 
 	private renderSummaryBanner(summary: string): void {
 		const banner = this.messagesEl.createDiv({ cls: "pythia-summary-banner" });
-		const header = banner.createDiv({ cls: "pythia-summary-header" });
-		header.createEl("span", { text: t("summaryLabel") });
-		const refreshBtn = header.createEl("button", {
-			cls: "pythia-summary-refresh",
-			attr: { title: t("regenerateSummaryTooltip") },
-		});
-		setIcon(refreshBtn, "refresh-cw");
-		refreshBtn.addEventListener("click", () => this.onGenerateSummary());
-
 		const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed" });
 		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
 
@@ -515,6 +524,49 @@ export class PythiaSidebarView extends ItemView {
 			bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
 			toggle.setText(expanded ? t("showLess") : t("showMore"));
 		});
+	}
+
+	private renderForkBannerEl(): void {
+		const conv = this.activeConversation;
+		if (!conv?.forkedFromId) return;
+		const source = this.plugin.conversationStore.getById(conv.forkedFromId);
+
+		const banner = this.messagesEl.createDiv({ cls: "pythia-fork-banner" });
+		const header = banner.createDiv({ cls: "pythia-fork-header" });
+		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
+		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
+		const link = label.createEl("a", {
+			cls: "pythia-fork-source-link",
+			text: source?.name ?? conv.forkedFromId,
+		});
+		link.addEventListener("click", async () => {
+			if (!source) return;
+			await this.setActiveConversation(source);
+		});
+
+		const summaryText = source?.summaryText?.trim();
+		if (summaryText) {
+			const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed pythia-fork-body" });
+			MarkdownRenderer.render(this.app, summaryText, bodyEl, "", this);
+			let expanded = false;
+			const toggle = banner.createEl("button", { cls: "pythia-summary-toggle", text: t("showMore") });
+			toggle.addEventListener("click", () => {
+				expanded = !expanded;
+				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
+				toggle.setText(expanded ? t("showLess") : t("showMore"));
+			});
+		}
+	}
+
+	async renderForkBanner(): Promise<void> {
+		const existing = this.messagesEl.querySelector(".pythia-fork-banner");
+		if (existing) existing.remove();
+		this.renderForkBannerEl();
+		const firstChild = this.messagesEl.firstChild;
+		const fork = this.messagesEl.querySelector(".pythia-fork-banner");
+		if (fork && firstChild && fork !== firstChild) {
+			this.messagesEl.insertBefore(fork, firstChild);
+		}
 	}
 
 	private renderReferencePills(): void {
@@ -596,6 +648,7 @@ export class PythiaSidebarView extends ItemView {
 			this.renderEmptyState();
 			return;
 		}
+		if (this.activeConversation.forkedFromId) this.renderForkBannerEl();
 		const summary = this.activeConversation.summaryText?.trim();
 		if (summary) this.renderSummaryBanner(summary);
 		if (this.activeConversation.messages.length === 0) {
@@ -995,7 +1048,7 @@ export class PythiaSidebarView extends ItemView {
 					? filePath
 					: filePath + ".md";
 				try {
-					await this.plugin.noteWriter.appendConversationSlice(slice, path);
+					await this.plugin.noteWriter.appendConversationSlice(slice, path, conv.id);
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = conv.messages.length;
 					await this.plugin.conversationStore.save(conv);
@@ -1259,6 +1312,15 @@ export class PythiaSidebarView extends ItemView {
 		view.editor.replaceSelection(insertion);
 		this.selectionToolbar.style.display = "none";
 		new Notice(t("insertedIntoNote"));
+	}
+
+	private onForkConversation(): void {
+		const text = window.getSelection()?.toString() ?? "";
+		const conv = this.activeConversation;
+		if (!conv) return;
+		this.selectionToolbar.style.display = "none";
+		window.getSelection()?.removeAllRanges();
+		this.plugin.cmdForkConversation(conv.id, text);
 	}
 
 	private async onSaveToInbox(): Promise<void> {

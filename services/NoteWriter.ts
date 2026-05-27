@@ -91,7 +91,7 @@ ${summary}${outputSection}
 		await this.writeNote(entry + currentContent, inboxPath);
 	}
 
-	async appendConversationSlice(messages: Message[], filePath: string): Promise<void> {
+	async appendConversationSlice(messages: Message[], filePath: string, conversationId?: string): Promise<void> {
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");
 		const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -110,7 +110,15 @@ ${summary}${outputSection}
 		const normalized = filePath.replace(/\\/g, "/");
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
-		await this.writeNote(current ? current + "\n\n" + block : block, filePath);
+
+		if (!current && conversationId) {
+			const vaultName = encodeURIComponent(this.app.vault.getName());
+			const resumeUri = `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${conversationId}`;
+			const frontmatter = `---\npythia: "${resumeUri}"\n---\n\n`;
+			await this.writeNote(frontmatter + block, filePath);
+		} else {
+			await this.writeNote(current ? current + "\n\n" + block : block, filePath);
+		}
 	}
 
 	private async ensureFolder(folderPath: string): Promise<void> {

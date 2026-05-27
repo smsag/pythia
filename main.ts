@@ -559,6 +559,42 @@ export default class PythiaPlugin extends Plugin {
 		view.prefillInput(text);
 	}
 
+	async cmdForkConversation(sourceConvId: string, selectedText: string): Promise<void> {
+		const source = this.conversationStore.getById(sourceConvId);
+		if (!source) return;
+
+		const conv = await this.createConversation(
+			`Fork of ${source.name}`,
+			source.systemPrompt,
+			[],
+			source.templateId,
+			source.provider,
+			source.model,
+			source.maxTokens,
+		);
+		conv.forkedFromId = sourceConvId;
+		await this.saveConversations();
+
+		if (!source.summaryText && source.messages.length > 0) {
+			this.llmRouter.generateSummary(source).then(async (summary) => {
+				if (summary) {
+					source.summaryText = summary;
+					await this.saveConversations();
+					const view = this.getSidebarView();
+					if (view?.getActiveConversationId() === conv.id) {
+						await view.renderForkBanner();
+					}
+				}
+			}).catch((e) => {
+				new Notice(t("forkSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
+			});
+		}
+
+		const view = await this.activateView();
+		await view.setActiveConversation(conv);
+		view.prefillInput(selectedText);
+	}
+
 	private async cmdBrowseConversations(): Promise<void> {
 		if (this.conversations.length === 0) {
 			new Notice(t("noConversations"));
@@ -680,7 +716,7 @@ export default class PythiaPlugin extends Plugin {
 					? filePath
 					: filePath + ".md";
 				try {
-					await this.noteWriter.appendConversationSlice(slice, path);
+					await this.noteWriter.appendConversationSlice(slice, path, conv.id);
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = conv.messages.length;
 					await this.conversationStore.save(conv);

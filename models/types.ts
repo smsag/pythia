@@ -18,6 +18,7 @@ export interface Conversation {
 	favorites?: Favorite[];   // starred assistant messages
 	savedNotePath?: string;           // vault path last saved to via save button
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
+	forkedFromId?: string;            // ID of the conversation this was forked from
 }
 
 export interface TokenUsage {
