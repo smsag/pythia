@@ -551,7 +551,7 @@
 .pythia-input-area {
   flex-shrink: 0;
   border-top: 1px solid var(--background-modifier-border);
-  padding: 6px 8px;
+  padding: 6px 8px 2px;
   display: flex;
   flex-direction: column;
   gap: 4px;

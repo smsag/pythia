@@ -11,6 +11,7 @@ export interface Conversation {
 	resumeMode: "full" | "summary";
 	provider: Provider;       // which LLM provider to use
 	model: string;            // model ID for the selected provider
+	maxTokens?: number;       // override the default 4096 max-token limit
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryNote?: string;     // vault path to the human-readable summary note
 	messages: Message[];

@@ -1,6 +1,5 @@
 import {
 	App,
-	FuzzySuggestModal,
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
@@ -8,9 +7,10 @@ import {
 	Notice,
 	setIcon,
 	TFile,
-	TFolder,
 	WorkspaceLeaf,
 } from "obsidian";
+import { todayISO } from "./utils";
+import { InlineSuggest } from "./ui/InlineSuggest";
 import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
@@ -23,23 +23,7 @@ import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
-/** Recursively collect all markdown files under a folder. */
-function getFilesInFolder(folder: TFolder): TFile[] {
-	const results: TFile[] = [];
-	const walk = (f: TFolder) => {
-		for (const child of f.children) {
-			if (child instanceof TFile && child.extension === "md") {
-				results.push(child);
-			} else if (child instanceof TFolder) {
-				walk(child);
-			}
-		}
-	};
-	walk(folder);
-	return results;
-}
-
-/** Confirm-then-delete a vault file. */class DeleteFileModal extends Modal {
+class DeleteFileModal extends Modal {
 	private fileName: string;
 	private onConfirm: () => void;
 
@@ -90,7 +74,6 @@ export class PythiaSidebarView extends ItemView {
 	private isScrolling = false;
 	private pendingAttachedNotes: string[] = [];
 
-	// DOM elements
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
@@ -106,13 +89,7 @@ export class PythiaSidebarView extends ItemView {
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 
-	// Inline note suggest state (# trigger)
-	private hashPos: number | null = null;
-	private suggestDropdown: HTMLElement | null = null;
-	private suggestActiveIdx = 0;
-	private suggestItems: (TFile | TFolder)[] = [];
-	private suggestOutsideHandler: ((e: MouseEvent) => void) | null = null;
-	private inputAreaEl!: HTMLElement;
+	private inlineSuggest!: InlineSuggest;
 	private tocBtnEl!: HTMLButtonElement;
 	private tocPopoverEl: HTMLElement | null = null;
 	private onViewportResize: (() => void) | null = null;
@@ -187,12 +164,8 @@ export class PythiaSidebarView extends ItemView {
 			window.visualViewport.removeEventListener("scroll", this.onViewportResize);
 			this.onViewportResize = null;
 		}
-		this.dismissSuggest();
+		this.inlineSuggest.dismiss();
 	}
-
-	// ──────────────────────────────────────────────
-	// Public API used by main.ts commands
-	// ──────────────────────────────────────────────
 
 	async setActiveConversation(
 		conversation: Conversation,
@@ -200,7 +173,6 @@ export class PythiaSidebarView extends ItemView {
 	): Promise<void> {
 		this.activeConversation = conversation;
 		this.pendingAttachedNotes = [];
-		// Close any open TOC popover when switching conversations
 		if (this.tocPopoverEl) {
 			this.tocPopoverEl.remove();
 			this.tocPopoverEl = null;
@@ -211,7 +183,6 @@ export class PythiaSidebarView extends ItemView {
 		this.renderFavoritesBar();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
-		// Back-fill chapter names for any user messages that don't have one yet
 		this.backfillChapterNames(conversation);
 	}
 
@@ -265,16 +236,11 @@ export class PythiaSidebarView extends ItemView {
 		this.inputEl.focus();
 	}
 
-	// ──────────────────────────────────────────────
-	// UI construction
-	// ──────────────────────────────────────────────
-
 	private buildUI(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
 
-		// ── Header ──────────────────────────────
 		const header = container.createDiv({ cls: "pythia-header" });
 
 		const titleRow = header.createDiv({ cls: "pythia-title-row" });
@@ -309,14 +275,13 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(newConvBtn, "plus");
 		newConvBtn.addEventListener("click", () =>
-			this.plugin.cmdNewConversationFromSidebar()
+			this.plugin.cmdNewConversation()
 		);
 
 		this.templateLabelEl = header.createDiv({
 			cls: "pythia-template-label",
 		});
 
-		// ── Reference (saved notes) ────────────────────────
 		this.referenceSectionEl = container.createDiv({
 			cls: "pythia-context-section",
 		});
@@ -329,7 +294,6 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.referenceSectionEl.style.display = "none";
 
-		// ── Favorites ─────────────────────────────
 		this.favoritesSectionEl = container.createDiv({
 			cls: "pythia-favorites-section",
 		});
@@ -342,9 +306,6 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.favoritesSectionEl.style.display = "none";
 
-		// (Summary note row removed — summary note now shown in Reference row)
-
-		// ── Messages ─────────────────────────────
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		this.messagesEl = messagesWrapper.createDiv({ cls: "pythia-messages" });
 		this.messagesEl.addEventListener("scroll", () => {
@@ -353,7 +314,6 @@ export class PythiaSidebarView extends ItemView {
 			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 			if (distFromBottom > 50) this.autoScroll = false;
 		});
-		// ── Selection toolbar ────────────────────────────
 		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
 		this.selectionToolbar.style.display = "none";
 
@@ -399,7 +359,6 @@ export class PythiaSidebarView extends ItemView {
 			this.onSaveToInbox();
 		}, { passive: false });
 
-		// Wire selection detection
 		this.onSelectionChange = () => this.handleSelectionChange();
 		document.addEventListener("selectionchange", this.onSelectionChange);
 		this.messagesEl.addEventListener("mouseup", () =>
@@ -408,7 +367,7 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.addEventListener("touchend", () =>
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
-		// ── TOC bar (floats over bottom-right of messages area) ──
+
 		const tocBar = messagesWrapper.createDiv({ cls: "pythia-toc-bar" });
 		this.tocBtnEl = tocBar.createEl("button", {
 			cls: "pythia-toc-btn",
@@ -420,58 +379,41 @@ export class PythiaSidebarView extends ItemView {
 			this.toggleTocPopover(container, tocBar);
 		});
 
-		// ── Input area ───────────────────────────
 		const inputArea = container.createDiv({ cls: "pythia-input-area" });
-		this.inputAreaEl = inputArea;
 
-		// Pending attached notes row
 		const attachRow = inputArea.createDiv({ cls: "pythia-attach-row" });
 		this.attachedPillsEl = attachRow.createDiv({
 			cls: "pythia-pills pythia-attached-pills",
 		});
 
-		// Textarea + overlaid button row wrapper
 		const inputWrapper = inputArea.createDiv({ cls: "pythia-input-wrapper" });
 
 		this.inputEl = inputWrapper.createEl("textarea", {
 			cls: "pythia-input",
 			attr: { placeholder: "Type a message… (Enter to send, Shift+Enter for new line)" },
 		});
-		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
-			// Intercept navigation keys when the inline suggest dropdown is open
-			if (this.suggestDropdown) {
-				if (e.key === "ArrowDown") {
-					e.preventDefault();
-					this.moveSuggestSelection(1);
-					return;
+		this.inlineSuggest = new InlineSuggest(
+			this.app,
+			this.inputEl,
+			inputArea,
+			(paths) => {
+				for (const p of paths) {
+					if (!this.pendingAttachedNotes.includes(p)) this.pendingAttachedNotes.push(p);
 				}
-				if (e.key === "ArrowUp") {
-					e.preventDefault();
-					this.moveSuggestSelection(-1);
-					return;
-				}
-				if (e.key === "Enter") {
-					e.preventDefault();
-					this.commitSuggestSelection();
-					return;
-				}
-				if (e.key === "Escape") {
-					e.preventDefault();
-					this.dismissSuggest();
-					return;
-				}
+				this.renderAttachedPills();
 			}
+		);
+		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (this.inlineSuggest.handleKeydown(e)) return;
 			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
 				this.sendMessage();
 			}
 		});
-		this.inputEl.addEventListener("input", () => this.onInputChange());
+		this.inputEl.addEventListener("input", () => this.inlineSuggest.handleInput());
 
-		// iOS keyboard avoidance fallback: visualViewport resize events are
-		// unreliable in some WKWebView versions. Focus/blur fire unconditionally,
-		// so use them as a supplement. 300 ms gives the keyboard slide-in
-		// animation time to finish before we measure.
+		// visualViewport resize is unreliable in some WKWebView versions;
+		// focus/blur fire unconditionally. 300 ms lets the keyboard slide in.
 		this.inputEl.addEventListener("focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
@@ -479,7 +421,6 @@ export class PythiaSidebarView extends ItemView {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
 
-		// Buttons row — below the textarea in normal document flow
 		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
 
 		const attachBtn = btnRow.createEl("button", {
@@ -550,7 +491,6 @@ export class PythiaSidebarView extends ItemView {
 		const bodyEl = banner.createDiv({ cls: "pythia-summary-body" });
 		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
 
-		// Truncate via CSS max-height; toggle button reveals the rest
 		const CHAR_LIMIT = 300;
 		if (summary.length > CHAR_LIMIT) {
 			bodyEl.addClass("pythia-summary-body--collapsed");
@@ -689,7 +629,6 @@ export class PythiaSidebarView extends ItemView {
 		return bubble;
 	}
 
-	/** Create a streaming bubble. Returns helpers to append tokens and finalize. */
 	private createStreamingBubble(): {
 		appendToken: (text: string) => void;
 		finalize: (fullText: string) => Promise<void>;
@@ -719,8 +658,7 @@ export class PythiaSidebarView extends ItemView {
 					"",
 					this
 				);
-				// Re-engage auto-scroll and force-scroll to bottom after the
-				// markdown DOM has been laid out (rAF fires after paint).
+				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
 			},
@@ -735,32 +673,22 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	/** iOS keyboard avoidance. Computes how many px the container bottom
-	 *  overhangs the visual viewport and constrains the container height
-	 *  so the input area stays above the keyboard (and Obsidian's own
-	 *  bottom chrome at rest). Resets height before measuring so repeated
-	 *  calls are idempotent. */
+	// The layout viewport doesn't shrink when the soft keyboard appears, but
+	// visualViewport does. Shrink the container to keep the input area visible.
 	private adjustForKeyboard(): void {
 		const vv = window.visualViewport;
 		if (!vv) return;
 		const container = this.containerEl.children[1] as HTMLElement;
-		// Clear both the old padding approach and any previously set height
-		// before measuring, so we always read the natural layout dimensions.
+		// Reset before measuring so repeated calls are idempotent.
 		container.style.paddingBottom = '';
 		container.style.height = '';
 		const rect = container.getBoundingClientRect();
 		const visibleBottom = vv.offsetTop + vv.height;
 		const overflow = Math.round(rect.bottom - visibleBottom);
 		if (overflow > 0) {
-			// Shrink the container to fit within the visual viewport.
-			// container.offsetHeight is the natural height (read after reset).
 			container.style.height = `${container.offsetHeight - overflow}px`;
 		}
 	}
-
-	// ──────────────────────────────────────────────
-	// Favorites
-	// ──────────────────────────────────────────────
 
 	private renderFavoritesBar(): void {
 		this.favoritesPillsEl.empty();
@@ -807,7 +735,6 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Add with placeholder name
 		if (!conv.favorites) conv.favorites = [];
 		const placeholder: Favorite = { messageId: msg.id, name: "…" };
 		conv.favorites.push(placeholder);
@@ -817,7 +744,6 @@ export class PythiaSidebarView extends ItemView {
 		starEl.title = "Remove from favorites";
 		this.renderFavoritesBar();
 
-		// Background name generation
 		try {
 			const name = await this.plugin.llmRouter.generateFavoriteName(
 				msg.content,
@@ -891,12 +817,10 @@ export class PythiaSidebarView extends ItemView {
 			? conv.messages.filter((m) => m.role === "user")
 			: [];
 
-		// Append to the root view element so it isn't clipped by intermediate
-		// overflow:hidden / overflow:auto ancestors (messages container, etc.).
+		// Append to the root so the popover isn't clipped by overflow:hidden ancestors.
 		const popover = viewRoot.createDiv({ cls: "pythia-toc-popover" });
 		this.tocPopoverEl = popover;
 
-		// Position the popover above the TOC bar using getBoundingClientRect.
 		const positionPopover = () => {
 			const barRect = tocBar.getBoundingClientRect();
 			const rootRect = viewRoot.getBoundingClientRect();
@@ -930,7 +854,6 @@ export class PythiaSidebarView extends ItemView {
 			}
 		}
 
-		// Position after the DOM is laid out
 		requestAnimationFrame(positionPopover);
 
 		// Close on mousedown outside (capture so it fires before any Obsidian handlers)
@@ -944,10 +867,6 @@ export class PythiaSidebarView extends ItemView {
 		// Defer so the button's own mousedown doesn't immediately close it
 		setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 	}
-
-	// ──────────────────────────────────────────────
-	// Event handlers
-	// ──────────────────────────────────────────────
 
 	private updateModelBadge(): void {
 		if (!this.activeConversation) {
@@ -993,7 +912,7 @@ export class PythiaSidebarView extends ItemView {
 				const next = remaining[remaining.length - 1];
 				await this.setActiveConversation(next);
 			} else {
-				await this.plugin.cmdNewConversationFromSidebar();
+				await this.plugin.cmdNewConversation();
 			}
 		}).open();
 	}
@@ -1005,173 +924,6 @@ export class PythiaSidebarView extends ItemView {
 				this.renderAttachedPills();
 			}
 		}).open();
-	}
-
-	// ──────────────────────────────────────────────
-	// # inline note picker
-	// ──────────────────────────────────────────────
-
-	private onInputChange(): void {
-		const el = this.inputEl;
-		const val = el.value;
-		const cursor = el.selectionStart ?? val.length;
-
-		// Find the most recent '#' preceded by start-of-string or whitespace
-		let triggerPos: number | null = null;
-		for (let i = cursor - 1; i >= 0; i--) {
-			if (val[i] === "#") {
-				if (i === 0 || /\s/.test(val[i - 1])) {
-					triggerPos = i;
-					break;
-				}
-			}
-			// Stop scanning once we cross whitespace without finding '#'
-			if (/\s/.test(val[i])) break;
-		}
-
-		if (triggerPos === null) {
-			this.dismissSuggest();
-			return;
-		}
-
-		this.hashPos = triggerPos;
-		const query = val.slice(triggerPos + 1, cursor);
-		this.showSuggest(query);
-	}
-
-	private showSuggest(query: string): void {
-		const q = query.toLowerCase();
-
-		const matchingFolders = this.app.vault.getAllFolders()
-			.filter((f) => f.path !== "/" && (q === "" || f.path.toLowerCase().includes(q)))
-			.sort((a, b) => {
-				const aName = a.name.toLowerCase().includes(q);
-				const bName = b.name.toLowerCase().includes(q);
-				if (aName && !bName) return -1;
-				if (!aName && bName) return 1;
-				return 0;
-			})
-			.slice(0, 3);
-
-		const matchingFiles = this.app.vault.getMarkdownFiles()
-			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
-			.sort((a, b) => {
-				const aName = a.basename.toLowerCase().includes(q);
-				const bName = b.basename.toLowerCase().includes(q);
-				if (aName && !bName) return -1;
-				if (!aName && bName) return 1;
-				return 0;
-			})
-			.slice(0, 8 - matchingFolders.length);
-
-		this.suggestItems = [...matchingFolders, ...matchingFiles];
-
-		if (this.suggestItems.length === 0) {
-			this.dismissSuggest();
-			return;
-		}
-
-		if (!this.suggestDropdown) {
-			this.suggestDropdown = this.inputAreaEl.createDiv({
-				cls: "pythia-inline-suggest",
-			});
-			this.suggestOutsideHandler = (e: MouseEvent) => {
-				if (
-					!this.suggestDropdown?.contains(e.target as Node) &&
-					e.target !== this.inputEl
-				) {
-					this.dismissSuggest();
-				}
-			};
-			document.addEventListener("mousedown", this.suggestOutsideHandler);
-		}
-
-		this.suggestActiveIdx = Math.min(
-			this.suggestActiveIdx,
-			Math.max(0, this.suggestItems.length - 1)
-		);
-		this.renderSuggestDropdown();
-	}
-
-	private renderSuggestDropdown(): void {
-		if (!this.suggestDropdown) return;
-		this.suggestDropdown.empty();
-		for (let i = 0; i < this.suggestItems.length; i++) {
-			const item = this.suggestItems[i];
-			const isFolder = item instanceof TFolder;
-			const row = this.suggestDropdown.createDiv({
-				cls:
-					i === this.suggestActiveIdx
-						? "pythia-suggest-item pythia-suggest-item--active"
-						: "pythia-suggest-item",
-			});
-			const iconEl = row.createSpan({ cls: "pythia-suggest-icon" });
-			setIcon(iconEl, isFolder ? "folder" : "file");
-			const label = isFolder ? item.name : (item as TFile).basename;
-			row.createSpan({ cls: "pythia-suggest-name", text: label });
-			if (!isFolder) {
-				const folder = (item as TFile).parent?.path ?? "";
-				if (folder && folder !== "/") {
-					row.createSpan({ cls: "pythia-suggest-folder", text: folder });
-				}
-			} else {
-				row.createSpan({ cls: "pythia-suggest-folder", text: item.path });
-			}
-			row.addEventListener("mousedown", (e) => {
-				e.preventDefault();
-				this.suggestActiveIdx = i;
-				this.commitSuggestSelection();
-			});
-		}
-	}
-
-	private moveSuggestSelection(delta: number): void {
-		if (!this.suggestDropdown || this.suggestItems.length === 0) return;
-		this.suggestActiveIdx =
-			(this.suggestActiveIdx + delta + this.suggestItems.length) %
-			this.suggestItems.length;
-		this.renderSuggestDropdown();
-	}
-
-	private commitSuggestSelection(): void {
-		const item = this.suggestItems[this.suggestActiveIdx];
-		if (!item || this.hashPos === null) {
-			this.dismissSuggest();
-			return;
-		}
-		const val = this.inputEl.value;
-		const cursor = this.inputEl.selectionStart ?? val.length;
-		// Remove the #query fragment from the textarea
-		this.inputEl.value = val.slice(0, this.hashPos) + val.slice(cursor);
-		this.inputEl.setSelectionRange(this.hashPos, this.hashPos);
-		// Attach file(s)
-		if (item instanceof TFolder) {
-			const files = getFilesInFolder(item);
-			for (const f of files) {
-				if (!this.pendingAttachedNotes.includes(f.path)) {
-					this.pendingAttachedNotes.push(f.path);
-				}
-			}
-		} else {
-			if (!this.pendingAttachedNotes.includes(item.path)) {
-				this.pendingAttachedNotes.push(item.path);
-			}
-		}
-		this.renderAttachedPills();
-		this.dismissSuggest();
-	}
-
-	private dismissSuggest(): void {
-		this.hashPos = null;
-		this.suggestActiveIdx = 0;
-		if (this.suggestDropdown) {
-			this.suggestDropdown.remove();
-			this.suggestDropdown = null;
-		}
-		if (this.suggestOutsideHandler) {
-			document.removeEventListener("mousedown", this.suggestOutsideHandler);
-			this.suggestOutsideHandler = null;
-		}
 	}
 
 	private async onSaveResponse(): Promise<void> {
@@ -1188,22 +940,18 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		const date = new Date().toISOString().slice(0, 10);
 		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
 
-		// Determine default folder from template output_folder or scratch
 		let defaultFolder = this.plugin.settings.scratchFolder;
 		if (conv.templateId) {
 			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
-			if (tplFile) {
-				const tpl = await this.plugin.templateLoader.loadTemplate(
-					tplFile as any
-				);
+			if (tplFile instanceof TFile) {
+				const tpl = await this.plugin.templateLoader.loadTemplate(tplFile);
 				if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
 			}
 		}
 
-		const freshDefault = `${defaultFolder}/${date}-${safeName}.md`;
+		const freshDefault = `${defaultFolder}/${todayISO()}-${safeName}.md`;
 		const suggestedPath = conv.savedNotePath ?? freshDefault;
 
 		new InputModal(
@@ -1240,8 +988,7 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Capture the conversation reference now so callbacks always write to the
-		// correct conversation, even if the user switches mid-stream.
+		// Capture now so callbacks write to the correct conversation if user switches mid-stream.
 		const conv = this.activeConversation;
 
 		const cap = this.plugin.settings.maxMessagesPerSession;
@@ -1258,7 +1005,6 @@ export class PythiaSidebarView extends ItemView {
 		this.inputEl.value = "";
 		this.setStreamingState(true);
 
-		// Save user message
 		const userMsg: Message = {
 			id: crypto.randomUUID(),
 			role: "user",
@@ -1270,7 +1016,6 @@ export class PythiaSidebarView extends ItemView {
 					: undefined,
 		};
 		conv.messages.push(userMsg);
-		// Remove the "Start the conversation below." hint if still present
 		this.messagesEl.querySelector(".pythia-empty")?.remove();
 		await this.appendMessageBubble(userMsg);
 
@@ -1278,10 +1023,8 @@ export class PythiaSidebarView extends ItemView {
 		this.pendingAttachedNotes = [];
 		this.renderAttachedPills();
 
-		// Streaming assistant bubble
 		const { appendToken, finalize, bubbleCol: streamingBubbleCol } = this.createStreamingBubble();
 
-		// Tool call handler — creates a status chip in the message area
 		const onToolCall = this.plugin.settings.enableNoteCreation
 			? async (call: ToolCall): Promise<string> => {
 					const pathText =
@@ -1338,8 +1081,7 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage) => {
-				// Reset the button immediately so the user can type again while
-				// the markdown render and persistence happen in the background.
+				// Reset immediately so the user can type while render/persist run.
 				this.setStreamingState(false);
 				await finalize(fullText);
 
@@ -1352,7 +1094,7 @@ export class PythiaSidebarView extends ItemView {
 						tokenUsage,
 					};
 					conv.messages.push(assistantMsg);
-					// Wire the star button only when conv is still the displayed conversation
+					// Only wire the star when conv is still the displayed conversation.
 					const rows = this.messagesEl.querySelectorAll(".pythia-message-assistant");
 					const lastRow = rows[rows.length - 1] as HTMLElement | null;
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
@@ -1375,8 +1117,6 @@ export class PythiaSidebarView extends ItemView {
 					}
 					await this.plugin.conversationStore.save(conv);
 
-					// Auto-title: after the first exchange, replace the default
-					// date-based name with a short LLM-generated title.
 					if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
 						this.plugin.llmRouter
 							.generateConversationTitle(userMsg.content, fullText, conv.provider)
@@ -1390,7 +1130,6 @@ export class PythiaSidebarView extends ItemView {
 							.catch(() => { /* keep date name on failure */ });
 					}
 
-					// Generate chapter name for the user message (fire-and-forget)
 					if (!userMsg.chapterName) {
 						this.plugin.llmRouter
 							.generateChapterName(userMsg.content, conv.provider)
@@ -1402,7 +1141,8 @@ export class PythiaSidebarView extends ItemView {
 							})
 							.catch(() => { /* chapter name is non-critical */ });
 					}
-				}			},
+				}
+			},
 			(error) => {
 				const errClass = classifyApiError(error);
 				const model = conv.model ?? "";
@@ -1430,10 +1170,6 @@ export class PythiaSidebarView extends ItemView {
 		);
 	}
 
-	// ──────────────────────────────────────────────
-	// Selection toolbar
-	// ──────────────────────────────────────────────
-
 	private handleSelectionChange(): void {
 		const sel = window.getSelection();
 		const text = sel?.toString().trim() ?? "";
@@ -1443,7 +1179,6 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Only show toolbar when selection is inside the messages area
 		const range = sel.getRangeAt(0);
 		if (!this.messagesEl.contains(range.commonAncestorContainer)) {
 			this.selectionToolbar.style.display = "none";
