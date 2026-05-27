@@ -1,6 +1,7 @@
 import { Editor, Menu, Notice, Plugin, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
 import type { Conversation, Provider } from "./models/types";
+import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "./suggest/ConversationSuggest";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
@@ -20,15 +21,10 @@ export default class PythiaPlugin extends Plugin {
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
 
-	// Services — initialised in onload()
 	llmRouter!: LLMRouter;
 	conversationStore!: ConversationStore;
 	templateLoader!: TemplateLoader;
 	noteWriter!: NoteWriter;
-
-	// ──────────────────────────────────────────────
-	// Lifecycle
-	// ──────────────────────────────────────────────
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -40,27 +36,16 @@ export default class PythiaPlugin extends Plugin {
 		this.templateLoader = new TemplateLoader(this.app, this.settings);
 		this.noteWriter = new NoteWriter(this.app, this.settings);
 
-		// Register sidebar view
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
 			(leaf) => new PythiaSidebarView(leaf, this)
 		);
 
-		// Pin the view into the sidebar layout on first run (and re-pin if the
-		// user closes the tab). onLayoutReady fires after the workspace layout
-		// has been fully restored from disk, so we only create a new leaf when
-		// one isn't already present in the saved layout.
 		this.app.workspace.onLayoutReady(() => this.initLeaf());
 
-		// Ribbon icon
-		this.addRibbonIcon("bot", "Pythia", () =>
-			this.activateView()
-		);
-
-		// Settings tab
+		this.addRibbonIcon("bot", "Pythia", () => this.activateView());
 		this.addSettingTab(new PythiaSettingTab(this.app, this));
 
-		// Commands
 		this.addCommand({
 			id: "open-sidebar",
 			name: "Open sidebar",
@@ -127,9 +112,6 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => this.cmdDeleteConversation(),
 		});
 
-		// ── Context menus ────────────────────────────────────────────────────
-
-		// Editor context menu: appears when text is selected in a note
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
 				const selection = editor.getSelection();
@@ -139,9 +121,8 @@ export default class PythiaPlugin extends Plugin {
 						.setTitle("Send to Pythia")
 						.setIcon("bot")
 						.onClick(async () => {
-							const date = new Date().toISOString().slice(0, 10);
 							const conv = await this.createConversation(
-								`Conversation ${date}`
+								`Conversation ${todayISO()}`
 							);
 							const view = await this.activateView();
 							await view.setActiveConversation(conv);
@@ -151,7 +132,6 @@ export default class PythiaPlugin extends Plugin {
 			})
 		);
 
-		// File Explorer context menu: appears on any file
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
 				if (file instanceof TFile) {
@@ -161,36 +141,17 @@ export default class PythiaPlugin extends Plugin {
 							.setSection("action")
 							.setIcon("bot")
 							.onClick(async () => {
-								const date = new Date().toISOString().slice(0, 10);
 								const conv = await this.createConversation(
-									`${file.basename} ${date}`,
+									`${file.basename} ${todayISO()}`,
 									"",
 									[]
 								);
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								view.attachNoteToInput(file.path);
-								// Generate a summary of the note in the background and
-								// inject it as the summary banner once ready.
-								;(async () => {
-									try {
-										const content = await this.app.vault.read(file);
-										const summary = await this.llmRouter.summarizeNotes(
-											content.slice(0, 20000),
-											conv.provider
-										);
-										if (summary) {
-											conv.summaryText = summary;
-											await this.conversationStore.save(conv);
-											const currentView = this.getSidebarView();
-											if (currentView?.getActiveConversation()?.id === conv.id) {
-												await currentView.setActiveConversation(conv, false);
-											}
-										}
-									} catch (e) {
-										new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
-									}
-								})();
+								void this.app.vault.read(file).then((content) =>
+									this.generateAndInjectSummary(conv, content.slice(0, 20000))
+								);
 							});
 					});
 				} else if (file instanceof TFolder) {
@@ -200,47 +161,27 @@ export default class PythiaPlugin extends Plugin {
 							.setSection("action")
 							.setIcon("bot")
 							.onClick(async () => {
-								const paths = this.getFilesInFolder(file).map((f) => f.path);
-								if (paths.length === 0) {
+								const files = getFilesInFolder(file);
+								if (files.length === 0) {
 									new Notice("No markdown files found in this folder.");
 									return;
 								}
-								const date = new Date().toISOString().slice(0, 10);
 								const conv = await this.createConversation(
-									`${file.name} ${date}`,
+									`${file.name} ${todayISO()}`,
 									"",
 									[]
 								);
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
-								for (const p of paths) view.attachNoteToInput(p);
-								// Generate a summary of all files in the background and
-								// inject it as the summary banner once ready.
+								for (const f of files) view.attachNoteToInput(f.path);
 								;(async () => {
-									try {
-										const files = this.getFilesInFolder(file);
-										const CAP = 20000;
-										let combined = "";
-										for (const f of files) {
-											if (combined.length >= CAP) break;
-											const text = await this.app.vault.read(f);
-											combined += `# [[${f.basename}]]\n${text}\n\n`;
-										}
-										const summary = await this.llmRouter.summarizeNotes(
-											combined.slice(0, CAP),
-											conv.provider
-										);
-										if (summary) {
-											conv.summaryText = summary;
-											await this.conversationStore.save(conv);
-											const currentView = this.getSidebarView();
-											if (currentView?.getActiveConversation()?.id === conv.id) {
-												await currentView.setActiveConversation(conv, false);
-											}
-										}
-									} catch (e) {
-										new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
+									const CAP = 20000;
+									let combined = "";
+									for (const f of files) {
+										if (combined.length >= CAP) break;
+										combined += `# [[${f.basename}]]\n${await this.app.vault.read(f)}\n\n`;
 									}
+									void this.generateAndInjectSummary(conv, combined.slice(0, CAP));
 								})();
 							});
 					});
@@ -248,11 +189,9 @@ export default class PythiaPlugin extends Plugin {
 			})
 		);
 
-		// ── Deep-link URI handler: obsidian://pythia ─────────────────────────
+		// obsidian://pythia deep-link handler — Obsidian does not await async
+		// protocol handlers, so errors would be silently swallowed without try/catch.
 		this.registerObsidianProtocolHandler("pythia", async (params) => {
-			// params.action is always "pythia" (the handler name) — use params.cmd.
-			// Obsidian does not await async protocol handlers, so errors would be
-			// silently swallowed without this try/catch.
 			try {
 			const action = params.cmd ?? "open";
 
@@ -262,8 +201,7 @@ export default class PythiaPlugin extends Plugin {
 				}
 
 					if (action === "new") {
-					const date = new Date().toISOString().slice(0, 10);
-					const conv = await this.createConversation(`Conversation ${date}`);
+					const conv = await this.createConversation(`Conversation ${todayISO()}`);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
 					return;
@@ -295,14 +233,14 @@ export default class PythiaPlugin extends Plugin {
 						new Notice(`Pythia: template "${params.name}" not found.`);
 						return;
 					}
-					const date = new Date().toISOString().slice(0, 10);
 					const conv = await this.createConversation(
-						`${tpl.name} ${date}`,
+						`${tpl.name} ${todayISO()}`,
 						tpl.systemPrompt,
 						[...tpl.contextNotes],
 						tpl.id,
 						tpl.provider,
-						tpl.model
+						tpl.model,
+						tpl.maxTokens
 					);
 					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 					await this.conversationStore.save(conv);
@@ -320,12 +258,9 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	async onunload(): Promise<void> {
+		await this.conversationStore.flush();
 		this.llmRouter.abort();
 	}
-
-	// ──────────────────────────────────────────────
-	// Data persistence
-	// ──────────────────────────────────────────────
 
 	private async loadPluginData(): Promise<void> {
 		const data = (await this.loadData()) ?? {};
@@ -398,13 +333,11 @@ export default class PythiaPlugin extends Plugin {
 			);
 		}
 
-		// Read keys from Obsidian SecretStorage (synchronous, vault-scoped)
 		this.plaintextApiKey =
 			this.app.secretStorage.getSecret(this.settings.anthropicSecretName) ?? "";
 		this.plaintextOpenAIKey =
 			this.app.secretStorage.getSecret(this.settings.openaiSecretName) ?? "";
 
-		// Persist any migrations
 		if (needsMigrationSave) {
 			await this.saveData({ settings: this.settings, conversations: this.conversations });
 		}
@@ -428,8 +361,6 @@ export default class PythiaPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.persistData();
-		// Propagate updated settings to individual providers via router is handled
-		// by re-reading settings from the shared settings reference (injected via constructor).
 		this.templateLoader?.updateSettings(this.settings);
 		this.noteWriter?.updateSettings(this.settings);
 	}
@@ -444,10 +375,6 @@ export default class PythiaPlugin extends Plugin {
 			conversations: this.conversations,
 		});
 	}
-
-	// ──────────────────────────────────────────────
-	// View management
-	// ──────────────────────────────────────────────
 
 	/** Called once on layout-ready. Creates the sidebar leaf on first install
 	 *  (or after the user manually closed the tab). Obsidian then persists the
@@ -509,24 +436,20 @@ export default class PythiaPlugin extends Plugin {
 		return leaf ? (leaf.view as PythiaSidebarView) : null;
 	}
 
-	// ──────────────────────────────────────────────
-	// Conversation factory
-	// ──────────────────────────────────────────────
-
-	/** Recursively collect all markdown files under a folder. */
-	getFilesInFolder(folder: TFolder): TFile[] {
-		const results: TFile[] = [];
-		const walk = (f: TFolder) => {
-			for (const child of f.children) {
-				if (child instanceof TFile && child.extension === "md") {
-					results.push(child);
-				} else if (child instanceof TFolder) {
-					walk(child);
+	private async generateAndInjectSummary(conv: Conversation, content: string): Promise<void> {
+		try {
+			const summary = await this.llmRouter.summarizeNotes(content, conv.provider);
+			if (summary) {
+				conv.summaryText = summary;
+				await this.conversationStore.save(conv);
+				const view = this.getSidebarView();
+				if (view?.getActiveConversation()?.id === conv.id) {
+					await view.setActiveConversation(conv, false);
 				}
 			}
-		};
-		walk(folder);
-		return results;
+		} catch (e) {
+			new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
+		}
 	}
 
 	async createConversation(
@@ -535,7 +458,8 @@ export default class PythiaPlugin extends Plugin {
 		contextNotes: string[] = [],
 		templateId?: string,
 		provider?: Provider,
-		model?: string
+		model?: string,
+		maxTokens?: number
 	): Promise<Conversation> {
 		const resolvedProvider = provider ?? this.settings.defaultProvider;
 		const resolvedModel = model ?? (
@@ -555,19 +479,12 @@ export default class PythiaPlugin extends Plugin {
 			resumeMode: this.settings.defaultResumeMode,
 			provider: resolvedProvider,
 			model: resolvedModel,
+			maxTokens,
 			messages: [],
 		};
 		this.conversations.push(conv);
 		await this.saveConversations();
 		return conv;
-	}
-
-	// ──────────────────────────────────────────────
-	// Commands
-	// ──────────────────────────────────────────────
-
-	async cmdNewConversationFromSidebar(): Promise<void> {
-		await this.cmdNewConversation();
 	}
 
 	async cmdDeleteConversation(): Promise<void> {
@@ -576,9 +493,8 @@ export default class PythiaPlugin extends Plugin {
 		await view.handleDeleteConversation();
 	}
 
-	private async cmdNewConversation(): Promise<void> {
-		const date = new Date().toISOString().slice(0, 10);
-		const conv = await this.createConversation(`Conversation ${date}`);
+	async cmdNewConversation(): Promise<void> {
+		const conv = await this.createConversation(`Conversation ${todayISO()}`);
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 	}
@@ -593,14 +509,14 @@ export default class PythiaPlugin extends Plugin {
 		}
 
 		new TemplateSuggestModal(this.app, templates, async (tpl) => {
-			const date = new Date().toISOString().slice(0, 10);
 			const conv = await this.createConversation(
-				`${tpl.name} ${date}`,
+				`${tpl.name} ${todayISO()}`,
 				tpl.systemPrompt,
 				[...tpl.contextNotes],
 				tpl.id,
 				tpl.provider,
-				tpl.model
+				tpl.model,
+				tpl.maxTokens
 			);
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			await this.conversationStore.save(conv);
@@ -623,9 +539,8 @@ export default class PythiaPlugin extends Plugin {
 			return;
 		}
 
-		const date = new Date().toISOString().slice(0, 10);
 		const conv = await this.createConversation(
-			`${activeFile.basename} ${date}`,
+			`${activeFile.basename} ${todayISO()}`,
 			"",
 			[activeFile.path]
 		);
@@ -649,8 +564,7 @@ export default class PythiaPlugin extends Plugin {
 			new Notice("Clipboard is empty.");
 			return;
 		}
-		const date = new Date().toISOString().slice(0, 10);
-		const conv = await this.createConversation(`Conversation ${date}`);
+		const conv = await this.createConversation(`Conversation ${todayISO()}`);
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 		view.prefillInput(text);
@@ -724,7 +638,6 @@ export default class PythiaPlugin extends Plugin {
 							try {
 								conv.summaryText =
 									await this.llmRouter.generateSummary(conv);
-								// Clear history — it is now represented by the summary
 								conv.messages = [];
 								await this.conversationStore.save(conv);
 								notice.hide();
@@ -761,19 +674,18 @@ export default class PythiaPlugin extends Plugin {
 			return;
 		}
 
-		const date = new Date().toISOString().slice(0, 10);
 		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
 
 		let defaultFolder = this.settings.scratchFolder;
 		if (conv.templateId) {
 			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
-			if (tplFile) {
-				const tpl = await this.templateLoader.loadTemplate(tplFile as any);
+			if (tplFile instanceof TFile) {
+				const tpl = await this.templateLoader.loadTemplate(tplFile);
 				if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
 			}
 		}
 
-		const freshDefault = `${defaultFolder}/${date}-${safeName}.md`;
+		const freshDefault = `${defaultFolder}/${todayISO()}-${safeName}.md`;
 		const suggestedPath = conv.savedNotePath ?? freshDefault;
 
 		new InputModal(
@@ -792,7 +704,6 @@ export default class PythiaPlugin extends Plugin {
 					await this.conversationStore.save(conv);
 					new Notice(`Saved to ${path}`);
 
-					// Optionally auto-save summary note alongside the output
 					if (this.settings.autoSaveSummary) {
 						const summary = conv.summaryText
 							? conv.summaryText

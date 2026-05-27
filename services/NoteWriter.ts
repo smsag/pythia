@@ -1,6 +1,7 @@
 import { App, TFile } from "obsidian";
 import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
+import { todayISO } from "../utils";
 
 export class NoteWriter {
 	private app: App;
@@ -15,7 +16,6 @@ export class NoteWriter {
 		this.settings = settings;
 	}
 
-	/** Write content to a vault path, creating folders and overwriting if it exists. */
 	async writeNote(content: string, filePath: string): Promise<TFile> {
 		// Reject path traversal attempts (e.g. "../../.obsidian/plugins/…")
 		const normalized = filePath.replace(/\\/g, "/");
@@ -36,15 +36,13 @@ export class NoteWriter {
 		return this.app.vault.create(normalized, content);
 	}
 
-	/** Save a conversation summary note. Returns the vault path. */
 	async saveSummaryNote(
 		conversation: Conversation,
 		summary: string,
 		outputPath?: string
 	): Promise<string> {
-		const date = new Date().toISOString().slice(0, 10);
 		const safeName = conversation.name.replace(/[\\/:*?"<>|]/g, "-");
-		const filePath = `${this.settings.conversationsFolder}/${date}-${safeName}.md`;
+		const filePath = `${this.settings.conversationsFolder}/${todayISO()}-${safeName}.md`;
 
 		const contextList =
 			conversation.contextNotes.length > 0
@@ -58,7 +56,7 @@ export class NoteWriter {
 		const noteContent = `---
 type: pythia-conversation
 template: ${conversation.templateId ?? "none"}
-created: ${date}
+created: ${todayISO()}
 context_notes:
 ${contextList}
 tags: [pythia]
@@ -72,7 +70,6 @@ ${summary}${outputSection}
 		return file.path;
 	}
 
-	/** Prepend a timestamped entry to the inbox note, creating it if needed. */
 	async prependToInbox(text: string, inboxPath: string): Promise<void> {
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");
@@ -94,8 +91,6 @@ ${summary}${outputSection}
 		await this.writeNote(entry + currentContent, inboxPath);
 	}
 
-	/** Append a slice of conversation messages to a vault note under a timestamp heading.
-	 *  If the file exists the block is appended; if not, it is created. */
 	async appendConversationSlice(messages: Message[], filePath: string): Promise<void> {
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");
@@ -113,25 +108,11 @@ ${summary}${outputSection}
 		const block = lines.join("\n").trimEnd();
 
 		const normalized = filePath.replace(/\\/g, "/");
-		if (normalized.split("/").some((seg) => seg === "..")) {
-			throw new Error(`Invalid file path: "${filePath}" contains path traversal segments.`);
-		}
-
-		const dir = normalized.includes("/")
-			? normalized.substring(0, normalized.lastIndexOf("/"))
-			: "";
-		if (dir) await this.ensureFolder(dir);
-
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
-		if (existing instanceof TFile) {
-			const current = await this.app.vault.read(existing);
-			await this.app.vault.modify(existing, current + "\n\n" + block);
-		} else {
-			await this.app.vault.create(normalized, block);
-		}
+		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
+		await this.writeNote(current ? current + "\n\n" + block : block, filePath);
 	}
 
-	/** Ensure all folders in a path exist, creating them recursively. */
 	private async ensureFolder(folderPath: string): Promise<void> {
 		const parts = folderPath.split("/").filter(Boolean);
 		let current = "";

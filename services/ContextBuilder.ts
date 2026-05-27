@@ -3,13 +3,10 @@ import type { Conversation } from "../models/types";
 
 /**
  * Builds the system prompt from a conversation's system prompt text and
- * optional summary. Context notes are no longer injected here — they are
- * displayed as Reference links in the UI only and never sent to the LLM.
+ * optional summary. Context notes are displayed as Reference links in the UI
+ * only and are never sent to the LLM.
  */
-export async function buildSystemPrompt(
-	app: App,
-	conversation: Conversation
-): Promise<{ prompt: string; missingNotes: string[] }> {
+export function buildSystemPrompt(conversation: Conversation): string {
 	const parts: string[] = [];
 
 	if (conversation.systemPrompt) {
@@ -24,16 +21,9 @@ export async function buildSystemPrompt(
 		);
 	}
 
-	return { prompt: parts.join("\n\n"), missingNotes: [] };
+	return parts.join("\n\n");
 }
 
-/**
- * Resolves the per-message attached notes into an inline content string
- * to be appended to the user's message.
- *
- * Returns the assembled content alongside any note paths that could not be
- * resolved in the vault.
- */
 export async function buildAttachedNotesContent(
 	app: App,
 	attachedNotes: string[]

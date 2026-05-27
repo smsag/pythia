@@ -65,7 +65,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.createEl("h2", { text: "Pythia" });
 
-		// ── Anthropic ─────────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Anthropic" });
 
 		new Setting(containerEl)
@@ -91,7 +90,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 			}
 		);
 
-		// ── OpenAI ────────────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "OpenAI" });
 
 		new Setting(containerEl)
@@ -117,7 +115,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 			}
 		);
 
-		// ── Defaults ──────────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Defaults" });
 
 		new Setting(containerEl)
@@ -134,7 +131,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// ── Vault folders ─────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Vault folders" });
 
 		this.addFolderSetting(
@@ -171,7 +167,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// ── Behaviour ─────────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Behaviour" });
 
 		new Setting(containerEl)
@@ -232,7 +227,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// ── Features ───────────────────────────────────────────────────────
 		containerEl.createEl("h3", { text: "Features" });
 
 		new Setting(containerEl)
@@ -251,9 +245,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 	}
 
-	/**
-	 * Adds a model dropdown with a "Custom…" option that reveals a text field.
-	 */
 	private addModelSetting(
 		containerEl: HTMLElement,
 		name: string,
@@ -285,7 +276,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// Custom text field (hidden unless "Custom…" is selected)
 		customInput = setting.controlEl.createEl("input", {
 			type: "text",
 			placeholder: "model-id",

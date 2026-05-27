@@ -8,6 +8,12 @@ import { getToolDefinitions } from "./ToolHandler";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
+type OAIToolCallBlock = { id: string; type: "function"; function: { name: string; arguments: string } };
+type OAILoopMessage =
+	| OAIMessage
+	| { role: "assistant"; content: null; tool_calls: OAIToolCallBlock[] }
+	| { role: "tool"; tool_call_id: string; content: string };
+
 /**
  * Models that do not support a `system` role message.
  * For these, the system prompt is injected as the first `user` message.
@@ -91,25 +97,22 @@ export class OpenAIProvider implements LLMProvider {
 		let fullText = "";
 
 		try {
-			const { content: attachedContent, missingNotes: missingAttached } =
+			const { content: attachedContent, missingNotes } =
 				await buildAttachedNotesContent(this.app, attachedNotes);
 			const userContent = newMessage + attachedContent;
-			const { prompt: systemPrompt, missingNotes: missingContext } =
-				await buildSystemPrompt(this.app, conversation);
+			const systemPrompt = buildSystemPrompt(conversation);
 
-			const allMissing = [...missingAttached, ...missingContext];
-			if (allMissing.length > 0) {
+			if (missingNotes.length > 0) {
 				new Notice(
-					`Warning: ${allMissing.length} context note(s) not found and were skipped.`
+					`Warning: ${missingNotes.length} context note(s) not found and were skipped.`
 				);
 			}
 
 			const model = conversation.model || this.settings.defaultOpenAIModel;
 			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
 
-			// Exclude the last message — it was just pushed by the caller before
-			// invoking streamMessage, so we must not include it in history or it
-			// would be sent twice (once in the history, once as the new message).
+			// Exclude the last message — already pushed by the caller; sending it
+			// again in history would duplicate it.
 			const historyMessages: OAIMessage[] = conversation.messages.slice(0, -1).map(
 				(m) => ({ role: m.role as "user" | "assistant", content: m.content })
 			);
@@ -117,7 +120,6 @@ export class OpenAIProvider implements LLMProvider {
 			let apiMessages: OAIMessage[];
 
 			if (systemPrompt && noSystemRole) {
-				// Inject system prompt as first user message for models that don't support system role
 				apiMessages = normalizeMessages([
 					{ role: "user", content: `[System instructions]\n${systemPrompt}` },
 					...historyMessages,
@@ -148,11 +150,8 @@ export class OpenAIProvider implements LLMProvider {
 				});
 			}
 
-			// Mutable message array for the tool-use loop
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const loopMessages: any[] = [...apiMessages];
+			const loopMessages: OAILoopMessage[] = [...apiMessages];
 
-			// Map tool definitions to OpenAI function tool format
 			const openaiTools = onToolCall
 				? getToolDefinitions(this.settings.scratchFolder).map((def) => ({
 						type: "function" as const,
@@ -171,7 +170,7 @@ export class OpenAIProvider implements LLMProvider {
 					await this.getClient().chat.completions.create(
 					{
 						model,
-						max_tokens: 4096,
+						max_tokens: conversation.maxTokens ?? 4096,
 						messages: loopMessages,
 						stream: true,
 						stream_options: { include_usage: true },
@@ -214,17 +213,15 @@ export class OpenAIProvider implements LLMProvider {
 
 				if (finishReason === "tool_calls" && onToolCall && pendingCalls.length > 0) {
 					const calls = pendingCalls.filter(Boolean);
-					// Push assistant message with its tool_calls
 					loopMessages.push({
-						role: "assistant",
+						role: "assistant" as const,
 						content: null,
 						tool_calls: calls.map((tc) => ({
 							id: tc.id,
-							type: "function",
+							type: "function" as const,
 							function: { name: tc.name, arguments: tc.arguments },
 						})),
 					});
-					// Execute each tool and push result messages
 					for (const tc of calls) {
 						let parsedInput: Record<string, unknown>;
 						try {
@@ -238,12 +235,11 @@ export class OpenAIProvider implements LLMProvider {
 							input: parsedInput,
 						});
 						loopMessages.push({
-							role: "tool",
+							role: "tool" as const,
 							tool_call_id: tc.id,
 							content: result,
 						});
 					}
-					// Continue loop for the model's response to tool results
 				} else {
 					break;
 				}
