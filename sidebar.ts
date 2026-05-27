@@ -437,6 +437,13 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(saveBtn, "save");
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
 
+		const summarizeBtn = btnRow.createEl("button", {
+			cls: "pythia-btn pythia-btn-icon",
+			attr: { title: "Summarize conversation" },
+		});
+		setIcon(summarizeBtn, "sparkles");
+		summarizeBtn.addEventListener("click", () => this.onGenerateSummary());
+
 		btnRow.createEl("span", { cls: "pythia-btn-separator" });
 
 		this.sendBtn = btnRow.createEl("button", {
@@ -487,6 +494,12 @@ export class PythiaSidebarView extends ItemView {
 		const banner = this.messagesEl.createDiv({ cls: "pythia-summary-banner" });
 		const header = banner.createDiv({ cls: "pythia-summary-header" });
 		header.createEl("span", { text: "↩ Summary" });
+		const refreshBtn = header.createEl("button", {
+			cls: "pythia-summary-refresh",
+			attr: { title: "Regenerate summary" },
+		});
+		setIcon(refreshBtn, "refresh-cw");
+		refreshBtn.addEventListener("click", () => this.onGenerateSummary());
 
 		const bodyEl = banner.createDiv({ cls: "pythia-summary-body" });
 		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
@@ -924,6 +937,27 @@ export class PythiaSidebarView extends ItemView {
 				this.renderAttachedPills();
 			}
 		}).open();
+	}
+
+	private async onGenerateSummary(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv || conv.messages.length === 0) {
+			new Notice("No messages to summarize.");
+			return;
+		}
+		const notice = new Notice("Generating summary…", 0);
+		try {
+			const summary = await this.plugin.llmRouter.generateSummary(conv);
+			if (summary) {
+				conv.summaryText = summary;
+				await this.plugin.conversationStore.save(conv);
+				await this.renderMessages();
+			}
+		} catch (e) {
+			new Notice(`Summary failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			notice.hide();
+		}
 	}
 
 	private async onSaveResponse(): Promise<void> {
