@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal } from "obsidian";
 import type { PythiaTemplate } from "../models/types";
+import { t } from "../i18n";
 
 export class TemplateSuggestModal extends FuzzySuggestModal<PythiaTemplate> {
 	private templates: PythiaTemplate[];
@@ -13,11 +14,11 @@ export class TemplateSuggestModal extends FuzzySuggestModal<PythiaTemplate> {
 		super(app);
 		this.templates = templates;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Search templates…");
+		this.setPlaceholder(t("searchTemplates"));
 		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to use template" },
-			{ command: "esc", purpose: "to dismiss" },
+			{ command: "↑↓", purpose: t("instrNavigate") },
+			{ command: "↵",  purpose: t("instrUseTemplate") },
+			{ command: "esc", purpose: t("instrDismiss") },
 		]);
 	}
 

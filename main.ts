@@ -1,5 +1,6 @@
 import { Editor, Menu, Notice, Plugin, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
+import { t } from "./i18n";
 import type { Conversation, Provider } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
@@ -118,7 +119,7 @@ export default class PythiaPlugin extends Plugin {
 				if (!selection) return;
 				menu.addItem((item) => {
 					item
-						.setTitle("Send to Pythia")
+						.setTitle(t("sendToPythia"))
 						.setIcon("bot")
 						.onClick(async () => {
 							const conv = await this.createConversation(
@@ -137,8 +138,8 @@ export default class PythiaPlugin extends Plugin {
 				if (file instanceof TFile) {
 					menu.addItem((item) => {
 						item
-							.setTitle("Chat about this note")
-							.setSection("action")
+							.setTitle(t("chatAboutNote"))
+							.setSection("open")
 							.setIcon("bot")
 							.onClick(async () => {
 								const conv = await this.createConversation(
@@ -157,13 +158,13 @@ export default class PythiaPlugin extends Plugin {
 				} else if (file instanceof TFolder) {
 					menu.addItem((item) => {
 						item
-							.setTitle("Chat about this folder")
-							.setSection("action")
+							.setTitle(t("chatAboutFolder"))
+							.setSection("open")
 							.setIcon("bot")
 							.onClick(async () => {
 								const files = getFilesInFolder(file);
 								if (files.length === 0) {
-									new Notice("No markdown files found in this folder.");
+									new Notice(t("noMarkdownInFolder"));
 									return;
 								}
 								const conv = await this.createConversation(
@@ -209,12 +210,12 @@ export default class PythiaPlugin extends Plugin {
 
 				if (action === "resume") {
 					if (!params.id) {
-						new Notice("Pythia URI: missing 'id' parameter.");
+						new Notice(t("uriMissingId"));
 						return;
 					}
 					const conv = this.conversationStore.getById(params.id);
 					if (!conv) {
-						new Notice(`Pythia: conversation "${params.id}" not found.`);
+						new Notice(t("convNotFound", { id: params.id }));
 						return;
 					}
 					const view = await this.activateView();
@@ -224,13 +225,13 @@ export default class PythiaPlugin extends Plugin {
 
 				if (action === "template") {
 					if (!params.name) {
-						new Notice("Pythia URI: missing 'name' parameter.");
+						new Notice(t("uriMissingName"));
 						return;
 					}
 					const templates = await this.templateLoader.loadTemplates();
-					const tpl = templates.find((t) => t.name === params.name);
+					const tpl = templates.find((tpl) => tpl.name === params.name);
 					if (!tpl) {
-						new Notice(`Pythia: template "${params.name}" not found.`);
+						new Notice(t("templateNotFound", { name: params.name }));
 						return;
 					}
 					const conv = await this.createConversation(
@@ -249,9 +250,9 @@ export default class PythiaPlugin extends Plugin {
 					return;
 				}
 
-					new Notice(`Pythia: unknown action "${action}".`);
+					new Notice(t("unknownAction", { action }));
 			} catch (err) {
-				new Notice(`Pythia deep link error: ${err instanceof Error ? err.message : String(err)}`);
+				new Notice(t("deepLinkError", { error: err instanceof Error ? err.message : String(err) }));
 				console.error("[Pythia] protocol handler error", err);
 			}
 		});
@@ -289,10 +290,7 @@ export default class PythiaPlugin extends Plugin {
 					plaintext
 				);
 			} else {
-				new Notice(
-					"Could not migrate your Anthropic API key. Please re-enter it in Settings → Pythia.",
-					8000
-				);
+				new Notice(t("migrateAnthropicFailed"), 8000);
 			}
 			delete saved.encryptedApiKey;
 			needsMigrationSave = true;
@@ -307,10 +305,7 @@ export default class PythiaPlugin extends Plugin {
 					plaintext
 				);
 			} else {
-				new Notice(
-					"Could not migrate your OpenAI API key. Please re-enter it in Settings → Pythia.",
-					8000
-				);
+				new Notice(t("migrateOpenAIFailed"), 8000);
 			}
 			delete saved.encryptedOpenAIKey;
 			needsMigrationSave = true;
@@ -448,7 +443,7 @@ export default class PythiaPlugin extends Plugin {
 				}
 			}
 		} catch (e) {
-			new Notice(`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`);
+			new Notice(t("summaryGenerationFailed", { error: e instanceof Error ? e.message : String(e) }));
 		}
 	}
 
@@ -502,9 +497,7 @@ export default class PythiaPlugin extends Plugin {
 	private async cmdNewConversationFromTemplate(): Promise<void> {
 		const templates = await this.templateLoader.loadTemplates();
 		if (templates.length === 0) {
-			new Notice(
-				`No templates found in "${this.settings.templatesFolder}". Create a note with \`pythia_template: true\` in its frontmatter.`
-			);
+			new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
 			return;
 		}
 
@@ -525,9 +518,7 @@ export default class PythiaPlugin extends Plugin {
 			await view.setActiveConversation(conv);
 
 			if (tpl.contextNotes.length > 0) {
-				new Notice(
-					`Loaded template "${tpl.name}" with ${tpl.contextNotes.length} context note(s).`
-				);
+				new Notice(t("loadedTemplate", { name: tpl.name, count: String(tpl.contextNotes.length) }));
 			}
 		}).open();
 	}
@@ -535,7 +526,7 @@ export default class PythiaPlugin extends Plugin {
 	private async cmdNewConversationWithCurrentNote(): Promise<void> {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) {
-			new Notice("No active note. Open a note first.");
+			new Notice(t("noActiveNoteForCommand"));
 			return;
 		}
 
@@ -546,7 +537,7 @@ export default class PythiaPlugin extends Plugin {
 		);
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
-		new Notice(`Attached "${activeFile.name}" as context.`);
+		new Notice(t("attachedAsContext", { name: activeFile.name }));
 	}
 
 	private async cmdNewConversationFromClipboard(): Promise<void> {
@@ -554,14 +545,12 @@ export default class PythiaPlugin extends Plugin {
 		try {
 			text = await navigator.clipboard.readText();
 		} catch {
-			new Notice(
-				"Could not read clipboard. Grant clipboard access and try again."
-			);
+			new Notice(t("clipboardReadFailed"));
 			return;
 		}
 		text = text.trim();
 		if (!text) {
-			new Notice("Clipboard is empty.");
+			new Notice(t("clipboardEmpty"));
 			return;
 		}
 		const conv = await this.createConversation(`Conversation ${todayISO()}`);
@@ -572,7 +561,7 @@ export default class PythiaPlugin extends Plugin {
 
 	private async cmdBrowseConversations(): Promise<void> {
 		if (this.conversations.length === 0) {
-			new Notice("No conversations found.");
+			new Notice(t("noConversations"));
 			return;
 		}
 
@@ -591,7 +580,7 @@ export default class PythiaPlugin extends Plugin {
 			(c) => (c.favorites?.length ?? 0) > 0
 		);
 		if (!hasFavorites) {
-			new Notice("No favorites found.");
+			new Notice(t("noFavorites"));
 			return;
 		}
 
@@ -608,7 +597,7 @@ export default class PythiaPlugin extends Plugin {
 
 	private async cmdResumeConversation(): Promise<void> {
 		if (this.conversations.length === 0) {
-			new Notice("No past conversations found.");
+			new Notice(t("noPastConversations"));
 			return;
 		}
 
@@ -626,15 +615,10 @@ export default class PythiaPlugin extends Plugin {
 									? !!this.plaintextOpenAIKey
 									: !!this.plaintextApiKey;
 							if (!hasKey) {
-								new Notice(
-									"Set your API key in Settings → Pythia before generating a summary."
-								);
+								new Notice(t("setApiKeyFirst"));
 								return;
 							}
-							const notice = new Notice(
-								"Generating conversation summary…",
-								0
-							);
+							const notice = new Notice(t("generatingConvSummary"), 0);
 							try {
 								conv.summaryText =
 									await this.llmRouter.generateSummary(conv);
@@ -643,9 +627,7 @@ export default class PythiaPlugin extends Plugin {
 								notice.hide();
 							} catch (e) {
 								notice.hide();
-								new Notice(
-									`Summary generation failed: ${e instanceof Error ? e.message : String(e)}`
-								);
+								new Notice(t("summaryGenerationFailed", { error: e instanceof Error ? e.message : String(e) }));
 								return;
 							}
 						}
@@ -663,14 +645,14 @@ export default class PythiaPlugin extends Plugin {
 		const view = this.getSidebarView();
 		const conv = view?.getActiveConversation();
 		if (!conv || conv.messages.length === 0) {
-			new Notice("No messages to save. Open the sidebar first.");
+			new Notice(t("noMessagesToSave"));
 			return;
 		}
 
 		const savedCount = conv.lastSavedMessageCount ?? 0;
 		const slice = conv.messages.slice(savedCount);
 		if (slice.length === 0) {
-			new Notice("Nothing new to save since last save.");
+			new Notice(t("nothingNewToSave"));
 			return;
 		}
 
@@ -690,8 +672,8 @@ export default class PythiaPlugin extends Plugin {
 
 		new InputModal(
 			this.app,
-			"Save conversation to note",
-			"File path",
+			t("saveConvTitle"),
+			t("filePathLabel"),
 			suggestedPath,
 			async (filePath) => {
 				const path = filePath.endsWith(".md")
@@ -702,7 +684,7 @@ export default class PythiaPlugin extends Plugin {
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = conv.messages.length;
 					await this.conversationStore.save(conv);
-					new Notice(`Saved to ${path}`);
+					new Notice(t("savedToPath", { path }));
 
 					if (this.settings.autoSaveSummary) {
 						const summary = conv.summaryText
@@ -717,9 +699,7 @@ export default class PythiaPlugin extends Plugin {
 						await this.conversationStore.save(conv);
 					}
 				} catch (e) {
-					new Notice(
-						`Save failed: ${e instanceof Error ? e.message : String(e)}`
-					);
+					new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
 				}
 			}
 		).open();

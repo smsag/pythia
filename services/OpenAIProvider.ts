@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { App, Notice } from "obsidian";
+import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
@@ -69,9 +70,7 @@ export class OpenAIProvider implements LLMProvider {
 
 	private getClient(): OpenAI {
 		if (!this.apiKey) {
-			throw new Error(
-				"OpenAI API key not configured. Set it in Settings → Pythia."
-			);
+			throw new Error(t("openaiKeyNotConfigured"));
 		}
 		if (!this.client) {
 			this.client = new OpenAI({
@@ -103,9 +102,7 @@ export class OpenAIProvider implements LLMProvider {
 			const systemPrompt = buildSystemPrompt(conversation);
 
 			if (missingNotes.length > 0) {
-				new Notice(
-					`Warning: ${missingNotes.length} context note(s) not found and were skipped.`
-				);
+				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 			}
 
 			const model = conversation.model || this.settings.defaultOpenAIModel;

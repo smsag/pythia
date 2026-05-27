@@ -2,6 +2,7 @@ import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidi
 import type PythiaPlugin from "./main";
 import type { Provider } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
+import { t } from "./i18n";
 
 export interface PythiaSettings {
 	/** Secret ID referencing the Anthropic API key in Obsidian SecretStorage. */
@@ -63,13 +64,13 @@ export class PythiaSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl("h2", { text: "Pythia" });
+		containerEl.createEl("h2", { text: t("settingsTitle") });
 
-		containerEl.createEl("h3", { text: "Anthropic" });
+		containerEl.createEl("h3", { text: t("anthropicSection") });
 
 		new Setting(containerEl)
-			.setName("Anthropic API key")
-			.setDesc("Select a secret from Obsidian's secret storage. Keys are never written to data.json.")
+			.setName(t("anthropicKeyName"))
+			.setDesc(t("anthropicKeyDesc"))
 			.addComponent((el) =>
 				new SecretComponent(this.app, el)
 					.setValue(this.plugin.settings.anthropicSecretName)
@@ -80,8 +81,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 		this.addModelSetting(
 			containerEl,
-			"Default Anthropic model",
-			"Used when a template does not specify a model.",
+			t("defaultAnthropicModel"),
+			t("defaultAnthropicModelDesc"),
 			ANTHROPIC_MODELS,
 			() => this.plugin.settings.defaultAnthropicModel,
 			async (value) => {
@@ -90,11 +91,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl("h3", { text: "OpenAI" });
+		containerEl.createEl("h3", { text: t("openaiSection") });
 
 		new Setting(containerEl)
-			.setName("OpenAI API key")
-			.setDesc("Select a secret from Obsidian's secret storage. Keys are never written to data.json.")
+			.setName(t("openaiKeyName"))
+			.setDesc(t("openaiKeyDesc"))
 			.addComponent((el) =>
 				new SecretComponent(this.app, el)
 					.setValue(this.plugin.settings.openaiSecretName)
@@ -105,8 +106,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 		this.addModelSetting(
 			containerEl,
-			"Default OpenAI model",
-			"Used when a template does not specify a model.",
+			t("defaultOpenAIModel"),
+			t("defaultOpenAIModelDesc"),
 			OPENAI_MODELS,
 			() => this.plugin.settings.defaultOpenAIModel,
 			async (value) => {
@@ -115,15 +116,15 @@ export class PythiaSettingTab extends PluginSettingTab {
 			}
 		);
 
-		containerEl.createEl("h3", { text: "Defaults" });
+		containerEl.createEl("h3", { text: t("defaultsSection") });
 
 		new Setting(containerEl)
-			.setName("Default provider")
-			.setDesc("Provider used when creating new conversations without a template.")
+			.setName(t("defaultProviderName"))
+			.setDesc(t("defaultProviderDesc"))
 			.addDropdown((drop) =>
 				drop
-					.addOption("anthropic", "Anthropic")
-					.addOption("openai", "OpenAI")
+					.addOption("anthropic", t("providerAnthropic"))
+					.addOption("openai", t("providerOpenAI"))
 					.setValue(this.plugin.settings.defaultProvider)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultProvider = value as Provider;
@@ -131,32 +132,32 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "Vault folders" });
+		containerEl.createEl("h3", { text: t("vaultFoldersSection") });
 
 		this.addFolderSetting(
 			containerEl,
-			"Templates folder",
-			"Vault folder scanned for pythia_template notes.",
+			t("templatesFolderName"),
+			t("templatesFolderDesc"),
 			"templatesFolder"
 		);
 
 		this.addFolderSetting(
 			containerEl,
-			"Conversations folder",
-			"Where conversation summary notes are saved.",
+			t("convsFolderName"),
+			t("convsFolderDesc"),
 			"conversationsFolder"
 		);
 
 		this.addFolderSetting(
 			containerEl,
-			"Scratch folder",
-			"Where ad-hoc conversation notes are saved.",
+			t("scratchFolderName"),
+			t("scratchFolderDesc"),
 			"scratchFolder"
 		);
 
 		new Setting(containerEl)
-			.setName("Inbox note")
-			.setDesc("Note that receives timestamped entries from the 'Save to inbox' selection action.")
+			.setName(t("inboxNoteName"))
+			.setDesc(t("inboxNoteDesc"))
 			.addText((text) =>
 				text
 					.setPlaceholder("Pythia/Inbox.md")
@@ -167,13 +168,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "Behaviour" });
+		containerEl.createEl("h3", { text: t("behaviourSection") });
 
 		new Setting(containerEl)
-			.setName("Auto-save summary on close")
-			.setDesc(
-				"Generate and save a summary note when a conversation is closed."
-			)
+			.setName(t("autoSaveName"))
+			.setDesc(t("autoSaveDesc"))
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.autoSaveSummary)
@@ -184,12 +183,12 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Default resume mode")
-			.setDesc("How conversations are resumed unless overridden per-conversation.")
+			.setName(t("resumeModeName"))
+			.setDesc(t("resumeModeDesc"))
 			.addDropdown((drop) =>
 				drop
-					.addOption("summary", "Summary — lower token cost")
-					.addOption("full", "Full history — higher fidelity")
+					.addOption("summary", t("resumeModeSummaryOpt"))
+					.addOption("full", t("resumeModeFullOpt"))
 					.setValue(this.plugin.settings.defaultResumeMode)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultResumeMode = value as
@@ -200,8 +199,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Message cap per session")
-			.setDesc("Maximum messages per conversation before further sends are blocked. Set to 0 for unlimited.")
+			.setName(t("messageCapName"))
+			.setDesc(t("messageCapDesc"))
 			.addText((text) =>
 				text
 					.setPlaceholder("100")
@@ -216,8 +215,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Debug mode")
-			.setDesc("Log API calls and payloads to the developer console.")
+			.setName(t("debugModeName"))
+			.setDesc(t("debugModeDesc"))
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.debugMode)
@@ -227,14 +226,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "Features" });
+		containerEl.createEl("h3", { text: t("featuresSection") });
 
 		new Setting(containerEl)
-			.setName("Allow AI to create notes")
-			.setDesc(
-				"Pass a create_note tool to the AI so it can write vault notes on request. " +
-				"When enabled, you can ask Pythia to create a note in plain language."
-			)
+			.setName(t("enableNoteCreationName"))
+			.setDesc(t("enableNoteCreationDesc"))
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableNoteCreation)
@@ -263,7 +259,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.setDesc(desc)
 			.addDropdown((drop) => {
 				for (const m of knownModels) drop.addOption(m, m);
-				drop.addOption("__custom__", "Custom…");
+				drop.addOption("__custom__", t("customModelOption"));
 				drop.setValue(isCustom ? "__custom__" : currentValue);
 
 				drop.onChange(async (val) => {
@@ -302,7 +298,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.setName(name)
 			.setDesc(desc)
 			.addButton((btn) => {
-				btn.setButtonText("Choose folder")
+				btn.setButtonText(t("chooseFolderBtn"))
 					.setCta()
 					.onClick(() => {
 						new FolderSuggestModal(

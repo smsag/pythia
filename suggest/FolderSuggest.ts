@@ -1,4 +1,5 @@
 import { App, FuzzySuggestModal, TFolder } from "obsidian";
+import { t } from "../i18n";
 
 export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 	private onChoose: (folder: TFolder) => void;
@@ -6,11 +7,11 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 	constructor(app: App, onChoose: (folder: TFolder) => void) {
 		super(app);
 		this.onChoose = onChoose;
-		this.setPlaceholder("Search vault folders…");
+		this.setPlaceholder(t("searchFolders"));
 		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to select" },
-			{ command: "esc", purpose: "to dismiss" },
+			{ command: "↑↓", purpose: t("instrNavigate") },
+			{ command: "↵",  purpose: t("instrSelect") },
+			{ command: "esc", purpose: t("instrDismiss") },
 		]);
 	}
 

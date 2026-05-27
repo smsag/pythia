@@ -1,16 +1,12 @@
 import { App, DropdownComponent, Modal, Setting } from "obsidian";
 import type { Conversation, Provider } from "../models/types";
+import { t } from "../i18n";
 
 const MODELS_BY_PROVIDER: Record<Provider, string[]> = {
 	anthropic: ["claude-opus-4", "claude-sonnet-4-6", "claude-haiku-3-5"],
 	openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"],
 };
 
-/**
- * A modal that lets the user change the provider and model for a conversation.
- * Changes are applied immediately to the conversation object;
- * the caller is responsible for persistence.
- */
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;
 	private onSave: (conversation: Conversation) => Promise<void>;
@@ -29,7 +25,7 @@ export class ConversationSettingsModal extends Modal {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl("h3", { text: "Conversation settings" });
+		contentEl.createEl("h3", { text: t("convSettingsTitle") });
 
 		let selectedProvider = this.conversation.provider;
 		let selectedModel = this.conversation.model;
@@ -48,7 +44,7 @@ export class ConversationSettingsModal extends Modal {
 				const opt = selectEl.createEl("option", { text: m });
 				opt.value = m;
 			}
-			const customOpt = selectEl.createEl("option", { text: "Custom…" });
+			const customOpt = selectEl.createEl("option", { text: t("customModelOption") });
 			customOpt.value = "__custom__";
 
 			const isKnown = knownModels.includes(currentModel);
@@ -61,10 +57,10 @@ export class ConversationSettingsModal extends Modal {
 
 		// Provider toggle
 		new Setting(contentEl)
-			.setName("Provider")
+			.setName(t("providerLabel"))
 			.addDropdown((drop) => {
-				drop.addOption("anthropic", "Anthropic");
-				drop.addOption("openai", "OpenAI");
+				drop.addOption("anthropic", t("providerAnthropic"));
+				drop.addOption("openai", t("providerOpenAI"));
 				drop.setValue(selectedProvider);
 				drop.onChange((value) => {
 					selectedProvider = value as Provider;
@@ -76,7 +72,7 @@ export class ConversationSettingsModal extends Modal {
 			});
 
 		// Model selection
-		const modelSetting = new Setting(contentEl).setName("Model");
+		const modelSetting = new Setting(contentEl).setName(t("modelLabel"));
 		modelSetting.addDropdown((drop) => {
 			modelDropdown = drop;
 			rebuildModelOptions(drop, selectedProvider, selectedModel);
@@ -110,7 +106,7 @@ export class ConversationSettingsModal extends Modal {
 		new Setting(contentEl)
 			.addButton((btn) =>
 				btn
-					.setButtonText("Save")
+					.setButtonText(t("saveBtn"))
 					.setCta()
 					.onClick(async () => {
 						if (
@@ -127,7 +123,7 @@ export class ConversationSettingsModal extends Modal {
 					})
 			)
 			.addButton((btn) =>
-				btn.setButtonText("Cancel").onClick(() => this.close())
+				btn.setButtonText(t("cancelBtn")).onClick(() => this.close())
 			);
 	}
 

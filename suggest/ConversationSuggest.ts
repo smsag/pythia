@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal } from "obsidian";
 import type { Conversation, Favorite } from "../models/types";
+import { t } from "../i18n";
 
 export class ConversationSuggestModal extends FuzzySuggestModal<Conversation> {
 	private conversations: Conversation[];
@@ -13,11 +14,11 @@ export class ConversationSuggestModal extends FuzzySuggestModal<Conversation> {
 		super(app);
 		this.conversations = conversations;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Search conversations…");
+		this.setPlaceholder(t("searchConversations"));
 		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to open" },
-			{ command: "esc", purpose: "to dismiss" },
+			{ command: "↑↓", purpose: t("instrNavigate") },
+			{ command: "↵",  purpose: t("instrOpen") },
+			{ command: "esc", purpose: t("instrDismiss") },
 		]);
 	}
 
@@ -59,11 +60,11 @@ export class FavoritesSuggestModal extends FuzzySuggestModal<FavoriteEntry> {
 		this.entries = conversations.flatMap((conv) =>
 			(conv.favorites ?? []).map((fav) => ({ conversation: conv, favorite: fav }))
 		);
-		this.setPlaceholder("Search favorites…");
+		this.setPlaceholder(t("searchFavorites"));
 		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to open" },
-			{ command: "esc", purpose: "to dismiss" },
+			{ command: "↑↓", purpose: t("instrNavigate") },
+			{ command: "↵",  purpose: t("instrOpen") },
+			{ command: "esc", purpose: t("instrDismiss") },
 		]);
 	}
 

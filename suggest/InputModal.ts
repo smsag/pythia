@@ -1,6 +1,6 @@
 import { App, Modal, Setting } from "obsidian";
+import { t } from "../i18n";
 
-/** Generic single-input modal used for renaming conversations and naming saved notes. */
 export class InputModal extends Modal {
 	private heading: string;
 	private label: string;
@@ -46,12 +46,12 @@ export class InputModal extends Modal {
 
 		const footer = contentEl.createDiv({ cls: "pythia-modal-buttons" });
 		const okBtn = footer.createEl("button", {
-			text: "OK",
+			text: t("okBtn"),
 			cls: "mod-cta",
 		});
 		okBtn.addEventListener("click", () => this.submit(inputEl.value));
 
-		const cancelBtn = footer.createEl("button", { text: "Cancel" });
+		const cancelBtn = footer.createEl("button", { text: t("cancelBtn") });
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 
