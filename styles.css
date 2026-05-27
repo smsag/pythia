@@ -255,22 +255,25 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  color: var(--text-faint);
   margin-left: auto;
   padding: 2px;
   border-radius: 3px;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
 }
 .pythia-summary-refresh:hover {
-  color: var(--text-muted);
+  opacity: 0.75;
   background: var(--background-modifier-hover);
 }
 .pythia-summary-refresh svg {
   width: 11px;
   height: 11px;
+  stroke-width: 1.5;
 }
 
 .pythia-summary-body {
   color: var(--text-muted);
+  font-size: 0.88em;
   line-height: 1.5;
   word-break: break-word;
 }
@@ -280,6 +283,27 @@
 }
 .pythia-summary-body p {
   margin: 0 0 4px 0;
+}
+.pythia-summary-body h1,
+.pythia-summary-body h2,
+.pythia-summary-body h3,
+.pythia-summary-body h4,
+.pythia-summary-body h5,
+.pythia-summary-body h6 {
+  font-size: 0.95em;
+  font-weight: 600;
+  margin: 6px 0 2px 0;
+  color: var(--text-muted);
+  border: none;
+  padding: 0;
+}
+.pythia-summary-body ul,
+.pythia-summary-body ol {
+  padding-left: 14px;
+  margin: 2px 0;
+}
+.pythia-summary-body li {
+  margin: 1px 0;
 }
 
 .pythia-summary-toggle {

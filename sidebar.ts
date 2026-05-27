@@ -10,6 +10,7 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
+import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -36,15 +37,15 @@ class DeleteFileModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "Delete file" });
+		contentEl.createEl("h2", { text: t("deleteFileTitle") });
 		contentEl.createEl("p", {
-			text: `Delete "${this.fileName}" from the vault? This cannot be undone.`,
+			text: t("deleteFileConfirm", { name: this.fileName }),
 			cls: "pythia-modal-desc",
 		});
 		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
-		const deleteBtn = buttons.createEl("button", { text: "Delete", cls: "mod-warning" });
+		const deleteBtn = buttons.createEl("button", { text: t("deleteBtn"), cls: "mod-warning" });
 		deleteBtn.addEventListener("click", () => { this.onConfirm(); this.close(); });
-		const cancelBtn = buttons.createEl("button", { text: "Cancel" });
+		const cancelBtn = buttons.createEl("button", { text: t("cancelBtn") });
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 
@@ -246,7 +247,7 @@ export class PythiaSidebarView extends ItemView {
 		const titleRow = header.createDiv({ cls: "pythia-title-row" });
 		this.convNameEl = titleRow.createEl("button", {
 			cls: "pythia-conv-name",
-			text: "No conversation",
+			text: t("noConversation"),
 		});
 		this.convNameEl.addEventListener("click", () =>
 			this.onConvNameClick()
@@ -255,14 +256,14 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl = titleRow.createEl("button", {
 			cls: "pythia-model-badge",
 			text: "",
-			attr: { title: "Change provider / model" },
+			attr: { title: t("changeModelTooltip") },
 		});
 		this.modelBadgeEl.style.display = "none";
 		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
 
 		const deleteConvBtn = titleRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon pythia-delete-conv-btn",
-			attr: { title: "Delete conversation" },
+			attr: { title: t("deleteConvTooltip") },
 		});
 		setIcon(deleteConvBtn, "trash");
 		deleteConvBtn.addEventListener("click", () =>
@@ -271,7 +272,7 @@ export class PythiaSidebarView extends ItemView {
 
 		const newConvBtn = titleRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
-			attr: { title: "New conversation" },
+			attr: { title: t("newConvTooltip") },
 		});
 		setIcon(newConvBtn, "plus");
 		newConvBtn.addEventListener("click", () =>
@@ -287,7 +288,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.referenceSectionEl.createEl("span", {
 			cls: "pythia-section-label",
-			text: "Reference",
+			text: t("referenceSection"),
 		});
 		this.referencePillsEl = this.referenceSectionEl.createDiv({
 			cls: "pythia-pills",
@@ -299,7 +300,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.favoritesSectionEl.createEl("span", {
 			cls: "pythia-section-label",
-			text: "Favorites",
+			text: t("favoritesSection"),
 		});
 		this.favoritesPillsEl = this.favoritesSectionEl.createDiv({
 			cls: "pythia-pills",
@@ -319,8 +320,8 @@ export class PythiaSidebarView extends ItemView {
 
 		const copyBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
-			text: "Copy",
-			attr: { title: "Copy selection" },
+			text: t("copyBtn"),
+			attr: { title: t("copyBtn") },
 		});
 		copyBtn.addEventListener("mousedown", (e) => {
 			e.preventDefault(); // keep selection alive
@@ -333,8 +334,8 @@ export class PythiaSidebarView extends ItemView {
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
-			text: "Insert into note",
-			attr: { title: "Insert at cursor in active note" },
+			text: t("insertBtn"),
+			attr: { title: t("insertBtn") },
 		});
 		insertBtn.addEventListener("mousedown", (e) => {
 			e.preventDefault();
@@ -347,8 +348,8 @@ export class PythiaSidebarView extends ItemView {
 
 		const inboxBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
-			text: "Save to inbox",
-			attr: { title: "Prepend to inbox note with timestamp" },
+			text: t("inboxBtn"),
+			attr: { title: t("inboxBtn") },
 		});
 		inboxBtn.addEventListener("mousedown", (e) => {
 			e.preventDefault();
@@ -372,7 +373,7 @@ export class PythiaSidebarView extends ItemView {
 		this.tocBtnEl = tocBar.createEl("button", {
 			cls: "pythia-toc-btn",
 			text: "↑",
-			attr: { title: "Show chapters" },
+			attr: { title: t("showChaptersTooltip") },
 		});
 		this.tocBtnEl.addEventListener("click", (e) => {
 			e.stopPropagation();
@@ -390,7 +391,7 @@ export class PythiaSidebarView extends ItemView {
 
 		this.inputEl = inputWrapper.createEl("textarea", {
 			cls: "pythia-input",
-			attr: { placeholder: "Type a message… (Enter to send, Shift+Enter for new line)" },
+			attr: { placeholder: t("inputPlaceholder") },
 		});
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
@@ -425,21 +426,21 @@ export class PythiaSidebarView extends ItemView {
 
 		const attachBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon",
-			attr: { title: "Attach note" },
+			attr: { title: t("attachNoteTooltip") },
 		});
 		setIcon(attachBtn, "paperclip");
 		attachBtn.addEventListener("click", () => this.onAttachNote());
 
 		const saveBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon",
-			attr: { title: "Save response" },
+			attr: { title: t("saveResponseTooltip") },
 		});
 		setIcon(saveBtn, "save");
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
 
 		const summarizeBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-icon",
-			attr: { title: "Summarize conversation" },
+			attr: { title: t("summarizeTooltip") },
 		});
 		setIcon(summarizeBtn, "sparkles");
 		summarizeBtn.addEventListener("click", () => this.onGenerateSummary());
@@ -448,7 +449,7 @@ export class PythiaSidebarView extends ItemView {
 
 		this.sendBtn = btnRow.createEl("button", {
 			cls: "pythia-btn pythia-btn-primary",
-			text: "Senden",
+			text: t("sendBtn"),
 		});
 		this.sendBtn.addEventListener("click", () => {
 			if (this.isStreaming) {
@@ -463,17 +464,17 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.empty();
 		const empty = this.messagesEl.createDiv({ cls: "pythia-empty" });
 		empty.createEl("p", {
-			text: "No active conversation.",
+			text: t("noActiveConversationHint"),
 		});
 		empty.createEl("p", {
-			text: 'Use the command palette to start one (Ctrl/Cmd+P → "Pythia:").',
+			text: t("startFromPaletteHint"),
 			cls: "pythia-empty-hint",
 		});
 	}
 
 	private renderHeader(): void {
 		if (!this.activeConversation) {
-			this.convNameEl.setText("No conversation");
+			this.convNameEl.setText(t("noConversation"));
 			this.templateLabelEl.setText("");
 			return;
 		}
@@ -484,7 +485,7 @@ export class PythiaSidebarView extends ItemView {
 					.split("/")
 					.pop()
 					?.replace(/\.md$/, "") ?? "";
-			this.templateLabelEl.setText(`Template: ${tplName}`);
+			this.templateLabelEl.setText(t("templateLabel", { name: tplName }));
 		} else {
 			this.templateLabelEl.setText("");
 		}
@@ -493,10 +494,10 @@ export class PythiaSidebarView extends ItemView {
 	private renderSummaryBanner(summary: string): void {
 		const banner = this.messagesEl.createDiv({ cls: "pythia-summary-banner" });
 		const header = banner.createDiv({ cls: "pythia-summary-header" });
-		header.createEl("span", { text: "↩ Summary" });
+		header.createEl("span", { text: t("summaryLabel") });
 		const refreshBtn = header.createEl("button", {
 			cls: "pythia-summary-refresh",
-			attr: { title: "Regenerate summary" },
+			attr: { title: t("regenerateSummaryTooltip") },
 		});
 		setIcon(refreshBtn, "refresh-cw");
 		refreshBtn.addEventListener("click", () => this.onGenerateSummary());
@@ -510,12 +511,12 @@ export class PythiaSidebarView extends ItemView {
 			let expanded = false;
 			const toggle = banner.createEl("button", {
 				cls: "pythia-summary-toggle",
-				text: "Show more",
+				text: t("showMore"),
 			});
 			toggle.addEventListener("click", () => {
 				expanded = !expanded;
 				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
-				toggle.setText(expanded ? "Show less" : "Show more");
+				toggle.setText(expanded ? t("showLess") : t("showMore"));
 			});
 		}
 	}
@@ -544,7 +545,7 @@ export class PythiaSidebarView extends ItemView {
 				if (file instanceof TFile) {
 					await this.app.workspace.getLeaf(false).openFile(file);
 				} else {
-					new Notice(`File not found: ${ref.path}`);
+					new Notice(t("fileNotFound", { path: ref.path }));
 				}
 			});
 			const x = pill.createEl("button", { cls: "pythia-pill-remove", text: "×" });
@@ -603,7 +604,7 @@ export class PythiaSidebarView extends ItemView {
 		if (summary) this.renderSummaryBanner(summary);
 		if (this.activeConversation.messages.length === 0) {
 			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
-			hint.createEl("p", { text: "Start the conversation below." });
+			hint.createEl("p", { text: t("startConversationBelow") });
 			return;
 		}
 		for (const msg of this.activeConversation.messages) {
@@ -630,7 +631,7 @@ export class PythiaSidebarView extends ItemView {
 			const star = footer.createEl("button", {
 				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
 				text: isFav ? "★" : "☆",
-				attr: { title: isFav ? "Remove from favorites" : "Add to favorites" },
+				attr: { title: isFav ? t("removeFromFavorites") : t("addToFavorites") },
 			});
 			star.addEventListener("click", () => this.onStarClick(msg, star));
 			if (msg.tokenUsage) {
@@ -726,7 +727,7 @@ export class PythiaSidebarView extends ItemView {
 			const x = pill.createEl("button", {
 				cls: "pythia-pill-remove",
 				text: "×",
-				attr: { title: "Remove favorite" },
+				attr: { title: t("removeFromFavorites") },
 			});
 			x.addEventListener("click", () =>
 				this.removeFavorite(fav.messageId)
@@ -744,7 +745,7 @@ export class PythiaSidebarView extends ItemView {
 			await this.removeFavorite(msg.id);
 			starEl.setText("☆");
 			starEl.removeClass("pythia-star-active");
-			starEl.title = "Add to favorites";
+			starEl.title = t("addToFavorites");
 			return;
 		}
 
@@ -754,7 +755,7 @@ export class PythiaSidebarView extends ItemView {
 		await this.plugin.conversationStore.save(conv);
 		starEl.setText("★");
 		starEl.addClass("pythia-star-active");
-		starEl.title = "Remove from favorites";
+		starEl.title = t("removeFromFavorites");
 		this.renderFavoritesBar();
 
 		try {
@@ -794,15 +795,15 @@ export class PythiaSidebarView extends ItemView {
 		if (star) {
 			star.setText("☆");
 			star.removeClass("pythia-star-active");
-			star.title = "Add to favorites";
+			star.title = t("addToFavorites");
 		}
 	}
 
 	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
 		const fmt = (n: number) => n.toLocaleString();
 		const el = row.createEl("span", { cls: "pythia-token-count" });
-		el.setText(`↑${fmt(usage.inputTokens)} tokens  ↓${fmt(usage.outputTokens)} tokens`);
-		el.title = `Input: ${fmt(usage.inputTokens)} tokens · Output: ${fmt(usage.outputTokens)} tokens`;
+		el.setText(t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }));
+		el.title = t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) });
 	}
 
 	scrollToMessage(messageId: string): void {
@@ -847,7 +848,7 @@ export class PythiaSidebarView extends ItemView {
 		if (userMessages.length === 0) {
 			popover.createDiv({
 				cls: "pythia-toc-item pythia-toc-placeholder",
-				text: "No chapters yet",
+				text: t("chaptersEmpty"),
 			});
 		} else {
 			for (const msg of userMessages) {
@@ -918,7 +919,7 @@ export class PythiaSidebarView extends ItemView {
 
 		new DeleteConversationModal(this.app, toDelete, async () => {
 			await this.plugin.conversationStore.delete(toDelete.id);
-			new Notice("Conversation deleted.");
+			new Notice(t("conversationDeleted"));
 
 			const remaining = this.plugin.conversations;
 			if (remaining.length > 0) {
@@ -942,10 +943,10 @@ export class PythiaSidebarView extends ItemView {
 	private async onGenerateSummary(): Promise<void> {
 		const conv = this.activeConversation;
 		if (!conv || conv.messages.length === 0) {
-			new Notice("No messages to summarize.");
+			new Notice(t("noMessagesToSummarize"));
 			return;
 		}
-		const notice = new Notice("Generating summary…", 0);
+		const notice = new Notice(t("generatingSummary"), 0);
 		try {
 			const summary = await this.plugin.llmRouter.generateSummary(conv);
 			if (summary) {
@@ -954,7 +955,7 @@ export class PythiaSidebarView extends ItemView {
 				await this.renderMessages();
 			}
 		} catch (e) {
-			new Notice(`Summary failed: ${e instanceof Error ? e.message : String(e)}`);
+			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
 		} finally {
 			notice.hide();
 		}
@@ -963,14 +964,14 @@ export class PythiaSidebarView extends ItemView {
 	private async onSaveResponse(): Promise<void> {
 		const conv = this.activeConversation;
 		if (!conv || conv.messages.length === 0) {
-			new Notice("No messages to save.");
+			new Notice(t("noMessagesToSave"));
 			return;
 		}
 
 		const savedCount = conv.lastSavedMessageCount ?? 0;
 		const slice = conv.messages.slice(savedCount);
 		if (slice.length === 0) {
-			new Notice("Nothing new to save since last save.");
+			new Notice(t("nothingNewToSave"));
 			return;
 		}
 
@@ -990,8 +991,8 @@ export class PythiaSidebarView extends ItemView {
 
 		new InputModal(
 			this.app,
-			"Save conversation to note",
-			"File path",
+			t("saveConvTitle"),
+			t("filePathLabel"),
 			suggestedPath,
 			async (filePath) => {
 				const path = filePath.endsWith(".md")
@@ -1003,11 +1004,9 @@ export class PythiaSidebarView extends ItemView {
 					conv.lastSavedMessageCount = conv.messages.length;
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
-					new Notice(`Saved to ${path}`);
+					new Notice(t("savedToPath", { path }));
 				} catch (e) {
-					new Notice(
-						`Save failed: ${e instanceof Error ? e.message : String(e)}`
-					);
+					new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
 				}
 			}
 		).open();
@@ -1016,9 +1015,7 @@ export class PythiaSidebarView extends ItemView {
 	private async sendMessage(): Promise<void> {
 		if (this.isStreaming) return;
 		if (!this.activeConversation) {
-			new Notice(
-				"No active conversation. Start one from the command palette."
-			);
+			new Notice(t("noActiveConvToSend"));
 			return;
 		}
 
@@ -1027,9 +1024,7 @@ export class PythiaSidebarView extends ItemView {
 
 		const cap = this.plugin.settings.maxMessagesPerSession;
 		if (cap > 0 && conv.messages.length >= cap) {
-			new Notice(
-				`Message limit reached (${cap}). Start a new conversation or raise the limit in Settings → Pythia.`
-			);
+			new Notice(t("messageLimitReached", { cap: String(cap) }));
 			return;
 		}
 
@@ -1071,7 +1066,7 @@ export class PythiaSidebarView extends ItemView {
 					chipEl.createSpan({ cls: "pythia-tool-call-spinner" });
 					chipEl.createSpan({
 						cls: "pythia-tool-call-label",
-						text: `Creating note: ${pathText}`,
+						text: t("creatingNote", { path: pathText }),
 					});
 					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
 
@@ -1097,7 +1092,7 @@ export class PythiaSidebarView extends ItemView {
 							notePath;
 						const link = chipEl.createEl("a", {
 							cls: "pythia-tool-call-link",
-							text: `✓ Created [[${noteName}]]`,
+							text: t("createdNote", { name: noteName }),
 						});
 						link.addEventListener("click", (e) => {
 							e.preventDefault();
@@ -1138,7 +1133,7 @@ export class PythiaSidebarView extends ItemView {
 							const star = footer.createEl("button", {
 								cls: "pythia-star",
 								text: "☆",
-								attr: { title: "Add to favorites" },
+								attr: { title: t("addToFavorites") },
 							});
 							star.addEventListener("click", () =>
 								this.onStarClick(assistantMsg, star)
@@ -1183,16 +1178,16 @@ export class PythiaSidebarView extends ItemView {
 				let msg: string;
 				switch (errClass) {
 					case "model_not_found":
-						msg = `Model "${model}" not found. Open settings to change it.`;
+						msg = t("modelNotFound", { model });
 						break;
 					case "invalid_key":
-						msg = "API key rejected. Check Settings → Pythia.";
+						msg = t("apiKeyRejected");
 						break;
 					case "rate_limit":
-						msg = "Rate limit hit. Try again in a moment.";
+						msg = t("rateLimitHit");
 						break;
 					case "network":
-						msg = "Network error. Check your internet connection.";
+						msg = t("networkError");
 						break;
 					default:
 						msg = error.message;
@@ -1242,10 +1237,10 @@ export class PythiaSidebarView extends ItemView {
 		const text = window.getSelection()?.toString() ?? "";
 		if (!text) return;
 		navigator.clipboard.writeText(text).then(() => {
-			new Notice("Copied");
+			new Notice(t("copied"));
 			this.selectionToolbar.style.display = "none";
 		}).catch(() => {
-			new Notice("Copy failed");
+			new Notice(t("copyFailed"));
 		});
 	}
 
@@ -1255,7 +1250,7 @@ export class PythiaSidebarView extends ItemView {
 		const view = this.lastMarkdownView
 			?? this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
-			new Notice("No active note to insert into.");
+			new Notice(t("noActiveNoteToInsert"));
 			return;
 		}
 		let insertion = text;
@@ -1267,7 +1262,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 		view.editor.replaceSelection(insertion);
 		this.selectionToolbar.style.display = "none";
-		new Notice("Inserted into note");
+		new Notice(t("insertedIntoNote"));
 	}
 
 	private async onSaveToInbox(): Promise<void> {
@@ -1284,9 +1279,9 @@ export class PythiaSidebarView extends ItemView {
 		try {
 			await this.plugin.noteWriter.prependToInbox(entry, inboxPath);
 			this.selectionToolbar.style.display = "none";
-			new Notice("Saved to inbox");
+			new Notice(t("savedToInbox"));
 		} catch (e) {
-			new Notice(`Failed to save to inbox: ${e instanceof Error ? e.message : String(e)}`);
+			new Notice(t("failedSaveToInbox", { error: e instanceof Error ? e.message : String(e) }));
 		}
 	}
 
@@ -1294,11 +1289,11 @@ export class PythiaSidebarView extends ItemView {
 		this.isStreaming = streaming;
 		if (streaming) {
 			this.autoScroll = true;
-			this.sendBtn.setText("Anfrage abbrechen");
+			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.removeClass("pythia-btn-primary");
 			this.sendBtn.addClass("pythia-btn-danger");
 		} else {
-			this.sendBtn.setText("Senden");
+			this.sendBtn.setText(t("sendBtn"));
 			this.sendBtn.removeClass("pythia-btn-danger");
 			this.sendBtn.addClass("pythia-btn-primary");
 		}

@@ -1,5 +1,6 @@
 import { App, Modal } from "obsidian";
 import type { Conversation } from "../models/types";
+import { t } from "../i18n";
 
 export class ResumeModeModal extends Modal {
 	private conversation: Conversation;
@@ -18,37 +19,33 @@ export class ResumeModeModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "Resume conversation" });
+		contentEl.createEl("h2", { text: t("resumeConvTitle") });
 		contentEl.createEl("p", {
-			text: `How would you like to resume "${this.conversation.name}"?`,
+			text: t("resumeConvDesc", { name: this.conversation.name }),
 			cls: "pythia-modal-desc",
 		});
 
 		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
 
 		const summaryBtn = buttons.createEl("button", {
-			text: "Summary",
+			text: t("summaryModeBtn"),
 			cls: "mod-cta",
 		});
-		summaryBtn.title =
-			"Send an AI-generated summary as context — lower token cost";
+		summaryBtn.title = t("summaryModeTitle");
 		summaryBtn.addEventListener("click", () => {
 			this.onChoose("summary");
 			this.close();
 		});
 
-		const fullBtn = buttons.createEl("button", { text: "Full history" });
-		fullBtn.title =
-			"Re-send all previous messages — higher fidelity, higher token cost";
+		const fullBtn = buttons.createEl("button", { text: t("fullModeBtn") });
+		fullBtn.title = t("fullModeTitle");
 		fullBtn.addEventListener("click", () => {
 			this.onChoose("full");
 			this.close();
 		});
 
 		const hint = contentEl.createEl("p", { cls: "pythia-modal-hint" });
-		hint.setText(
-			"Summary is recommended for long conversations. Full history preserves all nuance."
-		);
+		hint.setText(t("resumeHint"));
 	}
 
 	onClose(): void {

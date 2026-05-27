@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { App, Notice } from "obsidian";
+import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
@@ -54,9 +55,7 @@ export class AnthropicService implements LLMProvider {
 
 	private getClient(): Anthropic {
 		if (!this.apiKey) {
-			throw new Error(
-				"Anthropic API key not configured. Set it in Settings → Pythia."
-			);
+			throw new Error(t("anthropicKeyNotConfigured"));
 		}
 		if (!this.client) {
 			this.client = new Anthropic({
@@ -88,9 +87,7 @@ export class AnthropicService implements LLMProvider {
 			const systemPrompt = buildSystemPrompt(conversation);
 
 			if (missingNotes.length > 0) {
-				new Notice(
-					`Warning: ${missingNotes.length} context note(s) not found and were skipped.`
-				);
+				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 			}
 
 			// Exclude the last message — already pushed by the caller; sending it

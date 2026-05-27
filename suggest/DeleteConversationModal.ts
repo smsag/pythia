@@ -1,5 +1,6 @@
 import { App, Modal } from "obsidian";
 import type { Conversation } from "../models/types";
+import { t } from "../i18n";
 
 export class DeleteConversationModal extends Modal {
 	private conversation: Conversation;
@@ -14,16 +15,16 @@ export class DeleteConversationModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "Delete conversation" });
+		contentEl.createEl("h2", { text: t("deleteConvTitle") });
 		contentEl.createEl("p", {
-			text: `Delete "${this.conversation.name}"? This cannot be undone.`,
+			text: t("deleteConvConfirm", { name: this.conversation.name }),
 			cls: "pythia-modal-desc",
 		});
 
 		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
 
 		const deleteBtn = buttons.createEl("button", {
-			text: "Delete",
+			text: t("deleteBtn"),
 			cls: "mod-warning",
 		});
 		deleteBtn.addEventListener("click", () => {
@@ -31,7 +32,7 @@ export class DeleteConversationModal extends Modal {
 			this.close();
 		});
 
-		const cancelBtn = buttons.createEl("button", { text: "Cancel" });
+		const cancelBtn = buttons.createEl("button", { text: t("cancelBtn") });
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 

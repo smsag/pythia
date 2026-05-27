@@ -1,4 +1,5 @@
 import { App, FuzzySuggestModal, TFile } from "obsidian";
+import { t } from "../i18n";
 
 export class NoteSuggestModal extends FuzzySuggestModal<TFile> {
 	private onChoose: (file: TFile) => void;
@@ -6,11 +7,11 @@ export class NoteSuggestModal extends FuzzySuggestModal<TFile> {
 	constructor(app: App, onChoose: (file: TFile) => void) {
 		super(app);
 		this.onChoose = onChoose;
-		this.setPlaceholder("Search vault notes…");
+		this.setPlaceholder(t("searchNotes"));
 		this.setInstructions([
-			{ command: "↑↓", purpose: "to navigate" },
-			{ command: "↵", purpose: "to attach" },
-			{ command: "esc", purpose: "to dismiss" },
+			{ command: "↑↓", purpose: t("instrNavigate") },
+			{ command: "↵",  purpose: t("instrAttach") },
+			{ command: "esc", purpose: t("instrDismiss") },
 		]);
 	}
 
