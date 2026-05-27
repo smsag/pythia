@@ -10,7 +10,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  font-size: var(--font-text-size);
+  font-size: max(var(--font-text-size), 13px);
   color: var(--text-normal);
 }
 
@@ -70,7 +70,7 @@
 .pythia-model-badge {
   all: unset;
   cursor: pointer;
-  font-size: 0.72em;
+  font-size: 0.77em;
   color: var(--text-muted);
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
@@ -234,9 +234,7 @@
 /* ── Summary banner ─────────────────────────────────────────── */
 .pythia-summary-banner {
   flex-shrink: 0;
-
   padding: 8px 12px;
-  font-size: 0.82em;
 }
 
 .pythia-summary-header {
@@ -406,7 +404,7 @@
 
 /* ── Token count label ───────────────────────────────────────── */
 .pythia-token-count {
-  font-size: 0.62em;
+  font-size: 0.72em;
   color: var(--text-faint);
   line-height: 1;
 
