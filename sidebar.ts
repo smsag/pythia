@@ -502,23 +502,19 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(refreshBtn, "refresh-cw");
 		refreshBtn.addEventListener("click", () => this.onGenerateSummary());
 
-		const bodyEl = banner.createDiv({ cls: "pythia-summary-body" });
+		const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed" });
 		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
 
-		const CHAR_LIMIT = 300;
-		if (summary.length > CHAR_LIMIT) {
-			bodyEl.addClass("pythia-summary-body--collapsed");
-			let expanded = false;
-			const toggle = banner.createEl("button", {
-				cls: "pythia-summary-toggle",
-				text: t("showMore"),
-			});
-			toggle.addEventListener("click", () => {
-				expanded = !expanded;
-				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
-				toggle.setText(expanded ? t("showLess") : t("showMore"));
-			});
-		}
+		let expanded = false;
+		const toggle = banner.createEl("button", {
+			cls: "pythia-summary-toggle",
+			text: t("showMore"),
+		});
+		toggle.addEventListener("click", () => {
+			expanded = !expanded;
+			bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
+			toggle.setText(expanded ? t("showLess") : t("showMore"));
+		});
 	}
 
 	private renderReferencePills(): void {

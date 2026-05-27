@@ -208,7 +208,7 @@ export class AnthropicService implements LLMProvider {
 			messages: [
 				{
 					role: "user",
-					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed.\n\n${conversationText}`,
+					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.\n\n${conversationText}`,
 				},
 			],
 		});
