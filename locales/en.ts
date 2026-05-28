@@ -30,7 +30,7 @@ const en = {
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	addToFavorites:     "Add to favorites",
 	removeFromFavorites:"Remove from favorites",
-	tokenCount:         "↑{{input}} tokens  ↓{{output}} tokens",
+	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────

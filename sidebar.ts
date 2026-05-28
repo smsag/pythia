@@ -90,9 +90,15 @@ export class PythiaSidebarView extends ItemView {
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 
+	private summarySectionEl!: HTMLElement;
+	private summaryBodyEl!: HTMLElement;
+	private summaryChevronEl!: HTMLElement;
+	private summarySparkleEl!: HTMLButtonElement;
+	private summaryOpen = false;
+
 	private inlineSuggest!: InlineSuggest;
-	private tocBtnEl!: HTMLButtonElement;
-	private tocPopoverEl: HTMLElement | null = null;
+	private indexTriggerEl!: HTMLButtonElement;
+	private navigatorEl!: HTMLElement;
 	private onViewportResize: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
@@ -174,14 +180,12 @@ export class PythiaSidebarView extends ItemView {
 	): Promise<void> {
 		this.activeConversation = conversation;
 		this.pendingAttachedNotes = [];
-		if (this.tocPopoverEl) {
-			this.tocPopoverEl.remove();
-			this.tocPopoverEl = null;
-		}
+		this.navigatorEl.removeClass("open");
 		this.renderHeader();
 		this.updateModelBadge();
 		this.renderReferencePills();
 		this.renderFavoritesBar();
+		this.updateSummaryBar();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 		this.backfillChapterNames(conversation);
@@ -238,6 +242,7 @@ export class PythiaSidebarView extends ItemView {
 	prefillInput(text: string): void {
 		if (!this.inputEl) return;
 		this.inputEl.value = text;
+		this.autoResizeTextarea();
 		this.inputEl.focus();
 	}
 
@@ -246,57 +251,45 @@ export class PythiaSidebarView extends ItemView {
 		container.empty();
 		container.addClass("pythia-view");
 
-		const header = container.createDiv({ cls: "pythia-header" });
+		const header = container.createDiv({ cls: "p-header" });
 
-		const titleRow = header.createDiv({ cls: "pythia-title-row" });
-		this.convNameEl = titleRow.createEl("button", {
-			cls: "pythia-conv-name",
+		this.convNameEl = header.createEl("button", {
+			cls: "p-title",
 			text: t("noConversation"),
 		});
-		this.convNameEl.addEventListener("click", () =>
-			this.onConvNameClick()
-		);
+		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
 
-		this.modelBadgeEl = titleRow.createEl("button", {
-			cls: "pythia-model-badge",
+		this.modelBadgeEl = header.createEl("button", {
+			cls: "p-model",
 			text: "",
 			attr: { title: t("changeModelTooltip") },
 		});
 		this.modelBadgeEl.style.display = "none";
 		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
 
-		const deleteConvBtn = titleRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-delete-conv-btn",
+		const deleteConvBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
 			attr: { title: t("deleteConvTooltip") },
 		});
 		setIcon(deleteConvBtn, "trash");
-		deleteConvBtn.addEventListener("click", () =>
-			this.handleDeleteConversation()
-		);
+		deleteConvBtn.addEventListener("click", () => this.handleDeleteConversation());
 
-		const newConvBtn = titleRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon pythia-new-conv-btn",
+		const newConvBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
 			attr: { title: t("newConvTooltip") },
 		});
 		setIcon(newConvBtn, "plus");
-		newConvBtn.addEventListener("click", () =>
-			this.plugin.cmdNewConversation()
-		);
+		newConvBtn.addEventListener("click", () => this.plugin.cmdNewConversation());
 
-		this.templateLabelEl = header.createDiv({
-			cls: "pythia-template-label",
-		});
+		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
+		this.templateLabelEl.style.display = "none";
 
-		this.referenceSectionEl = container.createDiv({
-			cls: "pythia-context-section",
-		});
+		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
 		this.referenceSectionEl.createEl("span", {
-			cls: "pythia-section-label",
+			cls: "p-row-label",
 			text: t("referenceSection"),
 		});
-		this.referencePillsEl = this.referenceSectionEl.createDiv({
-			cls: "pythia-pills",
-		});
+		this.referencePillsEl = this.referenceSectionEl.createDiv({ cls: "p-pills" });
 		this.referenceSectionEl.style.display = "none";
 
 		this.favoritesSectionEl = container.createDiv({
@@ -312,7 +305,29 @@ export class PythiaSidebarView extends ItemView {
 		this.favoritesSectionEl.style.display = "none";
 
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
-		this.messagesEl = messagesWrapper.createDiv({ cls: "pythia-messages" });
+
+		// ── Summary bar (sticky above chat scroll) ──────────────────
+		this.summarySectionEl = messagesWrapper.createDiv({ cls: "p-summary" });
+		const summaryHeader = this.summarySectionEl.createDiv({ cls: "p-summary-header" });
+		summaryHeader.createEl("span", { cls: "p-summary-label", text: "Summary" });
+		this.summaryChevronEl = summaryHeader.createEl("span", {
+			cls: "p-summary-chevron",
+			text: "▼",
+		});
+		this.summaryBodyEl = this.summarySectionEl.createDiv({ cls: "p-summary-body" });
+		this.summarySparkleEl = this.summarySectionEl.createEl("button", {
+			cls: "p-summary-sparkle",
+			text: "✦",
+			attr: { title: t("summarizeTooltip") },
+		});
+		this.summarySectionEl.style.display = "none";
+		summaryHeader.addEventListener("click", () => this.toggleSummaryBody());
+		this.summarySparkleEl.addEventListener("click", (e) => {
+			e.stopPropagation();
+			void this.onGenerateSummary();
+		});
+
+		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
 		this.messagesEl.addEventListener("scroll", () => {
 			if (this.isScrolling) return; // programmatic scroll — ignore
 			const el = this.messagesEl;
@@ -387,29 +402,29 @@ export class PythiaSidebarView extends ItemView {
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
 
-		const tocBar = messagesWrapper.createDiv({ cls: "pythia-toc-bar" });
-		this.tocBtnEl = tocBar.createEl("button", {
-			cls: "pythia-toc-btn",
-			text: "↑",
+		const indexWrap = messagesWrapper.createDiv({ cls: "p-index-wrap" });
+		this.navigatorEl = indexWrap.createDiv({ cls: "p-navigator" });
+		this.indexTriggerEl = indexWrap.createEl("button", {
+			cls: "p-index-trigger",
+			text: "#",
 			attr: { title: t("showChaptersTooltip") },
 		});
-		this.tocBtnEl.addEventListener("click", (e) => {
+		this.indexTriggerEl.addEventListener("click", (e) => {
 			e.stopPropagation();
-			this.toggleTocPopover(container, tocBar);
+			this.toggleNavigator();
 		});
 
-		const inputArea = container.createDiv({ cls: "pythia-input-area" });
+		const inputArea = container.createDiv({ cls: "p-input-area" });
 
 		const attachRow = inputArea.createDiv({ cls: "pythia-attach-row" });
+		attachRow.style.display = "none";
 		this.attachedPillsEl = attachRow.createDiv({
 			cls: "pythia-pills pythia-attached-pills",
 		});
 
-		const inputWrapper = inputArea.createDiv({ cls: "pythia-input-wrapper" });
-
-		this.inputEl = inputWrapper.createEl("textarea", {
-			cls: "pythia-input",
-			attr: { placeholder: t("inputPlaceholder") },
+		this.inputEl = inputArea.createEl("textarea", {
+			cls: "p-textarea",
+			attr: { placeholder: t("inputPlaceholder"), rows: "1" },
 		});
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
@@ -429,7 +444,10 @@ export class PythiaSidebarView extends ItemView {
 				this.sendMessage();
 			}
 		});
-		this.inputEl.addEventListener("input", () => this.inlineSuggest.handleInput());
+		this.inputEl.addEventListener("input", () => {
+			this.autoResizeTextarea();
+			this.inlineSuggest.handleInput();
+		});
 
 		// visualViewport resize is unreliable in some WKWebView versions;
 		// focus/blur fire unconditionally. 300 ms lets the keyboard slide in.
@@ -440,33 +458,37 @@ export class PythiaSidebarView extends ItemView {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
 
-		const btnRow = inputArea.createDiv({ cls: "pythia-btn-row" });
+		const toolbar = inputArea.createDiv({ cls: "p-toolbar" });
+		const toolbarLeft = toolbar.createDiv({ cls: "p-toolbar-left" });
 
-		const attachBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon",
+		const attachBtn = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
 			attr: { title: t("attachNoteTooltip") },
 		});
-		setIcon(attachBtn, "paperclip");
+		const attachSvg = attachBtn.createSvg("svg", {
+			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+		});
+		attachSvg.createSvg("path", {
+			attr: { d: "M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" },
+		});
 		attachBtn.addEventListener("click", () => this.onAttachNote());
 
-		const saveBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon",
+		const saveBtn = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
 			attr: { title: t("saveResponseTooltip") },
 		});
-		setIcon(saveBtn, "save");
+		const saveSvg = saveBtn.createSvg("svg", {
+			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+		});
+		saveSvg.createSvg("path", {
+			attr: { d: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" },
+		});
+		saveSvg.createSvg("polyline", { attr: { points: "17 21 17 13 7 13 7 21" } });
+		saveSvg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
 
-		const summarizeBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-icon",
-			attr: { title: t("summarizeTooltip") },
-		});
-		setIcon(summarizeBtn, "sparkles");
-		summarizeBtn.addEventListener("click", () => this.onGenerateSummary());
-
-		btnRow.createEl("span", { cls: "pythia-btn-separator" });
-
-		this.sendBtn = btnRow.createEl("button", {
-			cls: "pythia-btn pythia-btn-primary",
+		this.sendBtn = toolbar.createEl("button", {
+			cls: "p-send",
 			text: t("sendBtn"),
 		});
 		this.sendBtn.addEventListener("click", () => {
@@ -509,21 +531,27 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	private renderSummaryBanner(summary: string): void {
-		const banner = this.messagesEl.createDiv({ cls: "pythia-summary-banner" });
-		const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed" });
-		MarkdownRenderer.render(this.app, summary, bodyEl, "", this);
+	private updateSummaryBar(): void {
+		const summary = this.activeConversation?.summaryText?.trim();
+		if (!summary) {
+			this.summarySectionEl.style.display = "none";
+			return;
+		}
+		this.summarySectionEl.style.display = "";
+		this.summaryBodyEl.empty();
+		void MarkdownRenderer.render(this.app, summary, this.summaryBodyEl, "", this);
+		// Always collapse when switching conversations
+		this.summaryOpen = false;
+		this.summaryBodyEl.removeClass("open");
+		this.summaryChevronEl.removeClass("open");
+		this.summarySparkleEl.removeClass("visible");
+	}
 
-		let expanded = false;
-		const toggle = banner.createEl("button", {
-			cls: "pythia-summary-toggle",
-			text: t("showMore"),
-		});
-		toggle.addEventListener("click", () => {
-			expanded = !expanded;
-			bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
-			toggle.setText(expanded ? t("showLess") : t("showMore"));
-		});
+	private toggleSummaryBody(): void {
+		this.summaryOpen = !this.summaryOpen;
+		this.summaryBodyEl.toggleClass("open", this.summaryOpen);
+		this.summaryChevronEl.toggleClass("open", this.summaryOpen);
+		this.summarySparkleEl.toggleClass("visible", this.summaryOpen);
 	}
 
 	private renderForkBannerEl(): void {
@@ -585,8 +613,8 @@ export class PythiaSidebarView extends ItemView {
 
 		for (const ref of refs) {
 			const fileName = ref.path.split("/").pop() ?? ref.path;
-			const pill = this.referencePillsEl.createEl("span", { cls: "pythia-pill" });
-			const label = pill.createEl("span", { text: fileName, cls: "pythia-pill-label", attr: { title: ref.path } });
+			const pill = this.referencePillsEl.createEl("span", { cls: "p-pill" });
+			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: ref.path } });
 			label.style.cursor = "pointer";
 			label.addEventListener("click", async () => {
 				const file = this.app.vault.getAbstractFileByPath(ref.path);
@@ -596,7 +624,7 @@ export class PythiaSidebarView extends ItemView {
 					new Notice(t("fileNotFound", { path: ref.path }));
 				}
 			});
-			const x = pill.createEl("button", { cls: "pythia-pill-remove", text: "×" });
+			const x = pill.createEl("button", { cls: "p-pill-x", text: "✕" });
 			x.addEventListener("click", () => {
 				new DeleteFileModal(this.app, fileName, async () => {
 					const file = this.app.vault.getAbstractFileByPath(ref.path);
@@ -611,6 +639,10 @@ export class PythiaSidebarView extends ItemView {
 
 	private renderAttachedPills(): void {
 		this.attachedPillsEl.empty();
+		const attachRow = this.attachedPillsEl.parentElement as HTMLElement | null;
+		if (attachRow) {
+			attachRow.style.display = this.pendingAttachedNotes.length > 0 ? "" : "none";
+		}
 		for (const notePath of this.pendingAttachedNotes) {
 			this.addPill(
 				this.attachedPillsEl,
@@ -649,8 +681,6 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 		if (this.activeConversation.forkedFromId) this.renderForkBannerEl();
-		const summary = this.activeConversation.summaryText?.trim();
-		if (summary) this.renderSummaryBanner(summary);
 		if (this.activeConversation.messages.length === 0) {
 			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
 			hint.createEl("p", { text: t("startConversationBelow") });
@@ -663,69 +693,73 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
-		const row = this.messagesEl.createDiv({
-			cls: `pythia-message pythia-message-${msg.role}`,
-			attr: { "data-msg-id": msg.id },
-		});
-
-		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
-		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble" });
-		await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
-
-		if (msg.role === "assistant") {
-			const isFav = this.activeConversation?.favorites?.some(
-				(f) => f.messageId === msg.id
-			) ?? false;
-			const footer = bubbleCol.createDiv({ cls: "pythia-bubble-footer" });
-			const star = footer.createEl("button", {
-				cls: `pythia-star${isFav ? " pythia-star-active" : ""}`,
-				text: isFav ? "★" : "☆",
-				attr: { title: isFav ? t("removeFromFavorites") : t("addToFavorites") },
+		// ── User message ────────────────────────────────────────────
+		if (msg.role === "user") {
+			const row = this.messagesEl.createDiv({
+				cls: "p-msg-user",
+				attr: { "data-msg-id": msg.id },
 			});
-			star.addEventListener("click", () => this.onStarClick(msg, star));
-			if (msg.tokenUsage) {
-				footer.createSpan({ cls: "pythia-bubble-pipe", text: "|" });
-				this.renderTokenCount(footer, msg.tokenUsage);
-			}
+			const bubble = row.createDiv({ cls: "p-bubble" });
+			await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+			return bubble;
 		}
 
-		return bubble;
+		// ── Assistant message ────────────────────────────────────────
+		const row = this.messagesEl.createDiv({
+			cls: "p-msg-ai",
+			attr: { "data-msg-id": msg.id },
+		});
+		const aiBody = row.createDiv({ cls: "p-ai-body" });
+		await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
+
+		const isFav = this.activeConversation?.favorites?.some(
+			(f) => f.messageId === msg.id
+		) ?? false;
+		const footer = row.createDiv({ cls: "p-tokens" });
+		const star = footer.createEl("button", {
+			cls: `p-star${isFav ? " on" : ""}`,
+			text: isFav ? "★" : "☆",
+			attr: { title: isFav ? t("removeFromFavorites") : t("addToFavorites") },
+		});
+		star.addEventListener("click", () => this.onStarClick(msg, star));
+		if (msg.tokenUsage) {
+			footer.createSpan({ cls: "p-tok-sep", text: "|" });
+			this.renderTokenCount(footer, msg.tokenUsage);
+		}
+
+		return aiBody;
 	}
 
 	private createStreamingBubble(): {
 		appendToken: (text: string) => void;
 		finalize: (fullText: string) => Promise<void>;
-		bubbleCol: HTMLElement;
+		row: HTMLElement;
 	} {
-		const row = this.messagesEl.createDiv({
-			cls: "pythia-message pythia-message-assistant",
-		});
-		const bubbleCol = row.createDiv({ cls: "pythia-bubble-col" });
-		const bubble = bubbleCol.createDiv({ cls: "pythia-bubble pythia-streaming" });
+		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
+		const aiBody = row.createDiv({ cls: "p-ai-body pythia-streaming" });
 		const textNode = document.createTextNode("");
-		bubble.appendChild(textNode);
+		aiBody.appendChild(textNode);
 
 		return {
-			bubbleCol,
+			row,
 			appendToken: (text: string) => {
 				textNode.textContent = (textNode.textContent ?? "") + text;
 				this.scrollToBottom();
 			},
 			finalize: async (fullText: string) => {
-				bubble.removeClass("pythia-streaming");
-				bubble.empty();
-				await MarkdownRenderer.render(
-					this.app,
-					fullText,
-					bubble,
-					"",
-					this
-				);
+				aiBody.removeClass("pythia-streaming");
+				aiBody.empty();
+				await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
 			},
 		};
+	}
+
+	private autoResizeTextarea(): void {
+		this.inputEl.style.height = "auto";
+		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, 72)}px`;
 	}
 
 	private scrollToBottom(force = false): void {
@@ -760,7 +794,7 @@ export class PythiaSidebarView extends ItemView {
 			this.favoritesSectionEl.style.display = "none";
 			return;
 		}
-		this.favoritesSectionEl.style.display = "";
+		this.favoritesSectionEl.style.display = "none";
 		for (const fav of favs) {
 			const pill = this.favoritesPillsEl.createEl("span", {
 				cls: "pythia-pill pythia-favorite-pill",
@@ -793,7 +827,7 @@ export class PythiaSidebarView extends ItemView {
 			// Already favorited — remove
 			await this.removeFavorite(msg.id);
 			starEl.setText("☆");
-			starEl.removeClass("pythia-star-active");
+			starEl.removeClass("on");
 			starEl.title = t("addToFavorites");
 			return;
 		}
@@ -803,7 +837,7 @@ export class PythiaSidebarView extends ItemView {
 		conv.favorites.push(placeholder);
 		await this.plugin.conversationStore.save(conv);
 		starEl.setText("★");
-		starEl.addClass("pythia-star-active");
+		starEl.addClass("on");
 		starEl.title = t("removeFromFavorites");
 		this.renderFavoritesBar();
 
@@ -840,17 +874,17 @@ export class PythiaSidebarView extends ItemView {
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
 		) as HTMLElement | null;
-		const star = row?.querySelector(".pythia-star") as HTMLButtonElement | null;
+		const star = row?.querySelector(".p-star") as HTMLButtonElement | null;
 		if (star) {
 			star.setText("☆");
-			star.removeClass("pythia-star-active");
+			star.removeClass("on");
 			star.title = t("addToFavorites");
 		}
 	}
 
 	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
 		const fmt = (n: number) => n.toLocaleString();
-		const el = row.createEl("span", { cls: "pythia-token-count" });
+		const el = row.createEl("span");
 		el.setText(t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }));
 		el.title = t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) });
 	}
@@ -868,66 +902,77 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.scrollTo({ top: rowTop - TOP_MARGIN, behavior: "smooth" });
 	}
 
-	private toggleTocPopover(viewRoot: HTMLElement, tocBar: HTMLElement): void {
-		if (this.tocPopoverEl) {
-			this.tocPopoverEl.remove();
-			this.tocPopoverEl = null;
+	private toggleNavigator(): void {
+		if (this.navigatorEl.hasClass("open")) {
+			this.navigatorEl.removeClass("open");
 			return;
 		}
 
+		// Populate fresh content on each open
+		this.navigatorEl.empty();
 		const conv = this.activeConversation;
-		const userMessages = conv
-			? conv.messages.filter((m) => m.role === "user")
-			: [];
 
-		// Append to the root so the popover isn't clipped by overflow:hidden ancestors.
-		const popover = viewRoot.createDiv({ cls: "pythia-toc-popover" });
-		this.tocPopoverEl = popover;
-
-		const positionPopover = () => {
-			const barRect = tocBar.getBoundingClientRect();
-			const rootRect = viewRoot.getBoundingClientRect();
-			const popoverHeight = Math.min(popover.scrollHeight, 240);
-			const bottom = rootRect.bottom - barRect.top + 4;
-			popover.style.position = "absolute";
-			popover.style.bottom = `${bottom}px`;
-			popover.style.right = "8px";
-		};
-
-		if (userMessages.length === 0) {
-			popover.createDiv({
-				cls: "pythia-toc-item pythia-toc-placeholder",
-				text: t("chaptersEmpty"),
-			});
+		// ── Starred ─────────────────────────────────────────────────
+		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Starred" });
+		const favs = conv?.favorites ?? [];
+		if (favs.length === 0) {
+			const placeholder = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+			placeholder.createEl("span", { text: "—" });
+			placeholder.style.color = "var(--text-faint)";
+			placeholder.style.cursor = "default";
+			placeholder.style.pointerEvents = "none";
 		} else {
-			for (const msg of userMessages) {
-				const item = popover.createDiv({
-					cls: "pythia-toc-item",
-					text: msg.chapterName ?? "…",
-				});
-				// Use mousedown so Obsidian's global click interceptors can't block it
+			for (const fav of favs) {
+				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+				item.createEl("span", { cls: "p-nav-star", text: "★" });
+				item.createEl("span", { text: fav.name });
 				item.addEventListener("mousedown", (e) => {
 					e.preventDefault();
 					e.stopPropagation();
-					this.scrollToMessage(msg.id);
-					popover.remove();
-					this.tocPopoverEl = null;
+					this.scrollToMessage(fav.messageId);
+					this.navigatorEl.removeClass("open");
 					document.removeEventListener("mousedown", onOutside, true);
 				});
 			}
 		}
 
-		requestAnimationFrame(positionPopover);
+		// ── Divider ─────────────────────────────────────────────────
+		this.navigatorEl.createDiv({ cls: "p-nav-divider" });
 
-		// Close on mousedown outside (capture so it fires before any Obsidian handlers)
+		// ── All prompts ─────────────────────────────────────────────
+		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "All prompts" });
+		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
+		if (userMsgs.length === 0) {
+			const placeholder = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+			placeholder.createEl("span", { text: "—" });
+			placeholder.style.color = "var(--text-faint)";
+			placeholder.style.cursor = "default";
+			placeholder.style.pointerEvents = "none";
+		} else {
+			for (const msg of userMsgs) {
+				const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
+				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+				item.createEl("span", { text: label });
+				item.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.scrollToMessage(msg.id);
+					this.navigatorEl.removeClass("open");
+					document.removeEventListener("mousedown", onOutside, true);
+				});
+			}
+		}
+
+		this.navigatorEl.addClass("open");
+
+		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers)
 		const onOutside = (e: MouseEvent) => {
-			if (!popover.contains(e.target as Node) && e.target !== this.tocBtnEl) {
-				popover.remove();
-				this.tocPopoverEl = null;
+			if (!this.navigatorEl.contains(e.target as Node) && e.target !== this.indexTriggerEl) {
+				this.navigatorEl.removeClass("open");
 				document.removeEventListener("mousedown", onOutside, true);
 			}
 		};
-		// Defer so the button's own mousedown doesn't immediately close it
+		// Defer so the trigger's own mousedown doesn't immediately close it
 		setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 	}
 
@@ -1001,7 +1046,9 @@ export class PythiaSidebarView extends ItemView {
 			if (summary) {
 				conv.summaryText = summary;
 				await this.plugin.conversationStore.save(conv);
-				await this.renderMessages();
+				this.updateSummaryBar();
+				// Auto-open the body to reveal the freshly generated summary
+				if (!this.summaryOpen) this.toggleSummaryBody();
 			}
 		} catch (e) {
 			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
@@ -1081,6 +1128,7 @@ export class PythiaSidebarView extends ItemView {
 		if (!text) return;
 
 		this.inputEl.value = "";
+		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
 		const userMsg: Message = {
@@ -1101,7 +1149,7 @@ export class PythiaSidebarView extends ItemView {
 		this.pendingAttachedNotes = [];
 		this.renderAttachedPills();
 
-		const { appendToken, finalize, bubbleCol: streamingBubbleCol } = this.createStreamingBubble();
+		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 
 		const onToolCall = this.plugin.settings.enableNoteCreation
 			? async (call: ToolCall): Promise<string> => {
@@ -1173,14 +1221,14 @@ export class PythiaSidebarView extends ItemView {
 					};
 					conv.messages.push(assistantMsg);
 					// Only wire the star when conv is still the displayed conversation.
-					const rows = this.messagesEl.querySelectorAll(".pythia-message-assistant");
+					const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
 					const lastRow = rows[rows.length - 1] as HTMLElement | null;
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
 						if (this.activeConversation?.id === conv.id) {
-							const footer = streamingBubbleCol.createDiv({ cls: "pythia-bubble-footer" });
+							const footer = streamingRow.createDiv({ cls: "p-tokens" });
 							const star = footer.createEl("button", {
-								cls: "pythia-star",
+								cls: "p-star",
 								text: "☆",
 								attr: { title: t("addToFavorites") },
 							});
@@ -1188,7 +1236,7 @@ export class PythiaSidebarView extends ItemView {
 								this.onStarClick(assistantMsg, star)
 							);
 							if (tokenUsage) {
-								footer.createSpan({ cls: "pythia-bubble-pipe", text: "|" });
+								footer.createSpan({ cls: "p-tok-sep", text: "|" });
 								this.renderTokenCount(footer, tokenUsage);
 							}
 						}
@@ -1348,12 +1396,10 @@ export class PythiaSidebarView extends ItemView {
 		if (streaming) {
 			this.autoScroll = true;
 			this.sendBtn.setText(t("stopBtn"));
-			this.sendBtn.removeClass("pythia-btn-primary");
-			this.sendBtn.addClass("pythia-btn-danger");
+			this.sendBtn.addClass("stop");
 		} else {
 			this.sendBtn.setText(t("sendBtn"));
-			this.sendBtn.removeClass("pythia-btn-danger");
-			this.sendBtn.addClass("pythia-btn-primary");
+			this.sendBtn.removeClass("stop");
 		}
 		this.inputEl.disabled = streaming;
 	}

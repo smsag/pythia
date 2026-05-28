@@ -32,7 +32,7 @@ const de: Strings = {
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	addToFavorites:      "Zu Favoriten hinzufügen",
 	removeFromFavorites: "Aus Favoriten entfernen",
-	tokenCount:          "↑{{input}} Tokens  ↓{{output}} Tokens",
+	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────
