@@ -611,6 +611,54 @@
   color: var(--text-normal);
 }
 
+/* ── Delete-exchange preview ─────────────────────────────────── */
+.p-msg-user.p-del-preview,
+.p-msg-ai.p-del-preview {
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+.p-del-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  animation: del-bar-in 0.14s ease;
+}
+@keyframes del-bar-in {
+  from { opacity: 0; transform: scaleY(0.5); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+
+.p-del-confirm {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  color: var(--text-error);
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  border: 1px solid var(--text-error);
+  opacity: 0.75;
+  transition: opacity 0.1s;
+  box-sizing: border-box;
+}
+.p-del-confirm:hover { opacity: 1; }
+
+.p-del-cancel {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  transition: background 0.1s, color 0.1s;
+  box-sizing: border-box;
+}
+.p-del-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+
 /* ── Selection toolbar ─────────────────────────────────────── */
 .pythia-sel-toolbar {
   flex-shrink: 0;

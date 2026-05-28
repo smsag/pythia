@@ -81,6 +81,13 @@ export class PythiaSidebarView extends ItemView {
 	private activeConversation: Conversation | null = null;
 	private isStreaming = false;
 	private autoScroll = true;
+	private longPressCleanup: (() => void) | null = null;
+	private activeDeletePreview: {
+		userRow: HTMLElement;
+		assistantRow: HTMLElement;
+		bar: HTMLElement;
+		outsideHandler: EventListener;
+	} | null = null;
 	private isScrolling = false;
 	private pendingAttachedNotes: string[] = [];
 
@@ -702,6 +709,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private async renderMessages(): Promise<void> {
+		this.hideDeletePreview();
 		this.messagesEl.empty();
 		if (!this.activeConversation) {
 			this.renderEmptyState();
@@ -717,6 +725,7 @@ export class PythiaSidebarView extends ItemView {
 			await this.appendMessageBubble(msg);
 		}
 		this.scrollToBottom();
+		this.attachLastBubbleLongPress();
 	}
 
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
@@ -1279,6 +1288,9 @@ export class PythiaSidebarView extends ItemView {
 						}
 					}
 					await this.plugin.conversationStore.save(conv);
+					if (this.activeConversation?.id === conv.id) {
+						this.attachLastBubbleLongPress();
+					}
 
 					if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
 						this.plugin.llmRouter
@@ -1412,9 +1424,165 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
+	// ── Delete-last-exchange ─────────────────────────────────────
+
+	private attachLastBubbleLongPress(): void {
+		this.longPressCleanup?.();
+		this.longPressCleanup = null;
+
+		if (!this.activeConversation || this.isStreaming) return;
+
+		const userRows = Array.from(
+			this.messagesEl.querySelectorAll<HTMLElement>(".p-msg-user")
+		);
+		const lastUserRow = userRows[userRows.length - 1];
+		if (!lastUserRow) return;
+
+		const assistantRow = lastUserRow.nextElementSibling as HTMLElement | null;
+		if (!assistantRow?.classList.contains("p-msg-ai")) return;
+
+		const bubble = lastUserRow.querySelector<HTMLElement>(".p-bubble");
+		if (!bubble) return;
+
+		let timer: ReturnType<typeof setTimeout> | null = null;
+
+		const cancel = () => {
+			if (timer !== null) { clearTimeout(timer); timer = null; }
+		};
+
+		const onTouchStart = (e: TouchEvent) => {
+			if (this.activeDeletePreview) return;
+			e.preventDefault(); // prevent iOS magnifier / text-selection
+			timer = setTimeout(() => {
+				timer = null;
+				this.showDeletePreview(lastUserRow, assistantRow);
+			}, 450);
+		};
+
+		const onMouseDown = (e: MouseEvent) => {
+			if (e.button !== 0 || this.activeDeletePreview) return;
+			timer = setTimeout(() => {
+				timer = null;
+				this.showDeletePreview(lastUserRow, assistantRow);
+			}, 450);
+		};
+
+		bubble.addEventListener("touchstart", onTouchStart, { passive: false });
+		bubble.addEventListener("touchend",   cancel, { passive: true });
+		bubble.addEventListener("touchcancel",cancel, { passive: true });
+		bubble.addEventListener("touchmove",  cancel, { passive: true });
+		bubble.addEventListener("mousedown",  onMouseDown);
+		bubble.addEventListener("mouseup",    cancel);
+		bubble.addEventListener("mouseleave", cancel);
+
+		this.longPressCleanup = () => {
+			cancel();
+			bubble.removeEventListener("touchstart",  onTouchStart);
+			bubble.removeEventListener("touchend",    cancel);
+			bubble.removeEventListener("touchcancel", cancel);
+			bubble.removeEventListener("touchmove",   cancel);
+			bubble.removeEventListener("mousedown",   onMouseDown);
+			bubble.removeEventListener("mouseup",     cancel);
+			bubble.removeEventListener("mouseleave",  cancel);
+		};
+	}
+
+	private showDeletePreview(userRow: HTMLElement, assistantRow: HTMLElement): void {
+		this.hideDeletePreview();
+
+		userRow.addClass("p-del-preview");
+		assistantRow.addClass("p-del-preview");
+
+		const bar = createDiv({ cls: "p-del-bar" });
+		const confirmBtn = bar.createEl("button", { cls: "p-del-confirm", text: t("deleteExchangeBtn") });
+		const cancelBtn  = bar.createEl("button", { cls: "p-del-cancel",  text: t("cancelBtn") });
+
+		const doConfirm = (e: Event) => {
+			e.preventDefault(); e.stopPropagation();
+			void this.confirmDeleteLastExchange(userRow, assistantRow);
+		};
+		const doCancel = (e: Event) => {
+			e.preventDefault(); e.stopPropagation();
+			this.hideDeletePreview();
+		};
+
+		confirmBtn.addEventListener("mousedown",  doConfirm);
+		confirmBtn.addEventListener("touchstart", doConfirm, { passive: false });
+		cancelBtn.addEventListener("mousedown",   doCancel);
+		cancelBtn.addEventListener("touchstart",  doCancel, { passive: false });
+
+		assistantRow.insertAdjacentElement("beforebegin", bar);
+
+		const outsideHandler: EventListener = (e) => {
+			const t = (e as MouseEvent | TouchEvent).target as Node | null;
+			if (t && !bar.contains(t) && !userRow.contains(t) && !assistantRow.contains(t)) {
+				this.hideDeletePreview();
+			}
+		};
+		document.addEventListener("mousedown",  outsideHandler, { capture: true });
+		document.addEventListener("touchstart", outsideHandler, { capture: true });
+
+		this.activeDeletePreview = { userRow, assistantRow, bar, outsideHandler };
+	}
+
+	private hideDeletePreview(): void {
+		if (!this.activeDeletePreview) return;
+		const { userRow, assistantRow, bar, outsideHandler } = this.activeDeletePreview;
+		userRow.removeClass("p-del-preview");
+		assistantRow.removeClass("p-del-preview");
+		bar.remove();
+		document.removeEventListener("mousedown",  outsideHandler, { capture: true });
+		document.removeEventListener("touchstart", outsideHandler, { capture: true });
+		this.activeDeletePreview = null;
+	}
+
+	private async confirmDeleteLastExchange(
+		userRow: HTMLElement,
+		assistantRow: HTMLElement
+	): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+
+		const userId      = userRow.getAttribute("data-msg-id");
+		const assistantId = assistantRow.getAttribute("data-msg-id");
+		if (!userId) return;
+
+		const userIdx = conv.messages.findIndex((m) => m.id === userId);
+		if (userIdx === -1) return;
+
+		const removeCount = assistantId ? 2 : 1;
+		conv.messages.splice(userIdx, removeCount);
+
+		// Keep the save-boundary accurate
+		if (conv.lastSavedMessageCount !== undefined && conv.lastSavedMessageCount > userIdx) {
+			conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
+		}
+
+		// Remove the starred entry for the deleted assistant message
+		if (assistantId && conv.favorites?.length) {
+			conv.favorites = conv.favorites.filter((f) => f.messageId !== assistantId);
+		}
+
+		this.hideDeletePreview();
+		userRow.remove();
+		assistantRow.remove();
+
+		await this.plugin.conversationStore.save(conv);
+		new Notice(t("exchangeDeleted"));
+
+		if (conv.messages.length === 0) {
+			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
+			hint.createEl("p", { text: t("startConversationBelow") });
+		}
+
+		this.attachLastBubbleLongPress();
+	}
+
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
 		if (streaming) {
+			this.longPressCleanup?.();
+			this.longPressCleanup = null;
 			this.autoScroll = true;
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");

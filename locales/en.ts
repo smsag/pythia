@@ -173,6 +173,8 @@ const en = {
 	deleteFileConfirm: "Delete \"{{name}}\" from the vault? This cannot be undone.",
 	deleteBtn:         "Delete",
 	cancelBtn:         "Cancel",
+	deleteExchangeBtn: "✕ Delete",
+	exchangeDeleted:   "Exchange deleted",
 
 	// ── Delete conversation modal ─────────────────────────────────────────────
 	deleteConvTitle:   "Delete conversation",

@@ -175,6 +175,8 @@ const de: Strings = {
 	deleteFileConfirm: "\"{{name}}\" aus dem Vault löschen? Dies kann nicht rückgängig gemacht werden.",
 	deleteBtn:         "Löschen",
 	cancelBtn:         "Abbrechen",
+	deleteExchangeBtn: "✕ Löschen",
+	exchangeDeleted:   "Austausch gelöscht",
 
 	// ── Delete conversation modal ─────────────────────────────────────────────
 	deleteConvTitle:   "Gespräch löschen",
