@@ -415,33 +415,13 @@
   flex-shrink: 0;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
-  position: relative;
 }
-
-.p-summary-panel-hdr {
-  display: flex;
-  align-items: center;
-  padding: var(--s1) var(--s3);
-  cursor: pointer;
-  user-select: none;
-  min-height: 24px;
-  transition: background 0.08s;
-}
-.p-summary-panel-hdr:hover { background: var(--background-modifier-hover); }
-
-.p-summary-panel-chevron {
-  font-size: 8px;
-  color: var(--text-faint);
-  transition: transform 0.18s;
-}
-.p-summary-panel-chevron.open { transform: rotate(180deg); }
 
 .p-summary-panel-body {
   display: none;
-  max-height: 96px;
+  max-height: 106px;
   overflow-y: auto;
-  padding: var(--s1) var(--s3) 20px;
-  border-top: 1px solid var(--background-modifier-border);
+  padding: var(--s2) var(--s3);
 }
 .p-summary-panel-body.open { display: block; }
 .p-summary-panel-body::-webkit-scrollbar { width: 2px; }
@@ -451,14 +431,13 @@
 }
 
 .p-summary-ts {
-  position: absolute;
-  bottom: var(--s1);
-  right: var(--s3);
+  display: block;
+  text-align: right;
+  margin-top: var(--s1);
   font-family: var(--font-monospace);
   font-size: 10px;
   color: var(--text-faint);
   user-select: none;
-  pointer-events: none;
 }
 
 /* Sparkle indicator in header — accent colour, hidden until summary exists */

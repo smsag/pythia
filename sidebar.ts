@@ -108,8 +108,6 @@ export class PythiaSidebarView extends ItemView {
 
 	private summaryPanelEl!: HTMLElement;
 	private summaryPanelBodyEl!: HTMLElement;
-	private summaryPanelChevronEl!: HTMLElement;
-	private summaryTsEl!: HTMLElement;
 	private headerSparkleEl!: HTMLButtonElement;
 	private toolbarSparkleBtn!: HTMLButtonElement;
 	private summaryPanelOpen = false;
@@ -312,15 +310,8 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Summary panel (below header, above messages) ────────────
 		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
-		const summaryPanelHdr = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-hdr" });
-		this.summaryPanelChevronEl = summaryPanelHdr.createEl("span", {
-			cls: "p-summary-panel-chevron",
-			text: "▼",
-		});
 		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
-		this.summaryTsEl = this.summaryPanelEl.createEl("span", { cls: "p-summary-ts" });
 		this.summaryPanelEl.style.display = "none";
-		summaryPanelHdr.addEventListener("click", () => this.toggleSummaryPanel());
 
 		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
 		this.referenceSectionEl.createEl("span", {
@@ -574,18 +565,21 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryPanelBodyEl.empty();
 		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this);
 		const ts = this.activeConversation?.summaryUpdatedAt;
-		this.summaryTsEl.setText(ts ? formatSummaryTimestamp(ts) : "");
+		if (ts) {
+			this.summaryPanelBodyEl.createEl("span", {
+				cls: "p-summary-ts",
+				text: formatSummaryTimestamp(ts),
+			});
+		}
 		// Collapse when switching conversations or after a refresh
 		this.summaryPanelOpen = false;
 		this.summaryPanelBodyEl.removeClass("open");
-		this.summaryPanelChevronEl.removeClass("open");
 	}
 
 	private toggleSummaryPanel(): void {
 		if (this.summaryPanelEl.style.display === "none") return;
 		this.summaryPanelOpen = !this.summaryPanelOpen;
 		this.summaryPanelBodyEl.toggleClass("open", this.summaryPanelOpen);
-		this.summaryPanelChevronEl.toggleClass("open", this.summaryPanelOpen);
 	}
 
 	private renderForkBannerEl(): void {
