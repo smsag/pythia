@@ -11,11 +11,23 @@ data.json
 # TypeScript incremental build cache
 *.tsbuildinfo
 
+# Environment files (safety net)
+.env
+.env.*
+
 # macOS
 .DS_Store
 
+# Windows
+Thumbs.db
+desktop.ini
+
 # Editor
 .vscode/settings.json
+.idea/
+
+# Claude Code session data, CLAUDE.md, worktree metadata
+.claude/
 
 # Local docs (not part of the distributed plugin)
 docs/

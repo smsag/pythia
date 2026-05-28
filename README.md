@@ -1,21 +1,27 @@
 # Pythia
 
-An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropic and OpenAI) into your vault as first-class objects — with templates, context injection, streaming chat, and PKM-native storage.
+An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropic and OpenAI) into your vault as first-class objects — with templates, context injection, streaming chat, summaries, and PKM-native storage.
 
 ## Features
 
 - **Command palette workflows** — start, resume, and manage AI conversations without leaving Obsidian
 - **Template system** — define system prompts in vault markdown files (frontmatter-driven)
-- **Reference row** — a compact pill strip that auto-appears when a conversation has associated vault files (saved notes, summary notes); click a pill to open the file, × to delete it
 - **Streaming chat** — responses rendered token-by-token in the sidebar panel
 - **Conversation storage** — full history saved in `data.json`; conversations are automatically given a short AI-generated title after the first exchange; optional summary notes written to your vault
+- **Summary panel** — press ✦ in the toolbar to generate an AI summary and a new title for the conversation in one step. The summary appears in a collapsible panel below the header, with a timestamp showing when it was last generated. A ✦ indicator in the header row signals that a summary exists; click it to expand the panel.
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
-- **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; favorites appear as jump links at the top of the conversation
-- **Save output** — write any response directly to a new vault note; select any text in the chat to **Copy**, **Insert into note**, or **Save to inbox** (prepends the selection with a timestamp to a configurable inbox note)
+- **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; starred messages are accessible via the `#` chapter navigator
+- **Fork conversation** — select any text in a response, then press **Fork** in the action strip to branch the conversation: a new conversation inherits the same system prompt and template, starts empty, and shows a banner linking back to the source with its summary
+- **`#` Chapter navigator** — the `#` button at the bottom-right of the message area opens a popover listing all starred messages and user turns for quick scroll navigation
+- **Delete last exchange** — long-press (450 ms) on the last user bubble to delete the most recent prompt + response pair (only the last exchange; a confirmation step is shown before deletion)
+- **Reference row** — a compact pill strip that auto-appears when a conversation has associated vault files (saved notes, summary notes); click a pill to open the file, × to delete it
+- **Save output** — write any response directly to a new vault note
+- **Selection action strip** — select any text in the chat to reveal a fixed action bar above the input: **Copy**, **Insert into note**, **Save to inbox**, **Fork**
+- **Inbox** — "Save to inbox" prepends the selection with a timestamp to a configurable inbox note
 - **AI note creation** — ask Pythia to create a vault note in plain language (e.g. *"Create a note summarising our discussion at Research/Topic.md"*); a status chip confirms creation with a clickable link
 - **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
-- **Context menus** — right-click selected text in the editor or any file in the Explorer to open a conversation instantly
+- **Context menus** — right-click any file in the Explorer to open a conversation about that note; right-click a folder to combine all its notes as context; right-click selected text in the editor to send it to Pythia
 - **Browse conversations** — open any past conversation directly from the Command Palette, no resume-mode step
 - **Delete conversation** — remove any conversation from `data.json` via the sidebar trash button or the Command Palette (confirmation required)
 - **Browse favorites** — fuzzy-search all starred responses across every conversation and jump directly to one from the Command Palette
@@ -41,7 +47,8 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 ### Context menus
 
 - **Editor** — select any text in a note, right-click → **Send to Pythia**: opens a new conversation with the selected text pre-filled in the input.
-- **File Explorer** — right-click any file → **Chat about this note**: opens a new conversation with that file injected as a context note.
+- **File Explorer (file)** — right-click any `.md` file → **Chat about this note**: opens a new conversation with the file injected as context and an auto-generated summary of its content.
+- **File Explorer (folder)** — right-click any folder → **Chat about folder**: combines all markdown files in the folder as context (up to 20,000 characters).
 
 ## Templates
 
@@ -115,7 +122,7 @@ Obsidian renders this as a clickable link in the note's **Properties** panel —
 
 ## Reference row
 
-The **Reference** strip appears at the top of the sidebar whenever a conversation has associated vault files — a saved note (💾) or an auto-generated summary note. Each file is shown as a pill:
+The **Reference** strip appears at the top of the sidebar whenever a conversation has associated vault files — a saved note or an auto-generated summary note. Each file is shown as a pill:
 
 - **Click the filename** — opens the file in the editor.
 - **× button** — shows a confirmation dialog, then permanently deletes the file from the vault and clears the link.
@@ -173,4 +180,4 @@ Copy `main.js`, `manifest.json`, and `styles.css` into `.obsidian/plugins/pythia
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
