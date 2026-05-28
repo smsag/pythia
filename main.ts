@@ -444,7 +444,8 @@ export default class PythiaPlugin extends Plugin {
 		templateId?: string,
 		provider?: Provider,
 		model?: string,
-		maxTokens?: number
+		maxTokens?: number,
+		outputFolder?: string
 	): Promise<Conversation> {
 		const resolvedProvider = provider ?? this.settings.defaultProvider;
 		const resolvedModel = model ?? (
@@ -465,6 +466,7 @@ export default class PythiaPlugin extends Plugin {
 			provider: resolvedProvider,
 			model: resolvedModel,
 			maxTokens,
+			outputFolder,
 			messages: [],
 		};
 		this.conversations.push(conv);
@@ -485,15 +487,34 @@ export default class PythiaPlugin extends Plugin {
 			return;
 		}
 
+		// Capture the active note BEFORE the modal opens (it may lose focus)
+		const activeFile = this.app.workspace.getActiveFile();
+
 		new TemplateSuggestModal(this.app, templates, async (tpl) => {
+			// Resolve context notes: template's own notes + active note (if setting is on)
+			const contextNotes = [...tpl.contextNotes];
+			if (this.settings.injectActiveNoteOnTemplate && activeFile) {
+				if (!contextNotes.includes(activeFile.path)) {
+					contextNotes.push(activeFile.path);
+				}
+			}
+
+			// Resolve output folder: "." means same folder as the active note
+			let outputFolder = tpl.outputFolder;
+			if (outputFolder === "." && activeFile) {
+				const parentPath = activeFile.parent?.path ?? "";
+				outputFolder = parentPath === "/" ? "" : parentPath;
+			}
+
 			const conv = await this.createConversation(
 				`${tpl.name} ${todayISO()}`,
 				tpl.systemPrompt,
-				[...tpl.contextNotes],
+				contextNotes,
 				tpl.id,
 				tpl.provider,
 				tpl.model,
-				tpl.maxTokens
+				tpl.maxTokens,
+				outputFolder
 			);
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			await this.conversationStore.save(conv);
@@ -501,8 +522,14 @@ export default class PythiaPlugin extends Plugin {
 			const view = await this.activateView();
 			await view.setActiveConversation(conv);
 
-			if (tpl.contextNotes.length > 0) {
-				new Notice(t("loadedTemplate", { name: tpl.name, count: String(tpl.contextNotes.length) }));
+			const totalContext = contextNotes.length;
+			if (totalContext > 0) {
+				new Notice(t("loadedTemplate", { name: tpl.name, count: String(totalContext) }));
+			}
+
+			// Fire auto_prompt immediately after the conversation is ready
+			if (tpl.autoPrompt) {
+				view.triggerAutoPrompt(tpl.autoPrompt);
 			}
 		}).open();
 	}

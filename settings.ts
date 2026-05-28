@@ -24,6 +24,8 @@ export interface PythiaSettings {
 	maxMessagesPerSession: number;
 	/** When true, passes a create_note tool to the LLM so it can write vault notes. */
 	enableNoteCreation: boolean;
+	/** When true, the currently active note is injected as context when starting from a template. */
+	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
 	inboxNote: string;
 	debugMode: boolean;
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	defaultResumeMode: "summary",
 	maxMessagesPerSession: 100,
 	enableNoteCreation: true,
+	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
 	debugMode: false,
 };
@@ -236,6 +239,18 @@ export class PythiaSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.enableNoteCreation)
 					.onChange(async (value) => {
 						this.plugin.settings.enableNoteCreation = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("injectActiveNoteOnTemplateName"))
+			.setDesc(t("injectActiveNoteOnTemplateDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.injectActiveNoteOnTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.injectActiveNoteOnTemplate = value;
 						await this.plugin.saveSettings();
 					})
 			);

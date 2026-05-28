@@ -150,6 +150,8 @@ const en = {
 	debugModeDesc:           "Log API calls and payloads to the developer console.",
 	enableNoteCreationName:  "Allow AI to create notes",
 	enableNoteCreationDesc:  "Pass a create_note tool to the AI so it can write vault notes on request. When enabled, you can ask Pythia to create a note in plain language.",
+	injectActiveNoteOnTemplateName: "Inject active note when using a template",
+	injectActiveNoteOnTemplateDesc: "When starting a conversation from a template, automatically include the currently open note as additional context (e.g. the job ad, brief, or article you want to work on).",
 	chooseFolderBtn:         "Choose folder",
 	customModelOption:       "Custom…",
 	providerAnthropic:       "Anthropic",

@@ -262,6 +262,13 @@ export class PythiaSidebarView extends ItemView {
 		this.inputEl.focus();
 	}
 
+	triggerAutoPrompt(text: string): void {
+		if (!this.inputEl) return;
+		this.inputEl.value = text;
+		this.autoResizeTextarea();
+		void this.sendMessage();
+	}
+
 	private buildUI(): void {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
@@ -1149,7 +1156,7 @@ export class PythiaSidebarView extends ItemView {
 		).open();
 	}
 
-	private async sendMessage(): Promise<void> {
+	async sendMessage(): Promise<void> {
 		if (this.isStreaming) return;
 		if (!this.activeConversation) {
 			new Notice(t("noActiveConvToSend"));

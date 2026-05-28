@@ -152,6 +152,8 @@ const de: Strings = {
 	debugModeDesc:           "API-Aufrufe und Payloads in der Entwicklerkonsole protokollieren.",
 	enableNoteCreationName:  "KI darf Notizen erstellen",
 	enableNoteCreationDesc:  "Gibt der KI ein create_note-Tool, mit dem sie Vault-Notizen schreiben kann. Du kannst Pythia bitten, eine Notiz in natürlicher Sprache zu erstellen.",
+	injectActiveNoteOnTemplateName: "Aktive Notiz bei Vorlagen einfügen",
+	injectActiveNoteOnTemplateDesc: "Beim Starten einer Konversation aus einer Vorlage wird die aktuell geöffnete Notiz automatisch als zusätzlicher Kontext hinzugefügt (z. B. die Stellenanzeige, das Brief oder der Artikel, an dem du arbeiten möchtest).",
 	chooseFolderBtn:         "Ordner wählen",
 	customModelOption:       "Benutzerdefiniert…",
 	providerAnthropic:       "Anthropic",

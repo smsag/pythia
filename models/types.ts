@@ -20,6 +20,7 @@ export interface Conversation {
 	savedNotePath?: string;           // vault path last saved to via save button
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
 	forkedFromId?: string;            // ID of the conversation this was forked from
+	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 }
 
 export interface TokenUsage {
@@ -50,7 +51,8 @@ export interface PythiaTemplate {
 	maxTokens?: number;
 	contextNotes: string[];
 	resumeMode?: "full" | "summary";
-	outputFolder?: string;
+	outputFolder?: string;    // "." = same folder as the active note at creation time
+	autoPrompt?: string;      // message auto-sent when the conversation opens
 	systemPrompt: string;
 }
 
