@@ -557,12 +557,41 @@
 .p-summary-panel-body li { font-size: calc(var(--font-small) * 0.8); }
 .p-ai-body pre,
 .p-summary-panel-body pre {
+  position: relative;
   background: var(--code-background);
   border-radius: 6px;
   padding: 8px 10px;
   overflow-x: auto;
   font-size: 0.88em;
   margin: var(--s1) 0;
+}
+
+.p-code-copy {
+  all: unset;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.p-ai-body pre:hover .p-code-copy {
+  opacity: 1;
+}
+.p-code-copy:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.p-code-copy.copied {
+  color: var(--color-green);
+  opacity: 1;
 }
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }

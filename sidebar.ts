@@ -641,19 +641,24 @@ export class PythiaSidebarView extends ItemView {
 		this.referencePillsEl.empty();
 		const conv = this.activeConversation;
 
+		if (!conv) {
+			this.referenceSectionEl.style.display = "none";
+			return;
+		}
+
 		type RefEntry =
 			| { kind: "context"; path: string }
 			| { kind: "output"; path: string; clearField: () => void };
 
 		const entries: RefEntry[] = [];
 
-		for (const path of conv?.contextNotes ?? []) {
+		for (const path of conv.contextNotes ?? []) {
 			entries.push({ kind: "context", path });
 		}
-		if (conv?.savedNotePath) {
+		if (conv.savedNotePath) {
 			entries.push({ kind: "output", path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
 		}
-		if (conv?.summaryNote) {
+		if (conv.summaryNote) {
 			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
 		}
 
@@ -680,7 +685,6 @@ export class PythiaSidebarView extends ItemView {
 			const x = pill.createEl("button", { cls: "p-pill-x", text: "✕" });
 			if (entry.kind === "context") {
 				x.addEventListener("click", async () => {
-					if (!conv) return;
 					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
@@ -691,12 +695,27 @@ export class PythiaSidebarView extends ItemView {
 						const f = this.app.vault.getAbstractFileByPath(entry.path);
 						if (f instanceof TFile) await this.app.vault.trash(f, true);
 						entry.clearField();
-						if (conv) await this.plugin.conversationStore.save(conv);
+						await this.plugin.conversationStore.save(conv);
 						this.renderReferencePills();
 					}).open();
 				});
 			}
 		}
+
+		const addBtn = this.referencePillsEl.createEl("button", {
+			cls: "pythia-pill-add",
+			attr: { title: t("addContextNoteTooltip") },
+			text: "+",
+		});
+		addBtn.addEventListener("click", () => {
+			new NoteSuggestModal(this.app, (file) => {
+				if (!conv.contextNotes.includes(file.path)) {
+					conv.contextNotes.push(file.path);
+					void this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
+				}
+			}).open();
+		});
 	}
 
 	private renderAttachedPills(): void {
@@ -780,6 +799,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
+		this.addCopyButtons(aiBody);
 
 		const isFav = this.activeConversation?.favorites?.some(
 			(f) => f.messageId === msg.id
@@ -819,11 +839,28 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
+				this.addCopyButtons(aiBody);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
 			},
 		};
+	}
+
+	private addCopyButtons(container: HTMLElement): void {
+		container.querySelectorAll<HTMLElement>("pre:not([data-copy-btn])").forEach((pre) => {
+			pre.dataset.copyBtn = "1";
+			const btn = pre.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
+			setIcon(btn, "copy");
+			btn.addEventListener("click", async (e) => {
+				e.stopPropagation();
+				const text = (pre.querySelector("code") ?? pre).innerText;
+				await navigator.clipboard.writeText(text);
+				setIcon(btn, "check");
+				btn.addClass("copied");
+				setTimeout(() => { setIcon(btn, "copy"); btn.removeClass("copied"); }, 1500);
+			});
+		});
 	}
 
 	private autoResizeTextarea(): void {

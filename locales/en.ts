@@ -19,6 +19,7 @@ const en = {
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Reference",
+	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
