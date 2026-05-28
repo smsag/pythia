@@ -9,6 +9,14 @@ import { getToolDefinitions } from "./ToolHandler";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
+function parseTitleAndSummary(raw: string): { title: string; summary: string } {
+	const titleMatch = raw.match(/^TITLE:\s*(.+)/i);
+	const title = titleMatch ? titleMatch[1].trim() : "";
+	const summaryIdx = raw.search(/\nSUMMARY:\n/i);
+	const summary = summaryIdx >= 0 ? raw.slice(summaryIdx + "\nSUMMARY:\n".length).trim() : raw.trim();
+	return { title, summary };
+}
+
 /** Ensure roles alternate and the array starts with 'user', as the API requires. */
 function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
 	const result: ApiMessage[] = [];
@@ -215,6 +223,29 @@ export class AnthropicService implements LLMProvider {
 
 		const block = response.content[0];
 		return block.type === "text" ? block.text : "";
+	}
+
+	async generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }> {
+		const client = this.getClient();
+		const model = conversation.model || this.settings.defaultAnthropicModel;
+
+		const conversationText = conversation.messages
+			.map((m) => `${m.role === "user" ? "User" : "Claude"}: ${m.content}`)
+			.join("\n\n");
+
+		const response = await client.messages.create({
+			model,
+			max_tokens: 1024,
+			messages: [
+				{
+					role: "user",
+					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title, no punctuation, no quotes>\nSUMMARY:\n<summary here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.\n\n${conversationText}`,
+				},
+			],
+		});
+
+		const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
+		return parseTitleAndSummary(raw);
 	}
 
 	async generateFavoriteName(content: string): Promise<string> {

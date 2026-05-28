@@ -90,11 +90,12 @@ export class PythiaSidebarView extends ItemView {
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 
-	private summarySectionEl!: HTMLElement;
-	private summaryBodyEl!: HTMLElement;
-	private summaryChevronEl!: HTMLElement;
-	private summarySparkleEl!: HTMLButtonElement;
-	private summaryOpen = false;
+	private summaryPanelEl!: HTMLElement;
+	private summaryPanelBodyEl!: HTMLElement;
+	private summaryPanelChevronEl!: HTMLElement;
+	private headerSparkleEl!: HTMLButtonElement;
+	private toolbarSparkleBtn!: HTMLButtonElement;
+	private summaryPanelOpen = false;
 
 	private inlineSuggest!: InlineSuggest;
 	private indexTriggerEl!: HTMLButtonElement;
@@ -259,6 +260,14 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
 
+		this.headerSparkleEl = header.createEl("button", {
+			cls: "p-hdr-btn p-hdr-sparkle",
+			attr: { title: t("summarizeTooltip") },
+		});
+		setIcon(this.headerSparkleEl, "sparkles");
+		this.headerSparkleEl.style.display = "none";
+		this.headerSparkleEl.addEventListener("click", () => this.toggleSummaryPanel());
+
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
 			text: "",
@@ -284,6 +293,18 @@ export class PythiaSidebarView extends ItemView {
 		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
 		this.templateLabelEl.style.display = "none";
 
+		// ── Summary panel (below header, above messages) ────────────
+		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
+		const summaryPanelHdr = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-hdr" });
+		summaryPanelHdr.createEl("span", { cls: "p-summary-panel-label", text: t("summaryLabel") });
+		this.summaryPanelChevronEl = summaryPanelHdr.createEl("span", {
+			cls: "p-summary-panel-chevron",
+			text: "▼",
+		});
+		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
+		this.summaryPanelEl.style.display = "none";
+		summaryPanelHdr.addEventListener("click", () => this.toggleSummaryPanel());
+
 		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
 		this.referenceSectionEl.createEl("span", {
 			cls: "p-row-label",
@@ -305,27 +326,6 @@ export class PythiaSidebarView extends ItemView {
 		this.favoritesSectionEl.style.display = "none";
 
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
-
-		// ── Summary bar (sticky above chat scroll) ──────────────────
-		this.summarySectionEl = messagesWrapper.createDiv({ cls: "p-summary" });
-		const summaryHeader = this.summarySectionEl.createDiv({ cls: "p-summary-header" });
-		summaryHeader.createEl("span", { cls: "p-summary-label", text: "Summary" });
-		this.summaryChevronEl = summaryHeader.createEl("span", {
-			cls: "p-summary-chevron",
-			text: "▼",
-		});
-		this.summaryBodyEl = this.summarySectionEl.createDiv({ cls: "p-summary-body" });
-		this.summarySparkleEl = this.summarySectionEl.createEl("button", {
-			cls: "p-summary-sparkle",
-			text: "✦",
-			attr: { title: t("summarizeTooltip") },
-		});
-		this.summarySectionEl.style.display = "none";
-		summaryHeader.addEventListener("click", () => this.toggleSummaryBody());
-		this.summarySparkleEl.addEventListener("click", (e) => {
-			e.stopPropagation();
-			void this.onGenerateSummary();
-		});
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
 		this.messagesEl.addEventListener("scroll", () => {
@@ -487,6 +487,13 @@ export class PythiaSidebarView extends ItemView {
 		saveSvg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
 		saveBtn.addEventListener("click", () => this.onSaveResponse());
 
+		this.toolbarSparkleBtn = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("summarizeTooltip") },
+		});
+		setIcon(this.toolbarSparkleBtn, "sparkles");
+		this.toolbarSparkleBtn.addEventListener("click", () => void this.onGenerateSummary());
+
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
 			text: t("sendBtn"),
@@ -541,24 +548,25 @@ export class PythiaSidebarView extends ItemView {
 	private updateSummaryBar(): void {
 		const summary = this.activeConversation?.summaryText?.trim();
 		if (!summary) {
-			this.summarySectionEl.style.display = "none";
+			this.summaryPanelEl.style.display = "none";
+			this.headerSparkleEl.style.display = "none";
 			return;
 		}
-		this.summarySectionEl.style.display = "";
-		this.summaryBodyEl.empty();
-		void MarkdownRenderer.render(this.app, summary, this.summaryBodyEl, "", this);
-		// Always collapse when switching conversations
-		this.summaryOpen = false;
-		this.summaryBodyEl.removeClass("open");
-		this.summaryChevronEl.removeClass("open");
-		this.summarySparkleEl.removeClass("visible");
+		this.summaryPanelEl.style.display = "";
+		this.headerSparkleEl.style.display = "";
+		this.summaryPanelBodyEl.empty();
+		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this);
+		// Collapse when switching conversations or after a refresh
+		this.summaryPanelOpen = false;
+		this.summaryPanelBodyEl.removeClass("open");
+		this.summaryPanelChevronEl.removeClass("open");
 	}
 
-	private toggleSummaryBody(): void {
-		this.summaryOpen = !this.summaryOpen;
-		this.summaryBodyEl.toggleClass("open", this.summaryOpen);
-		this.summaryChevronEl.toggleClass("open", this.summaryOpen);
-		this.summarySparkleEl.toggleClass("visible", this.summaryOpen);
+	private toggleSummaryPanel(): void {
+		if (this.summaryPanelEl.style.display === "none") return;
+		this.summaryPanelOpen = !this.summaryPanelOpen;
+		this.summaryPanelBodyEl.toggleClass("open", this.summaryPanelOpen);
+		this.summaryPanelChevronEl.toggleClass("open", this.summaryPanelOpen);
 	}
 
 	private renderForkBannerEl(): void {
@@ -1048,19 +1056,28 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 		const notice = new Notice(t("generatingSummary"), 0);
+		this.toolbarSparkleBtn.addClass("p-sparkle-loading");
+		this.toolbarSparkleBtn.disabled = true;
 		try {
-			const summary = await this.plugin.llmRouter.generateSummary(conv);
+			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(conv);
 			if (summary) {
 				conv.summaryText = summary;
+				if (title) {
+					conv.name = title;
+					void this.plugin.renameConversationFile(conv);
+					this.renderHeader();
+				}
 				await this.plugin.conversationStore.save(conv);
 				this.updateSummaryBar();
-				// Auto-open the body to reveal the freshly generated summary
-				if (!this.summaryOpen) this.toggleSummaryBody();
+				// Auto-open the panel to reveal the freshly generated summary
+				if (!this.summaryPanelOpen) this.toggleSummaryPanel();
 			}
 		} catch (e) {
 			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
 		} finally {
 			notice.hide();
+			this.toolbarSparkleBtn.removeClass("p-sparkle-loading");
+			this.toolbarSparkleBtn.disabled = false;
 		}
 	}
 

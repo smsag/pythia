@@ -431,6 +431,26 @@ export default class PythiaPlugin extends Plugin {
 		return leaf ? (leaf.view as PythiaSidebarView) : null;
 	}
 
+	async renameConversationFile(conv: Conversation): Promise<void> {
+		if (!conv.savedNotePath) return;
+		const oldFile = this.app.vault.getAbstractFileByPath(conv.savedNotePath);
+		if (!(oldFile instanceof TFile)) return;
+		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
+		const dir = oldFile.parent?.path ?? "";
+		// Preserve date prefix (YYYY-MM-DD-) if the current filename has one
+		const datePrefix = oldFile.basename.match(/^(\d{4}-\d{2}-\d{2})-/)?.[1];
+		const newBasename = datePrefix ? `${datePrefix}-${safeName}` : safeName;
+		const newPath = dir ? `${dir}/${newBasename}.md` : `${newBasename}.md`;
+		if (newPath === conv.savedNotePath) return;
+		try {
+			await this.app.fileManager.renameFile(oldFile, newPath);
+			conv.savedNotePath = newPath;
+			await this.conversationStore.save(conv);
+		} catch (e) {
+			new Notice(`Could not rename file: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
 	private async generateAndInjectSummary(conv: Conversation, content: string): Promise<void> {
 		try {
 			const summary = await this.llmRouter.summarizeNotes(content, conv.provider);
