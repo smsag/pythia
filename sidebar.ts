@@ -531,6 +531,13 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
+	/** Called from main.ts after an async summary injection so the bar can
+	 *  update without triggering a full conversation switch (which would wipe
+	 *  pendingAttachedNotes and re-render messages unnecessarily). */
+	refreshSummaryBar(): void {
+		this.updateSummaryBar();
+	}
+
 	private updateSummaryBar(): void {
 		const summary = this.activeConversation?.summaryText?.trim();
 		if (!summary) {

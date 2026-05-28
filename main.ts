@@ -439,7 +439,7 @@ export default class PythiaPlugin extends Plugin {
 				await this.conversationStore.save(conv);
 				const view = this.getSidebarView();
 				if (view?.getActiveConversation()?.id === conv.id) {
-					await view.setActiveConversation(conv, false);
+					view.refreshSummaryBar();
 				}
 			}
 		} catch (e) {
