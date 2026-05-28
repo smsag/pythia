@@ -456,6 +456,7 @@ export default class PythiaPlugin extends Plugin {
 			const summary = await this.llmRouter.summarizeNotes(content, conv.provider);
 			if (summary) {
 				conv.summaryText = summary;
+				conv.summaryUpdatedAt = new Date().toISOString();
 				await this.conversationStore.save(conv);
 				const view = this.getSidebarView();
 				if (view?.getActiveConversation()?.id === conv.id) {
@@ -599,6 +600,7 @@ export default class PythiaPlugin extends Plugin {
 			this.llmRouter.generateSummary(source).then(async (summary) => {
 				if (summary) {
 					source.summaryText = summary;
+					source.summaryUpdatedAt = new Date().toISOString();
 					await this.saveConversations();
 					const view = this.getSidebarView();
 					if (view?.getActiveConversationId() === conv.id) {
@@ -678,6 +680,7 @@ export default class PythiaPlugin extends Plugin {
 							try {
 								conv.summaryText =
 									await this.llmRouter.generateSummary(conv);
+								conv.summaryUpdatedAt = new Date().toISOString();
 								conv.messages = [];
 								await this.conversationStore.save(conv);
 								notice.hide();

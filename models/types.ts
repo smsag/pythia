@@ -13,6 +13,7 @@ export interface Conversation {
 	model: string;            // model ID for the selected provider
 	maxTokens?: number;       // override the default 4096 max-token limit
 	summaryText?: string;     // generated summary for resume-in-summary-mode
+	summaryUpdatedAt?: string; // ISO 8601 timestamp of last summary generation
 	summaryNote?: string;     // vault path to the human-readable summary note
 	messages: Message[];
 	favorites?: Favorite[];   // starred assistant messages

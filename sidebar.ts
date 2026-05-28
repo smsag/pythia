@@ -24,6 +24,15 @@ import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
+function formatSummaryTimestamp(iso: string): string {
+	const d = new Date(iso);
+	const now = new Date();
+	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	if (d.toDateString() === now.toDateString()) return time;
+	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+	return `${date} · ${time}`;
+}
+
 class DeleteFileModal extends Modal {
 	private fileName: string;
 	private onConfirm: () => void;
@@ -93,6 +102,7 @@ export class PythiaSidebarView extends ItemView {
 	private summaryPanelEl!: HTMLElement;
 	private summaryPanelBodyEl!: HTMLElement;
 	private summaryPanelChevronEl!: HTMLElement;
+	private summaryTsEl!: HTMLElement;
 	private headerSparkleEl!: HTMLButtonElement;
 	private toolbarSparkleBtn!: HTMLButtonElement;
 	private summaryPanelOpen = false;
@@ -297,6 +307,7 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
 		const summaryPanelHdr = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-hdr" });
 		summaryPanelHdr.createEl("span", { cls: "p-summary-panel-label", text: t("summaryLabel") });
+		this.summaryTsEl = summaryPanelHdr.createEl("span", { cls: "p-summary-ts" });
 		this.summaryPanelChevronEl = summaryPanelHdr.createEl("span", {
 			cls: "p-summary-panel-chevron",
 			text: "▼",
@@ -556,6 +567,8 @@ export class PythiaSidebarView extends ItemView {
 		this.headerSparkleEl.style.display = "";
 		this.summaryPanelBodyEl.empty();
 		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this);
+		const ts = this.activeConversation?.summaryUpdatedAt;
+		this.summaryTsEl.setText(ts ? formatSummaryTimestamp(ts) : "");
 		// Collapse when switching conversations or after a refresh
 		this.summaryPanelOpen = false;
 		this.summaryPanelBodyEl.removeClass("open");
@@ -1062,6 +1075,7 @@ export class PythiaSidebarView extends ItemView {
 			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(conv);
 			if (summary) {
 				conv.summaryText = summary;
+				conv.summaryUpdatedAt = new Date().toISOString();
 				if (title) {
 					conv.name = title;
 					void this.plugin.renameConversationFile(conv);

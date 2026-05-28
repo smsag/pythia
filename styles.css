@@ -438,6 +438,14 @@
   flex: 1;
 }
 
+.p-summary-ts {
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+  user-select: none;
+  flex-shrink: 0;
+}
+
 .p-summary-panel-chevron {
   font-size: 8px;
   color: var(--text-faint);
