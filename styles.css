@@ -586,7 +586,7 @@
 .p-star {
   all: unset;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   color: var(--text-faint);
   line-height: 1;
   transition: color 0.12s, transform 0.12s;
