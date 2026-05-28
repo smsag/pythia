@@ -654,6 +654,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  scroll-snap-type: x mandatory;
   animation: sel-slide-in 0.12s ease;
 }
 .pythia-sel-toolbar::-webkit-scrollbar { display: none; }
@@ -673,6 +674,7 @@
   white-space: nowrap;
   transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
+  scroll-snap-align: start;
 }
 .pythia-sel-btn:hover {
   background: var(--background-modifier-hover);

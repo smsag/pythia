@@ -345,61 +345,62 @@ export class PythiaSidebarView extends ItemView {
 		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
 		this.selectionToolbar.style.display = "none";
 
+		// Passive touchstart on the container: save the selection and swipe origin
+		// before iOS dismisses the selection. Passive = does NOT block scroll gestures.
+		let savedSelRange: Range | null = null;
+		let selTouchStartX = 0;
+		this.selectionToolbar.addEventListener("touchstart", (e: TouchEvent) => {
+			const sel = window.getSelection();
+			savedSelRange = (sel && sel.rangeCount > 0)
+				? sel.getRangeAt(0).cloneRange()
+				: null;
+			selTouchStartX = e.touches[0].clientX;
+		}, { passive: true });
+
+		// Helper: returns a touchend handler that fires the action only on taps
+		// (not swipes), restoring the saved selection first.
+		const makeSelTouch = (action: () => void) => (e: TouchEvent) => {
+			if (Math.abs(e.changedTouches[0].clientX - selTouchStartX) > 12) return;
+			e.preventDefault(); // suppress the synthetic click that follows touchend
+			if (savedSelRange) {
+				const sel = window.getSelection();
+				if (sel) { sel.removeAllRanges(); sel.addRange(savedSelRange); }
+				savedSelRange = null;
+			}
+			action();
+		};
+
 		const copyBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("copyBtn"),
 			attr: { title: t("copyBtn") },
 		});
-		copyBtn.addEventListener("mousedown", (e) => {
-			e.preventDefault(); // keep selection alive
-			this.onCopySelection();
-		});
-		copyBtn.addEventListener("touchstart", (e) => {
-			e.preventDefault();
-			this.onCopySelection();
-		}, { passive: false });
+		copyBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onCopySelection(); });
+		copyBtn.addEventListener("touchend", makeSelTouch(() => this.onCopySelection()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("insertBtn"),
 			attr: { title: t("insertBtn") },
 		});
-		insertBtn.addEventListener("mousedown", (e) => {
-			e.preventDefault();
-			this.onInsertIntoNote();
-		});
-		insertBtn.addEventListener("touchstart", (e) => {
-			e.preventDefault();
-			this.onInsertIntoNote();
-		}, { passive: false });
+		insertBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onInsertIntoNote(); });
+		insertBtn.addEventListener("touchend", makeSelTouch(() => this.onInsertIntoNote()));
 
 		const inboxBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("inboxBtn"),
 			attr: { title: t("inboxBtn") },
 		});
-		inboxBtn.addEventListener("mousedown", (e) => {
-			e.preventDefault();
-			this.onSaveToInbox();
-		});
-		inboxBtn.addEventListener("touchstart", (e) => {
-			e.preventDefault();
-			this.onSaveToInbox();
-		}, { passive: false });
+		inboxBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onSaveToInbox(); });
+		inboxBtn.addEventListener("touchend", makeSelTouch(() => this.onSaveToInbox()));
 
 		const forkBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("forkBtn"),
 			attr: { title: t("forkBtn") },
 		});
-		forkBtn.addEventListener("mousedown", (e) => {
-			e.preventDefault();
-			this.onForkConversation();
-		});
-		forkBtn.addEventListener("touchstart", (e) => {
-			e.preventDefault();
-			this.onForkConversation();
-		}, { passive: false });
+		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
+		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
 
 		this.onSelectionChange = () => this.handleSelectionChange();
 		document.addEventListener("selectionchange", this.onSelectionChange);
