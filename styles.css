@@ -415,12 +415,12 @@
   flex-shrink: 0;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--background-modifier-border);
+  position: relative;
 }
 
 .p-summary-panel-hdr {
   display: flex;
   align-items: center;
-  gap: var(--s2);
   padding: var(--s1) var(--s3);
   cursor: pointer;
   user-select: none;
@@ -429,28 +429,10 @@
 }
 .p-summary-panel-hdr:hover { background: var(--background-modifier-hover); }
 
-.p-summary-panel-label {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  flex: 1;
-}
-
-.p-summary-ts {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  color: var(--text-faint);
-  user-select: none;
-  flex-shrink: 0;
-}
-
 .p-summary-panel-chevron {
   font-size: 8px;
   color: var(--text-faint);
   transition: transform 0.18s;
-  flex-shrink: 0;
 }
 .p-summary-panel-chevron.open { transform: rotate(180deg); }
 
@@ -458,7 +440,7 @@
   display: none;
   max-height: 96px;
   overflow-y: auto;
-  padding: var(--s1) var(--s3) var(--s2);
+  padding: var(--s1) var(--s3) 20px;
   font-size: var(--font-smaller);
   line-height: 1.6;
   color: var(--text-muted);
@@ -472,6 +454,17 @@
 }
 .p-summary-panel-body p { margin: 0 0 4px; }
 .p-summary-panel-body p:last-child { margin-bottom: 0; }
+
+.p-summary-ts {
+  position: absolute;
+  bottom: var(--s1);
+  right: var(--s3);
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+  user-select: none;
+  pointer-events: none;
+}
 
 /* Sparkle indicator in header — accent colour, hidden until summary exists */
 .p-hdr-btn.p-hdr-sparkle { color: var(--color-accent); opacity: 0.75; }

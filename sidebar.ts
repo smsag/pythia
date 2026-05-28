@@ -306,13 +306,12 @@ export class PythiaSidebarView extends ItemView {
 		// ── Summary panel (below header, above messages) ────────────
 		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
 		const summaryPanelHdr = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-hdr" });
-		summaryPanelHdr.createEl("span", { cls: "p-summary-panel-label", text: t("summaryLabel") });
-		this.summaryTsEl = summaryPanelHdr.createEl("span", { cls: "p-summary-ts" });
 		this.summaryPanelChevronEl = summaryPanelHdr.createEl("span", {
 			cls: "p-summary-panel-chevron",
 			text: "▼",
 		});
 		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
+		this.summaryTsEl = this.summaryPanelEl.createEl("span", { cls: "p-summary-ts" });
 		this.summaryPanelEl.style.display = "none";
 		summaryPanelHdr.addEventListener("click", () => this.toggleSummaryPanel());
 
