@@ -975,8 +975,8 @@ export class PythiaSidebarView extends ItemView {
 		// ── Divider ─────────────────────────────────────────────────
 		this.navigatorEl.createDiv({ cls: "p-nav-divider" });
 
-		// ── All prompts ─────────────────────────────────────────────
-		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "All prompts" });
+		// ── Chapters ─────────────────────────────────────────────────
+		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Chapters" });
 		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
 		if (userMsgs.length === 0) {
 			const placeholder = this.navigatorEl.createDiv({ cls: "p-nav-item" });
