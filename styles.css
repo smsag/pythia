@@ -817,7 +817,7 @@
   position: relative;
   border-top: 1px solid var(--background-modifier-border);
   padding: var(--s2) var(--s3);
-  padding-bottom: max(var(--s2), env(safe-area-inset-bottom, var(--s2)));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   display: flex;
   flex-direction: column;
   gap: var(--s2);
