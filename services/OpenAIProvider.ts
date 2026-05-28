@@ -81,6 +81,10 @@ export class OpenAIProvider implements LLMProvider {
 			throw new Error(t("openaiKeyNotConfigured"));
 		}
 		if (!this.client) {
+			// Obsidian runs in Electron (not a public browser), so API keys are
+			// never exposed in client-side code. Keys are loaded at runtime from
+			// Obsidian's vault-scoped SecretStorage — this flag silences the SDK's
+			// browser warning which does not apply in this context.
 			this.client = new OpenAI({
 				apiKey: this.apiKey,
 				dangerouslyAllowBrowser: true,

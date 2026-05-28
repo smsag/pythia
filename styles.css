@@ -579,7 +579,7 @@
   transform: scale(1.15);
 }
 .p-star.on {
-  color: #f59e0b;
+  color: var(--color-yellow);
 }
 
 .p-tok-sep {
@@ -737,7 +737,7 @@
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 5px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  box-shadow: var(--shadow-l);
   z-index: 20;
   display: none;
 }
@@ -782,7 +782,7 @@
 
 .p-nav-star {
   font-size: 9px;
-  color: #f59e0b;
+  color: var(--color-yellow);
   flex-shrink: 0;
 }
 
@@ -984,7 +984,7 @@
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-l);
   z-index: 100;
   max-height: 220px;
   overflow-y: auto;

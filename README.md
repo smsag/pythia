@@ -163,6 +163,30 @@ API keys are stored in Obsidian's native `SecretStorage` API (vault-scoped, neve
 
 Requires Obsidian ≥ 1.11.4.
 
+## Data & Privacy
+
+Pythia sends data to third-party AI providers **only** when you actively use the chat. No data is collected, shared, or transmitted in any other way.
+
+**What is sent externally:**
+
+| Data | Sent to | When |
+|---|---|---|
+| Your chat messages and attached note content | Anthropic or OpenAI (whichever provider you select) | On every message you send |
+| System prompt and context notes | Same provider | On every message you send |
+
+**What stays local:**
+
+- All conversation history is stored in your vault's `data.json` file — it never leaves your device except as part of the API calls above.
+- API keys are stored in Obsidian's native `SecretStorage` (vault-scoped encryption). They are never written to `data.json` or transmitted anywhere beyond the respective provider's SDK.
+- Pythia has no telemetry, analytics, or crash reporting.
+
+**Provider privacy policies:**
+
+- [Anthropic Privacy Policy](https://www.anthropic.com/legal/privacy)
+- [OpenAI Privacy Policy](https://openai.com/policies/privacy-policy)
+
+You are responsible for reviewing those policies and ensuring your usage complies with any applicable data-handling requirements.
+
 ## Development
 
 **Requirements:** Node.js, a local Obsidian vault for testing.
