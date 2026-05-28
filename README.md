@@ -39,10 +39,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
 | `Pythia: Browse conversations` | Fuzzy-search all conversations and open one directly |
 | `Pythia: Browse favorites` | Fuzzy-search all starred responses across every conversation and jump to one |
-| `Pythia: Delete current conversation` | Delete the active conversation (shows a confirmation dialog) |
-| `Pythia: Save response as note` | Save last response (or selection) as a new vault note |
-| `Pythia: Open sidebar` | Open / focus the chat sidebar (right panel) |
-| `Pythia: Open in left sidebar` | Open / focus the chat sidebar (left panel) |
+| `Pythia: Open sidebar` | Open / focus the chat sidebar |
 
 ### Context menus
 

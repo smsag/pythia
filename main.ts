@@ -90,27 +90,9 @@ export default class PythiaPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "save-response-as-note",
-			name: "Save response as note",
-			callback: () => this.cmdSaveResponseAsNote(),
-		});
-
-		this.addCommand({
-			id: "open-in-left-sidebar",
-			name: "Open in left sidebar",
-			callback: () => this.activateInLeftSidebar(),
-		});
-
-		this.addCommand({
 			id: "new-conversation-from-clipboard",
 			name: "New conversation from clipboard",
 			callback: () => this.cmdNewConversationFromClipboard(),
-		});
-
-		this.addCommand({
-			id: "delete-conversation",
-			name: "Delete current conversation",
-			callback: () => this.cmdDeleteConversation(),
 		});
 
 		this.registerEvent(
@@ -413,19 +395,6 @@ export default class PythiaPlugin extends Plugin {
 		return leaf.view as PythiaSidebarView;
 	}
 
-	private async activateInLeftSidebar(): Promise<PythiaSidebarView> {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0] as
-			| WorkspaceLeaf
-			| undefined;
-		if (!leaf) {
-			leaf = workspace.getLeftLeaf(false) ?? workspace.getLeaf(true);
-			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
-		}
-		workspace.revealLeaf(leaf);
-		return leaf.view as PythiaSidebarView;
-	}
-
 	private getSidebarView(): PythiaSidebarView | null {
 		const leaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
 		return leaf ? (leaf.view as PythiaSidebarView) : null;
@@ -501,12 +470,6 @@ export default class PythiaPlugin extends Plugin {
 		this.conversations.push(conv);
 		await this.saveConversations();
 		return conv;
-	}
-
-	async cmdDeleteConversation(): Promise<void> {
-		const view = this.getSidebarView();
-		if (!view) return;
-		await view.handleDeleteConversation();
 	}
 
 	async cmdNewConversation(): Promise<void> {
@@ -700,69 +663,6 @@ export default class PythiaPlugin extends Plugin {
 		).open();
 	}
 
-	private async cmdSaveResponseAsNote(): Promise<void> {
-		const view = this.getSidebarView();
-		const conv = view?.getActiveConversation();
-		if (!conv || conv.messages.length === 0) {
-			new Notice(t("noMessagesToSave"));
-			return;
-		}
-
-		const savedCount = conv.lastSavedMessageCount ?? 0;
-		const slice = conv.messages.slice(savedCount);
-		if (slice.length === 0) {
-			new Notice(t("nothingNewToSave"));
-			return;
-		}
-
-		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
-
-		let defaultFolder = this.settings.scratchFolder;
-		if (conv.templateId) {
-			const tplFile = this.app.vault.getAbstractFileByPath(conv.templateId);
-			if (tplFile instanceof TFile) {
-				const tpl = await this.templateLoader.loadTemplate(tplFile);
-				if (tpl?.outputFolder) defaultFolder = tpl.outputFolder;
-			}
-		}
-
-		const freshDefault = `${defaultFolder}/${todayISO()}-${safeName}.md`;
-		const suggestedPath = conv.savedNotePath ?? freshDefault;
-
-		new InputModal(
-			this.app,
-			t("saveConvTitle"),
-			t("filePathLabel"),
-			suggestedPath,
-			async (filePath) => {
-				const path = filePath.endsWith(".md")
-					? filePath
-					: filePath + ".md";
-				try {
-					await this.noteWriter.appendConversationSlice(slice, path, conv.id);
-					conv.savedNotePath = path;
-					conv.lastSavedMessageCount = conv.messages.length;
-					await this.conversationStore.save(conv);
-					new Notice(t("savedToPath", { path }));
-
-					if (this.settings.autoSaveSummary) {
-						const summary = conv.summaryText
-							? conv.summaryText
-							: `Conversation: ${conv.name}`;
-						const summaryPath = await this.noteWriter.saveSummaryNote(
-							conv,
-							summary,
-							path
-						);
-						conv.summaryNote = summaryPath;
-						await this.conversationStore.save(conv);
-					}
-				} catch (e) {
-					new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
-				}
-			}
-		).open();
-	}
 }
 
 /**
