@@ -613,30 +613,34 @@
 
 /* ── Selection toolbar ─────────────────────────────────────── */
 .pythia-sel-toolbar {
-  position: absolute;
+  flex-shrink: 0;
   display: flex;
-  gap: 4px;
-  padding: 4px 6px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  z-index: 100;
-  pointer-events: all;
+  gap: 2px;
+  padding: var(--s1) var(--s2);
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  animation: sel-slide-in 0.12s ease;
+}
+.pythia-sel-toolbar::-webkit-scrollbar { display: none; }
+
+@keyframes sel-slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .pythia-sel-btn {
   all: unset;
   cursor: pointer;
   font-size: 0.78em;
-  padding: 3px 8px;
-  border-radius: 5px;
-  background: transparent;
-  border: none !important;
-  box-shadow: none !important;
+  padding: 5px 10px;
+  border-radius: 4px;
   color: var(--text-muted);
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
 }
 .pythia-sel-btn:hover {
   background: var(--background-modifier-hover);
