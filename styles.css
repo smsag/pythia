@@ -35,6 +35,9 @@
   flex-shrink: 0;
   min-height: 34px;
 }
+.p-header:has(+ .p-summary-panel .p-summary-panel-body.open) {
+  border-bottom: none;
+}
 
 .p-title {
   all: unset;
@@ -150,6 +153,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.p-pill-tokens {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 1px;
 }
 
 .p-pill-x {
@@ -419,7 +431,7 @@
 
 .p-summary-panel-body {
   display: none;
-  max-height: 106px;
+  max-height: 170px;
   overflow-y: auto;
   padding: var(--s2) var(--s3);
 }

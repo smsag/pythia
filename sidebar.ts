@@ -26,11 +26,14 @@ export const PYTHIA_VIEW_TYPE = "pythia";
 
 function formatSummaryTimestamp(iso: string): string {
 	const d = new Date(iso);
-	const now = new Date();
+	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-	if (d.toDateString() === now.toDateString()) return time;
-	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 	return `${date} · ${time}`;
+}
+
+function estimateTokens(sizeBytes: number): string {
+	const n = Math.round(sizeBytes / 4);
+	return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
 }
 
 class DeleteFileModal extends Modal {
@@ -559,6 +562,7 @@ export class PythiaSidebarView extends ItemView {
 	 *  pendingAttachedNotes and re-render messages unnecessarily). */
 	refreshSummaryBar(): void {
 		this.updateSummaryBar();
+		if (!this.summaryPanelOpen) this.toggleSummaryPanel();
 	}
 
 	private updateSummaryBar(): void {
@@ -636,40 +640,62 @@ export class PythiaSidebarView extends ItemView {
 	private renderReferencePills(): void {
 		this.referencePillsEl.empty();
 		const conv = this.activeConversation;
-		const refs: { path: string; clearField: () => void }[] = [];
+
+		type RefEntry =
+			| { kind: "context"; path: string }
+			| { kind: "output"; path: string; clearField: () => void };
+
+		const entries: RefEntry[] = [];
+
+		for (const path of conv?.contextNotes ?? []) {
+			entries.push({ kind: "context", path });
+		}
 		if (conv?.savedNotePath) {
-			refs.push({ path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
+			entries.push({ kind: "output", path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
 		}
 		if (conv?.summaryNote) {
-			refs.push({ path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
+			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
 		}
 
-		this.referenceSectionEl.style.display = refs.length > 0 ? "" : "none";
-		if (refs.length === 0) return;
+		this.referenceSectionEl.style.display = entries.length > 0 ? "" : "none";
+		if (entries.length === 0) return;
 
-		for (const ref of refs) {
-			const fileName = ref.path.split("/").pop() ?? ref.path;
+		for (const entry of entries) {
+			const fileName = entry.path.split("/").pop() ?? entry.path;
+			const file = this.app.vault.getAbstractFileByPath(entry.path);
+			const tokEst = file instanceof TFile ? estimateTokens(file.stat.size) : null;
+
 			const pill = this.referencePillsEl.createEl("span", { cls: "p-pill" });
-			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: ref.path } });
+			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: entry.path } });
 			label.style.cursor = "pointer";
 			label.addEventListener("click", async () => {
-				const file = this.app.vault.getAbstractFileByPath(ref.path);
-				if (file instanceof TFile) {
-					await this.app.workspace.getLeaf(false).openFile(file);
+				const f = this.app.vault.getAbstractFileByPath(entry.path);
+				if (f instanceof TFile) {
+					await this.app.workspace.getLeaf(false).openFile(f);
 				} else {
-					new Notice(t("fileNotFound", { path: ref.path }));
+					new Notice(t("fileNotFound", { path: entry.path }));
 				}
 			});
+			if (tokEst) pill.createEl("span", { cls: "p-pill-tokens", text: tokEst });
 			const x = pill.createEl("button", { cls: "p-pill-x", text: "✕" });
-			x.addEventListener("click", () => {
-				new DeleteFileModal(this.app, fileName, async () => {
-					const file = this.app.vault.getAbstractFileByPath(ref.path);
-					if (file instanceof TFile) await this.app.vault.trash(file, true);
-					ref.clearField();
-					if (conv) await this.plugin.conversationStore.save(conv);
+			if (entry.kind === "context") {
+				x.addEventListener("click", async () => {
+					if (!conv) return;
+					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
+					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
-				}).open();
-			});
+				});
+			} else {
+				x.addEventListener("click", () => {
+					new DeleteFileModal(this.app, fileName, async () => {
+						const f = this.app.vault.getAbstractFileByPath(entry.path);
+						if (f instanceof TFile) await this.app.vault.trash(f, true);
+						entry.clearField();
+						if (conv) await this.plugin.conversationStore.save(conv);
+						this.renderReferencePills();
+					}).open();
+				});
+			}
 		}
 	}
 
@@ -680,6 +706,8 @@ export class PythiaSidebarView extends ItemView {
 			attachRow.style.display = this.pendingAttachedNotes.length > 0 ? "" : "none";
 		}
 		for (const notePath of this.pendingAttachedNotes) {
+			const file = this.app.vault.getAbstractFileByPath(notePath);
+			const tokEst = file instanceof TFile ? estimateTokens(file.stat.size) : undefined;
 			this.addPill(
 				this.attachedPillsEl,
 				notePath.split("/").pop() ?? notePath,
@@ -688,7 +716,8 @@ export class PythiaSidebarView extends ItemView {
 						this.pendingAttachedNotes.filter((n) => n !== notePath);
 					this.renderAttachedPills();
 				},
-				"pythia-pill-attached"
+				"pythia-pill-attached",
+				tokEst
 			);
 		}
 	}
@@ -697,12 +726,14 @@ export class PythiaSidebarView extends ItemView {
 		container: HTMLElement,
 		label: string,
 		onRemove: () => void,
-		extraClass = ""
+		extraClass = "",
+		tokenEst?: string
 	): void {
 		const pill = container.createEl("span", {
 			cls: `pythia-pill ${extraClass}`.trim(),
 		});
 		pill.createEl("span", { text: label, cls: "pythia-pill-label" });
+		if (tokenEst) pill.createEl("span", { text: tokenEst, cls: "p-pill-tokens" });
 		const x = pill.createEl("button", {
 			cls: "pythia-pill-remove",
 			text: "×",
