@@ -441,9 +441,6 @@
   max-height: 96px;
   overflow-y: auto;
   padding: var(--s1) var(--s3) 20px;
-  font-size: var(--font-smaller);
-  line-height: 1.6;
-  color: var(--text-muted);
   border-top: 1px solid var(--background-modifier-border);
 }
 .p-summary-panel-body.open { display: block; }
@@ -452,8 +449,6 @@
   background: var(--background-modifier-border);
   border-radius: 1px;
 }
-.p-summary-panel-body p { margin: 0 0 4px; }
-.p-summary-panel-body p:last-child { margin-bottom: 0; }
 
 .p-summary-ts {
   position: absolute;
@@ -540,20 +535,27 @@
   gap: var(--s1);
 }
 
-.p-ai-body {
+.p-ai-body,
+.p-summary-panel-body {
   font-size: var(--font-small);
   line-height: 1.65;
-  color: var(--text-normal);
   word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
 }
-.p-ai-body strong { font-weight: 600; }
-.p-ai-body p { margin: 0 0 6px; }
-.p-ai-body p:last-child { margin-bottom: 0; }
+.p-ai-body { color: var(--text-normal); }
+.p-summary-panel-body { font-size: calc(var(--font-small) * 0.8); color: var(--text-muted); }
+.p-ai-body strong,
+.p-summary-panel-body strong { font-weight: 600; }
+.p-ai-body p,
+.p-summary-panel-body p { margin: 0 0 6px; }
+.p-ai-body p:last-child,
+.p-summary-panel-body p:last-child { margin-bottom: 0; }
 .p-ai-body ol,
-.p-ai-body ul {
+.p-ai-body ul,
+.p-summary-panel-body ol,
+.p-summary-panel-body ul {
   padding-left: var(--s4);
   display: flex;
   flex-direction: column;
@@ -561,7 +563,9 @@
   margin-top: var(--s1);
 }
 .p-ai-body li { font-size: var(--font-small); }
-.p-ai-body pre {
+.p-summary-panel-body li { font-size: calc(var(--font-small) * 0.8); }
+.p-ai-body pre,
+.p-summary-panel-body pre {
   background: var(--code-background);
   border-radius: 6px;
   padding: 8px 10px;
@@ -569,7 +573,8 @@
   font-size: 0.88em;
   margin: var(--s1) 0;
 }
-.p-ai-body code { font-size: 0.88em; }
+.p-ai-body code,
+.p-summary-panel-body code { font-size: 0.88em; }
 
 /* ── Token line (v3) ────────────────────────────────────────── */
 .p-tokens {
