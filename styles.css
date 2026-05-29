@@ -934,6 +934,16 @@
   overflow-y: auto;
   box-sizing: border-box;
 }
+/* Desktop: start at 3 lines, allow up to ~6 lines before scrolling */
+body.is-desktop .p-textarea {
+  min-height: calc(var(--font-small) * 4.65); /* 1.55 × 3 lines */
+  max-height: 150px;
+}
+/* Mobile: 2 lines min so the second line is never clipped */
+body.is-mobile .p-textarea {
+  min-height: calc(var(--font-small) * 3.1); /* 1.55 × 2 lines */
+  max-height: 72px;
+}
 .p-textarea::placeholder {
   color: var(--text-faint);
   font-style: italic;

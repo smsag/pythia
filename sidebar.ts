@@ -5,6 +5,7 @@ import {
 	MarkdownView,
 	Modal,
 	Notice,
+	Platform,
 	setIcon,
 	TFile,
 	WorkspaceLeaf,
@@ -972,8 +973,9 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private autoResizeTextarea(): void {
+		const maxH = Platform.isDesktop ? 150 : 72;
 		this.inputEl.style.height = "auto";
-		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, 72)}px`;
+		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, maxH)}px`;
 	}
 
 	private scrollToBottom(force = false): void {
@@ -1792,7 +1794,7 @@ export class PythiaSidebarView extends ItemView {
 		if (last?.tokenUsage) {
 			const n = last.tokenUsage.inputTokens;
 			const fmt = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-			this.sendBtn.setText(`${t("sendBtn")} · ${fmt}`);
+			this.sendBtn.setText(`${t("sendBtn")} · ↑${fmt}`);
 		} else {
 			this.sendBtn.setText(t("sendBtn"));
 		}
