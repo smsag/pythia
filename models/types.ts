@@ -20,6 +20,7 @@ export interface Conversation {
 	savedNotePath?: string;           // vault path last saved to via save button
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
 	forkedFromId?: string;            // ID of the conversation this was forked from
+	forkedFromMessageId?: string;     // ID of the source message within that conversation
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 }
 

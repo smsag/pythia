@@ -827,6 +827,12 @@
   flex-shrink: 0;
 }
 
+.p-nav-fork-icon {
+  font-size: 9px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
 .p-nav-divider {
   height: 1px;
   background: var(--background-modifier-border);

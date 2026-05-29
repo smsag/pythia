@@ -205,6 +205,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderReferencePills();
 		this.renderFavoritesBar();
 		this.updateSummaryBar();
+		this.updateSendBtnLabel();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 		this.backfillChapterNames(conversation);
@@ -610,6 +611,12 @@ export class PythiaSidebarView extends ItemView {
 		link.addEventListener("click", async () => {
 			if (!source) return;
 			await this.setActiveConversation(source);
+			// Deep-link: silently scroll to the exact message that was forked from.
+			// Falls back to top-of-conversation if the message ID was not recorded
+			// or the element is no longer present.
+			if (conv.forkedFromMessageId) {
+				this.scrollToMessage(conv.forkedFromMessageId);
+			}
 		});
 
 		const summaryText = source?.summaryText?.trim();
@@ -1017,6 +1024,27 @@ export class PythiaSidebarView extends ItemView {
 		// Populate fresh content on each open
 		this.navigatorEl.empty();
 		const conv = this.activeConversation;
+
+		// ── Forks ────────────────────────────────────────────────────
+		const forks = conv
+			? this.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
+			: [];
+		if (forks.length > 0) {
+			this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: t("forksSection") });
+			for (const fork of forks) {
+				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+				item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
+				item.createEl("span", { text: fork.name });
+				item.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.navigatorEl.removeClass("open");
+					document.removeEventListener("mousedown", onOutside, true);
+					void this.setActiveConversation(fork);
+				});
+			}
+			this.navigatorEl.createDiv({ cls: "p-nav-divider" });
+		}
 
 		// ── Starred ─────────────────────────────────────────────────
 		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Starred" });
@@ -1466,12 +1494,21 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private onForkConversation(): void {
-		const text = window.getSelection()?.toString() ?? "";
+		const sel  = window.getSelection();
+		const text = sel?.toString() ?? "";
 		const conv = this.activeConversation;
 		if (!conv) return;
+
+		// Walk from the selection anchor up to the nearest message row so we
+		// can record which message was forked from.
+		const anchor = sel?.anchorNode;
+		const msgEl  = (anchor instanceof Element ? anchor : anchor?.parentElement)
+			?.closest("[data-msg-id]");
+		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
+
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		this.plugin.cmdForkConversation(conv.id, text);
+		this.plugin.cmdForkConversation(conv.id, text, sourceMessageId);
 	}
 
 	private async onSaveToInbox(): Promise<void> {
@@ -1648,6 +1685,18 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
+	private updateSendBtnLabel(): void {
+		const messages = this.activeConversation?.messages ?? [];
+		const last = [...messages].reverse().find(m => m.tokenUsage);
+		if (last?.tokenUsage) {
+			const n = last.tokenUsage.inputTokens;
+			const fmt = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+			this.sendBtn.setText(`${t("sendBtn")} · ${fmt}`);
+		} else {
+			this.sendBtn.setText(t("sendBtn"));
+		}
+	}
+
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
 		if (streaming) {
@@ -1657,7 +1706,7 @@ export class PythiaSidebarView extends ItemView {
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");
 		} else {
-			this.sendBtn.setText(t("sendBtn"));
+			this.updateSendBtnLabel();
 			this.sendBtn.removeClass("stop");
 		}
 		this.inputEl.disabled = streaming;
