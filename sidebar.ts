@@ -806,7 +806,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
-		this.addCopyButtons(aiBody);
+		this.decorateCodeBlocks(aiBody);
 
 		const isFav = this.activeConversation?.favorites?.some(
 			(f) => f.messageId === msg.id
@@ -846,7 +846,7 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
-				this.addCopyButtons(aiBody);
+				this.decorateCodeBlocks(aiBody);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -854,19 +854,85 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	private addCopyButtons(container: HTMLElement): void {
-		container.querySelectorAll<HTMLElement>("pre:not([data-copy-btn])").forEach((pre) => {
-			pre.dataset.copyBtn = "1";
-			const btn = pre.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
-			setIcon(btn, "copy");
-			btn.addEventListener("click", async (e) => {
+	// ── Code block decoration: drag-to-pan + copy button ────────────────────
+	private decorateCodeBlocks(container: HTMLElement): void {
+		// Fenced code blocks
+		container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
+			pre.dataset.decorated = "1";
+			const frame = this.wrapInScrollFrame(pre);
+			// Copy button lives on the frame so it stays fixed while content pans.
+			const copyBtn = frame.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
+			setIcon(copyBtn, "copy");
+			copyBtn.addEventListener("click", async (e) => {
 				e.stopPropagation();
 				const text = (pre.querySelector("code") ?? pre).innerText;
 				await navigator.clipboard.writeText(text);
-				setIcon(btn, "check");
-				btn.addClass("copied");
-				setTimeout(() => { setIcon(btn, "copy"); btn.removeClass("copied"); }, 1500);
+				setIcon(copyBtn, "check");
+				copyBtn.addClass("copied");
+				setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
 			});
+			this.attachDragToPan(pre);
+		});
+
+		// Wide rendered blocks (Mermaid, PlantUML …) — drag-to-pan only.
+		const WIDE = [
+			".block-language-mermaid:not([data-decorated])",
+			".block-language-plantuml:not([data-decorated])",
+		].join(",");
+		container.querySelectorAll<HTMLElement>(WIDE).forEach((el) => {
+			el.dataset.decorated = "1";
+			this.wrapInScrollFrame(el);
+			this.attachDragToPan(el);
+		});
+	}
+
+	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
+	private wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
+		const frame = createEl("div", { cls: "p-code-frame" });
+		scrollEl.parentNode!.insertBefore(frame, scrollEl);
+		frame.appendChild(scrollEl);
+		return frame;
+	}
+
+	/**
+	 * Attach mouse-drag-to-pan to `el` (must be overflow-x: auto).
+	 * A 5 px threshold keeps small clicks from fighting text selection.
+	 * Touch devices (iOS) rely on native overflow scroll — not intercepted here.
+	 */
+	private attachDragToPan(el: HTMLElement): void {
+		const THRESHOLD = 5;
+		let startX         = 0;
+		let startScrollLeft = 0;
+		let panning        = false;
+
+		const onMove = (e: PointerEvent) => {
+			const dx = e.clientX - startX;
+			if (!panning) {
+				if (Math.abs(dx) < THRESHOLD) return;
+				panning = true;
+				el.classList.add("p-panning");
+			}
+			el.scrollLeft = startScrollLeft - dx;
+		};
+
+		const cleanup = () => {
+			if (panning) el.classList.remove("p-panning");
+			panning = false;
+			document.removeEventListener("pointermove",  onMove);
+			document.removeEventListener("pointerup",    cleanup);
+			document.removeEventListener("pointercancel", cleanup);
+		};
+
+		el.addEventListener("pointerdown", (e) => {
+			// Only mouse left-button; let native touch scroll handle other pointer types.
+			if (e.pointerType !== "mouse" || e.button !== 0) return;
+			if (el.scrollWidth <= el.clientWidth) return; // nothing to pan
+			startX          = e.clientX;
+			startScrollLeft = el.scrollLeft;
+			panning         = false;
+			document.addEventListener("pointermove",  onMove);
+			document.addEventListener("pointerup",    cleanup);
+			document.addEventListener("pointercancel", cleanup);
 		});
 	}
 
