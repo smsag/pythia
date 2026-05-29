@@ -1015,6 +1015,10 @@ body.is-mobile .p-textarea {
   white-space: nowrap;
   box-sizing: border-box;
 }
+/* Border only in send state; specificity 0,2,0 beats the global border:none at 0,1,1 */
+.p-send:not(.stop) {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);
+}
 .p-send:hover {
   opacity: 0.85;
 }
