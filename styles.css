@@ -6,7 +6,7 @@
 /* ── View container ────────────────────────────────────────── */
 .pythia-view {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
-  --font-smaller: 11px; --font-small: 12px;
+  --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
   position: relative;
   display: flex;
   flex-direction: column;
