@@ -857,8 +857,10 @@ export class PythiaSidebarView extends ItemView {
 
 	// ── Code block decoration: drag-to-pan + copy button ────────────────────
 	private decorateCodeBlocks(container: HTMLElement): void {
-		// Fenced code blocks
+		// Fenced code blocks — skip the source-listing pre inside diagram blocks;
+		// those are handled (and eventually replaced) by Mermaid/PlantUML renderers.
 		container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
+			if (pre.closest(".block-language-mermaid, .block-language-plantuml")) return;
 			pre.dataset.decorated = "1";
 			const frame = this.wrapInScrollFrame(pre);
 			// Copy button lives on the frame so it stays fixed while content pans.
@@ -875,14 +877,16 @@ export class PythiaSidebarView extends ItemView {
 			this.attachDragToPan(pre);
 		});
 
-		// Wide rendered blocks (Mermaid, PlantUML …) — drag-to-pan only.
-		const WIDE = [
+		// Diagram blocks (Mermaid, PlantUML …) — do NOT move the element in the
+		// DOM; Mermaid's async renderer expects to find and replace the element's
+		// content in its original position.  Scroll behaviour comes from CSS;
+		// JS only stamps the explicit SVG pixel size and enables drag-to-pan.
+		const DIAG = [
 			".block-language-mermaid:not([data-decorated])",
 			".block-language-plantuml:not([data-decorated])",
 		].join(",");
-		container.querySelectorAll<HTMLElement>(WIDE).forEach((el) => {
+		container.querySelectorAll<HTMLElement>(DIAG).forEach((el) => {
 			el.dataset.decorated = "1";
-			this.wrapInScrollFrame(el);
 			this.fixDiagramSvgSize(el);
 			this.attachDragToPan(el);
 		});
@@ -902,11 +906,12 @@ export class PythiaSidebarView extends ItemView {
 	 * causes the browser to scale it down to fit its container.  Read the
 	 * `viewBox` intrinsic size and stamp explicit pixel dimensions instead so
 	 * the diagram keeps its natural size and the container scrolls.
+	 *
+	 * Uses a MutationObserver so the stamp fires exactly when the SVG element
+	 * is inserted by Mermaid's async renderer — more reliable than ResizeObserver.
 	 */
 	private fixDiagramSvgSize(el: HTMLElement): void {
-		const apply = () => {
-			const svg = el.querySelector<SVGElement>("svg");
-			if (!svg) return;
+		const stamp = (svg: SVGElement) => {
 			const vb = svg.getAttribute("viewBox");
 			if (!vb) return;
 			const parts = vb.trim().split(/[\s,]+/).map(Number);
@@ -917,9 +922,17 @@ export class PythiaSidebarView extends ItemView {
 			svg.style.maxWidth = "none";
 			svg.style.display  = "block";
 		};
-		// Mermaid renders asynchronously; fire immediately and on resize.
-		requestAnimationFrame(apply);
-		new ResizeObserver(apply).observe(el);
+		// If Mermaid has already rendered (e.g. on conversation reload), apply now.
+		const existing = el.querySelector<SVGElement>("svg");
+		if (existing) { stamp(existing); return; }
+		// Otherwise wait for the SVG to be inserted asynchronously.
+		const mo = new MutationObserver(() => {
+			const svg = el.querySelector<SVGElement>("svg");
+			if (!svg) return;
+			mo.disconnect();
+			stamp(svg);
+		});
+		mo.observe(el, { childList: true, subtree: true });
 	}
 
 	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */

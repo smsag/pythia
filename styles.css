@@ -589,28 +589,34 @@
 .p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
 .p-code-frame > pre::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-code-frame > pre.p-panning                 { cursor: grabbing; user-select: none; }
+/* Obsidian adds its own copy button (.copy-code-button) to every pre; hide it
+   inside our frames so only our .p-code-copy appears. */
+.p-code-frame .copy-code-button { display: none !important; }
 
-/* Mermaid / diagram blocks wrapped in .p-code-frame */
-.p-code-frame > .block-language-mermaid,
-.p-code-frame > .block-language-plantuml {
+/* Mermaid / diagram blocks — overflow-scroll in place, no DOM wrapping.
+   The element stays in its original DOM position so Mermaid's async renderer
+   can find and replace it without interference. */
+.p-ai-body .block-language-mermaid,
+.p-ai-body .block-language-plantuml {
   overflow-x: auto;
   max-width: 100%;
+  margin: var(--s1) 0;
   cursor: grab;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
 }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar-track,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar-thumb,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
-.p-code-frame > .block-language-mermaid.p-panning,
-.p-code-frame > .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar-track,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar-thumb,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-ai-body .block-language-mermaid.p-panning,
+.p-ai-body .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
 /* Override Obsidian's width:100% on the SVG so the diagram keeps its natural
    pixel size (set from viewBox by JS) and the container scrolls instead. */
-.p-code-frame > .block-language-mermaid svg,
-.p-code-frame > .block-language-plantuml svg {
+.p-ai-body .block-language-mermaid svg,
+.p-ai-body .block-language-plantuml svg {
   width: auto !important;
   max-width: none !important;
   display: block;
