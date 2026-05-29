@@ -536,7 +536,7 @@
   cursor: text;
 }
 .p-ai-body { color: var(--text-normal); }
-.p-summary-panel-body { font-size: calc(var(--font-small) * 0.8); color: var(--text-muted); }
+.p-summary-panel-body { color: var(--text-muted); }
 .p-ai-body strong,
 .p-summary-panel-body strong { font-weight: 600; }
 .p-ai-body p,
@@ -553,8 +553,8 @@
   gap: 2px;
   margin-top: var(--s1);
 }
-.p-ai-body li { font-size: var(--font-small); }
-.p-summary-panel-body li { font-size: calc(var(--font-small) * 0.8); }
+.p-ai-body li,
+.p-summary-panel-body li { font-size: var(--font-small); }
 /* Summary panel pre: unchanged positioning */
 .p-summary-panel-body pre {
   position: relative;
@@ -607,9 +607,30 @@
 .p-code-frame > .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-code-frame > .block-language-mermaid.p-panning,
 .p-code-frame > .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
-/* Allow the SVG inside to be wider than its container (enabling horizontal scroll) */
+/* Override Obsidian's width:100% on the SVG so the diagram keeps its natural
+   pixel size (set from viewBox by JS) and the container scrolls instead. */
 .p-code-frame > .block-language-mermaid svg,
-.p-code-frame > .block-language-plantuml svg { max-width: none; }
+.p-code-frame > .block-language-plantuml svg {
+  width: auto !important;
+  max-width: none !important;
+  display: block;
+}
+
+/* ── Wide table scroll containers ───────────────────────────────── */
+/* Same overflow-scroll pattern as responsive tables on mobile:
+   wrapper clips and scrolls; table keeps its natural content width. */
+.p-scroll-frame {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: var(--s1) 0;
+  cursor: grab;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+}
+.p-scroll-frame::-webkit-scrollbar        { height: 4px; }
+.p-scroll-frame::-webkit-scrollbar-track  { background: transparent; }
+.p-scroll-frame::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-scroll-frame.p-panning                 { cursor: grabbing; user-select: none; }
 
 /* Copy button: positioned on the frame so it never scrolls away */
 .p-code-copy {
