@@ -11,10 +11,13 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Summary panel** — press ✦ in the toolbar to generate an AI summary and a new title for the conversation in one step. The summary appears in a collapsible panel below the header, with a timestamp showing when it was last generated. A ✦ indicator in the header row signals that a summary exists; click it to expand the panel.
 - **Resume modes** — continue past conversations with full message history or an AI-generated summary (controls token cost)
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; starred messages are accessible via the `#` chapter navigator
-- **Fork conversation** — select any text in a response, then press **Fork** in the action strip to branch the conversation: a new conversation inherits the same system prompt and template, starts empty, and shows a banner linking back to the source with its summary
+- **Fork conversation** — select any text in a response, then press **Fork** in the action strip to branch the conversation: a new conversation inherits the same system prompt and template, starts empty, and shows a banner linking back to the source with its summary. Clicking the banner link reopens the source conversation and scrolls silently to the exact message that was forked from
+- **Forks navigator** — the `#` chapter navigator shows a **Forks** section at the top when the active conversation has child forks, making it easy to jump to any branch
 - **`#` Chapter navigator** — the `#` button at the bottom-right of the message area opens a popover listing all starred messages and user turns for quick scroll navigation
 - **Delete last exchange** — long-press (450 ms) on the last user bubble to delete the most recent prompt + response pair (only the last exchange; a confirmation step is shown before deletion)
-- **Reference row** — a compact pill strip that auto-appears when a conversation has associated vault files (saved notes, summary notes); click a pill to open the file, × to delete it
+- **Reference row** — a compact pill strip that auto-appears when a conversation has associated vault files (context notes, saved notes, summary notes); each pill shows an estimated token count; click a pill to open the file, × to remove it from context or delete it from the vault
+- **Send button token count** — the Send button label shows the input token count from the last exchange (e.g. `Send · 3.9k`) so you can monitor context window usage at a glance
+- **Code block pan** — wide code blocks and Mermaid diagrams are clipped to the chat width; click-and-drag (macOS mouse) or swipe (iOS touch / trackpad) to pan the content horizontally
 - **Save output** — write any response directly to a new vault note
 - **Selection action strip** — select any text in the chat to reveal a fixed action bar above the input: **Copy**, **Insert into note**, **Save to inbox**, **Fork**
 - **Inbox** — "Save to inbox" prepends the selection with a timestamp to a configurable inbox note
