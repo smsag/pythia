@@ -882,8 +882,43 @@ export class PythiaSidebarView extends ItemView {
 		container.querySelectorAll<HTMLElement>(WIDE).forEach((el) => {
 			el.dataset.decorated = "1";
 			this.wrapInScrollFrame(el);
+			this.fixDiagramSvgSize(el);
 			this.attachDragToPan(el);
 		});
+
+		// Wide tables — wrap in a scroll frame (overflow scroll pattern).
+		container.querySelectorAll<HTMLElement>("table:not([data-decorated])").forEach((table) => {
+			table.dataset.decorated = "1";
+			const frame = createEl("div", { cls: "p-scroll-frame" });
+			table.parentNode!.insertBefore(frame, table);
+			frame.appendChild(table);
+			this.attachDragToPan(frame);
+		});
+	}
+
+	/**
+	 * Mermaid and PlantUML renderers set `width="100%"` on the SVG, which
+	 * causes the browser to scale it down to fit its container.  Read the
+	 * `viewBox` intrinsic size and stamp explicit pixel dimensions instead so
+	 * the diagram keeps its natural size and the container scrolls.
+	 */
+	private fixDiagramSvgSize(el: HTMLElement): void {
+		const apply = () => {
+			const svg = el.querySelector<SVGElement>("svg");
+			if (!svg) return;
+			const vb = svg.getAttribute("viewBox");
+			if (!vb) return;
+			const parts = vb.trim().split(/[\s,]+/).map(Number);
+			if (parts.length < 4 || !(parts[2] > 0)) return;
+			const [, , w, h] = parts;
+			svg.style.width    = `${w}px`;
+			svg.style.height   = `${h}px`;
+			svg.style.maxWidth = "none";
+			svg.style.display  = "block";
+		};
+		// Mermaid renders asynchronously; fire immediately and on resize.
+		requestAnimationFrame(apply);
+		new ResizeObserver(apply).observe(el);
 	}
 
 	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */

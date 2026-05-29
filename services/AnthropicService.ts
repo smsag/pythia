@@ -10,10 +10,16 @@ import { getToolDefinitions } from "./ToolHandler";
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
 function parseTitleAndSummary(raw: string): { title: string; summary: string } {
-	const titleMatch = raw.match(/^TITLE:\s*(.+)/i);
-	const title = titleMatch ? titleMatch[1].trim() : "";
-	const summaryIdx = raw.search(/\nSUMMARY:\n/i);
-	const summary = summaryIdx >= 0 ? raw.slice(summaryIdx + "\nSUMMARY:\n".length).trim() : raw.trim();
+	// Use multiline anchors so ^ / $ match line boundaries, and allow optional
+	// trailing whitespace after the colon so minor LLM formatting variations
+	// (e.g. "SUMMARY: \n" or a blank line between label and body) don't break parsing.
+	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
+	const summaryMatch = raw.match(/^SUMMARY:\s*\n([\s\S]*)/im);
+	const title   = titleMatch   ? titleMatch[1].trim()   : "";
+	const summary = summaryMatch
+		? summaryMatch[1].trim()
+		// Fallback: strip any TITLE / SUMMARY label lines that leaked through.
+		: raw.replace(/^TITLE:.*$/im, "").replace(/^SUMMARY:\s*$/im, "").trim();
 	return { title, summary };
 }
 
