@@ -18,10 +18,15 @@
 
 /* Strip native browser/WebKit button chrome for every button inside the plugin.
    Prevents iOS from adding a grey border/background and macOS Electron from
-   rendering a faint 1px grey outline on transparent-bordered buttons. */
+   rendering a faint 1px grey outline on transparent-bordered buttons.
+   border/box-shadow/outline must be set explicitly — appearance:none alone
+   is not enough on macOS Electron / some Obsidian themes. */
 .pythia-view button {
   -webkit-appearance: none;
   appearance: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
   -webkit-tap-highlight-color: transparent;
 }
 
