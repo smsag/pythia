@@ -18,10 +18,15 @@
 
 /* Strip native browser/WebKit button chrome for every button inside the plugin.
    Prevents iOS from adding a grey border/background and macOS Electron from
-   rendering a faint 1px grey outline on transparent-bordered buttons. */
+   rendering a faint 1px grey outline on transparent-bordered buttons.
+   border/box-shadow/outline must be set explicitly — appearance:none alone
+   is not enough on macOS Electron / some Obsidian themes. */
 .pythia-view button {
   -webkit-appearance: none;
   appearance: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -589,28 +594,34 @@
 .p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
 .p-code-frame > pre::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-code-frame > pre.p-panning                 { cursor: grabbing; user-select: none; }
+/* Obsidian adds its own copy button (.copy-code-button) to every pre; hide it
+   inside our frames so only our .p-code-copy appears. */
+.p-code-frame .copy-code-button { display: none !important; }
 
-/* Mermaid / diagram blocks wrapped in .p-code-frame */
-.p-code-frame > .block-language-mermaid,
-.p-code-frame > .block-language-plantuml {
+/* Mermaid / diagram blocks — overflow-scroll in place, no DOM wrapping.
+   The element stays in its original DOM position so Mermaid's async renderer
+   can find and replace it without interference. */
+.p-ai-body .block-language-mermaid,
+.p-ai-body .block-language-plantuml {
   overflow-x: auto;
   max-width: 100%;
+  margin: var(--s1) 0;
   cursor: grab;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
 }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar-track,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
-.p-code-frame > .block-language-mermaid::-webkit-scrollbar-thumb,
-.p-code-frame > .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
-.p-code-frame > .block-language-mermaid.p-panning,
-.p-code-frame > .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar-track,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
+.p-ai-body .block-language-mermaid::-webkit-scrollbar-thumb,
+.p-ai-body .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-ai-body .block-language-mermaid.p-panning,
+.p-ai-body .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
 /* Override Obsidian's width:100% on the SVG so the diagram keeps its natural
    pixel size (set from viewBox by JS) and the container scrolls instead. */
-.p-code-frame > .block-language-mermaid svg,
-.p-code-frame > .block-language-plantuml svg {
+.p-ai-body .block-language-mermaid svg,
+.p-ai-body .block-language-plantuml svg {
   width: auto !important;
   max-width: none !important;
   display: block;
@@ -934,6 +945,16 @@
   overflow-y: auto;
   box-sizing: border-box;
 }
+/* Desktop: start at 3 lines, allow up to ~6 lines before scrolling */
+body.is-desktop .p-textarea {
+  min-height: calc(var(--font-small) * 4.65); /* 1.55 × 3 lines */
+  max-height: 150px;
+}
+/* Mobile: 2 lines min so the second line is never clipped */
+body.is-mobile .p-textarea {
+  min-height: calc(var(--font-small) * 3.1); /* 1.55 × 2 lines */
+  max-height: 72px;
+}
 .p-textarea::placeholder {
   color: var(--text-faint);
   font-style: italic;
@@ -993,6 +1014,10 @@
   transition: opacity 0.12s;
   white-space: nowrap;
   box-sizing: border-box;
+}
+/* Border only in send state; specificity 0,2,0 beats the global border:none at 0,1,1 */
+.p-send:not(.stop) {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);
 }
 .p-send:hover {
   opacity: 0.85;

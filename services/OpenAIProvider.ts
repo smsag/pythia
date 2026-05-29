@@ -10,16 +10,20 @@ import { getToolDefinitions } from "./ToolHandler";
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
 function parseTitleAndSummary(raw: string): { title: string; summary: string } {
-	// Use multiline anchors so ^ / $ match line boundaries, and allow optional
-	// trailing whitespace after the colon so minor LLM formatting variations
-	// (e.g. "SUMMARY: \n" or a blank line between label and body) don't break parsing.
+	// Use multiline anchors so ^ / $ match line boundaries.
+	// \s* after SUMMARY: handles both "SUMMARY: content" (same line) and
+	// "SUMMARY:\ncontent" (next line) — the greedy \s* consumes the separator
+	// whitespace/newline, and ([\s\S]*) captures everything that follows.
 	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
-	const summaryMatch = raw.match(/^SUMMARY:\s*\n([\s\S]*)/im);
+	const summaryMatch = raw.match(/^SUMMARY:\s*([\s\S]*)/im);
 	const title   = titleMatch   ? titleMatch[1].trim()   : "";
 	const summary = summaryMatch
 		? summaryMatch[1].trim()
-		// Fallback: strip any TITLE / SUMMARY label lines that leaked through.
-		: raw.replace(/^TITLE:.*$/im, "").replace(/^SUMMARY:\s*$/im, "").trim();
+		// Fallback: strip the TITLE line and any SUMMARY: prefix that leaked through.
+		: raw
+			.replace(/^TITLE:.*\n?/im, "")
+			.replace(/^SUMMARY:[ \t]*/im, "")
+			.trim();
 	return { title, summary };
 }
 
