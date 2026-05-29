@@ -205,6 +205,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderReferencePills();
 		this.renderFavoritesBar();
 		this.updateSummaryBar();
+		this.updateSendBtnLabel();
 		await this.renderMessages();
 		if (focus) this.inputEl?.focus();
 		this.backfillChapterNames(conversation);
@@ -610,6 +611,12 @@ export class PythiaSidebarView extends ItemView {
 		link.addEventListener("click", async () => {
 			if (!source) return;
 			await this.setActiveConversation(source);
+			// Deep-link: silently scroll to the exact message that was forked from.
+			// Falls back to top-of-conversation if the message ID was not recorded
+			// or the element is no longer present.
+			if (conv.forkedFromMessageId) {
+				this.scrollToMessage(conv.forkedFromMessageId);
+			}
 		});
 
 		const summaryText = source?.summaryText?.trim();
@@ -799,7 +806,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
-		this.addCopyButtons(aiBody);
+		this.decorateCodeBlocks(aiBody);
 
 		const isFav = this.activeConversation?.favorites?.some(
 			(f) => f.messageId === msg.id
@@ -839,7 +846,7 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
-				this.addCopyButtons(aiBody);
+				this.decorateCodeBlocks(aiBody);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -847,19 +854,85 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	private addCopyButtons(container: HTMLElement): void {
-		container.querySelectorAll<HTMLElement>("pre:not([data-copy-btn])").forEach((pre) => {
-			pre.dataset.copyBtn = "1";
-			const btn = pre.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
-			setIcon(btn, "copy");
-			btn.addEventListener("click", async (e) => {
+	// ── Code block decoration: drag-to-pan + copy button ────────────────────
+	private decorateCodeBlocks(container: HTMLElement): void {
+		// Fenced code blocks
+		container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
+			pre.dataset.decorated = "1";
+			const frame = this.wrapInScrollFrame(pre);
+			// Copy button lives on the frame so it stays fixed while content pans.
+			const copyBtn = frame.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
+			setIcon(copyBtn, "copy");
+			copyBtn.addEventListener("click", async (e) => {
 				e.stopPropagation();
 				const text = (pre.querySelector("code") ?? pre).innerText;
 				await navigator.clipboard.writeText(text);
-				setIcon(btn, "check");
-				btn.addClass("copied");
-				setTimeout(() => { setIcon(btn, "copy"); btn.removeClass("copied"); }, 1500);
+				setIcon(copyBtn, "check");
+				copyBtn.addClass("copied");
+				setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
 			});
+			this.attachDragToPan(pre);
+		});
+
+		// Wide rendered blocks (Mermaid, PlantUML …) — drag-to-pan only.
+		const WIDE = [
+			".block-language-mermaid:not([data-decorated])",
+			".block-language-plantuml:not([data-decorated])",
+		].join(",");
+		container.querySelectorAll<HTMLElement>(WIDE).forEach((el) => {
+			el.dataset.decorated = "1";
+			this.wrapInScrollFrame(el);
+			this.attachDragToPan(el);
+		});
+	}
+
+	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
+	private wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
+		const frame = createEl("div", { cls: "p-code-frame" });
+		scrollEl.parentNode!.insertBefore(frame, scrollEl);
+		frame.appendChild(scrollEl);
+		return frame;
+	}
+
+	/**
+	 * Attach mouse-drag-to-pan to `el` (must be overflow-x: auto).
+	 * A 5 px threshold keeps small clicks from fighting text selection.
+	 * Touch devices (iOS) rely on native overflow scroll — not intercepted here.
+	 */
+	private attachDragToPan(el: HTMLElement): void {
+		const THRESHOLD = 5;
+		let startX         = 0;
+		let startScrollLeft = 0;
+		let panning        = false;
+
+		const onMove = (e: PointerEvent) => {
+			const dx = e.clientX - startX;
+			if (!panning) {
+				if (Math.abs(dx) < THRESHOLD) return;
+				panning = true;
+				el.classList.add("p-panning");
+			}
+			el.scrollLeft = startScrollLeft - dx;
+		};
+
+		const cleanup = () => {
+			if (panning) el.classList.remove("p-panning");
+			panning = false;
+			document.removeEventListener("pointermove",  onMove);
+			document.removeEventListener("pointerup",    cleanup);
+			document.removeEventListener("pointercancel", cleanup);
+		};
+
+		el.addEventListener("pointerdown", (e) => {
+			// Only mouse left-button; let native touch scroll handle other pointer types.
+			if (e.pointerType !== "mouse" || e.button !== 0) return;
+			if (el.scrollWidth <= el.clientWidth) return; // nothing to pan
+			startX          = e.clientX;
+			startScrollLeft = el.scrollLeft;
+			panning         = false;
+			document.addEventListener("pointermove",  onMove);
+			document.addEventListener("pointerup",    cleanup);
+			document.addEventListener("pointercancel", cleanup);
 		});
 	}
 
@@ -1017,6 +1090,27 @@ export class PythiaSidebarView extends ItemView {
 		// Populate fresh content on each open
 		this.navigatorEl.empty();
 		const conv = this.activeConversation;
+
+		// ── Forks ────────────────────────────────────────────────────
+		const forks = conv
+			? this.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
+			: [];
+		if (forks.length > 0) {
+			this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: t("forksSection") });
+			for (const fork of forks) {
+				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
+				item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
+				item.createEl("span", { text: fork.name });
+				item.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.navigatorEl.removeClass("open");
+					document.removeEventListener("mousedown", onOutside, true);
+					void this.setActiveConversation(fork);
+				});
+			}
+			this.navigatorEl.createDiv({ cls: "p-nav-divider" });
+		}
 
 		// ── Starred ─────────────────────────────────────────────────
 		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Starred" });
@@ -1466,12 +1560,21 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private onForkConversation(): void {
-		const text = window.getSelection()?.toString() ?? "";
+		const sel  = window.getSelection();
+		const text = sel?.toString() ?? "";
 		const conv = this.activeConversation;
 		if (!conv) return;
+
+		// Walk from the selection anchor up to the nearest message row so we
+		// can record which message was forked from.
+		const anchor = sel?.anchorNode;
+		const msgEl  = (anchor instanceof Element ? anchor : anchor?.parentElement)
+			?.closest("[data-msg-id]");
+		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
+
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		this.plugin.cmdForkConversation(conv.id, text);
+		this.plugin.cmdForkConversation(conv.id, text, sourceMessageId);
 	}
 
 	private async onSaveToInbox(): Promise<void> {
@@ -1648,6 +1751,18 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
+	private updateSendBtnLabel(): void {
+		const messages = this.activeConversation?.messages ?? [];
+		const last = [...messages].reverse().find(m => m.tokenUsage);
+		if (last?.tokenUsage) {
+			const n = last.tokenUsage.inputTokens;
+			const fmt = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+			this.sendBtn.setText(`${t("sendBtn")} · ${fmt}`);
+		} else {
+			this.sendBtn.setText(t("sendBtn"));
+		}
+	}
+
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
 		if (streaming) {
@@ -1657,7 +1772,7 @@ export class PythiaSidebarView extends ItemView {
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");
 		} else {
-			this.sendBtn.setText(t("sendBtn"));
+			this.updateSendBtnLabel();
 			this.sendBtn.removeClass("stop");
 		}
 		this.inputEl.disabled = streaming;

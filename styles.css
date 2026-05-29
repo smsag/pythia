@@ -6,7 +6,7 @@
 /* ── View container ────────────────────────────────────────── */
 .pythia-view {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
-  --font-smaller: 11px; --font-small: 12px;
+  --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -555,7 +555,7 @@
 }
 .p-ai-body li { font-size: var(--font-small); }
 .p-summary-panel-body li { font-size: calc(var(--font-small) * 0.8); }
-.p-ai-body pre,
+/* Summary panel pre: unchanged positioning */
 .p-summary-panel-body pre {
   position: relative;
   background: var(--code-background);
@@ -566,11 +566,58 @@
   margin: var(--s1) 0;
 }
 
+/* AI message code blocks: wrapped in .p-code-frame, no own margin/position */
+.p-code-frame {
+  position: relative;
+  margin: var(--s1) 0;
+}
+.p-code-frame > pre {
+  background: var(--code-background);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 0.88em;
+  margin: 0;
+  max-width: 100%;
+  min-width: 0;
+  cursor: grab;
+  /* Thin scrollbar — visible as affordance, not obtrusive */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+}
+.p-code-frame > pre::-webkit-scrollbar        { height: 4px; }
+.p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
+.p-code-frame > pre::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-code-frame > pre.p-panning                 { cursor: grabbing; user-select: none; }
+
+/* Mermaid / diagram blocks wrapped in .p-code-frame */
+.p-code-frame > .block-language-mermaid,
+.p-code-frame > .block-language-plantuml {
+  overflow-x: auto;
+  max-width: 100%;
+  cursor: grab;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+}
+.p-code-frame > .block-language-mermaid::-webkit-scrollbar,
+.p-code-frame > .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
+.p-code-frame > .block-language-mermaid::-webkit-scrollbar-track,
+.p-code-frame > .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
+.p-code-frame > .block-language-mermaid::-webkit-scrollbar-thumb,
+.p-code-frame > .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-code-frame > .block-language-mermaid.p-panning,
+.p-code-frame > .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
+/* Allow the SVG inside to be wider than its container (enabling horizontal scroll) */
+.p-code-frame > .block-language-mermaid svg,
+.p-code-frame > .block-language-plantuml svg { max-width: none; }
+
+/* Copy button: positioned on the frame so it never scrolls away */
 .p-code-copy {
   all: unset;
   position: absolute;
   top: 4px;
   right: 4px;
+  z-index: 2;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -582,7 +629,7 @@
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
 }
-.p-ai-body pre:hover .p-code-copy {
+.p-code-frame:hover .p-code-copy {
   opacity: 1;
 }
 .p-code-copy:hover {
@@ -824,6 +871,12 @@
 .p-nav-star {
   font-size: 9px;
   color: var(--color-yellow);
+  flex-shrink: 0;
+}
+
+.p-nav-fork-icon {
+  font-size: 9px;
+  color: var(--color-accent);
   flex-shrink: 0;
 }
 

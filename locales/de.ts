@@ -21,6 +21,7 @@ const de: Strings = {
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Referenz",
+	forksSection: "Abzweigungen",
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
 

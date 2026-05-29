@@ -570,7 +570,7 @@ export default class PythiaPlugin extends Plugin {
 		view.prefillInput(text);
 	}
 
-	async cmdForkConversation(sourceConvId: string, selectedText: string): Promise<void> {
+	async cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string): Promise<void> {
 		const source = this.conversationStore.getById(sourceConvId);
 		if (!source) return;
 
@@ -584,6 +584,7 @@ export default class PythiaPlugin extends Plugin {
 			source.maxTokens,
 		);
 		conv.forkedFromId = sourceConvId;
+		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
 		await this.saveConversations();
 
 		if (!source.summaryText && source.messages.length > 0) {
