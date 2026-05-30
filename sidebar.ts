@@ -501,6 +501,7 @@ export class PythiaSidebarView extends ItemView {
 		this.inputEl.addEventListener("input", () => {
 			this.autoResizeTextarea();
 			this.inlineSuggest.handleInput();
+			this.updateSendBtnLabel(); // live-update estimate as user types
 		});
 
 		// visualViewport resize is unreliable in some WKWebView versions;
@@ -1936,12 +1937,18 @@ export class PythiaSidebarView extends ItemView {
 		const messages = this.activeConversation?.messages ?? [];
 		const last = [...messages].reverse().find(m => m.tokenUsage);
 		if (last?.tokenUsage) {
-			const n = last.tokenUsage.inputTokens;
-			const fmt = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-			// Show the last-turn context size as "ctx N" so it is clearly a reference
-			// value, not a prediction of the upcoming send cost (#28).
-			this.sendBtn.setText(`${t("sendBtn")} · ctx ${fmt}`);
-			this.sendBtn.title = t("sendBtnCtxTitle", { n: fmt });
+			// Estimate total input tokens for the NEXT send (#28):
+			//   previous inputTokens  = full context as of the last call
+			//   + last outputTokens   = assistant reply now added to history
+			//   + draft chars / 4     = the message currently being typed
+			const { inputTokens, outputTokens } = last.tokenUsage;
+			const draftTokens = Math.round((this.inputEl?.value?.length ?? 0) / 4);
+			const estimate = inputTokens + outputTokens + draftTokens;
+			const fmt = estimate >= 1000
+				? `~${(estimate / 1000).toFixed(1)}k`
+				: `~${estimate}`;
+			this.sendBtn.setText(`${t("sendBtn")} · ↑${fmt}`);
+			this.sendBtn.title = t("sendBtnEstTitle", { n: fmt });
 		} else {
 			this.sendBtn.setText(t("sendBtn"));
 			this.sendBtn.title = "";
