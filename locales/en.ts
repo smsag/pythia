@@ -148,6 +148,8 @@ const en = {
 	resumeModeFullOpt:       "Full history — higher fidelity",
 	messageCapName:          "Message cap per session",
 	messageCapDesc:          "Maximum messages per conversation before further sends are blocked. Set to 0 for unlimited.",
+	maxConversationsName:    "Conversation history limit",
+	maxConversationsDesc:    "Maximum conversations kept in storage. Oldest non-starred conversations are removed when the limit is reached. Set to 0 for unlimited.",
 	outputLanguageName:      "Output language",
 	outputLanguageDesc:      "Language for AI-generated text (titles, summaries, chapter names). Auto follows the conversation language.",
 	outputLanguageAuto:      "Auto (follow conversation)",

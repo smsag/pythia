@@ -77,7 +77,13 @@ const MODEL_ABBREVIATIONS: Record<string, string> = {
 };
 
 function abbreviateModel(model: string): string {
-	return MODEL_ABBREVIATIONS[model] ?? model;
+	if (MODEL_ABBREVIATIONS[model]) return MODEL_ABBREVIATIONS[model];
+	// Auto-derive a readable label for unknown/future model IDs (#13)
+	return model
+		.replace(/^claude-/, "")
+		.replace(/^gpt-/, "GPT-")
+		.replace(/-(\d)/g, " $1")
+		.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export class PythiaSidebarView extends ItemView {
@@ -232,8 +238,10 @@ export class PythiaSidebarView extends ItemView {
 			(m) => m.role === "user" && !m.chapterName
 		);
 		if (missing.length === 0) return;
-		Promise.all(
-			missing.map(async (msg) => {
+		// Serial loop to avoid firing 40+ simultaneous API requests for
+		// imported conversations (#2 — was Promise.all fan-out).
+		void (async () => {
+			for (const msg of missing) {
 				try {
 					const name = await this.plugin.llmRouter.generateChapterName(
 						msg.content,
@@ -241,14 +249,13 @@ export class PythiaSidebarView extends ItemView {
 					);
 					if (name) msg.chapterName = name;
 				} catch {
-					// Silently ignore — chapter name is non-critical
+					// Non-critical — silently skip failed chapter names
 				}
-			})
-		).then(async () => {
+			}
 			if (missing.some((m) => m.chapterName)) {
 				await this.plugin.conversationStore.save(conversation);
 			}
-		}).catch(() => { /* ignore persistence errors */ });
+		})();
 	}
 
 	getLastAssistantMessage(): string | null {
@@ -577,7 +584,8 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryPanelEl.style.display = "";
 		this.headerSparkleEl.style.display = "";
 		this.summaryPanelBodyEl.empty();
-		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this);
+		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this)
+			.catch((e) => console.error("[Pythia] summary render:", e));
 		const ts = this.activeConversation?.summaryUpdatedAt;
 		if (ts) {
 			this.summaryPanelBodyEl.createEl("span", {
@@ -793,7 +801,11 @@ export class PythiaSidebarView extends ItemView {
 				attr: { "data-msg-id": msg.id },
 			});
 			const bubble = row.createDiv({ cls: "p-bubble" });
-			await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+			try {
+				await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+			} catch (e) {
+				console.error("[Pythia] render error:", e);
+			}
 			return bubble;
 		}
 
@@ -803,7 +815,11 @@ export class PythiaSidebarView extends ItemView {
 			attr: { "data-msg-id": msg.id },
 		});
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
-		await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
+		try {
+			await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
+		} catch (e) {
+			console.error("[Pythia] render error:", e);
+		}
 		this.decorateCodeBlocks(aiBody);
 
 		const isFav = this.activeConversation?.favorites?.some(
@@ -843,7 +859,11 @@ export class PythiaSidebarView extends ItemView {
 			finalize: async (fullText: string) => {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
-				await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
+				try {
+					await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
+				} catch (e) {
+					console.error("[Pythia] render error:", e);
+				}
 				this.decorateCodeBlocks(aiBody);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;

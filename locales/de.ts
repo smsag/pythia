@@ -150,6 +150,8 @@ const de: Strings = {
 	resumeModeFullOpt:       "Vollständiger Verlauf — höhere Genauigkeit",
 	messageCapName:          "Nachrichtenlimit pro Sitzung",
 	messageCapDesc:          "Maximale Nachrichtenanzahl pro Gespräch. Bei 0 unbegrenzt.",
+	maxConversationsName:    "Gesprächsverlauf-Limit",
+	maxConversationsDesc:    "Maximale Anzahl gespeicherter Gespräche. Älteste Gespräche ohne Favoriten werden entfernt. Bei 0 unbegrenzt.",
 	outputLanguageName:      "Ausgabesprache",
 	outputLanguageDesc:      "Sprache für KI-generierte Texte (Titel, Zusammenfassungen, Kapitel). Auto folgt der Gesprächssprache.",
 	outputLanguageAuto:      "Auto (Gesprächssprache)",

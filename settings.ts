@@ -22,6 +22,8 @@ export interface PythiaSettings {
 	defaultResumeMode: "full" | "summary";
 	/** Soft cap on messages per conversation session. 0 = unlimited. */
 	maxMessagesPerSession: number;
+	/** Maximum conversations kept in data.json. Oldest non-starred are evicted. 0 = unlimited. */
+	maxConversations: number;
 	/** When true, passes a create_note tool to the LLM so it can write vault notes. */
 	enableNoteCreation: boolean;
 	/** When true, the currently active note is injected as context when starting from a template. */
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	autoSaveSummary: true,
 	defaultResumeMode: "summary",
 	maxMessagesPerSession: 100,
+	maxConversations: 200,
 	enableNoteCreation: true,
 	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
@@ -215,6 +218,22 @@ export class PythiaSettingTab extends PluginSettingTab {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.maxMessagesPerSession = n;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("maxConversationsName"))
+			.setDesc(t("maxConversationsDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("200")
+					.setValue(String(this.plugin.settings.maxConversations))
+					.onChange(async (value) => {
+						const n = parseInt(value, 10);
+						if (!isNaN(n) && n >= 0) {
+							this.plugin.settings.maxConversations = n;
 							await this.plugin.saveSettings();
 						}
 					})
