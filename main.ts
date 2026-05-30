@@ -241,8 +241,10 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	async onunload(): Promise<void> {
-		await this.conversationStore.flush();
-		this.llmRouter.abort();
+		// Flush any pending debounced save so the last conversation state
+		// is written to disk before the plugin unloads.
+		await this.conversationStore?.flush();
+		this.llmRouter?.abort();
 	}
 
 	private async loadPluginData(): Promise<void> {
@@ -347,10 +349,31 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	private async persistData(): Promise<void> {
-		await this.saveData({
-			settings: this.settings,
-			conversations: this.conversations,
-		});
+		// Evict oldest non-starred conversations beyond the cap (suggestion #3).
+		const cap = this.settings.maxConversations;
+		if (cap > 0 && this.conversations.length > cap) {
+			const starred = this.conversations.filter(c => (c.favorites?.length ?? 0) > 0);
+			const plain = this.conversations
+				.filter(c => (c.favorites?.length ?? 0) === 0)
+				.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+			const slots = Math.max(0, cap - starred.length);
+			this.conversations = [
+				...starred,
+				...plain.slice(0, slots),
+			].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		}
+
+		try {
+			await this.saveData({
+				settings: this.settings,
+				conversations: this.conversations,
+			});
+		} catch (err) {
+			new Notice(
+				`[Pythia] Failed to save data: ${err instanceof Error ? err.message : String(err)}`,
+				8000
+			);
+		}
 	}
 
 	/** Called once on layout-ready. Creates the sidebar leaf on first install
@@ -705,6 +728,9 @@ function legacyDecrypt(stored: string): string {
 
 	if (stored.startsWith("enc:")) {
 		try {
+			// Buffer is a Node.js/Electron API — unavailable on iOS/Android.
+			// Guard before calling to avoid ReferenceError on mobile.
+			if (typeof Buffer === "undefined") return "";
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const electron = (window as any).require?.("electron");
 			const ss = electron?.safeStorage;
