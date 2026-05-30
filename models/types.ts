@@ -21,6 +21,7 @@ export interface Conversation {
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
 	forkedFromId?: string;            // ID of the conversation this was forked from
 	forkedFromMessageId?: string;     // ID of the source message within that conversation
+	forkedFromSelection?: string;     // The text selected when the fork was created
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 }
 

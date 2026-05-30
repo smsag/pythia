@@ -416,6 +416,15 @@
 .pythia-fork-source-link:hover {
   text-decoration: underline;
 }
+.pythia-fork-selection {
+  margin-top: 5px;
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  font-style: italic;
+  line-height: 1.5;
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: 8px;
+}
 
 /* ── Messages wrapper — flex column so summary bar sits above scroll ── */
 .pythia-messages-wrapper {

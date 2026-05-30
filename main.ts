@@ -585,6 +585,7 @@ export default class PythiaPlugin extends Plugin {
 		);
 		conv.forkedFromId = sourceConvId;
 		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
+		if (selectedText) conv.forkedFromSelection = selectedText;
 		await this.saveConversations();
 
 		if (!source.summaryText && source.messages.length > 0) {

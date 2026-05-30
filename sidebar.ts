@@ -620,17 +620,14 @@ export class PythiaSidebarView extends ItemView {
 			}
 		});
 
-		const summaryText = source?.summaryText?.trim();
-		if (summaryText) {
-			const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed pythia-fork-body" });
-			MarkdownRenderer.render(this.app, summaryText, bodyEl, "", this);
-			let expanded = false;
-			const toggle = banner.createEl("button", { cls: "pythia-summary-toggle", text: t("showMore") });
-			toggle.addEventListener("click", () => {
-				expanded = !expanded;
-				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
-				toggle.setText(expanded ? t("showLess") : t("showMore"));
-			});
+		// Show the selected text that triggered the fork, truncated to a readable excerpt.
+		const selection = conv.forkedFromSelection?.trim();
+		if (selection) {
+			const MAX = 220;
+			const excerpt = selection.length > MAX
+				? selection.slice(0, MAX).trimEnd() + "…"
+				: selection;
+			banner.createDiv({ cls: "pythia-fork-selection", text: excerpt });
 		}
 	}
 
