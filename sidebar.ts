@@ -100,6 +100,7 @@ export class PythiaSidebarView extends ItemView {
 	} | null = null;
 	private isScrolling = false;
 	private pendingAttachedNotes: string[] = [];
+	private navigatorOutsideCleanup: (() => void) | null = null;
 
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
@@ -189,6 +190,26 @@ export class PythiaSidebarView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.plugin.llmRouter.abort();
+
+		// Auto-save summary on close (#23 — the setting was declared but never wired).
+		const conv = this.activeConversation;
+		if (conv && this.plugin.settings.autoSaveSummary && conv.messages.length > 0) {
+			void this.plugin.llmRouter
+				.generateSummaryWithTitle(conv)
+				.then(async ({ title, summary }) => {
+					conv.summaryText      = summary;
+					conv.summaryUpdatedAt = new Date().toISOString();
+					// Also refresh a date-based name now that we have a real title.
+					if (/\d{4}-\d{2}-\d{2}$/.test(conv.name)) conv.name = title;
+					await this.plugin.conversationStore.save(conv);
+				})
+				.catch(() => { /* non-critical — leave existing summary intact */ });
+		}
+
+		// Clean up navigator outside-click listener if view is closed while open (#26).
+		this.navigatorOutsideCleanup?.();
+		this.navigatorOutsideCleanup = null;
+
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
 		}
@@ -205,7 +226,10 @@ export class PythiaSidebarView extends ItemView {
 		focus = true
 	): Promise<void> {
 		this.activeConversation = conversation;
+		this.autoScroll = true;                       // #25 — reset so new conv starts at bottom
 		this.pendingAttachedNotes = [];
+		this.navigatorOutsideCleanup?.();             // #26 — detach stale outside-click listener
+		this.navigatorOutsideCleanup = null;
 		this.navigatorEl.removeClass("open");
 		this.renderHeader();
 		this.updateModelBadge();
@@ -467,7 +491,9 @@ export class PythiaSidebarView extends ItemView {
 		);
 		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (this.inlineSuggest.handleKeydown(e)) return;
-			if (e.key === "Enter" && !e.shiftKey) {
+			// e.isComposing is true while an IME (CJK) composition is in progress.
+			// Without this guard, pressing Enter to confirm a candidate sends the message. (#24)
+			if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 				e.preventDefault();
 				this.sendMessage();
 			}
@@ -1303,15 +1329,23 @@ export class PythiaSidebarView extends ItemView {
 
 		this.navigatorEl.addClass("open");
 
-		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers)
+		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers).
+		// Track as an instance field so the listener can be removed if the view closes or the
+		// conversation switches before the user clicks outside (#26).
+		this.navigatorOutsideCleanup?.();
 		const onOutside = (e: MouseEvent) => {
 			if (!this.navigatorEl.contains(e.target as Node) && e.target !== this.indexTriggerEl) {
 				this.navigatorEl.removeClass("open");
-				document.removeEventListener("mousedown", onOutside, true);
+				this.navigatorOutsideCleanup?.();
+				this.navigatorOutsideCleanup = null;
 			}
 		};
-		// Defer so the trigger's own mousedown doesn't immediately close it
-		setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
+		// Defer so the trigger's own mousedown doesn't immediately close it.
+		setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			this.navigatorOutsideCleanup = () =>
+				document.removeEventListener("mousedown", onOutside, true);
+		}, 0);
 	}
 
 	private updateModelBadge(): void {
@@ -1595,26 +1629,35 @@ export class PythiaSidebarView extends ItemView {
 					}
 
 					if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
+						// Capture IDs so the callback doesn't write to a deleted conversation (#27).
+						const convId = conv.id;
 						this.plugin.llmRouter
 							.generateConversationTitle(userMsg.content, fullText, conv.provider)
 							.then(async (title) => {
-								conv.name = title;
-								await this.plugin.conversationStore.save(conv);
-								if (this.activeConversation?.id === conv.id) {
-									this.convNameEl.setText(conv.name + " ▾");
+								const c = this.plugin.conversationStore.getById(convId);
+								if (!c) return; // conversation deleted in the interim
+								c.name = title;
+								await this.plugin.conversationStore.save(c);
+								if (this.activeConversation?.id === convId) {
+									this.convNameEl.setText(c.name + " ▾");
 								}
 							})
 							.catch(() => { /* keep date name on failure */ });
 					}
 
 					if (!userMsg.chapterName) {
+						const convId = conv.id;
+						const msgId  = userMsg.id;
 						this.plugin.llmRouter
 							.generateChapterName(userMsg.content, conv.provider)
 							.then(async (name) => {
-								if (name) {
-									userMsg.chapterName = name;
-									await this.plugin.conversationStore.save(conv);
-								}
+								if (!name) return;
+								const c = this.plugin.conversationStore.getById(convId);
+								if (!c) return; // conversation deleted in the interim
+								const m = c.messages.find(msg => msg.id === msgId);
+								if (!m) return; // message deleted in the interim
+								m.chapterName = name;
+								await this.plugin.conversationStore.save(c);
 							})
 							.catch(() => { /* chapter name is non-critical */ });
 					}
@@ -1895,9 +1938,13 @@ export class PythiaSidebarView extends ItemView {
 		if (last?.tokenUsage) {
 			const n = last.tokenUsage.inputTokens;
 			const fmt = n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-			this.sendBtn.setText(`${t("sendBtn")} · ↑${fmt}`);
+			// Show the last-turn context size as "ctx N" so it is clearly a reference
+			// value, not a prediction of the upcoming send cost (#28).
+			this.sendBtn.setText(`${t("sendBtn")} · ctx ${fmt}`);
+			this.sendBtn.title = t("sendBtnCtxTitle", { n: fmt });
 		} else {
 			this.sendBtn.setText(t("sendBtn"));
+			this.sendBtn.title = "";
 		}
 	}
 

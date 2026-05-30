@@ -3,6 +3,7 @@
 *Initial review: 2026-05-29 at v1.10.2.*
 *Updated: 2026-05-30 — v1.10.2 session fixes.*
 *Updated: 2026-05-30 — v1.11.0 batch: #2, #3 (partial), #7, #8, #9, #13, #16 resolved. 6 new suggestions added (#17–#22).*
+*Updated: 2026-05-30 — #23–#28 batch resolved: autoSaveSummary wired (#23), IME Enter guard (#24), autoScroll reset on switch (#25), navigator listener tracked and cleaned up (#26), stale-state guards on title/chapter callbacks (#27), send button ctx label (#28). #22 confirmed already handled by existing `onClose()`.*
 
 ---
 
@@ -197,24 +198,9 @@ function langInstruction(lang: string): string {
 
 ---
 
-#### 22 — Active stream is not aborted when the sidebar view is closed
+#### 22 — ✅ Already handled — stream aborted on view close
 
-**File:** `sidebar.ts`
-
-`PythiaSidebarView` has no `onClose()` / `onunload()` lifecycle hook. If the user closes the sidebar pane while a response is streaming, `isStreaming` stays `true` on the dead view instance, the `AbortController` in the provider is never triggered, the API call keeps running and accumulating tokens, and the streamed text is written to the conversation in memory but the UI is gone.
-
-`main.ts` now calls `llmRouter.abort()` in the plugin's `onunload`, but that only fires when the entire plugin unloads — not when the sidebar leaf is closed by the user.
-
-**Fix:** Override `onClose()` in `PythiaSidebarView`:
-
-```typescript
-onClose(): void {
-    if (this.isStreaming) {
-        this.plugin.llmRouter.abort();
-        this.isStreaming = false;
-    }
-}
-```
+`PythiaSidebarView.onClose()` (line 191) already calls `this.plugin.llmRouter.abort()`. The original suggestion was incorrect; no fix needed.
 
 ---
 
@@ -222,7 +208,13 @@ onClose(): void {
 
 | # | Suggestion | Status | Impact | Effort | Priority |
 |---|---|---|---|---|---|
-| 22 | Abort stream on view close | Open | High | Very Low | ⭐ Now |
+| 22 | Abort stream on view close | ✅ Was already handled | — | — | — |
+| 23 | `autoSaveSummary` never wired | ✅ Done | High | Low | ⭐ Now |
+| 24 | IME Enter composition bug | ✅ Done | High | Very Low | ⭐ Now |
+| 25 | `autoScroll` not reset on conversation switch | ✅ Done | Medium | Very Low | ⭐ Now |
+| 26 | Navigator `onOutside` listener leak | ✅ Done | Medium | Low | ⭐ Now |
+| 27 | Stale-state guards on title/chapter callbacks | ✅ Done | Medium | Low | ⭐ Now |
+| 28 | Send button ctx label ambiguity | ✅ Done | Low | Very Low | ⭐ Now |
 | 18 | `getSecret()` async safety | Open | High | Low | ⭐ Now |
 | 17 | Eviction can drop active conversation | Open | Medium | Low | ⭐ Now |
 | 21 | `outputLanguage` value coupled to LLM prompt | Open | Medium | Low | ⭐ Now |

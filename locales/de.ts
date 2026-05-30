@@ -50,6 +50,7 @@ const de: Strings = {
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
+	sendBtnCtxTitle:     "Letzter Kontext: {{n}} Eingabe-Tokens",
 	stopBtn:             "Anfrage abbrechen",
 	attachNoteTooltip:   "Notiz anhängen",
 	saveResponseTooltip: "Antwort speichern",

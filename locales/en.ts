@@ -48,6 +48,7 @@ const en = {
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",
 	sendBtn:             "Send",
+	sendBtnCtxTitle:     "Last turn context: {{n}} input tokens",
 	stopBtn:             "Stop",
 	attachNoteTooltip:   "Attach note",
 	saveResponseTooltip: "Save response",
