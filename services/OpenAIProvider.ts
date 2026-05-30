@@ -317,13 +317,16 @@ export class OpenAIProvider implements LLMProvider {
 			.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
 			.join("\n\n");
 
+		const langSuffix = this.settings.outputLanguage !== "auto"
+			? ` in ${this.settings.outputLanguage}`
+			: "";
 		const response = await client.chat.completions.create({
 			model,
 			max_tokens: 1024,
 			messages: [
 				{
 					role: "user",
-					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title, no punctuation, no quotes>\nSUMMARY:\n<summary here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${langSuffix}, no punctuation, no quotes>\nSUMMARY:\n<summary${langSuffix} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 				},
 			],
 		});
