@@ -28,6 +28,8 @@ export interface PythiaSettings {
 	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
 	inboxNote: string;
+	/** Language for AI-generated text (titles, summaries, chapter names). "auto" = follow the conversation language. */
+	outputLanguage: "auto" | "English" | "German";
 	debugMode: boolean;
 }
 
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	enableNoteCreation: true,
 	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
+	outputLanguage: "auto",
 	debugMode: false,
 };
 
@@ -214,6 +217,21 @@ export class PythiaSettingTab extends PluginSettingTab {
 							this.plugin.settings.maxMessagesPerSession = n;
 							await this.plugin.saveSettings();
 						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("outputLanguageName"))
+			.setDesc(t("outputLanguageDesc"))
+			.addDropdown((drop) =>
+				drop
+					.addOption("auto", t("outputLanguageAuto"))
+					.addOption("English", t("outputLanguageEnglish"))
+					.addOption("German", t("outputLanguageGerman"))
+					.setValue(this.plugin.settings.outputLanguage)
+					.onChange(async (value) => {
+						this.plugin.settings.outputLanguage = value as "auto" | "English" | "German";
+						await this.plugin.saveSettings();
 					})
 			);
 

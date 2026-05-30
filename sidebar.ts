@@ -620,17 +620,14 @@ export class PythiaSidebarView extends ItemView {
 			}
 		});
 
-		const summaryText = source?.summaryText?.trim();
-		if (summaryText) {
-			const bodyEl = banner.createDiv({ cls: "pythia-summary-body pythia-summary-body--collapsed pythia-fork-body" });
-			MarkdownRenderer.render(this.app, summaryText, bodyEl, "", this);
-			let expanded = false;
-			const toggle = banner.createEl("button", { cls: "pythia-summary-toggle", text: t("showMore") });
-			toggle.addEventListener("click", () => {
-				expanded = !expanded;
-				bodyEl.toggleClass("pythia-summary-body--collapsed", !expanded);
-				toggle.setText(expanded ? t("showLess") : t("showMore"));
-			});
+		// Show the selected text that triggered the fork, truncated to a readable excerpt.
+		const selection = conv.forkedFromSelection?.trim();
+		if (selection) {
+			const MAX = 220;
+			const excerpt = selection.length > MAX
+				? selection.slice(0, MAX).trimEnd() + "…"
+				: selection;
+			banner.createDiv({ cls: "pythia-fork-selection", text: excerpt });
 		}
 	}
 
@@ -863,17 +860,39 @@ export class PythiaSidebarView extends ItemView {
 			if (pre.closest(".block-language-mermaid, .block-language-plantuml")) return;
 			pre.dataset.decorated = "1";
 			const frame = this.wrapInScrollFrame(pre);
-			// Copy button lives on the frame so it stays fixed while content pans.
-			const copyBtn = frame.createEl("button", { cls: "p-code-copy", attr: { title: "Copy" } });
+
+			// Extract language identifier for the fenced-block wrapper.
+			const codeEl = pre.querySelector("code");
+			const lang = codeEl?.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
+			const makeFenced = (): string => {
+				const raw = (codeEl ?? pre).innerText.replace(/\n$/, "");
+				return `\`\`\`${lang}\n${raw}\n\`\`\``;
+			};
+
+			// Both action buttons live on the frame so they stay fixed while the
+			// pre scrolls horizontally under them.
+			const actions = frame.createEl("div", { cls: "p-code-actions" });
+
+			// Insert into active note at cursor
+			const insertBtn = actions.createEl("button", { cls: "p-code-btn", attr: { title: "Insert into note" } });
+			setIcon(insertBtn, "file-down");
+			insertBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				const editor = this.app.workspace.activeEditor?.editor;
+				if (editor) editor.replaceSelection(makeFenced());
+			});
+
+			// Copy full fenced block (including language tag)
+			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
 			setIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", async (e) => {
 				e.stopPropagation();
-				const text = (pre.querySelector("code") ?? pre).innerText;
-				await navigator.clipboard.writeText(text);
+				await navigator.clipboard.writeText(makeFenced());
 				setIcon(copyBtn, "check");
 				copyBtn.addClass("copied");
 				setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
 			});
+
 			this.attachDragToPan(pre);
 		});
 
@@ -881,12 +900,54 @@ export class PythiaSidebarView extends ItemView {
 		// DOM; Mermaid's async renderer expects to find and replace the element's
 		// content in its original position.  Scroll behaviour comes from CSS;
 		// JS only stamps the explicit SVG pixel size and enables drag-to-pan.
+		// A sibling toolbar sits ABOVE the scrolling container so its buttons
+		// are never hidden by horizontal overflow on wide diagrams (e.g. Gantt).
 		const DIAG = [
 			".block-language-mermaid:not([data-decorated])",
 			".block-language-plantuml:not([data-decorated])",
 		].join(",");
 		container.querySelectorAll<HTMLElement>(DIAG).forEach((el) => {
 			el.dataset.decorated = "1";
+
+			// Capture the source before Mermaid's async renderer replaces the
+			// code element with the SVG.
+			const codeEl = el.querySelector("code");
+			const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
+			const source = codeEl?.innerText.replace(/\n$/, "") ?? "";
+
+			if (source) {
+				const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
+
+				const toolbar = createEl("div", { cls: "p-diag-toolbar" });
+				el.parentNode!.insertBefore(toolbar, el);
+
+				const insertBtn = toolbar.createEl("button", { cls: "p-code-btn", attr: { title: "Insert into note" } });
+				setIcon(insertBtn, "file-down");
+				insertBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					const editor = this.app.workspace.activeEditor?.editor;
+					if (editor) editor.replaceSelection(makeFenced());
+				});
+
+				const copyBtn = toolbar.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
+				setIcon(copyBtn, "copy");
+				copyBtn.addEventListener("click", async (e) => {
+					e.stopPropagation();
+					await navigator.clipboard.writeText(makeFenced());
+					setIcon(copyBtn, "check");
+					copyBtn.addClass("copied");
+					setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
+				});
+
+				// Hover sync — show toolbar when hovering either the toolbar or diagram
+				const show = (): void => toolbar.addClass("p-visible");
+				const hide = (): void => toolbar.removeClass("p-visible");
+				toolbar.addEventListener("mouseenter", show);
+				toolbar.addEventListener("mouseleave", hide);
+				el.addEventListener("mouseenter", show);
+				el.addEventListener("mouseleave", hide);
+			}
+
 			this.fixDiagramSvgSize(el);
 			this.attachDragToPan(el);
 		});
@@ -917,10 +978,12 @@ export class PythiaSidebarView extends ItemView {
 			const parts = vb.trim().split(/[\s,]+/).map(Number);
 			if (parts.length < 4 || !(parts[2] > 0)) return;
 			const [, , w, h] = parts;
-			svg.style.width    = `${w}px`;
-			svg.style.height   = `${h}px`;
-			svg.style.maxWidth = "none";
-			svg.style.display  = "block";
+			// Use setProperty("…", "…", "important") so the inline stamp wins
+			// over any CSS `!important` rule (e.g. Obsidian's width:100% override).
+			svg.style.setProperty("width",     `${w}px`, "important");
+			svg.style.setProperty("height",    `${h}px`, "important");
+			svg.style.setProperty("max-width", "none",   "important");
+			svg.style.display = "block";
 		};
 		// If Mermaid has already rendered (e.g. on conversation reload), apply now.
 		const existing = el.querySelector<SVGElement>("svg");
@@ -1062,33 +1125,26 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		if (!conv.favorites) conv.favorites = [];
-		const placeholder: Favorite = { messageId: msg.id, name: "…" };
-		conv.favorites.push(placeholder);
+
+		// Reuse the chapter name of the preceding user turn — it was already
+		// generated when the conversation was loaded, so no extra API call needed.
+		// Fall back to the first 40 chars of the answer only if there is no
+		// chapter name available (e.g. very first message or backfill still pending).
+		const msgIndex = conv.messages.findIndex((m) => m.id === msg.id);
+		const precedingUser = conv.messages
+			.slice(0, msgIndex)
+			.reverse()
+			.find((m) => m.role === "user");
+		const name =
+			precedingUser?.chapterName ??
+			msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
+
+		conv.favorites.push({ messageId: msg.id, name });
 		await this.plugin.conversationStore.save(conv);
 		starEl.setText("★");
 		starEl.addClass("on");
 		starEl.title = t("removeFromFavorites");
 		this.renderFavoritesBar();
-
-		try {
-			const name = await this.plugin.llmRouter.generateFavoriteName(
-				msg.content,
-				conv.provider ?? "anthropic"
-			);
-			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
-			if (fav) {
-				fav.name = name;
-				await this.plugin.conversationStore.save(conv);
-				this.renderFavoritesBar();
-			}
-		} catch {
-			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
-			if (fav) {
-				fav.name = msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
-				await this.plugin.conversationStore.save(conv);
-				this.renderFavoritesBar();
-			}
-		}
 	}
 
 	private async removeFavorite(messageId: string): Promise<void> {
