@@ -587,6 +587,7 @@
 }
 .p-code-frame > pre {
   background: var(--code-background);
+  border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   padding: 8px 10px;
   overflow-x: auto;
@@ -604,8 +605,10 @@
 .p-code-frame > pre::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-code-frame > pre.p-panning                 { cursor: grabbing; user-select: none; }
 /* Obsidian adds its own copy button (.copy-code-button) to every pre; hide it
-   inside our frames so only our .p-code-copy appears. */
-.p-code-frame .copy-code-button { display: none !important; }
+   inside our frames so only our buttons appear. */
+.p-code-frame .copy-code-button,
+.p-ai-body .block-language-mermaid .copy-code-button,
+.p-ai-body .block-language-plantuml .copy-code-button { display: none !important; }
 
 /* Mermaid / diagram blocks — overflow-scroll in place, no DOM wrapping.
    The element stays in its original DOM position so Mermaid's async renderer
@@ -652,13 +655,24 @@
 .p-scroll-frame::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-scroll-frame.p-panning                 { cursor: grabbing; user-select: none; }
 
-/* Copy button: positioned on the frame so it never scrolls away */
-.p-code-copy {
-  all: unset;
+/* Action button group: copy + insert, pinned to the top-right of the frame
+   so they stay fixed while the pre scrolls horizontally underneath. */
+.p-code-actions {
   position: absolute;
   top: 4px;
   right: 4px;
   z-index: 2;
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.p-code-frame:hover .p-code-actions { opacity: 1; }
+
+/* Shared style for every action button (copy, insert) */
+.p-code-btn {
+  all: unset;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -667,20 +681,28 @@
   height: 22px;
   border-radius: 4px;
   color: var(--text-faint);
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
-.p-code-frame:hover .p-code-copy {
-  opacity: 1;
-}
-.p-code-copy:hover {
+.p-code-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
 .p-code-copy.copied {
   color: var(--color-green);
-  opacity: 1;
 }
+
+/* Diagram toolbar: sibling div inserted ABOVE the diagram container.
+   Sits outside the overflow-scrolling element so buttons never scroll away
+   on wide diagrams (e.g. Gantt charts). */
+.p-diag-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-bottom: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.p-diag-toolbar.p-visible { opacity: 1; }
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }
 
