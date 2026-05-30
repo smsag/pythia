@@ -655,22 +655,20 @@
 .p-scroll-frame::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-scroll-frame.p-panning                 { cursor: grabbing; user-select: none; }
 
-/* Action button group: copy + insert, pinned to the top-right of the frame
-   so they stay fixed while the pre scrolls horizontally underneath. */
+/* Copy button: pinned to the top-right of the frame so it stays fixed
+   while the pre scrolls horizontally underneath. */
 .p-code-actions {
   position: absolute;
   top: 4px;
   right: 4px;
   z-index: 2;
   display: flex;
-  flex-direction: row;
-  gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
 }
 .p-code-frame:hover .p-code-actions { opacity: 1; }
 
-/* Shared style for every action button (copy, insert) */
+/* Shared style for action buttons */
 .p-code-btn {
   all: unset;
   cursor: pointer;
@@ -692,17 +690,13 @@
 }
 
 /* Diagram toolbar: sibling div inserted ABOVE the diagram container.
-   Sits outside the overflow-scrolling element so buttons never scroll away
-   on wide diagrams (e.g. Gantt charts). */
+   Always visible — sits outside the overflow context so it is never
+   clipped on wide diagrams (e.g. Gantt). */
 .p-diag-toolbar {
   display: flex;
   justify-content: flex-end;
-  gap: 2px;
   margin-bottom: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
 }
-.p-diag-toolbar.p-visible { opacity: 1; }
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }
 

@@ -869,20 +869,8 @@ export class PythiaSidebarView extends ItemView {
 				return `\`\`\`${lang}\n${raw}\n\`\`\``;
 			};
 
-			// Both action buttons live on the frame so they stay fixed while the
-			// pre scrolls horizontally under them.
+			// Copy button lives on the frame so it stays fixed while the pre scrolls.
 			const actions = frame.createEl("div", { cls: "p-code-actions" });
-
-			// Insert into active note at cursor
-			const insertBtn = actions.createEl("button", { cls: "p-code-btn", attr: { title: "Insert into note" } });
-			setIcon(insertBtn, "file-down");
-			insertBtn.addEventListener("click", (e) => {
-				e.stopPropagation();
-				const editor = this.app.workspace.activeEditor?.editor;
-				if (editor) editor.replaceSelection(makeFenced());
-			});
-
-			// Copy full fenced block (including language tag)
 			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
 			setIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", async (e) => {
@@ -915,19 +903,14 @@ export class PythiaSidebarView extends ItemView {
 			const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
 			const source = codeEl?.innerText.replace(/\n$/, "") ?? "";
 
+			// Toolbar sits as a sibling ABOVE the diagram so the copy button is
+			// never clipped by the horizontal-scroll overflow context.
+			// Always visible — hover-to-reveal proved unreliable in practice.
 			if (source) {
 				const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
 
 				const toolbar = createEl("div", { cls: "p-diag-toolbar" });
 				el.parentNode!.insertBefore(toolbar, el);
-
-				const insertBtn = toolbar.createEl("button", { cls: "p-code-btn", attr: { title: "Insert into note" } });
-				setIcon(insertBtn, "file-down");
-				insertBtn.addEventListener("click", (e) => {
-					e.stopPropagation();
-					const editor = this.app.workspace.activeEditor?.editor;
-					if (editor) editor.replaceSelection(makeFenced());
-				});
 
 				const copyBtn = toolbar.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
 				setIcon(copyBtn, "copy");
@@ -938,14 +921,6 @@ export class PythiaSidebarView extends ItemView {
 					copyBtn.addClass("copied");
 					setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
 				});
-
-				// Hover sync — show toolbar when hovering either the toolbar or diagram
-				const show = (): void => toolbar.addClass("p-visible");
-				const hide = (): void => toolbar.removeClass("p-visible");
-				toolbar.addEventListener("mouseenter", show);
-				toolbar.addEventListener("mouseleave", hide);
-				el.addEventListener("mouseenter", show);
-				el.addEventListener("mouseleave", hide);
 			}
 
 			this.fixDiagramSvgSize(el);
@@ -972,30 +947,67 @@ export class PythiaSidebarView extends ItemView {
 	 * is inserted by Mermaid's async renderer — more reliable than ResizeObserver.
 	 */
 	private fixDiagramSvgSize(el: HTMLElement): void {
-		const stamp = (svg: SVGElement) => {
+		/**
+		 * Attempt to stamp explicit pixel dimensions on the SVG.
+		 * Returns true when dimensions were applied so the observer knows to stop.
+		 *
+		 * Priority:
+		 *   1. viewBox  — most reliable; set by Mermaid for flowcharts, sequence, class …
+		 *   2. explicit numeric width/height attributes — Gantt and some other types use these
+		 *   3. Neither available yet → return false (keep observing)
+		 */
+		const stamp = (svg: SVGElement): boolean => {
+			// 1. viewBox
 			const vb = svg.getAttribute("viewBox");
-			if (!vb) return;
-			const parts = vb.trim().split(/[\s,]+/).map(Number);
-			if (parts.length < 4 || !(parts[2] > 0)) return;
-			const [, , w, h] = parts;
-			// Use setProperty("…", "…", "important") so the inline stamp wins
-			// over any CSS `!important` rule (e.g. Obsidian's width:100% override).
-			svg.style.setProperty("width",     `${w}px`, "important");
-			svg.style.setProperty("height",    `${h}px`, "important");
-			svg.style.setProperty("max-width", "none",   "important");
-			svg.style.display = "block";
+			if (vb) {
+				const parts = vb.trim().split(/[\s,]+/).map(Number);
+				if (parts.length >= 4 && parts[2] > 0) {
+					const [, , w, h] = parts;
+					svg.style.setProperty("width",     `${w}px`, "important");
+					svg.style.setProperty("height",    `${h}px`, "important");
+					svg.style.setProperty("max-width", "none",   "important");
+					svg.style.display = "block";
+					return true;
+				}
+			}
+			// 2. Explicit numeric width/height attributes (not percentages)
+			const rawW = svg.getAttribute("width") ?? "";
+			const rawH = svg.getAttribute("height") ?? "";
+			const attrW = rawW.includes("%") ? NaN : parseFloat(rawW);
+			const attrH = rawH.includes("%") ? NaN : parseFloat(rawH);
+			if (attrW > 0) {
+				svg.style.setProperty("width",     `${attrW}px`, "important");
+				svg.style.setProperty("max-width", "none",       "important");
+				svg.style.display = "block";
+				if (attrH > 0) svg.style.setProperty("height", `${attrH}px`, "important");
+				return true;
+			}
+			return false; // not ready yet — keep observing
 		};
-		// If Mermaid has already rendered (e.g. on conversation reload), apply now.
+
+		// If already rendered (conversation reload), stamp immediately and return.
 		const existing = el.querySelector<SVGElement>("svg");
 		if (existing) { stamp(existing); return; }
-		// Otherwise wait for the SVG to be inserted asynchronously.
+
+		// Watch for SVG insertion AND subsequent attribute mutations.
+		// Mermaid often inserts a bare <svg> first and sets viewBox/width in a
+		// follow-up attribute update — we must NOT disconnect on the first fire.
 		const mo = new MutationObserver(() => {
 			const svg = el.querySelector<SVGElement>("svg");
-			if (!svg) return;
-			mo.disconnect();
-			stamp(svg);
+			if (!svg) return;        // content appeared but no SVG yet
+			if (stamp(svg)) mo.disconnect(); // success — stop watching
+			// else: SVG present but dimensions not set yet — keep watching
 		});
-		mo.observe(el, { childList: true, subtree: true });
+		mo.observe(el, {
+			childList:       true,
+			subtree:         true,
+			attributes:      true,
+			attributeFilter: ["viewBox", "width", "height"],
+		});
+
+		// Safety: disconnect after 10 s.  Covers the case where Mermaid renders
+		// a parse-error div instead of an SVG (observer would otherwise leak).
+		setTimeout(() => mo.disconnect(), 10_000);
 	}
 
 	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
