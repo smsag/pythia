@@ -58,6 +58,11 @@ function normalizeMessages(messages: OAIMessage[]): OAIMessage[] {
 	return result;
 }
 
+/** Returns a language instruction suffix, or "" when set to auto. */
+function langInstruction(lang: string): string {
+	return lang === "auto" ? "" : `\n\nRespond in ${lang}.`;
+}
+
 export class OpenAIProvider implements LLMProvider {
 	private app: App;
 	private settings: PythiaSettings;
@@ -296,7 +301,7 @@ export class OpenAIProvider implements LLMProvider {
 			messages: [
 				{
 					role: "user",
-					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.\n\n${conversationText}`,
+					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 				},
 			],
 		});
@@ -318,7 +323,7 @@ export class OpenAIProvider implements LLMProvider {
 			messages: [
 				{
 					role: "user",
-					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title, no punctuation, no quotes>\nSUMMARY:\n<summary here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.\n\n${conversationText}`,
+					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title, no punctuation, no quotes>\nSUMMARY:\n<summary here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 				},
 			],
 		});
@@ -349,7 +354,7 @@ export class OpenAIProvider implements LLMProvider {
 			max_tokens: 15,
 			messages: [{
 				role: "user",
-				content: `Summarize this user message in 3-5 words as a chapter title. Reply with ONLY the title, no punctuation, no quotes.\n\nMessage:\n${excerpt}`,
+				content: `Summarize this user message in 3-5 words as a chapter title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
 			}],
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "";
@@ -364,7 +369,7 @@ export class OpenAIProvider implements LLMProvider {
 			max_tokens: 20,
 			messages: [{
 				role: "user",
-				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
 			}],
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "New Conversation";
@@ -377,7 +382,7 @@ export class OpenAIProvider implements LLMProvider {
 			max_tokens: 1024,
 			messages: [{
 				role: "user",
-				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.\n\n${content}`,
+				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.${langInstruction(this.settings.outputLanguage)}\n\n${content}`,
 			}],
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "";
