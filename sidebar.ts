@@ -1062,33 +1062,26 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		if (!conv.favorites) conv.favorites = [];
-		const placeholder: Favorite = { messageId: msg.id, name: "…" };
-		conv.favorites.push(placeholder);
+
+		// Reuse the chapter name of the preceding user turn — it was already
+		// generated when the conversation was loaded, so no extra API call needed.
+		// Fall back to the first 40 chars of the answer only if there is no
+		// chapter name available (e.g. very first message or backfill still pending).
+		const msgIndex = conv.messages.findIndex((m) => m.id === msg.id);
+		const precedingUser = conv.messages
+			.slice(0, msgIndex)
+			.reverse()
+			.find((m) => m.role === "user");
+		const name =
+			precedingUser?.chapterName ??
+			msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
+
+		conv.favorites.push({ messageId: msg.id, name });
 		await this.plugin.conversationStore.save(conv);
 		starEl.setText("★");
 		starEl.addClass("on");
 		starEl.title = t("removeFromFavorites");
 		this.renderFavoritesBar();
-
-		try {
-			const name = await this.plugin.llmRouter.generateFavoriteName(
-				msg.content,
-				conv.provider ?? "anthropic"
-			);
-			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
-			if (fav) {
-				fav.name = name;
-				await this.plugin.conversationStore.save(conv);
-				this.renderFavoritesBar();
-			}
-		} catch {
-			const fav = conv.favorites?.find((f) => f.messageId === msg.id);
-			if (fav) {
-				fav.name = msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
-				await this.plugin.conversationStore.save(conv);
-				this.renderFavoritesBar();
-			}
-		}
 	}
 
 	private async removeFavorite(messageId: string): Promise<void> {
