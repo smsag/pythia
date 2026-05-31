@@ -17,6 +17,9 @@ import { NoteWriter } from "./services/NoteWriter";
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
 	conversations!: Conversation[];
+	/** Number of conversations successfully loaded from disk at startup.
+	 *  Used as a safety guard in persistData() to detect empty-load anomalies. */
+	private loadedConversationCount = 0;
 	/** Decrypted API keys held only in memory — never written to disk as plaintext. */
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
@@ -314,6 +317,10 @@ export default class PythiaPlugin extends Plugin {
 				} malformed conversation(s) from data.json`
 			);
 		}
+		// Record how many conversations we loaded so persistData() can detect
+		// an accidental empty-load (e.g. iCloud evicted the file to cloud-only
+		// before we read it) and refuse to overwrite real data with [].
+		this.loadedConversationCount = this.conversations.length;
 
 		// getSecret() is async in Obsidian's current typings (truly async on iOS WebKit). (#18)
 		this.plaintextApiKey =
@@ -353,6 +360,25 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	private async persistData(): Promise<void> {
+		// Safety guard: if we loaded N conversations at startup but are about to
+		// persist 0, something went wrong (iCloud eviction, partial initialisation,
+		// failed loadData). Refuse to overwrite real data with an empty array.
+		// The user explicitly deleting all conversations is handled by checking
+		// whether the in-memory array was intentionally emptied vs never loaded.
+		if (this.conversations.length === 0 && this.loadedConversationCount > 0) {
+			new Notice(
+				"[Pythia] Safety: refusing to save an empty conversation list — " +
+				"loaded count was " + this.loadedConversationCount + ". " +
+				"Restart Obsidian if this persists.",
+				10_000
+			);
+			console.error(
+				"[Pythia] persistData() aborted: conversations is empty but " +
+				this.loadedConversationCount + " were loaded at startup."
+			);
+			return;
+		}
+
 		// Evict oldest non-starred conversations beyond the cap (#3).
 		// Always protect the currently open conversation even if it has no starred
 		// messages — evicting the active conversation would silently lose new turns (#17).
