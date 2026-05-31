@@ -145,7 +145,8 @@
   font-family: var(--font-monospace);
   font-size: 10px;
   color: var(--color-accent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border: 1px solid var(--color-accent);                                        /* fallback: Chromium < 111 */
+  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);  /* preferred: semi-transparent */
   border-radius: 10px;
   padding: 1px 6px;
   max-width: 160px;
@@ -1042,7 +1043,8 @@ body.is-mobile .p-textarea {
 }
 /* Border only in send state; specificity 0,2,0 beats the global border:none at 0,1,1 */
 .p-send:not(.stop) {
-  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);
+  border: 1px solid var(--color-accent);                                      /* fallback: Chromium < 111 */
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);      /* preferred: darkened */
 }
 .p-send:hover {
   opacity: 0.85;

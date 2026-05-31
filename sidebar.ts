@@ -103,6 +103,9 @@ export class PythiaSidebarView extends ItemView {
 	private isScrolling = false;
 	private pendingAttachedNotes: string[] = [];
 	private navigatorOutsideCleanup: (() => void) | null = null;
+	/** Tracks active MutationObservers per diagram element so stale ones are
+	 *  disconnected before a new one is armed on DOM rebuild (#20). */
+	private readonly diagObservers = new WeakMap<HTMLElement, MutationObserver>();
 
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
@@ -1034,6 +1037,10 @@ export class PythiaSidebarView extends ItemView {
 			return false; // not ready yet — keep observing
 		};
 
+		// Disconnect any observer that was armed during a previous DOM rebuild for
+		// this same element — prevents observer accumulation across re-renders (#20).
+		this.diagObservers.get(el)?.disconnect();
+
 		// If already rendered (conversation reload), stamp immediately and return.
 		const existing = el.querySelector<SVGElement>("svg");
 		if (existing) { stamp(existing); return; }
@@ -1044,7 +1051,10 @@ export class PythiaSidebarView extends ItemView {
 		const mo = new MutationObserver(() => {
 			const svg = el.querySelector<SVGElement>("svg");
 			if (!svg) return;        // content appeared but no SVG yet
-			if (stamp(svg)) mo.disconnect(); // success — stop watching
+			if (stamp(svg)) {
+				mo.disconnect();
+				this.diagObservers.delete(el);
+			}
 			// else: SVG present but dimensions not set yet — keep watching
 		});
 		mo.observe(el, {
@@ -1053,10 +1063,14 @@ export class PythiaSidebarView extends ItemView {
 			attributes:      true,
 			attributeFilter: ["viewBox", "width", "height"],
 		});
+		this.diagObservers.set(el, mo);
 
 		// Safety: disconnect after 10 s.  Covers the case where Mermaid renders
 		// a parse-error div instead of an SVG (observer would otherwise leak).
-		setTimeout(() => mo.disconnect(), 10_000);
+		setTimeout(() => {
+			mo.disconnect();
+			this.diagObservers.delete(el);
+		}, 10_000);
 	}
 
 	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
