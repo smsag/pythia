@@ -43,9 +43,26 @@ function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
 	return result;
 }
 
-/** Returns a language instruction suffix, or "" when set to auto. */
+/**
+ * Maps ISO 639-1 locale codes to the English language name used in LLM prompts.
+ * Stored setting values ("en", "de") are intentionally separate from display labels
+ * so UI localisation never affects prompt content (#21).
+ */
+const LANG_LABELS: Record<string, string> = {
+	en: "English",
+	de: "German",
+};
+
+/** Returns "\n\nRespond in <Language>." for a known locale code, or "" for auto. */
 function langInstruction(lang: string): string {
-	return lang === "auto" ? "" : `\n\nRespond in ${lang}.`;
+	const label = LANG_LABELS[lang];
+	return label ? `\n\nRespond in ${label}.` : "";
+}
+
+/** Returns " in <Language>" for use inside format placeholders, or "" for auto. */
+function langSuffix(lang: string): string {
+	const label = LANG_LABELS[lang];
+	return label ? ` in ${label}` : "";
 }
 
 export class AnthropicService implements LLMProvider {
@@ -252,16 +269,14 @@ export class AnthropicService implements LLMProvider {
 			.map((m) => `${m.role === "user" ? "User" : "Claude"}: ${m.content}`)
 			.join("\n\n");
 
-		const langSuffix = this.settings.outputLanguage !== "auto"
-			? ` in ${this.settings.outputLanguage}`
-			: "";
+		const sfx = langSuffix(this.settings.outputLanguage);
 		const response = await client.messages.create({
 			model,
 			max_tokens: 1024,
 			messages: [
 				{
 					role: "user",
-					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${langSuffix}, no punctuation, no quotes>\nSUMMARY:\n<summary${langSuffix} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${sfx}, no punctuation, no quotes>\nSUMMARY:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 				},
 			],
 		});
