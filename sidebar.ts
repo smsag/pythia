@@ -1017,7 +1017,7 @@ export class PythiaSidebarView extends ItemView {
 		 *   3. Neither available yet → return false (keep observing)
 		 */
 		const stamp = (svg: SVGElement): boolean => {
-			// 1. viewBox
+			// 1. viewBox — most reliable for flowcharts, sequence, class diagrams
 			const vb = svg.getAttribute("viewBox");
 			if (vb) {
 				const parts = vb.trim().split(/[\s,]+/).map(Number);
@@ -1030,7 +1030,7 @@ export class PythiaSidebarView extends ItemView {
 					return true;
 				}
 			}
-			// 2. Explicit numeric width/height attributes (not percentages)
+			// 2. Explicit numeric width/height HTML attributes (not percentages)
 			const rawW = svg.getAttribute("width") ?? "";
 			const rawH = svg.getAttribute("height") ?? "";
 			const attrW = rawW.includes("%") ? NaN : parseFloat(rawW);
@@ -1042,28 +1042,50 @@ export class PythiaSidebarView extends ItemView {
 				if (attrH > 0) svg.style.setProperty("height", `${attrH}px`, "important");
 				return true;
 			}
+			// 3. max-width in inline style — Gantt charts set svg.style.maxWidth
+			//    instead of a viewBox or explicit width attribute. This is NOT caught
+			//    by watching the width/height attributes; we must read style directly.
+			const styleMaxW = parseFloat(svg.style.maxWidth);
+			if (styleMaxW > 0) {
+				svg.style.setProperty("width",     `${styleMaxW}px`, "important");
+				svg.style.setProperty("max-width", "none",           "important");
+				svg.style.display = "block";
+				return true;
+			}
 			return false; // not ready yet — keep observing
 		};
 
-		// Disconnect any observer that was armed during a previous DOM rebuild for
-		// this same element — prevents observer accumulation across re-renders (#20).
+		// Disconnect any observer armed during a previous DOM rebuild (#20).
 		this.diagObservers.get(el)?.disconnect();
 
-		// If already rendered (conversation reload), stamp immediately and return.
+		// If already rendered (conversation reload), stamp immediately.
 		const existing = el.querySelector<SVGElement>("svg");
 		if (existing) { stamp(existing); return; }
 
-		// Watch for SVG insertion AND subsequent attribute mutations.
-		// Mermaid often inserts a bare <svg> first and sets viewBox/width in a
-		// follow-up attribute update — we must NOT disconnect on the first fire.
+		// Phase 1: watch the container for SVG insertion.
+		// Phase 2: once the SVG appears but has no dimensions yet, also watch the
+		//   SVG element's own style attribute. Gantt charts write maxWidth via
+		//   svg.style.maxWidth — a style attribute mutation, not a viewBox/width
+		//   attribute mutation — so the Phase 1 filter alone never catches it.
+		//   We extend the SAME observer to the SVG node to avoid watching style
+		//   changes across the entire subtree.
+		let svgWatched = false;
 		const mo = new MutationObserver(() => {
 			const svg = el.querySelector<SVGElement>("svg");
-			if (!svg) return;        // content appeared but no SVG yet
+			if (!svg) return;
 			if (stamp(svg)) {
 				mo.disconnect();
 				this.diagObservers.delete(el);
+				return;
 			}
-			// else: SVG present but dimensions not set yet — keep watching
+			// SVG present but dimensions not ready — extend observer to SVG style.
+			if (!svgWatched) {
+				svgWatched = true;
+				mo.observe(svg, {
+					attributes:      true,
+					attributeFilter: ["style", "viewBox", "width", "height"],
+				});
+			}
 		});
 		mo.observe(el, {
 			childList:       true,
