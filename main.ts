@@ -7,7 +7,6 @@ import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "./suggest/ConversationSuggest";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ResumeModeModal } from "./suggest/ResumeModeModal";
-import { InputModal } from "./suggest/InputModal";
 import { AnthropicService } from "./services/AnthropicService";
 import { OpenAIProvider } from "./services/OpenAIProvider";
 import { LLMRouter } from "./services/LLMRouter";
@@ -745,8 +744,7 @@ function legacyDecrypt(stored: string): string {
 			// Buffer is a Node.js/Electron API — unavailable on iOS/Android.
 			// Guard before calling to avoid ReferenceError on mobile.
 			if (typeof Buffer === "undefined") return "";
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const electron = (window as any).require?.("electron");
+			const electron = (window as any).require?.("electron"); // any: Electron API not in TS types
 			const ss = electron?.safeStorage;
 			if (ss?.isEncryptionAvailable()) {
 				const buf = Buffer.from(stored.slice(4), "base64");

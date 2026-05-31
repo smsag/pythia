@@ -11,9 +11,10 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
+import { estimateTokensFromBytes, estimateTokensFromText } from "./services/messageUtils";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
-import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
+import type { Conversation, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -32,10 +33,6 @@ function formatSummaryTimestamp(iso: string): string {
 	return `${date} · ${time}`;
 }
 
-function estimateTokens(sizeBytes: number): string {
-	const n = Math.round(sizeBytes / 4);
-	return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
-}
 
 class DeleteFileModal extends Modal {
 	private fileName: string;
@@ -713,7 +710,7 @@ export class PythiaSidebarView extends ItemView {
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path;
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
-			const tokEst = file instanceof TFile ? estimateTokens(file.stat.size) : null;
+			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
 			const pill = this.referencePillsEl.createEl("span", { cls: "p-pill" });
 			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: entry.path } });
@@ -771,7 +768,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 		for (const notePath of this.pendingAttachedNotes) {
 			const file = this.app.vault.getAbstractFileByPath(notePath);
-			const tokEst = file instanceof TFile ? estimateTokens(file.stat.size) : undefined;
+			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : undefined;
 			this.addPill(
 				this.attachedPillsEl,
 				notePath.split("/").pop() ?? notePath,
@@ -1958,7 +1955,7 @@ export class PythiaSidebarView extends ItemView {
 			//   + last outputTokens   = assistant reply now added to history
 			//   + draft chars / 4     = the message currently being typed
 			const { inputTokens, outputTokens } = last.tokenUsage;
-			const draftTokens = Math.round((this.inputEl?.value?.length ?? 0) / 4);
+			const draftTokens = estimateTokensFromText(this.inputEl?.value ?? "");
 			const estimate = inputTokens + outputTokens + draftTokens;
 			const fmt = estimate >= 1000
 				? `~${(estimate / 1000).toFixed(1)}k`

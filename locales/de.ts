@@ -8,15 +8,8 @@ const de: Strings = {
 	newConvTooltip:         "Neues Gespräch",
 	templateLabel:          "Vorlage: {{name}}",
 
-	// ── Summary banner ────────────────────────────────────────────────────────
-	summaryLabel:               "Zusammenfassung",
-	showMore:                   "Mehr anzeigen",
-	showLess:                   "Weniger anzeigen",
-	regenerateSummaryTooltip:   "Zusammenfassung neu erstellen",
-
 	// ── Fork banner ───────────────────────────────────────────────────────────
 	forkedFromLabel:            "Verzweigt von",
-	forkSummaryGenerating:      "Zusammenfassung wird generiert…",
 	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
@@ -29,7 +22,6 @@ const de: Strings = {
 	noActiveConversationHint:  "Kein aktives Gespräch.",
 	startFromPaletteHint:      'Starte eines über die Befehlspalette (Strg/Cmd+P → "Pythia:").',
 	startConversationBelow:    "Beginne das Gespräch unten.",
-	chaptersEmpty:             "Noch keine Kapitel",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	addToFavorites:      "Zu Favoriten hinzufügen",
