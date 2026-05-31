@@ -6,64 +6,9 @@ import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
+import { parseTitleAndSummary, normalizeMessages, langInstruction, langSuffix } from "./messageUtils";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
-
-function parseTitleAndSummary(raw: string): { title: string; summary: string } {
-	// Use multiline anchors so ^ / $ match line boundaries.
-	// \s* after SUMMARY: handles both "SUMMARY: content" (same line) and
-	// "SUMMARY:\ncontent" (next line) — the greedy \s* consumes the separator
-	// whitespace/newline, and ([\s\S]*) captures everything that follows.
-	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
-	const summaryMatch = raw.match(/^SUMMARY:\s*([\s\S]*)/im);
-	const title   = titleMatch   ? titleMatch[1].trim()   : "";
-	const summary = summaryMatch
-		? summaryMatch[1].trim()
-		// Fallback: strip the TITLE line and any SUMMARY: prefix that leaked through.
-		: raw
-			.replace(/^TITLE:.*\n?/im, "")
-			.replace(/^SUMMARY:[ \t]*/im, "")
-			.trim();
-	return { title, summary };
-}
-
-/** Ensure roles alternate and the array starts with 'user', as the API requires. */
-function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
-	const result: ApiMessage[] = [];
-	for (const msg of messages) {
-		if (result.length > 0 && result[result.length - 1].role === msg.role) {
-			result[result.length - 1].content += "\n\n" + msg.content;
-		} else {
-			result.push({ ...msg });
-		}
-	}
-	while (result.length > 0 && result[0].role !== "user") {
-		result.shift();
-	}
-	return result;
-}
-
-/**
- * Maps ISO 639-1 locale codes to the English language name used in LLM prompts.
- * Stored setting values ("en", "de") are intentionally separate from display labels
- * so UI localisation never affects prompt content (#21).
- */
-const LANG_LABELS: Record<string, string> = {
-	en: "English",
-	de: "German",
-};
-
-/** Returns "\n\nRespond in <Language>." for a known locale code, or "" for auto. */
-function langInstruction(lang: string): string {
-	const label = LANG_LABELS[lang];
-	return label ? `\n\nRespond in ${label}.` : "";
-}
-
-/** Returns " in <Language>" for use inside format placeholders, or "" for auto. */
-function langSuffix(lang: string): string {
-	const label = LANG_LABELS[lang];
-	return label ? ` in ${label}` : "";
-}
 
 export class AnthropicService implements LLMProvider {
 	private app: App;
@@ -152,10 +97,11 @@ export class AnthropicService implements LLMProvider {
 				});
 			}
 
-			const loopMessages: Anthropic.MessageParam[] = normalizeMessages([
-				...historyMessages,
-				{ role: "user" as const, content: userContent },
-			]).map((m) => ({ role: m.role, content: m.content }));
+			// Anthropic requires the first message to be "user" (no system role in messages array).
+			const loopMessages: Anthropic.MessageParam[] = normalizeMessages(
+				[...historyMessages, { role: "user" as const, content: userContent }],
+				role => role !== "user"
+			).map((m) => ({ role: m.role, content: m.content }));
 
 			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
 				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder).map((def) => ({

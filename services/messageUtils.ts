@@ -1,0 +1,83 @@
+/**
+ * Shared utilities used by both LLM provider implementations.
+ * Extracted from AnthropicService.ts and OpenAIProvider.ts (#6, #14).
+ */
+
+// ── Summary parsing ───────────────────────────────────────────────────────────
+
+/**
+ * Parses the structured TITLE / SUMMARY response produced by
+ * `generateSummaryWithTitle`. Handles both same-line and next-line formats:
+ *   TITLE: My Title
+ *   SUMMARY: content here
+ * or
+ *   TITLE: My Title
+ *   SUMMARY:
+ *   content here
+ */
+export function parseTitleAndSummary(raw: string): { title: string; summary: string } {
+	// Multiline anchors so ^ matches line boundaries, not just string start.
+	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
+	const summaryMatch = raw.match(/^SUMMARY:\s*([\s\S]*)/im);
+	const title   = titleMatch   ? titleMatch[1].trim()   : "";
+	const summary = summaryMatch
+		? summaryMatch[1].trim()
+		// Fallback: strip the TITLE line and any SUMMARY: prefix that leaked through.
+		: raw
+			.replace(/^TITLE:.*\n?/im, "")
+			.replace(/^SUMMARY:[ \t]*/im, "")
+			.trim();
+	return { title, summary };
+}
+
+// ── Message normalisation ─────────────────────────────────────────────────────
+
+/**
+ * Coalesces adjacent same-role messages (APIs reject consecutive identical roles)
+ * and drops leading messages that fail `isInvalidFirst`.
+ *
+ * The predicate differs by provider:
+ *   Anthropic — `role => role !== "user"`  (messages must start with "user")
+ *   OpenAI    — `role => role === "assistant"` ("system" is allowed at position 0)
+ */
+export function normalizeMessages<T extends { role: string; content: string }>(
+	messages: T[],
+	isInvalidFirst: (role: string) => boolean
+): T[] {
+	const result: T[] = [];
+	for (const msg of messages) {
+		if (result.length > 0 && result[result.length - 1].role === msg.role) {
+			result[result.length - 1].content += "\n\n" + msg.content;
+		} else {
+			result.push({ ...msg } as T);
+		}
+	}
+	while (result.length > 0 && isInvalidFirst(result[0].role)) {
+		result.shift();
+	}
+	return result;
+}
+
+// ── Output language helpers ───────────────────────────────────────────────────
+
+/**
+ * Maps ISO 639-1 locale codes (the stored setting value) to the English
+ * language name used in LLM prompts.  Keeping these separate means UI label
+ * translations never affect prompt content, and adding a language is one line.
+ */
+export const LANG_LABELS: Record<string, string> = {
+	en: "English",
+	de: "German",
+};
+
+/** Returns "\n\nRespond in <Language>." for a known locale code, or "" for auto. */
+export function langInstruction(lang: string): string {
+	const label = LANG_LABELS[lang];
+	return label ? `\n\nRespond in ${label}.` : "";
+}
+
+/** Returns " in <Language>" for use inside format string placeholders, or "" for auto. */
+export function langSuffix(lang: string): string {
+	const label = LANG_LABELS[lang];
+	return label ? ` in ${label}` : "";
+}
