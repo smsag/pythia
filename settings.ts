@@ -345,6 +345,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		desc: string,
 		key: "templatesFolder" | "conversationsFolder" | "scratchFolder"
 	): void {
+		// eslint-disable-next-line prefer-const -- forward reference: assigned after the Setting that closes over it
 		let displayEl: HTMLSpanElement;
 
 		const setting = new Setting(containerEl)

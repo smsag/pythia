@@ -6,15 +6,8 @@ const en = {
 	newConvTooltip:         "New conversation",
 	templateLabel:          "Template: {{name}}",
 
-	// ── Summary banner ────────────────────────────────────────────────────────
-	summaryLabel:               "Summary",
-	showMore:                   "Show more",
-	showLess:                   "Show less",
-	regenerateSummaryTooltip:   "Regenerate summary",
-
 	// ── Fork banner ───────────────────────────────────────────────────────────
 	forkedFromLabel:            "Forked from",
-	forkSummaryGenerating:      "Generating fork summary…",
 	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
@@ -27,7 +20,6 @@ const en = {
 	noActiveConversationHint:  "No active conversation.",
 	startFromPaletteHint:      'Use the command palette to start one (Ctrl/Cmd+P → "Pythia:").',
 	startConversationBelow:    "Start the conversation below.",
-	chaptersEmpty:             "No chapters yet",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	addToFavorites:     "Add to favorites",

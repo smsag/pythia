@@ -58,6 +58,21 @@ export function normalizeMessages<T extends { role: string; content: string }>(
 	return result;
 }
 
+// ── Token estimation ─────────────────────────────────────────────────────────
+
+/** Estimate token count from a file size in bytes (4 bytes ≈ 1 token). */
+export function estimateTokensFromBytes(sizeBytes: number): string {
+	const n = Math.round(sizeBytes / 4);
+	return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
+}
+
+/** Estimate token count from a text string (4 characters ≈ 1 token for Latin;
+ *  conservative — multibyte scripts produce larger byte counts so actual token
+ *  cost will be higher than this estimate). */
+export function estimateTokensFromText(text: string): number {
+	return Math.round(text.length / 4);
+}
+
 // ── Output language helpers ───────────────────────────────────────────────────
 
 /**
