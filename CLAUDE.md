@@ -10,15 +10,54 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
 
 ```
 /
-  main.ts               ← plugin entry point, onload(), view registration
-  sidebar.ts            ← PythiaSidebarView (ItemView), all UI construction
+  main.ts                     ← plugin entry point, onload(), view registration
+  sidebar.ts                  ← PythiaSidebarView (ItemView), all UI construction
+  settings.ts                 ← PythiaSettings interface, defaults, settings tab UI
+  styles.css                  ← all plugin CSS
+  models/types.ts             ← shared TypeScript interfaces (Conversation, Message, …)
+  services/
+    AnthropicService.ts       ← Anthropic streaming + utility calls
+    OpenAIProvider.ts         ← OpenAI streaming + utility calls
+    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, lang helpers
+    LLMRouter.ts              ← dispatches calls to the active provider
+    LLMProvider.ts            ← provider interface
+    ConversationStore.ts      ← in-memory store + debounced persistence
+    ContextBuilder.ts         ← builds system prompt, attaches vault notes
+    NoteWriter.ts             ← vault write operations
+    ToolHandler.ts            ← create_note tool definition + execution
+    TemplateLoader.ts         ← template discovery + frontmatter parsing
+    apiError.ts               ← HTTP error classification
   ui/
-    InlineSuggest.ts    ← autocomplete widget for textarea
-  suggest/              ← modal dialogs (conversation picker, delete confirm, etc.)
+    InlineSuggest.ts          ← autocomplete widget for textarea
+  suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
+  tests/                      ← Vitest unit tests (npm test)
+  locales/
+    en.ts                     ← English i18n strings
+    de.ts                     ← German i18n strings
   docs/
-    pythia-v3.html      ← living visual reference — open in browser before any UI work
-    design-system.css   ← CSS token definitions and component styles
+    architecture.md           ← system architecture, data flows, component relationships
+    design.md                 ← design system, CSS tokens, component specs
+    decisions.md              ← architectural decision records (ADRs)
+    engineering-review.md     ← improvement suggestions and priority matrix
+    pythia-v3.html            ← living visual reference — open in browser before any UI work
+    design-system.css         ← CSS token definitions and component styles
+  .github/workflows/ci.yml   ← runs npm test on every push / PR
 ```
+
+---
+
+## Documentation maintenance
+
+**After every session that changes code, update the relevant docs:**
+
+| Changed area | Update these docs |
+|---|---|
+| File structure, services, data flow | `docs/architecture.md` |
+| UI components, CSS tokens, design rules | `docs/design.md` |
+| Architectural choice or trade-off | `docs/decisions.md` (append a new ADR) |
+| Bug found / suggestion resolved / new suggestion | `docs/engineering-review.md` |
+
+Keep the "Last updated" line at the top of each doc current. Commit docs changes in the same commit as the code change where possible.
 
 ---
 
