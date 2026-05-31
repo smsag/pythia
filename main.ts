@@ -20,6 +20,8 @@ export default class PythiaPlugin extends Plugin {
 	/** Number of conversations successfully loaded from disk at startup.
 	 *  Used as a safety guard in persistData() to detect empty-load anomalies. */
 	private loadedConversationCount = 0;
+	/** Set by watchDataJson() so persistData() can stamp the own-write time. */
+	private saveDataRecordTime: (() => void) | null = null;
 	/** Decrypted API keys held only in memory — never written to disk as plaintext. */
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
@@ -45,6 +47,11 @@ export default class PythiaPlugin extends Plugin {
 		);
 
 		this.app.workspace.onLayoutReady(() => this.initLeaf());
+
+		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
+		// updates from another device while this instance is running).
+		// When detected, reload from disk and refresh the sidebar.
+		this.watchDataJson();
 
 		this.addRibbonIcon("bot", "Pythia", () => this.activateView());
 		this.addSettingTab(new PythiaSettingTab(this.app, this));
@@ -403,6 +410,7 @@ export default class PythiaPlugin extends Plugin {
 		}
 
 		try {
+			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire
 			await this.saveData({
 				settings: this.settings,
 				conversations: this.conversations,
@@ -413,6 +421,50 @@ export default class PythiaPlugin extends Plugin {
 				8000
 			);
 		}
+	}
+
+	/**
+	 * Poll data.json for external modifications every 5 seconds.
+	 * vault.on("modify") does not fire for .obsidian/ system files, so
+	 * polling adapter.stat() is the reliable cross-platform approach.
+	 *
+	 * When another device (via iCloud / Obsidian Sync) writes a newer
+	 * data.json while this instance is running, we reload from disk and
+	 * refresh the sidebar so conversations stay in sync.
+	 */
+	private watchDataJson(): void {
+		const DATA_JSON_PATH = `.obsidian/plugins/${this.manifest.id}/data.json`;
+		let lastKnownMtime = Date.now();
+		let lastOwnWrite   = Date.now();
+
+		// Record whenever WE write so we can ignore our own saves.
+		this.saveDataRecordTime = () => { lastOwnWrite = Date.now(); };
+
+		const handle = window.setInterval(async () => {
+			try {
+				const stat = await this.app.vault.adapter.stat(DATA_JSON_PATH);
+				if (!stat) return;
+				// External write: mtime is newer than what we last saw AND
+				// we didn't write it ourselves within the last 3 seconds.
+				if (stat.mtime > lastKnownMtime && Date.now() - lastOwnWrite > 3000) {
+					lastKnownMtime = stat.mtime;
+					await this.loadPluginData();
+					// Refresh the sidebar with the updated conversation list.
+					const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
+					for (const leaf of leaves) {
+						const view = leaf.view as PythiaSidebarView;
+						const still = this.conversations.find(c => c.id === view.activeConversationId);
+						const next  = still ?? this.conversations[0] ?? null;
+						if (next) await view.setActiveConversation(next, false);
+					}
+				} else {
+					// Keep mtime in sync even if we wrote it ourselves.
+					lastKnownMtime = Math.max(lastKnownMtime, stat.mtime);
+				}
+			} catch { /* adapter unavailable on some platforms */ }
+		}, 5000);
+
+		this.register(() => window.clearInterval(handle));
 	}
 
 	/** Called once on layout-ready. Creates the sidebar leaf on first install
