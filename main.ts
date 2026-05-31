@@ -295,6 +295,10 @@ export default class PythiaPlugin extends Plugin {
 			needsMigrationSave = true;
 		}
 
+		// ── Migration: outputLanguage stored as human-readable string → locale code ──
+		if (saved.outputLanguage === "English") { saved.outputLanguage = "en"; needsMigrationSave = true; }
+		if (saved.outputLanguage === "German")  { saved.outputLanguage = "de"; needsMigrationSave = true; }
+
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
 		const rawConversations = (data.conversations ?? []) as unknown[];
 		this.conversations = rawConversations.filter(

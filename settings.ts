@@ -30,8 +30,9 @@ export interface PythiaSettings {
 	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
 	inboxNote: string;
-	/** Language for AI-generated text (titles, summaries, chapter names). "auto" = follow the conversation language. */
-	outputLanguage: "auto" | "English" | "German";
+	/** Language for AI-generated text (titles, summaries, chapter names).
+	 *  "auto" = follow the conversation language. Otherwise an ISO 639-1 locale code. */
+	outputLanguage: "auto" | "en" | "de";
 	debugMode: boolean;
 }
 
@@ -245,11 +246,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.addDropdown((drop) =>
 				drop
 					.addOption("auto", t("outputLanguageAuto"))
-					.addOption("English", t("outputLanguageEnglish"))
-					.addOption("German", t("outputLanguageGerman"))
+					.addOption("en", t("outputLanguageEnglish"))
+					.addOption("de", t("outputLanguageGerman"))
 					.setValue(this.plugin.settings.outputLanguage)
 					.onChange(async (value) => {
-						this.plugin.settings.outputLanguage = value as "auto" | "English" | "German";
+						this.plugin.settings.outputLanguage = value as "auto" | "en" | "de";
 						await this.plugin.saveSettings();
 					})
 			);
