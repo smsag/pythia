@@ -312,10 +312,11 @@ export default class PythiaPlugin extends Plugin {
 			);
 		}
 
+		// getSecret() is async in Obsidian's current typings (truly async on iOS WebKit). (#18)
 		this.plaintextApiKey =
-			this.app.secretStorage.getSecret(this.settings.anthropicSecretName) ?? "";
+			(await this.app.secretStorage.getSecret(this.settings.anthropicSecretName)) ?? "";
 		this.plaintextOpenAIKey =
-			this.app.secretStorage.getSecret(this.settings.openaiSecretName) ?? "";
+			(await this.app.secretStorage.getSecret(this.settings.openaiSecretName)) ?? "";
 
 		if (needsMigrationSave) {
 			await this.saveData({ settings: this.settings, conversations: this.conversations });
@@ -326,7 +327,7 @@ export default class PythiaPlugin extends Plugin {
 	async setApiKey(secretName: string): Promise<void> {
 		this.settings.anthropicSecretName = secretName;
 		await this.persistData();
-		this.plaintextApiKey = this.app.secretStorage.getSecret(secretName) ?? "";
+		this.plaintextApiKey = (await this.app.secretStorage.getSecret(secretName)) ?? "";
 		this.llmRouter?.updateApiKey("anthropic", this.plaintextApiKey);
 	}
 
@@ -334,7 +335,7 @@ export default class PythiaPlugin extends Plugin {
 	async setOpenAIKey(secretName: string): Promise<void> {
 		this.settings.openaiSecretName = secretName;
 		await this.persistData();
-		this.plaintextOpenAIKey = this.app.secretStorage.getSecret(secretName) ?? "";
+		this.plaintextOpenAIKey = (await this.app.secretStorage.getSecret(secretName)) ?? "";
 		this.llmRouter?.updateApiKey("openai", this.plaintextOpenAIKey);
 	}
 
@@ -349,16 +350,25 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	private async persistData(): Promise<void> {
-		// Evict oldest non-starred conversations beyond the cap (suggestion #3).
+		// Evict oldest non-starred conversations beyond the cap (#3).
+		// Always protect the currently open conversation even if it has no starred
+		// messages — evicting the active conversation would silently lose new turns (#17).
 		const cap = this.settings.maxConversations;
 		if (cap > 0 && this.conversations.length > cap) {
-			const starred = this.conversations.filter(c => (c.favorites?.length ?? 0) > 0);
+			const sidebarLeaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
+			const activeId = sidebarLeaf
+				? (sidebarLeaf.view as PythiaSidebarView).activeConversationId
+				: null;
+
+			const protected_ = this.conversations.filter(
+				c => (c.favorites?.length ?? 0) > 0 || c.id === activeId
+			);
 			const plain = this.conversations
-				.filter(c => (c.favorites?.length ?? 0) === 0)
+				.filter(c => (c.favorites?.length ?? 0) === 0 && c.id !== activeId)
 				.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-			const slots = Math.max(0, cap - starred.length);
+			const slots = Math.max(0, cap - protected_.length);
 			this.conversations = [
-				...starred,
+				...protected_,
 				...plain.slice(0, slots),
 			].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 		}

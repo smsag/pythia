@@ -89,6 +89,8 @@ function abbreviateModel(model: string): string {
 export class PythiaSidebarView extends ItemView {
 	private plugin: PythiaPlugin;
 	private activeConversation: Conversation | null = null;
+	/** Exposes the active conversation ID for eviction protection in persistData(). */
+	get activeConversationId(): string | null { return this.activeConversation?.id ?? null; }
 	private isStreaming = false;
 	private autoScroll = true;
 	private longPressCleanup: (() => void) | null = null;
