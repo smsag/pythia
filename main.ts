@@ -99,6 +99,12 @@ export default class PythiaPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "copy-conversation-link",
+			name: "Copy link to current conversation",
+			callback: () => this.cmdCopyConversationLink(),
+		});
+
+		this.addCommand({
 			id: "new-conversation-from-clipboard",
 			name: "New conversation from clipboard",
 			callback: () => this.cmdNewConversationFromClipboard(),
@@ -757,6 +763,19 @@ export default class PythiaPlugin extends Plugin {
 				view.scrollToMessage(messageId);
 			}
 		).open();
+	}
+
+	private async cmdCopyConversationLink(): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
+		const view = leaves[0]?.view as PythiaSidebarView | undefined;
+		const convId = view?.activeConversationId;
+		if (!convId) {
+			new Notice(t("noActiveConvToSend"));
+			return;
+		}
+		const link = `obsidian://pythia?cmd=resume&id=${encodeURIComponent(convId)}`;
+		await navigator.clipboard.writeText(link);
+		new Notice(t("convLinkCopied"));
 	}
 
 	private async cmdResumeConversation(): Promise<void> {

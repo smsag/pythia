@@ -107,6 +107,7 @@ export class PythiaSidebarView extends ItemView {
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
+	private copyLinkBtn!: HTMLButtonElement;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private favoritesPillsEl!: HTMLElement;
@@ -335,6 +336,14 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.modelBadgeEl.style.display = "none";
 		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
+
+		this.copyLinkBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("copyConvLinkTooltip") },
+		});
+		setIcon(this.copyLinkBtn, "link");
+		this.copyLinkBtn.style.display = "none";
+		this.copyLinkBtn.addEventListener("click", () => this.onCopyConversationLink());
 
 		const deleteConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -580,8 +589,10 @@ export class PythiaSidebarView extends ItemView {
 		if (!this.activeConversation) {
 			this.convNameEl.setText(t("noConversation"));
 			this.templateLabelEl.setText("");
+			this.copyLinkBtn.style.display = "none";
 			return;
 		}
+		this.copyLinkBtn.style.display = "";
 		this.convNameEl.setText(this.activeConversation.name + " ▾");
 		if (this.activeConversation.templateId) {
 			const tplName =
@@ -1391,6 +1402,18 @@ export class PythiaSidebarView extends ItemView {
 		new ConversationSuggestModal(this.app, convs, async (conv) => {
 			await this.setActiveConversation(conv);
 		}).open();
+	}
+
+	/** Copy an obsidian://pythia deep-link for the current conversation to the clipboard. */
+	async onCopyConversationLink(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		const link = `obsidian://pythia?cmd=resume&id=${encodeURIComponent(conv.id)}`;
+		await navigator.clipboard.writeText(link);
+		// Brief visual feedback on the button
+		setIcon(this.copyLinkBtn, "check");
+		setTimeout(() => setIcon(this.copyLinkBtn, "link"), 1500);
+		new Notice(t("convLinkCopied"));
 	}
 
 	async handleDeleteConversation(): Promise<void> {

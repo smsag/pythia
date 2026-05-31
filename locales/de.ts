@@ -52,6 +52,8 @@ const de: Strings = {
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Kopiert",
 	copyFailed:                "Kopieren fehlgeschlagen",
+	copyConvLinkTooltip:       "Link zu diesem Gespräch kopieren",
+	convLinkCopied:            "Gesprächslink kopiert",
 	noActiveNoteToInsert:      "Keine aktive Notiz zum Einfügen.",
 	insertedIntoNote:          "In Notiz eingefügt",
 	savedToInbox:              "Im Posteingang gespeichert",

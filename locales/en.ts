@@ -50,6 +50,8 @@ const en = {
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Copied",
 	copyFailed:                "Copy failed",
+	copyConvLinkTooltip:       "Copy link to this conversation",
+	convLinkCopied:            "Conversation link copied",
 	noActiveNoteToInsert:      "No active note to insert into.",
 	insertedIntoNote:          "Inserted into note",
 	savedToInbox:              "Saved to inbox",
