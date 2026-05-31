@@ -7,13 +7,16 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@vitest/coverage-istanbul": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.7",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.28.0",
     "obsidian": "latest",
