@@ -13,7 +13,6 @@ export default defineConfig({
 				"services/messageUtils.ts",
 				"services/apiError.ts",
 			],
-			all: true,
 			thresholds: {
 				statements: 90,
 				branches:   85,
