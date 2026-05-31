@@ -712,6 +712,17 @@
 }
 .p-ai-body .block-language-mermaid:hover .p-diag-copy,
 .p-ai-body .block-language-plantuml:hover .p-diag-copy { opacity: 1; }
+
+/* Touch devices have no hover state — show copy buttons permanently.
+   @media (hover: none) matches any device whose primary pointer cannot hover
+   (iOS, Android). The code-block actions and diagram copy button are both
+   covered so neither is invisible on mobile. */
+@media (hover: none) {
+  .p-code-frame .p-code-actions,
+  .p-ai-body .block-language-mermaid .p-diag-copy,
+  .p-ai-body .block-language-plantuml .p-diag-copy { opacity: 1; }
+}
+
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }
 
