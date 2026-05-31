@@ -1,34 +1,46 @@
-# Build output
+# ── Build output ──────────────────────────────────────────────────────────────
 main.js
 main.js.map
-
-# Dependencies
-node_modules/
-
-# Plugin runtime data — contains encrypted API keys and conversation history
-data.json
-
-# TypeScript incremental build cache
 *.tsbuildinfo
 
-# Environment files (safety net)
+# ── Dependencies ───────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Test output ────────────────────────────────────────────────────────────────
+coverage/
+
+# ── Plugin runtime data ────────────────────────────────────────────────────────
+# Contains conversation history — never commit; synced via Obsidian Sync / iCloud
+data.json
+
+# ── Environment / secrets ──────────────────────────────────────────────────────
 .env
 .env.*
+*.local
 
-# macOS
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS artefacts ───────────────────────────────────────────────────────────────
 .DS_Store
-
-# Windows
 Thumbs.db
 desktop.ini
 
-# Editor
-.vscode/settings.json
+# ── Editor ─────────────────────────────────────────────────────────────────────
+# Ignore all VS Code workspace config — editor preferences are personal
+.vscode/
 .idea/
 
-# Claude Code session data, CLAUDE.md, worktree metadata
+# ── Claude Code ─────────────────────────────────────────────────────────────────
+# Session data, worktree checkouts, and local settings
+# Note: CLAUDE.md (agent instructions) IS tracked intentionally
 .claude/
 
-# Local docs (not part of the distributed plugin)
+# ── Local docs ─────────────────────────────────────────────────────────────────
+# Developer / agent reference docs; not part of the distributed plugin.
+# CLAUDE.md (agent instructions) and .github/ (CI) are tracked intentionally.
 docs/
 AGENTS.md
