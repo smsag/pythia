@@ -622,6 +622,7 @@
    can find and replace it without interference. */
 .p-ai-body .block-language-mermaid,
 .p-ai-body .block-language-plantuml {
+  position: relative; /* establishes containing block for the in-diagram copy button */
   overflow-x: auto;
   max-width: 100%;
   margin: var(--s1) 0;
@@ -696,14 +697,21 @@
   color: var(--color-green);
 }
 
-/* Diagram toolbar: sibling div inserted ABOVE the diagram container.
-   Always visible — sits outside the overflow context so it is never
-   clipped on wide diagrams (e.g. Gantt). */
-.p-diag-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 2px;
+/* Diagram copy button: pinned to the top-right corner INSIDE the container.
+   position:absolute within position:relative container means it is always
+   within the padding box — NOT clipped by overflow-x:auto — and does NOT
+   scroll with the SVG content as the user pans the diagram.
+   Reveals on hover, matching the code block copy button pattern. */
+.p-diag-copy {
+  position: absolute;
+  top:   6px;
+  right: 6px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
+.p-ai-body .block-language-mermaid:hover .p-diag-copy,
+.p-ai-body .block-language-plantuml:hover .p-diag-copy { opacity: 1; }
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }
 

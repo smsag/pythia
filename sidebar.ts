@@ -963,16 +963,19 @@ export class PythiaSidebarView extends ItemView {
 			const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
 			const source = codeEl?.innerText.replace(/\n$/, "") ?? "";
 
-			// Toolbar sits as a sibling ABOVE the diagram so the copy button is
-			// never clipped by the horizontal-scroll overflow context.
-			// Always visible — hover-to-reveal proved unreliable in practice.
 			if (source) {
 				const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
 
-				const toolbar = createEl("div", { cls: "p-diag-toolbar" });
-				el.parentNode!.insertBefore(toolbar, el);
-
-				const copyBtn = toolbar.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
+				// Copy button lives INSIDE the diagram container, pinned to the
+				// top-right corner with position:absolute. The container has
+				// position:relative and overflow-x:auto; the button sits within
+				// the container's padding box so it is NOT clipped by overflow and
+				// does NOT scroll with the SVG content — it stays in the corner
+				// as the user pans the diagram. Reveals on hover via CSS.
+				const copyBtn = el.createEl("button", {
+					cls:  "p-code-btn p-code-copy p-diag-copy",
+					attr: { title: "Copy diagram source" },
+				});
 				setIcon(copyBtn, "copy");
 				copyBtn.addEventListener("click", async (e) => {
 					e.stopPropagation();
