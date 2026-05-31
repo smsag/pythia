@@ -6,26 +6,9 @@ import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
+import { parseTitleAndSummary, normalizeMessages, langInstruction, langSuffix } from "./messageUtils";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
-
-function parseTitleAndSummary(raw: string): { title: string; summary: string } {
-	// Use multiline anchors so ^ / $ match line boundaries.
-	// \s* after SUMMARY: handles both "SUMMARY: content" (same line) and
-	// "SUMMARY:\ncontent" (next line) — the greedy \s* consumes the separator
-	// whitespace/newline, and ([\s\S]*) captures everything that follows.
-	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
-	const summaryMatch = raw.match(/^SUMMARY:\s*([\s\S]*)/im);
-	const title   = titleMatch   ? titleMatch[1].trim()   : "";
-	const summary = summaryMatch
-		? summaryMatch[1].trim()
-		// Fallback: strip the TITLE line and any SUMMARY: prefix that leaked through.
-		: raw
-			.replace(/^TITLE:.*\n?/im, "")
-			.replace(/^SUMMARY:[ \t]*/im, "")
-			.trim();
-	return { title, summary };
-}
 
 type OAIToolCallBlock = { id: string; type: "function"; function: { name: string; arguments: string } };
 type OAILoopMessage =
@@ -39,46 +22,6 @@ type OAILoopMessage =
  */
 const NO_SYSTEM_ROLE_MODELS = new Set(["o3", "o3-mini", "o1", "o1-mini"]);
 
-function normalizeMessages(messages: OAIMessage[]): OAIMessage[] {
-	const result: OAIMessage[] = [];
-	for (const msg of messages) {
-		if (result.length > 0 && result[result.length - 1].role === msg.role) {
-			result[result.length - 1].content += "\n\n" + msg.content;
-		} else {
-			result.push({ ...msg });
-		}
-	}
-	// First message must be user (after optional system)
-	while (
-		result.length > 0 &&
-		result[0].role === "assistant"
-	) {
-		result.shift();
-	}
-	return result;
-}
-
-/**
- * Maps ISO 639-1 locale codes to the English language name used in LLM prompts.
- * Stored setting values ("en", "de") are intentionally separate from display labels
- * so UI localisation never affects prompt content (#21).
- */
-const LANG_LABELS: Record<string, string> = {
-	en: "English",
-	de: "German",
-};
-
-/** Returns "\n\nRespond in <Language>." for a known locale code, or "" for auto. */
-function langInstruction(lang: string): string {
-	const label = LANG_LABELS[lang];
-	return label ? `\n\nRespond in ${label}.` : "";
-}
-
-/** Returns " in <Language>" for use inside format placeholders, or "" for auto. */
-function langSuffix(lang: string): string {
-	const label = LANG_LABELS[lang];
-	return label ? ` in ${label}` : "";
-}
 
 export class OpenAIProvider implements LLMProvider {
 	private app: App;
@@ -160,25 +103,28 @@ export class OpenAIProvider implements LLMProvider {
 
 			let apiMessages: OAIMessage[];
 
+			// OpenAI allows "system" at position 0; only drop leading "assistant" turns.
+			const oaiPred = (role: string) => role === "assistant";
+
 			if (systemPrompt && noSystemRole) {
-				apiMessages = normalizeMessages([
+				apiMessages = normalizeMessages<OAIMessage>([
 					{ role: "user", content: `[System instructions]\n${systemPrompt}` },
 					...historyMessages,
 					{ role: "user", content: userContent },
-				]);
+				], oaiPred);
 			} else if (systemPrompt) {
 				apiMessages = [
 					{ role: "system", content: systemPrompt },
-					...normalizeMessages([
+					...normalizeMessages<OAIMessage>([
 						...historyMessages,
 						{ role: "user", content: userContent },
-					]),
+					], oaiPred),
 				];
 			} else {
-				apiMessages = normalizeMessages([
+				apiMessages = normalizeMessages<OAIMessage>([
 					...historyMessages,
 					{ role: "user", content: userContent },
-				]);
+				], oaiPred);
 			}
 
 			if (this.settings.debugMode) {
