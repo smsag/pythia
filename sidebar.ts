@@ -231,7 +231,7 @@ export class PythiaSidebarView extends ItemView {
 	async setActiveConversation(
 		conversation: Conversation,
 		focus = true,
-		scrollTo: "bottom" | "top" = "bottom"
+		scrollTo: "bottom" | "top" = "top"
 	): Promise<void> {
 		this.activeConversation = conversation;
 		this.autoScroll = true;                       // #25 — reset so new conv starts at bottom
