@@ -477,53 +477,45 @@
 .p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active { color: var(--text-normal); }
 .p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 
-/* Rename inline editor — wrapper takes flex:1 position of the title */
+/* Title group — keeps title + pencil glued together in the flex row */
+.p-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* Rename inline editor — no border; input looks like the title itself */
 .p-rename-wrap {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
-  background: var(--background-primary);
-  border: 1px solid var(--color-accent);
-  border-radius: 3px;
-  height: 20px;
-  box-sizing: border-box;
-  padding: 0 2px;
+  gap: 0;
 }
 .p-rename-input {
   flex: 1;
   min-width: 0;
   background: transparent;
   border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
   color: var(--text-normal);
   font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
   padding: 0;
   outline: none;
-  height: 100%;
+  height: 20px;
   box-sizing: border-box;
 }
-/* Refresh icon inside rename wrapper */
-.p-rename-refresh {
-  all: unset;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  color: var(--text-faint);
-  border-radius: 2px;
+.p-rename-input:focus {
+  border-bottom-color: var(--color-accent);
 }
-.p-rename-refresh:hover { color: var(--color-accent); }
-.p-rename-refresh svg { width: 11px; height: 11px; stroke-width: 1.8; display: block; pointer-events: none; }
-.p-rename-refresh:disabled { opacity: 0.4; cursor: default; }
-.p-rename-refresh.p-rename-refresh-loading svg {
-  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
+/* Loading state for refresh icon — reuse existing pulse animation */
+.p-hdr-btn.p-rename-refresh.p-rename-refresh-loading {
   color: var(--color-accent);
+  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
 }
 
 /* Toolbar sparkle — loading state */
@@ -954,8 +946,8 @@
   position: absolute;
   bottom: 6px;
   right: var(--s3);
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -964,16 +956,15 @@
   border-radius: 3px;
   color: var(--color-accent);
   font-family: var(--font-monospace);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s;
   z-index: 10;
   box-sizing: border-box;
 }
 .p-index-trigger:hover {
   background: var(--background-modifier-hover);
-  color: var(--color-accent);
 }
 
 .p-navigator {
