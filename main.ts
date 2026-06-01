@@ -107,6 +107,12 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => this.cmdNewConversationFromClipboard(),
 		});
 
+		this.addCommand({
+			id: "reload-conversations",
+			name: "Reload conversations from disk",
+			callback: () => this.reloadFromDisk(),
+		});
+
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
 				const selection = editor.getSelection();
@@ -257,6 +263,18 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
+	}
+
+	async reloadFromDisk(): Promise<void> {
+		await this.loadPluginData();
+		const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
+		for (const leaf of leaves) {
+			const view = leaf.view as PythiaSidebarView;
+			const still = this.conversations.find(c => c.id === view.activeConversationId);
+			const next  = still ?? this.conversations[0] ?? null;
+			if (next) await view.setActiveConversation(next, false);
+		}
+		new Notice(t("reloadComplete"));
 	}
 
 	private async loadPluginData(): Promise<void> {
@@ -449,15 +467,7 @@ export default class PythiaPlugin extends Plugin {
 				// we didn't write it ourselves within the last 3 seconds.
 				if (stat.mtime > lastKnownMtime && Date.now() - lastOwnWrite > 3000) {
 					lastKnownMtime = stat.mtime;
-					await this.loadPluginData();
-					// Refresh the sidebar with the updated conversation list.
-					const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
-					for (const leaf of leaves) {
-						const view = leaf.view as PythiaSidebarView;
-						const still = this.conversations.find(c => c.id === view.activeConversationId);
-						const next  = still ?? this.conversations[0] ?? null;
-						if (next) await view.setActiveConversation(next, false);
-					}
+					await this.reloadFromDisk();
 				} else {
 					// Keep mtime in sync even if we wrote it ourselves.
 					lastKnownMtime = Math.max(lastKnownMtime, stat.mtime);

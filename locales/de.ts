@@ -202,6 +202,9 @@ const de: Strings = {
 	fullModeTitle:    "Alle vorherigen Nachrichten erneut senden — höhere Genauigkeit, höhere Token-Kosten",
 	resumeHint:       "Zusammenfassung empfohlen für lange Gespräche. Vollständiger Verlauf bewahrt alle Details.",
 
+	// ── Sync / reload ─────────────────────────────────────────────────────────
+	reloadComplete: "Pythia: Gespräche neu geladen.",
+
 	// ── Conversation rename ────────────────────────────────────────────────────
 	renameConvTooltip:   "Gespräch umbenennen",
 	renameConvPlaceholder: "Gesprächsname…",
