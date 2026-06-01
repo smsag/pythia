@@ -8,13 +8,18 @@ const en = {
 
 	// ── Fork banner ───────────────────────────────────────────────────────────
 	forkedFromLabel:            "Forked from",
+	deletedConversation:        "Deleted conversation",
 	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Reference",
 	forksSection: "Forks",
+	chaptersSection: "Chapters",
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
+	navNoForks:      "No forks yet",
+	navNoStarred:    "No starred messages",
+	navNoChapters:   "No chapters yet",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
 	noActiveConversationHint:  "No active conversation.",
@@ -194,6 +199,16 @@ const en = {
 	fullModeBtn:       "Full history",
 	fullModeTitle:     "Re-send all previous messages — higher fidelity, higher token cost",
 	resumeHint:        "Summary is recommended for long conversations. Full history preserves all nuance.",
+
+	// ── Conversation rename ────────────────────────────────────────────────────
+	renameConvTooltip:   "Rename conversation",
+	renameConvPlaceholder: "Conversation name…",
+	renameLLMTooltip:    "Generate name with AI",
+	renameLLMFailed:     "Could not generate a name — check your API key and connection.",
+
+	// ── Message bubble collapse ────────────────────────────────────────────────
+	showMore: "Show more",
+	showLess: "Show less",
 
 	// ── Conversation settings modal ────────────────────────────────────────────
 	convSettingsTitle: "Conversation settings",

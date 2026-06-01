@@ -98,7 +98,7 @@ export class PythiaSidebarView extends ItemView {
 		outsideHandler: EventListener;
 	} | null = null;
 	private isScrolling = false;
-	private pendingAttachedNotes: string[] = [];
+	// pendingAttachedNotes removed — all note attachments go to conv.contextNotes
 	private navigatorOutsideCleanup: (() => void) | null = null;
 	/** Tracks active MutationObservers per diagram element so stale ones are
 	 *  disconnected before a new one is armed on DOM rebuild (#20). */
@@ -112,7 +112,7 @@ export class PythiaSidebarView extends ItemView {
 	private referenceSectionEl!: HTMLElement;
 	private favoritesPillsEl!: HTMLElement;
 	private favoritesSectionEl!: HTMLElement;
-	private attachedPillsEl!: HTMLElement;
+	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
 	private sendBtn!: HTMLButtonElement;
@@ -130,6 +130,10 @@ export class PythiaSidebarView extends ItemView {
 	private indexTriggerEl!: HTMLButtonElement;
 	private navigatorEl!: HTMLElement;
 	private onViewportResize: (() => void) | null = null;
+
+	private renameBtn!: HTMLButtonElement;
+	private renameInputEl!: HTMLInputElement;
+	private renameLLMBtn!: HTMLButtonElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -226,11 +230,11 @@ export class PythiaSidebarView extends ItemView {
 
 	async setActiveConversation(
 		conversation: Conversation,
-		focus = true
+		focus = true,
+		scrollTo: "bottom" | "top" = "bottom"
 	): Promise<void> {
 		this.activeConversation = conversation;
 		this.autoScroll = true;                       // #25 — reset so new conv starts at bottom
-		this.pendingAttachedNotes = [];
 		this.navigatorOutsideCleanup?.();             // #26 — detach stale outside-click listener
 		this.navigatorOutsideCleanup = null;
 		this.navigatorEl.removeClass("open");
@@ -240,7 +244,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderFavoritesBar();
 		this.updateSummaryBar();
 		this.updateSendBtnLabel();
-		await this.renderMessages();
+		await this.renderMessages(scrollTo);
 		if (focus) this.inputEl?.focus();
 		this.backfillChapterNames(conversation);
 	}
@@ -254,9 +258,12 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	attachNoteToInput(path: string): void {
-		if (!this.pendingAttachedNotes.includes(path)) {
-			this.pendingAttachedNotes.push(path);
-			this.renderAttachedPills();
+		const conv = this.activeConversation;
+		if (!conv) return;
+		if (!conv.contextNotes.includes(path)) {
+			conv.contextNotes.push(path);
+			void this.plugin.conversationStore.save(conv);
+			this.renderReferencePills();
 		}
 	}
 
@@ -320,6 +327,33 @@ export class PythiaSidebarView extends ItemView {
 			text: t("noConversation"),
 		});
 		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
+
+		this.renameBtn = header.createEl("button", {
+			cls: "p-hdr-btn p-rename-btn",
+			attr: { title: t("renameConvTooltip") },
+		});
+		setIcon(this.renameBtn, "pencil");
+		this.renameBtn.style.display = "none";
+		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
+
+		this.renameInputEl = header.createEl("input", {
+			cls: "p-rename-input",
+			attr: { type: "text", placeholder: t("renameConvPlaceholder") },
+		});
+		this.renameInputEl.style.display = "none";
+		this.registerDomEvent(this.renameInputEl, "keydown", (e: KeyboardEvent) => {
+			if (e.key === "Enter") { e.preventDefault(); this.exitRenameMode(true); }
+			if (e.key === "Escape") { e.preventDefault(); this.exitRenameMode(false); }
+		});
+		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
+
+		this.renameLLMBtn = header.createEl("button", {
+			cls: "p-hdr-btn p-rename-llm-btn",
+			attr: { title: t("renameLLMTooltip") },
+		});
+		setIcon(this.renameLLMBtn, "sparkles");
+		this.renameLLMBtn.style.display = "none";
+		this.renameLLMBtn.addEventListener("click", () => this.onRenameLLM());
 
 		this.headerSparkleEl = header.createEl("button", {
 			cls: "p-hdr-btn p-hdr-sparkle",
@@ -479,12 +513,6 @@ export class PythiaSidebarView extends ItemView {
 
 		const inputArea = container.createDiv({ cls: "p-input-area" });
 
-		const attachRow = inputArea.createDiv({ cls: "pythia-attach-row" });
-		attachRow.style.display = "none";
-		this.attachedPillsEl = attachRow.createDiv({
-			cls: "pythia-pills pythia-attached-pills",
-		});
-
 		this.inputEl = inputArea.createEl("textarea", {
 			cls: "p-textarea",
 			attr: { placeholder: t("inputPlaceholder"), rows: "1" },
@@ -494,10 +522,16 @@ export class PythiaSidebarView extends ItemView {
 			this.inputEl,
 			inputArea,
 			(paths) => {
+				const conv = this.activeConversation;
+				if (!conv) return;
+				let changed = false;
 				for (const p of paths) {
-					if (!this.pendingAttachedNotes.includes(p)) this.pendingAttachedNotes.push(p);
+					if (!conv.contextNotes.includes(p)) { conv.contextNotes.push(p); changed = true; }
 				}
-				this.renderAttachedPills();
+				if (changed) {
+					void this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
+				}
 			}
 		);
 		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -590,9 +624,11 @@ export class PythiaSidebarView extends ItemView {
 			this.convNameEl.setText(t("noConversation"));
 			this.templateLabelEl.setText("");
 			this.copyLinkBtn.style.display = "none";
+			this.renameBtn.style.display = "none";
 			return;
 		}
 		this.copyLinkBtn.style.display = "";
+		this.renameBtn.style.display = "";
 		this.convNameEl.setText(this.activeConversation.name + " ▾");
 		if (this.activeConversation.templateId) {
 			const tplName =
@@ -653,20 +689,23 @@ export class PythiaSidebarView extends ItemView {
 		const header = banner.createDiv({ cls: "pythia-fork-header" });
 		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
 		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
-		const link = label.createEl("a", {
-			cls: "pythia-fork-source-link",
-			text: source?.name ?? conv.forkedFromId,
-		});
-		link.addEventListener("click", async () => {
-			if (!source) return;
-			await this.setActiveConversation(source);
-			// Deep-link: silently scroll to the exact message that was forked from.
-			// Falls back to top-of-conversation if the message ID was not recorded
-			// or the element is no longer present.
-			if (conv.forkedFromMessageId) {
-				this.scrollToMessage(conv.forkedFromMessageId);
-			}
-		});
+		if (source) {
+			const link = label.createEl("a", {
+				cls: "pythia-fork-source-link",
+				text: source.name,
+			});
+			link.addEventListener("click", async () => {
+				await this.setActiveConversation(source);
+				if (conv.forkedFromMessageId) {
+					this.scrollToMessage(conv.forkedFromMessageId);
+				}
+			});
+		} else {
+			label.createEl("span", {
+				cls: "pythia-fork-source-deleted",
+				text: t("deletedConversation"),
+			});
+		}
 
 		// Show the selected text that triggered the fork, truncated to a readable excerpt.
 		const selection = conv.forkedFromSelection?.trim();
@@ -771,49 +810,8 @@ export class PythiaSidebarView extends ItemView {
 		});
 	}
 
-	private renderAttachedPills(): void {
-		this.attachedPillsEl.empty();
-		const attachRow = this.attachedPillsEl.parentElement as HTMLElement | null;
-		if (attachRow) {
-			attachRow.style.display = this.pendingAttachedNotes.length > 0 ? "" : "none";
-		}
-		for (const notePath of this.pendingAttachedNotes) {
-			const file = this.app.vault.getAbstractFileByPath(notePath);
-			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : undefined;
-			this.addPill(
-				this.attachedPillsEl,
-				notePath.split("/").pop() ?? notePath,
-				() => {
-					this.pendingAttachedNotes =
-						this.pendingAttachedNotes.filter((n) => n !== notePath);
-					this.renderAttachedPills();
-				},
-				"pythia-pill-attached",
-				tokEst
-			);
-		}
-	}
 
-	private addPill(
-		container: HTMLElement,
-		label: string,
-		onRemove: () => void,
-		extraClass = "",
-		tokenEst?: string
-	): void {
-		const pill = container.createEl("span", {
-			cls: `pythia-pill ${extraClass}`.trim(),
-		});
-		pill.createEl("span", { text: label, cls: "pythia-pill-label" });
-		if (tokenEst) pill.createEl("span", { text: tokenEst, cls: "p-pill-tokens" });
-		const x = pill.createEl("button", {
-			cls: "pythia-pill-remove",
-			text: "×",
-		});
-		x.addEventListener("click", onRemove);
-	}
-
-	private async renderMessages(): Promise<void> {
+	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
 		this.hideDeletePreview();
 		this.messagesEl.empty();
 		if (!this.activeConversation) {
@@ -829,7 +827,12 @@ export class PythiaSidebarView extends ItemView {
 		for (const msg of this.activeConversation.messages) {
 			await this.appendMessageBubble(msg);
 		}
-		this.scrollToBottom();
+		if (scrollTo === "top") {
+			this.autoScroll = false;
+			this.messagesEl.scrollTop = 0;
+		} else {
+			this.scrollToBottom();
+		}
 		this.attachLastBubbleLongPress();
 	}
 
@@ -841,10 +844,26 @@ export class PythiaSidebarView extends ItemView {
 				attr: { "data-msg-id": msg.id },
 			});
 			const bubble = row.createDiv({ cls: "p-bubble" });
+			const isLong = msg.content.length > 280;
+			if (isLong) bubble.addClass("p-bubble-collapsed");
 			try {
 				await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
+			}
+			if (isLong) {
+				const toggle = row.createEl("button", {
+					cls: "p-bubble-toggle",
+					attr: { title: t("showMore") },
+				});
+				setIcon(toggle, "chevron-down");
+				toggle.addEventListener("click", () => {
+					const collapsed = bubble.hasClass("p-bubble-collapsed");
+					bubble.toggleClass("p-bubble-collapsed", !collapsed);
+					bubble.toggleClass("p-bubble-expanded", collapsed);
+					setIcon(toggle, collapsed ? "chevron-up" : "chevron-down");
+					toggle.title = collapsed ? t("showLess") : t("showMore");
+				});
 			}
 			return bubble;
 		}
@@ -1305,77 +1324,106 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorEl.empty();
 		const conv = this.activeConversation;
 
+		const makeSection = (
+			label: string,
+			defaultCollapsed: boolean,
+			count: number,
+			buildItems: (body: HTMLElement) => void
+		) => {
+			const section = this.navigatorEl.createDiv({ cls: "p-nav-section" });
+			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
+			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
+			header.createEl("span", { text: label });
+			if (count > 0) header.createEl("span", { cls: "p-nav-count", text: String(count) });
+			const body = section.createDiv({ cls: "p-nav-section-body" });
+
+			const collapsed = defaultCollapsed;
+			if (collapsed) {
+				body.style.display = "none";
+				chevron.setText("▸");
+			} else {
+				chevron.setText("▾");
+				buildItems(body);
+			}
+
+			header.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (body.style.display === "none") {
+					body.style.display = "";
+					chevron.setText("▾");
+					if (!body.hasChildNodes()) buildItems(body);
+				} else {
+					body.style.display = "none";
+					chevron.setText("▸");
+				}
+			});
+		};
+
 		// ── Forks ────────────────────────────────────────────────────
 		const forks = conv
 			? this.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
 			: [];
-		if (forks.length > 0) {
-			this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: t("forksSection") });
-			for (const fork of forks) {
-				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
-				item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
-				item.createEl("span", { text: fork.name });
-				item.addEventListener("mousedown", (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					this.navigatorEl.removeClass("open");
-					document.removeEventListener("mousedown", onOutside, true);
-					void this.setActiveConversation(fork);
-				});
+		makeSection(t("forksSection"), true, forks.length, (body) => {
+			if (forks.length === 0) {
+				body.createDiv({ cls: "p-nav-empty", text: t("navNoForks") });
+			} else {
+				for (const fork of forks) {
+					const item = body.createDiv({ cls: "p-nav-item" });
+					item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
+					item.createEl("span", { cls: "p-nav-label", text: fork.name });
+					item.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						this.navigatorEl.removeClass("open");
+						document.removeEventListener("mousedown", onOutside, true);
+						void this.setActiveConversation(fork);
+					});
+				}
 			}
-			this.navigatorEl.createDiv({ cls: "p-nav-divider" });
-		}
+		});
 
 		// ── Starred ─────────────────────────────────────────────────
-		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Starred" });
 		const favs = conv?.favorites ?? [];
-		if (favs.length === 0) {
-			const placeholder = this.navigatorEl.createDiv({ cls: "p-nav-item" });
-			placeholder.createEl("span", { text: "—" });
-			placeholder.style.color = "var(--text-faint)";
-			placeholder.style.cursor = "default";
-			placeholder.style.pointerEvents = "none";
-		} else {
-			for (const fav of favs) {
-				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
-				item.createEl("span", { cls: "p-nav-star", text: "★" });
-				item.createEl("span", { text: fav.name });
-				item.addEventListener("mousedown", (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					this.scrollToMessage(fav.messageId);
-					this.navigatorEl.removeClass("open");
-					document.removeEventListener("mousedown", onOutside, true);
-				});
+		makeSection(t("favoritesSection"), false, favs.length, (body) => {
+			if (favs.length === 0) {
+				body.createDiv({ cls: "p-nav-empty", text: t("navNoStarred") });
+			} else {
+				for (const fav of favs) {
+					const item = body.createDiv({ cls: "p-nav-item" });
+					item.createEl("span", { cls: "p-nav-star", text: "★" });
+					item.createEl("span", { cls: "p-nav-label", text: fav.name });
+					item.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						this.scrollToMessage(fav.messageId);
+						this.navigatorEl.removeClass("open");
+						document.removeEventListener("mousedown", onOutside, true);
+					});
+				}
 			}
-		}
-
-		// ── Divider ─────────────────────────────────────────────────
-		this.navigatorEl.createDiv({ cls: "p-nav-divider" });
+		});
 
 		// ── Chapters ─────────────────────────────────────────────────
-		this.navigatorEl.createDiv({ cls: "p-nav-group-label", text: "Chapters" });
 		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
-		if (userMsgs.length === 0) {
-			const placeholder = this.navigatorEl.createDiv({ cls: "p-nav-item" });
-			placeholder.createEl("span", { text: "—" });
-			placeholder.style.color = "var(--text-faint)";
-			placeholder.style.cursor = "default";
-			placeholder.style.pointerEvents = "none";
-		} else {
-			for (const msg of userMsgs) {
-				const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
-				const item = this.navigatorEl.createDiv({ cls: "p-nav-item" });
-				item.createEl("span", { text: label });
-				item.addEventListener("mousedown", (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					this.scrollToMessage(msg.id);
-					this.navigatorEl.removeClass("open");
-					document.removeEventListener("mousedown", onOutside, true);
-				});
+		makeSection(t("chaptersSection"), false, userMsgs.length, (body) => {
+			if (userMsgs.length === 0) {
+				body.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
+			} else {
+				for (const msg of userMsgs) {
+					const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
+					const item = body.createDiv({ cls: "p-nav-item" });
+					item.createEl("span", { cls: "p-nav-label", text: label });
+					item.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						this.scrollToMessage(msg.id);
+						this.navigatorEl.removeClass("open");
+						document.removeEventListener("mousedown", onOutside, true);
+					});
+				}
 			}
-		}
+		});
 
 		this.navigatorEl.addClass("open");
 
@@ -1429,6 +1477,73 @@ export class PythiaSidebarView extends ItemView {
 		}).open();
 	}
 
+	private enterRenameMode(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		this.convNameEl.style.display = "none";
+		this.renameBtn.style.display = "none";
+		this.renameInputEl.value = conv.name;
+		this.renameInputEl.style.display = "";
+		this.renameLLMBtn.style.display = "";
+		requestAnimationFrame(() => {
+			this.renameInputEl.focus();
+			this.renameInputEl.select();
+		});
+	}
+
+	private exitRenameMode(confirm: boolean): void {
+		// Guard: already exited (blur fires after programmatic focus loss too)
+		if (this.renameInputEl.style.display === "none") return;
+		this.renameInputEl.style.display = "none";
+		this.renameLLMBtn.style.display = "none";
+		this.convNameEl.style.display = "";
+		this.renameBtn.style.display = this.activeConversation ? "" : "none";
+		if (confirm && this.activeConversation) {
+			const newName = this.renameInputEl.value.trim();
+			if (newName && newName !== this.activeConversation.name) {
+				this.activeConversation.name = newName;
+				void this.plugin.conversationStore.save(this.activeConversation);
+				this.convNameEl.setText(newName + " ▾");
+			}
+		}
+	}
+
+	private async onRenameLLM(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+
+		// Prevent double-click and blur-triggered confirm while generating
+		this.renameLLMBtn.disabled = true;
+		setIcon(this.renameLLMBtn, "loader");
+		// Detach blur so it doesn't fire a premature confirm while we await
+		this.renameInputEl.blur();
+		this.renameInputEl.style.pointerEvents = "none";
+
+		try {
+			const msgs = conv.messages;
+			const userMsg   = msgs.find(m => m.role === "user")?.content     ?? "";
+			const assistMsg = msgs.find(m => m.role === "assistant")?.content ?? "";
+			const title = await this.plugin.llmRouter.generateConversationTitle(
+				userMsg, assistMsg, conv.provider
+			);
+			conv.name = title;
+			await this.plugin.conversationStore.save(conv);
+			// Exit rename mode and reflect new name
+			this.renameInputEl.style.display = "none";
+			this.renameLLMBtn.style.display = "none";
+			this.convNameEl.style.display = "";
+			this.renameBtn.style.display = "";
+			this.convNameEl.setText(title + " ▾");
+		} catch {
+			new Notice(t("renameLLMFailed"));
+			// Fall back to showing input so user can type manually
+			this.renameLLMBtn.disabled = false;
+			setIcon(this.renameLLMBtn, "sparkles");
+			this.renameInputEl.style.pointerEvents = "";
+			this.renameInputEl.focus();
+		}
+	}
+
 	/** Copy an obsidian://pythia deep-link for the current conversation to the clipboard. */
 	async onCopyConversationLink(): Promise<void> {
 		const conv = this.activeConversation;
@@ -1460,10 +1575,13 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private onAttachNote(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
 		new NoteSuggestModal(this.app, (file) => {
-			if (!this.pendingAttachedNotes.includes(file.path)) {
-				this.pendingAttachedNotes.push(file.path);
-				this.renderAttachedPills();
+			if (!conv.contextNotes.includes(file.path)) {
+				conv.contextNotes.push(file.path);
+				void this.plugin.conversationStore.save(conv);
+				this.renderReferencePills();
 			}
 		}).open();
 	}
@@ -1580,18 +1698,13 @@ export class PythiaSidebarView extends ItemView {
 			role: "user",
 			content: text,
 			timestamp: new Date().toISOString(),
-			attachedNotes:
-				this.pendingAttachedNotes.length > 0
-					? [...this.pendingAttachedNotes]
-					: undefined,
+			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
 		this.messagesEl.querySelector(".pythia-empty")?.remove();
 		await this.appendMessageBubble(userMsg);
 
-		const attachedNotes = [...this.pendingAttachedNotes];
-		this.pendingAttachedNotes = [];
-		this.renderAttachedPills();
+		const attachedNotes = [...conv.contextNotes];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 

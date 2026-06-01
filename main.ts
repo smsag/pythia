@@ -213,7 +213,7 @@ export default class PythiaPlugin extends Plugin {
 						return;
 					}
 					const view = await this.activateView();
-					await view.setActiveConversation(conv);
+					await view.setActiveConversation(conv, true, "top");
 					return;
 				}
 

@@ -46,7 +46,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	conversationsFolder: "Pythia/Conversations",
 	scratchFolder: "Pythia/Scratch",
 	autoSaveSummary: true,
-	defaultResumeMode: "summary",
+	defaultResumeMode: "full",
 	maxMessagesPerSession: 100,
 	maxConversations: 200,
 	enableNoteCreation: true,
