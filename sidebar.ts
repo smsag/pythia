@@ -236,7 +236,10 @@ export class PythiaSidebarView extends ItemView {
 	): Promise<void> {
 		this.exitRenameMode(false);                   // discard any in-progress rename
 		this.activeConversation = conversation;
-		this.autoScroll = true;                       // #25 — reset so new conv starts at bottom
+		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
+		// Resetting to true here was the root cause of conversations always scrolling
+		// to the bottom on open: anything calling scrollToBottom() during rendering
+		// would fire because autoScroll was still true.
 		this.navigatorOutsideCleanup?.();             // #26 — detach stale outside-click listener
 		this.navigatorOutsideCleanup = null;
 		this.navigatorEl.removeClass("open");
@@ -324,27 +327,23 @@ export class PythiaSidebarView extends ItemView {
 
 		const header = container.createDiv({ cls: "p-header" });
 
-		this.convNameEl = header.createEl("button", {
+		// Title group: [title button] [pencil] — groups them so pencil always
+		// sits immediately right of the title regardless of edit mode.
+		const titleGroup = header.createDiv({ cls: "p-title-group" });
+
+		this.convNameEl = titleGroup.createEl("button", {
 			cls: "p-title",
 			text: t("noConversation"),
 		});
 		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
 
-		this.renameBtn = header.createEl("button", {
-			cls: "p-hdr-btn p-rename-btn",
-			attr: { title: t("renameConvTooltip") },
-		});
-		setIcon(this.renameBtn, "pencil");
-		this.renameBtn.style.display = "none";
-		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
-
-		// Inline rename editor — replaces convNameEl while editing.
-		// Wrapper holds [ ↺ icon | input ] as a single header-width unit.
-		this.renameWrapEl = header.createDiv({ cls: "p-rename-wrap" });
+		// Inline rename editor — shown inside titleGroup replacing convNameEl.
+		// Wrapper holds [ ↺ icon | input ] flush with the title position.
+		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
 		this.renameWrapEl.style.display = "none";
 
 		this.renameLLMBtn = this.renameWrapEl.createEl("button", {
-			cls: "p-rename-refresh",
+			cls: "p-hdr-btn p-rename-refresh",
 			attr: { title: t("renameLLMTooltip") },
 		});
 		setIcon(this.renameLLMBtn, "refresh-cw");
@@ -365,6 +364,14 @@ export class PythiaSidebarView extends ItemView {
 		// blur = click outside → save. Safe here because the refresh button uses
 		// mousedown+preventDefault to keep focus, so blur never fires from it.
 		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
+
+		this.renameBtn = titleGroup.createEl("button", {
+			cls: "p-hdr-btn p-rename-btn",
+			attr: { title: t("renameConvTooltip") },
+		});
+		setIcon(this.renameBtn, "pencil");
+		this.renameBtn.style.display = "none";
+		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
 
 		this.headerSparkleEl = header.createEl("button", {
 			cls: "p-hdr-btn p-hdr-sparkle",
@@ -1522,6 +1529,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		this.convNameEl.style.display = "none";
+		this.renameBtn.style.display = "none";
 		this.renameWrapEl.style.display = "";
 		this.renameInputEl.value = conv.name;
 		requestAnimationFrame(() => {
@@ -1534,6 +1542,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.renameWrapEl.style.display === "none") return;
 		this.renameWrapEl.style.display = "none";
 		this.convNameEl.style.display = "";
+		this.renameBtn.style.display = this.activeConversation ? "" : "none";
 		if (confirm && this.activeConversation) {
 			const newName = this.renameInputEl.value.trim();
 			if (newName && newName !== this.activeConversation.name) {
