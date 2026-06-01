@@ -345,7 +345,9 @@ export class PythiaSidebarView extends ItemView {
 			if (e.key === "Enter") { e.preventDefault(); this.exitRenameMode(true); }
 			if (e.key === "Escape") { e.preventDefault(); this.exitRenameMode(false); }
 		});
-		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
+		// No blur listener — blur fires before click/mousedown on other elements,
+		// which would close rename mode before the sparkle button can act.
+		// Outside-click is handled by the header's existing DOM structure instead.
 
 		this.renameLLMBtn = header.createEl("button", {
 			cls: "p-hdr-btn p-rename-llm-btn",
@@ -353,7 +355,12 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.renameLLMBtn, "sparkles");
 		this.renameLLMBtn.style.display = "none";
-		this.renameLLMBtn.addEventListener("click", () => this.onRenameLLM());
+		// mousedown fires before blur — preventDefault keeps the input focused
+		// so exitRenameMode is not triggered before onRenameLLM runs.
+		this.renameLLMBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			void this.onRenameLLM();
+		});
 
 		this.headerSparkleEl = header.createEl("button", {
 			cls: "p-hdr-btn p-hdr-sparkle",
@@ -1514,10 +1521,20 @@ export class PythiaSidebarView extends ItemView {
 			this.renameInputEl.focus();
 			this.renameInputEl.select();
 		});
+		// Close on click outside the header rename area
+		const onOutside = (e: MouseEvent) => {
+			if (
+				!this.renameInputEl.contains(e.target as Node) &&
+				!this.renameLLMBtn.contains(e.target as Node)
+			) {
+				document.removeEventListener("mousedown", onOutside, true);
+				this.exitRenameMode(true);
+			}
+		};
+		setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 	}
 
 	private exitRenameMode(confirm: boolean): void {
-		// Guard: already exited (blur fires after programmatic focus loss too)
 		if (this.renameInputEl.style.display === "none") return;
 		this.renameInputEl.style.display = "none";
 		this.renameLLMBtn.style.display = "none";
@@ -1537,11 +1554,8 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 
-		// Prevent double-click and blur-triggered confirm while generating
 		this.renameLLMBtn.disabled = true;
 		setIcon(this.renameLLMBtn, "loader");
-		// Detach blur so it doesn't fire a premature confirm while we await
-		this.renameInputEl.blur();
 		this.renameInputEl.style.pointerEvents = "none";
 
 		try {
