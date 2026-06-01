@@ -1325,7 +1325,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 
 		const makeSection = (
-			labelKey: string,
+			label: string,
 			defaultCollapsed: boolean,
 			count: number,
 			buildItems: (body: HTMLElement) => void
@@ -1333,7 +1333,7 @@ export class PythiaSidebarView extends ItemView {
 			const section = this.navigatorEl.createDiv({ cls: "p-nav-section" });
 			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
 			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
-			header.createEl("span", { text: `${t(labelKey as Parameters<typeof t>[0])}` });
+			header.createEl("span", { text: label });
 			if (count > 0) header.createEl("span", { cls: "p-nav-count", text: String(count) });
 			const body = section.createDiv({ cls: "p-nav-section-body" });
 
@@ -1364,7 +1364,7 @@ export class PythiaSidebarView extends ItemView {
 		const forks = conv
 			? this.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
 			: [];
-		makeSection("forksSection", true, forks.length, (body) => {
+		makeSection(t("forksSection"), true, forks.length, (body) => {
 			if (forks.length === 0) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoForks") });
 			} else {
@@ -1385,7 +1385,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Starred ─────────────────────────────────────────────────
 		const favs = conv?.favorites ?? [];
-		makeSection("favoritesSection", false, favs.length, (body) => {
+		makeSection(t("favoritesSection"), false, favs.length, (body) => {
 			if (favs.length === 0) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoStarred") });
 			} else {
@@ -1406,7 +1406,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Chapters ─────────────────────────────────────────────────
 		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
-		makeSection("chaptersSection", false, userMsgs.length, (body) => {
+		makeSection(t("chaptersSection"), false, userMsgs.length, (body) => {
 			if (userMsgs.length === 0) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
 			} else {
