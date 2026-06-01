@@ -200,9 +200,6 @@ const en = {
 	fullModeTitle:     "Re-send all previous messages — higher fidelity, higher token cost",
 	resumeHint:        "Summary is recommended for long conversations. Full history preserves all nuance.",
 
-	// ── Sync / reload ─────────────────────────────────────────────────────────
-	reloadComplete: "Pythia: conversations reloaded.",
-
 	// ── Conversation rename ────────────────────────────────────────────────────
 	renameConvTooltip:   "Rename conversation",
 	renameConvPlaceholder: "Conversation name…",
