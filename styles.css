@@ -511,7 +511,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;  /* explicit: prevent CSS coercion from making x also auto */
+  overflow-x: clip;    /* clip (not hidden) — prevents CSS coercion without creating
+                          a scroll container that can interfere with inner overflow:auto
+                          children (diagram scroll frames) in WebKit/iOS */
   padding: var(--s3) var(--s3) var(--s2);
   display: flex;
   flex-direction: column;
@@ -665,34 +667,30 @@
 /* Obsidian adds its own copy button (.copy-code-button) to every pre; hide it
    inside our frames so only our buttons appear. */
 .p-code-frame .copy-code-button,
-.p-ai-body .block-language-mermaid .copy-code-button,
-.p-ai-body .block-language-plantuml .copy-code-button { display: none !important; }
+.p-ai-body [class*='block-language-'] .copy-code-button { display: none !important; }
 
-/* Mermaid / diagram blocks — overflow-scroll in place, no DOM wrapping.
-   The element stays in its original DOM position so Mermaid's async renderer
-   can find and replace it without interference. */
-.p-ai-body .block-language-mermaid,
-.p-ai-body .block-language-plantuml {
+/* Diagram blocks — Mermaid, PlantUML, Vega, and any other renderer that
+   produces content inside a .block-language-* container.
+   overflow-scroll in place; no DOM wrapping so async renderers can find
+   and replace their placeholder in its original position. */
+.p-ai-body [class*='block-language-'] {
   position: relative; /* establishes containing block for the in-diagram copy button */
   overflow-x: auto;
+  width: 100%;
   max-width: 100%;
   margin: var(--s1) 0;
   cursor: grab;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
 }
-.p-ai-body .block-language-mermaid::-webkit-scrollbar,
-.p-ai-body .block-language-plantuml::-webkit-scrollbar        { height: 4px; }
-.p-ai-body .block-language-mermaid::-webkit-scrollbar-track,
-.p-ai-body .block-language-plantuml::-webkit-scrollbar-track  { background: transparent; }
-.p-ai-body .block-language-mermaid::-webkit-scrollbar-thumb,
-.p-ai-body .block-language-plantuml::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
-.p-ai-body .block-language-mermaid.p-panning,
-.p-ai-body .block-language-plantuml.p-panning                 { cursor: grabbing; user-select: none; }
-/* Override Obsidian's width:100% on the SVG so the diagram keeps its natural
-   pixel size (set from viewBox by JS) and the container scrolls instead. */
-.p-ai-body .block-language-mermaid svg,
-.p-ai-body .block-language-plantuml svg {
+.p-ai-body [class*='block-language-']::-webkit-scrollbar       { height: 4px; }
+.p-ai-body [class*='block-language-']::-webkit-scrollbar-track { background: transparent; }
+.p-ai-body [class*='block-language-']::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-ai-body [class*='block-language-'].p-panning                { cursor: grabbing; user-select: none; }
+/* JS stamps explicit pixel width from viewBox/attributes onto the SVG.
+   Override any renderer-set width:100% so the SVG uses its natural size
+   and the container scrolls rather than squashing the diagram. */
+.p-ai-body [class*='block-language-'] svg {
   width: auto !important;
   max-width: none !important;
   display: block;

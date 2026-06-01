@@ -100,9 +100,9 @@ export class PythiaSidebarView extends ItemView {
 	private isScrolling = false;
 	// pendingAttachedNotes removed — all note attachments go to conv.contextNotes
 	private navigatorOutsideCleanup: (() => void) | null = null;
-	/** Tracks active MutationObservers per diagram element so stale ones are
-	 *  disconnected before a new one is armed on DOM rebuild (#20). */
-	private readonly diagObservers = new WeakMap<HTMLElement, MutationObserver>();
+	/** Tracks active observers per diagram element so stale ones are
+	 *  disconnected before new ones are armed on DOM rebuild (#20). */
+	private readonly diagObservers = new WeakMap<HTMLElement, { mo: MutationObserver; ro: ResizeObserver }>();
 
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
@@ -963,17 +963,15 @@ export class PythiaSidebarView extends ItemView {
 			this.attachDragToPan(pre);
 		});
 
-		// Diagram blocks (Mermaid, PlantUML …) — do NOT move the element in the
-		// DOM; Mermaid's async renderer expects to find and replace the element's
-		// content in its original position.  Scroll behaviour comes from CSS;
-		// JS only stamps the explicit SVG pixel size and enables drag-to-pan.
-		// A sibling toolbar sits ABOVE the scrolling container so its buttons
-		// are never hidden by horizontal overflow on wide diagrams (e.g. Gantt).
-		const DIAG = [
-			".block-language-mermaid:not([data-decorated])",
-			".block-language-plantuml:not([data-decorated])",
-		].join(",");
-		container.querySelectorAll<HTMLElement>(DIAG).forEach((el) => {
+		// Diagram blocks — covers Mermaid, PlantUML and any other renderer that
+		// produces SVG inside a .block-language-* container (Vega, Chart.js wrappers…).
+		// Do NOT move elements in the DOM; async renderers expect to find and replace
+		// content in its original position. Scroll behaviour comes from CSS;
+		// JS stamps explicit SVG pixel size and enables drag-to-pan.
+		const DIAG_SELECTOR = "[class*='block-language-']:not([data-decorated])";
+		container.querySelectorAll<HTMLElement>(DIAG_SELECTOR).forEach((el) => {
+			// Skip pure code blocks — those are handled by the pre loop above.
+			if (el.querySelector("pre") && !el.querySelector("svg")) return;
 			el.dataset.decorated = "1";
 
 			// Capture the source before Mermaid's async renderer replaces the
@@ -1031,15 +1029,16 @@ export class PythiaSidebarView extends ItemView {
 	private fixDiagramSvgSize(el: HTMLElement): void {
 		/**
 		 * Attempt to stamp explicit pixel dimensions on the SVG.
-		 * Returns true when dimensions were applied so the observer knows to stop.
+		 * Returns true when dimensions were applied so the observers know to stop.
 		 *
 		 * Priority:
 		 *   1. viewBox  — most reliable; set by Mermaid for flowcharts, sequence, class …
-		 *   2. explicit numeric width/height attributes — Gantt and some other types use these
-		 *   3. Neither available yet → return false (keep observing)
+		 *   2. explicit numeric width/height attributes — Gantt and some other types
+		 *   3. inline style width/height — Mermaid v10 sets svg.style.width directly
+		 *   4. inline style maxWidth — Gantt charts on older Mermaid
 		 */
 		const stamp = (svg: SVGElement): boolean => {
-			// 1. viewBox — most reliable for flowcharts, sequence, class diagrams
+			// 1. viewBox
 			const vb = svg.getAttribute("viewBox");
 			if (vb) {
 				const parts = vb.trim().split(/[\s,]+/).map(Number);
@@ -1064,9 +1063,18 @@ export class PythiaSidebarView extends ItemView {
 				if (attrH > 0) svg.style.setProperty("height", `${attrH}px`, "important");
 				return true;
 			}
-			// 3. max-width in inline style — Gantt charts set svg.style.maxWidth
-			//    instead of a viewBox or explicit width attribute. This is NOT caught
-			//    by watching the width/height attributes; we must read style directly.
+			// 3. Inline style width — Mermaid v10 sets svg.style.width directly
+			//    as a CSS property rather than an HTML attribute.
+			const styleW = parseFloat(svg.style.width);
+			if (styleW > 0) {
+				svg.style.setProperty("width",     `${styleW}px`, "important");
+				svg.style.setProperty("max-width", "none",        "important");
+				svg.style.display = "block";
+				const styleH = parseFloat(svg.style.height);
+				if (styleH > 0) svg.style.setProperty("height", `${styleH}px`, "important");
+				return true;
+			}
+			// 4. max-width in inline style — Gantt charts on older Mermaid
 			const styleMaxW = parseFloat(svg.style.maxWidth);
 			if (styleMaxW > 0) {
 				svg.style.setProperty("width",     `${styleMaxW}px`, "important");
@@ -1077,30 +1085,29 @@ export class PythiaSidebarView extends ItemView {
 			return false; // not ready yet — keep observing
 		};
 
-		// Disconnect any observer armed during a previous DOM rebuild (#20).
-		this.diagObservers.get(el)?.disconnect();
+		// Disconnect any observers armed during a previous DOM rebuild (#20).
+		const prev = this.diagObservers.get(el);
+		prev?.mo.disconnect();
+		prev?.ro.disconnect();
 
 		// If already rendered (conversation reload), stamp immediately.
 		const existing = el.querySelector<SVGElement>("svg");
-		if (existing) { stamp(existing); return; }
+		if (existing && stamp(existing)) return;
 
 		// Phase 1: watch the container for SVG insertion.
-		// Phase 2: once the SVG appears but has no dimensions yet, also watch the
-		//   SVG element's own style attribute. Gantt charts write maxWidth via
-		//   svg.style.maxWidth — a style attribute mutation, not a viewBox/width
-		//   attribute mutation — so the Phase 1 filter alone never catches it.
-		//   We extend the SAME observer to the SVG node to avoid watching style
-		//   changes across the entire subtree.
+		// Phase 2: once the SVG appears, also watch the SVG element's own
+		//   style/attribute mutations. Gantt charts and Mermaid v10 write
+		//   dimensions via style mutations after the initial SVG insertion.
 		let svgWatched = false;
+		const done = () => {
+			mo.disconnect();
+			ro.disconnect();
+			this.diagObservers.delete(el);
+		};
 		const mo = new MutationObserver(() => {
 			const svg = el.querySelector<SVGElement>("svg");
 			if (!svg) return;
-			if (stamp(svg)) {
-				mo.disconnect();
-				this.diagObservers.delete(el);
-				return;
-			}
-			// SVG present but dimensions not ready — extend observer to SVG style.
+			if (stamp(svg)) { done(); return; }
 			if (!svgWatched) {
 				svgWatched = true;
 				mo.observe(svg, {
@@ -1115,14 +1122,20 @@ export class PythiaSidebarView extends ItemView {
 			attributes:      true,
 			attributeFilter: ["viewBox", "width", "height"],
 		});
-		this.diagObservers.set(el, mo);
 
-		// Safety: disconnect after 10 s.  Covers the case where Mermaid renders
-		// a parse-error div instead of an SVG (observer would otherwise leak).
-		setTimeout(() => {
-			mo.disconnect();
-			this.diagObservers.delete(el);
-		}, 10_000);
+		// ResizeObserver fallback: catches renderers that mutate dimensions via
+		// CSS classes or layout (not attribute/style mutations), e.g. Vega,
+		// Mermaid v10 with certain diagram types.
+		const ro = new ResizeObserver(() => {
+			const svg = el.querySelector<SVGElement>("svg");
+			if (svg && stamp(svg)) done();
+		});
+		ro.observe(el);
+
+		this.diagObservers.set(el, { mo, ro });
+
+		// Safety: disconnect after 10 s to avoid leaks if the renderer never fires.
+		setTimeout(done, 10_000);
 	}
 
 	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
