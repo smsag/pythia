@@ -360,8 +360,13 @@ export class PythiaSidebarView extends ItemView {
 			attr: { title: t("summarizeTooltip") },
 		});
 		setIcon(this.headerSparkleEl, "sparkles");
-		this.headerSparkleEl.style.display = "none";
-		this.headerSparkleEl.addEventListener("click", () => this.toggleSummaryPanel());
+		this.headerSparkleEl.addEventListener("click", () => {
+			if (this.activeConversation?.summaryText?.trim()) {
+				this.toggleSummaryPanel();
+			} else {
+				void this.onGenerateSummary();
+			}
+		});
 
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
@@ -654,11 +659,11 @@ export class PythiaSidebarView extends ItemView {
 		const summary = this.activeConversation?.summaryText?.trim();
 		if (!summary) {
 			this.summaryPanelEl.style.display = "none";
-			this.headerSparkleEl.style.display = "none";
+			this.headerSparkleEl.removeClass("p-hdr-sparkle-active");
 			return;
 		}
 		this.summaryPanelEl.style.display = "";
-		this.headerSparkleEl.style.display = "";
+		this.headerSparkleEl.addClass("p-hdr-sparkle-active");
 		this.summaryPanelBodyEl.empty();
 		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this)
 			.catch((e) => console.error("[Pythia] summary render:", e));
@@ -675,7 +680,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private toggleSummaryPanel(): void {
-		if (this.summaryPanelEl.style.display === "none") return;
+		if (!this.activeConversation?.summaryText?.trim()) return;
 		this.summaryPanelOpen = !this.summaryPanelOpen;
 		this.summaryPanelBodyEl.toggleClass("open", this.summaryPanelOpen);
 	}

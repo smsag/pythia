@@ -471,9 +471,11 @@
   user-select: none;
 }
 
-/* Sparkle indicator in header — accent colour, hidden until summary exists */
-.p-hdr-btn.p-hdr-sparkle { color: var(--color-accent); opacity: 0.75; }
-.p-hdr-btn.p-hdr-sparkle:hover { color: var(--color-accent); opacity: 1; background: var(--background-modifier-hover); }
+/* Sparkle indicator in header — always visible; coloured when summary exists */
+.p-hdr-btn.p-hdr-sparkle { color: var(--text-faint); }
+.p-hdr-btn.p-hdr-sparkle:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active { color: var(--text-normal); }
+.p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 
 /* Rename inline input */
 .p-rename-input {
