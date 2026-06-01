@@ -846,6 +846,11 @@ export class PythiaSidebarView extends ItemView {
 		if (scrollTo === "top") {
 			this.autoScroll = false;
 			this.messagesEl.scrollTop = 0;
+			// rAF re-applies scrollTop after deferred renders (Mermaid, ResizeObserver
+			// callbacks) have had a chance to run and potentially shift scroll position.
+			requestAnimationFrame(() => {
+				this.messagesEl.scrollTop = 0;
+			});
 		} else {
 			this.scrollToBottom();
 		}
