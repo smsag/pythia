@@ -3,8 +3,7 @@ import type { Conversation } from "../models/types";
 
 /**
  * Builds the system prompt from a conversation's system prompt text and
- * optional summary. Context notes are displayed as Reference links in the UI
- * only and are never sent to the LLM.
+ * optional summary.
  */
 export function buildSystemPrompt(conversation: Conversation): string {
 	const parts: string[] = [];

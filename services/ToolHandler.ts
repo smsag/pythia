@@ -9,7 +9,8 @@ export function getToolDefinitions(defaultFolder: string): ToolDefinition[] {
 			name: "create_note",
 			description:
 				`Create or overwrite a markdown note in the Obsidian vault. ` +
-				`Use this tool when the user asks you to create, write, or save a note. ` +
+				`Only use this tool when the user explicitly asks to save, write, or create a note or file in the vault — for example: "save this as a note", "create a note called…", "write this to my vault". ` +
+				`Do NOT use this tool to answer questions, generate plans, lists, summaries, or any other content the user wants to read in the chat. Respond in chat unless explicitly instructed to save.` +
 				`The path must include the folder and filename with a .md extension. ` +
 				`If the user does not specify a path, default to "${defaultFolder}/<descriptive-name>.md".`,
 			inputSchema: {

@@ -417,6 +417,10 @@
 .pythia-fork-source-link:hover {
   text-decoration: underline;
 }
+.pythia-fork-source-deleted {
+  color: var(--text-faint);
+  font-style: italic;
+}
 .pythia-fork-selection {
   margin-top: 5px;
   font-size: var(--font-small);
@@ -471,6 +475,27 @@
 .p-hdr-btn.p-hdr-sparkle { color: var(--color-accent); opacity: 0.75; }
 .p-hdr-btn.p-hdr-sparkle:hover { color: var(--color-accent); opacity: 1; background: var(--background-modifier-hover); }
 
+/* Rename inline input */
+.p-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--background-primary);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-small);
+  font-weight: 600;
+  padding: 1px var(--s1);
+  outline: none;
+  height: 20px;
+  box-sizing: border-box;
+}
+/* LLM rename sparkle — accent tint matching summary sparkle */
+.p-hdr-btn.p-rename-llm-btn { color: var(--color-accent); opacity: 0.75; }
+.p-hdr-btn.p-rename-llm-btn:hover { color: var(--color-accent); opacity: 1; background: var(--background-modifier-hover); }
+.p-hdr-btn.p-rename-llm-btn:disabled { opacity: 0.4; cursor: default; }
+
 /* Toolbar sparkle — loading state */
 .p-tool-btn.p-sparkle-loading {
   color: var(--color-accent);
@@ -516,7 +541,8 @@
 /* ── User message bubble (v3) ───────────────────────────────── */
 .p-msg-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .p-bubble {
@@ -534,6 +560,31 @@
 }
 .p-bubble p { margin: 0; }
 .p-bubble p + p { margin-top: var(--s1); }
+
+.p-bubble-collapsed {
+  max-height: 4.5em; /* ~3 lines at line-height 1.5 */
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+.p-bubble-expanded {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.p-bubble-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-on-accent);
+  opacity: 0.75;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  margin-top: var(--s1);
+}
+.p-bubble-toggle:hover { opacity: 1; }
+.p-bubble-toggle svg { width: 12px; height: 12px; }
 
 /* ── AI message (v3) ────────────────────────────────────────── */
 .p-msg-ai {
@@ -926,6 +977,10 @@
   border-radius: 1px;
 }
 
+.p-nav-section + .p-nav-section {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
 .p-nav-group-label {
   font-family: var(--font-monospace);
   font-size: 10px;
@@ -936,11 +991,37 @@
   user-select: none;
 }
 
+.p-nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  cursor: pointer;
+  padding: 6px var(--s3) 5px;
+  transition: background 0.08s;
+}
+.p-nav-group-header:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+.p-nav-chevron {
+  font-size: 9px;
+  flex-shrink: 0;
+  width: 8px;
+}
+
+.p-nav-count {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
 .p-nav-item {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
-  padding: 4px var(--s3);
+  padding: 5px var(--s3) 5px calc(var(--s3) + 10px);
   font-size: var(--font-smaller);
   color: var(--text-normal);
   line-height: 1.4;
@@ -949,6 +1030,20 @@
 }
 .p-nav-item:hover {
   background: var(--background-modifier-hover);
+}
+
+.p-nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.p-nav-empty {
+  padding: 4px var(--s3) 6px calc(var(--s3) + 10px);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  font-style: italic;
 }
 
 .p-nav-star {
@@ -961,12 +1056,6 @@
   font-size: 9px;
   color: var(--color-accent);
   flex-shrink: 0;
-}
-
-.p-nav-divider {
-  height: 1px;
-  background: var(--background-modifier-border);
-  margin: 2px 0;
 }
 
 /* ── Input area (v3) ─────────────────────────────────────────── */

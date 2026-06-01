@@ -10,13 +10,18 @@ const de: Strings = {
 
 	// ── Fork banner ───────────────────────────────────────────────────────────
 	forkedFromLabel:            "Verzweigt von",
+	deletedConversation:        "Gelöschtes Gespräch",
 	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	referenceSection: "Referenz",
 	forksSection: "Abzweigungen",
+	chaptersSection: "Kapitel",
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
+	navNoForks:      "Noch keine Abzweigungen",
+	navNoStarred:    "Keine markierten Nachrichten",
+	navNoChapters:   "Noch keine Kapitel",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
 	noActiveConversationHint:  "Kein aktives Gespräch.",
@@ -196,6 +201,16 @@ const de: Strings = {
 	fullModeBtn:      "Vollständiger Verlauf",
 	fullModeTitle:    "Alle vorherigen Nachrichten erneut senden — höhere Genauigkeit, höhere Token-Kosten",
 	resumeHint:       "Zusammenfassung empfohlen für lange Gespräche. Vollständiger Verlauf bewahrt alle Details.",
+
+	// ── Conversation rename ────────────────────────────────────────────────────
+	renameConvTooltip:   "Gespräch umbenennen",
+	renameConvPlaceholder: "Gesprächsname…",
+	renameLLMTooltip:    "Name mit KI generieren",
+	renameLLMFailed:     "Name konnte nicht generiert werden – API-Schlüssel und Verbindung prüfen.",
+
+	// ── Message bubble collapse ────────────────────────────────────────────────
+	showMore: "Mehr anzeigen",
+	showLess: "Weniger anzeigen",
 
 	// ── Conversation settings modal ────────────────────────────────────────────
 	convSettingsTitle: "Gesprächseinstellungen",
