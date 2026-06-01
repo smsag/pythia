@@ -477,47 +477,54 @@
 .p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active { color: var(--text-normal); }
 .p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 
-/* Rename inline input */
-.p-rename-input {
+/* Rename inline editor — wrapper takes flex:1 position of the title */
+.p-rename-wrap {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   background: var(--background-primary);
   border: 1px solid var(--color-accent);
   border-radius: 3px;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 2px;
+}
+.p-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
   color: var(--text-normal);
   font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
-  padding: 1px var(--s1);
+  padding: 0;
   outline: none;
-  height: 20px;
+  height: 100%;
   box-sizing: border-box;
 }
-/* LLM rename sparkle — accent tint matching summary sparkle */
-.p-hdr-btn.p-rename-llm-btn { color: var(--color-accent); opacity: 0.75; }
-.p-hdr-btn.p-rename-llm-btn:hover { color: var(--color-accent); opacity: 1; background: var(--background-modifier-hover); }
-.p-hdr-btn.p-rename-llm-btn:disabled { opacity: 0.4; cursor: default; }
-
-/* Rename inline input */
-.p-rename-input {
-  flex: 1;
-  min-width: 0;
-  background: var(--background-primary);
-  border: 1px solid var(--color-accent);
-  border-radius: 3px;
-  color: var(--text-normal);
-  font-family: var(--font-interface);
-  font-size: var(--font-small);
-  font-weight: 600;
-  padding: 1px var(--s1);
-  outline: none;
-  height: 20px;
-  box-sizing: border-box;
+/* Refresh icon inside rename wrapper */
+.p-rename-refresh {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  border-radius: 2px;
 }
-/* LLM rename sparkle — accent tint matching summary sparkle */
-.p-hdr-btn.p-rename-llm-btn { color: var(--color-accent); opacity: 0.75; }
-.p-hdr-btn.p-rename-llm-btn:hover { color: var(--color-accent); opacity: 1; background: var(--background-modifier-hover); }
-.p-hdr-btn.p-rename-llm-btn:disabled { opacity: 0.4; cursor: default; }
+.p-rename-refresh:hover { color: var(--color-accent); }
+.p-rename-refresh svg { width: 11px; height: 11px; stroke-width: 1.8; display: block; pointer-events: none; }
+.p-rename-refresh:disabled { opacity: 0.4; cursor: default; }
+.p-rename-refresh.p-rename-refresh-loading svg {
+  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
+  color: var(--color-accent);
+}
 
 /* Toolbar sparkle — loading state */
 .p-tool-btn.p-sparkle-loading {

@@ -132,6 +132,7 @@ export class PythiaSidebarView extends ItemView {
 	private onViewportResize: (() => void) | null = null;
 
 	private renameBtn!: HTMLButtonElement;
+	private renameWrapEl!: HTMLElement;
 	private renameInputEl!: HTMLInputElement;
 	private renameLLMBtn!: HTMLButtonElement;
 
@@ -233,6 +234,7 @@ export class PythiaSidebarView extends ItemView {
 		focus = true,
 		scrollTo: "bottom" | "top" = "bottom"
 	): Promise<void> {
+		this.exitRenameMode(false);                   // discard any in-progress rename
 		this.activeConversation = conversation;
 		this.autoScroll = true;                       // #25 — reset so new conv starts at bottom
 		this.navigatorOutsideCleanup?.();             // #26 — detach stale outside-click listener
@@ -336,24 +338,33 @@ export class PythiaSidebarView extends ItemView {
 		this.renameBtn.style.display = "none";
 		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
 
-		this.renameInputEl = header.createEl("input", {
+		// Inline rename editor — replaces convNameEl while editing.
+		// Wrapper holds [ ↺ icon | input ] as a single header-width unit.
+		this.renameWrapEl = header.createDiv({ cls: "p-rename-wrap" });
+		this.renameWrapEl.style.display = "none";
+
+		this.renameLLMBtn = this.renameWrapEl.createEl("button", {
+			cls: "p-rename-refresh",
+			attr: { title: t("renameLLMTooltip") },
+		});
+		setIcon(this.renameLLMBtn, "refresh-cw");
+		// mousedown + preventDefault keeps input focused (fires before blur).
+		this.renameLLMBtn.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			void this.onRenameLLM();
+		});
+
+		this.renameInputEl = this.renameWrapEl.createEl("input", {
 			cls: "p-rename-input",
 			attr: { type: "text", placeholder: t("renameConvPlaceholder") },
 		});
-		this.renameInputEl.style.display = "none";
 		this.registerDomEvent(this.renameInputEl, "keydown", (e: KeyboardEvent) => {
 			if (e.key === "Enter") { e.preventDefault(); this.exitRenameMode(true); }
 			if (e.key === "Escape") { e.preventDefault(); this.exitRenameMode(false); }
 		});
+		// blur = click outside → save. Safe here because the refresh button uses
+		// mousedown+preventDefault to keep focus, so blur never fires from it.
 		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
-
-		this.renameLLMBtn = header.createEl("button", {
-			cls: "p-hdr-btn p-rename-llm-btn",
-			attr: { title: t("renameLLMTooltip") },
-		});
-		setIcon(this.renameLLMBtn, "sparkles");
-		this.renameLLMBtn.style.display = "none";
-		this.renameLLMBtn.addEventListener("click", () => this.onRenameLLM());
 
 		this.headerSparkleEl = header.createEl("button", {
 			cls: "p-hdr-btn p-hdr-sparkle",
@@ -1506,10 +1517,8 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		this.convNameEl.style.display = "none";
-		this.renameBtn.style.display = "none";
+		this.renameWrapEl.style.display = "";
 		this.renameInputEl.value = conv.name;
-		this.renameInputEl.style.display = "";
-		this.renameLLMBtn.style.display = "";
 		requestAnimationFrame(() => {
 			this.renameInputEl.focus();
 			this.renameInputEl.select();
@@ -1517,12 +1526,9 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private exitRenameMode(confirm: boolean): void {
-		// Guard: already exited (blur fires after programmatic focus loss too)
-		if (this.renameInputEl.style.display === "none") return;
-		this.renameInputEl.style.display = "none";
-		this.renameLLMBtn.style.display = "none";
+		if (this.renameWrapEl.style.display === "none") return;
+		this.renameWrapEl.style.display = "none";
 		this.convNameEl.style.display = "";
-		this.renameBtn.style.display = this.activeConversation ? "" : "none";
 		if (confirm && this.activeConversation) {
 			const newName = this.renameInputEl.value.trim();
 			if (newName && newName !== this.activeConversation.name) {
@@ -1537,12 +1543,8 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 
-		// Prevent double-click and blur-triggered confirm while generating
 		this.renameLLMBtn.disabled = true;
-		setIcon(this.renameLLMBtn, "loader");
-		// Detach blur so it doesn't fire a premature confirm while we await
-		this.renameInputEl.blur();
-		this.renameInputEl.style.pointerEvents = "none";
+		this.renameLLMBtn.addClass("p-rename-refresh-loading");
 
 		try {
 			const msgs = conv.messages;
@@ -1551,21 +1553,15 @@ export class PythiaSidebarView extends ItemView {
 			const title = await this.plugin.llmRouter.generateConversationTitle(
 				userMsg, assistMsg, conv.provider
 			);
-			conv.name = title;
-			await this.plugin.conversationStore.save(conv);
-			// Exit rename mode and reflect new name
-			this.renameInputEl.style.display = "none";
-			this.renameLLMBtn.style.display = "none";
-			this.convNameEl.style.display = "";
-			this.renameBtn.style.display = "";
-			this.convNameEl.setText(title + " ▾");
+			// Fill the input with the generated name — user can still edit before confirming
+			this.renameInputEl.value = title;
+			this.renameInputEl.focus();
+			this.renameInputEl.select();
 		} catch {
 			new Notice(t("renameLLMFailed"));
-			// Fall back to showing input so user can type manually
+		} finally {
 			this.renameLLMBtn.disabled = false;
-			setIcon(this.renameLLMBtn, "sparkles");
-			this.renameInputEl.style.pointerEvents = "";
-			this.renameInputEl.focus();
+			this.renameLLMBtn.removeClass("p-rename-refresh-loading");
 		}
 	}
 
