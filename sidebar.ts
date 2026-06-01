@@ -852,11 +852,11 @@ export class PythiaSidebarView extends ItemView {
 		}
 		if (scrollTo === "top") {
 			this.autoScroll = false;
-			this.messagesEl.scrollTop = 0;
-			// rAF re-applies scrollTop after deferred renders (Mermaid, ResizeObserver
-			// callbacks) have had a chance to run and potentially shift scroll position.
+			// Use 'instant' to bypass smooth-scroll animation — animated scrolls
+			// get overridden mid-flight when async renderers (Mermaid etc.) settle.
+			this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
 			requestAnimationFrame(() => {
-				this.messagesEl.scrollTop = 0;
+				this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
 			});
 		} else {
 			this.scrollToBottom();
