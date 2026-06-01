@@ -1342,7 +1342,7 @@ export class PythiaSidebarView extends ItemView {
 			defaultCollapsed: boolean,
 			count: number,
 			buildItems: (body: HTMLElement) => void
-		) => {
+		): HTMLElement => {
 			const section = this.navigatorEl.createDiv({ cls: "p-nav-section" });
 			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
 			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
@@ -1371,6 +1371,7 @@ export class PythiaSidebarView extends ItemView {
 					chevron.setText("▸");
 				}
 			});
+			return section;
 		};
 
 		// ── Forks ────────────────────────────────────────────────────
@@ -1419,7 +1420,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Chapters ─────────────────────────────────────────────────
 		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
-		makeSection(t("chaptersSection"), false, userMsgs.length, (body) => {
+		const chaptersSection = makeSection(t("chaptersSection"), false, userMsgs.length, (body) => {
 			if (userMsgs.length === 0) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
 			} else {
@@ -1439,6 +1440,12 @@ export class PythiaSidebarView extends ItemView {
 		});
 
 		this.navigatorEl.addClass("open");
+
+		// Scroll to Chapters so it's visible without scrolling, even when
+		// Forks and Starred above it are long.
+		requestAnimationFrame(() => {
+			chaptersSection.scrollIntoView({ block: "start", behavior: "instant" });
+		});
 
 		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers).
 		// Track as an instance field so the listener can be removed if the view closes or the
