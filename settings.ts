@@ -2,7 +2,7 @@ import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidi
 import type PythiaPlugin from "./main";
 import type { Provider } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
-import { TemplateLoader } from "./services/TemplateLoader";
+import { FileSuggestModal } from "./suggest/FileSuggest";
 import { t } from "./i18n";
 
 export interface PythiaSettings {
@@ -303,22 +303,29 @@ export class PythiaSettingTab extends PluginSettingTab {
 	}
 
 	private addPromptOptimizerTemplateSetting(containerEl: HTMLElement): void {
-		const loader = new TemplateLoader(this.app, this.plugin.settings);
-		const setting = new Setting(containerEl)
+		let textComponent: { setValue(v: string): void };
+		new Setting(containerEl)
 			.setName(t("promptOptimizerTemplateName"))
-			.setDesc(t("promptOptimizerTemplateDesc"));
-
-		loader.loadTemplates().then((templates) => {
-			setting.addDropdown((drop) => {
-				drop.addOption("", t("promptOptimizerTemplateNone"));
-				for (const tpl of templates) drop.addOption(tpl.id, tpl.name);
-				drop.setValue(this.plugin.settings.promptOptimizerTemplateId ?? "");
-				drop.onChange(async (value) => {
-					this.plugin.settings.promptOptimizerTemplateId = value;
-					await this.plugin.saveSettings();
-				});
+			.setDesc(t("promptOptimizerTemplateDesc"))
+			.addText((text) => {
+				textComponent = text;
+				text.setPlaceholder(t("promptOptimizerTemplateNone"))
+					.setValue(this.plugin.settings.promptOptimizerTemplateId ?? "")
+					.onChange(async (value) => {
+						this.plugin.settings.promptOptimizerTemplateId = value;
+						await this.plugin.saveSettings();
+					});
+			})
+			.addButton((btn) => {
+				btn.setButtonText(t("browse"))
+					.onClick(() => {
+						new FileSuggestModal(this.app, async (file) => {
+							this.plugin.settings.promptOptimizerTemplateId = file.path;
+							await this.plugin.saveSettings();
+							textComponent.setValue(file.path);
+						}).open();
+					});
 			});
-		});
 	}
 
 	private addModelSetting(

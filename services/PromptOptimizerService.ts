@@ -1,8 +1,8 @@
-import { App, Notice } from "obsidian";
+import { App, Notice, parseYaml } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { PythiaSettings } from "../settings";
 import type { LLMRouter } from "./LLMRouter";
-import { TemplateLoader } from "./TemplateLoader";
+import type { Provider } from "../models/types";
 import { PromptInputModal } from "../suggest/PromptInputModal";
 import { t } from "../i18n";
 
@@ -11,14 +11,31 @@ export class PromptOptimizerService {
 	private plugin: PythiaPlugin;
 	private settings: PythiaSettings;
 	private llmRouter: LLMRouter;
-	private templateLoader: TemplateLoader;
 
 	constructor(app: App, plugin: PythiaPlugin, settings: PythiaSettings, llmRouter: LLMRouter) {
 		this.app = app;
 		this.plugin = plugin;
 		this.settings = settings;
 		this.llmRouter = llmRouter;
-		this.templateLoader = new TemplateLoader(app, settings);
+	}
+
+	private async loadTemplateFile(filePath: string): Promise<{ body: string; provider?: Provider; model?: string } | null> {
+		const file = this.app.vault.getFileByPath(filePath);
+		if (!file) return null;
+		const content = await this.app.vault.read(file);
+		const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+		if (fmMatch) {
+			try {
+				const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
+				const rawProvider = fm.provider;
+				const provider: Provider | undefined =
+					rawProvider === "anthropic" || rawProvider === "openai" ? rawProvider : undefined;
+				return { body: fmMatch[2].trim(), provider, model: fm.model as string | undefined };
+			} catch {
+				return { body: fmMatch[2].trim() };
+			}
+		}
+		return { body: content.trim() };
 	}
 
 	async run(): Promise<void> {
@@ -28,15 +45,14 @@ export class PromptOptimizerService {
 			return;
 		}
 
-		const templates = await this.templateLoader.loadTemplates();
-		const template = templates.find((tpl) => tpl.id === this.settings.promptOptimizerTemplateId);
+		const template = await this.loadTemplateFile(this.settings.promptOptimizerTemplateId);
 		if (!template) {
 			new Notice(t("promptOptimizerTemplateNotFound"));
 			return;
 		}
 
 		// Step 2 — collect user message
-		// The template body (template.systemPrompt) is the user message template.
+		// The template body is the user message template.
 		// It can contain either Templater syntax or a {{prompt}} placeholder.
 		let userMessage: string | null = null;
 
@@ -45,7 +61,7 @@ export class PromptOptimizerService {
 
 		if (templaterPlugin) {
 			try {
-				userMessage = await this.runWithTemplater(template.id);
+				userMessage = await this.runWithTemplater(this.settings.promptOptimizerTemplateId);
 			} catch (err) {
 				console.warn("Pythia: Templater rendering failed, falling back to modal.", err);
 			}
@@ -55,7 +71,7 @@ export class PromptOptimizerService {
 			// Fallback: collect raw prompt, substitute into template body
 			const raw = await this.showInputModal();
 			if (raw === null) return;
-			const body = template.systemPrompt;
+			const body = template.body;
 			userMessage = body.includes("{{prompt}}")
 				? body.replace(/\{\{prompt\}\}/g, raw)
 				: raw;
