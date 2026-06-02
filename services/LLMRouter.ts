@@ -65,4 +65,8 @@ export class LLMRouter {
 	summarizeNotes(content: string, provider: Provider): Promise<string> {
 		return this.providers[provider].summarizeNotes(content);
 	}
+
+	optimizePrompt(systemPrompt: string, userMessage: string, provider: Provider, model?: string): Promise<string> {
+		return this.providers[provider].optimizePrompt(systemPrompt, userMessage, model);
+	}
 }

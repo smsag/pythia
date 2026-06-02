@@ -168,6 +168,21 @@ const de: Strings = {
 	providerAnthropic:       "Anthropic",
 	providerOpenAI:          "OpenAI",
 
+	// ── Prompt optimizer ─────────────────────────────────────────────────────
+	cmdNewConversationFromPrompt:     "Neue Unterhaltung aus Prompt",
+	promptOptimizerSection:           "Prompt-Optimierer",
+	promptOptimizerTemplateName:      "Optimierer-Vorlage",
+	promptOptimizerTemplateDesc:      "Pythia-Vorlage für die Prompt-Optimierung. Der Vorlagentext beschreibt die Optimierungsanweisungen und kann einen {{prompt}}-Platzhalter (oder Templater-Syntax) enthalten.",
+	promptOptimizerTemplateNone:      "— Keine —",
+	promptOptimizerNotConfigured:     "Keine Optimierer-Vorlage konfiguriert. Wähle eine in Einstellungen → Pythia.",
+	promptOptimizerTemplateNotFound:  "Optimierer-Vorlage nicht gefunden. Prüfe Einstellungen → Pythia.",
+	promptOptimizerOptimizing:        "Prompt wird optimiert…",
+	promptOptimizerFailed:            "Prompt-Optimierung fehlgeschlagen: {{error}}",
+	promptOptimizerConvName:          "Neue Unterhaltung",
+	promptInputModalTitle:            "Prompt eingeben",
+	promptInputModalPlaceholder:      "Gib deinen Prompt ein… (Enter zum Bestätigen, Shift+Enter für neue Zeile)",
+	promptInputModalConfirm:          "Optimieren",
+
 	// ── Suggest modals ────────────────────────────────────────────────────────
 	searchConversations: "Gespräche durchsuchen…",
 	searchFavorites:     "Favoriten durchsuchen…",
