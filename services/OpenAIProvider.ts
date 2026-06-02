@@ -337,4 +337,18 @@ export class OpenAIProvider implements LLMProvider {
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "";
 	}
+
+	async optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string> {
+		const client = this.getClient();
+		const resolvedModel = model || this.settings.defaultOpenAIModel;
+		const messages: { role: "system" | "user"; content: string }[] = [];
+		if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+		messages.push({ role: "user", content: userMessage });
+		const response = await client.chat.completions.create({
+			model: resolvedModel,
+			max_tokens: 2048,
+			messages,
+		});
+		return response.choices[0]?.message?.content?.trim() ?? "";
+	}
 }

@@ -13,6 +13,7 @@ import { LLMRouter } from "./services/LLMRouter";
 import { ConversationStore } from "./services/ConversationStore";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
+import { PromptOptimizerService } from "./services/PromptOptimizerService";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -105,6 +106,18 @@ export default class PythiaPlugin extends Plugin {
 			id: "new-conversation-from-clipboard",
 			name: "New conversation from clipboard",
 			callback: () => this.cmdNewConversationFromClipboard(),
+		});
+
+		this.addCommand({
+			id: "new-conversation-from-prompt",
+			name: t("cmdNewConversationFromPrompt"),
+			callback: () =>
+				new PromptOptimizerService(
+					this.app,
+					this,
+					this.settings,
+					this.llmRouter
+				).run(),
 		});
 
 		this.addCommand({

@@ -166,6 +166,21 @@ const en = {
 	providerAnthropic:       "Anthropic",
 	providerOpenAI:          "OpenAI",
 
+	// ── Prompt optimizer ─────────────────────────────────────────────────────
+	cmdNewConversationFromPrompt:     "New conversation from prompt",
+	promptOptimizerSection:           "Prompt optimizer",
+	promptOptimizerTemplateName:      "Optimizer template",
+	promptOptimizerTemplateDesc:      "Pythia template used to optimize prompts. The template body should describe what to optimize and can include a {{prompt}} placeholder (or Templater syntax if Templater is installed).",
+	promptOptimizerTemplateNone:      "— None —",
+	promptOptimizerNotConfigured:     "Prompt optimizer template not configured. Choose one in Settings → Pythia.",
+	promptOptimizerTemplateNotFound:  "Prompt optimizer template not found. Check Settings → Pythia.",
+	promptOptimizerOptimizing:        "Optimizing prompt…",
+	promptOptimizerFailed:            "Prompt optimization failed: {{error}}",
+	promptOptimizerConvName:          "New conversation",
+	promptInputModalTitle:            "Enter your prompt",
+	promptInputModalPlaceholder:      "Type your raw prompt here… (Enter to confirm, Shift+Enter for new line)",
+	promptInputModalConfirm:          "Optimize",
+
 	// ── Suggest modals ────────────────────────────────────────────────────────
 	searchConversations: "Search conversations…",
 	searchFavorites:     "Search favorites…",

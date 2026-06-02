@@ -17,4 +17,5 @@ export interface LLMProvider {
 	generateChapterName(content: string): Promise<string>;
 	generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string>;
 	summarizeNotes(content: string): Promise<string>;
+	optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string>;
 }

@@ -2,6 +2,7 @@ import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidi
 import type PythiaPlugin from "./main";
 import type { Provider } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
+import { TemplateLoader } from "./services/TemplateLoader";
 import { t } from "./i18n";
 
 export interface PythiaSettings {
@@ -34,6 +35,8 @@ export interface PythiaSettings {
 	 *  "auto" = follow the conversation language. Otherwise an ISO 639-1 locale code. */
 	outputLanguage: "auto" | "en" | "de";
 	debugMode: boolean;
+	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
+	promptOptimizerTemplateId: string;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -54,6 +57,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	inboxNote: "Pythia/Inbox.md",
 	outputLanguage: "auto",
 	debugMode: false,
+	promptOptimizerTemplateId: "",
 };
 
 const ANTHROPIC_MODELS = [
@@ -292,6 +296,29 @@ export class PythiaSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		containerEl.createEl("h3", { text: t("promptOptimizerSection") });
+
+		this.addPromptOptimizerTemplateSetting(containerEl);
+	}
+
+	private addPromptOptimizerTemplateSetting(containerEl: HTMLElement): void {
+		const loader = new TemplateLoader(this.app, this.plugin.settings);
+		const setting = new Setting(containerEl)
+			.setName(t("promptOptimizerTemplateName"))
+			.setDesc(t("promptOptimizerTemplateDesc"));
+
+		loader.loadTemplates().then((templates) => {
+			setting.addDropdown((drop) => {
+				drop.addOption("", t("promptOptimizerTemplateNone"));
+				for (const tpl of templates) drop.addOption(tpl.id, tpl.name);
+				drop.setValue(this.plugin.settings.promptOptimizerTemplateId ?? "");
+				drop.onChange(async (value) => {
+					this.plugin.settings.promptOptimizerTemplateId = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		});
 	}
 
 	private addModelSetting(

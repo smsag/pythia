@@ -275,4 +275,17 @@ export class AnthropicService implements LLMProvider {
 		const block = response.content[0];
 		return block.type === "text" ? block.text.trim() : "";
 	}
+
+	async optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string> {
+		const client = this.getClient();
+		const resolvedModel = model || this.settings.defaultAnthropicModel;
+		const response = await client.messages.create({
+			model: resolvedModel,
+			max_tokens: 2048,
+			system: systemPrompt || undefined,
+			messages: [{ role: "user", content: userMessage }],
+		});
+		const block = response.content[0];
+		return block.type === "text" ? block.text.trim() : "";
+	}
 }
