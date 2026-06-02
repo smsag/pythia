@@ -1110,6 +1110,22 @@ export class PythiaSidebarView extends ItemView {
 				svg.style.display = "block";
 				return true;
 			}
+			// 5. getBBox() — for renderers (e.g. Vizardry) that produce an SVG
+			//    with no viewBox and no size attributes. getBBox() returns the
+			//    bounding box of the rendered content; only valid once the SVG is
+			//    in the DOM and painted, so this runs last after the observers fire.
+			try {
+				const bbox = (svg as unknown as SVGGraphicsElement).getBBox();
+				const bboxW = bbox.width + Math.max(0, bbox.x);
+				const bboxH = bbox.height + Math.max(0, bbox.y);
+				if (bboxW > 0) {
+					svg.style.setProperty("width",     `${bboxW}px`, "important");
+					svg.style.setProperty("height",    `${bboxH}px`, "important");
+					svg.style.setProperty("max-width", "none",       "important");
+					svg.style.display = "block";
+					return true;
+				}
+			} catch { /* SVG not yet painted — keep observing */ }
 			return false; // not ready yet — keep observing
 		};
 
