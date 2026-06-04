@@ -820,8 +820,6 @@ export default class PythiaPlugin extends Plugin {
 								conv.summaryText =
 									await this.llmRouter.generateSummary(conv);
 								conv.summaryUpdatedAt = new Date().toISOString();
-								conv.messages = [];
-								await this.conversationStore.save(conv);
 								notice.hide();
 							} catch (e) {
 								notice.hide();
@@ -829,6 +827,9 @@ export default class PythiaPlugin extends Plugin {
 								return;
 							}
 						}
+						// Always clear history when resuming in summary mode so the API
+						// only receives the summary, not the full message history.
+						conv.messages = [];
 					}
 
 					await this.conversationStore.save(conv);

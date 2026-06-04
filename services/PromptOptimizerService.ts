@@ -142,11 +142,16 @@ export class PromptOptimizerService {
 		let optimizedPrompt: string;
 		try {
 			const provider = template.provider ?? this.settings.defaultProvider;
+			const model = template.model ?? (
+				provider === "openai"
+					? this.settings.defaultOpenAIModel
+					: this.settings.defaultAnthropicModel
+			);
 			optimizedPrompt = await this.llmRouter.optimizePrompt(
 				"",
 				userMessage,
 				provider,
-				template.model
+				model
 			);
 		} catch (err) {
 			new Notice(t("promptOptimizerFailed", { error: String(err) }));

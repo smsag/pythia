@@ -118,15 +118,6 @@
   min-height: 26px;
 }
 
-.p-row-label {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  flex-shrink: 0;
-  width: 54px;
-}
 
 .p-pills {
   display: flex;

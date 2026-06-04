@@ -247,6 +247,7 @@ export class PythiaSidebarView extends ItemView {
 		scrollTo: "bottom" | "top" = "bottom"
 	): Promise<void> {
 		this.exitRenameMode(false);                   // discard any in-progress rename
+		if (this.optimizationState) this.cancelOptimization();
 		this.activeConversation = conversation;
 		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
 		// Resetting to true here was the root cause of conversations always scrolling
@@ -277,6 +278,7 @@ export class PythiaSidebarView extends ItemView {
 	attachNoteToInput(path: string): void {
 		const conv = this.activeConversation;
 		if (!conv) return;
+		conv.contextNotes ??= [];
 		if (!conv.contextNotes.includes(path)) {
 			conv.contextNotes.push(path);
 			void this.plugin.conversationStore.save(conv);
@@ -519,10 +521,10 @@ export class PythiaSidebarView extends ItemView {
 
 		this.onSelectionChange = () => this.handleSelectionChange();
 		document.addEventListener("selectionchange", this.onSelectionChange);
-		this.messagesEl.addEventListener("mouseup", () =>
+		this.registerDomEvent(this.messagesEl, "mouseup", () =>
 			setTimeout(() => this.handleSelectionChange(), 10)
 		);
-		this.messagesEl.addEventListener("touchend", () =>
+		this.registerDomEvent(this.messagesEl, "touchend", () =>
 			setTimeout(() => this.handleSelectionChange(), 300)
 		);
 
@@ -1299,7 +1301,7 @@ export class PythiaSidebarView extends ItemView {
 			this.favoritesSectionEl.style.display = "none";
 			return;
 		}
-		this.favoritesSectionEl.style.display = "none";
+		this.favoritesSectionEl.style.display = "";
 		for (const fav of favs) {
 			const pill = this.favoritesPillsEl.createEl("span", {
 				cls: "pythia-pill pythia-favorite-pill",
@@ -1872,7 +1874,7 @@ export class PythiaSidebarView extends ItemView {
 				: t("optimizingIndicator")
 		);
 		this.optimizationState.indicatorEl = indicatorEl;
-		this.optimizeBtnEl.addClass("active");
+		this.setOptimizingState(true);
 		this.scrollToBottom();
 
 		const conv = this.activeConversation;
@@ -1894,7 +1896,7 @@ export class PythiaSidebarView extends ItemView {
 	// ── /Inline prompt optimizer ───────────────────────────────────────────────
 
 	async sendMessage(): Promise<void> {
-		if (this.isStreaming) return;
+		if (this.isStreaming || this.optimizationState) return;
 		if (!this.activeConversation) {
 			new Notice(t("noActiveConvToSend"));
 			return;
@@ -1927,7 +1929,7 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.querySelector(".pythia-empty")?.remove();
 		await this.appendMessageBubble(userMsg);
 
-		const attachedNotes = [...conv.contextNotes];
+		const attachedNotes = [...(conv.contextNotes ?? [])];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 
@@ -1987,9 +1989,9 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage) => {
-				// Reset immediately so the user can type while render/persist run.
-				this.setStreamingState(false);
 				await finalize(fullText);
+				// Reset after render so the send guard stays active during MarkdownRenderer.render.
+				this.setStreamingState(false);
 
 				if (fullText) {
 					const assistantMsg: Message = {
@@ -2005,20 +2007,18 @@ export class PythiaSidebarView extends ItemView {
 					const lastRow = rows[rows.length - 1] as HTMLElement | null;
 					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 						lastRow.setAttribute("data-msg-id", assistantMsg.id);
-						if (this.activeConversation?.id === conv.id) {
-							const footer = streamingRow.createDiv({ cls: "p-tokens" });
-							const star = footer.createEl("button", {
-								cls: "p-star",
-								text: "☆",
-								attr: { title: t("addToFavorites") },
-							});
-							star.addEventListener("click", () =>
-								this.onStarClick(assistantMsg, star)
-							);
-							if (tokenUsage) {
-								footer.createSpan({ cls: "p-tok-sep", text: "|" });
-								this.renderTokenCount(footer, tokenUsage);
-							}
+						const footer = streamingRow.createDiv({ cls: "p-tokens" });
+						const star = footer.createEl("button", {
+							cls: "p-star",
+							text: "☆",
+							attr: { title: t("addToFavorites") },
+						});
+						star.addEventListener("click", () =>
+							this.onStarClick(assistantMsg, star)
+						);
+						if (tokenUsage) {
+							footer.createSpan({ cls: "p-tok-sep", text: "|" });
+							this.renderTokenCount(footer, tokenUsage);
 						}
 					}
 					await this.plugin.conversationStore.save(conv);
