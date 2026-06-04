@@ -37,6 +37,8 @@ export interface PythiaSettings {
 	debugMode: boolean;
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;
+	/** Prompt framework applied by the inline optimizer. */
+	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	outputLanguage: "auto",
 	debugMode: false,
 	promptOptimizerTemplateId: "",
+	defaultPromptFramework: "none",
 };
 
 const ANTHROPIC_MODELS = [
@@ -300,6 +303,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: t("promptOptimizerSection") });
 
 		this.addPromptOptimizerTemplateSetting(containerEl);
+		this.addPromptFrameworkSetting(containerEl);
 	}
 
 	private addPromptOptimizerTemplateSetting(containerEl: HTMLElement): void {
@@ -326,6 +330,26 @@ export class PythiaSettingTab extends PluginSettingTab {
 						}).open();
 					});
 			});
+	}
+
+	private addPromptFrameworkSetting(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName(t("promptFrameworkLabel"))
+			.setDesc(t("promptFrameworkDesc"))
+			.addDropdown((drop) =>
+				drop
+					.addOption("none", t("promptFrameworkNone"))
+					.addOption("CO-STAR", "CO-STAR")
+					.addOption("RACE", "RACE")
+					.addOption("RISEN", "RISEN")
+					.setValue(["none", "CO-STAR", "RACE", "RISEN"].includes(this.plugin.settings.defaultPromptFramework)
+						? this.plugin.settings.defaultPromptFramework
+						: "none")
+					.onChange(async (value) => {
+						this.plugin.settings.defaultPromptFramework = value as PythiaSettings["defaultPromptFramework"];
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 
 	private addModelSetting(
