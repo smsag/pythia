@@ -1260,7 +1260,8 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private autoResizeTextarea(): void {
-		const maxH = Platform.isDesktop ? 150 : 72;
+		const lineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+		const maxH = Math.ceil(lineHeight * 5);
 		this.inputEl.style.height = "auto";
 		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, maxH)}px`;
 	}
