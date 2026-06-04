@@ -136,6 +136,15 @@ export class PythiaSidebarView extends ItemView {
 	private renameInputEl!: HTMLInputElement;
 	private renameLLMBtn!: HTMLButtonElement;
 
+	private optimizeBtnEl!: HTMLButtonElement;
+	private optimizationState: {
+		originalText: string;
+		previewEl: HTMLElement;
+		indicatorEl: HTMLElement | null;
+		resultEl: HTMLElement | null;
+		actionRowEl: HTMLElement | null;
+	} | null = null;
+
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
 		this.plugin = plugin;
@@ -213,6 +222,9 @@ export class PythiaSidebarView extends ItemView {
 				})
 				.catch(() => { /* non-critical — leave existing summary intact */ });
 		}
+
+		// Discard any pending optimization state.
+		if (this.optimizationState) this.cancelOptimization();
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorOutsideCleanup?.();
@@ -616,6 +628,21 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.toolbarSparkleBtn, "sparkles");
 		this.toolbarSparkleBtn.addEventListener("click", () => void this.onGenerateSummary());
+
+		this.optimizeBtnEl = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn p-optimize-btn",
+			attr: { title: t("optimizeBtnTooltip") },
+		});
+		const optimizeSvg = this.optimizeBtnEl.createSvg("svg", {
+			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+		});
+		optimizeSvg.createSvg("path", {
+			attr: { d: "M15 4V2m0 2v2m0-2h-4.5M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10M3 10l1-4h16l1 4M3 10h18" },
+		});
+		optimizeSvg.createSvg("path", {
+			attr: { d: "M9 15l2 2 4-4" },
+		});
+		this.optimizeBtnEl.addEventListener("click", () => void this.startOptimization());
 
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
@@ -1720,6 +1747,143 @@ export class PythiaSidebarView extends ItemView {
 			}
 		).open();
 	}
+
+	// ── Inline prompt optimizer ────────────────────────────────────────────────
+
+	private setOptimizingState(active: boolean): void {
+		this.optimizeBtnEl.disabled = active;
+		this.sendBtn.disabled = active;
+		this.inputEl.disabled = active;
+		if (active) {
+			this.optimizeBtnEl.addClass("active");
+		} else {
+			this.optimizeBtnEl.removeClass("active");
+			this.sendBtn.disabled = false;
+		}
+	}
+
+	private async startOptimization(): Promise<void> {
+		if (this.optimizationState || this.isStreaming) return;
+		if (!this.activeConversation) return;
+		const text = this.inputEl.value.trim();
+		if (!text) return;
+
+		if (!this.plugin.settings.promptOptimizerTemplateId) {
+			new Notice(t("optimizeNoTemplate"));
+			return;
+		}
+
+		// Build preview bubble (original input, muted style)
+		const previewEl = this.messagesEl.createDiv({ cls: "p-msg-user p-msg-optimize-preview" });
+		const bubble = previewEl.createDiv({ cls: "p-bubble" });
+		await MarkdownRenderer.render(this.app, text, bubble, "", this);
+
+		// Indicator
+		const framework = this.plugin.settings.defaultPromptFramework;
+		const indicatorEl = this.messagesEl.createDiv({ cls: "p-optimize-indicator" });
+		indicatorEl.setText(
+			framework !== "none"
+				? t("optimizingIndicatorFramework", { framework })
+				: t("optimizingIndicator")
+		);
+
+		this.optimizationState = { originalText: text, previewEl, indicatorEl, resultEl: null, actionRowEl: null };
+		this.setOptimizingState(true);
+		this.scrollToBottom();
+
+		try {
+			const result = await this.plugin.promptOptimizerService.optimizeText(text, framework);
+			await this.showOptimizationResult(result);
+		} catch (err) {
+			new Notice(t("optimizeFailed", { error: String(err) }));
+			this.cancelOptimization();
+		}
+	}
+
+	private async showOptimizationResult(optimizedText: string): Promise<void> {
+		if (!this.optimizationState) return;
+
+		// Remove indicator
+		this.optimizationState.indicatorEl?.remove();
+		this.optimizationState.indicatorEl = null;
+		this.optimizeBtnEl.removeClass("active");
+
+		// Result bubble
+		const resultEl = this.messagesEl.createDiv({ cls: "p-msg-optimize-result" });
+		await MarkdownRenderer.render(this.app, optimizedText, resultEl, "", this);
+		this.optimizationState.resultEl = resultEl;
+
+		// Action row
+		const actionRowEl = this.messagesEl.createDiv({ cls: "p-optimize-actions" });
+		const confirmBtn = actionRowEl.createEl("button", { cls: "p-opt-confirm", text: t("useThisBtn") });
+		const discardBtn = actionRowEl.createEl("button", { cls: "p-opt-discard", text: t("discardBtn") });
+		const retryBtn   = actionRowEl.createEl("button", { cls: "p-opt-retry",   text: t("anotherVersionBtn") });
+		this.optimizationState.actionRowEl = actionRowEl;
+
+		this.registerDomEvent(confirmBtn, "click", () => this.confirmOptimization(optimizedText));
+		this.registerDomEvent(discardBtn, "click", () => this.cancelOptimization());
+		this.registerDomEvent(retryBtn,   "click", () => void this.retryOptimization());
+
+		this.scrollToBottom();
+	}
+
+	private confirmOptimization(optimizedText: string): void {
+		if (!this.optimizationState) return;
+		this.optimizationState.previewEl.remove();
+		this.optimizationState.resultEl?.remove();
+		this.optimizationState.actionRowEl?.remove();
+		this.optimizationState = null;
+		this.setOptimizingState(false);
+		this.inputEl.value = optimizedText;
+		this.autoResizeTextarea();
+		void this.sendMessage();
+	}
+
+	private cancelOptimization(): void {
+		if (!this.optimizationState) return;
+		const original = this.optimizationState.originalText;
+		this.optimizationState.previewEl.remove();
+		this.optimizationState.indicatorEl?.remove();
+		this.optimizationState.resultEl?.remove();
+		this.optimizationState.actionRowEl?.remove();
+		this.optimizationState = null;
+		this.setOptimizingState(false);
+		this.inputEl.value = original;
+		this.autoResizeTextarea();
+	}
+
+	private async retryOptimization(): Promise<void> {
+		if (!this.optimizationState) return;
+		// Remove result + actions, keep preview, re-run optimizer
+		this.optimizationState.resultEl?.remove();
+		this.optimizationState.resultEl = null;
+		this.optimizationState.actionRowEl?.remove();
+		this.optimizationState.actionRowEl = null;
+
+		const framework = this.plugin.settings.defaultPromptFramework;
+		const indicatorEl = this.messagesEl.createDiv({ cls: "p-optimize-indicator" });
+		indicatorEl.setText(
+			framework !== "none"
+				? t("optimizingIndicatorFramework", { framework })
+				: t("optimizingIndicator")
+		);
+		this.optimizationState.indicatorEl = indicatorEl;
+		this.optimizeBtnEl.addClass("active");
+		this.scrollToBottom();
+
+		try {
+			const result = await this.plugin.promptOptimizerService.optimizeText(
+				this.optimizationState.originalText,
+				framework
+			);
+			await this.showOptimizationResult(result);
+		} catch (err) {
+			new Notice(t("optimizeFailed", { error: String(err) }));
+			this.cancelOptimization();
+		}
+	}
+
+	// ── /Inline prompt optimizer ───────────────────────────────────────────────
 
 	async sendMessage(): Promise<void> {
 		if (this.isStreaming) return;

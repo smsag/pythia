@@ -28,6 +28,7 @@ export default class PythiaPlugin extends Plugin {
 	conversationStore!: ConversationStore;
 	templateLoader!: TemplateLoader;
 	noteWriter!: NoteWriter;
+	promptOptimizerService!: PromptOptimizerService;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -38,6 +39,7 @@ export default class PythiaPlugin extends Plugin {
 		this.conversationStore = new ConversationStore(this);
 		this.templateLoader = new TemplateLoader(this.app, this.settings);
 		this.noteWriter = new NoteWriter(this.app, this.settings);
+		this.promptOptimizerService = new PromptOptimizerService(this.app, this, this.settings, this.llmRouter);
 
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
@@ -111,13 +113,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "new-conversation-from-prompt",
 			name: t("cmdNewConversationFromPrompt"),
-			callback: () =>
-				new PromptOptimizerService(
-					this.app,
-					this,
-					this.settings,
-					this.llmRouter
-				).run(),
+			callback: () => this.promptOptimizerService.run(),
 		});
 
 		this.addCommand({
