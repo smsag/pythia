@@ -6,6 +6,33 @@ import type { Provider } from "../models/types";
 import { PromptInputModal } from "../suggest/PromptInputModal";
 import { t } from "../i18n";
 
+const FRAMEWORK_INSTRUCTIONS: Record<string, string> = {
+	"CO-STAR":
+		"Restructure the improved prompt using the CO-STAR framework. " +
+		"CO-STAR stands for: Context (background and situation the AI needs to know), " +
+		"Objective (the specific task or goal), " +
+		"Style (writing style or tone to adopt), " +
+		"Tone (emotional register — formal, casual, empathetic, etc.), " +
+		"Audience (who the output is for), " +
+		"Response (the exact format and structure of the output). " +
+		"Address all six dimensions explicitly in the rewritten prompt.",
+	"RACE":
+		"Restructure the improved prompt using the RACE framework. " +
+		"RACE stands for: Role (the persona or expert role the AI should adopt), " +
+		"Action (the specific task it must perform), " +
+		"Context (relevant background, constraints, or subject matter), " +
+		"Expectation (the desired output format, length, and quality criteria). " +
+		"Address all four dimensions explicitly in the rewritten prompt.",
+	"RISEN":
+		"Restructure the improved prompt using the RISEN framework. " +
+		"RISEN stands for: Role (the expert identity the AI should take on), " +
+		"Instructions (clear, step-by-step directions for what to do), " +
+		"Steps (the ordered sequence of actions or reasoning to follow), " +
+		"End goal (the final deliverable and what success looks like), " +
+		"Narrowing (constraints, scope limits, or things to avoid). " +
+		"Address all five dimensions explicitly in the rewritten prompt.",
+};
+
 export class PromptOptimizerService {
 	private app: App;
 	private plugin: PythiaPlugin;
@@ -42,7 +69,12 @@ export class PromptOptimizerService {
 	 * Optimize `rawText` and return the result string.
 	 * Used by the inline optimizer in the sidebar (no UI side-effects).
 	 */
-	async optimizeText(rawText: string, framework: string): Promise<string> {
+	async optimizeText(
+		rawText: string,
+		framework: string,
+		provider: Provider,
+		model: string,
+	): Promise<string> {
 		if (!this.settings.promptOptimizerTemplateId) {
 			throw new Error("no-template");
 		}
@@ -56,11 +88,10 @@ export class PromptOptimizerService {
 			: rawText;
 
 		if (framework !== "none") {
-			userMessage += `\n\nApply the ${framework} prompt framework.`;
+			userMessage += "\n\n" + FRAMEWORK_INSTRUCTIONS[framework];
 		}
 
-		const provider = template.provider ?? this.settings.defaultProvider;
-		return this.llmRouter.optimizePrompt("", userMessage, provider, template.model);
+		return this.llmRouter.optimizePrompt("", userMessage, provider, model);
 	}
 
 	async run(): Promise<void> {

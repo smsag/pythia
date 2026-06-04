@@ -1260,7 +1260,8 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private autoResizeTextarea(): void {
-		const maxH = Platform.isDesktop ? 150 : 72;
+		const lineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+		const maxH = Math.ceil(lineHeight * 5);
 		this.inputEl.style.height = "auto";
 		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, maxH)}px`;
 	}
@@ -1764,7 +1765,8 @@ export class PythiaSidebarView extends ItemView {
 
 	private async startOptimization(): Promise<void> {
 		if (this.optimizationState || this.isStreaming) return;
-		if (!this.activeConversation) return;
+		const conv = this.activeConversation;
+		if (!conv) return;
 		const text = this.inputEl.value.trim();
 		if (!text) return;
 
@@ -1792,7 +1794,9 @@ export class PythiaSidebarView extends ItemView {
 		this.scrollToBottom();
 
 		try {
-			const result = await this.plugin.promptOptimizerService.optimizeText(text, framework);
+			const result = await this.plugin.promptOptimizerService.optimizeText(
+				text, framework, conv.provider, conv.model
+			);
 			await this.showOptimizationResult(result);
 		} catch (err) {
 			new Notice(t("optimizeFailed", { error: String(err) }));
@@ -1871,10 +1875,14 @@ export class PythiaSidebarView extends ItemView {
 		this.optimizeBtnEl.addClass("active");
 		this.scrollToBottom();
 
+		const conv = this.activeConversation;
+		if (!conv) { this.cancelOptimization(); return; }
 		try {
 			const result = await this.plugin.promptOptimizerService.optimizeText(
 				this.optimizationState.originalText,
-				framework
+				framework,
+				conv.provider,
+				conv.model,
 			);
 			await this.showOptimizationResult(result);
 		} catch (err) {
