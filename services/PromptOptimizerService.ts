@@ -69,7 +69,12 @@ export class PromptOptimizerService {
 	 * Optimize `rawText` and return the result string.
 	 * Used by the inline optimizer in the sidebar (no UI side-effects).
 	 */
-	async optimizeText(rawText: string, framework: string): Promise<string> {
+	async optimizeText(
+		rawText: string,
+		framework: string,
+		provider: Provider,
+		model: string,
+	): Promise<string> {
 		if (!this.settings.promptOptimizerTemplateId) {
 			throw new Error("no-template");
 		}
@@ -86,8 +91,7 @@ export class PromptOptimizerService {
 			userMessage += "\n\n" + FRAMEWORK_INSTRUCTIONS[framework];
 		}
 
-		const provider = template.provider ?? this.settings.defaultProvider;
-		return this.llmRouter.optimizePrompt("", userMessage, provider, template.model);
+		return this.llmRouter.optimizePrompt("", userMessage, provider, model);
 	}
 
 	async run(): Promise<void> {
