@@ -132,11 +132,15 @@
   display: flex;
   gap: var(--s1);
   flex: 1;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
 }
+.p-pills::-webkit-scrollbar { display: none; }
 
 .p-pill {
   display: inline-flex;
@@ -152,6 +156,7 @@
   max-width: 160px;
   flex-shrink: 0;
   overflow: hidden;
+  scroll-snap-align: start;
 }
 
 .p-pill-label {
