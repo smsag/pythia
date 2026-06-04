@@ -457,7 +457,8 @@ export class PythiaSidebarView extends ItemView {
 			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 			if (distFromBottom > 50) this.autoScroll = false;
 		});
-		// selectionToolbar is inserted before inputArea — see below
+		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
+		this.selectionToolbar.style.display = "none";
 
 		// Passive touchstart on the container: save the selection and swipe origin
 		// before iOS dismisses the selection. Passive = does NOT block scroll gestures.
@@ -536,10 +537,6 @@ export class PythiaSidebarView extends ItemView {
 			e.stopPropagation();
 			this.toggleNavigator();
 		});
-
-		// ── Selection toolbar (stacks above reference row on text select) ──
-		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
-		this.selectionToolbar.style.display = "none";
 
 		// ── Reference row (context + output pills, hidden when empty) ───────
 		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
