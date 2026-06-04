@@ -38,7 +38,7 @@ export interface PythiaSettings {
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
-	defaultPromptFramework: "none" | "RACE" | "COAST" | "RISEN" | "CARE";
+	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -339,11 +339,12 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.addDropdown((drop) =>
 				drop
 					.addOption("none", t("promptFrameworkNone"))
+					.addOption("CO-STAR", "CO-STAR")
 					.addOption("RACE", "RACE")
-					.addOption("COAST", "COAST")
 					.addOption("RISEN", "RISEN")
-					.addOption("CARE", "CARE")
-					.setValue(this.plugin.settings.defaultPromptFramework)
+					.setValue(["none", "CO-STAR", "RACE", "RISEN"].includes(this.plugin.settings.defaultPromptFramework)
+						? this.plugin.settings.defaultPromptFramework
+						: "none")
 					.onChange(async (value) => {
 						this.plugin.settings.defaultPromptFramework = value as PythiaSettings["defaultPromptFramework"];
 						await this.plugin.saveSettings();

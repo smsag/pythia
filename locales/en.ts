@@ -179,7 +179,7 @@ const en = {
 	promptOptimizerFailed:            "Prompt optimization failed: {{error}}",
 	promptOptimizerConvName:          "New conversation",
 	promptFrameworkLabel:             "Prompt framework",
-	promptFrameworkDesc:              "Structured framework applied when optimizing a prompt inline. The optimizer will be instructed to apply the selected framework.",
+	promptFrameworkDesc:              "Structured framework applied when optimizing a prompt inline. CO-STAR (comprehensive, all angles), RACE (simple, widely used), RISEN (complex multi-step tasks).",
 	promptFrameworkNone:              "None",
 	optimizeBtnTooltip:               "Optimize prompt",
 	optimizingIndicator:              "Optimizing…",

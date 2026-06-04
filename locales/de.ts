@@ -181,7 +181,7 @@ const de: Strings = {
 	promptOptimizerFailed:            "Prompt-Optimierung fehlgeschlagen: {{error}}",
 	promptOptimizerConvName:          "Neue Unterhaltung",
 	promptFrameworkLabel:             "Prompt-Framework",
-	promptFrameworkDesc:              "Strukturiertes Framework für die inline Prompt-Optimierung. Der Optimierer wird angewiesen, das gewählte Framework anzuwenden.",
+	promptFrameworkDesc:              "Strukturiertes Framework für die inline Prompt-Optimierung. CO-STAR (umfassend), RACE (einfach, weit verbreitet), RISEN (komplexe Aufgaben mit mehreren Schritten).",
 	promptFrameworkNone:              "Keines",
 	optimizeBtnTooltip:               "Prompt optimieren",
 	optimizingIndicator:              "Wird optimiert…",
