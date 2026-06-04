@@ -14,7 +14,6 @@ const de: Strings = {
 	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
-	referenceSection: "Referenz",
 	forksSection: "Abzweigungen",
 	chaptersSection: "Kapitel",
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
