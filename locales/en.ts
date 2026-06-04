@@ -12,7 +12,6 @@ const en = {
 	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
-	referenceSection: "Reference",
 	forksSection: "Forks",
 	chaptersSection: "Chapters",
 	addContextNoteTooltip: "Add note to context",
