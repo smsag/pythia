@@ -1330,3 +1330,74 @@ body.is-mobile .p-textarea {
   stroke-width: 1.5;
   pointer-events: none;
 }
+
+/* ── Inline prompt optimizer ──────────────────────────────────────────────── */
+
+/* Wand button pulse animation while optimizing */
+@keyframes pythia-wand-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+.p-optimize-btn.active svg {
+  animation: pythia-wand-pulse 1s ease-in-out infinite;
+}
+
+/* Preview bubble — original input, muted / ghost style */
+.p-msg-optimize-preview {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--s3);
+}
+.p-msg-optimize-preview .p-bubble {
+  background: transparent;
+  border: 1px dashed var(--color-accent);
+  color: var(--text-faint);
+  opacity: 0.7;
+  max-width: 86%;
+  border-radius: 10px 10px 2px 10px;
+  padding: var(--s2) var(--s3);
+}
+
+/* Result bubble — optimized prompt, full-width bordered box */
+.p-msg-optimize-result {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: var(--s3);
+  margin: var(--s2) 0 var(--s2);
+  color: var(--text-normal);
+  font-size: var(--font-small);
+}
+
+/* Optimize indicator */
+.p-optimize-indicator {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  padding: var(--s2) 0;
+}
+
+/* Action row */
+.p-optimize-actions {
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+.p-optimize-actions button {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  padding: 2px var(--s2);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+.p-optimize-actions .p-opt-confirm {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+  border: none;
+}
+.p-optimize-actions .p-opt-discard,
+.p-optimize-actions .p-opt-retry {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+}

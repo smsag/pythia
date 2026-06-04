@@ -38,6 +38,31 @@ export class PromptOptimizerService {
 		return { body: content.trim() };
 	}
 
+	/**
+	 * Optimize `rawText` and return the result string.
+	 * Used by the inline optimizer in the sidebar (no UI side-effects).
+	 */
+	async optimizeText(rawText: string, framework: string): Promise<string> {
+		if (!this.settings.promptOptimizerTemplateId) {
+			throw new Error("no-template");
+		}
+		const template = await this.loadTemplateFile(this.settings.promptOptimizerTemplateId);
+		if (!template) {
+			throw new Error("template-not-found");
+		}
+
+		let userMessage = template.body.includes("{{prompt}}")
+			? template.body.replace(/\{\{prompt\}\}/g, rawText)
+			: rawText;
+
+		if (framework !== "none") {
+			userMessage += `\n\nApply the ${framework} prompt framework.`;
+		}
+
+		const provider = template.provider ?? this.settings.defaultProvider;
+		return this.llmRouter.optimizePrompt("", userMessage, provider, template.model);
+	}
+
 	async run(): Promise<void> {
 		// Step 1 — load the optimizer template
 		if (!this.settings.promptOptimizerTemplateId) {
