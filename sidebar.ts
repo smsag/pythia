@@ -636,13 +636,17 @@ export class PythiaSidebarView extends ItemView {
 		const optimizeSvg = this.optimizeBtnEl.createSvg("svg", {
 			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
 		});
+		// Lucide wand-2: diagonal wand body + sparkle tick
 		optimizeSvg.createSvg("path", {
-			attr: { d: "M15 4V2m0 2v2m0-2h-4.5M3 10v10a2 2 0 002 2h14a2 2 0 002-2V10M3 10l1-4h16l1 4M3 10h18" },
+			attr: { d: "m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.21 1.21 0 0 0 0-1.72z" },
 		});
-		optimizeSvg.createSvg("path", {
-			attr: { d: "M9 15l2 2 4-4" },
-		});
-		this.optimizeBtnEl.addEventListener("click", () => void this.startOptimization());
+		optimizeSvg.createSvg("path", { attr: { d: "M14 7l3 3" } });
+		optimizeSvg.createSvg("path", { attr: { d: "M5 6v4" } });
+		optimizeSvg.createSvg("path", { attr: { d: "M19 14v4" } });
+		optimizeSvg.createSvg("path", { attr: { d: "M10 2v2" } });
+		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
+		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
+		this.registerDomEvent(this.optimizeBtnEl, "click", () => void this.startOptimization());
 
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
@@ -1759,7 +1763,6 @@ export class PythiaSidebarView extends ItemView {
 			this.optimizeBtnEl.addClass("active");
 		} else {
 			this.optimizeBtnEl.removeClass("active");
-			this.sendBtn.disabled = false;
 		}
 	}
 
