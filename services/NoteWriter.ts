@@ -36,6 +36,15 @@ export class NoteWriter {
 		return this.app.vault.create(normalized, content);
 	}
 
+	async prependWithSeparator(content: string, filePath: string): Promise<TFile> {
+		const normalized = filePath.replace(/\\/g, "/");
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		const current =
+			existing instanceof TFile ? await this.app.vault.read(existing) : "";
+		const updated = current ? `${content}\n\n---\n\n${current}` : content;
+		return this.writeNote(updated, filePath);
+	}
+
 	async saveSummaryNote(
 		conversation: Conversation,
 		summary: string,

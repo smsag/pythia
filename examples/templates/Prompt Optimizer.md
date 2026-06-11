@@ -1,6 +1,6 @@
 ---
+type: Pythia Prompt Template
 name: Prompt Optimizer
-pythia_template: true
 ---
 You are an expert prompt engineer. Your task is to improve the prompt below for use with a large language model.
 

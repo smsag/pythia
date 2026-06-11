@@ -651,6 +651,7 @@ export default class PythiaPlugin extends Plugin {
 				outputFolder
 			);
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+			if (tpl.writeMode) conv.writeMode = tpl.writeMode;
 			await this.conversationStore.save(conv);
 
 			const view = await this.activateView();

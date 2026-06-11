@@ -36,7 +36,7 @@ export class TemplateLoader {
 			if (!match) return null;
 
 			const fm = parseYaml(match[1]) as Record<string, unknown>;
-			if (!fm.pythia_template) return null;
+			if (fm.type !== "Pythia Prompt Template") return null;
 
 			const rawProvider = fm.provider;
 			const validProvider: Provider | undefined =
@@ -69,6 +69,12 @@ export class TemplateLoader {
 				  )
 				: [];
 
+			const rawWriteMode = fm.write_mode;
+			const validWriteMode: "update" | "create" | undefined =
+				rawWriteMode === "update" || rawWriteMode === "create"
+					? rawWriteMode
+					: undefined;
+
 			return {
 				id: file.path,
 				name: (fm.name as string) ?? file.basename,
@@ -78,6 +84,8 @@ export class TemplateLoader {
 				contextNotes: validContextNotes,
 				resumeMode: validResumeMode,
 				outputFolder: validOutputFolder,
+				writeMode: validWriteMode,
+				autoPrompt: fm.auto_prompt as string | undefined,
 				systemPrompt: match[2].trim(),
 			};
 		} catch {
