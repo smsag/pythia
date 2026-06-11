@@ -64,6 +64,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 };
 
 const ANTHROPIC_MODELS = [
+	"claude-fable-5",
 	"claude-opus-4",
 	"claude-sonnet-4-6",
 	"claude-haiku-3-5",
