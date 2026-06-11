@@ -42,19 +42,49 @@ export class NoteWriter {
 		const current =
 			existing instanceof TFile ? await this.app.vault.read(existing) : "";
 
-		// Preserve YAML frontmatter at the top — Obsidian only recognises it there.
-		// Insert the new content after the closing --- of the frontmatter block.
-		const fmMatch = current.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+		const newFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+		const curFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+
+		const newFmMatch = content.match(newFmRx);
+		const curFmMatch = current.match(curFmRx);
+
 		let updated: string;
-		if (fmMatch) {
-			const frontmatter = fmMatch[0];
-			const body = current.slice(frontmatter.length);
-			updated = `${frontmatter}${content}\n\n---\n\n${body}`;
+
+		if (newFmMatch && curFmMatch) {
+			// Both have frontmatter — merge new fields into existing, then prepend body
+			const mergedFields = this.mergeFrontmatterFields(curFmMatch[1], newFmMatch[1]);
+			updated = `---\n${mergedFields}---\n${newFmMatch[2].trimStart()}\n\n---\n\n${curFmMatch[2]}`;
+		} else if (newFmMatch && !curFmMatch) {
+			// New content has frontmatter, doc does not — place it at the top
+			updated = `---\n${newFmMatch[1]}\n---\n${newFmMatch[2].trimStart()}\n\n---\n\n${current}`;
+		} else if (!newFmMatch && curFmMatch) {
+			// Doc has frontmatter, new content does not — insert body after existing frontmatter
+			updated = `---\n${curFmMatch[1]}\n---\n${content}\n\n---\n\n${curFmMatch[2]}`;
 		} else {
+			// Neither has frontmatter
 			updated = current ? `${content}\n\n---\n\n${current}` : content;
 		}
 
 		return this.writeNote(updated, filePath);
+	}
+
+	private mergeFrontmatterFields(existing: string, incoming: string): string {
+		// Collect keys already present in the existing frontmatter
+		const existingKeys = new Set<string>();
+		for (const line of existing.split("\n")) {
+			const key = line.match(/^([^#\s][^:]*?):/)?.[1]?.trim();
+			if (key) existingKeys.add(key);
+		}
+
+		// Add lines from incoming whose key is absent from existing
+		const toAdd: string[] = [];
+		for (const line of incoming.split("\n")) {
+			const key = line.match(/^([^#\s][^:]*?):/)?.[1]?.trim();
+			if (key && !existingKeys.has(key)) toAdd.push(line);
+		}
+
+		const base = existing.endsWith("\n") ? existing : existing + "\n";
+		return toAdd.length > 0 ? base + toAdd.join("\n") + "\n" : base;
 	}
 
 	async saveSummaryNote(
