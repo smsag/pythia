@@ -104,7 +104,7 @@ export class AnthropicService implements LLMProvider {
 			).map((m) => ({ role: m.role, content: m.content }));
 
 			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
-				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder).map((def) => ({
+				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def) => ({
 						name: def.name,
 						description: def.description,
 						input_schema: def.inputSchema as Anthropic.Tool.InputSchema,

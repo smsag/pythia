@@ -34,9 +34,8 @@ export async function buildAttachedNotesContent(
 		const file = app.vault.getAbstractFileByPath(notePath);
 		if (file instanceof TFile) {
 			const content = await app.vault.read(file);
-			const filename = notePath.split("/").pop() ?? notePath;
 			parts.push(
-				`<attached_note name="${filename}">\n${content}\n</attached_note>`
+				`<attached_note path="${notePath}">\n${content}\n</attached_note>`
 			);
 		} else {
 			missingNotes.push(notePath);

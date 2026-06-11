@@ -140,7 +140,7 @@ export class OpenAIProvider implements LLMProvider {
 			const loopMessages: OAILoopMessage[] = [...apiMessages];
 
 			const openaiTools = onToolCall
-				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder).map((def) => ({
+				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def) => ({
 						type: "function" as const,
 						function: {
 							name: def.name,
