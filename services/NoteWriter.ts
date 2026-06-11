@@ -41,7 +41,19 @@ export class NoteWriter {
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const current =
 			existing instanceof TFile ? await this.app.vault.read(existing) : "";
-		const updated = current ? `${content}\n\n---\n\n${current}` : content;
+
+		// Preserve YAML frontmatter at the top — Obsidian only recognises it there.
+		// Insert the new content after the closing --- of the frontmatter block.
+		const fmMatch = current.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+		let updated: string;
+		if (fmMatch) {
+			const frontmatter = fmMatch[0];
+			const body = current.slice(frontmatter.length);
+			updated = `${frontmatter}${content}\n\n---\n\n${body}`;
+		} else {
+			updated = current ? `${content}\n\n---\n\n${current}` : content;
+		}
+
 		return this.writeNote(updated, filePath);
 	}
 
