@@ -1,6 +1,6 @@
 {
   "name": "pythia",
-  "version": "1.16.1",
+  "version": "1.17.0",
   "description": "AI conversations as first-class vault objects in Obsidian",
   "main": "main.js",
   "scripts": {
