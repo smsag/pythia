@@ -52,11 +52,11 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 
 ## Templates
 
-Templates are vault notes with `pythia_template: true` in the frontmatter:
+Templates are vault notes with `type: Pythia Prompt Template` in the frontmatter. Place them in the configured templates folder (default: `Pythia/Templates/`). The plugin discovers them automatically.
 
 ```markdown
 ---
-pythia_template: true
+type: Pythia Prompt Template
 name: Job Application
 model: claude-sonnet-4-6
 max_tokens: 4000
@@ -65,12 +65,36 @@ context_notes:
   - Freelance/Reason-Why.md
 resume_mode: summary
 output_folder: Applications
+write_mode: create
+auto_prompt: Draft a cover letter based on the attached CV and job description.
 ---
 
 You are helping write job applications for senior roles…
 ```
 
-Place templates in the configured templates folder (default: `Pythia/Templates/`). The plugin discovers them automatically.
+### Frontmatter fields
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | **yes** | Must be exactly `Pythia Prompt Template` |
+| `name` | no | Display name in the template picker (defaults to filename) |
+| `provider` | no | `anthropic` or `openai` — overrides the default provider |
+| `model` | no | Model ID (e.g. `claude-sonnet-4-6`) — overrides the default |
+| `max_tokens` | no | Token limit override (default: 4096) |
+| `context_notes` | no | Vault paths of notes always attached as context |
+| `resume_mode` | no | `full` (entire history) or `summary` (condensed) — controls token cost on long conversations |
+| `output_folder` | no | Default folder for AI-created notes. Use `"."` to resolve to the same folder as the currently active note |
+| `write_mode` | no | `create` (default) — LLM writes a new note. `update` — LLM prepends its output above the source note, separated by a horizontal rule |
+| `auto_prompt` | no | Message sent automatically the moment the conversation opens — no manual typing required |
+
+### write_mode
+
+Controls what tool the LLM is given:
+
+- **`create`** (default) — exposes `create_note`. The LLM writes output to a new or specified vault note.
+- **`update`** — exposes `prepend_note`. The LLM prepends its output to the top of the source note (the note that was active when the template was launched), separated from the original content by `---`.
+
+Use `update` for processing workflows where the AI result should live alongside the source material — e.g. prepending a podcast summary above a transcript.
 
 ## Recommended hotkeys
 
@@ -152,7 +176,7 @@ vault/
 | Default provider | `anthropic` | Anthropic or OpenAI |
 | Default Anthropic model | `claude-sonnet-4-6` | Overridden per template |
 | Default OpenAI model | `gpt-4o` | Overridden per template |
-| Templates folder | `Pythia/Templates` | Scanned for `pythia_template: true` |
+| Templates folder | `Pythia/Templates` | Scanned for `type: Pythia Prompt Template` |
 | Conversations folder | `Pythia/Conversations` | Where summary notes are saved |
 | Scratch folder | `Pythia/Scratch` | For ad-hoc conversations |
 | Inbox note | `Pythia/Inbox.md` | Target file for "Save to inbox" — selections are prepended with a timestamp |
