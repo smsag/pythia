@@ -58,55 +58,55 @@ export default class PythiaPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-sidebar",
-			name: "Open sidebar",
+			name: t("cmdOpenSidebar"),
 			callback: () => this.activateView(),
 		});
 
 		this.addCommand({
 			id: "new-conversation",
-			name: "New conversation",
+			name: t("cmdNewConversation"),
 			callback: () => this.cmdNewConversation(),
 		});
 
 		this.addCommand({
 			id: "new-conversation-from-template",
-			name: "New conversation from template",
+			name: t("cmdNewConversationFromTemplate"),
 			callback: () => this.cmdNewConversationFromTemplate(),
 		});
 
 		this.addCommand({
 			id: "new-conversation-with-current-note",
-			name: "New conversation with current note",
+			name: t("cmdNewConversationWithCurrentNote"),
 			callback: () => this.cmdNewConversationWithCurrentNote(),
 		});
 
 		this.addCommand({
 			id: "resume-conversation",
-			name: "Resume conversation",
+			name: t("cmdResumeConversation"),
 			callback: () => this.cmdResumeConversation(),
 		});
 
 		this.addCommand({
 			id: "browse-conversations",
-			name: "Browse conversations",
+			name: t("cmdBrowseConversations"),
 			callback: () => this.cmdBrowseConversations(),
 		});
 
 		this.addCommand({
 			id: "browse-favorites",
-			name: "Browse favorites",
+			name: t("cmdBrowseFavorites"),
 			callback: () => this.cmdBrowseFavorites(),
 		});
 
 		this.addCommand({
 			id: "copy-conversation-link",
-			name: "Copy link to current conversation",
+			name: t("cmdCopyConversationLink"),
 			callback: () => this.cmdCopyConversationLink(),
 		});
 
 		this.addCommand({
 			id: "new-conversation-from-clipboard",
-			name: "New conversation from clipboard",
+			name: t("cmdNewConversationFromClipboard"),
 			callback: () => this.cmdNewConversationFromClipboard(),
 		});
 
@@ -118,7 +118,7 @@ export default class PythiaPlugin extends Plugin {
 
 		this.addCommand({
 			id: "reload-conversations",
-			name: "Reload conversations from disk",
+			name: t("cmdReloadConversations"),
 			callback: () => this.reloadFromDisk(),
 		});
 

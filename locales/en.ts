@@ -31,6 +31,10 @@ const en = {
 	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 
+	// ── Code block actions ────────────────────────────────────────────────────
+	copyCodeTooltip:       "Copy",
+	toolPathNotInContext:  "Error: \"{{path}}\" is not in context notes",
+
 	// ── Tool call chips ───────────────────────────────────────────────────────
 	creatingNote:  "Creating note: {{path}}",
 	createdNote:   "✓ Created [[{{name}}]]",
@@ -86,6 +90,16 @@ const en = {
 	filePathLabel:  "File path",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
+	cmdOpenSidebar:                    "Open sidebar",
+	cmdNewConversation:                "New conversation",
+	cmdNewConversationFromTemplate:    "New conversation from template",
+	cmdNewConversationWithCurrentNote: "New conversation with current note",
+	cmdResumeConversation:             "Resume conversation",
+	cmdBrowseConversations:            "Browse conversations",
+	cmdBrowseFavorites:                "Browse favorites",
+	cmdCopyConversationLink:           "Copy link to current conversation",
+	cmdNewConversationFromClipboard:   "New conversation from clipboard",
+	cmdReloadConversations:            "Reload conversations from disk",
 	sendSelectionToPythia:           "Send selection to Pythia",
 	sendSelectionToPythiaWithTemplate: "Send selection to Pythia with template",
 	chatAboutNote:          "Chat about this note",

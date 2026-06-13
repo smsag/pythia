@@ -1004,7 +1004,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 			// Copy button lives on the frame so it stays fixed while the pre scrolls.
 			const actions = frame.createEl("div", { cls: "p-code-actions" });
-			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: "Copy" } });
+			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
 			setIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", async (e) => {
 				e.stopPropagation();
@@ -1924,7 +1924,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 							chipEl.empty();
 							chipEl.removeClass("pythia-tool-call--pending");
 							chipEl.addClass("pythia-tool-call--error");
-							chipEl.createSpan({ text: `Error: "${targetPath}" is not in context notes` });
+							chipEl.createSpan({ text: t("toolPathNotInContext", { path: targetPath }) });
 							return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
 						}
 					}

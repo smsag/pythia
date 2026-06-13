@@ -33,6 +33,10 @@ const de: Strings = {
 	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
 
+	// ── Code block actions ────────────────────────────────────────────────────
+	copyCodeTooltip:       "Kopieren",
+	toolPathNotInContext:  "Fehler: \"{{path}}\" ist nicht in den Kontextnotizen",
+
 	// ── Tool call chips ───────────────────────────────────────────────────────
 	creatingNote:  "Notiz wird erstellt: {{path}}",
 	createdNote:   "✓ Erstellt [[{{name}}]]",
@@ -88,6 +92,16 @@ const de: Strings = {
 	filePathLabel: "Dateipfad",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
+	cmdOpenSidebar:                    "Seitenleiste öffnen",
+	cmdNewConversation:                "Neues Gespräch",
+	cmdNewConversationFromTemplate:    "Neues Gespräch aus Vorlage",
+	cmdNewConversationWithCurrentNote: "Neues Gespräch mit aktueller Notiz",
+	cmdResumeConversation:             "Gespräch fortsetzen",
+	cmdBrowseConversations:            "Gespräche durchsuchen",
+	cmdBrowseFavorites:                "Favoriten durchsuchen",
+	cmdCopyConversationLink:           "Link zum aktuellen Gespräch kopieren",
+	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
+	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 	sendSelectionToPythia:           "Auswahl an Pythia senden",
 	sendSelectionToPythiaWithTemplate: "Auswahl mit Vorlage an Pythia senden",
 	chatAboutNote:          "Über diese Notiz chatten",
