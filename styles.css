@@ -1381,21 +1381,33 @@ body.is-mobile .p-textarea {
   margin-bottom: var(--s3);
 }
 .p-optimize-actions button {
+  all: unset;
   font-family: var(--font-monospace);
   font-size: var(--font-smaller);
-  padding: 2px var(--s2);
+  padding: 3px var(--s2);
   border-radius: 3px;
   cursor: pointer;
-  line-height: 1.6;
+  box-sizing: border-box;
 }
 .p-optimize-actions .p-opt-confirm {
-  background: var(--color-accent);
-  color: var(--text-on-accent);
-  border: none;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  opacity: 0.75;
+  transition: opacity 0.1s;
 }
-.p-optimize-actions .p-opt-discard,
+.p-optimize-actions .p-opt-confirm:hover { opacity: 1; }
+.p-optimize-actions .p-opt-discard {
+  color: var(--text-error);
+  border: 1px solid var(--text-error);
+  opacity: 0.75;
+  transition: opacity 0.1s;
+}
+.p-optimize-actions .p-opt-discard:hover { opacity: 1; }
 .p-optimize-actions .p-opt-retry {
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  transition: background 0.1s, color 0.1s;
+}
+.p-optimize-actions .p-opt-retry:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }

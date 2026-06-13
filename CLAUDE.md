@@ -18,7 +18,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   services/
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
-    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, lang helpers
+    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
@@ -30,7 +30,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test)
+  tests/                      ← Vitest unit tests (npm test) — 48 tests across messageUtils, apiError, i18n, utils
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -41,7 +41,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     engineering-review.md     ← improvement suggestions and priority matrix
     pythia-v3.html            ← living visual reference — open in browser before any UI work
     design-system.css         ← CSS token definitions and component styles
-  .github/workflows/ci.yml   ← runs npm test on every push / PR
+  eslint.config.mjs           ← ESLint flat config (typescript-eslint)
+  vitest.config.ts            ← Vitest coverage configuration
+  .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
 ```
 
 ---

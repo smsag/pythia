@@ -34,8 +34,12 @@ const de: Strings = {
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────
-	creatingNote: "Notiz wird erstellt: {{path}}",
-	createdNote:  "✓ Erstellt [[{{name}}]]",
+	creatingNote:  "Notiz wird erstellt: {{path}}",
+	createdNote:   "✓ Erstellt [[{{name}}]]",
+	rewritingNote:  "{{path}} wird neu geschrieben…",
+	rewrittenNote:  "✓ [[{{name}}]] neu geschrieben",
+	prependingNote: "Wird {{path}} vorangestellt…",
+	prependedNote:  "✓ [[{{name}}]] vorangestellt",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
@@ -84,7 +88,8 @@ const de: Strings = {
 	filePathLabel: "Dateipfad",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
-	sendToPythia:           "An Pythia senden",
+	sendSelectionToPythia:           "Auswahl an Pythia senden",
+	sendSelectionToPythiaWithTemplate: "Auswahl mit Vorlage an Pythia senden",
 	chatAboutNote:          "Über diese Notiz chatten",
 	chatAboutFolder:        "Über diesen Ordner chatten",
 	noMarkdownInFolder:     "Keine Markdown-Dateien in diesem Ordner gefunden.",

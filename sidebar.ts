@@ -110,8 +110,7 @@ export class PythiaSidebarView extends ItemView {
 	private copyLinkBtn!: HTMLButtonElement;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
-	private favoritesPillsEl!: HTMLElement;
-	private favoritesSectionEl!: HTMLElement;
+
 	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
@@ -259,7 +258,6 @@ export class PythiaSidebarView extends ItemView {
 		this.renderHeader();
 		this.updateModelBadge();
 		this.renderReferencePills();
-		this.renderFavoritesBar();
 		this.updateSummaryBar();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -438,19 +436,7 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
 		this.summaryPanelEl.style.display = "none";
 
-		this.favoritesSectionEl = container.createDiv({
-			cls: "pythia-favorites-section",
-		});
-		this.favoritesSectionEl.createEl("span", {
-			cls: "pythia-section-label",
-			text: t("favoritesSection"),
-		});
-		this.favoritesPillsEl = this.favoritesSectionEl.createDiv({
-			cls: "pythia-pills",
-		});
-		this.favoritesSectionEl.style.display = "none";
-
-		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
+const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
 		this.messagesEl.addEventListener("scroll", () => {
@@ -1294,38 +1280,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	private renderFavoritesBar(): void {
-		this.favoritesPillsEl.empty();
-		const favs = this.activeConversation?.favorites;
-		if (!favs || favs.length === 0) {
-			this.favoritesSectionEl.style.display = "none";
-			return;
-		}
-		this.favoritesSectionEl.style.display = "";
-		for (const fav of favs) {
-			const pill = this.favoritesPillsEl.createEl("span", {
-				cls: "pythia-pill pythia-favorite-pill",
-			});
-			const label = pill.createEl("span", {
-				cls: "pythia-pill-label",
-				text: `★ ${fav.name}`,
-				attr: { title: fav.name },
-			});
-			label.addEventListener("click", () =>
-				this.scrollToMessage(fav.messageId)
-			);
-			const x = pill.createEl("button", {
-				cls: "pythia-pill-remove",
-				text: "×",
-				attr: { title: t("removeFromFavorites") },
-			});
-			x.addEventListener("click", () =>
-				this.removeFavorite(fav.messageId)
-			);
-		}
-	}
-
-	private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void> {
+private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void> {
 		if (!this.activeConversation) return;
 		const conv = this.activeConversation;
 		const existing = conv.favorites?.findIndex((f) => f.messageId === msg.id) ?? -1;
@@ -1359,7 +1314,6 @@ export class PythiaSidebarView extends ItemView {
 		starEl.setText("★");
 		starEl.addClass("on");
 		starEl.title = t("removeFromFavorites");
-		this.renderFavoritesBar();
 	}
 
 	private async removeFavorite(messageId: string): Promise<void> {
@@ -1369,7 +1323,6 @@ export class PythiaSidebarView extends ItemView {
 			(f) => f.messageId !== messageId
 		);
 		await this.plugin.conversationStore.save(conv);
-		this.renderFavoritesBar();
 		// Update the star button in the DOM
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
@@ -1939,15 +1892,32 @@ export class PythiaSidebarView extends ItemView {
 						typeof call.input["path"] === "string"
 							? call.input["path"]
 							: call.name;
+					const isRewrite = call.name === "rewrite_note";
+					const isPrepend = call.name === "prepend_note";
 					const chipEl = this.messagesEl.createDiv({
 						cls: "pythia-tool-call pythia-tool-call--pending",
 					});
 					chipEl.createSpan({ cls: "pythia-tool-call-spinner" });
 					chipEl.createSpan({
 						cls: "pythia-tool-call-label",
-						text: t("creatingNote", { path: pathText }),
+						text: isRewrite
+							? t("rewritingNote", { path: pathText })
+							: isPrepend
+							? t("prependingNote", { path: pathText })
+							: t("creatingNote", { path: pathText }),
 					});
 					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+					if (isRewrite || isPrepend) {
+						const targetPath = typeof call.input["path"] === "string" ? call.input["path"] : "";
+						if (!conv.contextNotes.includes(targetPath)) {
+							chipEl.empty();
+							chipEl.removeClass("pythia-tool-call--pending");
+							chipEl.addClass("pythia-tool-call--error");
+							chipEl.createSpan({ text: `Error: "${targetPath}" is not in context notes` });
+							return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
+						}
+					}
 
 					const result = await executeToolCall(
 						this.plugin.app,
@@ -1971,7 +1941,11 @@ export class PythiaSidebarView extends ItemView {
 							notePath;
 						const link = chipEl.createEl("a", {
 							cls: "pythia-tool-call-link",
-							text: t("createdNote", { name: noteName }),
+							text: isRewrite
+								? t("rewrittenNote", { name: noteName })
+								: isPrepend
+								? t("prependedNote", { name: noteName })
+								: t("createdNote", { name: noteName }),
 						});
 						link.addEventListener("click", (e) => {
 							e.preventDefault();

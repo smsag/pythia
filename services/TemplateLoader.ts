@@ -70,8 +70,8 @@ export class TemplateLoader {
 				: [];
 
 			const rawWriteMode = fm.write_mode;
-			const validWriteMode: "update" | "create" | undefined =
-				rawWriteMode === "update" || rawWriteMode === "create"
+			const validWriteMode: "update" | "create" | "none" | "rewrite" | "all" | undefined =
+				rawWriteMode === "update" || rawWriteMode === "create" || rawWriteMode === "none" || rawWriteMode === "rewrite" || rawWriteMode === "all"
 					? rawWriteMode
 					: undefined;
 

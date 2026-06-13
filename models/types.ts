@@ -23,7 +23,7 @@ export interface Conversation {
 	forkedFromMessageId?: string;     // ID of the source message within that conversation
 	forkedFromSelection?: string;     // The text selected when the fork was created
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
-	writeMode?: "update" | "create";  // whether tool calls update the source note or create a new one
+	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 }
 
 export interface TokenUsage {
@@ -55,7 +55,7 @@ export interface PythiaTemplate {
 	contextNotes: string[];
 	resumeMode?: "full" | "summary";
 	outputFolder?: string;    // "." = same folder as the active note at creation time
-	writeMode?: "update" | "create";
+	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 	autoPrompt?: string;      // message auto-sent when the conversation opens
 	systemPrompt: string;
 }

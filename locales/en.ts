@@ -32,8 +32,12 @@ const en = {
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────
-	creatingNote: "Creating note: {{path}}",
-	createdNote:  "✓ Created [[{{name}}]]",
+	creatingNote:  "Creating note: {{path}}",
+	createdNote:   "✓ Created [[{{name}}]]",
+	rewritingNote:  "Rewriting {{path}}…",
+	rewrittenNote:  "✓ Rewrote [[{{name}}]]",
+	prependingNote: "Prepending to {{path}}…",
+	prependedNote:  "✓ Prepended to [[{{name}}]]",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:     "Copy",
@@ -82,7 +86,8 @@ const en = {
 	filePathLabel:  "File path",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
-	sendToPythia:           "Send to Pythia",
+	sendSelectionToPythia:           "Send selection to Pythia",
+	sendSelectionToPythiaWithTemplate: "Send selection to Pythia with template",
 	chatAboutNote:          "Chat about this note",
 	chatAboutFolder:        "Chat about this folder",
 	noMarkdownInFolder:     "No markdown files found in this folder.",

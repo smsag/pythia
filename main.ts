@@ -122,25 +122,62 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => this.reloadFromDisk(),
 		});
 
-		this.registerEvent(
-			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
+		this.addCommand({
+			id: "send-selection-to-pythia",
+			name: t("sendSelectionToPythia"),
+			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
-				menu.addItem((item) => {
-					item
-						.setTitle(t("sendToPythia"))
-						.setIcon("bot")
-						.onClick(async () => {
-							const conv = await this.createConversation(
-								`Conversation ${todayISO()}`
-							);
-							const view = await this.activateView();
-							await view.setActiveConversation(conv);
-							view.prefillInput(selection);
-						});
-				});
-			})
-		);
+				const conv = await this.createConversation(`Conversation ${todayISO()}`);
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				view.triggerAutoPrompt(selection);
+			},
+		});
+
+		this.addCommand({
+			id: "send-selection-to-pythia-with-template",
+			name: t("sendSelectionToPythiaWithTemplate"),
+			editorCallback: async (editor: Editor) => {
+				const selection = editor.getSelection();
+				if (!selection) return;
+				const templates = await this.templateLoader.loadTemplates();
+				if (templates.length === 0) {
+					new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
+					return;
+				}
+				const activeFile = this.app.workspace.getActiveFile();
+				new TemplateSuggestModal(this.app, templates, async (tpl) => {
+					const contextNotes = [...tpl.contextNotes];
+					if (this.settings.injectActiveNoteOnTemplate && activeFile) {
+						if (!contextNotes.includes(activeFile.path)) {
+							contextNotes.push(activeFile.path);
+						}
+					}
+					let outputFolder = tpl.outputFolder;
+					if (outputFolder === "." && activeFile) {
+						const parentPath = activeFile.parent?.path ?? "";
+						outputFolder = parentPath === "/" ? "" : parentPath;
+					}
+					const conv = await this.createConversation(
+						`${tpl.name} ${todayISO()}`,
+						tpl.systemPrompt,
+						contextNotes,
+						tpl.id,
+						tpl.provider,
+						tpl.model,
+						tpl.maxTokens,
+						outputFolder
+					);
+					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+					if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+					await this.conversationStore.save(conv);
+					const view = await this.activateView();
+					await view.setActiveConversation(conv);
+					view.triggerAutoPrompt(selection);
+				}).open();
+			},
+		});
 
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
