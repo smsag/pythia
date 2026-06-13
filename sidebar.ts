@@ -219,7 +219,7 @@ export class PythiaSidebarView extends ItemView {
 					if (/\d{4}-\d{2}-\d{2}$/.test(conv.name)) conv.name = title;
 					await this.plugin.conversationStore.save(conv);
 				})
-				.catch(() => { /* non-critical — leave existing summary intact */ });
+				.catch((e) => console.warn("[Pythia] auto-save summary failed:", e));
 		}
 
 		// Discard any pending optimization state.
@@ -1930,8 +1930,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 					}
 
 					const result = await executeToolCall(
-						this.plugin.app,
-						this.plugin.settings,
+						this.plugin.noteWriter,
 						call
 					);
 
@@ -2024,7 +2023,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 									this.convNameEl.setText(c.name + " ▾");
 								}
 							})
-							.catch(() => { /* keep date name on failure */ });
+							.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
 					}
 
 					if (!userMsg.chapterName) {
@@ -2041,7 +2040,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 								m.chapterName = name;
 								await this.plugin.conversationStore.save(c);
 							})
-							.catch(() => { /* chapter name is non-critical */ });
+							.catch((e) => console.warn("[Pythia] chapter name generation failed:", e));
 					}
 				}
 			},

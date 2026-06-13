@@ -1,6 +1,4 @@
-import { App } from "obsidian";
 import { NoteWriter } from "./NoteWriter";
-import type { PythiaSettings } from "../settings";
 import type { ToolCall, ToolDefinition } from "../models/types";
 
 const CREATE_NOTE_TOOL = (defaultFolder: string): ToolDefinition => ({
@@ -81,8 +79,7 @@ export function getToolDefinitions(defaultFolder: string, writeMode: "update" | 
 }
 
 export async function executeToolCall(
-	app: App,
-	settings: PythiaSettings,
+	writer: NoteWriter,
 	call: ToolCall
 ): Promise<string> {
 	const path = call.input["path"];
@@ -97,8 +94,6 @@ export async function executeToolCall(
 	if (!path.endsWith(".md")) {
 		return "Error: path must end with .md";
 	}
-
-	const writer = new NoteWriter(app, settings);
 
 	if (call.name === "create_note" || call.name === "rewrite_note") {
 		try {
