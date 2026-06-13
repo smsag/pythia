@@ -32,7 +32,7 @@ let store: ConversationStore;
 beforeEach(() => {
 	vi.useFakeTimers();
 	plugin = makePlugin();
-	store = new ConversationStore(plugin as unknown as Parameters<typeof ConversationStore.prototype.constructor>[0]);
+	store = new ConversationStore(plugin as never);
 });
 
 afterEach(() => {

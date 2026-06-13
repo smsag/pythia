@@ -6,15 +6,16 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../services/NoteWriter", () => ({ NoteWriter: class {} }));
 
 import { getToolDefinitions, executeToolCall } from "../services/ToolHandler";
+import type { NoteWriter } from "../services/NoteWriter";
 import type { ToolCall } from "../models/types";
 
 // ── Minimal mock writer ───────────────────────────────────────────────────────
 
-const makeWriter = (overrides?: { writeNote?: () => Promise<{ path: string }>; prependWithSeparator?: () => Promise<{ path: string }> }) => ({
+const makeWriter = (overrides?: { writeNote?: () => Promise<{ path: string }>; prependWithSeparator?: () => Promise<{ path: string }> }): NoteWriter => ({
 	writeNote:           vi.fn().mockResolvedValue({ path: "Notes/out.md" }),
 	prependWithSeparator: vi.fn().mockResolvedValue({ path: "Notes/out.md" }),
 	...overrides,
-});
+} as unknown as NoteWriter);
 
 const call = (name: string, input: Record<string, unknown>): ToolCall => ({
 	id: "test-id",

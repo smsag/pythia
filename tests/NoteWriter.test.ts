@@ -61,7 +61,7 @@ let writer: NoteWriter;
 
 beforeEach(() => {
 	vault = new MockVault();
-	writer = new NoteWriter({ vault } as unknown as Parameters<typeof NoteWriter.prototype.constructor>[0], SETTINGS);
+	writer = new NoteWriter({ vault } as never, SETTINGS);
 });
 
 // ── writeNote ─────────────────────────────────────────────────────────────────
