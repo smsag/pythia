@@ -891,7 +891,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			const isLong = msg.content.length > 280;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
 			try {
-				await MarkdownRenderer.render(this.app, msg.content, bubble, "", this);
+				await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), bubble, "", this);
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
 			}
@@ -919,7 +919,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		});
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
-			await MarkdownRenderer.render(this.app, msg.content, aiBody, "", this);
+			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), aiBody, "", this);
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
@@ -963,7 +963,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				try {
-					await MarkdownRenderer.render(this.app, fullText, aiBody, "", this);
+					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(fullText), aiBody, "", this);
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
@@ -976,6 +976,16 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 	}
 
 	// ── Code block decoration: drag-to-pan + copy button ────────────────────
+	// When the LLM has a syntax reference in context it sometimes wraps the
+	// generated code fence in a plain outer fence (no language tag). Strip it so
+	// third-party processors (e.g. Vizardry) receive the bare fenced block.
+	private unwrapCodeFence(text: string): string {
+		return text.replace(
+			/```[ \t]*\n(```[a-zA-Z][^\n]*\n[\s\S]*?\n[ \t]*```)[ \t]*\n[ \t]*```/g,
+			"$1"
+		);
+	}
+
 	private decorateCodeBlocks(container: HTMLElement): void {
 		// Fenced code blocks — skip the source-listing pre inside diagram blocks;
 		// those are handled (and eventually replaced) by Mermaid/PlantUML renderers.
