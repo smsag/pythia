@@ -5,6 +5,7 @@ import type { Conversation, Provider } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "./suggest/ConversationSuggest";
+import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ResumeModeModal } from "./suggest/ResumeModeModal";
 import { AnthropicService } from "./services/AnthropicService";
@@ -57,27 +58,9 @@ export default class PythiaPlugin extends Plugin {
 		this.addSettingTab(new PythiaSettingTab(this.app, this));
 
 		this.addCommand({
-			id: "open-sidebar",
-			name: t("cmdOpenSidebar"),
-			callback: () => this.activateView(),
-		});
-
-		this.addCommand({
 			id: "new-conversation",
 			name: t("cmdNewConversation"),
 			callback: () => this.cmdNewConversation(),
-		});
-
-		this.addCommand({
-			id: "new-conversation-from-template",
-			name: t("cmdNewConversationFromTemplate"),
-			callback: () => this.cmdNewConversationFromTemplate(),
-		});
-
-		this.addCommand({
-			id: "new-conversation-with-current-note",
-			name: t("cmdNewConversationWithCurrentNote"),
-			callback: () => this.cmdNewConversationWithCurrentNote(),
 		});
 
 		this.addCommand({
@@ -87,39 +70,45 @@ export default class PythiaPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "browse-conversations",
-			name: t("cmdBrowseConversations"),
-			callback: () => this.cmdBrowseConversations(),
-		});
-
-		this.addCommand({
-			id: "browse-favorites",
-			name: t("cmdBrowseFavorites"),
-			callback: () => this.cmdBrowseFavorites(),
-		});
-
-		this.addCommand({
-			id: "copy-conversation-link",
-			name: t("cmdCopyConversationLink"),
-			callback: () => this.cmdCopyConversationLink(),
-		});
-
-		this.addCommand({
-			id: "new-conversation-from-clipboard",
-			name: t("cmdNewConversationFromClipboard"),
-			callback: () => this.cmdNewConversationFromClipboard(),
-		});
-
-		this.addCommand({
-			id: "new-conversation-from-prompt",
-			name: t("cmdNewConversationFromPrompt"),
-			callback: () => this.promptOptimizerService.run(),
-		});
-
-		this.addCommand({
-			id: "reload-conversations",
-			name: t("cmdReloadConversations"),
-			callback: () => this.reloadFromDisk(),
+			id: "hub",
+			name: t("cmdHub"),
+			callback: () => new CommandHubModal(this.app, [
+				{
+					label: t("cmdNewConversationFromTemplate"),
+					desc:   t("cmdNewConversationFromTemplateDesc"),
+					action: () => this.cmdNewConversationFromTemplate(),
+				},
+				{
+					label: t("cmdNewConversationWithCurrentNote"),
+					desc:   t("cmdNewConversationWithCurrentNoteDesc"),
+					action: () => this.cmdNewConversationWithCurrentNote(),
+				},
+				{
+					label: t("cmdNewConversationFromClipboard"),
+					desc:   t("cmdNewConversationFromClipboardDesc"),
+					action: () => this.cmdNewConversationFromClipboard(),
+				},
+				{
+					label: t("cmdNewConversationFromPrompt"),
+					desc:   t("cmdNewConversationFromPromptDesc"),
+					action: () => this.promptOptimizerService.run(),
+				},
+				{
+					label: t("cmdBrowseConversations"),
+					desc:   t("cmdBrowseConversationsDesc"),
+					action: () => this.cmdBrowseConversations(),
+				},
+				{
+					label: t("cmdBrowseFavorites"),
+					desc:   t("cmdBrowseFavoritesDesc"),
+					action: () => this.cmdBrowseFavorites(),
+				},
+				{
+					label: t("cmdReloadConversations"),
+					desc:   t("cmdReloadConversationsDesc"),
+					action: () => this.reloadFromDisk(),
+				},
+			]).open(),
 		});
 
 		this.addCommand({

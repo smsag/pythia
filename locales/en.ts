@@ -90,16 +90,26 @@ const en = {
 	filePathLabel:  "File path",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
-	cmdOpenSidebar:                    "Open sidebar",
 	cmdNewConversation:                "New conversation",
 	cmdNewConversationFromTemplate:    "New conversation from template",
 	cmdNewConversationWithCurrentNote: "New conversation with current note",
 	cmdResumeConversation:             "Resume conversation",
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
-	cmdCopyConversationLink:           "Copy link to current conversation",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
+
+	// ── Command hub ───────────────────────────────────────────────────────────
+	cmdHub:                                  "Commands…",
+	searchHub:                               "Search commands…",
+	cmdNewConversationFromTemplateDesc:      "Choose a template to pre-configure context and system prompt",
+	cmdNewConversationWithCurrentNoteDesc:   "Attach the open note as context and start chatting",
+	cmdNewConversationFromClipboardDesc:     "Start a conversation with clipboard content as first message",
+	cmdNewConversationFromPromptDesc:        "Optimize a prompt with AI before starting a conversation",
+	cmdBrowseConversationsDesc:              "Search and open any saved conversation",
+	cmdBrowseFavoritesDesc:                  "Jump to starred messages across conversations",
+	cmdReloadConversationsDesc:              "Force-sync if conversations were edited externally",
+
 	sendSelectionToPythia:           "Send selection to Pythia",
 	sendSelectionToPythiaWithTemplate: "Send selection to Pythia with template",
 	chatAboutNote:          "Chat about this note",

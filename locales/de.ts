@@ -92,16 +92,26 @@ const de: Strings = {
 	filePathLabel: "Dateipfad",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
-	cmdOpenSidebar:                    "Seitenleiste öffnen",
 	cmdNewConversation:                "Neues Gespräch",
 	cmdNewConversationFromTemplate:    "Neues Gespräch aus Vorlage",
 	cmdNewConversationWithCurrentNote: "Neues Gespräch mit aktueller Notiz",
 	cmdResumeConversation:             "Gespräch fortsetzen",
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
-	cmdCopyConversationLink:           "Link zum aktuellen Gespräch kopieren",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
+
+	// ── Command hub ───────────────────────────────────────────────────────────
+	cmdHub:                                  "Befehle…",
+	searchHub:                               "Befehle durchsuchen…",
+	cmdNewConversationFromTemplateDesc:      "Vorlage auswählen, um Kontext und Systemprompt vorzukonfigurieren",
+	cmdNewConversationWithCurrentNoteDesc:   "Aktuelle Notiz als Kontext anhängen und Gespräch starten",
+	cmdNewConversationFromClipboardDesc:     "Gespräch mit Zwischenablage-Inhalt als erste Nachricht starten",
+	cmdNewConversationFromPromptDesc:        "Prompt mit KI optimieren, bevor das Gespräch beginnt",
+	cmdBrowseConversationsDesc:              "Alle gespeicherten Gespräche suchen und öffnen",
+	cmdBrowseFavoritesDesc:                  "Zu markierten Nachrichten aus allen Gesprächen springen",
+	cmdReloadConversationsDesc:              "Neu synchronisieren, falls Gespräche extern bearbeitet wurden",
+
 	sendSelectionToPythia:           "Auswahl an Pythia senden",
 	sendSelectionToPythiaWithTemplate: "Auswahl mit Vorlage an Pythia senden",
 	chatAboutNote:          "Über diese Notiz chatten",
