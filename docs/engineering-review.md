@@ -74,17 +74,17 @@
 | 2 | Batch `backfillChapterNames` | ✅ Serial for-loop |
 | 3 | `data.json` unbounded growth | ✅ Partial — cap + eviction; per-file Backlog |
 | 4 | Cache context note file reads | Open — Backlog |
-| 5 | Inject `NoteWriter` instead of constructing inline | Open — Now |
+| 5 | Inject `NoteWriter` instead of constructing inline | ✅ `ToolHandler` class; `plugin.toolHandler` |
 | 6 | Extract `parseTitleAndSummary` to shared util | ✅ `services/messageUtils.ts` |
 | 7 | Error handling on persistence failure | ✅ try/catch + Notice + flush-on-unload |
 | 8 | Wrap `MarkdownRenderer.render()` in try/catch | ✅ Done |
 | 9 | Guard `Buffer` in `legacyDecrypt` | ✅ `typeof Buffer !== "undefined"` |
 | 10 | Harden fire-and-forget in fork path | Open — Backlog |
 | 11 | Split `sidebar.ts` into sub-components | Open — Backlog |
-| 12 | `BaseProvider` abstract class | Open — Backlog |
+| 12 | `BaseProvider` abstract class | ✅ `services/BaseProvider.ts` |
 | 13 | Auto-abbreviate unknown model names | ✅ Done |
 | 14 | Extract `normalizeMessages` to shared util | ✅ `services/messageUtils.ts` |
-| 15 | Add Vitest unit tests | ✅ 48 tests across 4 files |
+| 15 | Add Vitest unit tests | ✅ 155 tests across 7 files |
 | 16 | Remove dead `generateFavoriteName` | ✅ Done |
 | 17 | `maxConversations` eviction drops active conversation | ✅ `activeConversationId` guard |
 | 18 | `getSecret()` async safety | ✅ `await` at all three call sites |
@@ -168,7 +168,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 
 | # | Suggestion | Status | Impact | Effort | Priority |
 |---|---|---|---|---|---|
-| 5 | Inject `NoteWriter` instead of constructing inline | Open | Low | Low | ⭐ Now |
+| 5 | Inject `NoteWriter` instead of constructing inline | ✅ Done | Low | Low | — |
 | 31 | Persistence round-trip tests | Open | High | Medium | Soon |
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
 | 1 | Incremental DOM rendering in `renderMessages` | Open | High | High | Backlog |
