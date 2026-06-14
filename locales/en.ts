@@ -36,11 +36,15 @@ const en = {
 	toolPathNotInContext:  "Error: \"{{path}}\" is not in context notes",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────
-	creatingNote:  "Creating note: {{path}}",
+	confirmCreateNote:  "Create [[{{name}}]]?",
+	confirmRewriteNote: "Overwrite [[{{name}}]]?",
+	confirmPrependNote: "Prepend to [[{{name}}]]?",
+	confirmCreateBtn:   "Create",
+	confirmRewriteBtn:  "Overwrite",
+	confirmPrependBtn:  "Prepend",
+	toolCallCancelled:  "Cancelled",
 	createdNote:   "✓ Created [[{{name}}]]",
-	rewritingNote:  "Rewriting {{path}}…",
-	rewrittenNote:  "✓ Rewrote [[{{name}}]]",
-	prependingNote: "Prepending to {{path}}…",
+	rewrittenNote:  "✓ Overwrote [[{{name}}]]",
 	prependedNote:  "✓ Prepended to [[{{name}}]]",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
@@ -185,8 +189,6 @@ const en = {
 	outputLanguageGerman:    "German",
 	debugModeName:           "Debug mode",
 	debugModeDesc:           "Log API calls and payloads to the developer console.",
-	enableNoteCreationName:  "Allow AI to create notes",
-	enableNoteCreationDesc:  "Pass a create_note tool to the AI so it can write vault notes on request. When enabled, you can ask Pythia to create a note in plain language.",
 	injectActiveNoteOnTemplateName: "Inject active note when using a template",
 	injectActiveNoteOnTemplateDesc: "When starting a conversation from a template, automatically include the currently open note as additional context (e.g. the job ad, brief, or article you want to work on).",
 	chooseFolderBtn:         "Choose folder",

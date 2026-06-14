@@ -1896,75 +1896,97 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 
-		const onToolCall = this.plugin.settings.enableNoteCreation
-			? async (call: ToolCall): Promise<string> => {
-					const pathText =
-						typeof call.input["path"] === "string"
-							? call.input["path"]
-							: call.name;
-					const isRewrite = call.name === "rewrite_note";
-					const isPrepend = call.name === "prepend_note";
-					const chipEl = this.messagesEl.createDiv({
-						cls: "pythia-tool-call pythia-tool-call--pending",
+		const onToolCall = async (call: ToolCall): Promise<string> => {
+				const rawPath =
+					typeof call.input["path"] === "string"
+						? call.input["path"]
+						: call.name;
+				const noteName =
+					rawPath.split("/").pop()?.replace(/\.md$/, "") ?? rawPath;
+				const isRewrite = call.name === "rewrite_note";
+				const isPrepend = call.name === "prepend_note";
+
+				const chipEl = this.messagesEl.createDiv({ cls: "pythia-tool-call" });
+				this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+				// Path guard: rewrite/prepend may only target context notes
+				if (isRewrite || isPrepend) {
+					const targetPath =
+						typeof call.input["path"] === "string" ? call.input["path"] : "";
+					if (!conv.contextNotes.includes(targetPath)) {
+						chipEl.addClass("pythia-tool-call--error");
+						chipEl.createSpan({
+							cls: "pythia-tool-call-label",
+							text: t("toolPathNotInContext", { path: targetPath }),
+						});
+						return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
+					}
+				}
+
+				// Confirm chip — ask before writing
+				const questionText = isRewrite
+					? t("confirmRewriteNote", { name: noteName })
+					: isPrepend
+					? t("confirmPrependNote", { name: noteName })
+					: t("confirmCreateNote", { name: noteName });
+
+				chipEl.createSpan({ cls: "pythia-tool-call-label", text: questionText });
+
+				const actionsEl = chipEl.createDiv({ cls: "pythia-tool-call-actions" });
+				const actionLabel = isRewrite
+					? t("confirmRewriteBtn")
+					: isPrepend
+					? t("confirmPrependBtn")
+					: t("confirmCreateBtn");
+
+				const confirmed = await new Promise<boolean>((resolve) => {
+					const actionBtn = actionsEl.createEl("button", {
+						cls: "pythia-tool-call-btn pythia-tool-call-btn--action",
+						text: actionLabel,
 					});
-					chipEl.createSpan({ cls: "pythia-tool-call-spinner" });
+					const cancelBtn = actionsEl.createEl("button", {
+						cls: "pythia-tool-call-btn",
+						text: t("cancelBtn"),
+					});
+					this.registerDomEvent(actionBtn, "click", () => resolve(true));
+					this.registerDomEvent(cancelBtn, "click", () => resolve(false));
+				});
+
+				chipEl.empty();
+
+				if (!confirmed) {
+					chipEl.addClass("pythia-tool-call--cancelled");
 					chipEl.createSpan({
 						cls: "pythia-tool-call-label",
-						text: isRewrite
-							? t("rewritingNote", { path: pathText })
-							: isPrepend
-							? t("prependingNote", { path: pathText })
-							: t("creatingNote", { path: pathText }),
+						text: t("toolCallCancelled"),
 					});
-					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+					return `User cancelled the write operation.`;
+				}
 
-					if (isRewrite || isPrepend) {
-						const targetPath = typeof call.input["path"] === "string" ? call.input["path"] : "";
-						if (!conv.contextNotes.includes(targetPath)) {
-							chipEl.empty();
-							chipEl.removeClass("pythia-tool-call--pending");
-							chipEl.addClass("pythia-tool-call--error");
-							chipEl.createSpan({ text: t("toolPathNotInContext", { path: targetPath }) });
-							return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
-						}
-					}
+				const result = await executeToolCall(this.plugin.noteWriter, call);
 
-					const result = await executeToolCall(
-						this.plugin.noteWriter,
-						call
-					);
+				if (result.startsWith("Error")) {
+					chipEl.addClass("pythia-tool-call--error");
+					chipEl.createSpan({ cls: "pythia-tool-call-label", text: result });
+				} else {
+					chipEl.addClass("pythia-tool-call--done");
+					const doneText = isRewrite
+						? t("rewrittenNote", { name: noteName })
+						: isPrepend
+						? t("prependedNote", { name: noteName })
+						: t("createdNote", { name: noteName });
+					const link = chipEl.createEl("a", {
+						cls: "pythia-tool-call-link",
+						text: doneText,
+					});
+					link.addEventListener("click", (e) => {
+						e.preventDefault();
+						this.app.workspace.openLinkText(noteName, "");
+					});
+				}
 
-					chipEl.empty();
-					chipEl.removeClass("pythia-tool-call--pending");
-					if (result.startsWith("Error")) {
-						chipEl.addClass("pythia-tool-call--error");
-						chipEl.createSpan({ text: result });
-					} else {
-						chipEl.addClass("pythia-tool-call--done");
-						const notePath =
-							typeof call.input["path"] === "string"
-								? call.input["path"]
-								: "";
-						const noteName =
-							notePath.split("/").pop()?.replace(/\.md$/, "") ??
-							notePath;
-						const link = chipEl.createEl("a", {
-							cls: "pythia-tool-call-link",
-							text: isRewrite
-								? t("rewrittenNote", { name: noteName })
-								: isPrepend
-								? t("prependedNote", { name: noteName })
-								: t("createdNote", { name: noteName }),
-						});
-						link.addEventListener("click", (e) => {
-							e.preventDefault();
-							this.app.workspace.openLinkText(noteName, "");
-						});
-					}
-
-					return result;
-			  }
-			: undefined;
+				return result;
+		};
 
 		await this.plugin.llmRouter.streamMessage(
 			conv,

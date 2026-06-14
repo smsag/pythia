@@ -161,7 +161,7 @@ export class OpenAIProvider implements LLMProvider {
 						messages: loopMessages,
 						stream: true,
 						stream_options: { include_usage: true },
-						...(openaiTools ? { tools: openaiTools } : {}),
+						...(openaiTools?.length ? { tools: openaiTools } : {}),
 					},
 					{ signal: this.abortController.signal }
 				);

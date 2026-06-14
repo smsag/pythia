@@ -38,12 +38,16 @@ const de: Strings = {
 	toolPathNotInContext:  "Fehler: \"{{path}}\" ist nicht in den Kontextnotizen",
 
 	// ── Tool call chips ───────────────────────────────────────────────────────
-	creatingNote:  "Notiz wird erstellt: {{path}}",
-	createdNote:   "✓ Erstellt [[{{name}}]]",
-	rewritingNote:  "{{path}} wird neu geschrieben…",
-	rewrittenNote:  "✓ [[{{name}}]] neu geschrieben",
-	prependingNote: "Wird {{path}} vorangestellt…",
-	prependedNote:  "✓ [[{{name}}]] vorangestellt",
+	confirmCreateNote:  "[[{{name}}]] erstellen?",
+	confirmRewriteNote: "[[{{name}}]] überschreiben?",
+	confirmPrependNote: "[[{{name}}]] ergänzen?",
+	confirmCreateBtn:   "Erstellen",
+	confirmRewriteBtn:  "Überschreiben",
+	confirmPrependBtn:  "Einfügen",
+	toolCallCancelled:  "Abgebrochen",
+	createdNote:   "✓ [[{{name}}]] erstellt",
+	rewrittenNote:  "✓ [[{{name}}]] überschrieben",
+	prependedNote:  "✓ [[{{name}}]] ergänzt",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
@@ -187,8 +191,6 @@ const de: Strings = {
 	outputLanguageGerman:    "Deutsch",
 	debugModeName:           "Debug-Modus",
 	debugModeDesc:           "API-Aufrufe und Payloads in der Entwicklerkonsole protokollieren.",
-	enableNoteCreationName:  "KI darf Notizen erstellen",
-	enableNoteCreationDesc:  "Gibt der KI ein create_note-Tool, mit dem sie Vault-Notizen schreiben kann. Du kannst Pythia bitten, eine Notiz in natürlicher Sprache zu erstellen.",
 	injectActiveNoteOnTemplateName: "Aktive Notiz bei Vorlagen einfügen",
 	injectActiveNoteOnTemplateDesc: "Beim Starten einer Konversation aus einer Vorlage wird die aktuell geöffnete Notiz automatisch als zusätzlicher Kontext hinzugefügt (z. B. die Stellenanzeige, das Brief oder der Artikel, an dem du arbeiten möchtest).",
 	chooseFolderBtn:         "Ordner wählen",

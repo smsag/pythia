@@ -121,7 +121,7 @@ export class AnthropicService implements LLMProvider {
 						max_tokens: maxTokens,
 						...(systemPrompt ? { system: systemPrompt } : {}),
 						messages: loopMessages,
-						...(anthropicTools ? { tools: anthropicTools } : {}),
+						...(anthropicTools?.length ? { tools: anthropicTools } : {}),
 					},
 					{ signal: this.abortController.signal }
 				);
