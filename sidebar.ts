@@ -91,6 +91,10 @@ export class PythiaSidebarView extends ItemView {
 	get activeConversationId(): string | null { return this.activeConversation?.id ?? null; }
 	private isStreaming = false;
 	private autoScroll = true;
+	// Incremental DOM rendering — track what is already in the DOM so renderMessages
+	// can skip a full rebuild when the same conversation gains only new messages.
+	private renderedConvId: string | null = null;
+	private lastRenderedMsgId: string | null = null;
 	private longPressCleanup: (() => void) | null = null;
 	private activeDeletePreview: {
 		userRow: HTMLElement;
@@ -325,6 +329,8 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private buildUI(): void {
+		this.renderedConvId = null;
+		this.lastRenderedMsgId = null;
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
@@ -869,20 +875,78 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
 		this.hideDeletePreview();
-		this.messagesEl.empty();
+
 		if (!this.activeConversation) {
+			this.messagesEl.empty();
+			this.renderedConvId = null;
+			this.lastRenderedMsgId = null;
 			this.renderEmptyState();
 			return;
 		}
-		if (this.activeConversation.forkedFromId) this.renderForkBannerEl();
-		if (this.activeConversation.messages.length === 0) {
+
+		const conv = this.activeConversation;
+		const msgs = conv.messages;
+		const tailId = msgs.at(-1)?.id ?? null;
+
+		// ── Same conversation, nothing new ───────────────────────────────────────
+		// The DOM already reflects the full message list — only handle scroll.
+		if (this.renderedConvId === conv.id && this.lastRenderedMsgId === tailId) {
+			if (scrollTo === "top") {
+				this.autoScroll = false;
+				this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
+				requestAnimationFrame(() => {
+					this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
+				});
+			} else {
+				this.scrollToBottom();
+			}
+			this.attachLastBubbleLongPress();
+			return;
+		}
+
+		// ── Same conversation, new messages appended ─────────────────────────────
+		// Append only the messages that aren't yet in the DOM.
+		if (this.renderedConvId === conv.id && this.lastRenderedMsgId !== null) {
+			const anchorIdx = msgs.findIndex(m => m.id === this.lastRenderedMsgId);
+			if (anchorIdx !== -1) {
+				this.messagesEl.querySelector(".pythia-empty")?.remove();
+				for (let i = anchorIdx + 1; i < msgs.length; i++) {
+					await this.appendMessageBubble(msgs[i]);
+				}
+				this.lastRenderedMsgId = tailId;
+				if (scrollTo === "top") {
+					this.autoScroll = false;
+					this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
+					requestAnimationFrame(() => {
+						this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
+					});
+				} else {
+					this.scrollToBottom();
+				}
+				this.attachLastBubbleLongPress();
+				return;
+			}
+			// anchor not found (e.g. delete-last-exchange removed the tracked message)
+			// → fall through to full rebuild
+		}
+
+		// ── Full rebuild ─────────────────────────────────────────────────────────
+		this.messagesEl.empty();
+		this.renderedConvId = conv.id;
+		this.lastRenderedMsgId = null;
+
+		if (conv.forkedFromId) this.renderForkBannerEl();
+
+		if (msgs.length === 0) {
 			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
 			hint.createEl("p", { text: t("startConversationBelow") });
 			return;
 		}
-		for (const msg of this.activeConversation.messages) {
+		for (const msg of msgs) {
 			await this.appendMessageBubble(msg);
 		}
+		this.lastRenderedMsgId = tailId;
+
 		if (scrollTo === "top") {
 			this.autoScroll = false;
 			// Use 'instant' to bypass smooth-scroll animation — animated scrolls
@@ -1628,6 +1692,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		conv.messages.push(userMsg);
 		this.messagesEl.querySelector(".pythia-empty")?.remove();
 		await this.appendMessageBubble(userMsg);
+		this.lastRenderedMsgId = userMsg.id;
 
 		const attachedNotes = [...(conv.contextNotes ?? [])];
 
@@ -1744,6 +1809,9 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 						tokenUsage,
 					};
 					conv.messages.push(assistantMsg);
+					if (this.activeConversation?.id === conv.id) {
+						this.lastRenderedMsgId = assistantMsg.id;
+					}
 					// Only wire the star when conv is still the displayed conversation.
 					const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
 					const lastRow = rows[rows.length - 1] as HTMLElement | null;
@@ -2060,6 +2128,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		this.hideDeletePreview();
 		userRow.remove();
 		assistantRow.remove();
+		this.lastRenderedMsgId = conv.messages.at(-1)?.id ?? null;
 
 		await this.plugin.conversationStore.save(conv);
 		new Notice(t("exchangeDeleted"));

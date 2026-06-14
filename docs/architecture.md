@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-06-14 at v1.19.4*
+*Last updated: 2026-06-14 at v1.19.5*
 
 ---
 

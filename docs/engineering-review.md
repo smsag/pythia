@@ -9,6 +9,7 @@
 *Updated: 2026-06-14 — #5 NoteWriter injection, #11 sidebar split partial, #12 BaseProvider resolved. New suggestions #39–#41 added from v1.19.2 thorough audit.*
 *Updated: 2026-06-14 — #39, #40, #41 all resolved.*
 *Updated: 2026-06-14 — #31 persistence round-trip tests added.*
+*Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 
 ---
 
@@ -24,6 +25,7 @@
 | 2026-06-14 | #5, #11, #12 resolved; new #39–#41 from v1.19.2 thorough audit |
 | 2026-06-14 | #39, #40, #41 resolved |
 | 2026-06-14 | #31 persistence tests; `services/persistence.ts` extracted from `main.ts` |
+| 2026-06-14 | #1 incremental DOM rendering in `renderMessages` |
 
 ---
 
@@ -170,7 +172,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
 | 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | ✅ Done | Medium | Low | — |
 | 41 | `reloadFromDisk()` doesn't propagate new settings to services | ✅ Done | Medium | Low | — |
-| 1 | Incremental DOM rendering in `renderMessages` | Open | High | High | Backlog |
+| 1 | Incremental DOM rendering in `renderMessages` | ✅ Skip-if-same + append-only paths |
 | 11 | Split `sidebar.ts` into sub-components | ✅ Partial / final | High | High | — |
 | 3 | Per-conversation file storage (long-term) | Open | High | High | Backlog |
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Done | Low | Low | — |
