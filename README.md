@@ -21,7 +21,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Save output** — write any response directly to a new vault note
 - **Selection action strip** — select any text in the chat to reveal a fixed action bar above the input: **Copy**, **Insert into note**, **Save to inbox**, **Fork**
 - **Inbox** — "Save to inbox" prepends the selection with a timestamp to a configurable inbox note
-- **AI note creation** — ask Pythia to create a vault note in plain language (e.g. *"Create a note summarising our discussion at Research/Topic.md"*); a status chip confirms creation with a clickable link
+- **AI note creation** — ask Pythia to create, update, or rewrite a vault note; a confirm chip appears before any write so you can approve or cancel, and a clickable link confirms the result
 - **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
 - **Context menus** — right-click any file in the Explorer to open a conversation about that note; right-click a folder to combine all its notes as context; right-click selected text in the editor to send it to Pythia
@@ -29,7 +29,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Delete conversation** — remove any conversation from `data.json` via the sidebar trash button or the Command Palette (confirmation required)
 - **Browse favorites** — fuzzy-search all starred responses across every conversation and jump directly to one from the Command Palette
 - **Deep-link URIs** — open, create, or resume conversations via `obsidian://pythia` links from anywhere
-- **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.11.4)
+- **Mobile-compatible** — works on Obsidian for iOS and Android (requires Obsidian ≥ 1.4.0)
 
 ## Commands
 
@@ -84,17 +84,19 @@ You are helping write job applications for senior roles…
 | `context_notes` | no | Vault paths of notes always attached as context |
 | `resume_mode` | no | `full` (entire history) or `summary` (condensed) — controls token cost on long conversations |
 | `output_folder` | no | Default folder for AI-created notes. Use `"."` to resolve to the same folder as the currently active note |
-| `write_mode` | no | `create` (default) — LLM writes a new note. `update` — LLM prepends its output above the source note, separated by a horizontal rule |
+| `write_mode` | no | `create` (default) — LLM writes a new note. `update` — LLM prepends above the source note. `rewrite` — LLM replaces the full content of a context note. `none` — no write tool injected. |
 | `auto_prompt` | no | Message sent automatically the moment the conversation opens — no manual typing required |
 
 ### write_mode
 
-Controls what tool the LLM is given:
+Controls what tool the LLM is given. A confirm chip always appears before any write executes — you can approve or cancel each operation.
 
 - **`create`** (default) — exposes `create_note`. The LLM writes output to a new or specified vault note.
-- **`update`** — exposes `prepend_note`. The LLM prepends its output to the top of the source note (the note that was active when the template was launched), separated from the original content by `---`.
+- **`update`** — exposes `prepend_note`. The LLM prepends its output to the top of the source note, separated by `---`.
+- **`rewrite`** — exposes `rewrite_note`. The LLM replaces the full content of a note that was provided as context. The path must match an attached context note — the LLM cannot invent a target.
+- **`none`** — no write tool; the LLM responds in chat only.
 
-Use `update` for processing workflows where the AI result should live alongside the source material — e.g. prepending a podcast summary above a transcript.
+Use `rewrite` for editing workflows where Pythia should revise an existing document in place — e.g. "restructure this as a MECE outline" or "make this more concise". Use `update` for processing workflows where the AI result should live alongside the source material.
 
 ## Recommended hotkeys
 
@@ -184,11 +186,10 @@ vault/
 | Default resume mode | `summary` | `full` or `summary` |
 | Max messages per session | `100` | Soft cap; 0 = unlimited |
 | Debug mode | `false` | Log API calls and payloads to the developer console |
-| Allow AI to create notes | `true` | Pass a `create_note` tool to the LLM so it can write vault notes on request |
 
 API keys are stored in Obsidian's native `SecretStorage` API (vault-scoped, never written to `data.json`). The settings tab uses `SecretComponent` to let you select or create a named secret. Only the secret's name (e.g. `pythia-anthropic`) is stored in `data.json` — the value never leaves SecretStorage.
 
-Requires Obsidian ≥ 1.11.4.
+Requires Obsidian ≥ 1.4.0.
 
 ## Data & Privacy
 

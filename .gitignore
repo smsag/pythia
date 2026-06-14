@@ -40,7 +40,6 @@ desktop.ini
 .claude/
 
 # ── Local docs ─────────────────────────────────────────────────────────────────
-# Developer / agent reference docs; not part of the distributed plugin.
-# CLAUDE.md (agent instructions) and .github/ (CI) are tracked intentionally.
-docs/
-AGENTS.md
+# Large design-reference assets used by agents — not distributed with the plugin.
+docs/pythia-v3.html
+docs/design-system.css
