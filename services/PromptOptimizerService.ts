@@ -46,6 +46,10 @@ export class PromptOptimizerService {
 		this.llmRouter = llmRouter;
 	}
 
+	updateSettings(settings: PythiaSettings): void {
+		this.settings = settings;
+	}
+
 	private async loadTemplateFile(filePath: string): Promise<{ body: string; provider?: Provider; model?: string } | null> {
 		const file = this.app.vault.getFileByPath(filePath);
 		if (!file) return null;
@@ -88,7 +92,8 @@ export class PromptOptimizerService {
 			: rawText;
 
 		if (framework !== "none") {
-			userMessage += "\n\n" + FRAMEWORK_INSTRUCTIONS[framework];
+			const instruction = FRAMEWORK_INSTRUCTIONS[framework];
+			if (instruction) userMessage += "\n\n" + instruction;
 		}
 
 		return this.llmRouter.optimizePrompt("", userMessage, provider, model);

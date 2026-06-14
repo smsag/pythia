@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-06-14 at v1.19.2*
+*Last updated: 2026-06-14 at v1.19.3*
 
 ---
 
@@ -189,7 +189,10 @@ Every 5 seconds:
         → reloadFromDisk()
             → loadPluginData()
                 → iCloud eviction guard: if loaded=0 but in-memory>0, refuse load
+                → this.settings = Object.assign({}, DEFAULT_SETTINGS, saved)  ← new object
                 → this.conversations = loaded
+            → propagate new settings to all services:
+                llmRouter, templateLoader, noteWriter, promptOptimizerService
             → getLeavesOfType(PYTHIA_VIEW_TYPE)
             → view.setActiveConversation(still-open or most-recent)
 ```

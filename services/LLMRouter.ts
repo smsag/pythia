@@ -2,6 +2,7 @@ import type { Conversation, Provider, ToolCall, TokenUsage } from "../models/typ
 import type { LLMProvider } from "./LLMProvider";
 import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
+import type { PythiaSettings } from "../settings";
 
 export class LLMRouter {
 	private providers: Record<Provider, LLMProvider>;
@@ -16,6 +17,10 @@ export class LLMRouter {
 	private get(conversation: Conversation): LLMProvider {
 		// Legacy conversations without a provider field default to anthropic
 		return this.providers[conversation.provider ?? "anthropic"];
+	}
+
+	updateSettings(settings: PythiaSettings): void {
+		for (const p of Object.values(this.providers)) p.updateSettings(settings);
 	}
 
 	updateApiKey(provider: Provider, key: string): void {

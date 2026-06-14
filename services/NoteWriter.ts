@@ -42,11 +42,10 @@ export class NoteWriter {
 		const current =
 			existing instanceof TFile ? await this.app.vault.read(existing) : "";
 
-		const newFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
-		const curFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+		const fmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
-		const newFmMatch = content.match(newFmRx);
-		const curFmMatch = current.match(curFmRx);
+		const newFmMatch = content.match(fmRx);
+		const curFmMatch = current.match(fmRx);
 
 		let updated: string;
 

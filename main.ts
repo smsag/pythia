@@ -305,6 +305,10 @@ export default class PythiaPlugin extends Plugin {
 
 	async reloadFromDisk(): Promise<void> {
 		await this.loadPluginData();
+		this.llmRouter?.updateSettings(this.settings);
+		this.templateLoader?.updateSettings(this.settings);
+		this.noteWriter?.updateSettings(this.settings);
+		this.promptOptimizerService?.updateSettings(this.settings);
 		const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
 		for (const leaf of leaves) {
 			const view = leaf.view as PythiaSidebarView;
@@ -434,8 +438,10 @@ export default class PythiaPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.persistData();
+		this.llmRouter?.updateSettings(this.settings);
 		this.templateLoader?.updateSettings(this.settings);
 		this.noteWriter?.updateSettings(this.settings);
+		this.promptOptimizerService?.updateSettings(this.settings);
 	}
 
 	async saveConversations(): Promise<void> {

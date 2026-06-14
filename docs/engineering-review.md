@@ -7,6 +7,7 @@
 *Updated: 2026-05-31 — v1.11.1–1.11.3: #17, #18, #21, #6, #14, #15, #19, #20, #29, #30, #33 resolved. #31–#32 remain.*
 *Updated: 2026-06-01 — v1.11.4–1.11.5: #29 dead keys, #30 ESLint, #33 estimateTokens all resolved. New suggestions #34–#38 added from v1.11.5 session audit.*
 *Updated: 2026-06-14 — #5 NoteWriter injection, #11 sidebar split partial, #12 BaseProvider resolved. New suggestions #39–#41 added from v1.19.2 thorough audit.*
+*Updated: 2026-06-14 — #39, #40, #41 all resolved.*
 
 ---
 
@@ -20,6 +21,7 @@
 | 2026-05-31 | #17, #18, #21, #6, #14, #15, #19, #20 resolved; #29–#33 added |
 | 2026-06-01 | #29 dead i18n keys, #30 ESLint, #33 estimateTokens resolved; new #34–#38 from v1.11.5 session |
 | 2026-06-14 | #5, #11, #12 resolved; new #39–#41 from v1.19.2 thorough audit |
+| 2026-06-14 | #39, #40, #41 resolved |
 
 ---
 
@@ -93,9 +95,9 @@
 | 31 | No persistence round-trip tests | Open — Soon |
 | 32 | Provider structural duplication (`BaseProvider`) | ✅ `services/BaseProvider.ts` |
 | 33 | `estimateTokens` bytes vs text API | ✅ Renamed + split; moved to `messageUtils.ts`; tested |
-| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | Open — Backlog |
-| 40 | `FRAMEWORK_INSTRUCTIONS[framework]` unsafe key access — appends `"undefined"` for unrecognised frameworks | Open — Soon |
-| 41 | `reloadFromDisk()` creates new settings object but doesn't propagate it to any service | Open — Soon |
+| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Collapsed to single `fmRx` |
+| 40 | `FRAMEWORK_INSTRUCTIONS[framework]` unsafe key access — appends `"undefined"` for unrecognised frameworks | ✅ Presence check added |
+| 41 | `reloadFromDisk()` creates new settings object but doesn't propagate it to any service | ✅ `updateSettings` added to `LLMRouter`, `PromptOptimizerService`; `reloadFromDisk` + `saveSettings` both propagate |
 
 ---
 
@@ -164,12 +166,12 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 5 | Inject `NoteWriter` instead of constructing inline | ✅ Done | Low | Low | — |
 | 31 | Persistence round-trip tests | Open | High | Medium | Soon |
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
-| 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | Open | Medium | Low | Soon |
-| 41 | `reloadFromDisk()` doesn't propagate new settings to services | Open | Medium | Low | Soon |
+| 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | ✅ Done | Medium | Low | — |
+| 41 | `reloadFromDisk()` doesn't propagate new settings to services | ✅ Done | Medium | Low | — |
 | 1 | Incremental DOM rendering in `renderMessages` | Open | High | High | Backlog |
 | 11 | Split `sidebar.ts` into sub-components | ✅ Partial / final | High | High | — |
 | 3 | Per-conversation file storage (long-term) | Open | High | High | Backlog |
-| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | Open | Low | Low | Backlog |
+| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Done | Low | Low | — |
 | 4 | Cache context note file reads | Open | Low | Medium | Backlog |
 | 10 | Harden fire-and-forget in fork path | Open | Low | Medium | Backlog |
 
@@ -181,7 +183,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 
 ### #39 — Duplicate identical regex variables in `NoteWriter.prependWithSeparator`
 
-**File:** `services/NoteWriter.ts:45-46` — **Open — Backlog**
+**File:** `services/NoteWriter.ts:45-46` — **Resolved**
 
 ```typescript
 const newFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
@@ -196,7 +198,7 @@ Both variables are identical in pattern, flags, and semantics. `curFmRx` is dead
 
 ### #40 — `PromptOptimizerService.optimizeText`: unsafe `FRAMEWORK_INSTRUCTIONS` key access
 
-**File:** `services/PromptOptimizerService.ts:90-91` — **Open — Soon**
+**File:** `services/PromptOptimizerService.ts:90-91` — **Resolved**
 
 ```typescript
 if (framework !== "none") {
@@ -216,7 +218,7 @@ if (instruction) userMessage += "\n\n" + instruction;
 
 ### #41 — `reloadFromDisk()` creates a new settings object but doesn't propagate it to services
 
-**File:** `main.ts:306-315` + `main.ts:435-438` — **Open — Soon**
+**File:** `main.ts:306-315` + `main.ts:435-438` — **Resolved**
 
 `reloadFromDisk()` calls `loadPluginData()`, which builds a **new** settings object:
 

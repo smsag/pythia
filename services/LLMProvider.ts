@@ -1,6 +1,8 @@
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import type { PythiaSettings } from "../settings";
 
 export interface LLMProvider {
+	updateSettings(settings: PythiaSettings): void;
 	updateApiKey(key: string): void;
 	abort(): void;
 	streamMessage(
