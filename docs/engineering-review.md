@@ -6,7 +6,7 @@
 *Updated: 2026-05-30 — #23–#28 batch resolved.*
 *Updated: 2026-05-31 — v1.11.1–1.11.3: #17, #18, #21, #6, #14, #15, #19, #20, #29, #30, #33 resolved. #31–#32 remain.*
 *Updated: 2026-06-01 — v1.11.4–1.11.5: #29 dead keys, #30 ESLint, #33 estimateTokens all resolved. New suggestions #34–#38 added from v1.11.5 session audit.*
-*Updated: 2026-06-14 — #32 BaseProvider resolved.*
+*Updated: 2026-06-14 — #5 NoteWriter injection, #11 sidebar split partial, #12 BaseProvider resolved. New suggestions #39–#41 added from v1.19.2 thorough audit.*
 
 ---
 
@@ -19,49 +19,39 @@
 | 2026-05-30 | #23–#28: autoSaveSummary, IME, autoScroll, navigator leak, stale guards, send-button |
 | 2026-05-31 | #17, #18, #21, #6, #14, #15, #19, #20 resolved; #29–#33 added |
 | 2026-06-01 | #29 dead i18n keys, #30 ESLint, #33 estimateTokens resolved; new #34–#38 from v1.11.5 session |
-| 2026-06-14 | #32 BaseProvider abstract class resolved |
+| 2026-06-14 | #5, #11, #12 resolved; new #39–#41 from v1.19.2 thorough audit |
 
 ---
 
-## File Inventory (sorted by lines, v1.11.5)
+## File Inventory (sorted by lines, v1.19.2)
 
 | # | File | Lines | Role |
 |---|------|------:|------|
-| 1 | `sidebar.ts` | 2 033 | Main view — UI, rendering, streaming, interaction |
-| 2 | `styles.css` | 1 224 | All plugin CSS |
-| 3 | `docs/design-system.css` | 525 | Design-system reference / prototype |
-| 4 | `main.ts` | 855 | Plugin entry, commands, conversation lifecycle, sync watcher |
-| 5 | `services/OpenAIProvider.ts` | 340 | OpenAI streaming + utility calls |
-| 6 | `settings.ts` | 375 | Settings schema + settings tab UI |
-| 7 | `services/AnthropicService.ts` | 278 | Anthropic streaming + utility calls |
-| 8 | `tests/messageUtils.test.ts` | 202 | Vitest tests — message utils |
-| 9 | `locales/de.ts` | 208 | German i18n strings |
-| 10 | `locales/en.ts` | 207 | English i18n strings |
-| 11 | `ui/InlineSuggest.ts` | 152 | `#` note picker autocomplete |
-| 12 | `services/NoteWriter.ts` | 135 | Vault write operations |
-| 13 | `suggest/ConversationSettingsModal.ts` | 133 | Per-conversation settings modal |
-| 14 | `services/messageUtils.ts` | 98 | Shared: parseTitleAndSummary, normalizeMessages, token estimate, lang helpers |
-| 15 | `services/TemplateLoader.ts` | 87 | Template discovery + parsing |
-| 16 | `suggest/ConversationSuggest.ts` | 82 | Fuzzy-search modals |
-| 17 | `models/types.ts` | 76 | Shared TypeScript interfaces |
-| 18 | `tests/i18n.test.ts` | 75 | Vitest tests — locale parity + dead-key detection |
-| 19 | `suggest/InputModal.ts` | 69 | Generic text-input modal |
-| 20 | `services/LLMRouter.ts` | 68 | Dispatches calls to the active provider |
-| 21 | `services/ToolHandler.ts` | 63 | `create_note` tool definition + execution |
-| 22 | `services/ConversationStore.ts` | 58 | In-memory store + debounced persistence |
-| 23 | `suggest/ResumeModeModal.ts` | 54 | Resume-mode picker |
-| 24 | `services/ContextBuilder.ts` | 50 | Builds system prompt + attaches notes |
-| 25 | `tests/apiError.test.ts` | 48 | Vitest tests — API error classification |
-| 26 | `tests/utils.test.ts` | 43 | Vitest tests — token estimation helpers |
-| 27 | `eslint.config.mjs` | 40 | ESLint flat config |
-| 28 | `esbuild.config.mjs` | 47 | Build configuration |
-| 29 | `vitest.config.ts` | 24 | Coverage configuration |
-| 30 | `services/LLMProvider.ts` | 20 | Provider interface |
-| 31 | `utils.ts` | 20 | `todayISO`, `getFilesInFolder` |
-| 32 | `i18n.ts` | 16 | i18n lookup helper |
+| 1 | `sidebar.ts` | 2 111 | Main view — UI, rendering, streaming, interaction |
+| 2 | `styles.css` | 1 456 | All plugin CSS |
+| 3 | `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, sync watcher |
+| 4 | `settings.ts` | 419 | Settings schema + settings tab UI |
+| 5 | `services/OpenAIProvider.ts` | 264 | OpenAI streaming (extends BaseProvider) |
+| 6 | `services/AnthropicService.ts` | 197 | Anthropic streaming (extends BaseProvider) |
+| 7 | `services/BaseProvider.ts` | 132 | Abstract base: shared fields, lifecycle, all generate* utility methods |
+| 8 | `services/ToolHandler.ts` | 118 | Tool definitions + ToolHandler class (injected NoteWriter) |
+| 9 | `services/NoteWriter.ts` | 186 | Vault write operations |
+| 10 | `services/PromptOptimizerService.ts` | ~170 | Prompt optimizer — `run()` command flow + `optimizeText()` inline review |
+| 11 | `ui/OptimizationController.ts` | 171 | Inline optimizer UI state + flow (extracted from sidebar) |
+| 12 | `ui/NavigatorController.ts` | 163 | `#` navigator popover (extracted from sidebar) |
+| 13 | `ui/InlineSuggest.ts` | 152 | `#` note-path autocomplete in textarea |
+| 14 | `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing |
+| 15 | `services/messageUtils.ts` | 98 | Shared: parseTitleAndSummary, normalizeMessages, token estimate, lang helpers |
+| 16 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
+| 17 | `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
+| 18 | `services/ContextBuilder.ts` | 48 | Builds system prompt + attaches vault notes |
+| 19 | `models/types.ts` | 78 | All shared TypeScript interfaces |
+| 20 | `locales/de.ts` / `locales/en.ts` | ~283 | i18n strings (German / English) |
+| 21 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
+| 22 | `tests/` | — | Vitest unit tests (7 files) |
 
-**Source total:** ~7 200 lines (excl. lock file, generated `main.js`, coverage output).
-**Test suite:** 48 tests across 4 files — `npm test` (~200 ms), `npm run coverage` with enforced thresholds.
+**Source total:** ~8 700 lines (excl. lock file, generated `main.js`, coverage output).
+**Test suite:** 155 tests across 7 files — `npm test` (~450 ms), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
 ---
@@ -103,6 +93,9 @@
 | 31 | No persistence round-trip tests | Open — Soon |
 | 32 | Provider structural duplication (`BaseProvider`) | ✅ `services/BaseProvider.ts` |
 | 33 | `estimateTokens` bytes vs text API | ✅ Renamed + split; moved to `messageUtils.ts`; tested |
+| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | Open — Backlog |
+| 40 | `FRAMEWORK_INSTRUCTIONS[framework]` unsafe key access — appends `"undefined"` for unrecognised frameworks | Open — Soon |
+| 41 | `reloadFromDisk()` creates new settings object but doesn't propagate it to any service | Open — Soon |
 
 ---
 
@@ -171,8 +164,82 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 5 | Inject `NoteWriter` instead of constructing inline | ✅ Done | Low | Low | — |
 | 31 | Persistence round-trip tests | Open | High | Medium | Soon |
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
+| 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | Open | Medium | Low | Soon |
+| 41 | `reloadFromDisk()` doesn't propagate new settings to services | Open | Medium | Low | Soon |
 | 1 | Incremental DOM rendering in `renderMessages` | Open | High | High | Backlog |
-| 11 | Split `sidebar.ts` into sub-components | Open | High | High | Backlog |
+| 11 | Split `sidebar.ts` into sub-components | ✅ Partial / final | High | High | — |
 | 3 | Per-conversation file storage (long-term) | Open | High | High | Backlog |
+| 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | Open | Low | Low | Backlog |
 | 4 | Cache context note file reads | Open | Low | Medium | Backlog |
 | 10 | Harden fire-and-forget in fork path | Open | Low | Medium | Backlog |
+
+---
+
+## New Suggestions (#39–#41)
+
+---
+
+### #39 — Duplicate identical regex variables in `NoteWriter.prependWithSeparator`
+
+**File:** `services/NoteWriter.ts:45-46` — **Open — Backlog**
+
+```typescript
+const newFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+const curFmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+```
+
+Both variables are identical in pattern, flags, and semantics. `curFmRx` is dead — a single `fmRx` constant (or inline literal reuse) is sufficient.
+
+**Resolution:** Collapse to one variable: `const fmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;` and use it for both `content.match()` and `current.match()`.
+
+---
+
+### #40 — `PromptOptimizerService.optimizeText`: unsafe `FRAMEWORK_INSTRUCTIONS` key access
+
+**File:** `services/PromptOptimizerService.ts:90-91` — **Open — Soon**
+
+```typescript
+if (framework !== "none") {
+    userMessage += "\n\n" + FRAMEWORK_INSTRUCTIONS[framework];
+}
+```
+
+`FRAMEWORK_INSTRUCTIONS` is a `Record<string, string>` with three keys (`"CO-STAR"`, `"RACE"`, `"RISEN"`). If `framework` holds any other string — possible from a `data.json` written by an older or newer version of the plugin — `FRAMEWORK_INSTRUCTIONS[framework]` is `undefined` and TypeScript coerces it to the string `"undefined"`. The LLM receives `"…\n\nundefined"` appended to its prompt.
+
+**Resolution:** Add a presence check before appending:
+```typescript
+const instruction = FRAMEWORK_INSTRUCTIONS[framework];
+if (instruction) userMessage += "\n\n" + instruction;
+```
+
+---
+
+### #41 — `reloadFromDisk()` creates a new settings object but doesn't propagate it to services
+
+**File:** `main.ts:306-315` + `main.ts:435-438` — **Open — Soon**
+
+`reloadFromDisk()` calls `loadPluginData()`, which builds a **new** settings object:
+
+```typescript
+this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);  // new object every time
+```
+
+After this, `this.plugin.settings` points to the new object but every service still holds the old reference they received at construction time or via a prior `updateSettings()` call:
+
+- `templateLoader.settings` — stale
+- `noteWriter.settings` — stale
+- `promptOptimizerService.settings` — stale (no `updateSettings` method at all)
+- `AnthropicService.settings` / `OpenAIProvider.settings` (via BaseProvider) — stale
+
+By contrast, `saveSettings()` calls `templateLoader.updateSettings()` and `noteWriter.updateSettings()` (lines 437-438), but not `promptOptimizerService` or the providers. And neither path is called from `reloadFromDisk()`.
+
+**Practical impact:** If settings differ between devices (different default model, different templates folder, etc.) and a cross-device sync triggers `reloadFromDisk()`, all services continue using the pre-sync settings until Obsidian restarts. The most user-visible case: a model change on one device is silently ignored on another.
+
+**Resolution:** At the end of `reloadFromDisk()`, propagate the new settings to all services:
+```typescript
+this.llmRouter?.updateSettings(this.settings);
+this.templateLoader?.updateSettings(this.settings);
+this.noteWriter?.updateSettings(this.settings);
+this.promptOptimizerService?.updateSettings(this.settings);
+```
+`PromptOptimizerService` also needs an `updateSettings(settings: PythiaSettings)` method added.
