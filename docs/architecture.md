@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-06-14 at v1.19.3*
+*Last updated: 2026-06-14 at v1.19.4*
 
 ---
 
@@ -29,15 +29,17 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/ContextBuilder.ts` | 48 | Builds system prompt, attaches vault notes |
 | `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
 | `services/PromptOptimizerService.ts` | ~170 | `run()` command flow + `optimizeText()` (inline review) |
+| `services/persistence.ts` | ~100 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
 | `services/apiError.ts` | 33 | HTTP error classification |
 | `services/LLMProvider.ts` | 21 | Provider interface |
+| `models/settings.ts` | ~55 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 171 | Inline prompt optimizer UI state + flow (extracted from sidebar) |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
 | `ui/InlineSuggest.ts` | 152 | `#` note-path autocomplete in textarea |
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
 | `models/types.ts` | 78 | All shared TypeScript interfaces |
 | `locales/en.ts` / `locales/de.ts` | ~283 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (155 tests, ~450 ms) |
+| `tests/` | — | Vitest unit tests (187 tests, ~500 ms) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -270,6 +272,6 @@ Shared logic in `services/messageUtils.ts`:
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`. `no-console: warn`, `no-explicit-any: off`. 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 155 unit tests across 7 files, ~450 ms. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 85 %, functions = 100 %.
+- **Testing:** Vitest, 187 unit tests across 12 files, ~500 ms. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.

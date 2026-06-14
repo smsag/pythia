@@ -8,6 +8,7 @@
 *Updated: 2026-06-01 — v1.11.4–1.11.5: #29 dead keys, #30 ESLint, #33 estimateTokens all resolved. New suggestions #34–#38 added from v1.11.5 session audit.*
 *Updated: 2026-06-14 — #5 NoteWriter injection, #11 sidebar split partial, #12 BaseProvider resolved. New suggestions #39–#41 added from v1.19.2 thorough audit.*
 *Updated: 2026-06-14 — #39, #40, #41 all resolved.*
+*Updated: 2026-06-14 — #31 persistence round-trip tests added.*
 
 ---
 
@@ -22,6 +23,7 @@
 | 2026-06-01 | #29 dead i18n keys, #30 ESLint, #33 estimateTokens resolved; new #34–#38 from v1.11.5 session |
 | 2026-06-14 | #5, #11, #12 resolved; new #39–#41 from v1.19.2 thorough audit |
 | 2026-06-14 | #39, #40, #41 resolved |
+| 2026-06-14 | #31 persistence tests; `services/persistence.ts` extracted from `main.ts` |
 
 ---
 
@@ -53,7 +55,7 @@
 | 22 | `tests/` | — | Vitest unit tests (7 files) |
 
 **Source total:** ~8 700 lines (excl. lock file, generated `main.js`, coverage output).
-**Test suite:** 155 tests across 7 files — `npm test` (~450 ms), `npm run coverage` with enforced thresholds.
+**Test suite:** 187 tests across 12 files — `npm test` (~500 ms), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
 ---
@@ -164,7 +166,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | # | Suggestion | Status | Impact | Effort | Priority |
 |---|---|---|---|---|---|
 | 5 | Inject `NoteWriter` instead of constructing inline | ✅ Done | Low | Low | — |
-| 31 | Persistence round-trip tests | Open | High | Medium | Soon |
+| 31 | Persistence round-trip tests | ✅ `services/persistence.ts` + `tests/persistence.test.ts` | High | Medium | — |
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
 | 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | ✅ Done | Medium | Low | — |
 | 41 | `reloadFromDisk()` doesn't propagate new settings to services | ✅ Done | Medium | Low | — |

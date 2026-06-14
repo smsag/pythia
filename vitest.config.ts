@@ -14,6 +14,7 @@ export default defineConfig({
 				"services/NoteWriter.ts",
 				"services/ToolHandler.ts",
 				"services/ConversationStore.ts",
+				"services/persistence.ts",
 			],
 			thresholds: {
 				statements: 90,

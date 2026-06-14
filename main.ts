@@ -16,6 +16,13 @@ import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
 import { ToolHandler } from "./services/ToolHandler";
 import { PromptOptimizerService } from "./services/PromptOptimizerService";
+import {
+	applySettingsMigrations,
+	mergeSettings,
+	parseConversations,
+	shouldRefuseLoad,
+	evictConversations,
+} from "./services/persistence";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -321,71 +328,34 @@ export default class PythiaPlugin extends Plugin {
 
 	private async loadPluginData(): Promise<void> {
 		const data = (await this.loadData()) ?? {};
-		const saved = data.settings ?? {};
-		let needsMigrationSave = false;
+		const saved = (data.settings ?? {}) as Record<string, unknown>;
 
-		// ── Migration: old plaintext apiKey field ─────────────────────────────
-		if (saved.apiKey) {
-			delete saved.apiKey;
-			needsMigrationSave = true;
-		}
+		const { needsSave, legacyAnthropicCiphertext, legacyOpenAICiphertext } =
+			applySettingsMigrations(saved);
 
-		// ── Migration: defaultModel → defaultAnthropicModel ──────────────────
-		if (saved.defaultModel && !saved.defaultAnthropicModel) {
-			saved.defaultAnthropicModel = saved.defaultModel;
-			delete saved.defaultModel;
-			needsMigrationSave = true;
-		}
-
-		// ── Migration: encryptedApiKey → Obsidian SecretStorage ───────────────
-		if (saved.encryptedApiKey) {
-			const plaintext = legacyDecrypt(saved.encryptedApiKey as string);
+		if (legacyAnthropicCiphertext) {
+			const plaintext = legacyDecrypt(legacyAnthropicCiphertext);
 			if (plaintext) {
-				this.app.secretStorage.setSecret(
-					DEFAULT_SETTINGS.anthropicSecretName,
-					plaintext
-				);
+				this.app.secretStorage.setSecret(DEFAULT_SETTINGS.anthropicSecretName, plaintext);
 			} else {
 				new Notice(t("migrateAnthropicFailed"), 8000);
 			}
-			delete saved.encryptedApiKey;
-			needsMigrationSave = true;
 		}
-
-		// ── Migration: encryptedOpenAIKey → Obsidian SecretStorage ────────────
-		if (saved.encryptedOpenAIKey) {
-			const plaintext = legacyDecrypt(saved.encryptedOpenAIKey as string);
+		if (legacyOpenAICiphertext) {
+			const plaintext = legacyDecrypt(legacyOpenAICiphertext);
 			if (plaintext) {
-				this.app.secretStorage.setSecret(
-					DEFAULT_SETTINGS.openaiSecretName,
-					plaintext
-				);
+				this.app.secretStorage.setSecret(DEFAULT_SETTINGS.openaiSecretName, plaintext);
 			} else {
 				new Notice(t("migrateOpenAIFailed"), 8000);
 			}
-			delete saved.encryptedOpenAIKey;
-			needsMigrationSave = true;
 		}
 
-		// ── Migration: outputLanguage stored as human-readable string → locale code ──
-		if (saved.outputLanguage === "English") { saved.outputLanguage = "en"; needsMigrationSave = true; }
-		if (saved.outputLanguage === "German")  { saved.outputLanguage = "de"; needsMigrationSave = true; }
+		this.settings = mergeSettings(saved);
 
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
 		const rawConversations = (data.conversations ?? []) as unknown[];
-		const loaded: Conversation[] = rawConversations.filter(
-			(c): c is Conversation =>
-				c !== null &&
-				typeof c === "object" &&
-				typeof (c as Record<string, unknown>).id === "string" &&
-				Array.isArray((c as Record<string, unknown>).messages)
-		);
-		if (loaded.length < rawConversations.length) {
-			console.warn(
-				`[Pythia] Dropped ${
-					rawConversations.length - loaded.length
-				} malformed conversation(s) from data.json`
-			);
+		const { conversations: loaded, dropped } = parseConversations(rawConversations);
+		if (dropped > 0) {
+			console.warn(`[Pythia] Dropped ${dropped} malformed conversation(s) from data.json`);
 		}
 
 		// iCloud eviction guard — checked BEFORE overwriting this.conversations.
@@ -398,7 +368,7 @@ export default class PythiaPlugin extends Plugin {
 		// decrement one by one through normal deletes; persistData() is never
 		// blocked and always saves whatever is in this.conversations.
 		const existingCount = Array.isArray(this.conversations) ? this.conversations.length : 0;
-		if (loaded.length === 0 && existingCount > 0) {
+		if (shouldRefuseLoad(loaded, existingCount)) {
 			new Notice(
 				"[Pythia] Loaded 0 conversations from disk while having conversations in memory. " +
 				"Keeping existing state. Check iCloud sync.",
@@ -415,7 +385,7 @@ export default class PythiaPlugin extends Plugin {
 		this.plaintextOpenAIKey =
 			(await this.app.secretStorage.getSecret(this.settings.openaiSecretName)) ?? "";
 
-		if (needsMigrationSave) {
+		if (needsSave) {
 			await this.saveData({ settings: this.settings, conversations: this.conversations });
 		}
 	}
@@ -452,25 +422,15 @@ export default class PythiaPlugin extends Plugin {
 		// Evict oldest non-starred conversations beyond the cap (#3).
 		// Always protect the currently open conversation even if it has no starred
 		// messages — evicting the active conversation would silently lose new turns (#17).
-		const cap = this.settings.maxConversations;
-		if (cap > 0 && this.conversations.length > cap) {
-			const sidebarLeaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
-			const activeId = sidebarLeaf
-				? (sidebarLeaf.view as PythiaSidebarView).activeConversationId
-				: null;
-
-			const protected_ = this.conversations.filter(
-				c => (c.favorites?.length ?? 0) > 0 || c.id === activeId
-			);
-			const plain = this.conversations
-				.filter(c => (c.favorites?.length ?? 0) === 0 && c.id !== activeId)
-				.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-			const slots = Math.max(0, cap - protected_.length);
-			this.conversations = [
-				...protected_,
-				...plain.slice(0, slots),
-			].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-		}
+		const sidebarLeaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
+		const activeId = sidebarLeaf
+			? (sidebarLeaf.view as PythiaSidebarView).activeConversationId
+			: null;
+		this.conversations = evictConversations(
+			this.conversations,
+			this.settings.maxConversations,
+			activeId,
+		);
 
 		try {
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire
