@@ -3,10 +3,10 @@ import { App, Notice } from "obsidian";
 import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { parseTitleAndSummary, normalizeMessages, langInstruction, langSuffix } from "./messageUtils";
+import { normalizeMessages } from "./messageUtils";
+import { BaseProvider } from "./BaseProvider";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -23,32 +23,44 @@ type OAILoopMessage =
 const NO_SYSTEM_ROLE_MODELS = new Set(["o3", "o3-mini", "o1", "o1-mini"]);
 
 
-export class OpenAIProvider implements LLMProvider {
-	private app: App;
-	private settings: PythiaSettings;
-	private apiKey = "";
+export class OpenAIProvider extends BaseProvider {
 	private client: OpenAI | null = null;
-	private abortController: AbortController | null = null;
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
-		this.app = app;
-		this.settings = settings;
-		this.apiKey = apiKey;
+		super(app, settings, apiKey);
 	}
 
-	updateSettings(settings: PythiaSettings): void {
-		this.settings = settings;
+	protected resetClient(): void {
 		this.client = null;
 	}
 
-	updateApiKey(apiKey: string): void {
-		this.apiKey = apiKey;
-		this.client = null;
+	protected get fastModel(): string {
+		return "gpt-4o-mini";
 	}
 
-	abort(): void {
-		this.abortController?.abort();
-		this.abortController = null;
+	protected get assistantLabel(): string {
+		return "Assistant";
+	}
+
+	protected resolveModel(modelOverride?: string): string {
+		return modelOverride || this.settings.defaultOpenAIModel;
+	}
+
+	protected async callUtility(
+		model: string,
+		userMessage: string,
+		maxTokens: number,
+		systemMessage?: string
+	): Promise<string> {
+		const messages: { role: "system" | "user"; content: string }[] = [];
+		if (systemMessage) messages.push({ role: "system", content: systemMessage });
+		messages.push({ role: "user", content: userMessage });
+		const response = await this.getClient().chat.completions.create({
+			model,
+			max_tokens: maxTokens,
+			messages,
+		});
+		return response.choices[0]?.message?.content?.trim() ?? "";
 	}
 
 	private getClient(): OpenAI {
@@ -92,7 +104,7 @@ export class OpenAIProvider implements LLMProvider {
 				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 			}
 
-			const model = conversation.model || this.settings.defaultOpenAIModel;
+			const model = this.resolveModel(conversation.model);
 			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
 
 			// Exclude the last message — already pushed by the caller; sending it
@@ -248,107 +260,5 @@ export class OpenAIProvider implements LLMProvider {
 		} finally {
 			this.abortController = null;
 		}
-	}
-
-	async generateSummary(conversation: Conversation): Promise<string> {
-		const client = this.getClient();
-		const model = conversation.model || this.settings.defaultOpenAIModel;
-
-		const conversationText = conversation.messages
-			.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-			.join("\n\n");
-
-		const response = await client.chat.completions.create({
-			model,
-			max_tokens: 1024,
-			messages: [
-				{
-					role: "user",
-					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
-				},
-			],
-		});
-
-		return response.choices[0]?.message?.content ?? "";
-	}
-
-	async generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }> {
-		const client = this.getClient();
-		const model = conversation.model || this.settings.defaultOpenAIModel;
-
-		const conversationText = conversation.messages
-			.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-			.join("\n\n");
-
-		const sfx = langSuffix(this.settings.outputLanguage);
-		const response = await client.chat.completions.create({
-			model,
-			max_tokens: 1024,
-			messages: [
-				{
-					role: "user",
-					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${sfx}, no punctuation, no quotes>\nSUMMARY:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
-				},
-			],
-		});
-
-		const raw = response.choices[0]?.message?.content ?? "";
-		return parseTitleAndSummary(raw);
-	}
-
-	async generateChapterName(content: string): Promise<string> {
-		const client = this.getClient();
-		const excerpt = content.slice(0, 500);
-		const response = await client.chat.completions.create({
-			model: "gpt-4o-mini",
-			max_tokens: 15,
-			messages: [{
-				role: "user",
-				content: `Summarize this user message in 3-5 words as a chapter title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
-			}],
-		});
-		return response.choices[0]?.message?.content?.trim() ?? "";
-	}
-
-	async generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string> {
-		const client = this.getClient();
-		const userExcerpt = userMessage.slice(0, 300);
-		const assistantExcerpt = assistantMessage.slice(0, 300);
-		const response = await client.chat.completions.create({
-			model: "gpt-4o-mini",
-			max_tokens: 20,
-			messages: [{
-				role: "user",
-				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
-			}],
-		});
-		return response.choices[0]?.message?.content?.trim() ?? "New Conversation";
-	}
-
-	async summarizeNotes(content: string): Promise<string> {
-		const client = this.getClient();
-		const response = await client.chat.completions.create({
-			model: "gpt-4o-mini",
-			max_tokens: 1024,
-			messages: [{
-				role: "user",
-				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.${langInstruction(this.settings.outputLanguage)}\n\n${content}`,
-			}],
-		});
-		return response.choices[0]?.message?.content?.trim() ?? "";
-	}
-
-	async optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string> {
-		const client = this.getClient();
-		const resolvedModel = model || this.settings.defaultOpenAIModel;
-		const messages: { role: "system" | "user"; content: string }[] = [];
-		if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
-		messages.push({ role: "user", content: userMessage });
-		const response = await client.chat.completions.create({
-			model: resolvedModel,
-			max_tokens: 2048,
-			messages,
-		});
-		return response.choices[0]?.message?.content?.trim() ?? "";
 	}
 }

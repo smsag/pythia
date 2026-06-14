@@ -3,39 +3,50 @@ import { App, Notice } from "obsidian";
 import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import type { LLMProvider } from "./LLMProvider";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { parseTitleAndSummary, normalizeMessages, langInstruction, langSuffix } from "./messageUtils";
+import { normalizeMessages } from "./messageUtils";
+import { BaseProvider } from "./BaseProvider";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
-export class AnthropicService implements LLMProvider {
-	private app: App;
-	private settings: PythiaSettings;
-	private apiKey = "";
+export class AnthropicService extends BaseProvider {
 	private client: Anthropic | null = null;
-	private abortController: AbortController | null = null;
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
-		this.app = app;
-		this.settings = settings;
-		this.apiKey = apiKey;
+		super(app, settings, apiKey);
 	}
 
-	updateSettings(settings: PythiaSettings): void {
-		this.settings = settings;
+	protected resetClient(): void {
 		this.client = null;
 	}
 
-	updateApiKey(apiKey: string): void {
-		this.apiKey = apiKey;
-		this.client = null;
+	protected get fastModel(): string {
+		return "claude-haiku-3-5";
 	}
 
-	abort(): void {
-		this.abortController?.abort();
-		this.abortController = null;
+	protected get assistantLabel(): string {
+		return "Claude";
+	}
+
+	protected resolveModel(modelOverride?: string): string {
+		return modelOverride || this.settings.defaultAnthropicModel;
+	}
+
+	protected async callUtility(
+		model: string,
+		userMessage: string,
+		maxTokens: number,
+		systemMessage?: string
+	): Promise<string> {
+		const response = await this.getClient().messages.create({
+			model,
+			max_tokens: maxTokens,
+			...(systemMessage ? { system: systemMessage } : {}),
+			messages: [{ role: "user", content: userMessage }],
+		});
+		const block = response.content[0];
+		return block?.type === "text" ? block.text.trim() : "";
 	}
 
 	private getClient(): Anthropic {
@@ -85,7 +96,7 @@ export class AnthropicService implements LLMProvider {
 				(m) => ({ role: m.role, content: m.content })
 			);
 
-			const model = conversation.model || this.settings.defaultAnthropicModel;
+			const model = this.resolveModel(conversation.model);
 			const maxTokens = conversation.maxTokens ?? 4096;
 
 			if (this.settings.debugMode) {
@@ -182,110 +193,5 @@ export class AnthropicService implements LLMProvider {
 		} finally {
 			this.abortController = null;
 		}
-	}
-
-	async generateSummary(conversation: Conversation): Promise<string> {
-		const client = this.getClient();
-		const model = conversation.model || this.settings.defaultAnthropicModel;
-
-		const conversationText = conversation.messages
-			.map((m) => `${m.role === "user" ? "User" : "Claude"}: ${m.content}`)
-			.join("\n\n");
-
-		const response = await client.messages.create({
-			model,
-			max_tokens: 1024,
-			messages: [
-				{
-					role: "user",
-					content: `Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
-				},
-			],
-		});
-
-		const block = response.content[0];
-		return block.type === "text" ? block.text : "";
-	}
-
-	async generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }> {
-		const client = this.getClient();
-		const model = conversation.model || this.settings.defaultAnthropicModel;
-
-		const conversationText = conversation.messages
-			.map((m) => `${m.role === "user" ? "User" : "Claude"}: ${m.content}`)
-			.join("\n\n");
-
-		const sfx = langSuffix(this.settings.outputLanguage);
-		const response = await client.messages.create({
-			model,
-			max_tokens: 1024,
-			messages: [
-				{
-					role: "user",
-					content: `Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${sfx}, no punctuation, no quotes>\nSUMMARY:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
-				},
-			],
-		});
-
-		const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
-		return parseTitleAndSummary(raw);
-	}
-
-	async generateChapterName(content: string): Promise<string> {
-		const client = this.getClient();
-		const excerpt = content.slice(0, 500);
-		const response = await client.messages.create({
-			model: "claude-haiku-3-5",
-			max_tokens: 15,
-			messages: [{
-				role: "user",
-				content: `Summarize this user message in 3-5 words as a chapter title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
-			}],
-		});
-		const block = response.content[0];
-		return block.type === "text" ? block.text.trim() : "";
-	}
-
-	async generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string> {
-		const client = this.getClient();
-		const userExcerpt = userMessage.slice(0, 300);
-		const assistantExcerpt = assistantMessage.slice(0, 300);
-		const response = await client.messages.create({
-			model: "claude-haiku-3-5",
-			max_tokens: 20,
-			messages: [{
-				role: "user",
-				content: `Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
-			}],
-		});
-		const block = response.content[0];
-		return block.type === "text" ? block.text.trim() : "New Conversation";
-	}
-
-	async summarizeNotes(content: string): Promise<string> {
-		const client = this.getClient();
-		const response = await client.messages.create({
-			model: "claude-haiku-3-5",
-			max_tokens: 1024,
-			messages: [{
-				role: "user",
-				content: `Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.${langInstruction(this.settings.outputLanguage)}\n\n${content}`,
-			}],
-		});
-		const block = response.content[0];
-		return block.type === "text" ? block.text.trim() : "";
-	}
-
-	async optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string> {
-		const client = this.getClient();
-		const resolvedModel = model || this.settings.defaultAnthropicModel;
-		const response = await client.messages.create({
-			model: resolvedModel,
-			max_tokens: 2048,
-			system: systemPrompt || undefined,
-			messages: [{ role: "user", content: userMessage }],
-		});
-		const block = response.content[0];
-		return block.type === "text" ? block.text.trim() : "";
 	}
 }
