@@ -80,7 +80,7 @@
 | 8 | Wrap `MarkdownRenderer.render()` in try/catch | ✅ Done |
 | 9 | Guard `Buffer` in `legacyDecrypt` | ✅ `typeof Buffer !== "undefined"` |
 | 10 | Harden fire-and-forget in fork path | Open — Backlog |
-| 11 | Split `sidebar.ts` into sub-components | Open — Backlog |
+| 11 | Split `sidebar.ts` into sub-components | ✅ Partial — OptimizationController + NavigatorController extracted; remaining DOM coupling makes further splits net-negative |
 | 12 | `BaseProvider` abstract class | ✅ `services/BaseProvider.ts` |
 | 13 | Auto-abbreviate unknown model names | ✅ Done |
 | 14 | Extract `normalizeMessages` to shared util | ✅ `services/messageUtils.ts` |
