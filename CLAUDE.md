@@ -14,23 +14,29 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   sidebar.ts                  ← PythiaSidebarView (ItemView), all UI construction
   settings.ts                 ← PythiaSettings interface, defaults, settings tab UI
   styles.css                  ← all plugin CSS
-  models/types.ts             ← shared TypeScript interfaces (Conversation, Message, …)
+  models/
+    types.ts                  ← shared TypeScript interfaces (Conversation, Message, …)
+    settings.ts               ← PythiaSettings interface + DEFAULT_SETTINGS (no Obsidian dependency)
   services/
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
+    BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
-    ToolHandler.ts            ← create_note tool definition + execution
+    ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     TemplateLoader.ts         ← template discovery + frontmatter parsing
+    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, shouldRefuseLoad, evictConversations
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
+    OptimizationController.ts ← inline prompt optimizer state + flow
+    NavigatorController.ts    ← # navigator popover logic
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 48 tests across messageUtils, apiError, i18n, utils
+  tests/                      ← Vitest unit tests (npm test) — 187 tests across 12 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings

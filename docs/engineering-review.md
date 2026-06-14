@@ -10,6 +10,7 @@
 *Updated: 2026-06-14 — #39, #40, #41 all resolved.*
 *Updated: 2026-06-14 — #31 persistence round-trip tests added.*
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
+*Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 
 ---
 
@@ -26,10 +27,11 @@
 | 2026-06-14 | #39, #40, #41 resolved |
 | 2026-06-14 | #31 persistence tests; `services/persistence.ts` extracted from `main.ts` |
 | 2026-06-14 | #1 incremental DOM rendering in `renderMessages` |
+| 2026-06-14 | #4 closed won't fix; docs updated to v1.19.5 |
 
 ---
 
-## File Inventory (sorted by lines, v1.19.2)
+## File Inventory (sorted by lines, v1.19.5)
 
 | # | File | Lines | Role |
 |---|------|------:|------|
@@ -51,12 +53,14 @@
 | 16 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
 | 17 | `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
 | 18 | `services/ContextBuilder.ts` | 48 | Builds system prompt + attaches vault notes |
-| 19 | `models/types.ts` | 78 | All shared TypeScript interfaces |
-| 20 | `locales/de.ts` / `locales/en.ts` | ~283 | i18n strings (German / English) |
-| 21 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
-| 22 | `tests/` | — | Vitest unit tests (7 files) |
+| 19 | `services/persistence.ts` | ~100 | Pure functions: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
+| 20 | `models/types.ts` | 78 | All shared TypeScript interfaces |
+| 21 | `models/settings.ts` | ~55 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
+| 22 | `locales/de.ts` / `locales/en.ts` | ~283 | i18n strings (German / English) |
+| 23 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
+| 24 | `tests/` | — | Vitest unit tests (12 files) |
 
-**Source total:** ~8 700 lines (excl. lock file, generated `main.js`, coverage output).
+**Source total:** ~9 000 lines (excl. lock file, generated `main.js`, coverage output).
 **Test suite:** 187 tests across 12 files — `npm test` (~500 ms), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
@@ -66,10 +70,10 @@
 
 | # | Suggestion | Status |
 |---|---|---|
-| 1 | Incremental DOM rendering in `renderMessages` | Open — Backlog |
+| 1 | Incremental DOM rendering in `renderMessages` | ✅ Skip-if-same + append-only in `renderMessages` |
 | 2 | Batch `backfillChapterNames` | ✅ Serial for-loop |
 | 3 | `data.json` unbounded growth | ✅ Partial — cap + eviction; per-file Backlog |
-| 4 | Cache context note file reads | Open — Backlog |
+| 4 | Cache context note file reads | Won't fix — Obsidian's vault already caches file reads; added overhead exceeds benefit |
 | 5 | Inject `NoteWriter` instead of constructing inline | ✅ `ToolHandler` class; `plugin.toolHandler` |
 | 6 | Extract `parseTitleAndSummary` to shared util | ✅ `services/messageUtils.ts` |
 | 7 | Error handling on persistence failure | ✅ try/catch + Notice + flush-on-unload |
@@ -80,7 +84,7 @@
 | 12 | `BaseProvider` abstract class | ✅ `services/BaseProvider.ts` |
 | 13 | Auto-abbreviate unknown model names | ✅ Done |
 | 14 | Extract `normalizeMessages` to shared util | ✅ `services/messageUtils.ts` |
-| 15 | Add Vitest unit tests | ✅ 155 tests across 7 files |
+| 15 | Add Vitest unit tests | ✅ 187 tests across 12 files |
 | 16 | Remove dead `generateFavoriteName` | ✅ Done |
 | 17 | `maxConversations` eviction drops active conversation | ✅ `activeConversationId` guard |
 | 18 | `getSecret()` async safety | ✅ `await` at all three call sites |
@@ -96,7 +100,7 @@
 | 28 | Send button token label | ✅ Forward estimate `lastIn + lastOut + draft/4`, live update |
 | 29 | Dead i18n keys | ✅ 6 keys removed; `tests/i18n.test.ts` added |
 | 30 | No ESLint | ✅ `eslint.config.mjs`; `npm run lint` in CI |
-| 31 | No persistence round-trip tests | Open — Soon |
+| 31 | No persistence round-trip tests | ✅ `services/persistence.ts` + `tests/persistence.test.ts` (32 tests) |
 | 32 | Provider structural duplication (`BaseProvider`) | ✅ `services/BaseProvider.ts` |
 | 33 | `estimateTokens` bytes vs text API | ✅ Renamed + split; moved to `messageUtils.ts`; tested |
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Collapsed to single `fmRx` |
@@ -172,11 +176,11 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 32 | `BaseProvider` abstract class | ✅ Done | Medium | High | — |
 | 40 | `FRAMEWORK_INSTRUCTIONS` unsafe key access | ✅ Done | Medium | Low | — |
 | 41 | `reloadFromDisk()` doesn't propagate new settings to services | ✅ Done | Medium | Low | — |
-| 1 | Incremental DOM rendering in `renderMessages` | ✅ Skip-if-same + append-only paths |
+| 1 | Incremental DOM rendering in `renderMessages` | ✅ Done | High | Medium | — |
 | 11 | Split `sidebar.ts` into sub-components | ✅ Partial / final | High | High | — |
 | 3 | Per-conversation file storage (long-term) | Open | High | High | Backlog |
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Done | Low | Low | — |
-| 4 | Cache context note file reads | Open | Low | Medium | Backlog |
+| 4 | Cache context note file reads | Won't fix | Low | Medium | — |
 | 10 | Harden fire-and-forget in fork path | Open | Low | Medium | Backlog |
 
 ---
