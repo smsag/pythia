@@ -23,7 +23,6 @@ import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { classifyApiError } from "./services/apiError";
-import { executeToolCall } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -1701,7 +1700,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 					return `User cancelled the write operation.`;
 				}
 
-				const result = await executeToolCall(this.plugin.noteWriter, call);
+				const result = await this.plugin.toolHandler.execute(call);
 
 				if (result.startsWith("Error")) {
 					chipEl.addClass("pythia-tool-call--error");

@@ -78,40 +78,41 @@ export function getToolDefinitions(defaultFolder: string, writeMode: "update" | 
 	return [CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL];
 }
 
-export async function executeToolCall(
-	writer: NoteWriter,
-	call: ToolCall
-): Promise<string> {
-	const path = call.input["path"];
-	const content = call.input["content"];
+export class ToolHandler {
+	constructor(private readonly writer: NoteWriter) {}
 
-	if (typeof path !== "string" || !path.trim()) {
-		return "Error: 'path' must be a non-empty string.";
-	}
-	if (typeof content !== "string") {
-		return "Error: 'content' must be a string.";
-	}
-	if (!path.endsWith(".md")) {
-		return "Error: path must end with .md";
-	}
+	async execute(call: ToolCall): Promise<string> {
+		const path = call.input["path"];
+		const content = call.input["content"];
 
-	if (call.name === "create_note" || call.name === "rewrite_note") {
-		try {
-			const file = await writer.writeNote(content, path);
-			return `Note written: ${file.path}`;
-		} catch (err) {
-			return `Error writing note: ${err instanceof Error ? err.message : String(err)}`;
+		if (typeof path !== "string" || !path.trim()) {
+			return "Error: 'path' must be a non-empty string.";
 		}
-	}
-
-	if (call.name === "prepend_note") {
-		try {
-			const file = await writer.prependWithSeparator(content, path);
-			return `Note updated: ${file.path}`;
-		} catch (err) {
-			return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;
+		if (typeof content !== "string") {
+			return "Error: 'content' must be a string.";
 		}
-	}
+		if (!path.endsWith(".md")) {
+			return "Error: path must end with .md";
+		}
 
-	return `Error: unknown tool "${call.name}"`;
+		if (call.name === "create_note" || call.name === "rewrite_note") {
+			try {
+				const file = await this.writer.writeNote(content, path);
+				return `Note written: ${file.path}`;
+			} catch (err) {
+				return `Error writing note: ${err instanceof Error ? err.message : String(err)}`;
+			}
+		}
+
+		if (call.name === "prepend_note") {
+			try {
+				const file = await this.writer.prependWithSeparator(content, path);
+				return `Note updated: ${file.path}`;
+			} catch (err) {
+				return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;
+			}
+		}
+
+		return `Error: unknown tool "${call.name}"`;
+	}
 }

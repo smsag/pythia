@@ -14,6 +14,7 @@ import { LLMRouter } from "./services/LLMRouter";
 import { ConversationStore } from "./services/ConversationStore";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
+import { ToolHandler } from "./services/ToolHandler";
 import { PromptOptimizerService } from "./services/PromptOptimizerService";
 
 export default class PythiaPlugin extends Plugin {
@@ -29,6 +30,7 @@ export default class PythiaPlugin extends Plugin {
 	conversationStore!: ConversationStore;
 	templateLoader!: TemplateLoader;
 	noteWriter!: NoteWriter;
+	toolHandler!: ToolHandler;
 	promptOptimizerService!: PromptOptimizerService;
 
 	async onload(): Promise<void> {
@@ -40,6 +42,7 @@ export default class PythiaPlugin extends Plugin {
 		this.conversationStore = new ConversationStore(this);
 		this.templateLoader = new TemplateLoader(this.app, this.settings);
 		this.noteWriter = new NoteWriter(this.app, this.settings);
+		this.toolHandler = new ToolHandler(this.noteWriter);
 		this.promptOptimizerService = new PromptOptimizerService(this.app, this, this.settings, this.llmRouter);
 
 		this.registerView(
