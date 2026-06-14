@@ -13,6 +13,7 @@ const SOURCE_FILES = [
 	"settings.ts",
 	...readdirSync(join(ROOT, "suggest")).map(f => `suggest/${f}`),
 	...readdirSync(join(ROOT, "services")).map(f => `services/${f}`),
+	...readdirSync(join(ROOT, "ui")).map(f => `ui/${f}`),
 ].map(f => join(ROOT, f));
 
 function collectUsedKeys(): Set<string> {

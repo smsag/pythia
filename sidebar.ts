@@ -14,6 +14,8 @@ import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText } from "./services/messageUtils";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
+import { OptimizationController } from "./ui/OptimizationController";
+import { NavigatorController } from "./ui/NavigatorController";
 import type { Conversation, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
@@ -99,7 +101,7 @@ export class PythiaSidebarView extends ItemView {
 	} | null = null;
 	private isScrolling = false;
 	// pendingAttachedNotes removed — all note attachments go to conv.contextNotes
-	private navigatorOutsideCleanup: (() => void) | null = null;
+	private navigatorController!: NavigatorController;
 	/** Tracks active observers per diagram element so stale ones are
 	 *  disconnected before new ones are armed on DOM rebuild (#20). */
 	private readonly diagObservers = new WeakMap<HTMLElement, { mo: MutationObserver; ro: ResizeObserver }>();
@@ -136,13 +138,7 @@ export class PythiaSidebarView extends ItemView {
 	private renameLLMBtn!: HTMLButtonElement;
 
 	private optimizeBtnEl!: HTMLButtonElement;
-	private optimizationState: {
-		originalText: string;
-		previewEl: HTMLElement;
-		indicatorEl: HTMLElement | null;
-		resultEl: HTMLElement | null;
-		actionRowEl: HTMLElement | null;
-	} | null = null;
+	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
@@ -223,11 +219,10 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		// Discard any pending optimization state.
-		if (this.optimizationState) this.cancelOptimization();
+		this.optimizationController?.cancel();
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
-		this.navigatorOutsideCleanup?.();
-		this.navigatorOutsideCleanup = null;
+		this.navigatorController?.close();
 
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
@@ -246,15 +241,13 @@ export class PythiaSidebarView extends ItemView {
 		scrollTo: "bottom" | "top" = "bottom"
 	): Promise<void> {
 		this.exitRenameMode(false);                   // discard any in-progress rename
-		if (this.optimizationState) this.cancelOptimization();
+		this.optimizationController?.cancel();
 		this.activeConversation = conversation;
 		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
 		// Resetting to true here was the root cause of conversations always scrolling
 		// to the bottom on open: anything calling scrollToBottom() during rendering
 		// would fire because autoScroll was still true.
-		this.navigatorOutsideCleanup?.();             // #26 — detach stale outside-click listener
-		this.navigatorOutsideCleanup = null;
-		this.navigatorEl.removeClass("open");
+		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.renderHeader();
 		this.updateModelBadge();
 		this.renderReferencePills();
@@ -523,7 +516,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		});
 		this.indexTriggerEl.addEventListener("click", (e) => {
 			e.stopPropagation();
-			this.toggleNavigator();
+			this.navigatorController.toggle();
 		});
 
 		// ── Reference row (context + output pills, hidden when empty) ───────
@@ -631,7 +624,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		optimizeSvg.createSvg("path", { attr: { d: "M10 2v2" } });
 		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
 		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
-		this.registerDomEvent(this.optimizeBtnEl, "click", () => void this.startOptimization());
+		this.registerDomEvent(this.optimizeBtnEl, "click", () => void this.optimizationController.start());
 
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
@@ -643,6 +636,31 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			} else {
 				this.sendMessage();
 			}
+		});
+
+		this.optimizationController = new OptimizationController({
+			app: this.app,
+			component: this,
+			plugin: this.plugin,
+			messagesEl: this.messagesEl,
+			inputEl: this.inputEl,
+			sendBtn: this.sendBtn,
+			optimizeBtnEl: this.optimizeBtnEl,
+			getConversation: () => this.activeConversation,
+			isStreaming: () => this.isStreaming,
+			scrollToBottom: () => this.scrollToBottom(),
+			autoResizeTextarea: () => this.autoResizeTextarea(),
+			sendMessage: () => this.sendMessage(),
+			registerDomEvent: (el, event, cb) => this.registerDomEvent(el, event, cb),
+		});
+
+		this.navigatorController = new NavigatorController({
+			plugin: this.plugin,
+			navigatorEl: this.navigatorEl,
+			indexTriggerEl: this.indexTriggerEl,
+			getConversation: () => this.activeConversation,
+			setActiveConversation: (conv) => this.setActiveConversation(conv),
+			scrollToMessage: (id) => this.scrollToMessage(id),
 		});
 	}
 
@@ -1365,145 +1383,6 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		this.messagesEl.scrollTo({ top: rowTop - TOP_MARGIN, behavior: "smooth" });
 	}
 
-	private toggleNavigator(): void {
-		if (this.navigatorEl.hasClass("open")) {
-			this.navigatorEl.removeClass("open");
-			return;
-		}
-
-		// Populate fresh content on each open
-		this.navigatorEl.empty();
-		const conv = this.activeConversation;
-
-		const makeSection = (
-			label: string,
-			defaultCollapsed: boolean,
-			count: number,
-			buildItems: (body: HTMLElement) => void
-		): HTMLElement => {
-			const section = this.navigatorEl.createDiv({ cls: "p-nav-section" });
-			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
-			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
-			header.createEl("span", { text: label });
-			if (count > 0) header.createEl("span", { cls: "p-nav-count", text: String(count) });
-			const body = section.createDiv({ cls: "p-nav-section-body" });
-
-			const collapsed = defaultCollapsed;
-			if (collapsed) {
-				body.style.display = "none";
-				chevron.setText("▸");
-			} else {
-				chevron.setText("▾");
-				buildItems(body);
-			}
-
-			header.addEventListener("mousedown", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				if (body.style.display === "none") {
-					body.style.display = "";
-					chevron.setText("▾");
-					if (!body.hasChildNodes()) buildItems(body);
-				} else {
-					body.style.display = "none";
-					chevron.setText("▸");
-				}
-			});
-			return section;
-		};
-
-		// ── Forks ────────────────────────────────────────────────────
-		const forks = conv
-			? this.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
-			: [];
-		makeSection(t("forksSection"), true, forks.length, (body) => {
-			if (forks.length === 0) {
-				body.createDiv({ cls: "p-nav-empty", text: t("navNoForks") });
-			} else {
-				for (const fork of forks) {
-					const item = body.createDiv({ cls: "p-nav-item" });
-					item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
-					item.createEl("span", { cls: "p-nav-label", text: fork.name });
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						this.navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
-						void this.setActiveConversation(fork);
-					});
-				}
-			}
-		});
-
-		// ── Starred ─────────────────────────────────────────────────
-		const favs = conv?.favorites ?? [];
-		makeSection(t("favoritesSection"), false, favs.length, (body) => {
-			if (favs.length === 0) {
-				body.createDiv({ cls: "p-nav-empty", text: t("navNoStarred") });
-			} else {
-				for (const fav of favs) {
-					const item = body.createDiv({ cls: "p-nav-item" });
-					item.createEl("span", { cls: "p-nav-star", text: "★" });
-					item.createEl("span", { cls: "p-nav-label", text: fav.name });
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						this.scrollToMessage(fav.messageId);
-						this.navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
-					});
-				}
-			}
-		});
-
-		// ── Chapters ─────────────────────────────────────────────────
-		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];
-		const chaptersSection = makeSection(t("chaptersSection"), false, userMsgs.length, (body) => {
-			if (userMsgs.length === 0) {
-				body.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
-			} else {
-				for (const msg of userMsgs) {
-					const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
-					const item = body.createDiv({ cls: "p-nav-item" });
-					item.createEl("span", { cls: "p-nav-label", text: label });
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						this.scrollToMessage(msg.id);
-						this.navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
-					});
-				}
-			}
-		});
-
-		this.navigatorEl.addClass("open");
-
-		// Scroll to Chapters so it's visible without scrolling, even when
-		// Forks and Starred above it are long.
-		requestAnimationFrame(() => {
-			chaptersSection.scrollIntoView({ block: "start", behavior: "instant" });
-		});
-
-		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers).
-		// Track as an instance field so the listener can be removed if the view closes or the
-		// conversation switches before the user clicks outside (#26).
-		this.navigatorOutsideCleanup?.();
-		const onOutside = (e: MouseEvent) => {
-			if (!this.navigatorEl.contains(e.target as Node) && e.target !== this.indexTriggerEl) {
-				this.navigatorEl.removeClass("open");
-				this.navigatorOutsideCleanup?.();
-				this.navigatorOutsideCleanup = null;
-			}
-		};
-		// Defer so the trigger's own mousedown doesn't immediately close it.
-		setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			this.navigatorOutsideCleanup = () =>
-				document.removeEventListener("mousedown", onOutside, true);
-		}, 0);
-	}
-
 	private updateModelBadge(): void {
 		if (!this.activeConversation) {
 			this.modelBadgeEl.style.display = "none";
@@ -1715,151 +1594,10 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		).open();
 	}
 
-	// ── Inline prompt optimizer ────────────────────────────────────────────────
-
-	private setOptimizingState(active: boolean): void {
-		this.optimizeBtnEl.disabled = active;
-		this.sendBtn.disabled = active;
-		this.inputEl.disabled = active;
-		if (active) {
-			this.optimizeBtnEl.addClass("active");
-		} else {
-			this.optimizeBtnEl.removeClass("active");
-		}
-	}
-
-	private async startOptimization(): Promise<void> {
-		if (this.optimizationState || this.isStreaming) return;
-		const conv = this.activeConversation;
-		if (!conv) return;
-		const text = this.inputEl.value.trim();
-		if (!text) return;
-
-		if (!this.plugin.settings.promptOptimizerTemplateId) {
-			new Notice(t("optimizeNoTemplate"));
-			return;
-		}
-
-		// Build preview bubble (original input, muted style)
-		const previewEl = this.messagesEl.createDiv({ cls: "p-msg-user p-msg-optimize-preview" });
-		const bubble = previewEl.createDiv({ cls: "p-bubble" });
-		await MarkdownRenderer.render(this.app, text, bubble, "", this);
-
-		// Indicator
-		const framework = this.plugin.settings.defaultPromptFramework;
-		const indicatorEl = this.messagesEl.createDiv({ cls: "p-optimize-indicator" });
-		indicatorEl.setText(
-			framework !== "none"
-				? t("optimizingIndicatorFramework", { framework })
-				: t("optimizingIndicator")
-		);
-
-		this.optimizationState = { originalText: text, previewEl, indicatorEl, resultEl: null, actionRowEl: null };
-		this.setOptimizingState(true);
-		this.scrollToBottom();
-
-		try {
-			const result = await this.plugin.promptOptimizerService.optimizeText(
-				text, framework, conv.provider, conv.model
-			);
-			await this.showOptimizationResult(result);
-		} catch (err) {
-			new Notice(t("optimizeFailed", { error: String(err) }));
-			this.cancelOptimization();
-		}
-	}
-
-	private async showOptimizationResult(optimizedText: string): Promise<void> {
-		if (!this.optimizationState) return;
-
-		// Remove indicator
-		this.optimizationState.indicatorEl?.remove();
-		this.optimizationState.indicatorEl = null;
-		this.optimizeBtnEl.removeClass("active");
-
-		// Result bubble
-		const resultEl = this.messagesEl.createDiv({ cls: "p-msg-optimize-result" });
-		await MarkdownRenderer.render(this.app, optimizedText, resultEl, "", this);
-		this.optimizationState.resultEl = resultEl;
-
-		// Action row
-		const actionRowEl = this.messagesEl.createDiv({ cls: "p-optimize-actions" });
-		const confirmBtn = actionRowEl.createEl("button", { cls: "p-opt-confirm", text: t("useThisBtn") });
-		const discardBtn = actionRowEl.createEl("button", { cls: "p-opt-discard", text: t("discardBtn") });
-		const retryBtn   = actionRowEl.createEl("button", { cls: "p-opt-retry",   text: t("anotherVersionBtn") });
-		this.optimizationState.actionRowEl = actionRowEl;
-
-		this.registerDomEvent(confirmBtn, "click", () => this.confirmOptimization(optimizedText));
-		this.registerDomEvent(discardBtn, "click", () => this.cancelOptimization());
-		this.registerDomEvent(retryBtn,   "click", () => void this.retryOptimization());
-
-		this.scrollToBottom();
-	}
-
-	private confirmOptimization(optimizedText: string): void {
-		if (!this.optimizationState) return;
-		this.optimizationState.previewEl.remove();
-		this.optimizationState.resultEl?.remove();
-		this.optimizationState.actionRowEl?.remove();
-		this.optimizationState = null;
-		this.setOptimizingState(false);
-		this.inputEl.value = optimizedText;
-		this.autoResizeTextarea();
-		void this.sendMessage();
-	}
-
-	private cancelOptimization(): void {
-		if (!this.optimizationState) return;
-		const original = this.optimizationState.originalText;
-		this.optimizationState.previewEl.remove();
-		this.optimizationState.indicatorEl?.remove();
-		this.optimizationState.resultEl?.remove();
-		this.optimizationState.actionRowEl?.remove();
-		this.optimizationState = null;
-		this.setOptimizingState(false);
-		this.inputEl.value = original;
-		this.autoResizeTextarea();
-	}
-
-	private async retryOptimization(): Promise<void> {
-		if (!this.optimizationState) return;
-		// Remove result + actions, keep preview, re-run optimizer
-		this.optimizationState.resultEl?.remove();
-		this.optimizationState.resultEl = null;
-		this.optimizationState.actionRowEl?.remove();
-		this.optimizationState.actionRowEl = null;
-
-		const framework = this.plugin.settings.defaultPromptFramework;
-		const indicatorEl = this.messagesEl.createDiv({ cls: "p-optimize-indicator" });
-		indicatorEl.setText(
-			framework !== "none"
-				? t("optimizingIndicatorFramework", { framework })
-				: t("optimizingIndicator")
-		);
-		this.optimizationState.indicatorEl = indicatorEl;
-		this.setOptimizingState(true);
-		this.scrollToBottom();
-
-		const conv = this.activeConversation;
-		if (!conv) { this.cancelOptimization(); return; }
-		try {
-			const result = await this.plugin.promptOptimizerService.optimizeText(
-				this.optimizationState.originalText,
-				framework,
-				conv.provider,
-				conv.model,
-			);
-			await this.showOptimizationResult(result);
-		} catch (err) {
-			new Notice(t("optimizeFailed", { error: String(err) }));
-			this.cancelOptimization();
-		}
-	}
-
-	// ── /Inline prompt optimizer ───────────────────────────────────────────────
+	// ── /Inline prompt optimizer (extracted to ui/OptimizationController.ts) ───
 
 	async sendMessage(): Promise<void> {
-		if (this.isStreaming || this.optimizationState) return;
+		if (this.isStreaming || this.optimizationController.isActive) return;
 		if (!this.activeConversation) {
 			new Notice(t("noActiveConvToSend"));
 			return;
