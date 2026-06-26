@@ -309,7 +309,7 @@ export default class PythiaPlugin extends Plugin {
 					await this.activateView();
 					new TemplateSuggestModal(this.app, templates, async (tpl) => {
 						const contextNotes = [...tpl.contextNotes];
-						let outputFolder = tpl.outputFolder;
+						const outputFolder = tpl.outputFolder;
 						const conv = await this.createConversation(
 							`${tpl.name} ${todayISO()}`,
 							tpl.systemPrompt,
