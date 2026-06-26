@@ -100,6 +100,7 @@ export class AnthropicService extends BaseProvider {
 			const maxTokens = conversation.maxTokens ?? 4096;
 
 			if (this.settings.debugMode) {
+				// eslint-disable-next-line no-console
 				console.log("[Pythia] Anthropic API call →", {
 					model,
 					messages: historyMessages.length + 1,
