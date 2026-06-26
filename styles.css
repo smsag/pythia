@@ -566,8 +566,9 @@
 }
 
 .p-bubble {
-  background: var(--color-accent);
-  color: var(--text-on-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--background-primary));
+  color: var(--text-normal);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
   font-size: var(--font-small);
   line-height: 1.5;
   padding: var(--s1) var(--s2) var(--s1) var(--s3);
@@ -596,7 +597,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-on-accent);
+  color: var(--text-muted);
   opacity: 0.75;
   padding: 0;
   display: flex;
@@ -1277,12 +1278,26 @@ body.is-mobile .p-textarea {
 }
 
 .pythia-tool-call--done {
-  border-color: var(--color-green);
+  background: transparent;
+  border: none;
+  padding: 0 0 0 var(--s3);
+  margin: 0;
+  gap: 0;
 }
 
-.pythia-tool-call--done .pythia-tool-call-label,
 .pythia-tool-call--done .pythia-tool-call-link {
-  color: var(--color-green);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  text-decoration: none;
+}
+
+.pythia-tool-call--done .pythia-tool-call-link::before {
+  content: "↗ ";
+}
+
+.pythia-tool-call--done .pythia-tool-call-link:hover {
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 .pythia-tool-call--error .pythia-tool-call-label {
