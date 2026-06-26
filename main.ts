@@ -295,6 +295,41 @@ export default class PythiaPlugin extends Plugin {
 					return;
 				}
 
+				if (action === "inject") {
+					const rawText = params.text ? decodeURIComponent(params.text) : "";
+					if (!rawText) {
+						new Notice(t("uriMissingText"));
+						return;
+					}
+					const templates = await this.templateLoader.loadTemplates();
+					if (templates.length === 0) {
+						new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
+						return;
+					}
+					await this.activateView();
+					new TemplateSuggestModal(this.app, templates, async (tpl) => {
+						const contextNotes = [...tpl.contextNotes];
+						const outputFolder = tpl.outputFolder;
+						const conv = await this.createConversation(
+							`${tpl.name} ${todayISO()}`,
+							tpl.systemPrompt,
+							contextNotes,
+							tpl.id,
+							tpl.provider,
+							tpl.model,
+							tpl.maxTokens,
+							outputFolder
+						);
+						if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+						if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+						await this.conversationStore.save(conv);
+						const view = await this.activateView();
+						await view.setActiveConversation(conv);
+						view.triggerAutoPrompt(rawText);
+					}).open();
+					return;
+				}
+
 					new Notice(t("unknownAction", { action }));
 			} catch (err) {
 				new Notice(t("deepLinkError", { error: err instanceof Error ? err.message : String(err) }));

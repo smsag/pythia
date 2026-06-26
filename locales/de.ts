@@ -137,6 +137,7 @@ const de: Strings = {
 	deepLinkError:          "Pythia-Deeplink-Fehler: {{error}}",
 	uriMissingId:           "Pythia URI: Parameter 'id' fehlt.",
 	uriMissingName:         "Pythia URI: Parameter 'name' fehlt.",
+	uriMissingText:         "Pythia URI: Parameter 'text' fehlt.",
 	convNotFound:           "Pythia: Gespräch \"{{id}}\" nicht gefunden.",
 	templateNotFound:       "Pythia: Vorlage \"{{name}}\" nicht gefunden.",
 	unknownAction:          "Pythia: Unbekannte Aktion \"{{action}}\".",

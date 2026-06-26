@@ -5,7 +5,6 @@ import {
 	MarkdownView,
 	Modal,
 	Notice,
-	Platform,
 	setIcon,
 	TFile,
 	WorkspaceLeaf,

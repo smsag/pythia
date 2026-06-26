@@ -10,9 +10,9 @@ export default tseslint.config(
 		extends: [tseslint.configs.recommended],
 		rules: {
 			// ── Warnings ──────────────────────────────────────────────────────
-			// warn rather than error: Obsidian plugins have no logging framework;
-			// console.log guarded by settings.debugMode is intentional
-			"no-console":                              "warn",
+			// console.warn/error are always acceptable in catch blocks;
+			// console.log guarded by settings.debugMode uses eslint-disable inline
+			"no-console": ["warn", { allow: ["warn", "error"] }],
 
 			// ── Warnings ──────────────────────────────────────────────────────
 			"@typescript-eslint/no-unused-vars": ["warn", {

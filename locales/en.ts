@@ -135,6 +135,7 @@ const en = {
 	deepLinkError:          "Pythia deep link error: {{error}}",
 	uriMissingId:           "Pythia URI: missing 'id' parameter.",
 	uriMissingName:         "Pythia URI: missing 'name' parameter.",
+	uriMissingText:         "Pythia URI: missing 'text' parameter.",
 	convNotFound:           "Pythia: conversation \"{{id}}\" not found.",
 	templateNotFound:       "Pythia: template \"{{name}}\" not found.",
 	unknownAction:          "Pythia: unknown action \"{{action}}\".",

@@ -140,6 +140,7 @@ export class OpenAIProvider extends BaseProvider {
 			}
 
 			if (this.settings.debugMode) {
+				// eslint-disable-next-line no-console
 				console.log("[Pythia] OpenAI API call →", {
 					model,
 					messages: apiMessages.length,
