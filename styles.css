@@ -801,7 +801,7 @@
   gap: var(--s1);
   font-family: var(--font-monospace);
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-top: 1px;
   user-select: none;
 }
