@@ -62,6 +62,8 @@ const en = {
 	saveResponseTooltip: "Save response",
 	summarizeTooltip:    "Summarize conversation",
 	showChaptersTooltip: "Show chapters",
+	applyTemplateTooltip: "Apply template",
+	appliedTemplate:      "Applied template \"{{name}}\"",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Copied",
