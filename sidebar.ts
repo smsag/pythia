@@ -533,7 +533,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.inputEl = inputArea.createEl("textarea", {
 			cls: "p-textarea",
-			attr: { placeholder: t("inputPlaceholder"), rows: "1" },
+			attr: { placeholder: t("inputPlaceholder"), rows: "2" },
 		});
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
@@ -1341,9 +1341,10 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 	private autoResizeTextarea(): void {
 		const lineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+		const minH = Math.ceil(lineHeight * 2);
 		const maxH = Math.ceil(lineHeight * 5);
 		this.inputEl.style.height = "auto";
-		this.inputEl.style.height = `${Math.min(this.inputEl.scrollHeight, maxH)}px`;
+		this.inputEl.style.height = `${Math.min(Math.max(this.inputEl.scrollHeight, minH), maxH)}px`;
 	}
 
 	private scrollToBottom(force = false): void {

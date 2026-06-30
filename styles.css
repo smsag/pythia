@@ -1096,21 +1096,21 @@
   resize: none;
   line-height: 1.55;
   width: 100%;
-  min-height: 18px;
+  min-height: calc(var(--font-small) * 1.55 * 2);
   /* 5 lines max: font-small (12px) × line-height (1.55) × 5 = 93px */
   max-height: calc(var(--font-small) * 1.55 * 5);
   overflow-y: auto;
   box-sizing: border-box;
   transition: height 0.1s ease;
 }
-/* Desktop: start at 1 line, grow up to 5 lines */
+/* Desktop: start at 2 lines, grow up to 5 lines */
 body.is-desktop .p-textarea {
-  min-height: calc(var(--font-small) * 1.55); /* 1 line */
+  min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
   max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
 }
-/* Mobile: 1 line min, same 5-line cap */
+/* Mobile: 2 lines min, same 5-line cap */
 body.is-mobile .p-textarea {
-  min-height: calc(var(--font-small) * 1.55); /* 1 line */
+  min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
   max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
 }
 .p-textarea::placeholder {
