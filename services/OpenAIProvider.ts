@@ -250,7 +250,8 @@ export class OpenAIProvider extends BaseProvider {
 			const isAbort =
 				error instanceof Error &&
 				(error.name === "AbortError" ||
-					error.name === "APIUserAbortError");
+					error.name === "APIUserAbortError" ||
+					error.name === "ToolCancelledError");
 			if (isAbort) {
 				onComplete(fullText);
 			} else {
