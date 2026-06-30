@@ -1207,7 +1207,7 @@ body.is-mobile .p-textarea {
 .pythia-modal {
   height: auto !important;
   max-height: 90vh;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
 }
 /* Strip macOS Electron box-shadow/border from inputs and selects inside modals */
 .pythia-modal input,
