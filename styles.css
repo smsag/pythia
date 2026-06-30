@@ -463,7 +463,7 @@
   margin-top: var(--s1);
   font-family: var(--font-monospace);
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   user-select: none;
 }
 
