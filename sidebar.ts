@@ -1473,9 +1473,27 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		const convs = this.plugin.conversations;
 		if (convs.length === 0) return;
 
-		new ConversationSuggestModal(this.app, convs, async (conv) => {
-			await this.setActiveConversation(conv);
-		}).open();
+		new ConversationSuggestModal(
+			this.app,
+			convs,
+			async (conv) => {
+				await this.setActiveConversation(conv);
+			},
+			(conv) => {
+				new DeleteConversationModal(this.app, conv, async () => {
+					await this.plugin.conversationStore.delete(conv.id);
+					new Notice(t("conversationDeleted"));
+					if (this.activeConversation?.id === conv.id) {
+						const remaining = this.plugin.conversations;
+						if (remaining.length > 0) {
+							await this.setActiveConversation(remaining[remaining.length - 1]);
+						} else {
+							await this.plugin.cmdNewConversation();
+						}
+					}
+				}).open();
+			}
+		).open();
 	}
 
 	private enterRenameMode(): void {

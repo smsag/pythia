@@ -1323,6 +1323,30 @@ body.is-mobile .p-textarea {
   opacity: 0.8;
 }
 
+/* ── Conversation suggest — inline delete button ────────────── */
+.pythia-conv-suggest-item {
+  display: flex;
+  align-items: center;
+}
+.pythia-conv-suggest-delete {
+  all: unset;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+  line-height: 1;
+}
+.pythia-conv-suggest-item:hover .pythia-conv-suggest-delete,
+.pythia-conv-suggest-item.is-selected .pythia-conv-suggest-delete {
+  opacity: 1;
+}
+.pythia-conv-suggest-delete:hover {
+  color: var(--text-error);
+}
+
 /* ── Inline note suggest dropdown ───────────────────────────── */
 .pythia-inline-suggest {
   position: absolute;
