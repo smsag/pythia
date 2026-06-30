@@ -1,19 +1,22 @@
-import { App, FuzzySuggestModal } from "obsidian";
+import { App, FuzzyMatch, FuzzySuggestModal, setIcon } from "obsidian";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 
 export class ConversationSuggestModal extends FuzzySuggestModal<Conversation> {
 	private conversations: Conversation[];
 	private onChoose: (conv: Conversation) => void;
+	private onDelete?: (conv: Conversation) => void;
 
 	constructor(
 		app: App,
 		conversations: Conversation[],
-		onChoose: (conv: Conversation) => void
+		onChoose: (conv: Conversation) => void,
+		onDelete?: (conv: Conversation) => void
 	) {
 		super(app);
 		this.conversations = conversations;
 		this.onChoose = onChoose;
+		this.onDelete = onDelete;
 		this.setPlaceholder(t("searchConversations"));
 		this.setInstructions([
 			{ command: "↑↓", purpose: t("instrNavigate") },
@@ -34,6 +37,20 @@ export class ConversationSuggestModal extends FuzzySuggestModal<Conversation> {
 	getItemText(item: Conversation): string {
 		const date = item.updatedAt.slice(0, 10);
 		return `${item.name}  [${date}]`;
+	}
+
+	renderSuggestion(match: FuzzyMatch<Conversation>, el: HTMLElement): void {
+		super.renderSuggestion(match, el);
+		if (!this.onDelete) return;
+		el.addClass("pythia-conv-suggest-item");
+		const trashBtn = el.createEl("button", { cls: "pythia-conv-suggest-delete" });
+		setIcon(trashBtn, "trash");
+		trashBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			this.close();
+			this.onDelete!(match.item);
+		});
 	}
 
 	onChooseItem(item: Conversation): void {

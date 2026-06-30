@@ -1111,10 +1111,11 @@ body.is-desktop .p-textarea {
   min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
   max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
 }
-/* Mobile: 2 lines min, same 5-line cap */
+/* Mobile: smaller font so the placeholder fits without clipping */
 body.is-mobile .p-textarea {
-  min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
-  max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
+  font-size: var(--font-smaller);
+  min-height: calc(var(--font-smaller) * 1.55 * 2); /* 2 lines */
+  max-height: calc(var(--font-smaller) * 1.55 * 5); /* 5 lines */
 }
 .p-textarea:focus {
   outline: none;
@@ -1207,7 +1208,7 @@ body.is-mobile .p-textarea {
 .pythia-modal {
   height: auto !important;
   max-height: 90vh;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
 }
 /* Strip macOS Electron box-shadow/border from inputs and selects inside modals */
 .pythia-modal input,
@@ -1321,6 +1322,30 @@ body.is-mobile .p-textarea {
 
 .pythia-tool-call-link:hover {
   opacity: 0.8;
+}
+
+/* ── Conversation suggest — inline delete button ────────────── */
+.pythia-conv-suggest-item {
+  display: flex;
+  align-items: center;
+}
+.pythia-conv-suggest-delete {
+  all: unset;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+  line-height: 1;
+}
+.pythia-conv-suggest-item:hover .pythia-conv-suggest-delete,
+.pythia-conv-suggest-item.is-selected .pythia-conv-suggest-delete {
+  opacity: 1;
+}
+.pythia-conv-suggest-delete:hover {
+  color: var(--text-error);
 }
 
 /* ── Inline note suggest dropdown ───────────────────────────── */
