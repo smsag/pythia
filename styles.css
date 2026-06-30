@@ -1111,10 +1111,11 @@ body.is-desktop .p-textarea {
   min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
   max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
 }
-/* Mobile: 2 lines min, same 5-line cap */
+/* Mobile: smaller font so the placeholder fits without clipping */
 body.is-mobile .p-textarea {
-  min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
-  max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
+  font-size: var(--font-smaller);
+  min-height: calc(var(--font-smaller) * 1.55 * 2); /* 2 lines */
+  max-height: calc(var(--font-smaller) * 1.55 * 5); /* 5 lines */
 }
 .p-textarea:focus {
   outline: none;
