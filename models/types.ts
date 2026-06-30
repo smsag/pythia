@@ -76,3 +76,10 @@ export interface ToolCall {
 	name: string;
 	input: Record<string, unknown>;
 }
+
+export class ToolCancelledError extends Error {
+	constructor() {
+		super("Tool call cancelled by user");
+		this.name = "ToolCancelledError";
+	}
+}

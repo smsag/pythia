@@ -16,6 +16,7 @@ import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import type { Conversation, Message, ToolCall, TokenUsage } from "./models/types";
+import { ToolCancelledError } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -1761,7 +1762,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 						cls: "pythia-tool-call-label",
 						text: t("toolCallCancelled"),
 					});
-					return `User cancelled the write operation.`;
+					throw new ToolCancelledError();
 				}
 
 				const result = await this.plugin.toolHandler.execute(call);
@@ -1798,6 +1799,11 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				await finalize(fullText);
 				// Reset after render so the send guard stays active during MarkdownRenderer.render.
 				this.setStreamingState(false);
+
+				if (!fullText) {
+					streamingRow.remove();
+					return;
+				}
 
 				if (fullText) {
 					const assistantMsg: Message = {
