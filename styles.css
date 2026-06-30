@@ -963,6 +963,9 @@
 .p-index-trigger:hover {
   background: var(--background-modifier-hover);
 }
+.p-index-trigger:active {
+  background: var(--background-secondary);
+}
 
 .p-navigator {
   position: absolute;
