@@ -937,7 +937,7 @@
   flex-shrink: 0;
 }
 
-.p-index-trigger {
+.p-index-wrap .p-index-trigger {
   all: unset;
   cursor: pointer;
   position: absolute;
@@ -960,10 +960,10 @@
   z-index: 10;
   box-sizing: border-box;
 }
-.p-index-trigger:hover {
+.p-index-wrap .p-index-trigger:hover {
   background: var(--background-modifier-hover);
 }
-.p-index-trigger:active {
+.p-index-wrap .p-index-trigger:active {
   background: var(--background-secondary);
 }
 
