@@ -1253,7 +1253,7 @@ body.is-mobile .p-textarea {
   justify-content: flex-end;
 }
 
-.pythia-tool-call-btn {
+.pythia-tool-call-actions .pythia-tool-call-btn {
   all: unset;
   font-family: var(--font-monospace);
   font-size: var(--font-smaller);
@@ -1267,11 +1267,11 @@ body.is-mobile .p-textarea {
   transition: opacity 0.1s;
 }
 
-.pythia-tool-call-btn:hover {
+.pythia-tool-call-actions .pythia-tool-call-btn:hover {
   opacity: 1;
 }
 
-.pythia-tool-call-btn--action {
+.pythia-tool-call-actions .pythia-tool-call-btn--action {
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
