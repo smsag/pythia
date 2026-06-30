@@ -64,6 +64,8 @@ const de: Strings = {
 	saveResponseTooltip: "Antwort speichern",
 	summarizeTooltip:    "Gespräch zusammenfassen",
 	showChaptersTooltip: "Kapitel anzeigen",
+	applyTemplateTooltip: "Vorlage anwenden",
+	appliedTemplate:      "Vorlage „{{name}}“ angewendet",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Kopiert",

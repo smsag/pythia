@@ -24,6 +24,7 @@ import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { classifyApiError } from "./services/apiError";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
+import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -630,6 +631,13 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
 		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
 		this.registerDomEvent(this.optimizeBtnEl, "click", () => void this.optimizationController.start());
+
+		const applyTemplateBtn = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("applyTemplateTooltip") },
+		});
+		setIcon(applyTemplateBtn, "layout-template");
+		this.registerDomEvent(applyTemplateBtn, "click", () => void this.onApplyTemplate());
 
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
@@ -1588,6 +1596,40 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				conv.contextNotes.push(file.path);
 				void this.plugin.conversationStore.save(conv);
 				this.renderReferencePills();
+			}
+		}).open();
+	}
+
+	private async onApplyTemplate(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+
+		const templates = await this.plugin.templateLoader.loadTemplates();
+		if (templates.length === 0) {
+			new Notice(t("noTemplatesFound", { folder: this.plugin.settings.templatesFolder }));
+			return;
+		}
+
+		new TemplateSuggestModal(this.app, templates, async (tpl) => {
+			conv.systemPrompt = tpl.systemPrompt;
+			conv.templateId   = tpl.id;
+			if (tpl.provider)   conv.provider   = tpl.provider;
+			if (tpl.model)      conv.model      = tpl.model;
+			if (tpl.maxTokens)  conv.maxTokens  = tpl.maxTokens;
+			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+			if (tpl.writeMode)  conv.writeMode  = tpl.writeMode;
+
+			for (const n of tpl.contextNotes) {
+				if (!conv.contextNotes.includes(n)) conv.contextNotes.push(n);
+			}
+
+			await this.plugin.conversationStore.save(conv);
+			this.updateModelBadge();
+			this.renderReferencePills();
+			new Notice(t("appliedTemplate", { name: tpl.name }));
+
+			if (tpl.autoPrompt) {
+				this.prefillInput(tpl.autoPrompt);
 			}
 		}).open();
 	}

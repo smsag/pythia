@@ -1331,6 +1331,10 @@ body.is-mobile .p-textarea {
 }
 .pythia-conv-suggest-delete {
   all: unset;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
   margin-left: auto;
   flex-shrink: 0;
   padding: 2px 4px;
@@ -1340,7 +1344,11 @@ body.is-mobile .p-textarea {
   transition: opacity 0.1s, color 0.1s;
   line-height: 1;
 }
-.pythia-conv-suggest-item:hover .pythia-conv-suggest-delete,
+/* Desktop: reveal on hover or keyboard selection */
+body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
+  opacity: 1;
+}
+/* Mobile: reveal only on the highlighted (selected) row — no hover */
 .pythia-conv-suggest-item.is-selected .pythia-conv-suggest-delete {
   opacity: 1;
 }
