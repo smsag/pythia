@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-09 — response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-09 — prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -20,13 +20,14 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `settings.ts` | 419 | Settings schema, defaults, settings tab UI |
 | `services/OpenAIProvider.ts` | 298 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating |
 | `services/AnthropicService.ts` | 240 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating |
-| `services/BaseProvider.ts` | 132 | Abstract base: shared fields, lifecycle, all generate* utility methods |
-| `services/ToolHandler.ts` | 118 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
+| `services/BaseProvider.ts` | 136 | Abstract base: shared fields, lifecycle, all generate* utility methods |
+| `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 186 | Vault write operations |
 | `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing (incl. `temperature`) |
-| `services/messageUtils.ts` | 98 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, token estimation, lang helpers |
+| `services/messageUtils.ts` | 117 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, token estimation, lang helpers |
 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 65 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes, estimates tokens |
+| `services/ContextBuilder.ts` | 72 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes, estimates tokens |
+| `services/promptConstants.ts` | 25 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …) and `TITLE`/`SUMMARY` markers, referenced by ContextBuilder, ToolHandler, BaseProvider, messageUtils |
 | `services/noteChunking.ts` | 69 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
 | `services/noteRelevance.ts` | 18 | Pure keyword-overlap scoring shared by note chunking and `#` suggestion ranking |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient API failures |
@@ -129,6 +130,10 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
       → LLMRouter.streamMessage(conv, text, conv.contextNotes, …)
           → ContextBuilder.buildSystemPrompt()
               — appends a grounding instruction when contextNotes.length > 0
+              — the XML-ish tag names (`system_prompt`, `previous_conversation_summary`,
+                `attached_note` and its `path`/`excerpt` attributes) are defined once in
+                `services/promptConstants.ts` and reused by `ToolHandler.ts`'s tool-call
+                descriptions, which reference `attached_note` by name in prose read by the LLM
           → ContextBuilder.buildAttachedNotesContent(conv.contextNotes, newMessage)
               — notes over NOTE_CHUNK_THRESHOLD_CHARS are split by heading
                 (noteChunking.chunkByHeadings) and filtered to the sections most
@@ -285,6 +290,8 @@ Each provider implements:
 - `resolveModel(override?)` — falls back to provider-specific default model
 - `callUtility(model, userMessage, maxTokens, systemMessage?)` — single-turn non-streaming call
 - `streamMessage(...)` — full streaming implementation
+
+The `TITLE:`/`SUMMARY:` markers used by `generateSummaryWithTitle` and parsed by `messageUtils.parseTitleAndSummary` are defined once in `services/promptConstants.ts` (`TITLE_MARKER`, `SUMMARY_MARKER`) so the two can't drift apart.
 
 Shared logic in `services/messageUtils.ts`:
 - `parseTitleAndSummary` — parses `TITLE: / SUMMARY:` structured response

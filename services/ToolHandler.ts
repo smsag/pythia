@@ -1,5 +1,6 @@
 import { NoteWriter } from "./NoteWriter";
 import type { ToolCall, ToolDefinition } from "../models/types";
+import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR } from "./promptConstants";
 
 const CREATE_NOTE_TOOL = (defaultFolder: string): ToolDefinition => ({
 	name: "create_note",
@@ -29,7 +30,7 @@ const PREPEND_NOTE_TOOL: ToolDefinition = {
 	description:
 		`Add content above the existing text of a note that was provided as context, separated by a horizontal rule (---). ` +
 		`Use this when the user asks to prepend, add to the top of, or insert content before an existing document — e.g. "add a summary above this", "prepend this to my doc". ` +
-		`The path must exactly match the path attribute of an <attached_note> tag you received.`,
+		`The path must exactly match the ${ATTACHED_NOTE_PATH_ATTR} attribute of an <${ATTACHED_NOTE_TAG}> tag you received.`,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -51,14 +52,14 @@ const REWRITE_NOTE_TOOL: ToolDefinition = {
 	description:
 		`Replace the full content of a note that was provided as context. ` +
 		`Use this when the user asks to rewrite, restructure, revise, or replace a document — e.g. "rewrite this doc", "restructure as bullet points", "make this more concise". ` +
-		`The path must exactly match the path attribute of an <attached_note> tag you received — do not invent a path. ` +
+		`The path must exactly match the ${ATTACHED_NOTE_PATH_ATTR} attribute of an <${ATTACHED_NOTE_TAG}> tag you received — do not invent a path. ` +
 		`Do NOT use this to answer questions or produce content the user wants to read in chat.`,
 	inputSchema: {
 		type: "object",
 		properties: {
 			path: {
 				type: "string",
-				description: "Exact vault path of the context note to rewrite, matching the attached_note path attribute.",
+				description: `Exact vault path of the context note to rewrite, matching the ${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR} attribute.`,
 			},
 			content: {
 				type: "string",
