@@ -90,6 +90,10 @@ const en = {
 	apiKeyRejected: "API key rejected. Check Settings → Pythia.",
 	rateLimitHit:   "Rate limit hit. Try again in a moment.",
 	networkError:   "Network error. Check your internet connection.",
+	serverError:    "The AI provider is temporarily overloaded. Try again in a moment.",
+	toolLoopExceeded: "The assistant seems stuck in a loop of tool calls and was stopped.",
+	cannotSwitchWhileStreaming: "Wait for the current response to finish before switching conversations.",
+	cannotDeleteWhileStreaming: "Wait for the current response to finish before deleting this conversation.",
 
 	// ── Save conversation modal ───────────────────────────────────────────────
 	saveConvTitle:  "Save conversation to note",
@@ -227,6 +231,7 @@ const en = {
 	anotherVersionBtn:                "↺",
 	optimizeNoTemplate:               "No optimizer template configured. Choose one in Settings → Pythia.",
 	optimizeFailed:                   "Optimization failed: {{error}}",
+	commandFailed:                    "Command failed: {{error}}",
 	promptInputModalTitle:            "Enter your prompt",
 	promptInputModalPlaceholder:      "Type your raw prompt here… (Enter to confirm, Shift+Enter for new line)",
 	promptInputModalConfirm:          "Optimize",

@@ -24,6 +24,7 @@ import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { classifyApiError } from "./services/apiError";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
+import { MODEL_ABBREVIATIONS } from "./models/knownModels";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -63,17 +64,6 @@ class DeleteFileModal extends Modal {
 	onClose(): void { this.contentEl.empty(); }
 }
 
-const MODEL_ABBREVIATIONS: Record<string, string> = {
-	"claude-opus-4":     "Opus 4",
-	"claude-sonnet-4-6": "Sonnet 4.6",
-	"claude-haiku-3-5":  "Haiku 3.5",
-	"gpt-4o":            "GPT-4o",
-	"gpt-4o-mini":       "GPT-4o mini",
-	"o3":                "o3",
-	"o3-mini":           "o3 mini",
-	"o4-mini":           "o4 mini",
-};
-
 function abbreviateModel(model: string): string {
 	if (MODEL_ABBREVIATIONS[model]) return MODEL_ABBREVIATIONS[model];
 	// Auto-derive a readable label for unknown/future model IDs (#13)
@@ -91,6 +81,11 @@ export class PythiaSidebarView extends ItemView {
 	get activeConversationId(): string | null { return this.activeConversation?.id ?? null; }
 	private isStreaming = false;
 	private autoScroll = true;
+	/** Conversation IDs currently running a chapter-name backfill — prevents
+	 *  overlapping serial backfill runs on rapid re-open of the same conversation. */
+	private backfillInFlight = new Set<string>();
+	/** Cached getComputedStyle(inputEl).lineHeight — invalidated when inputEl is recreated. */
+	private cachedLineHeight: number | null = null;
 	// Incremental DOM rendering — track what is already in the DOM so renderMessages
 	// can skip a full rebuild when the same conversation gains only new messages.
 	private renderedConvId: string | null = null;
@@ -243,6 +238,13 @@ export class PythiaSidebarView extends ItemView {
 		focus = true,
 		scrollTo: "bottom" | "top" = "bottom"
 	): Promise<void> {
+		// Streaming/abort state is view-global (one AbortController per provider),
+		// so switching away mid-stream would let "Stop" on the new conversation
+		// abort a different conversation's generation. Block the switch instead.
+		if (this.isStreaming && conversation.id !== this.activeConversation?.id) {
+			new Notice(t("cannotSwitchWhileStreaming"));
+			return;
+		}
 		this.exitRenameMode(false);                   // discard any in-progress rename
 		this.optimizationController?.cancel();
 		this.activeConversation = conversation;
@@ -285,22 +287,28 @@ export class PythiaSidebarView extends ItemView {
 			(m) => m.role === "user" && !m.chapterName
 		);
 		if (missing.length === 0) return;
+		if (this.backfillInFlight.has(conversation.id)) return;
+		this.backfillInFlight.add(conversation.id);
 		// Serial loop to avoid firing 40+ simultaneous API requests for
 		// imported conversations (#2 — was Promise.all fan-out).
 		void (async () => {
-			for (const msg of missing) {
-				try {
-					const name = await this.plugin.llmRouter.generateChapterName(
-						msg.content,
-						conversation.provider
-					);
-					if (name) msg.chapterName = name;
-				} catch {
-					// Non-critical — silently skip failed chapter names
+			try {
+				for (const msg of missing) {
+					try {
+						const name = await this.plugin.llmRouter.generateChapterName(
+							msg.content,
+							conversation.provider
+						);
+						if (name) msg.chapterName = name;
+					} catch (e) {
+						console.warn("[Pythia] chapter name backfill failed:", e);
+					}
 				}
-			}
-			if (missing.some((m) => m.chapterName)) {
-				await this.plugin.conversationStore.save(conversation);
+				if (missing.some((m) => m.chapterName)) {
+					await this.plugin.conversationStore.save(conversation);
+				}
+			} finally {
+				this.backfillInFlight.delete(conversation.id);
 			}
 		})();
 	}
@@ -331,6 +339,7 @@ export class PythiaSidebarView extends ItemView {
 	private buildUI(): void {
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
+		this.cachedLineHeight = null; // inputEl is about to be recreated below
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
@@ -1034,6 +1043,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 	private createStreamingBubble(): {
 		appendToken: (text: string) => void;
 		finalize: (fullText: string) => Promise<void>;
+		getPartial: () => string;
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
@@ -1047,6 +1057,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				textNode.textContent = (textNode.textContent ?? "") + text;
 				this.scrollToBottom();
 			},
+			getPartial: () => textNode.textContent ?? "",
 			finalize: async (fullText: string) => {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
@@ -1347,7 +1358,12 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 	}
 
 	private autoResizeTextarea(): void {
-		const lineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+		// lineHeight only depends on CSS, not content — computed once per inputEl
+		// lifetime instead of on every keystroke.
+		if (this.cachedLineHeight === null) {
+			this.cachedLineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+		}
+		const lineHeight = this.cachedLineHeight;
 		const minH = Math.ceil(lineHeight * 2);
 		const maxH = Math.ceil(lineHeight * 5);
 		this.inputEl.style.height = "auto";
@@ -1571,6 +1587,10 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 
 	async handleDeleteConversation(): Promise<void> {
 		if (!this.activeConversation) return;
+		if (this.isStreaming) {
+			new Notice(t("cannotDeleteWhileStreaming"));
+			return;
+		}
 		const toDelete = this.activeConversation;
 
 		new DeleteConversationModal(this.app, toDelete, async () => {
@@ -1757,7 +1777,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 
 		const attachedNotes = [...(conv.contextNotes ?? [])];
 
-		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
+		const { appendToken, finalize, getPartial, row: streamingRow } = this.createStreamingBubble();
 
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				const rawPath =
@@ -1857,7 +1877,13 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage) => {
-				await finalize(fullText);
+				// Defense-in-depth: switching conversations mid-stream is blocked in the
+				// UI, but the view can still be torn down (onClose aborts) while this
+				// callback is in flight — don't touch messagesEl/autoScroll in that case.
+				const stillActive = this.activeConversation?.id === conv.id;
+				if (stillActive) {
+					await finalize(fullText);
+				}
 				// Reset after render so the send guard stays active during MarkdownRenderer.render.
 				this.setStreamingState(false);
 
@@ -1938,26 +1964,45 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				}
 			},
 			(error) => {
-				const errClass = classifyApiError(error);
+				console.error("[Pythia] stream error:", error);
+
 				const model = conv.model ?? "";
 				let msg: string;
-				switch (errClass) {
-					case "model_not_found":
-						msg = t("modelNotFound", { model });
-						break;
-					case "invalid_key":
-						msg = t("apiKeyRejected");
-						break;
-					case "rate_limit":
-						msg = t("rateLimitHit");
-						break;
-					case "network":
-						msg = t("networkError");
-						break;
-					default:
-						msg = error.message;
+				if (error.name === "ToolLoopLimitError") {
+					msg = t("toolLoopExceeded");
+				} else {
+					const errClass = classifyApiError(error);
+					switch (errClass) {
+						case "model_not_found":
+							msg = t("modelNotFound", { model });
+							break;
+						case "invalid_key":
+							msg = t("apiKeyRejected");
+							break;
+						case "rate_limit":
+							msg = t("rateLimitHit");
+							break;
+						case "server_error":
+							msg = t("serverError");
+							break;
+						case "network":
+							msg = t("networkError");
+							break;
+						default:
+							msg = error.message;
+					}
 				}
 				new Notice(msg);
+
+				// Never leave the streaming bubble stuck mid-render — finalize whatever
+				// partial text arrived, or drop the empty row.
+				const partial = getPartial();
+				if (partial && this.activeConversation?.id === conv.id) {
+					void finalize(partial);
+				} else {
+					streamingRow.remove();
+				}
+
 				this.setStreamingState(false);
 			},
 			onToolCall
@@ -2209,7 +2254,10 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 
 	private updateSendBtnLabel(): void {
 		const messages = this.activeConversation?.messages ?? [];
-		const last = [...messages].reverse().find(m => m.tokenUsage);
+		let last: Message | undefined;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].tokenUsage) { last = messages[i]; break; }
+		}
 		if (last?.tokenUsage) {
 			// Estimate total input tokens for the NEXT send (#28):
 			//   previous inputTokens  = full context as of the last call

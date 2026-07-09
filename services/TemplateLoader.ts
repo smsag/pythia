@@ -17,16 +17,13 @@ export class TemplateLoader {
 
 	async loadTemplates(): Promise<PythiaTemplate[]> {
 		const folder = this.settings.templatesFolder;
+		if (!folder || !folder.trim()) return [];
 		const files = this.app.vault
 			.getMarkdownFiles()
 			.filter((f) => f.path.startsWith(folder + "/") || f.path.startsWith(folder));
 
-		const templates: PythiaTemplate[] = [];
-		for (const file of files) {
-			const tpl = await this.loadTemplate(file);
-			if (tpl) templates.push(tpl);
-		}
-		return templates;
+		const templates = await Promise.all(files.map((file) => this.loadTemplate(file)));
+		return templates.filter((tpl): tpl is PythiaTemplate => tpl !== null);
 	}
 
 	async loadTemplate(file: TFile): Promise<PythiaTemplate | null> {
@@ -96,7 +93,8 @@ export class TemplateLoader {
 				autoPrompt: fm.auto_prompt as string | undefined,
 				systemPrompt: match[2].trim(),
 			};
-		} catch {
+		} catch (err) {
+			console.warn("[Pythia] failed to parse template:", file.path, err);
 			return null;
 		}
 	}

@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-09 — prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -14,36 +14,37 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 
 | File | Lines | Role |
 |---|---:|---|
-| `sidebar.ts` | 2 111 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
+| `sidebar.ts` | 2 294 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
 | `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, data.json watcher |
 | `settings.ts` | 419 | Settings schema, defaults, settings tab UI |
-| `services/OpenAIProvider.ts` | 298 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating |
-| `services/AnthropicService.ts` | 240 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating |
-| `services/BaseProvider.ts` | 136 | Abstract base: shared fields, lifecycle, all generate* utility methods |
+| `services/OpenAIProvider.ts` | 294 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating, bounded tool loop |
+| `services/AnthropicService.ts` | 242 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating, bounded tool loop |
+| `services/BaseProvider.ts` | 184 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` streamMessage helpers, all generate* utility methods |
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
-| `services/NoteWriter.ts` | 186 | Vault write operations |
-| `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing (incl. `temperature`) |
-| `services/messageUtils.ts` | 117 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, token estimation, lang helpers |
-| `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 72 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes, estimates tokens |
-| `services/promptConstants.ts` | 25 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …) and `TITLE`/`SUMMARY` markers, referenced by ContextBuilder, ToolHandler, BaseProvider, messageUtils |
-| `services/noteChunking.ts` | 69 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
-| `services/noteRelevance.ts` | 18 | Pure keyword-overlap scoring shared by note chunking and `#` suggestion ranking |
-| `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient API failures |
-| `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
-| `services/PromptOptimizerService.ts` | ~170 | `run()` command flow + `optimizeText()` (inline review) |
-| `services/persistence.ts` | ~100 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
-| `services/apiError.ts` | 33 | HTTP error classification |
-| `services/LLMProvider.ts` | 21 | Provider interface |
+| `services/NoteWriter.ts` | 185 | Vault write operations |
+| `services/TemplateLoader.ts` | 101 | Template discovery + frontmatter parsing (incl. `temperature`); parallelized reads, empty-folder guard |
+| `services/messageUtils.ts` | 129 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers |
+| `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
+| `services/ContextBuilder.ts` | 78 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens |
+| `services/promptConstants.ts` | 28 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS` |
+| `services/noteChunking.ts` | 70 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
+| `services/noteRelevance.ts` | 27 | Pure keyword-overlap scoring (`scoreRelevance` + pre-tokenized `scoreRelevanceTokens`) shared by note chunking and `#` suggestion ranking |
+| `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
+| `services/ConversationStore.ts` | 61 | In-memory store + 300 ms debounced persistence; `save()` no-ops for a deleted conversation instead of resurrecting it |
+| `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
+| `services/persistence.ts` | 103 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
+| `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
+| `services/LLMProvider.ts` | 23 | Provider interface |
+| `models/knownModels.ts` | 38 | Single source of truth for known model IDs per provider, the OpenAI reasoning-model set, and model-abbreviation labels |
 | `models/settings.ts` | 61 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
-| `ui/OptimizationController.ts` | 171 | Inline prompt optimizer UI state + flow (extracted from sidebar) |
+| `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
-| `ui/InlineSuggest.ts` | 171 | `#` note-path autocomplete in textarea; relevance-ranked via `noteRelevance` |
-| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
-| `models/types.ts` | 87 | All shared TypeScript interfaces |
-| `locales/en.ts` / `locales/de.ts` | ~290 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (183 tests, ~1 s) |
+| `ui/InlineSuggest.ts` | 172 | `#` note-path autocomplete in textarea; relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
+| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` is a thin subclass of `FileSuggestModal` |
+| `models/types.ts` | 97 | All shared TypeScript interfaces, incl. `ToolLoopLimitError` |
+| `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
+| `tests/` | — | Vitest unit tests (202 tests, ~1 s) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -135,9 +136,11 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
                 `services/promptConstants.ts` and reused by `ToolHandler.ts`'s tool-call
                 descriptions, which reference `attached_note` by name in prose read by the LLM
           → ContextBuilder.buildAttachedNotesContent(conv.contextNotes, newMessage)
-              — notes over NOTE_CHUNK_THRESHOLD_CHARS are split by heading
+              — attached notes are read in parallel (Promise.all), then notes over
+                NOTE_CHUNK_THRESHOLD_CHARS are split by heading
                 (noteChunking.chunkByHeadings) and filtered to the sections most
-                relevant to `newMessage` (noteRelevance.scoreRelevance) instead
+                relevant to `newMessage` (noteRelevance.scoreRelevanceTokens, query
+                tokenized once and reused across every chunk/candidate) instead
                 of inlining the whole note; result is tagged excerpt="true"
               — if the resulting estimated token count exceeds
                 settings.maxAttachedNotesTokens, a Notice warns before sending
@@ -147,18 +150,36 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
           → Provider SDK streaming call
               — Anthropic: system prompt + tool defs carry cache_control: ephemeral
                 (cached after turn 1); temperature included when resolved
-              — transient rate-limit/network failures before any token is emitted
-                are retried with backoff (services/retry.ts), up to 2 attempts
+              — transient rate-limit/network/server-error (5xx/529) failures before
+                any token is emitted are retried with backoff (services/retry.ts),
+                up to 2 attempts
+              — tool-calling round trips are capped at MAX_TOOL_ROUNDS (25); exceeding
+                it throws ToolLoopLimitError, surfaced as a friendly Notice
+              — the abort signal is captured once at the top of the call, so an
+                abort while a tool confirmation is pending (BaseProvider.abort()
+                nulls the controller) still resolves as a clean cancellation
+                instead of crashing on a null .signal read
               → onToken() appends text to streaming bubble
-              → onComplete() → finalize()
+              → onComplete() → finalize() (only if the conversation is still the
+                    one displayed — defense-in-depth against a torn-down view)
                   → MarkdownRenderer.render() (try/catch)
                   → decorateCodeBlocks()
                       → code blocks: .p-code-frame wrapper + copy button
                       → diagrams ([class*='block-language-']): in-container copy button,
                               fixDiagramSvgSize() — MutationObserver + ResizeObserver
-                  → conversationStore.save() (debounced 300 ms)
+                  → conversationStore.save() (debounced 300 ms; no-ops if the
+                        conversation was deleted while the stream was in flight)
                   → generateConversationTitle() fire-and-forget (guarded by ID)
                   → generateChapterName() fire-and-forget (guarded by ID)
+              → onError() → console.error (always) + Notice; the streaming bubble
+                    is always resolved — finalized with whatever partial text
+                    arrived, or removed if none — never left stuck mid-render
+
+Switching to a different conversation or deleting the active one is blocked with
+a Notice while isStreaming is true — streaming/abort state is per-view and
+per-provider (LLMRouter.abort() sweeps every provider), not per-conversation, so
+letting a switch/delete through mid-stream could abort or lose the wrong
+conversation's generation. See ADR-032.
 ```
 
 ### Tool call (LLM vault write)
@@ -281,7 +302,7 @@ On load, migrations run:
 
 Both providers extend `BaseProvider` (which implements `LLMProvider`). `LLMRouter` dispatches by `conversation.provider`.
 
-`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`).
+`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), two `streamMessage` helpers shared by both providers (`resolveUserContent` — attached-notes fetch + missing/oversized-note `Notice`s + system-prompt build; `finishOrError` — routes a caught error to `onComplete` on user abort or `onError` otherwise, reusing `retry.ts`'s `ABORT_ERROR_NAMES`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`).
 
 Each provider implements:
 - `resetClient()` — nulls the cached SDK client on credential/settings change
@@ -289,9 +310,11 @@ Each provider implements:
 - `assistantLabel` — `"Claude"` / `"Assistant"` in conversation transcripts
 - `resolveModel(override?)` — falls back to provider-specific default model
 - `callUtility(model, userMessage, maxTokens, systemMessage?)` — single-turn non-streaming call
-- `streamMessage(...)` — full streaming implementation
+- `streamMessage(...)` — full streaming implementation; the SDK-specific streaming/tool-loop body stays per-provider (Anthropic's Messages API and OpenAI's Chat Completions API have genuinely different shapes there), capped at `MAX_TOOL_ROUNDS = 25` rounds (throws `ToolLoopLimitError` beyond that) and capturing `this.abortController.signal` into a local once at the top of the call — a mid-loop abort (e.g. while a tool confirmation is pending) must not read `.signal` off a controller `BaseProvider.abort()` may have already nulled out
 
-The `TITLE:`/`SUMMARY:` markers used by `generateSummaryWithTitle` and parsed by `messageUtils.parseTitleAndSummary` are defined once in `services/promptConstants.ts` (`TITLE_MARKER`, `SUMMARY_MARKER`) so the two can't drift apart.
+`OpenAIProvider` additionally uses `models/knownModels.ts`'s `isReasoningModel()` to decide, per model: whether the system prompt is injected as a leading `user` message vs. a real `system` role, whether a custom `temperature` is sent, and whether the request uses `max_tokens` or `max_completion_tokens` (the o-series reasoning models reject the first two and require the last).
+
+The `TITLE:`/`SUMMARY:` markers used by `generateSummaryWithTitle` and parsed by `messageUtils.parseTitleAndSummary` are defined once in `services/promptConstants.ts` (`TITLE_MARKER`, `SUMMARY_MARKER`) so the two can't drift apart. `DEFAULT_MAX_TOKENS` (also in `promptConstants.ts`) is the shared `conversation.maxTokens ?? …` fallback for both providers.
 
 Shared logic in `services/messageUtils.ts`:
 - `parseTitleAndSummary` — parses `TITLE: / SUMMARY:` structured response
@@ -299,10 +322,14 @@ Shared logic in `services/messageUtils.ts`:
 - `selectHistoryForSend(messages, resumeMode)` — returns `[]` in `"summary"` mode, `messages` unchanged in `"full"` mode
 - `estimateTokensFromBytes(bytes)` / `estimateTokensFromText(text)` — token count helpers
 - `LANG_LABELS`, `langInstruction`, `langSuffix` — output language helpers
+- `debugLog(settings, ...args)` — verbose diagnostic trace gated on `settings.debugMode`; used for retry attempts and tool-round outcomes. Genuine errors (as opposed to opt-in diagnostics) use un-gated `console.warn`/`console.error` instead, so they're visible without enabling debug mode first.
 
 Shared logic in `services/retry.ts`:
-- `isRetryableError(error)` — true only for rate-limit/network failures, never user aborts
+- `isRetryableError(error)` — true for rate-limit, network, and server-error (5xx/Anthropic 529) classes, never user aborts
 - `RETRY_BACKOFF_MS` — two backoff delays; applied only while no tokens have been emitted yet for the current attempt, so a retry never duplicates partial output
+- `ABORT_ERROR_NAMES` — the set of error names treated as a user-initiated cancellation, reused by `BaseProvider.finishOrError`
+
+Token/cache usage accounting is additive across every round of the tool-calling loop in both providers (`totalInputTokens`/`totalOutputTokens`, plus `cacheReadTokens`/`cacheCreationTokens` for Anthropic) — a provider only ever reports the sum across the whole turn, never just the last round.
 
 Anthropic-specific: system prompt and tool definitions are sent with `cache_control: { type: "ephemeral" }` (system as the last block, tools on the last tool in the array) so the identical, stable parts of the request are cached across turns of a conversation. OpenAI has no equivalent code path — its API caches eligible prompts automatically server-side.
 
@@ -312,7 +339,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`. `no-console: warn`, `no-explicit-any: off`. 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 183 unit tests across 12 files, ~1 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
+- **Testing:** Vitest, 202 unit tests across 15 files, ~1 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.
 - **`@anthropic-ai/sdk`:** pinned at `^0.40.0` (bumped from `^0.28.0`) — the minimum version whose main (non-beta) Messages API types support `cache_control`, needed for prompt caching. See ADR for the caching decision.

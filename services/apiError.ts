@@ -2,6 +2,7 @@ export type ApiErrorClass =
 	| "invalid_key"
 	| "model_not_found"
 	| "rate_limit"
+	| "server_error"
 	| "network"
 	| "other";
 
@@ -25,6 +26,9 @@ export function classifyApiError(error: unknown): ApiErrorClass {
 	if (status === 401 || status === 403) return "invalid_key";
 	if (status === 429) return "rate_limit";
 	if (status === 404) return "model_not_found";
+	// 5xx (and Anthropic's 529 "overloaded") are transient capacity errors, same
+	// class of problem as a rate limit — worth retrying, not a hard failure.
+	if (typeof status === "number" && status >= 500 && status <= 599) return "server_error";
 
 	// No status property at all → also treat as a network-level failure
 	if (status === undefined) return "network";

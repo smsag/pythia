@@ -92,6 +92,10 @@ const de: Strings = {
 	apiKeyRejected: "API-Schlüssel abgelehnt. Prüfe Einstellungen → Pythia.",
 	rateLimitHit:   "Anfragelimit erreicht. Versuche es gleich erneut.",
 	networkError:   "Netzwerkfehler. Prüfe deine Internetverbindung.",
+	serverError:    "Der KI-Anbieter ist vorübergehend überlastet. Versuche es gleich erneut.",
+	toolLoopExceeded: "Der Assistent scheint in einer Tool-Aufruf-Schleife festzuhängen und wurde gestoppt.",
+	cannotSwitchWhileStreaming: "Warte, bis die aktuelle Antwort fertig ist, bevor du das Gespräch wechselst.",
+	cannotDeleteWhileStreaming: "Warte, bis die aktuelle Antwort fertig ist, bevor du dieses Gespräch löschst.",
 
 	// ── Save conversation modal ───────────────────────────────────────────────
 	saveConvTitle: "Gespräch als Notiz speichern",
@@ -229,6 +233,7 @@ const de: Strings = {
 	anotherVersionBtn:                "↺",
 	optimizeNoTemplate:               "Keine Optimierer-Vorlage konfiguriert. Wähle eine in Einstellungen → Pythia.",
 	optimizeFailed:                   "Optimierung fehlgeschlagen: {{error}}",
+	commandFailed:                    "Befehl fehlgeschlagen: {{error}}",
 	promptInputModalTitle:            "Prompt eingeben",
 	promptInputModalPlaceholder:      "Gib deinen Prompt ein… (Enter zum Bestätigen, Shift+Enter für neue Zeile)",
 	promptInputModalConfirm:          "Optimieren",

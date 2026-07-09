@@ -46,22 +46,28 @@ export async function buildAttachedNotesContent(
 	query = ""
 ): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number }> {
 	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0 };
-	const parts: string[] = [];
-	const missingNotes: string[] = [];
-	for (const notePath of attachedNotes) {
-		const file = app.vault.getAbstractFileByPath(notePath);
-		if (file instanceof TFile) {
+	// Reads are independent of each other — parallelize, then assemble in the
+	// original attachedNotes order so prompt content stays deterministic.
+	const results = await Promise.all(
+		attachedNotes.map(async (notePath): Promise<{ notePath: string; part?: string }> => {
+			const file = app.vault.getAbstractFileByPath(notePath);
+			if (!(file instanceof TFile)) return { notePath };
 			const raw = await app.vault.read(file);
 			const { text, isExcerpt } = selectRelevantChunks(raw, query);
 			const body = isExcerpt
 				? `(Showing only the most relevant sections of this note — it has been shortened.)\n\n${text}`
 				: text;
-			parts.push(
-				`<${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR}="${notePath}"${isExcerpt ? ` ${ATTACHED_NOTE_EXCERPT_ATTR}="true"` : ""}>\n${body}\n</${ATTACHED_NOTE_TAG}>`
-			);
-		} else {
-			missingNotes.push(notePath);
-		}
+			return {
+				notePath,
+				part: `<${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR}="${notePath}"${isExcerpt ? ` ${ATTACHED_NOTE_EXCERPT_ATTR}="true"` : ""}>\n${body}\n</${ATTACHED_NOTE_TAG}>`,
+			};
+		})
+	);
+	const parts: string[] = [];
+	const missingNotes: string[] = [];
+	for (const r of results) {
+		if (r.part !== undefined) parts.push(r.part);
+		else missingNotes.push(r.notePath);
 	}
 	const content = parts.length > 0 ? "\n\n" + parts.join("\n\n") : "";
 	return {

@@ -1,5 +1,6 @@
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
+import { debugLog } from "./messageUtils";
 
 const DEBOUNCE_MS = 300;
 
@@ -20,13 +21,15 @@ export class ConversationStore {
 	}
 
 	async save(conversation: Conversation): Promise<void> {
-		conversation.updatedAt = new Date().toISOString();
 		const idx = this.plugin.conversations.findIndex((c) => c.id === conversation.id);
-		if (idx >= 0) {
-			this.plugin.conversations[idx] = conversation;
-		} else {
-			this.plugin.conversations.push(conversation);
+		if (idx < 0) {
+			// The conversation was deleted (e.g. by the user, while a stream or
+			// backfill for it was still in flight) — do not resurrect it.
+			debugLog(this.plugin.settings, "save() skipped — conversation no longer exists:", conversation.id);
+			return;
 		}
+		conversation.updatedAt = new Date().toISOString();
+		this.plugin.conversations[idx] = conversation;
 		this.schedulePersist();
 	}
 

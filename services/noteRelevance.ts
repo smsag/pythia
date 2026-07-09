@@ -4,6 +4,18 @@ export function tokenize(text: string): string[] {
 }
 
 /**
+ * Same scoring as scoreRelevance, but takes an already-tokenized query so a
+ * caller scoring many candidates against one query (e.g. every vault note
+ * against the user's in-progress message) tokenizes the query once instead
+ * of once per candidate.
+ */
+export function scoreRelevanceTokens(queryTokens: string[], haystack: string): number {
+	if (queryTokens.length === 0) return 0;
+	const haystackTokens = new Set(tokenize(haystack));
+	return queryTokens.reduce((score, tok) => score + (haystackTokens.has(tok) ? 1 : 0), 0);
+}
+
+/**
  * Scores how relevant `haystack` (a note's title/headings) is to `query` (the
  * user's in-progress message) by counting shared tokens. No embeddings or
  * vector store — a cheap keyword-overlap heuristic used to rank the "#" note
@@ -11,8 +23,5 @@ export function tokenize(text: string): string[] {
  * vault order, without reading full file content on every keystroke.
  */
 export function scoreRelevance(query: string, haystack: string): number {
-	const queryTokens = tokenize(query);
-	if (queryTokens.length === 0) return 0;
-	const haystackTokens = new Set(tokenize(haystack));
-	return queryTokens.reduce((score, tok) => score + (haystackTokens.has(tok) ? 1 : 0), 0);
+	return scoreRelevanceTokens(tokenize(query), haystack);
 }
