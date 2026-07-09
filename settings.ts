@@ -164,6 +164,28 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("temperatureName"))
+			.setDesc(t("temperatureDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("0.0 – 1.0")
+					.setValue(this.plugin.settings.temperature?.toString() ?? "")
+					.onChange(async (value) => {
+						const trimmed = value.trim();
+						if (trimmed === "") {
+							this.plugin.settings.temperature = undefined;
+							await this.plugin.saveSettings();
+							return;
+						}
+						const n = parseFloat(trimmed);
+						if (!isNaN(n) && n >= 0 && n <= 1) {
+							this.plugin.settings.temperature = n;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		new Setting(containerEl)
 			.setName(t("messageCapName"))
 			.setDesc(t("messageCapDesc"))
 			.addText((text) =>
@@ -190,6 +212,22 @@ export class PythiaSettingTab extends PluginSettingTab {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.maxConversations = n;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("maxAttachedNotesTokensName"))
+			.setDesc(t("maxAttachedNotesTokensDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("8000")
+					.setValue(String(this.plugin.settings.maxAttachedNotesTokens))
+					.onChange(async (value) => {
+						const n = parseInt(value, 10);
+						if (!isNaN(n) && n >= 0) {
+							this.plugin.settings.maxAttachedNotesTokens = n;
 							await this.plugin.saveSettings();
 						}
 					})

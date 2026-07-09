@@ -5,8 +5,9 @@ import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend } from "./messageUtils";
 import { BaseProvider } from "./BaseProvider";
+import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -95,8 +96,8 @@ export class OpenAIProvider extends BaseProvider {
 		let fullText = "";
 
 		try {
-			const { content: attachedContent, missingNotes } =
-				await buildAttachedNotesContent(this.app, attachedNotes);
+			const { content: attachedContent, missingNotes, estimatedTokens } =
+				await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
 			const userContent = newMessage + attachedContent;
 			const systemPrompt = buildSystemPrompt(conversation);
 
@@ -104,14 +105,27 @@ export class OpenAIProvider extends BaseProvider {
 				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 			}
 
+			const noteTokenLimit = this.settings.maxAttachedNotesTokens;
+			if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
+				new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
+			}
+
 			const model = this.resolveModel(conversation.model);
 			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
+			// Reasoning models (o1/o3 family) reject a custom temperature — same model set
+			// that also can't take a system-role message.
+			const temperature = NO_SYSTEM_ROLE_MODELS.has(model)
+				? undefined
+				: conversation.temperature ?? this.settings.temperature;
 
 			// Exclude the last message — already pushed by the caller; sending it
-			// again in history would duplicate it.
-			const historyMessages: OAIMessage[] = conversation.messages.slice(0, -1).map(
-				(m) => ({ role: m.role as "user" | "assistant", content: m.content })
-			);
+			// again in history would duplicate it. In "summary" resume mode, skip
+			// prior history entirely — summaryText in the system prompt is the
+			// only context sent (see selectHistoryForSend).
+			const historyMessages: OAIMessage[] = selectHistoryForSend(
+				conversation.messages.slice(0, -1),
+				conversation.resumeMode
+			).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
 			let apiMessages: OAIMessage[];
 
@@ -143,10 +157,13 @@ export class OpenAIProvider extends BaseProvider {
 				// eslint-disable-next-line no-console
 				console.log("[Pythia] OpenAI API call →", {
 					model,
+					temperature,
 					messages: apiMessages.length,
 					systemPromptChars: systemPrompt.length,
 					noSystemRole,
 					tools: !!onToolCall,
+					resumeMode: conversation.resumeMode ?? "full",
+					historySkipped: conversation.resumeMode === "summary",
 				});
 			}
 
@@ -166,18 +183,33 @@ export class OpenAIProvider extends BaseProvider {
 			let lastTokenUsage: TokenUsage | undefined;
 
 			while (true) {
-				const stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> =
-					await this.getClient().chat.completions.create(
-					{
-						model,
-						max_tokens: conversation.maxTokens ?? 4096,
-						messages: loopMessages,
-						stream: true,
-						stream_options: { include_usage: true },
-						...(openaiTools?.length ? { tools: openaiTools } : {}),
-					},
-					{ signal: this.abortController.signal }
-				);
+				let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> | undefined;
+
+				for (let attempt = 0; !stream; ) {
+					try {
+						stream = await this.getClient().chat.completions.create(
+							{
+								model,
+								max_tokens: conversation.maxTokens ?? 4096,
+								...(temperature !== undefined ? { temperature } : {}),
+								messages: loopMessages,
+								stream: true,
+								stream_options: { include_usage: true },
+								...(openaiTools?.length ? { tools: openaiTools } : {}),
+							},
+							{ signal: this.abortController.signal }
+						);
+					} catch (err) {
+						// create() rejects before any chunk is consumed, so no tokens have
+						// been emitted yet — safe to retry transient failures here.
+						if (isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+							await sleep(RETRY_BACKOFF_MS[attempt]);
+							attempt++;
+							continue;
+						}
+						throw err;
+					}
+				}
 
 				let finishReason: string | null = null;
 				const pendingCalls: Array<{ id: string; name: string; arguments: string }> = [];

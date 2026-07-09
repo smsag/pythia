@@ -1615,6 +1615,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			if (tpl.provider)   conv.provider   = tpl.provider;
 			if (tpl.model)      conv.model      = tpl.model;
 			if (tpl.maxTokens)  conv.maxTokens  = tpl.maxTokens;
+			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			if (tpl.writeMode)  conv.writeMode  = tpl.writeMode;
 

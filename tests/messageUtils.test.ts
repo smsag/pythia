@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	parseTitleAndSummary,
 	normalizeMessages,
+	selectHistoryForSend,
 	langInstruction,
 	langSuffix,
 	LANG_LABELS,
@@ -150,6 +151,33 @@ describe("normalizeMessages — OpenAI predicate (system allowed at position 0)"
 		];
 		const result = normalizeMessages(msgs, openaiPred);
 		expect(result[0].role).toBe("user");
+	});
+});
+
+// ── selectHistoryForSend ──────────────────────────────────────────────────────
+
+describe("selectHistoryForSend", () => {
+	const msgs: Msg[] = [
+		{ role: "user", content: "Hi" },
+		{ role: "assistant", content: "Hello" },
+	];
+
+	it("returns full history unchanged when resumeMode is 'full'", () => {
+		expect(selectHistoryForSend(msgs, "full")).toBe(msgs);
+	});
+
+	it("returns full history unchanged when resumeMode is undefined", () => {
+		expect(selectHistoryForSend(msgs, undefined)).toBe(msgs);
+	});
+
+	it("returns an empty array when resumeMode is 'summary'", () => {
+		expect(selectHistoryForSend(msgs, "summary")).toEqual([]);
+	});
+
+	it("does not mutate the input array in 'summary' mode", () => {
+		const copy = msgs.map(m => ({ ...m }));
+		selectHistoryForSend(msgs, "summary");
+		expect(msgs).toEqual(copy);
 	});
 });
 

@@ -58,6 +58,23 @@ export function normalizeMessages<T extends { role: string; content: string }>(
 	return result;
 }
 
+// ── History selection ─────────────────────────────────────────────────────────
+
+/**
+ * Selects which prior messages to send to the API for a given resume mode.
+ *
+ * `"summary"` relies entirely on `summaryText` already injected into the
+ * system prompt (see `ContextBuilder.buildSystemPrompt`) — sending the full
+ * transcript on top of it would double-bill the same context and dilute the
+ * model's attention. `"full"` (the default) sends everything, unchanged.
+ */
+export function selectHistoryForSend<T>(
+	messages: T[],
+	resumeMode: "full" | "summary" | undefined
+): T[] {
+	return resumeMode === "summary" ? [] : messages;
+}
+
 // ── Token estimation ─────────────────────────────────────────────────────────
 
 /** Estimate token count from a file size in bytes (4 bytes ≈ 1 token). */

@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
+import { scoreRelevance } from "../services/noteRelevance";
 
 export class InlineSuggest {
 	private app: App;
@@ -50,7 +51,10 @@ export class InlineSuggest {
 		if (triggerPos === null) { this.dismiss(); return; }
 
 		this.hashPos = triggerPos;
-		this.show(val.slice(triggerPos + 1, cursor));
+		// Text typed before the trigger — used to rank suggestions by relevance
+		// to what the user is actually writing, not just the "#" fragment itself.
+		const context = val.slice(0, triggerPos);
+		this.show(val.slice(triggerPos + 1, cursor), context);
 	}
 
 	dismiss(): void {
@@ -63,7 +67,15 @@ export class InlineSuggest {
 		}
 	}
 
-	private show(query: string): void {
+	/** Cheap, cache-only text to rank a note against the user's in-progress message — no disk reads. */
+	private noteHaystack(file: TFile): string {
+		const cache = this.app.metadataCache.getFileCache(file);
+		const headings = cache?.headings?.map((h) => h.heading).join(" ") ?? "";
+		const title = typeof cache?.frontmatter?.title === "string" ? cache.frontmatter.title : "";
+		return `${file.basename} ${title} ${headings}`;
+	}
+
+	private show(query: string, context = ""): void {
 		const q = query.toLowerCase();
 
 		const matchingFolders = this.app.vault.getAllFolders()
@@ -75,14 +87,21 @@ export class InlineSuggest {
 			})
 			.slice(0, 3);
 
+		// Filename match still gates and dominates ranking (typing a known name must find
+		// it); relevance to the message-so-far is the tiebreaker, so when the "#" fragment
+		// doesn't narrow things down (or several notes match it equally) the topically
+		// relevant ones surface first instead of arbitrary vault order.
 		const matchingFiles = this.app.vault.getMarkdownFiles()
 			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
-			.sort((a, b) => {
-				const aName = a.basename.toLowerCase().includes(q);
-				const bName = b.basename.toLowerCase().includes(q);
-				return (aName === bName) ? 0 : aName ? -1 : 1;
-			})
-			.slice(0, 8 - matchingFolders.length);
+			.map((f) => ({
+				file: f,
+				score:
+					(f.basename.toLowerCase().includes(q) ? 1000 : 0) +
+					scoreRelevance(context, this.noteHaystack(f)),
+			}))
+			.sort((a, b) => b.score - a.score)
+			.slice(0, 8 - matchingFolders.length)
+			.map((x) => x.file);
 
 		this.items = [...matchingFolders, ...matchingFiles];
 
