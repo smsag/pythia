@@ -12,6 +12,7 @@ export interface Conversation {
 	provider: Provider;       // which LLM provider to use
 	model: string;            // model ID for the selected provider
 	maxTokens?: number;       // override the default 4096 max-token limit
+	temperature?: number;     // override the default sampling temperature (0–1)
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryUpdatedAt?: string; // ISO 8601 timestamp of last summary generation
 	summaryNote?: string;     // vault path to the human-readable summary note
@@ -52,6 +53,7 @@ export interface PythiaTemplate {
 	provider?: Provider;      // override default provider
 	model?: string;
 	maxTokens?: number;
+	temperature?: number;
 	contextNotes: string[];
 	resumeMode?: "full" | "summary";
 	outputFolder?: string;    // "." = same folder as the active note at creation time

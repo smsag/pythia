@@ -170,6 +170,7 @@ export default class PythiaPlugin extends Plugin {
 					);
 					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 					if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 					await this.conversationStore.save(conv);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
@@ -289,6 +290,7 @@ export default class PythiaPlugin extends Plugin {
 						tpl.maxTokens
 					);
 					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 					await this.conversationStore.save(conv);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
@@ -322,6 +324,7 @@ export default class PythiaPlugin extends Plugin {
 						);
 						if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 						if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+						if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 						await this.conversationStore.save(conv);
 						const view = await this.activateView();
 						await view.setActiveConversation(conv);
@@ -682,6 +685,7 @@ export default class PythiaPlugin extends Plugin {
 			);
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 			await this.conversationStore.save(conv);
 
 			const view = await this.activateView();
@@ -858,9 +862,11 @@ export default class PythiaPlugin extends Plugin {
 								return;
 							}
 						}
-						// Always clear history when resuming in summary mode so the API
-						// only receives the summary, not the full message history.
-						conv.messages = [];
+						// History is preserved for UI/scrollback and for switching back
+						// to "full" mode later. The API-level gate (selectHistoryForSend
+						// in services/messageUtils.ts, applied in both providers) is what
+						// actually excludes prior messages from the request in "summary"
+						// mode — no data is deleted here.
 					}
 
 					await this.conversationStore.save(conv);

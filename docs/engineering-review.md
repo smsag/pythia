@@ -11,6 +11,7 @@
 *Updated: 2026-06-14 — #31 persistence round-trip tests added.*
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
+*Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 
 ---
 
@@ -106,6 +107,15 @@
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Collapsed to single `fmRx` |
 | 40 | `FRAMEWORK_INSTRUCTIONS[framework]` unsafe key access — appends `"undefined"` for unrecognised frameworks | ✅ Presence check added |
 | 41 | `reloadFromDisk()` creates new settings object but doesn't propagate it to any service | ✅ `updateSettings` added to `LLMRouter`, `PromptOptimizerService`; `reloadFromDisk` + `saveSettings` both propagate |
+| 42 | `resumeMode: "summary"` destructively wiped `conv.messages` and had no effect on the API request otherwise | ✅ `selectHistoryForSend` gates the request; `conv.messages` no longer cleared |
+| 43 | No retry on transient rate-limit/network failures | ✅ `services/retry.ts`; retried only before any token has been emitted for the attempt |
+| 44 | No Anthropic prompt caching — system prompt + tools re-billed every turn | ✅ `cache_control: ephemeral` on system + tools; required bumping `@anthropic-ai/sdk` to `^0.40.0` |
+| 45 | No sampling/temperature control | ✅ `temperature` in settings/template/conversation, resolved like `maxTokens` |
+| 46 | No token-budget guard on attached notes | ✅ `maxAttachedNotesTokens` setting + `Notice` warning |
+| 47 | System prompt gave no grounding/no-hallucination instruction for attached notes | ✅ Added to `ContextBuilder.buildSystemPrompt` when notes are attached |
+| 48 | `#` note suggestions ranked by filename substring only, no query relevance | ✅ `services/noteRelevance.ts` keyword-overlap tiebreak in `ui/InlineSuggest.ts` |
+| 49 | Oversized attached notes inlined whole, no chunking | ✅ `services/noteChunking.ts` — heading-based, relevance-filtered excerpting above 4000 chars |
+| 50 | True embedding/vector-similarity note retrieval | Open — Backlog (see below; deliberately out of scope for the #42–#49 batch) |
 
 ---
 
@@ -182,6 +192,15 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Done | Low | Low | — |
 | 4 | Cache context note file reads | Won't fix | Low | Medium | — |
 | 10 | Harden fire-and-forget in fork path | Open | Low | Medium | Backlog |
+| 42 | `resumeMode` destructive wipe + dead API-level effect | ✅ Done | High | Low | — |
+| 43 | Retry on transient rate-limit/network failures | ✅ Done | Medium | Low | — |
+| 44 | Anthropic prompt caching | ✅ Done | High | Medium | — |
+| 45 | Sampling/temperature control | ✅ Done | Medium | Low | — |
+| 46 | Token-budget guard on attached notes | ✅ Done | Medium | Low | — |
+| 47 | System-prompt grounding instruction | ✅ Done | Low | Low | — |
+| 48 | Relevance-ranked `#` note suggestions | ✅ Done | Medium | Medium | — |
+| 49 | Chunk oversized attached notes | ✅ Done | High | Medium | — |
+| 50 | True embedding/vector-similarity retrieval | Open | High | High | Backlog |
 
 ---
 
@@ -253,3 +272,97 @@ this.noteWriter?.updateSettings(this.settings);
 this.promptOptimizerService?.updateSettings(this.settings);
 ```
 `PromptOptimizerService` also needs an `updateSettings(settings: PythiaSettings)` method added.
+
+---
+
+## New Suggestions (#42–#50) — response-quality audit, 2026-07-09
+
+A senior-engineer audit of what actually determines LLM response quality (not UI/CSS): the full prompt-construction and API-call path across `services/ContextBuilder.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `services/BaseProvider.ts`, `services/apiError.ts`, `settings.ts`, and `main.ts`. Full rationale for each is in `docs/decisions.md` ADR-021 through ADR-026; summarized here.
+
+---
+
+### #42 — `resumeMode: "summary"` destructively wiped `conv.messages` and had no other effect
+
+**Files:** `main.ts` (`cmdResumeConversation`), `services/AnthropicService.ts`, `services/OpenAIProvider.ts` — **Resolved**
+
+`resumeMode` was stored and surfaced in Settings ("Summary — lower token cost") but neither provider read it when building the request — full history was always sent regardless. The field's only real effect was destructive: picking "summary" in the resume modal set `conv.messages = []`, permanently deleting the transcript with no backup.
+
+**Resolution:** `selectHistoryForSend(messages, resumeMode)` (`services/messageUtils.ts`) — both providers now actually skip prior history in `"summary"` mode. `cmdResumeConversation` no longer clears `conv.messages`.
+
+---
+
+### #43 — No retry on transient rate-limit/network failures
+
+**Files:** `services/retry.ts` (new), `services/AnthropicService.ts`, `services/OpenAIProvider.ts` — **Resolved**
+
+`services/apiError.ts` classified errors only for a user-facing `Notice`; a momentary 429 or network blip failed the entire turn.
+
+**Resolution:** `isRetryableError` + a two-step backoff schedule, applied only while no tokens have been emitted yet for the current attempt (never risks duplicating partial output).
+
+---
+
+### #44 — No Anthropic prompt caching
+
+**Files:** `services/AnthropicService.ts`, `package.json` — **Resolved**
+
+System prompt and tool definitions are identical every turn of a conversation but were re-sent and re-billed in full each time. Implementing this surfaced that the pinned `@anthropic-ai/sdk` (`^0.28.0`) didn't expose `cache_control` outside its old beta-prompt-caching namespace — resolved (with user confirmation) by bumping to `^0.40.0`, the smallest version with `cache_control` in the main Messages API.
+
+**Resolution:** `system` sent as a `cache_control: ephemeral`-tagged text block; last tool in the tools array tagged the same way.
+
+---
+
+### #45 — No sampling/temperature control
+
+**Files:** `models/settings.ts`, `models/types.ts`, `services/TemplateLoader.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `settings.ts` — **Resolved**
+
+Neither provider exposed any way to tune determinism vs. variety; only `model`/`max_tokens`/`system`/`messages`/`tools` were ever sent.
+
+**Resolution:** Optional `temperature` at settings/template/conversation level, resolved the same way as `maxTokens`. OpenAI's `o1`/`o3` reasoning models (already special-cased as `NO_SYSTEM_ROLE_MODELS`) reject a custom temperature, so it's omitted for those regardless of settings.
+
+---
+
+### #46 — No token-budget guard on attached notes
+
+**Files:** `services/ContextBuilder.ts`, `models/settings.ts`, `settings.ts` — **Resolved**
+
+Attached notes were inlined in full with no size check — a large note could silently bury the user's question with no visible symptom.
+
+**Resolution:** `maxAttachedNotesTokens` setting (default 8000); a `Notice` warns before sending when the estimated token count of attached notes exceeds it. Warns rather than truncates — deliberately sending a large note is sometimes legitimate.
+
+---
+
+### #47 — System prompt gave no grounding instruction for attached notes
+
+**File:** `services/ContextBuilder.ts` (`buildSystemPrompt`) — **Resolved**
+
+Nothing told the model to prefer attached-note content over guessing, or to say when the notes don't answer the question.
+
+**Resolution:** One short standing instruction appended only when `conversation.contextNotes.length > 0`.
+
+---
+
+### #48 — `#` note suggestions ranked by filename substring only
+
+**Files:** `services/noteRelevance.ts` (new), `ui/InlineSuggest.ts` — **Resolved**
+
+Suggestions were filtered by substring match on the typed fragment and otherwise unordered — no signal from what the user was actually writing.
+
+**Resolution:** Keyword-overlap scoring (`scoreRelevance`) against each note's basename + frontmatter title + headings, read via Obsidian's cached `metadataCache` (no per-keystroke disk reads). Filename match still gates/dominates; relevance is the tiebreaker — most useful when the typed fragment is empty or ambiguous.
+
+---
+
+### #49 — Oversized attached notes inlined whole, no chunking
+
+**Files:** `services/noteChunking.ts` (new), `services/ContextBuilder.ts` — **Resolved**
+
+A single large attached note could consume most of the context budget or bury the actual question, with no mitigation.
+
+**Resolution:** Notes over `NOTE_CHUNK_THRESHOLD_CHARS` (4000) are split by markdown heading and filtered to the sections most relevant (by `noteRelevance.scoreRelevance`) to the user's message, restored to original document order, and tagged `excerpt="true"` with a leading note in the inlined text. Notes without headings, or under the threshold, are unaffected.
+
+---
+
+### #50 — True embedding/vector-similarity note retrieval
+
+**Status:** Open — Backlog
+
+Pythia is described as "RAG-powered" but has no real retrieval — #48/#49 are a dependency-free keyword-overlap approximation, not semantic search. A proper implementation (embed all vault notes, persist a vector index, incrementally re-embed on vault changes, cosine-similarity search at query time) is a multi-day feature with product decisions that need explicit user input first: which provider generates embeddings when only an Anthropic key is configured (Anthropic has no embeddings API), where the index is persisted (a new file, given #3's `data.json` size concerns), and the re-embedding cost/trigger policy. Deliberately not attempted speculatively in the #42–#49 batch — scope as its own follow-up once the keyword-overlap heuristic's real-world limits are understood.

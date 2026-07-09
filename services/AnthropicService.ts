@@ -5,8 +5,9 @@ import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend } from "./messageUtils";
 import { BaseProvider } from "./BaseProvider";
+import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
@@ -81,8 +82,8 @@ export class AnthropicService extends BaseProvider {
 		let fullText = "";
 
 		try {
-			const { content: attachedContent, missingNotes } =
-				await buildAttachedNotesContent(this.app, attachedNotes);
+			const { content: attachedContent, missingNotes, estimatedTokens } =
+				await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
 			const userContent = newMessage + attachedContent;
 			const systemPrompt = buildSystemPrompt(conversation);
 
@@ -90,24 +91,23 @@ export class AnthropicService extends BaseProvider {
 				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 			}
 
+			const noteTokenLimit = this.settings.maxAttachedNotesTokens;
+			if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
+				new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
+			}
+
 			// Exclude the last message — already pushed by the caller; sending it
-			// again in history would duplicate it.
-			const historyMessages: ApiMessage[] = conversation.messages.slice(0, -1).map(
-				(m) => ({ role: m.role, content: m.content })
-			);
+			// again in history would duplicate it. In "summary" resume mode, skip
+			// prior history entirely — summaryText in the system prompt is the
+			// only context sent (see selectHistoryForSend).
+			const historyMessages: ApiMessage[] = selectHistoryForSend(
+				conversation.messages.slice(0, -1),
+				conversation.resumeMode
+			).map((m) => ({ role: m.role, content: m.content }));
 
 			const model = this.resolveModel(conversation.model);
 			const maxTokens = conversation.maxTokens ?? 4096;
-
-			if (this.settings.debugMode) {
-				// eslint-disable-next-line no-console
-				console.log("[Pythia] Anthropic API call →", {
-					model,
-					messages: historyMessages.length + 1,
-					systemPromptChars: systemPrompt.length,
-					tools: !!onToolCall,
-				});
-			}
+			const temperature = conversation.temperature ?? this.settings.temperature;
 
 			// Anthropic requires the first message to be "user" (no system role in messages array).
 			const loopMessages: Anthropic.MessageParam[] = normalizeMessages(
@@ -115,35 +115,76 @@ export class AnthropicService extends BaseProvider {
 				role => role !== "user"
 			).map((m) => ({ role: m.role, content: m.content }));
 
+			// Tool definitions are identical on every turn of a conversation — mark the
+			// last one as a cache breakpoint so the whole block is cached after turn 1.
 			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
-				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def) => ({
+				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def, i, arr) => ({
 						name: def.name,
 						description: def.description,
 						input_schema: def.inputSchema as Anthropic.Tool.InputSchema,
+						...(i === arr.length - 1 ? { cache_control: { type: "ephemeral" as const } } : {}),
 				  }))
 				: undefined;
+
+			if (this.settings.debugMode) {
+				// eslint-disable-next-line no-console
+				console.log("[Pythia] Anthropic API call →", {
+					model,
+					temperature,
+					messages: historyMessages.length + 1,
+					systemPromptChars: systemPrompt.length,
+					tools: !!onToolCall,
+					resumeMode: conversation.resumeMode ?? "full",
+					historySkipped: conversation.resumeMode === "summary",
+					systemPromptCached: !!systemPrompt,
+					toolsCached: !!(onToolCall && anthropicTools?.length),
+				});
+			}
 
 			let totalInputTokens = 0;
 			let totalOutputTokens = 0;
 
 			while (true) {
-				const stream = this.getClient().messages.stream(
-					{
-						model,
-						max_tokens: maxTokens,
-						...(systemPrompt ? { system: systemPrompt } : {}),
-						messages: loopMessages,
-						...(anthropicTools?.length ? { tools: anthropicTools } : {}),
-					},
-					{ signal: this.abortController.signal }
-				);
+				const textLenBeforeAttempt = fullText.length;
+				let finalMsg: Anthropic.Message | undefined;
 
-				stream.on("text", (text) => {
-					fullText += text;
-					onToken(text);
-				});
+				for (let attempt = 0; !finalMsg; ) {
+					try {
+						const stream = this.getClient().messages.stream(
+							{
+								model,
+								max_tokens: maxTokens,
+								...(temperature !== undefined ? { temperature } : {}),
+								// Cache the system prompt — it's identical on every turn of a
+								// conversation and is often the largest stable chunk of the request.
+								...(systemPrompt
+									? { system: [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }] }
+									: {}),
+								messages: loopMessages,
+								...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+							},
+							{ signal: this.abortController.signal }
+						);
 
-				const finalMsg = await stream.finalMessage();
+						stream.on("text", (text) => {
+							fullText += text;
+							onToken(text);
+						});
+
+						finalMsg = await stream.finalMessage();
+					} catch (err) {
+						// Only retry if no tokens were emitted yet this attempt — otherwise
+						// a retry would duplicate partial output already sent via onToken.
+						const noTokensYet = fullText.length === textLenBeforeAttempt;
+						if (noTokensYet && isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+							await sleep(RETRY_BACKOFF_MS[attempt]);
+							attempt++;
+							continue;
+						}
+						throw err;
+					}
+				}
+
 				totalInputTokens += finalMsg.usage.input_tokens;
 				totalOutputTokens += finalMsg.usage.output_tokens;
 

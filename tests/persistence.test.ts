@@ -133,6 +133,21 @@ describe("mergeSettings", () => {
 		mergeSettings({ defaultProvider: "openai" });
 		expect(DEFAULT_SETTINGS).toEqual(before);
 	});
+
+	it("leaves temperature undefined when absent from old saved data (pre-B2 data.json)", () => {
+		const result = mergeSettings({ defaultProvider: "anthropic" });
+		expect(result.temperature).toBeUndefined();
+	});
+
+	it("preserves an explicitly saved temperature", () => {
+		const result = mergeSettings({ temperature: 0.4 });
+		expect(result.temperature).toBe(0.4);
+	});
+
+	it("defaults maxAttachedNotesTokens for old saved data (pre-B3 data.json)", () => {
+		const result = mergeSettings({ defaultProvider: "anthropic" });
+		expect(result.maxAttachedNotesTokens).toBe(DEFAULT_SETTINGS.maxAttachedNotesTokens);
+	});
 });
 
 // ── parseConversations ────────────────────────────────────────────────────────

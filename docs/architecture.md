@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-06-14 at v1.19.5*
+*Last updated: 2026-07-09 — response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -18,28 +18,31 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
 | `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, data.json watcher |
 | `settings.ts` | 419 | Settings schema, defaults, settings tab UI |
-| `services/OpenAIProvider.ts` | 264 | OpenAI streaming (extends BaseProvider) |
-| `services/AnthropicService.ts` | 197 | Anthropic streaming (extends BaseProvider) |
+| `services/OpenAIProvider.ts` | 298 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating |
+| `services/AnthropicService.ts` | 240 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating |
 | `services/BaseProvider.ts` | 132 | Abstract base: shared fields, lifecycle, all generate* utility methods |
 | `services/ToolHandler.ts` | 118 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 186 | Vault write operations |
-| `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing |
-| `services/messageUtils.ts` | 98 | Shared: `parseTitleAndSummary`, `normalizeMessages`, token estimation, lang helpers |
+| `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing (incl. `temperature`) |
+| `services/messageUtils.ts` | 98 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, token estimation, lang helpers |
 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 48 | Builds system prompt, attaches vault notes |
+| `services/ContextBuilder.ts` | 65 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes, estimates tokens |
+| `services/noteChunking.ts` | 69 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
+| `services/noteRelevance.ts` | 18 | Pure keyword-overlap scoring shared by note chunking and `#` suggestion ranking |
+| `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient API failures |
 | `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
 | `services/PromptOptimizerService.ts` | ~170 | `run()` command flow + `optimizeText()` (inline review) |
 | `services/persistence.ts` | ~100 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
 | `services/apiError.ts` | 33 | HTTP error classification |
 | `services/LLMProvider.ts` | 21 | Provider interface |
-| `models/settings.ts` | ~55 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
+| `models/settings.ts` | 61 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 171 | Inline prompt optimizer UI state + flow (extracted from sidebar) |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
-| `ui/InlineSuggest.ts` | 152 | `#` note-path autocomplete in textarea |
+| `ui/InlineSuggest.ts` | 171 | `#` note-path autocomplete in textarea; relevance-ranked via `noteRelevance` |
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
-| `models/types.ts` | 78 | All shared TypeScript interfaces |
-| `locales/en.ts` / `locales/de.ts` | ~283 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (187 tests, ~500 ms) |
+| `models/types.ts` | 87 | All shared TypeScript interfaces |
+| `locales/en.ts` / `locales/de.ts` | ~290 each | i18n strings (English / German) |
+| `tests/` | — | Vitest unit tests (183 tests, ~1 s) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -56,7 +59,10 @@ PythiaPlugin (main.ts)
 │   ├── AnthropicService       — Anthropic SDK streaming; extends BaseProvider
 │   └── OpenAIProvider         — OpenAI SDK streaming; extends BaseProvider
 │       BaseProvider           — shared: abort, updateSettings/Key, generate* utilities
-│       (all providers share messageUtils for parsing, normalisation, lang helpers)
+│       (all providers share messageUtils for parsing, normalisation, lang helpers,
+│        retry.ts for transient-failure backoff, and ContextBuilder for prompt assembly)
+├── ContextBuilder             — system prompt + attached-note inlining/chunking
+│   └── noteChunking / noteRelevance — heading-based excerpting for oversized notes
 ├── TemplateLoader             — discovers pythia_template notes in vault
 ├── NoteWriter                 — writes/updates vault notes
 ├── ToolHandler                — wraps NoteWriter; executes tool calls from the LLM
@@ -74,10 +80,12 @@ PythiaPlugin (main.ts)
 ```
 Conversation
   id, name, createdAt, updatedAt
-  provider ("anthropic" | "openai"), model, maxTokens?
+  provider ("anthropic" | "openai"), model, maxTokens?, temperature?
   systemPrompt, contextNotes[]   ← permanent per-conv note attachments; sent with every message
   writeMode ("create" | "update" | "rewrite" | "none")
-  resumeMode ("full" | "summary")
+  resumeMode ("full" | "summary")   ← "summary" now actually excludes prior messages from the
+                                      API request (see selectHistoryForSend); history itself
+                                      is preserved in conv.messages for UI/scrollback
   outputFolder?                  ← default folder for AI-created notes
   messages[]
     id, role, content, timestamp
@@ -97,6 +105,8 @@ PythiaSettings
   templatesFolder, conversationsFolder, scratchFolder, inboxNote
   autoSaveSummary, defaultResumeMode
   injectActiveNoteOnTemplate, debugMode
+  temperature?                              ← global sampling-temperature default (0–1); undefined = API default
+  maxAttachedNotesTokens                    ← warn above this estimated token count (default 8000); 0 = no warning
   anthropicSecretName, openaiSecretName     ← keys into Obsidian SecretStorage
 
 PluginData (data.json)
@@ -118,8 +128,22 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
       → createStreamingBubble() creates live token target
       → LLMRouter.streamMessage(conv, text, conv.contextNotes, …)
           → ContextBuilder.buildSystemPrompt()
-          → ContextBuilder.buildAttachedNotesContent(conv.contextNotes)
+              — appends a grounding instruction when contextNotes.length > 0
+          → ContextBuilder.buildAttachedNotesContent(conv.contextNotes, newMessage)
+              — notes over NOTE_CHUNK_THRESHOLD_CHARS are split by heading
+                (noteChunking.chunkByHeadings) and filtered to the sections most
+                relevant to `newMessage` (noteRelevance.scoreRelevance) instead
+                of inlining the whole note; result is tagged excerpt="true"
+              — if the resulting estimated token count exceeds
+                settings.maxAttachedNotesTokens, a Notice warns before sending
+          → selectHistoryForSend(conv.messages, conv.resumeMode)
+              — "summary" mode sends no prior messages at all (relies on
+                summaryText already in the system prompt); "full" sends everything
           → Provider SDK streaming call
+              — Anthropic: system prompt + tool defs carry cache_control: ephemeral
+                (cached after turn 1); temperature included when resolved
+              — transient rate-limit/network failures before any token is emitted
+                are retried with backoff (services/retry.ts), up to 2 attempts
               → onToken() appends text to streaming bubble
               → onComplete() → finalize()
                   → MarkdownRenderer.render() (try/catch)
@@ -158,6 +182,8 @@ All note-attachment paths write to `conv.contextNotes` (persisted) and render in
 | Reference row `+` button | `NoteSuggestModal` callback → `conv.contextNotes` |
 
 `conv.contextNotes` is passed as `attachedNotes` to `streamMessage` on every send, so the LLM always has access to all attached notes.
+
+The inline `#` suggestion dropdown (`ui/InlineSuggest.ts`) ranks candidate notes by a cheap keyword-overlap score (`services/noteRelevance.ts`) between the message being composed and each note's basename, frontmatter title, and headings (read from Obsidian's cached `metadataCache` — no per-keystroke disk reads). A filename match on the typed `#fragment` still dominates and gates the result set; the relevance score is the tiebreaker, which matters most when the fragment is empty or matches several notes equally.
 
 ### Conversation rename
 
@@ -263,8 +289,15 @@ Each provider implements:
 Shared logic in `services/messageUtils.ts`:
 - `parseTitleAndSummary` — parses `TITLE: / SUMMARY:` structured response
 - `normalizeMessages<T>(messages, isInvalidFirst)` — coalesces same-role messages
+- `selectHistoryForSend(messages, resumeMode)` — returns `[]` in `"summary"` mode, `messages` unchanged in `"full"` mode
 - `estimateTokensFromBytes(bytes)` / `estimateTokensFromText(text)` — token count helpers
 - `LANG_LABELS`, `langInstruction`, `langSuffix` — output language helpers
+
+Shared logic in `services/retry.ts`:
+- `isRetryableError(error)` — true only for rate-limit/network failures, never user aborts
+- `RETRY_BACKOFF_MS` — two backoff delays; applied only while no tokens have been emitted yet for the current attempt, so a retry never duplicates partial output
+
+Anthropic-specific: system prompt and tool definitions are sent with `cache_control: { type: "ephemeral" }` (system as the last block, tools on the last tool in the array) so the identical, stable parts of the request are cached across turns of a conversation. OpenAI has no equivalent code path — its API caches eligible prompts automatically server-side.
 
 ---
 
@@ -272,6 +305,7 @@ Shared logic in `services/messageUtils.ts`:
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`. `no-console: warn`, `no-explicit-any: off`. 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 187 unit tests across 12 files, ~500 ms. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
+- **Testing:** Vitest, 183 unit tests across 12 files, ~1 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.
+- **`@anthropic-ai/sdk`:** pinned at `^0.40.0` (bumped from `^0.28.0`) — the minimum version whose main (non-beta) Messages API types support `cache_control`, needed for prompt caching. See ADR for the caching decision.

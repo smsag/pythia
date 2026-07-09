@@ -75,12 +75,20 @@ export class TemplateLoader {
 					? rawWriteMode
 					: undefined;
 
+			// Validate temperature — must be a finite number in [0, 1].
+			const rawTemperature = fm.temperature;
+			const validTemperature: number | undefined =
+				typeof rawTemperature === "number" && Number.isFinite(rawTemperature) && rawTemperature >= 0 && rawTemperature <= 1
+					? rawTemperature
+					: undefined;
+
 			return {
 				id: file.path,
 				name: (fm.name as string) ?? file.basename,
 				provider: validProvider,
 				model: fm.model as string | undefined,
 				maxTokens: fm.max_tokens as number | undefined,
+				temperature: validTemperature,
 				contextNotes: validContextNotes,
 				resumeMode: validResumeMode,
 				outputFolder: validOutputFolder,

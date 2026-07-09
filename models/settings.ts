@@ -32,6 +32,10 @@ export interface PythiaSettings {
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
 	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
+	/** Default sampling temperature (0–1) sent to both providers. Undefined = use the API's own default. */
+	temperature?: number;
+	/** Warn when attached notes exceed this many estimated tokens. 0 = no limit. */
+	maxAttachedNotesTokens: number;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -53,4 +57,5 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	debugMode: false,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
+	maxAttachedNotesTokens: 8000,
 };
