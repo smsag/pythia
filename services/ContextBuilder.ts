@@ -2,6 +2,13 @@ import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
 import { estimateTokensFromText } from "./messageUtils";
 import { selectRelevantChunks } from "./noteChunking";
+import {
+	SYSTEM_PROMPT_TAG,
+	PREVIOUS_SUMMARY_TAG,
+	ATTACHED_NOTE_TAG,
+	ATTACHED_NOTE_PATH_ATTR,
+	ATTACHED_NOTE_EXCERPT_ATTR,
+} from "./promptConstants";
 
 /**
  * Builds the system prompt from a conversation's system prompt text and
@@ -12,13 +19,13 @@ export function buildSystemPrompt(conversation: Conversation): string {
 
 	if (conversation.systemPrompt) {
 		parts.push(
-			`<system_prompt>\n${conversation.systemPrompt}\n</system_prompt>`
+			`<${SYSTEM_PROMPT_TAG}>\n${conversation.systemPrompt}\n</${SYSTEM_PROMPT_TAG}>`
 		);
 	}
 
 	if (conversation.summaryText) {
 		parts.push(
-			`<previous_conversation_summary>\n${conversation.summaryText}\n</previous_conversation_summary>`
+			`<${PREVIOUS_SUMMARY_TAG}>\n${conversation.summaryText}\n</${PREVIOUS_SUMMARY_TAG}>`
 		);
 	}
 
@@ -50,7 +57,7 @@ export async function buildAttachedNotesContent(
 				? `(Showing only the most relevant sections of this note — it has been shortened.)\n\n${text}`
 				: text;
 			parts.push(
-				`<attached_note path="${notePath}"${isExcerpt ? ' excerpt="true"' : ""}>\n${body}\n</attached_note>`
+				`<${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR}="${notePath}"${isExcerpt ? ` ${ATTACHED_NOTE_EXCERPT_ATTR}="true"` : ""}>\n${body}\n</${ATTACHED_NOTE_TAG}>`
 			);
 		} else {
 			missingNotes.push(notePath);

@@ -3,6 +3,8 @@
  * Extracted from AnthropicService.ts and OpenAIProvider.ts (#6, #14).
  */
 
+import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+
 // ── Summary parsing ───────────────────────────────────────────────────────────
 
 /**
@@ -17,15 +19,15 @@
  */
 export function parseTitleAndSummary(raw: string): { title: string; summary: string } {
 	// Multiline anchors so ^ matches line boundaries, not just string start.
-	const titleMatch   = raw.match(/^TITLE:\s*(.+)/im);
-	const summaryMatch = raw.match(/^SUMMARY:\s*([\s\S]*)/im);
+	const titleMatch   = raw.match(new RegExp(`^${TITLE_MARKER}:\\s*(.+)`, "im"));
+	const summaryMatch = raw.match(new RegExp(`^${SUMMARY_MARKER}:\\s*([\\s\\S]*)`, "im"));
 	const title   = titleMatch   ? titleMatch[1].trim()   : "";
 	const summary = summaryMatch
 		? summaryMatch[1].trim()
 		// Fallback: strip the TITLE line and any SUMMARY: prefix that leaked through.
 		: raw
-			.replace(/^TITLE:.*\n?/im, "")
-			.replace(/^SUMMARY:[ \t]*/im, "")
+			.replace(new RegExp(`^${TITLE_MARKER}:.*\\n?`, "im"), "")
+			.replace(new RegExp(`^${SUMMARY_MARKER}:[ \\t]*`, "im"), "")
 			.trim();
 	return { title, summary };
 }

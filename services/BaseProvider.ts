@@ -3,6 +3,10 @@ import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { parseTitleAndSummary, langInstruction, langSuffix } from "./messageUtils";
+import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+
+/** Repeated verbatim in generateChapterName and generateConversationTitle below. */
+const REPLY_TITLE_ONLY_INSTRUCTION = "Reply with ONLY the title, no punctuation, no quotes.";
 
 export abstract class BaseProvider implements LLMProvider {
 	protected app: App;
@@ -86,7 +90,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const sfx = langSuffix(this.settings.outputLanguage);
 		const raw = await this.callUtility(
 			model,
-			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\nTITLE: <3-6 word title${sfx}, no punctuation, no quotes>\nSUMMARY:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 			1024
 		);
 		return parseTitleAndSummary(raw);
@@ -96,7 +100,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const excerpt = content.slice(0, 500);
 		return this.callUtility(
 			this.fastModel,
-			`Summarize this user message in 3-5 words as a chapter title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
+			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
 			15
 		);
 	}
@@ -107,7 +111,7 @@ export abstract class BaseProvider implements LLMProvider {
 		return (
 			(await this.callUtility(
 				this.fastModel,
-				`Give this conversation a concise 3-5 word title. Reply with ONLY the title, no punctuation, no quotes.${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+				`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
 				20
 			)) || "New Conversation"
 		);

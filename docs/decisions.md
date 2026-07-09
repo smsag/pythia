@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-07-09 — response-quality pass (ADR-021 through ADR-026).*
+*Last updated: 2026-07-09 — ADR-027 (prompt-tag/marker centralization).*
 
 Each entry records a decision, the context that drove it, and the consequence. Entries are append-only; superseded decisions are marked rather than deleted.
 
@@ -306,3 +306,15 @@ Each entry records a decision, the context that drove it, and the consequence. E
 - `services/noteChunking.ts` splits notes over `NOTE_CHUNK_THRESHOLD_CHARS` (4000) into heading-delimited chunks and keeps only the highest-scoring chunks (restored to original document order) up to the same budget, tagging the result `excerpt="true"` with a leading note in the inlined text. Notes without headings, or under the threshold, pass through unchanged — chunking without headings to split on isn't attempted.
 
 **Consequence:** Meaningfully better note surfacing and less context dilution today, with zero new dependencies, no vector store, and no embeddings API requirement. True semantic search (embeddings/vector similarity) remains open as a follow-up — see the engineering review backlog — once this heuristic's real-world limits are understood.
+
+---
+
+### ADR-027 — Prompt-tag and structured-output markers centralized in `promptConstants.ts`
+
+**Status:** Active
+
+**Context:** `ContextBuilder.ts` wrapped system-prompt-adjacent content in literal XML-ish tags (`<system_prompt>`, `<previous_conversation_summary>`, `<attached_note path="..." excerpt="true">`). `ToolHandler.ts`'s tool descriptions referenced the `<attached_note>` tag and its `path` attribute by name in hardcoded prose, independently of `ContextBuilder` — a rename in one would silently desync the other, since the LLM only sees prose, not a type error. Separately, `BaseProvider.generateSummaryWithTitle` demanded an exact `TITLE:`/`SUMMARY:` output format via a prompt string, parsed back by `messageUtils.parseTitleAndSummary`'s regex — the same fragile two-copies-of-one-literal problem.
+
+**Decision:** New `services/promptConstants.ts` holds the cross-file literal contracts as named constants: `SYSTEM_PROMPT_TAG`, `PREVIOUS_SUMMARY_TAG`, `ATTACHED_NOTE_TAG`, `ATTACHED_NOTE_PATH_ATTR`, `ATTACHED_NOTE_EXCERPT_ATTR`, `TITLE_MARKER`, `SUMMARY_MARKER`. `ContextBuilder.ts` and `ToolHandler.ts` both import the attached-note tag/attribute constants; `BaseProvider.ts` and `messageUtils.ts` both import the TITLE/SUMMARY markers. The module holds only genuine cross-file contracts — single-file duplication (e.g. the "reply with only the title" phrase repeated across two `BaseProvider.ts` methods) stays a local constant in that file rather than being added here, to avoid building a generic prompt-builder abstraction.
+
+**Consequence:** Renaming a tag or marker is now a one-line change with the type checker enforcing every call site updates together. Prompt wording sent to the LLM is unchanged (refactor is behavior-preserving); `PromptOptimizerService.ts`'s independent template-based convention was reviewed and intentionally left as a third, separate pattern — it has no XML tags or TITLE/SUMMARY contract to desync.
