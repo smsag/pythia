@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tokenize, scoreRelevance } from "../services/noteRelevance";
+import { tokenize, scoreRelevance, scoreRelevanceTokens } from "../services/noteRelevance";
 
 describe("tokenize", () => {
 	it("lowercases and splits on non-alphanumeric characters", () => {
@@ -38,5 +38,24 @@ describe("scoreRelevance", () => {
 
 	it("does not double-count repeated query tokens beyond the haystack's distinct terms", () => {
 		expect(scoreRelevance("budget budget budget", "budget plan")).toBe(1);
+	});
+});
+
+describe("scoreRelevanceTokens", () => {
+	it("produces the same result as scoreRelevance for a pre-tokenized query", () => {
+		const query = "Q3 budget review";
+		const haystack = "Budget Plan Q3";
+		expect(scoreRelevanceTokens(tokenize(query), haystack)).toBe(scoreRelevance(query, haystack));
+	});
+
+	it("returns 0 for an empty token list", () => {
+		expect(scoreRelevanceTokens([], "Project Plan")).toBe(0);
+	});
+
+	it("lets a caller reuse the same tokenized query across multiple haystacks", () => {
+		const tokens = tokenize("budget review");
+		expect(scoreRelevanceTokens(tokens, "Budget Plan")).toBe(1);
+		expect(scoreRelevanceTokens(tokens, "Weather Forecast")).toBe(0);
+		expect(scoreRelevanceTokens(tokens, "Quarterly Review")).toBe(1);
 	});
 });

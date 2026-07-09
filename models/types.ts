@@ -30,6 +30,9 @@ export interface Conversation {
 export interface TokenUsage {
 	inputTokens: number;
 	outputTokens: number;
+	/** Anthropic prompt-caching stats (debugMode-only visibility; omitted when zero). */
+	cacheReadTokens?: number;
+	cacheCreationTokens?: number;
 }
 
 export interface Message {
@@ -83,5 +86,12 @@ export class ToolCancelledError extends Error {
 	constructor() {
 		super("Tool call cancelled by user");
 		this.name = "ToolCancelledError";
+	}
+}
+
+export class ToolLoopLimitError extends Error {
+	constructor() {
+		super("Tool call loop exceeded the round limit");
+		this.name = "ToolLoopLimitError";
 	}
 }

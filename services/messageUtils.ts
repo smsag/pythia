@@ -4,6 +4,18 @@
  */
 
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+import type { PythiaSettings } from "../models/settings";
+
+// ── Debug logging ─────────────────────────────────────────────────────────────
+
+/** Verbose diagnostic trace, gated on the debugMode setting. Genuine errors should
+ *  use console.warn/error directly instead — this is for opt-in noise only. */
+export function debugLog(settings: PythiaSettings, ...args: unknown[]): void {
+	if (settings.debugMode) {
+		// eslint-disable-next-line no-console
+		console.log("[Pythia]", ...args);
+	}
+}
 
 // ── Summary parsing ───────────────────────────────────────────────────────────
 

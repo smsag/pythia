@@ -10,6 +10,7 @@ import type { Conversation } from "../models/types";
 const makePlugin = () => ({
 	conversations: [] as Conversation[],
 	saveConversations: vi.fn().mockResolvedValue(undefined),
+	settings: { debugMode: false },
 });
 
 const makeConv = (id: string, name = "Test"): Conversation => ({
@@ -70,12 +71,6 @@ describe("getById", () => {
 // ── save ──────────────────────────────────────────────────────────────────────
 
 describe("save", () => {
-	it("adds a new conversation to the array", async () => {
-		await store.save(makeConv("new"));
-		expect(plugin.conversations).toHaveLength(1);
-		expect(plugin.conversations[0].id).toBe("new");
-	});
-
 	it("upserts an existing conversation by id", async () => {
 		const conv = makeConv("x", "Original");
 		plugin.conversations.push(conv);
@@ -87,25 +82,44 @@ describe("save", () => {
 	it("sets updatedAt to the current time", async () => {
 		vi.setSystemTime(new Date("2030-06-01T12:00:00.000Z"));
 		const conv = makeConv("ts");
+		plugin.conversations.push(conv);
 		await store.save(conv);
 		expect(conv.updatedAt).toBe("2030-06-01T12:00:00.000Z");
 	});
 
 	it("schedules a debounced persist (not immediate)", async () => {
-		await store.save(makeConv("d"));
+		const conv = makeConv("d");
+		plugin.conversations.push(conv);
+		await store.save(conv);
 		expect(plugin.saveConversations).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(300);
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
 	it("resets the debounce timer on rapid successive saves", async () => {
-		await store.save(makeConv("r1"));
+		const r1 = makeConv("r1");
+		const r2 = makeConv("r2");
+		plugin.conversations.push(r1, r2);
+		await store.save(r1);
 		vi.advanceTimersByTime(200);
-		await store.save(makeConv("r2"));
+		await store.save(r2);
 		vi.advanceTimersByTime(200); // only 200 ms after second save → not yet
 		expect(plugin.saveConversations).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(100); // now 300 ms after second save → fires
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
+	});
+
+	// ── no-resurrect (regression for delete-during-in-flight-save bug) ──────────
+
+	it("does not resurrect a conversation that no longer exists in the store", async () => {
+		await store.save(makeConv("deleted"));
+		expect(plugin.conversations).toHaveLength(0);
+	});
+
+	it("does not schedule a persist when the conversation is unknown", async () => {
+		await store.save(makeConv("deleted"));
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).not.toHaveBeenCalled();
 	});
 });
 

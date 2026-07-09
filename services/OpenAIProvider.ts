@@ -1,13 +1,15 @@
 import OpenAI from "openai";
-import { App, Notice } from "obsidian";
+import { App } from "obsidian";
 import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
+import { isReasoningModel } from "../models/knownModels";
+import { DEFAULT_MAX_TOKENS } from "./promptConstants";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -17,11 +19,8 @@ type OAILoopMessage =
 	| { role: "assistant"; content: null; tool_calls: OAIToolCallBlock[] }
 	| { role: "tool"; tool_call_id: string; content: string };
 
-/**
- * Models that do not support a `system` role message.
- * For these, the system prompt is injected as the first `user` message.
- */
-const NO_SYSTEM_ROLE_MODELS = new Set(["o3", "o3-mini", "o1", "o1-mini"]);
+/** Safety net against a confused model looping on tool calls indefinitely. */
+const MAX_TOOL_ROUNDS = 25;
 
 
 export class OpenAIProvider extends BaseProvider {
@@ -58,7 +57,7 @@ export class OpenAIProvider extends BaseProvider {
 		messages.push({ role: "user", content: userMessage });
 		const response = await this.getClient().chat.completions.create({
 			model,
-			max_tokens: maxTokens,
+			...(isReasoningModel(model) ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
 			messages,
 		});
 		return response.choices[0]?.message?.content?.trim() ?? "";
@@ -92,29 +91,23 @@ export class OpenAIProvider extends BaseProvider {
 	): Promise<void> {
 		this.abort();
 		this.abortController = new AbortController();
+		// Captured once: if the user aborts while a tool confirmation is pending
+		// (BaseProvider.abort() nulls this.abortController), later round trips must
+		// still see a signal — reading this.abortController.signal again would throw
+		// on null instead of surfacing a clean abort.
+		const signal = this.abortController.signal;
 
 		let fullText = "";
 
 		try {
-			const { content: attachedContent, missingNotes, estimatedTokens } =
-				await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
-			const userContent = newMessage + attachedContent;
-			const systemPrompt = buildSystemPrompt(conversation);
-
-			if (missingNotes.length > 0) {
-				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
-			}
-
-			const noteTokenLimit = this.settings.maxAttachedNotesTokens;
-			if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
-				new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
-			}
+			const { userContent, systemPrompt } =
+				await this.resolveUserContent(conversation, attachedNotes, newMessage);
 
 			const model = this.resolveModel(conversation.model);
-			const noSystemRole = NO_SYSTEM_ROLE_MODELS.has(model);
-			// Reasoning models (o1/o3 family) reject a custom temperature — same model set
-			// that also can't take a system-role message.
-			const temperature = NO_SYSTEM_ROLE_MODELS.has(model)
+			const noSystemRole = isReasoningModel(model);
+			// Reasoning models (o1/o3/o4 family) reject a custom temperature — same model set
+			// that also can't take a system-role message or `max_tokens`.
+			const temperature = isReasoningModel(model)
 				? undefined
 				: conversation.temperature ?? this.settings.temperature;
 
@@ -180,9 +173,13 @@ export class OpenAIProvider extends BaseProvider {
 				  }))
 				: undefined;
 
-			let lastTokenUsage: TokenUsage | undefined;
+			let totalInputTokens = 0;
+			let totalOutputTokens = 0;
+			let receivedUsage = false;
+			let round = 0;
 
 			while (true) {
+				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
 				let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> | undefined;
 
 				for (let attempt = 0; !stream; ) {
@@ -190,19 +187,22 @@ export class OpenAIProvider extends BaseProvider {
 						stream = await this.getClient().chat.completions.create(
 							{
 								model,
-								max_tokens: conversation.maxTokens ?? 4096,
+								...(noSystemRole
+									? { max_completion_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }
+									: { max_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }),
 								...(temperature !== undefined ? { temperature } : {}),
 								messages: loopMessages,
 								stream: true,
 								stream_options: { include_usage: true },
 								...(openaiTools?.length ? { tools: openaiTools } : {}),
 							},
-							{ signal: this.abortController.signal }
+							{ signal }
 						);
 					} catch (err) {
 						// create() rejects before any chunk is consumed, so no tokens have
 						// been emitted yet — safe to retry transient failures here.
 						if (isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+							debugLog(this.settings, "retry", attempt + 1, err);
 							await sleep(RETRY_BACKOFF_MS[attempt]);
 							attempt++;
 							continue;
@@ -236,12 +236,16 @@ export class OpenAIProvider extends BaseProvider {
 						finishReason = chunk.choices[0].finish_reason;
 					}
 					if (chunk.usage) {
-						lastTokenUsage = {
-							inputTokens: chunk.usage.prompt_tokens,
-							outputTokens: chunk.usage.completion_tokens,
-						};
+						receivedUsage = true;
+						totalInputTokens += chunk.usage.prompt_tokens;
+						totalOutputTokens += chunk.usage.completion_tokens;
 					}
 				}
+
+				debugLog(this.settings, "tool round", round, "finish:", finishReason, "usage:", {
+					inputTokens: totalInputTokens,
+					outputTokens: totalOutputTokens,
+				});
 
 				if (finishReason === "tool_calls" && onToolCall && pendingCalls.length > 0) {
 					const calls = pendingCalls.filter(Boolean);
@@ -277,20 +281,12 @@ export class OpenAIProvider extends BaseProvider {
 				}
 			}
 
-			onComplete(fullText, lastTokenUsage);
+			const tokenUsage: TokenUsage | undefined = receivedUsage
+				? { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
+				: undefined;
+			onComplete(fullText, tokenUsage);
 		} catch (error) {
-			const isAbort =
-				error instanceof Error &&
-				(error.name === "AbortError" ||
-					error.name === "APIUserAbortError" ||
-					error.name === "ToolCancelledError");
-			if (isAbort) {
-				onComplete(fullText);
-			} else {
-				onError(
-					error instanceof Error ? error : new Error(String(error))
-				);
-			}
+			this.finishOrError(error, fullText, onComplete, onError);
 		} finally {
 			this.abortController = null;
 		}

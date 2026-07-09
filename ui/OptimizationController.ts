@@ -35,6 +35,10 @@ type OptState = {
 
 export class OptimizationController {
 	private state: OptState | null = null;
+	/** Incremented on every start()/retry()/cancel() so a stale in-flight
+	 *  optimizeText() call (from a cancelled or superseded session) can tell
+	 *  it's no longer current and must not overwrite a newer session's DOM. */
+	private generation = 0;
 
 	constructor(private readonly d: OptimizationDeps) {}
 
@@ -78,19 +82,22 @@ export class OptimizationController {
 		this.setOptimizingState(true);
 		this.d.scrollToBottom();
 
+		const myGen = ++this.generation;
 		try {
 			const result = await this.d.plugin.promptOptimizerService.optimizeText(
 				text, framework, conv.provider, conv.model
 			);
-			await this.showResult(result);
+			if (myGen !== this.generation) return; // superseded by a newer session
+			await this.showResult(result, myGen);
 		} catch (err) {
+			if (myGen !== this.generation) return;
 			new Notice(t("optimizeFailed", { error: String(err) }));
 			this.cancel();
 		}
 	}
 
-	async showResult(optimizedText: string): Promise<void> {
-		if (!this.state) return;
+	async showResult(optimizedText: string, myGen: number): Promise<void> {
+		if (!this.state || myGen !== this.generation) return;
 
 		this.state.indicatorEl?.remove();
 		this.state.indicatorEl = null;
@@ -126,6 +133,7 @@ export class OptimizationController {
 	}
 
 	cancel(): void {
+		this.generation++;
 		if (!this.state) return;
 		const original = this.state.originalText;
 		this.state.previewEl.remove();
@@ -158,12 +166,15 @@ export class OptimizationController {
 
 		const conv = this.d.getConversation();
 		if (!conv) { this.cancel(); return; }
+		const myGen = ++this.generation;
 		try {
 			const result = await this.d.plugin.promptOptimizerService.optimizeText(
 				this.state.originalText, framework, conv.provider, conv.model
 			);
-			await this.showResult(result);
+			if (myGen !== this.generation) return; // superseded by a newer session
+			await this.showResult(result, myGen);
 		} catch (err) {
+			if (myGen !== this.generation) return;
 			new Notice(t("optimizeFailed", { error: String(err) }));
 			this.cancel();
 		}

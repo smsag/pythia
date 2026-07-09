@@ -23,3 +23,6 @@ export const ATTACHED_NOTE_EXCERPT_ATTR = "excerpt";
 
 export const TITLE_MARKER = "TITLE";
 export const SUMMARY_MARKER = "SUMMARY";
+
+/** Fallback max-output-tokens when a conversation has no explicit override. */
+export const DEFAULT_MAX_TOKENS = 4096;

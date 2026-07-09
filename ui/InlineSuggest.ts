@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
-import { scoreRelevance } from "../services/noteRelevance";
+import { scoreRelevanceTokens, tokenize } from "../services/noteRelevance";
 
 export class InlineSuggest {
 	private app: App;
@@ -91,13 +91,14 @@ export class InlineSuggest {
 		// it); relevance to the message-so-far is the tiebreaker, so when the "#" fragment
 		// doesn't narrow things down (or several notes match it equally) the topically
 		// relevant ones surface first instead of arbitrary vault order.
+		const contextTokens = tokenize(context);
 		const matchingFiles = this.app.vault.getMarkdownFiles()
 			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
 			.map((f) => ({
 				file: f,
 				score:
 					(f.basename.toLowerCase().includes(q) ? 1000 : 0) +
-					scoreRelevance(context, this.noteHaystack(f)),
+					scoreRelevanceTokens(contextTokens, this.noteHaystack(f)),
 			}))
 			.sort((a, b) => b.score - a.score)
 			.slice(0, 8 - matchingFolders.length)

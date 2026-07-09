@@ -1,4 +1,4 @@
-import { App, SuggestModal } from "obsidian";
+import { App, Notice, SuggestModal } from "obsidian";
 import { t } from "../i18n";
 
 export interface HubCommand {
@@ -37,6 +37,11 @@ export class CommandHubModal extends SuggestModal<HubCommand> {
 	}
 
 	onChooseSuggestion(item: HubCommand): void {
-		item.action();
+		// item.action() may be an async fn (assignable to () => void) — catch
+		// rejections here so no command can fail completely silently.
+		Promise.resolve(item.action()).catch((e) => {
+			console.error("[Pythia] command failed:", e);
+			new Notice(t("commandFailed", { error: e instanceof Error ? e.message : String(e) }));
+		});
 	}
 }

@@ -4,19 +4,15 @@ import type { Provider } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { t } from "./i18n";
+import { KNOWN_MODELS } from "./models/knownModels";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
 // that service modules can import them without pulling in the Obsidian UI layer.
 export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
 import type { PythiaSettings } from "./models/settings";
 
-const ANTHROPIC_MODELS = [
-	"claude-fable-5",
-	"claude-opus-4",
-	"claude-sonnet-4-6",
-	"claude-haiku-3-5",
-];
-const OPENAI_MODELS = ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"];
+const ANTHROPIC_MODELS = KNOWN_MODELS.anthropic;
+const OPENAI_MODELS = KNOWN_MODELS.openai;
 
 export class PythiaSettingTab extends PluginSettingTab {
 	private plugin: PythiaPlugin;

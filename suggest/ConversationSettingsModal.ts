@@ -1,11 +1,7 @@
 import { App, DropdownComponent, Modal, Setting } from "obsidian";
 import type { Conversation, Provider } from "../models/types";
 import { t } from "../i18n";
-
-const MODELS_BY_PROVIDER: Record<Provider, string[]> = {
-	anthropic: ["claude-opus-4", "claude-sonnet-4-6", "claude-haiku-3-5"],
-	openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"],
-};
+import { KNOWN_MODELS as MODELS_BY_PROVIDER } from "../models/knownModels";
 
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;

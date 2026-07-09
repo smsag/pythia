@@ -11,6 +11,16 @@ describe("isRetryableError", () => {
 		expect(isRetryableError(new TypeError("Failed to fetch"))).toBe(true);
 	});
 
+	it("returns true for a server error (HTTP 500)", () => {
+		const err = Object.assign(new Error("Server Error"), { status: 500 });
+		expect(isRetryableError(err)).toBe(true);
+	});
+
+	it("returns true for Anthropic's 529 'overloaded' status", () => {
+		const err = Object.assign(new Error("Overloaded"), { status: 529 });
+		expect(isRetryableError(err)).toBe(true);
+	});
+
 	it("returns false for an invalid-key error (HTTP 401)", () => {
 		const err = Object.assign(new Error("Unauthorized"), { status: 401 });
 		expect(isRetryableError(err)).toBe(false);

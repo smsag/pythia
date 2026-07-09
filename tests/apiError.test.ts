@@ -36,9 +36,14 @@ describe("classifyApiError", () => {
 		expect(classifyApiError(err)).toBe("model_not_found");
 	});
 
-	it("returns 'other' for an unrecognised HTTP status", () => {
+	it("returns 'server_error' for HTTP 500", () => {
 		const err = Object.assign(new Error("Server Error"), { status: 500 });
-		expect(classifyApiError(err)).toBe("other");
+		expect(classifyApiError(err)).toBe("server_error");
+	});
+
+	it("returns 'server_error' for Anthropic's 529 'overloaded' status", () => {
+		const err = Object.assign(new Error("Overloaded"), { status: 529 });
+		expect(classifyApiError(err)).toBe("server_error");
 	});
 
 	it("returns 'other' for HTTP 400", () => {

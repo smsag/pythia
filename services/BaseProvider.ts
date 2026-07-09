@@ -1,9 +1,12 @@
-import { App } from "obsidian";
+import { App, Notice } from "obsidian";
+import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { parseTitleAndSummary, langInstruction, langSuffix } from "./messageUtils";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
+import { ABORT_ERROR_NAMES } from "./retry";
 
 /** Repeated verbatim in generateChapterName and generateConversationTitle below. */
 const REPLY_TITLE_ONLY_INSTRUCTION = "Reply with ONLY the title, no punctuation, no quotes.";
@@ -67,6 +70,51 @@ export abstract class BaseProvider implements LLMProvider {
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void>;
+
+	// ── Shared streamMessage helpers ───────────────────────────────────────────
+	// Identical across both providers; the streaming/tool-loop bodies themselves
+	// stay per-provider since the two SDKs' shapes genuinely differ there.
+
+	/** Fetches attached-note content, warns on missing/oversized notes, and builds
+	 *  the outgoing user message + system prompt. */
+	protected async resolveUserContent(
+		conversation: Conversation,
+		attachedNotes: string[],
+		newMessage: string
+	): Promise<{ userContent: string; systemPrompt: string }> {
+		const { content: attachedContent, missingNotes, estimatedTokens } =
+			await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
+
+		if (missingNotes.length > 0) {
+			new Notice(t("contextNotesWarning", { count: missingNotes.length }));
+		}
+
+		const noteTokenLimit = this.settings.maxAttachedNotesTokens;
+		if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
+			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
+		}
+
+		return {
+			userContent: newMessage + attachedContent,
+			systemPrompt: buildSystemPrompt(conversation),
+		};
+	}
+
+	/** Routes a streamMessage failure to onComplete (clean cancellation) or
+	 *  onError (genuine failure), based on whether it's a user-initiated abort. */
+	protected finishOrError(
+		error: unknown,
+		fullText: string,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
+		onError: (error: Error) => void
+	): void {
+		const isAbort = error instanceof Error && ABORT_ERROR_NAMES.has(error.name);
+		if (isAbort) {
+			onComplete(fullText);
+		} else {
+			onError(error instanceof Error ? error : new Error(String(error)));
+		}
+	}
 
 	// ── Shared utility methods ─────────────────────────────────────────────────
 

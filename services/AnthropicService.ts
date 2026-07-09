@@ -1,15 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { App, Notice } from "obsidian";
+import { App } from "obsidian";
 import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
+import { DEFAULT_MAX_TOKENS } from "./promptConstants";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
+
+/** Safety net against a confused model looping on tool calls indefinitely. */
+const MAX_TOOL_ROUNDS = 25;
 
 export class AnthropicService extends BaseProvider {
 	private client: Anthropic | null = null;
@@ -78,23 +82,17 @@ export class AnthropicService extends BaseProvider {
 	): Promise<void> {
 		this.abort();
 		this.abortController = new AbortController();
+		// Captured once: if the user aborts while a tool confirmation is pending
+		// (BaseProvider.abort() nulls this.abortController), later round trips must
+		// still see a signal — reading this.abortController.signal again would throw
+		// on null instead of surfacing a clean abort.
+		const signal = this.abortController.signal;
 
 		let fullText = "";
 
 		try {
-			const { content: attachedContent, missingNotes, estimatedTokens } =
-				await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
-			const userContent = newMessage + attachedContent;
-			const systemPrompt = buildSystemPrompt(conversation);
-
-			if (missingNotes.length > 0) {
-				new Notice(t("contextNotesWarning", { count: missingNotes.length }));
-			}
-
-			const noteTokenLimit = this.settings.maxAttachedNotesTokens;
-			if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
-				new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
-			}
+			const { userContent, systemPrompt } =
+				await this.resolveUserContent(conversation, attachedNotes, newMessage);
 
 			// Exclude the last message — already pushed by the caller; sending it
 			// again in history would duplicate it. In "summary" resume mode, skip
@@ -106,7 +104,7 @@ export class AnthropicService extends BaseProvider {
 			).map((m) => ({ role: m.role, content: m.content }));
 
 			const model = this.resolveModel(conversation.model);
-			const maxTokens = conversation.maxTokens ?? 4096;
+			const maxTokens = conversation.maxTokens ?? DEFAULT_MAX_TOKENS;
 			const temperature = conversation.temperature ?? this.settings.temperature;
 
 			// Anthropic requires the first message to be "user" (no system role in messages array).
@@ -143,8 +141,12 @@ export class AnthropicService extends BaseProvider {
 
 			let totalInputTokens = 0;
 			let totalOutputTokens = 0;
+			let totalCacheReadTokens = 0;
+			let totalCacheCreationTokens = 0;
+			let round = 0;
 
 			while (true) {
+				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
 				const textLenBeforeAttempt = fullText.length;
 				let finalMsg: Anthropic.Message | undefined;
 
@@ -163,7 +165,7 @@ export class AnthropicService extends BaseProvider {
 								messages: loopMessages,
 								...(anthropicTools?.length ? { tools: anthropicTools } : {}),
 							},
-							{ signal: this.abortController.signal }
+							{ signal }
 						);
 
 						stream.on("text", (text) => {
@@ -177,6 +179,7 @@ export class AnthropicService extends BaseProvider {
 						// a retry would duplicate partial output already sent via onToken.
 						const noTokensYet = fullText.length === textLenBeforeAttempt;
 						if (noTokensYet && isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+							debugLog(this.settings, "retry", attempt + 1, err);
 							await sleep(RETRY_BACKOFF_MS[attempt]);
 							attempt++;
 							continue;
@@ -187,6 +190,14 @@ export class AnthropicService extends BaseProvider {
 
 				totalInputTokens += finalMsg.usage.input_tokens;
 				totalOutputTokens += finalMsg.usage.output_tokens;
+				totalCacheReadTokens += finalMsg.usage.cache_read_input_tokens ?? 0;
+				totalCacheCreationTokens += finalMsg.usage.cache_creation_input_tokens ?? 0;
+				debugLog(this.settings, "tool round", round, "stop:", finalMsg.stop_reason, "usage:", {
+					inputTokens: totalInputTokens,
+					outputTokens: totalOutputTokens,
+					cacheReadTokens: totalCacheReadTokens,
+					cacheCreationTokens: totalCacheCreationTokens,
+				});
 
 				if (finalMsg.stop_reason === "tool_use" && onToolCall) {
 					loopMessages.push({
@@ -218,21 +229,12 @@ export class AnthropicService extends BaseProvider {
 			const tokenUsage: TokenUsage = {
 				inputTokens: totalInputTokens,
 				outputTokens: totalOutputTokens,
+				...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
+				...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
 			};
 			onComplete(fullText, tokenUsage);
 		} catch (error) {
-			const isAbort =
-				error instanceof Error &&
-				(error.name === "AbortError" ||
-					error.name === "APIUserAbortError" ||
-					error.name === "ToolCancelledError");
-			if (isAbort) {
-				onComplete(fullText);
-			} else {
-				onError(
-					error instanceof Error ? error : new Error(String(error))
-				);
-			}
+			this.finishOrError(error, fullText, onComplete, onError);
 		} finally {
 			this.abortController = null;
 		}

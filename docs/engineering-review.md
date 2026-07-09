@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
 
 ---
 
@@ -29,6 +30,8 @@
 | 2026-06-14 | #31 persistence tests; `services/persistence.ts` extracted from `main.ts` |
 | 2026-06-14 | #1 incremental DOM rendering in `renderMessages` |
 | 2026-06-14 | #4 closed won't fix; docs updated to v1.19.5 |
+| 2026-07-09 | #42–#49 response-quality audit resolved; #50 added as backlog |
+| 2026-07-09 | #51–#55, #57–#72, #75, #76 bug-fix/reliability/observability/maintainability/performance audit resolved; #56 deliberately not done; #73, #74 added as backlog |
 
 ---
 
@@ -116,6 +119,32 @@
 | 48 | `#` note suggestions ranked by filename substring only, no query relevance | ✅ `services/noteRelevance.ts` keyword-overlap tiebreak in `ui/InlineSuggest.ts` |
 | 49 | Oversized attached notes inlined whole, no chunking | ✅ `services/noteChunking.ts` — heading-based, relevance-filtered excerpting above 4000 chars |
 | 50 | True embedding/vector-similarity note retrieval | Open — Backlog (see below; deliberately out of scope for the #42–#49 batch) |
+| 51 | `o4-mini` selectable but always broken (missing from `NO_SYSTEM_ROLE_MODELS`) | ✅ `models/knownModels.ts` — `isReasoningModel()` single source of truth |
+| 52 | Model lists independently duplicated across 4 files | ✅ `KNOWN_MODELS`/`MODEL_ABBREVIATIONS` centralized in `models/knownModels.ts` |
+| 53 | OpenAI token usage undercounted across tool-call rounds | ✅ Accumulates across rounds like `AnthropicService.ts` already did |
+| 54 | Anthropic cache-hit/cache-write tokens discarded, unobservable | ✅ `TokenUsage.cacheReadTokens`/`cacheCreationTokens` + debug log |
+| 55 | Abort during pending tool confirmation crashed with a null-pointer, misreported as network error | ✅ Abort signal captured once per `streamMessage` call |
+| 56 | `classifyApiError`'s network fallback can mask a bug as "network error" | Deliberately not done — root cause (#55) removed; see ADR-030 |
+| 57 | No retry on 5xx / Anthropic 529 "overloaded" | ✅ New `"server_error"` class, retried like rate limits |
+| 58 | No iteration cap on the tool-calling round-trip loop | ✅ `MAX_TOOL_ROUNDS = 25` + `ToolLoopLimitError` |
+| 59 | Streaming/abort state is view-global — switching conversations mid-stream could abort the wrong one | ✅ Switch/delete blocked with a Notice while streaming |
+| 60 | Failed stream left a permanently stuck `.pythia-streaming` bubble, no console trace | ✅ Always finalized or removed; `console.error` added |
+| 61 | Deleting a conversation mid-stream resurrected it via `ConversationStore.save()`'s push-if-missing fallback | ✅ `save()` no-ops for an unknown id instead of resurrecting |
+| 62 | Inline prompt-optimizer stale-response race could corrupt a later optimize session's DOM | ✅ Generation counter guards `showResult()` |
+| 63 | `debugMode` gave almost no operational visibility beyond the initial request log | ✅ `debugLog()` helper; retry + tool-round trace points added |
+| 64 | `CommandHubModal` fire-and-forget command actions swallowed errors silently | ✅ `Promise.resolve(item.action()).catch(...)` + Notice |
+| 65 | Chapter-name backfill retried silently and unboundedly on every conversation open | ✅ `console.warn` + in-flight dedup guard |
+| 66 | `TemplateLoader.loadTemplate` swallowed all parse errors silently | ✅ `console.warn` with file path + error |
+| 67 | `updateSendBtnLabel()` allocated + reversed the full message array every keystroke | ✅ Plain reverse `for` loop |
+| 68 | `autoResizeTextarea()` recomputed `getComputedStyle` every keystroke | ✅ Cached, invalidated on `buildUI()` |
+| 69 | Attached notes read sequentially on every turn | ✅ `Promise.all` in `ContextBuilder.buildAttachedNotesContent` |
+| 70 | Templates read sequentially | ✅ `Promise.all` in `TemplateLoader.loadTemplates` |
+| 71 | Empty `templatesFolder` degrades to a whole-vault scan | ✅ Early-return guard |
+| 72 | `InlineSuggest`/`noteChunking` re-tokenized the query per candidate | ✅ `scoreRelevanceTokens` — query tokenized once, reused |
+| 73 | Note-chunk caching keyed on `(path, mtime)` | Open — Backlog (partial win only; scoring is query-dependent) |
+| 74 | `InlineSuggest` candidate cap for very large vaults | Open — Backlog (product decision on result ordering) |
+| 75 | Duplicate `FileSuggestModal`/`NoteSuggestModal` implementations | ✅ `NoteSuggestModal` now a one-line subclass |
+| 76 | `AnthropicService`/`OpenAIProvider` still duplicated attached-notes + error-handling blocks | ✅ `resolveUserContent()`/`finishOrError()` in `BaseProvider` |
 
 ---
 
@@ -201,6 +230,97 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 48 | Relevance-ranked `#` note suggestions | ✅ Done | Medium | Medium | — |
 | 49 | Chunk oversized attached notes | ✅ Done | High | Medium | — |
 | 50 | True embedding/vector-similarity retrieval | Open | High | High | Backlog |
+| 51 | `o4-mini` always broken | ✅ Done | High | Low | — |
+| 52 | Model lists centralized | ✅ Done | Medium | Low | — |
+| 53 | OpenAI token undercounting | ✅ Done | Medium | Low | — |
+| 54 | Cache-token observability | ✅ Done | Low | Low | — |
+| 55 | Abort-during-tool-call crash | ✅ Done | High | Low | — |
+| 56 | `classifyApiError` heuristic | Not done | Low | — | — |
+| 57 | Retry 5xx/529 | ✅ Done | Medium | Low | — |
+| 58 | Bounded tool-call loop | ✅ Done | Medium | Low | — |
+| 59 | Cross-conversation streaming race | ✅ Done | High | Medium | — |
+| 60 | Stuck streaming bubble on error | ✅ Done | Medium | Low | — |
+| 61 | Conversation resurrection on delete | ✅ Done | High | Low | — |
+| 62 | Optimizer stale-response race | ✅ Done | Medium | Low | — |
+| 63 | `debugLog` observability convention | ✅ Done | Medium | Low | — |
+| 64 | `CommandHubModal` silent failures | ✅ Done | Low | Low | — |
+| 65 | Chapter-name backfill logging + dedup | ✅ Done | Low | Low | — |
+| 66 | `TemplateLoader` silent parse errors | ✅ Done | Low | Low | — |
+| 67–72 | Performance quick wins (six items) | ✅ Done | Medium | Low | — |
+| 73 | Note-chunk caching | Open | Medium | Medium | Backlog |
+| 74 | `InlineSuggest` candidate cap | Open | Low | Medium | Backlog |
+| 75 | Duplicate suggest modals merged | ✅ Done | Low | Low | — |
+| 76 | BaseProvider extraction extended | ✅ Done | Medium | Low | — |
+
+---
+
+## New Suggestions (#51–#76) — bug-fix/reliability/observability/maintainability/performance audit, 2026-07-09
+
+A senior-engineer audit across three areas (services layer; main.ts/sidebar.ts/settings.ts; ui/suggest/models/tests) looking for bugs and opportunities to improve performance, reliability, maintainability, and observability. Full rationale for each decision is in `docs/decisions.md` ADR-028 through ADR-034; summarized here.
+
+### #51/#52 — `o4-mini` always broken; model lists centralized
+
+**Files:** `models/knownModels.ts` (new), `services/OpenAIProvider.ts`, `settings.ts`, `suggest/ConversationSettingsModal.ts`, `sidebar.ts` — **Resolved**
+
+`o4-mini` was selectable in three places but missing from the one list (`NO_SYSTEM_ROLE_MODELS`) that gated request shape — every request against it sent a rejected `system` role, `temperature`, and `max_tokens`. `models/knownModels.ts` is now the single source of truth (`KNOWN_MODELS`, `isReasoningModel()`, `MODEL_ABBREVIATIONS`).
+
+### #53/#54 — OpenAI token undercounting; cache-token observability
+
+**Files:** `services/OpenAIProvider.ts`, `services/AnthropicService.ts`, `models/types.ts` — **Resolved**
+
+OpenAI only reported the last tool-call round's usage, silently dropping earlier rounds' cost. Now accumulates like Anthropic already did. `TokenUsage` gained `cacheReadTokens`/`cacheCreationTokens`, previously discarded entirely, now surfaced via debug log.
+
+### #55/#56 — Abort-during-tool-call crash; `classifyApiError` heuristic
+
+**Files:** `services/AnthropicService.ts`, `services/OpenAIProvider.ts` — **#55 Resolved, #56 Not done**
+
+Both providers re-read `this.abortController.signal` inside the tool-calling loop; aborting during a pending tool confirmation nulled the controller, crashing on the next round trip with a `TypeError` misreported as "Network error." Fixed by capturing the signal once per call. `classifyApiError`'s `TypeError → "network"` fallback was deliberately left alone — the fix removes its only realistic failure mode; a heuristic there would be speculative.
+
+### #57/#58 — Retry gap for 5xx/529; unbounded tool-call loop
+
+**Files:** `services/apiError.ts`, `services/retry.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `models/types.ts` — **Resolved**
+
+5xx (including Anthropic's 529 "overloaded") fell through to a non-retryable class. New `"server_error"` classification is retried like rate limits. Both providers' tool-calling loops are now capped at 25 rounds (`ToolLoopLimitError`), surfaced as a friendly Notice instead of spinning forever.
+
+### #59/#60 — Cross-conversation streaming race; stuck streaming bubble
+
+**Files:** `sidebar.ts` — **Resolved**
+
+Streaming/abort state is view-global; nothing stopped switching to or deleting a different conversation mid-stream, letting "Stop" abort the wrong generation and the completing stream force-scroll whatever conversation was displayed. Switching/deleting is now blocked with a Notice while streaming. A failed stream previously left its bubble stuck mid-render with no console trace — now always finalized or removed, with `console.error` logging the real error.
+
+### #61 — Conversation resurrection on delete-during-stream
+
+**File:** `services/ConversationStore.ts` — **Resolved**
+
+`save()` pushed a not-found conversation back in rather than treating it as deleted — a stream/backfill completing after the user deleted its conversation would silently resurrect it. `save()` now no-ops for an unknown id (verified safe: `main.ts`'s `createConversation()` never relies on this fallback for first-save).
+
+### #62 — Inline prompt-optimizer stale-response race
+
+**File:** `ui/OptimizationController.ts` — **Resolved**
+
+`showResult()`'s only guard was `state !== null` — a cancelled-then-restarted optimize flow could have a stale response land in a newer session's DOM. A generation counter now invalidates stale in-flight calls.
+
+### #63–#66 — Observability convention; three silent-catch fixes
+
+**Files:** `services/messageUtils.ts` (new `debugLog`), `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `services/TemplateLoader.ts`, `sidebar.ts`, `suggest/CommandHubModal.ts` — **Resolved**
+
+`debugMode` only logged the outgoing request; retry attempts and tool-round outcomes were invisible even with it on. Three catch blocks swallowed errors completely: `TemplateLoader.loadTemplate` (malformed template frontmatter vanished with no signal), `backfillChapterNames` (also gained an in-flight dedup guard), and `CommandHubModal`'s fire-and-forget command actions (also gained a user-visible Notice on failure).
+
+### #67–#72 — Performance quick wins
+
+**Files:** `sidebar.ts`, `services/ContextBuilder.ts`, `services/TemplateLoader.ts`, `ui/InlineSuggest.ts`, `services/noteRelevance.ts`, `services/noteChunking.ts` — **Resolved**
+
+Per-keystroke array allocation in `updateSendBtnLabel()` and `getComputedStyle` recomputation in `autoResizeTextarea()` removed. Attached-note reads and template reads parallelized with `Promise.all`. An empty `templatesFolder` no longer degrades to a whole-vault scan. `scoreRelevanceTokens` lets a caller tokenize the query once and reuse it across every candidate instead of re-tokenizing per candidate.
+
+### #73/#74 — Deferred to backlog
+
+Note-chunk caching keyed on `(path, mtime)` was not implemented — the relevance-scoring step is query-dependent (changes every turn), so a cache only partially helps for the added invalidation complexity. An `InlineSuggest` candidate cap for very large vaults was also deferred — it adds a product decision about result ordering beyond the redundant-tokenization fix already landed in #72.
+
+### #75/#76 — Duplicate suggest modals merged; BaseProvider extraction extended
+
+**Files:** `suggest/FileSuggest.ts`, `suggest/NoteSuggest.ts`, `services/BaseProvider.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts` — **Resolved**
+
+`FileSuggestModal`/`NoteSuggestModal` were byte-identical except copy — merged via an optional constructor parameter. `AnthropicService`/`OpenAIProvider` had two more identical blocks (attached-notes fetch + Notices, abort-vs-error classification) beyond the original `BaseProvider` extraction — this exact duplication is what let #53 and #55's bugs diverge between the two files in the first place. Both landed last, after the bug-fix batches and their regression tests were already green.
 
 ---
 

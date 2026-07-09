@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-07-09 — ADR-027 (prompt-tag/marker centralization).*
+*Last updated: 2026-07-09 — ADR-028 through ADR-034 (bug-fix/reliability/observability/maintainability/performance pass).*
 
 Each entry records a decision, the context that drove it, and the consequence. Entries are append-only; superseded decisions are marked rather than deleted.
 
@@ -318,3 +318,89 @@ Each entry records a decision, the context that drove it, and the consequence. E
 **Decision:** New `services/promptConstants.ts` holds the cross-file literal contracts as named constants: `SYSTEM_PROMPT_TAG`, `PREVIOUS_SUMMARY_TAG`, `ATTACHED_NOTE_TAG`, `ATTACHED_NOTE_PATH_ATTR`, `ATTACHED_NOTE_EXCERPT_ATTR`, `TITLE_MARKER`, `SUMMARY_MARKER`. `ContextBuilder.ts` and `ToolHandler.ts` both import the attached-note tag/attribute constants; `BaseProvider.ts` and `messageUtils.ts` both import the TITLE/SUMMARY markers. The module holds only genuine cross-file contracts — single-file duplication (e.g. the "reply with only the title" phrase repeated across two `BaseProvider.ts` methods) stays a local constant in that file rather than being added here, to avoid building a generic prompt-builder abstraction.
 
 **Consequence:** Renaming a tag or marker is now a one-line change with the type checker enforcing every call site updates together. Prompt wording sent to the LLM is unchanged (refactor is behavior-preserving); `PromptOptimizerService.ts`'s independent template-based convention was reviewed and intentionally left as a third, separate pattern — it has no XML tags or TITLE/SUMMARY contract to desync.
+
+---
+
+### ADR-028 — OpenAI reasoning-model handling unified in `models/knownModels.ts`
+
+**Status:** Active
+
+**Context:** `o4-mini` was listed as a selectable OpenAI model in three places (`settings.ts`, `ConversationSettingsModal.ts`, `sidebar.ts`'s abbreviation map) but was missing from `OpenAIProvider.ts`'s separately-maintained `NO_SYSTEM_ROLE_MODELS` set — the one list that actually gates request shape. Every request against `o4-mini` therefore sent a `system`-role message and a custom `temperature`, both rejected by OpenAI's o-series reasoning models, guaranteeing a 400 on a model the UI advertised as usable. Separately, reasoning models also reject `max_tokens` and require `max_completion_tokens`, which no code path handled.
+
+**Decision:** `models/knownModels.ts` is now the single source of truth: `KNOWN_MODELS` (per-provider selectable models), `REASONING_MODELS`/`isReasoningModel()` (the o-series gate), and `MODEL_ABBREVIATIONS` (moved from `sidebar.ts`). `OpenAIProvider.ts` uses `isReasoningModel()` to decide `system`-role placement, temperature inclusion, and `max_tokens` vs. `max_completion_tokens` in both `callUtility` and `streamMessage`. `settings.ts` and `ConversationSettingsModal.ts` import `KNOWN_MODELS` instead of hardcoding their own lists.
+
+**Consequence:** A model can no longer be "selectable" in the UI without also being correctly classified for request shaping — adding a model is a one-line change to one file. `o4-mini` now works end-to-end.
+
+---
+
+### ADR-029 — Token and cache usage accumulate additively across every tool-call round
+
+**Status:** Active
+
+**Context:** `AnthropicService.ts` already summed `input_tokens`/`output_tokens` across every round of the tool-calling loop; `OpenAIProvider.ts` instead kept only the most recent round's `chunk.usage`, silently discarding the cost of every round before the last. A multi-tool-call OpenAI turn therefore showed a materially undercounted token total in the sidebar. Separately, Anthropic's `cache_read_input_tokens`/`cache_creation_input_tokens` — the numbers needed to confirm prompt caching (ADR-023) is actually working — were read from the API response but discarded entirely.
+
+**Decision:** `OpenAIProvider.ts` now accumulates `totalInputTokens`/`totalOutputTokens` the same way `AnthropicService.ts` does, only reporting `tokenUsage` when the API actually returned usage data (preserves the prior `undefined` behavior when it doesn't). `TokenUsage` (`models/types.ts`) gains optional `cacheReadTokens`/`cacheCreationTokens`, populated by `AnthropicService.ts` and surfaced via the new debug-log convention (ADR-033) rather than the sidebar UI — this is an observability fix, not a UI feature.
+
+**Consequence:** Token totals are now correct for both providers regardless of tool-call rounds. Cache effectiveness is now visible with `debugMode` enabled, closing a blind spot where a caching regression could ship unnoticed short of a bill increase.
+
+---
+
+### ADR-030 — Abort signal captured once per streamMessage call
+
+**Status:** Active
+
+**Context:** Both providers reused `this.abortController.signal` inside the tool-calling round-trip loop. `BaseProvider.abort()` nulls `this.abortController` on any abort. If the user clicked Stop while a tool-confirmation chip was awaiting the user's click (`await onToolCall(...)`), the next round trip's request construction read `.signal` off a now-`null` controller, throwing a bare `TypeError` — caught by the outer handler, but `classifyApiError`'s `TypeError → "network"` fallback then misreported a clean user cancellation as "Network error."
+
+**Decision:** Both providers capture `const signal = this.abortController.signal;` once, immediately after creating the controller, and use that local for every round trip instead of re-reading `this.abortController.signal`. An abort mid-loop now surfaces as a real `AbortError` from the SDK against the (already-aborted) captured signal, which the existing abort-classification path already handles as a clean `onComplete(fullText)`. `classifyApiError`'s network fallback was deliberately left as-is — the fix removes the only realistic source of a bug being masked by it; adding a heuristic there would be speculative.
+
+**Consequence:** Clicking Stop during a pending tool confirmation now cancels cleanly with no crash and no misleading error Notice.
+
+---
+
+### ADR-031 — Retry extended to 5xx/529; tool-call loop is bounded
+
+**Status:** Active
+
+**Context:** `classifyApiError` only recognized 401/403/429/404 and a no-status case as retryable-adjacent classes; any 5xx (including Anthropic's `overloaded_error`, HTTP 529) fell through to `"other"` and was never retried, despite being exactly the transient capacity error the retry mechanism (ADR-recorded in the #43 resolution) exists for. Separately, both providers' tool-calling `while (true)` loops had no iteration cap — a model stuck calling the same tool repeatedly would loop indefinitely, burning API cost with no circuit breaker beyond the user manually clicking Stop.
+
+**Decision:** `classifyApiError` gains a `"server_error"` class for HTTP 500–599 (covers 529 the same way, since it's exposed via the same `.status` property), and `retry.ts`'s `isRetryableError` treats it as retryable alongside `rate_limit`/`network`. Both providers now cap tool-call rounds at `MAX_TOOL_ROUNDS = 25`; exceeding it throws a new `ToolLoopLimitError` (`models/types.ts`), which propagates through the existing error path to a friendly Notice rather than a crash or a silent infinite loop.
+
+**Consequence:** Transient provider-side overload now gets the same automatic retry as rate limits. A confused model can no longer loop unboundedly — it fails cleanly after a generous but bounded number of rounds.
+
+---
+
+### ADR-032 — Single active stream is a deliberate constraint, not an accidental gap
+
+**Status:** Active
+
+**Context:** Streaming/abort state (`isStreaming`, `AbortController`) is per-view and per-provider, not per-conversation — `LLMRouter.abort()` sweeps every provider regardless of which conversation is actually generating. Nothing previously stopped a user from switching to (or deleting) a different conversation while a stream was in flight: switching let a "Stop" click on an unrelated conversation abort the real generation, and the completing stream's `finalize()` would force-scroll and re-render whatever conversation happened to be displayed. Deleting a conversation mid-stream had a related failure — see ADR referenced in the #61 resolution below. Separately, a stream that failed with an error left its `.pythia-streaming` bubble stuck mid-render forever, with no console trace of the underlying error.
+
+**Decision:** Rather than building true per-conversation concurrent streaming (separate abort controllers, a streaming registry, detached render targets — a multi-day feature disproportionate to a bug-fix pass), the existing single-stream constraint is made *correct*: `setActiveConversation()` and `handleDeleteConversation()` both block the action with a Notice while `isStreaming` is true for a different conversation. `sendMessage()`'s completion callback also gained a defense-in-depth check (`activeConversation?.id === conv.id`) before touching `messagesEl`/`autoScroll`, covering the view-teardown edge case. On error, the streaming bubble now always resolves — `console.error` logs the real error, and whatever partial text arrived is finalized (or the empty row removed) instead of being left stuck.
+
+**Consequence:** Users can no longer accidentally abort or corrupt the wrong conversation's generation. True concurrent per-conversation streaming remains a considered-and-rejected alternative, recorded here rather than silently deferred, should the product ever need it.
+
+---
+
+### ADR-033 — `debugLog` convention; three previously-silent failure paths now log
+
+**Status:** Active
+
+**Context:** `debugMode` only ever logged the outgoing request payload in each provider, right before sending — nothing about retry attempts, tool-call round outcomes, or several genuinely swallowed errors (`TemplateLoader.loadTemplate`'s catch-all, `backfillChapterNames`'s catch, `CommandHubModal`'s fire-and-forget `action()`) was visible anywhere, with or without debug mode. This made "it just failed" or "it feels slow" bug reports nearly undiagnosable from the report alone.
+
+**Decision:** `debugLog(settings, ...args)` (`services/messageUtils.ts`) is a 3-line helper — verbose, opt-in diagnostics only, gated on `debugMode`. Both providers now call it on each retry attempt and at the end of each tool-call round (where the token/cache accounting from ADR-029 becomes visible). Genuine errors get an *un-gated* `console.warn`/`console.error` instead, since they're one-time developer-facing signals that should be visible without opting into debug mode first: `TemplateLoader.loadTemplate`'s parse-failure catch, `backfillChapterNames`'s per-message catch (now matching the logging already present at its sibling call site), and `CommandHubModal.onChooseSuggestion`'s command-action catch (which also now shows a `commandFailed` Notice — previously a command failure was completely silent). `backfillChapterNames` also gained a small `Set<string>` in-flight guard to stop overlapping serial backfill runs on rapid re-open of the same conversation.
+
+Deliberately not done: threading `settings`/logging into `ToolHandler.execute` — its errors already surface as visible strings in the confirmation chip, and `ToolHandler` is intentionally constructed with just a `NoteWriter` (prior extraction decision); adding a settings dependency there would be scope creep for no user-visible gain.
+
+**Consequence:** Retry behavior, tool-round outcomes, and cache stats are now inspectable with `debugMode` on. Three previously-invisible failure modes (bad template frontmatter, chapter-name backfill failures, command-hub failures) now always produce a console trace, and the last of those also produces a user-visible Notice.
+
+---
+
+### ADR-034 — BaseProvider extraction extended; duplicate suggest modals merged
+
+**Status:** Active
+
+**Context:** `AnthropicService.ts` and `OpenAIProvider.ts` had two more byte-identical (or near-identical) blocks beyond what the original `BaseProvider` extraction (prior #32 resolution) covered: the attached-notes fetch + missing/oversized-note `Notice`s, and the abort-vs-error classification in each `catch` block. This duplication is exactly what let ADR-028's and ADR-029's bugs diverge between the two files in the first place — one file got the abort-null-pointer bug, the other got the token-undercounting bug, where a shared implementation would have had (and fixed) one bug instead of two different ones. Separately, `suggest/FileSuggest.ts` and `suggest/NoteSuggest.ts` were byte-for-byte identical `FuzzySuggestModal` subclasses differing only in placeholder/instruction copy.
+
+**Decision:** `BaseProvider.ts` gains `resolveUserContent()` (attached-notes fetch + Notices + system-prompt build, returned together since both providers need all three) and `finishOrError()` (the shared abort-vs-error catch classification, reusing `retry.ts`'s already-exported `ABORT_ERROR_NAMES` rather than a third copy of that set). Both providers call these instead of duplicating the logic. `DEFAULT_MAX_TOKENS` (`promptConstants.ts`, added alongside the reasoning-model fix) replaces the `?? 4096` magic number in both. The two providers' actual streaming/tool-loop bodies stay separate — Anthropic's Messages API and OpenAI's Chat Completions API have genuinely different shapes there, and forcing a shared abstraction over that would violate the project's anti-premature-abstraction stance. `FileSuggestModal` gained an optional `{ placeholder?, selectInstruction? }` constructor parameter; `NoteSuggestModal` is now a one-line subclass passing note-specific copy, with zero call-site changes required.
+
+**Consequence:** Less duplicated surface for future bugs to diverge across; renaming/fixing either shared behavior is now a one-file change. Both refactors are behavior-preserving and landed only after the bug fixes and their regression tests were already green, so a regression here couldn't hide behind a broken baseline.
