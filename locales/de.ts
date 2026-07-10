@@ -292,10 +292,13 @@ const de: Strings = {
 	providerLabel:     "Anbieter",
 	modelLabel:        "Modell",
 	convTemperatureLabel: "Temperatur",
-	convTemperatureDesc:  "Überschreibt die Standardtemperatur (0–1) für dieses Gespräch. Leer lassen, um den globalen Standardwert zu verwenden.",
-	invalidTemperature:   "Die Temperatur muss eine Zahl zwischen 0 und 1 sein (oder leer für den Standardwert).",
+	convTemperatureDesc:  "Überschreibt die Standardtemperatur (0–1) für dieses Gespräch.",
 	saveBtn:           "Speichern",
 	okBtn:             "OK",
+
+	// ── Input area ──────────────────────────────────────────────────────────────
+	minimizeInputTooltip: "Eingabe minimieren",
+	expandInputTooltip:   "Eingabe erweitern",
 };
 
 export default de;
