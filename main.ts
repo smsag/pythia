@@ -298,7 +298,9 @@ export default class PythiaPlugin extends Plugin {
 				}
 
 				if (action === "inject") {
-					const rawText = params.text ? decodeURIComponent(params.text) : "";
+					// Obsidian already decodes protocol-handler params — decoding again
+					// throws on any text containing a bare "%" (e.g. "50% off").
+					const rawText = params.text ?? "";
 					if (!rawText) {
 						new Notice(t("uriMissingText"));
 						return;
@@ -457,20 +459,22 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	private async persistData(): Promise<void> {
-		// Evict oldest non-starred conversations beyond the cap (#3).
-		// Always protect the currently open conversation even if it has no starred
-		// messages — evicting the active conversation would silently lose new turns (#17).
-		const sidebarLeaf = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
-		const activeId = sidebarLeaf
-			? (sidebarLeaf.view as PythiaSidebarView).activeConversationId
-			: null;
-		this.conversations = evictConversations(
-			this.conversations,
-			this.settings.maxConversations,
-			activeId,
-		);
-
 		try {
+			// Evict oldest non-starred conversations beyond the cap (#3).
+			// Always protect every currently-open conversation, even if it has no
+			// starred messages — evicting an active conversation would silently
+			// lose new turns (#17). Pythia's view can be opened in more than one
+			// leaf, so every leaf's active conversation is protected, not just one.
+			const activeIds = this.app.workspace
+				.getLeavesOfType(PYTHIA_VIEW_TYPE)
+				.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
+				.filter((id): id is string => id !== null);
+			this.conversations = evictConversations(
+				this.conversations,
+				this.settings.maxConversations,
+				activeIds,
+			);
+
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire
 			await this.saveData({
 				settings: this.settings,
@@ -867,6 +871,14 @@ export default class PythiaPlugin extends Plugin {
 						// in services/messageUtils.ts, applied in both providers) is what
 						// actually excludes prior messages from the request in "summary"
 						// mode — no data is deleted here.
+					}
+
+					// The summary generation above can take several seconds — the
+					// conversation may have been deleted in the meantime. Don't
+					// resurrect/reactivate a conversation that no longer exists.
+					if (!this.conversationStore.getById(conv.id)) {
+						new Notice(t("convDeletedWhileResuming"));
+						return;
 					}
 
 					await this.conversationStore.save(conv);

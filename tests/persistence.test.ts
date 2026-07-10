@@ -228,17 +228,17 @@ describe("shouldRefuseLoad", () => {
 describe("evictConversations", () => {
 	it("returns the input unchanged when under cap", () => {
 		const convs = [makeConv("a"), makeConv("b")];
-		expect(evictConversations(convs, 5, null)).toHaveLength(2);
+		expect(evictConversations(convs, 5, [])).toHaveLength(2);
 	});
 
 	it("returns the input unchanged when at exactly the cap", () => {
 		const convs = [makeConv("a"), makeConv("b"), makeConv("c")];
-		expect(evictConversations(convs, 3, null)).toHaveLength(3);
+		expect(evictConversations(convs, 3, [])).toHaveLength(3);
 	});
 
 	it("returns all conversations when cap is 0 (unlimited)", () => {
 		const convs = Array.from({ length: 10 }, (_, i) => makeConv(String(i)));
-		expect(evictConversations(convs, 0, null)).toHaveLength(10);
+		expect(evictConversations(convs, 0, [])).toHaveLength(10);
 	});
 
 	it("evicts down to cap, keeping the newest conversations", () => {
@@ -247,7 +247,7 @@ describe("evictConversations", () => {
 			makeConv("mid", "2026-06-01T00:00:00.000Z"),
 			makeConv("new", "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, null);
+		const result = evictConversations(convs, 2, []);
 		expect(result).toHaveLength(2);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("new");
@@ -261,7 +261,7 @@ describe("evictConversations", () => {
 			makeConv("newer",  "2026-06-01T00:00:00.000Z"),
 			makeConv("newest", "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, "oldest");
+		const result = evictConversations(convs, 2, ["oldest"]);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("oldest");
 		expect(ids).toContain("newest");
@@ -274,7 +274,7 @@ describe("evictConversations", () => {
 			makeConv("newer",       "2026-06-01T00:00:00.000Z"),
 			makeConv("newest",      "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, null);
+		const result = evictConversations(convs, 2, []);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("starred-old");
 		expect(ids).toContain("newest");
@@ -285,7 +285,7 @@ describe("evictConversations", () => {
 		const starred = Array.from({ length: 5 }, (_, i) =>
 			makeConv(`s${i}`, "2026-01-01T00:00:00.000Z", [{ messageId: "m", name: "f" }])
 		);
-		const result = evictConversations(starred, 3, null);
+		const result = evictConversations(starred, 3, []);
 		// all starred must survive — result may exceed cap
 		expect(result.length).toBe(5);
 	});
@@ -297,7 +297,7 @@ describe("evictConversations", () => {
 			makeConv("c", "2026-12-01T00:00:00.000Z"),
 			makeConv("d", "2026-06-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 3, null);
+		const result = evictConversations(convs, 3, []);
 		const dates = result.map((c) => c.updatedAt);
 		expect(dates).toEqual([...dates].sort((a, b) => b.localeCompare(a)));
 	});
@@ -309,11 +309,34 @@ describe("evictConversations", () => {
 			makeConv("plain-new",   "2026-12-01T00:00:00.000Z"),
 			makeConv("plain-old",   "2026-06-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 3, "active-old");
+		const result = evictConversations(convs, 3, ["active-old"]);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("active-old");
 		expect(ids).toContain("starred-old");
 		expect(ids).toContain("plain-new");
+		expect(ids).not.toContain("plain-old");
+	});
+
+	it("does not throw when a conversation has a malformed/missing updatedAt", () => {
+		const convs = [
+			makeConv("good", "2026-06-01T00:00:00.000Z"),
+			{ ...makeConv("bad"), updatedAt: undefined as unknown as string },
+			makeConv("newest", "2026-12-01T00:00:00.000Z"),
+		];
+		expect(() => evictConversations(convs, 2, [])).not.toThrow();
+	});
+
+	it("protects the active conversation from every open leaf, not just one", () => {
+		const convs = [
+			makeConv("leaf1-active", "2026-01-01T00:00:00.000Z"),
+			makeConv("leaf2-active", "2026-01-02T00:00:00.000Z"),
+			makeConv("plain-new",    "2026-12-01T00:00:00.000Z"),
+			makeConv("plain-old",    "2026-06-01T00:00:00.000Z"),
+		];
+		const result = evictConversations(convs, 2, ["leaf1-active", "leaf2-active"]);
+		const ids = result.map((c) => c.id);
+		expect(ids).toContain("leaf1-active");
+		expect(ids).toContain("leaf2-active");
 		expect(ids).not.toContain("plain-old");
 	});
 });

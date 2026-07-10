@@ -13,6 +13,7 @@
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
+*Updated: 2026-07-09 — second-round audit (post-1.21.1): #77–#83 resolved (second delete-guard gap via the conversation switcher, resume-mode race with concurrent deletion, eviction crash on malformed `updatedAt`, eviction only protecting one sidebar leaf, silent multi-line frontmatter corruption, deep-link double-decode, summary-generation stale-conversation race). Remaining medium/low findings from this audit and pre-existing architectural backlog (#3, #10, #50, #73, #74) reviewed and explicitly deferred, not silently dropped.*
 
 ---
 
@@ -32,6 +33,7 @@
 | 2026-06-14 | #4 closed won't fix; docs updated to v1.19.5 |
 | 2026-07-09 | #42–#49 response-quality audit resolved; #50 added as backlog |
 | 2026-07-09 | #51–#55, #57–#72, #75, #76 bug-fix/reliability/observability/maintainability/performance audit resolved; #56 deliberately not done; #73, #74 added as backlog |
+| 2026-07-09 | #77–#83 second-round audit resolved (post-1.21.1 release); remaining medium/low findings deferred |
 
 ---
 
@@ -145,6 +147,13 @@
 | 74 | `InlineSuggest` candidate cap for very large vaults | Open — Backlog (product decision on result ordering) |
 | 75 | Duplicate `FileSuggestModal`/`NoteSuggestModal` implementations | ✅ `NoteSuggestModal` now a one-line subclass |
 | 76 | `AnthropicService`/`OpenAIProvider` still duplicated attached-notes + error-handling blocks | ✅ `resolveUserContent()`/`finishOrError()` in `BaseProvider` |
+| 77 | Conversation-switcher delete path bypassed the streaming guard | ✅ Same `isStreaming` check added to the picker's delete callback |
+| 78 | `cmdResumeConversation` could resurrect a conversation deleted during summary generation | ✅ Existence check before reactivating |
+| 79 | Eviction could crash on a malformed/missing `updatedAt`, breaking all future saves | ✅ Defensive sort + moved inside the existing try/catch |
+| 80 | Eviction only protected the first sidebar leaf's active conversation | ✅ `evictConversations` now takes `activeIds: string[]` from every leaf |
+| 81 | Multi-line YAML frontmatter silently dropped on note merge, reachable via LLM tool output | ✅ `mergeFrontmatterFields` groups keys with their continuation lines |
+| 82 | Deep-link `inject` action double-decoded already-decoded text, throwing on bare `%` | ✅ Redundant `decodeURIComponent` removed |
+| 83 | Summary generation could force-open a different, currently-viewed conversation's summary panel | ✅ UI side effects guarded by `activeConversation?.id === conv.id` |
 
 ---
 
@@ -251,6 +260,13 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 74 | `InlineSuggest` candidate cap | Open | Low | Medium | Backlog |
 | 75 | Duplicate suggest modals merged | ✅ Done | Low | Low | — |
 | 76 | BaseProvider extraction extended | ✅ Done | Medium | Low | — |
+| 77 | Second delete-guard gap (conversation switcher) | ✅ Done | High | Low | — |
+| 78 | Resume-mode race with concurrent deletion | ✅ Done | High | Low | — |
+| 79 | Eviction crash on malformed data | ✅ Done | High | Low | — |
+| 80 | Eviction only protected one sidebar leaf | ✅ Done | High | Low | — |
+| 81 | Multi-line frontmatter corruption | ✅ Done | High | Low | — |
+| 82 | Deep-link double-decode | ✅ Done | Medium-High | Low | — |
+| 83 | Summary-generation stale-conversation race | ✅ Done | Medium-High | Low | — |
 
 ---
 
@@ -321,6 +337,46 @@ Note-chunk caching keyed on `(path, mtime)` was not implemented — the relevanc
 **Files:** `suggest/FileSuggest.ts`, `suggest/NoteSuggest.ts`, `services/BaseProvider.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts` — **Resolved**
 
 `FileSuggestModal`/`NoteSuggestModal` were byte-identical except copy — merged via an optional constructor parameter. `AnthropicService`/`OpenAIProvider` had two more identical blocks (attached-notes fetch + Notices, abort-vs-error classification) beyond the original `BaseProvider` extraction — this exact duplication is what let #53 and #55's bugs diverge between the two files in the first place. Both landed last, after the bug-fix batches and their regression tests were already green.
+
+---
+
+## New Suggestions (#77–#83) — second-round bug-fix audit, post-1.21.1
+
+A follow-up three-agent audit (main.ts/NoteWriter/persistence/PromptOptimizerService; remaining suggest/ modals + settings validation; a fresh full pass over sidebar.ts) run after the first bug-fix pass (1.21.1) shipped. Full rationale: `docs/decisions.md` ADR-035.
+
+### #77/#78 — Second delete-guard gap; resume-mode race with concurrent deletion
+
+**Files:** `sidebar.ts`, `main.ts` — **Resolved**
+
+The conversation-switcher's delete callback (`ConversationSuggestModal` → `DeleteConversationModal`) had no `isStreaming` check — a second, unguarded path into the exact corruption scenario #59 was fixed for. `cmdResumeConversation` captured a conversation, awaited a multi-second summary generation, then unconditionally reactivated it — if deleted meanwhile, the user ended up in a conversation that could never be saved again. Both now check before proceeding, with a clear Notice on the blocked path.
+
+### #79/#80 — Eviction crash on malformed data; eviction only protected one leaf
+
+**Files:** `services/persistence.ts`, `main.ts` — **Resolved**
+
+`evictConversations`'s sort assumed every conversation had a valid `updatedAt`, throwing on a corrupted record — and since the call sat outside `persistData`'s try/catch, a single bad record silently broke all future saves for the session. Separately, only the first `PYTHIA_VIEW_TYPE` leaf's active conversation was protected — a second open leaf's conversation could be evicted while in use. Fixed with a defensive sort, moving the call inside the try/catch, and widening the protected-id parameter to cover every open leaf.
+
+### #81 — Multi-line frontmatter silently corrupted
+
+**File:** `services/NoteWriter.ts` — **Resolved**
+
+`mergeFrontmatterFields` only ever captured a field's `key:` line, discarding any indented continuation lines (YAML lists, block scalars) — reachable directly by LLM tool output (`prepend_note`/`rewrite_note`), not just manual misuse. Fixed by grouping each key with its continuation lines before deciding whether to merge it in.
+
+### #82 — Deep-link double-decode
+
+**File:** `main.ts` — **Resolved**
+
+The `inject` deep-link action called `decodeURIComponent()` on text Obsidian's protocol handler had already decoded, throwing on any bare `%` (e.g. "50% off") — a common, realistic input, not an edge case. Redundant call removed.
+
+### #83 — Summary-generation stale-conversation race
+
+**File:** `sidebar.ts` — **Resolved**
+
+`onGenerateSummary()`'s UI side effects (header re-render, summary-panel update/auto-open) ran unconditionally after the async summary call resolved, regardless of whether the user had switched to a different conversation in the meantime — forcing that *other* conversation's summary panel open unprompted. Now guarded by `activeConversation?.id === conv.id`, matching the pattern already used in `sendMessage()`.
+
+### Deferred from this round
+
+The audit also found several medium/low findings not fixed this round (by explicit scope choice, not oversight): `DeleteConversationModal`'s fire-and-forget confirm callback, `cmdForkConversation`'s lack of feedback when its source is gone (closely related to backlog #10), the prompt-optimizer's raw internal error-code leak ("Error: no-template"), several other un-awaited async handlers in `main.ts`'s context-menu items, settings numeric-input silent-discard (re-confirmed present, not yet fixed), no range validation on settings loaded from `data.json`, a copy-link button with no error handling, and a handful of smaller maintainability items (dead code, a folder-creation race, duplicate frontmatter parsers, inconsistent error formatting). Pre-existing architectural backlog (#3 per-conversation storage, #10 fork fire-and-forget, #50 embedding retrieval, #73/#74 caching/candidate-cap) remains open, unchanged.
 
 ---
 

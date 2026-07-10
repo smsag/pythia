@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-09 — second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -14,15 +14,15 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 
 | File | Lines | Role |
 |---|---:|---|
-| `sidebar.ts` | 2 294 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
+| `sidebar.ts` | 2 303 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
-| `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, data.json watcher |
+| `main.ts` | 924 | Plugin entry, commands, conversation lifecycle, data.json watcher |
 | `settings.ts` | 419 | Settings schema, defaults, settings tab UI |
 | `services/OpenAIProvider.ts` | 294 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating, bounded tool loop |
 | `services/AnthropicService.ts` | 242 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating, bounded tool loop |
 | `services/BaseProvider.ts` | 184 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` streamMessage helpers, all generate* utility methods |
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
-| `services/NoteWriter.ts` | 185 | Vault write operations |
+| `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 101 | Template discovery + frontmatter parsing (incl. `temperature`); parallelized reads, empty-folder guard |
 | `services/messageUtils.ts` | 129 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
@@ -33,7 +33,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
 | `services/ConversationStore.ts` | 61 | In-memory store + 300 ms debounced persistence; `save()` no-ops for a deleted conversation instead of resurrecting it |
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
-| `services/persistence.ts` | 103 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
+| `services/persistence.ts` | 111 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
 | `models/knownModels.ts` | 38 | Single source of truth for known model IDs per provider, the OpenAI reasoning-model set, and model-abbreviation labels |
@@ -44,7 +44,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` is a thin subclass of `FileSuggestModal` |
 | `models/types.ts` | 97 | All shared TypeScript interfaces, incl. `ToolLoopLimitError` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (202 tests, ~1 s) |
+| `tests/` | — | Vitest unit tests (207 tests, ~1 s) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -339,7 +339,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`. `no-console: warn`, `no-explicit-any: off`. 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 202 unit tests across 15 files, ~1 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
+- **Testing:** Vitest, 207 unit tests across 15 files, ~1 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.
 - **`@anthropic-ai/sdk`:** pinned at `^0.40.0` (bumped from `^0.28.0`) — the minimum version whose main (non-beta) Messages API types support `cache_control`, needed for prompt caching. See ADR for the caching decision.
