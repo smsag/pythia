@@ -14,6 +14,7 @@
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
 *Updated: 2026-07-09 — second-round audit (post-1.21.1): #77–#83 resolved (second delete-guard gap via the conversation switcher, resume-mode race with concurrent deletion, eviction crash on malformed `updatedAt`, eviction only protecting one sidebar leaf, silent multi-line frontmatter corruption, deep-link double-decode, summary-generation stale-conversation race). Remaining medium/low findings from this audit and pre-existing architectural backlog (#3, #10, #50, #73, #74) reviewed and explicitly deferred, not silently dropped.*
+*Updated: 2026-07-10 — #84 resolved: `cmdForkConversation` now carries `temperature` over from the source conversation, matching `provider`/`model`/`maxTokens`. Also added a settings-modal UI to view/edit a conversation's temperature after creation (not a bug — new capability, not separately numbered).*
 
 ---
 
@@ -34,6 +35,7 @@
 | 2026-07-09 | #42–#49 response-quality audit resolved; #50 added as backlog |
 | 2026-07-09 | #51–#55, #57–#72, #75, #76 bug-fix/reliability/observability/maintainability/performance audit resolved; #56 deliberately not done; #73, #74 added as backlog |
 | 2026-07-09 | #77–#83 second-round audit resolved (post-1.21.1 release); remaining medium/low findings deferred |
+| 2026-07-10 | #84 resolved (fork drops temperature override); added per-conversation temperature editing UI |
 
 ---
 
@@ -154,6 +156,7 @@
 | 81 | Multi-line YAML frontmatter silently dropped on note merge, reachable via LLM tool output | ✅ `mergeFrontmatterFields` groups keys with their continuation lines |
 | 82 | Deep-link `inject` action double-decoded already-decoded text, throwing on bare `%` | ✅ Redundant `decodeURIComponent` removed |
 | 83 | Summary generation could force-open a different, currently-viewed conversation's summary panel | ✅ UI side effects guarded by `activeConversation?.id === conv.id` |
+| 84 | `cmdForkConversation` copied provider/model/maxTokens from the source but not temperature | ✅ `conv.temperature = source.temperature` added; `ConversationSettingsModal` also gained a temperature field |
 
 ---
 
@@ -267,6 +270,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 81 | Multi-line frontmatter corruption | ✅ Done | High | Low | — |
 | 82 | Deep-link double-decode | ✅ Done | Medium-High | Low | — |
 | 83 | Summary-generation stale-conversation race | ✅ Done | Medium-High | Low | — |
+| 84 | Fork drops temperature override | ✅ Done | Low | Low | — |
 
 ---
 
@@ -377,6 +381,14 @@ The `inject` deep-link action called `decodeURIComponent()` on text Obsidian's p
 ### Deferred from this round
 
 The audit also found several medium/low findings not fixed this round (by explicit scope choice, not oversight): `DeleteConversationModal`'s fire-and-forget confirm callback, `cmdForkConversation`'s lack of feedback when its source is gone (closely related to backlog #10), the prompt-optimizer's raw internal error-code leak ("Error: no-template"), several other un-awaited async handlers in `main.ts`'s context-menu items, settings numeric-input silent-discard (re-confirmed present, not yet fixed), no range validation on settings loaded from `data.json`, a copy-link button with no error handling, and a handful of smaller maintainability items (dead code, a folder-creation race, duplicate frontmatter parsers, inconsistent error formatting). Pre-existing architectural backlog (#3 per-conversation storage, #10 fork fire-and-forget, #50 embedding retrieval, #73/#74 caching/candidate-cap) remains open, unchanged.
+
+---
+
+### #84 — Fork silently dropped the source conversation's temperature override; temperature now editable per-conversation
+
+**Files:** `main.ts`, `suggest/ConversationSettingsModal.ts` — **Resolved**
+
+A user request to make temperature settable per-template (overriding the global default) turned out to already be fully implemented (ADR-024) — every template-driven conversation-creation path already copies `PythiaTemplate.temperature` onto the new conversation. Investigating it surfaced that `cmdForkConversation` copied `provider`/`model`/`maxTokens` from the source conversation but not `temperature`, so forking silently reverted to the global default, and that there was no UI at all to view/change a conversation's temperature after creation. Both fixed: the fork path now carries `temperature` over, and `ConversationSettingsModal` (opened via the model badge) gained a temperature field that validates on Save with a Notice on invalid input, rather than silently discarding it like the equivalent global-settings field still does (that one remains an open, deferred item).
 
 ---
 

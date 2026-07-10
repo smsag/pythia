@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-07-09 — ADR-035 (second-round bug-fix pass: streaming-guard gap, resume/eviction/frontmatter/deep-link fixes).*
+*Last updated: 2026-07-10 — ADR-036 (per-conversation temperature editing; fork carries temperature over).*
 
 Each entry records a decision, the context that drove it, and the consequence. Entries are append-only; superseded decisions are marked rather than deleted.
 
@@ -423,3 +423,15 @@ Deliberately not done: threading `settings`/logging into `ToolHandler.execute` �
 - **Summary stale-conversation race** (`sidebar.ts`, `onGenerateSummary`): the UI side effects (`renderHeader()`, `updateSummaryBar()`, `toggleSummaryPanel()`) now only run `if (this.activeConversation?.id === conv.id)`, matching the pattern already established in `sendMessage()`'s completion callback — the summary itself always saves to the right conversation; only the UI reveal is guarded.
 
 **Consequence:** All 7 fixes are behavior-preserving except for the two error paths that now show a Notice where they previously did nothing (resume-race, delete-while-streaming) — that's the intended visible improvement. New regression tests cover the eviction edge cases (malformed `updatedAt`, multi-leaf protection) and the frontmatter merge (list and block-scalar continuation lines, both new-key and existing-key cases). `sidebar.ts`/`main.ts` fixes have no dedicated unit-test suite (consistent with the rest of this codebase) and are verified by build/lint/test plus a documented manual-check list.
+
+---
+
+### ADR-036 — Per-conversation temperature is user-editable after creation; fork carries it over
+
+**Status:** Active
+
+**Context:** A user request to "allow setting temperature per template, overriding the default" turned out to already be fully implemented (ADR-024): `PythiaTemplate.temperature` is parsed and validated by `TemplateLoader.ts`, and every template-driven conversation-creation call site in `main.ts` already copies it onto the new `Conversation.temperature`, resolved by both providers as `conversation.temperature ?? settings.temperature`. Investigating this surfaced two related gaps: `cmdForkConversation` copied `provider`/`model`/`maxTokens` from the source conversation but not `temperature`, so forking silently reverted to the global default; and there was no UI to view or change a conversation's `temperature` after creation at all — it was fixed forever at creation time from template/global settings.
+
+**Decision:** `cmdForkConversation` (`main.ts`) now also assigns `conv.temperature = source.temperature;`, the same idiom already used for the template-driven paths (`temperature` isn't a `createConversation()` constructor parameter, unlike `maxTokens`, so it's always set as a separate post-creation assignment — this was simply the one call site missing it). `suggest/ConversationSettingsModal.ts` (opened via the model badge) gains a third field alongside provider/model: a temperature text input, blank meaning "use the global default." Following this modal's existing convention, the value is only committed on the Save button click (not per-keystroke like the global settings tab). On Save, an out-of-range or non-numeric value shows `new Notice(t("invalidTemperature"))` and keeps the modal open with the input unchanged, rather than silently discarding it — a deliberate improvement over the equivalent field in `settings.ts`, which was flagged in the prior audit round as silently dropping invalid input with no feedback (still open there; not fixed by this ADR, but this new field was built correctly from the start rather than copying the known-bad pattern).
+
+**Consequence:** Temperature can now be changed on any existing conversation, not just fixed at creation time from a template or the global default. Forking preserves whatever temperature the source conversation had. No test coverage added — `ConversationSettingsModal.ts` and `main.ts` have no dedicated unit-test suite, consistent with the rest of the modal/command-handler layer in this codebase; verified via build/lint/test plus a manual checklist.

@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Modal, Setting } from "obsidian";
+import { App, DropdownComponent, Modal, Notice, Setting } from "obsidian";
 import type { Conversation, Provider } from "../models/types";
 import { t } from "../i18n";
 import { KNOWN_MODELS as MODELS_BY_PROVIDER } from "../models/knownModels";
@@ -98,6 +98,20 @@ export class ConversationSettingsModal extends Modal {
 			}
 		});
 
+		// Temperature override — blank means "use the global default"
+		let temperatureInput = this.conversation.temperature?.toString() ?? "";
+		new Setting(contentEl)
+			.setName(t("convTemperatureLabel"))
+			.setDesc(t("convTemperatureDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("0.0 – 1.0")
+					.setValue(temperatureInput)
+					.onChange((value) => {
+						temperatureInput = value;
+					})
+			);
+
 		// Action buttons
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -112,8 +126,23 @@ export class ConversationSettingsModal extends Modal {
 						) {
 							selectedModel = customInput.value.trim();
 						}
+
+						const trimmedTemperature = temperatureInput.trim();
+						let newTemperature: number | undefined;
+						if (trimmedTemperature === "") {
+							newTemperature = undefined;
+						} else {
+							const n = parseFloat(trimmedTemperature);
+							if (!Number.isFinite(n) || n < 0 || n > 1) {
+								new Notice(t("invalidTemperature"));
+								return;
+							}
+							newTemperature = n;
+						}
+
 						this.conversation.provider = selectedProvider;
 						this.conversation.model = selectedModel;
+						this.conversation.temperature = newTemperature;
 						await this.onSave(this.conversation);
 						this.close();
 					})
