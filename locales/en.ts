@@ -289,6 +289,9 @@ const en = {
 	convSettingsTitle: "Conversation settings",
 	providerLabel:     "Provider",
 	modelLabel:        "Model",
+	convTemperatureLabel: "Temperature",
+	convTemperatureDesc:  "Override the default temperature (0–1) for this conversation. Leave blank to use the global default.",
+	invalidTemperature:   "Temperature must be a number between 0 and 1 (or blank for the default).",
 	saveBtn:           "Save",
 	okBtn:             "OK",
 };

@@ -756,6 +756,7 @@ export default class PythiaPlugin extends Plugin {
 			source.model,
 			source.maxTokens,
 		);
+		conv.temperature = source.temperature;
 		conv.forkedFromId = sourceConvId;
 		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
 		if (selectedText) conv.forkedFromSelection = selectedText;
