@@ -1,6 +1,6 @@
 # Pythia — Design System
 
-*Last updated: 2026-07-10 (session) — temperature slider; collapsible input area*
+*Last updated: 2026-07-10 (session) — temperature slider; collapsible input area; summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
 
 Visual reference: `docs/pythia-v3.html` — open in browser before any UI work.
 
@@ -109,11 +109,10 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 ### Header
 ```
-[ Conversation title ▾ ][ ✎ pencil ][ ⚡ sparkle ][ model badge ][ 🔗 link ][ 🗑 trash ][ + plus ]
+[ Conversation title ▾ ][ ✎ pencil ][ model badge ][ 🔗 link ][ 🗑 trash ][ + plus ]
 ```
 - Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to switch conversations
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
-- Sparkle ⚡ (`.p-hdr-sparkle`): **always visible**; `--text-faint` when no summary exists, `--text-normal` when summary exists (`.p-hdr-sparkle-active`). Click with no summary → generates one immediately; click with summary → toggles the summary panel
 - Model badge: monospace, 10px, `var(--text-faint)`, clickable to change model
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
 - Trash/Plus: standard header actions
@@ -126,7 +125,7 @@ Pills: `var(--color-accent)` border + text, 10px mono, `border-radius: 10px`
 
 ### Summary bar
 
-Sticky, always visible when summary exists. Fixed-height body (72px, `overflow-y: auto`). Sparkle ✦ in bottom-right corner of open body triggers regeneration. Auto-saved on view close when `autoSaveSummary` is enabled.
+Triggered from the sparkle in the input-area toolbar (`.p-toolbar-left`), not the header: no summary yet → generates one and auto-opens the panel; summary already exists → toggles the panel open/closed showing the latest summary. Sticky, only rendered when a summary exists. Fixed-height body (`max-height: 170px`, `overflow-y: auto`). A refresh icon (`.p-summary-refresh`, `refresh-cw`) sits next to the timestamp at the bottom of the open body and regenerates the summary in place — the sole way to start a new summary once one exists. Auto-saved on view close when `autoSaveSummary` is enabled.
 
 ### Chat scroll area
 

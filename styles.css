@@ -457,21 +457,29 @@
   border-radius: 1px;
 }
 
-.p-summary-ts {
-  display: block;
-  text-align: right;
+.p-summary-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s1);
   margin-top: var(--s1);
+}
+
+.p-summary-ts {
   font-family: var(--font-monospace);
   font-size: 10px;
   color: var(--text-muted);
   user-select: none;
 }
 
-/* Sparkle indicator in header — always visible; coloured when summary exists */
-.p-hdr-btn.p-hdr-sparkle { color: var(--text-faint); }
-.p-hdr-btn.p-hdr-sparkle:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-.p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active { color: var(--text-normal); }
-.p-hdr-btn.p-hdr-sparkle.p-hdr-sparkle-active:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.p-summary-refresh {
+  width: 16px;
+  height: 16px;
+}
+.p-summary-refresh svg {
+  width: 10px;
+  height: 10px;
+}
 
 /* Title group — keeps title + pencil glued together in the flex row */
 .p-title-group {

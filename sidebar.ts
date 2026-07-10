@@ -121,8 +121,8 @@ export class PythiaSidebarView extends ItemView {
 
 	private summaryPanelEl!: HTMLElement;
 	private summaryPanelBodyEl!: HTMLElement;
-	private headerSparkleEl!: HTMLButtonElement;
 	private toolbarSparkleBtn!: HTMLButtonElement;
+	private summaryRefreshBtnEl: HTMLButtonElement | null = null;
 	private summaryPanelOpen = false;
 
 	private inputAreaEl!: HTMLElement;
@@ -395,19 +395,6 @@ export class PythiaSidebarView extends ItemView {
 		this.renameBtn.style.display = "none";
 		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
 
-		this.headerSparkleEl = header.createEl("button", {
-			cls: "p-hdr-btn p-hdr-sparkle",
-			attr: { title: t("summarizeTooltip") },
-		});
-		setIcon(this.headerSparkleEl, "sparkles");
-		this.headerSparkleEl.addEventListener("click", () => {
-			if (this.activeConversation?.summaryText?.trim()) {
-				this.toggleSummaryPanel();
-			} else {
-				void this.onGenerateSummary();
-			}
-		});
-
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
 			text: "",
@@ -623,7 +610,13 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			attr: { title: t("summarizeTooltip") },
 		});
 		setIcon(this.toolbarSparkleBtn, "sparkles");
-		this.toolbarSparkleBtn.addEventListener("click", () => void this.onGenerateSummary());
+		this.registerDomEvent(this.toolbarSparkleBtn, "click", () => {
+			if (this.activeConversation?.summaryText?.trim()) {
+				this.toggleSummaryPanel();
+			} else {
+				void this.onGenerateSummary();
+			}
+		});
 
 		this.optimizeBtnEl = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn p-optimize-btn",
@@ -749,22 +742,28 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 	private updateSummaryBar(): void {
 		const summary = this.activeConversation?.summaryText?.trim();
+		this.summaryRefreshBtnEl = null;
 		if (!summary) {
 			this.summaryPanelEl.style.display = "none";
-			this.headerSparkleEl.removeClass("p-hdr-sparkle-active");
 			return;
 		}
 		this.summaryPanelEl.style.display = "";
-		this.headerSparkleEl.addClass("p-hdr-sparkle-active");
 		this.summaryPanelBodyEl.empty();
 		void MarkdownRenderer.render(this.app, summary, this.summaryPanelBodyEl, "", this)
 			.catch((e) => console.error("[Pythia] summary render:", e));
 		const ts = this.activeConversation?.summaryUpdatedAt;
 		if (ts) {
-			this.summaryPanelBodyEl.createEl("span", {
+			const footer = this.summaryPanelBodyEl.createDiv({ cls: "p-summary-footer" });
+			footer.createEl("span", {
 				cls: "p-summary-ts",
 				text: formatSummaryTimestamp(ts),
 			});
+			this.summaryRefreshBtnEl = footer.createEl("button", {
+				cls: "p-tool-btn p-summary-refresh",
+				attr: { title: t("regenerateSummaryTooltip") },
+			});
+			setIcon(this.summaryRefreshBtnEl, "refresh-cw");
+			this.registerDomEvent(this.summaryRefreshBtnEl, "click", () => void this.onGenerateSummary());
 		}
 		// Collapse when switching conversations or after a refresh
 		this.summaryPanelOpen = false;
@@ -1692,6 +1691,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		const notice = new Notice(t("generatingSummary"), 0);
 		this.toolbarSparkleBtn.addClass("p-sparkle-loading");
 		this.toolbarSparkleBtn.disabled = true;
+		this.summaryRefreshBtnEl?.addClass("p-sparkle-loading");
+		if (this.summaryRefreshBtnEl) this.summaryRefreshBtnEl.disabled = true;
 		try {
 			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(conv);
 			if (summary) {
@@ -1718,6 +1719,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			notice.hide();
 			this.toolbarSparkleBtn.removeClass("p-sparkle-loading");
 			this.toolbarSparkleBtn.disabled = false;
+			this.summaryRefreshBtnEl?.removeClass("p-sparkle-loading");
+			if (this.summaryRefreshBtnEl) this.summaryRefreshBtnEl.disabled = false;
 		}
 	}
 
