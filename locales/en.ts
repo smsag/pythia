@@ -135,6 +135,7 @@ const en = {
 	setApiKeyFirst:         "Set your API key in Settings → Pythia before generating a summary.",
 	generatingConvSummary:  "Generating conversation summary…",
 	conversationDeleted:    "Conversation deleted.",
+	convDeletedWhileResuming: "This conversation was deleted while its summary was generating.",
 	attachedAsContext:      "Attached \"{{name}}\" as context.",
 	noTemplatesFound:       "No templates found in \"{{folder}}\". Create a note with `pythia_template: true` in its frontmatter.",
 	loadedTemplate:         "Loaded template \"{{name}}\" with {{count}} context note(s).",

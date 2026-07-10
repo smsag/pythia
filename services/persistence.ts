@@ -75,29 +75,37 @@ export function shouldRefuseLoad(loaded: Conversation[], existingCount: number):
 	return loaded.length === 0 && existingCount > 0;
 }
 
+/** Sorts by updatedAt descending; tolerates a missing/invalid updatedAt (sorts it last)
+ *  rather than throwing — a single malformed record must not break eviction entirely. */
+function byUpdatedAtDesc(a: Conversation, b: Conversation): number {
+	return (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+}
+
 /**
  * Evict the oldest unprotected conversations when `conversations.length > cap`.
- * Starred conversations (any favorites) and the active conversation are always kept.
+ * Starred conversations (any favorites) and every currently-active conversation
+ * (one per open sidebar leaf, not just one) are always kept.
  * Returns the evicted list sorted by updatedAt descending.
  * When cap === 0 (unlimited) or length ≤ cap the input is returned unchanged.
  */
 export function evictConversations(
 	conversations: Conversation[],
 	cap: number,
-	activeId: string | null,
+	activeIds: string[],
 ): Conversation[] {
 	if (cap <= 0 || conversations.length <= cap) return conversations;
 
+	const activeIdSet = new Set(activeIds);
 	const protected_ = conversations.filter(
-		(c) => (c.favorites?.length ?? 0) > 0 || c.id === activeId
+		(c) => (c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id)
 	);
 	const plain = conversations
-		.filter((c) => (c.favorites?.length ?? 0) === 0 && c.id !== activeId)
-		.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		.filter((c) => (c.favorites?.length ?? 0) === 0 && !activeIdSet.has(c.id))
+		.sort(byUpdatedAtDesc);
 	const slots = Math.max(0, cap - protected_.length);
 
 	return [
 		...protected_,
 		...plain.slice(0, slots),
-	].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+	].sort(byUpdatedAtDesc);
 }

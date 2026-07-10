@@ -137,6 +137,7 @@ const de: Strings = {
 	setApiKeyFirst:         "Trage deinen API-Schlüssel in Einstellungen → Pythia ein, bevor du eine Zusammenfassung erstellst.",
 	generatingConvSummary:  "Gesprächszusammenfassung wird erstellt…",
 	conversationDeleted:    "Gespräch gelöscht.",
+	convDeletedWhileResuming: "Dieses Gespräch wurde gelöscht, während seine Zusammenfassung erstellt wurde.",
 	attachedAsContext:      "\"{{name}}\" als Kontext hinzugefügt.",
 	noTemplatesFound:       "Keine Vorlagen in \"{{folder}}\" gefunden. Erstelle eine Notiz mit `pythia_template: true` im Frontmatter.",
 	loadedTemplate:         "Vorlage \"{{name}}\" mit {{count}} Kontextnotiz(en) geladen.",

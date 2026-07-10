@@ -1503,6 +1503,10 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				await this.setActiveConversation(conv);
 			},
 			(conv) => {
+				if (this.isStreaming) {
+					new Notice(t("cannotDeleteWhileStreaming"));
+					return;
+				}
 				new DeleteConversationModal(this.app, conv, async () => {
 					await this.plugin.conversationStore.delete(conv.id);
 					new Notice(t("conversationDeleted"));
@@ -1671,12 +1675,17 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				if (title) {
 					conv.name = title;
 					void this.plugin.renameConversationFile(conv);
-					this.renderHeader();
 				}
 				await this.plugin.conversationStore.save(conv);
-				this.updateSummaryBar();
-				// Auto-open the panel to reveal the freshly generated summary
-				if (!this.summaryPanelOpen) this.toggleSummaryPanel();
+				// Only touch UI (header/summary panel) if the user hasn't switched
+				// away to a different conversation while this was generating —
+				// otherwise this would force-open a panel the user never asked for.
+				if (this.activeConversation?.id === conv.id) {
+					if (title) this.renderHeader();
+					this.updateSummaryBar();
+					// Auto-open the panel to reveal the freshly generated summary
+					if (!this.summaryPanelOpen) this.toggleSummaryPanel();
+				}
 			}
 		} catch (e) {
 			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));

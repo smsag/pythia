@@ -67,19 +67,34 @@ export class NoteWriter {
 		return this.writeNote(updated, filePath);
 	}
 
-	private mergeFrontmatterFields(existing: string, incoming: string): string {
-		// Collect keys already present in the existing frontmatter
-		const existingKeys = new Set<string>();
-		for (const line of existing.split("\n")) {
+	/** Splits frontmatter text into per-key blocks, keyed by the top-level field
+	 *  name — each block includes the `key:` line plus any indented continuation
+	 *  lines that belong to it (YAML list items, block scalars, nested maps). */
+	private splitFrontmatterFields(text: string): Map<string, string[]> {
+		const blocks = new Map<string, string[]>();
+		let currentKey: string | null = null;
+		for (const line of text.split("\n")) {
 			const key = line.match(/^([^#\s][^:]*?):/)?.[1]?.trim();
-			if (key) existingKeys.add(key);
+			if (key) {
+				currentKey = key;
+				blocks.set(key, [line]);
+			} else if (currentKey) {
+				blocks.get(currentKey)!.push(line);
+			}
 		}
+		return blocks;
+	}
 
-		// Add lines from incoming whose key is absent from existing
+	private mergeFrontmatterFields(existing: string, incoming: string): string {
+		const existingBlocks = this.splitFrontmatterFields(existing);
+		const incomingBlocks = this.splitFrontmatterFields(incoming);
+
+		// Add full blocks (key line + any continuation lines) from incoming
+		// whose key is absent from existing — a multi-line value (list, block
+		// scalar) must carry its continuation lines along, not just the `key:` line.
 		const toAdd: string[] = [];
-		for (const line of incoming.split("\n")) {
-			const key = line.match(/^([^#\s][^:]*?):/)?.[1]?.trim();
-			if (key && !existingKeys.has(key)) toAdd.push(line);
+		for (const [key, lines] of incomingBlocks) {
+			if (!existingBlocks.has(key)) toAdd.push(...lines);
 		}
 
 		const base = existing.endsWith("\n") ? existing : existing + "\n";

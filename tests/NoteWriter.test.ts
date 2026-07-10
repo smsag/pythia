@@ -171,6 +171,39 @@ describe("prependWithSeparator — both have frontmatter", () => {
 		expect(result).toContain("old body");
 		expect(result.indexOf("new body")).toBeLessThan(result.indexOf("old body"));
 	});
+
+	it("carries a multi-line list field's items along with the key when merging", async () => {
+		vault.seed("Notes/doc.md", "---\ntitle: Old\n---\nold body");
+		const incoming = "---\ntitle: New\ntags:\n  - alpha\n  - beta\n---\nnew body";
+		await writer.prependWithSeparator(incoming, "Notes/doc.md");
+		const result = vault.content("Notes/doc.md");
+		expect(result).toContain("tags:");
+		expect(result).toContain("  - alpha");
+		expect(result).toContain("  - beta");
+	});
+
+	it("carries a multi-line block-scalar field's continuation lines along with the key", async () => {
+		vault.seed("Notes/doc.md", "---\ntitle: Old\n---\nold body");
+		const incoming = "---\ntitle: New\nsummary: |\n  line one\n  line two\n---\nnew body";
+		await writer.prependWithSeparator(incoming, "Notes/doc.md");
+		const result = vault.content("Notes/doc.md");
+		expect(result).toContain("summary: |");
+		expect(result).toContain("  line one");
+		expect(result).toContain("  line two");
+	});
+
+	it("does not add a multi-line field's continuation lines when the key already exists", async () => {
+		vault.seed("Notes/doc.md", "---\ntitle: Old\ntags:\n  - existing\n---\nold body");
+		const incoming = "---\ntitle: New\ntags:\n  - alpha\n  - beta\n---\nnew body";
+		await writer.prependWithSeparator(incoming, "Notes/doc.md");
+		const result = vault.content("Notes/doc.md");
+		// existing tags block is kept as-is; incoming tags block is dropped entirely
+		expect(result).toContain("  - existing");
+		expect(result).not.toContain("  - alpha");
+		expect(result).not.toContain("  - beta");
+		const tagsCount = (result.match(/^tags:/gm) ?? []).length;
+		expect(tagsCount).toBe(1);
+	});
 });
 
 // ── updateSettings ────────────────────────────────────────────────────────────
