@@ -63,6 +63,7 @@ const de: Strings = {
 	attachNoteTooltip:   "Notiz anhängen",
 	saveResponseTooltip: "Antwort speichern",
 	summarizeTooltip:    "Gespräch zusammenfassen",
+	regenerateSummaryTooltip: "Neue Zusammenfassung erstellen",
 	showChaptersTooltip: "Kapitel anzeigen",
 	applyTemplateTooltip: "Vorlage anwenden",
 	appliedTemplate:      "Vorlage „{{name}}“ angewendet",
