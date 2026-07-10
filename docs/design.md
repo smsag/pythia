@@ -1,6 +1,6 @@
 # Pythia — Design System
 
-*Last updated: 2026-07-10 (session) — temperature slider; collapsible input area; summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
+*Last updated: 2026-07-10 (session) — temperature slider; input-area minimize reworked (persistent toolbar, reference row folded in, expand-and-act icons); summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
 
 Visual reference: `docs/pythia-v3.html` — open in browser before any UI work.
 
@@ -171,7 +171,7 @@ Three collapsible sections — **Forks** (collapsed by default), **Starred**, **
 
 Textarea: min 3 lines desktop / 2 lines mobile, max 72–150 px. IME guard: `e.isComposing` prevents CJK candidate confirmation from sending.
 
-**Collapsed state:** a toolbar toggle button (`arrow-down`, `setIcon`) collapses the whole input area — textarea and toolbar both hide, replaced by a thin `.p-input-collapsed-bar` with a single expand button (same `arrow-down` icon, reused rather than swapped) — reclaiming vertical space for the chat scroll area. Instant `display` swap on a `collapsed` class, mirroring the summary panel's toggle pattern; no animation. State is ephemeral (not persisted to `data.json`) and survives conversation switches for the session.
+**Collapsed state:** a toolbar toggle button collapses the whole input area — the textarea, the reference row (attached-note pills), and the Send button all hide, reclaiming vertical space for the chat scroll area. The toolbar itself (`.p-toolbar`/`.p-toolbar-left`) stays visible in both states — it *is* the minimized row, so every action icon (attach/save/sparkle/optimize/template) stays reachable and in the same order whether expanded or collapsed. Clicking any of those action icons while collapsed expands the input area and performs that icon's action in the same click; the toggle button itself only expands/collapses, no side effect. The toggle icon swaps direction on each toggle — `arrow-down` when expanded, `arrow-up` when collapsed — rather than reusing one icon for both. Instant `display` swap on a `collapsed` class, mirroring the summary panel's toggle pattern; no animation. State is ephemeral (not persisted to `data.json`) and survives conversation switches for the session; the reference row's own visibility (shown only when there are attached notes) composes with the collapse state rather than being overridden by it.
 
 ### Conversation settings modal (temperature)
 
