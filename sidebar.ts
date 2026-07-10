@@ -125,6 +125,9 @@ export class PythiaSidebarView extends ItemView {
 	private toolbarSparkleBtn!: HTMLButtonElement;
 	private summaryPanelOpen = false;
 
+	private inputAreaEl!: HTMLElement;
+	private inputAreaCollapsed = false;
+
 	private inlineSuggest!: InlineSuggest;
 	private indexTriggerEl!: HTMLButtonElement;
 	private navigatorEl!: HTMLElement;
@@ -539,6 +542,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		this.referenceSectionEl.style.display = "none";
 
 		const inputArea = container.createDiv({ cls: "p-input-area" });
+		this.inputAreaEl = inputArea;
 
 		this.inputEl = inputArea.createEl("textarea", {
 			cls: "p-textarea",
@@ -647,6 +651,13 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		setIcon(applyTemplateBtn, "layout-template");
 		this.registerDomEvent(applyTemplateBtn, "click", () => void this.onApplyTemplate());
 
+		const inputCollapseBtn = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("minimizeInputTooltip") },
+		});
+		setIcon(inputCollapseBtn, "arrow-down");
+		this.registerDomEvent(inputCollapseBtn, "click", () => this.toggleInputArea());
+
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
 			text: t("sendBtn"),
@@ -658,6 +669,14 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				this.sendMessage();
 			}
 		});
+
+		const inputCollapsedBarEl = inputArea.createDiv({ cls: "p-input-collapsed-bar" });
+		const expandBtn = inputCollapsedBarEl.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("expandInputTooltip") },
+		});
+		setIcon(expandBtn, "arrow-down");
+		this.registerDomEvent(inputCollapsedBarEl, "click", () => this.toggleInputArea());
 
 		this.optimizationController = new OptimizationController({
 			app: this.app,
@@ -756,6 +775,11 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		if (!this.activeConversation?.summaryText?.trim()) return;
 		this.summaryPanelOpen = !this.summaryPanelOpen;
 		this.summaryPanelBodyEl.toggleClass("open", this.summaryPanelOpen);
+	}
+
+	private toggleInputArea(): void {
+		this.inputAreaCollapsed = !this.inputAreaCollapsed;
+		this.inputAreaEl.toggleClass("collapsed", this.inputAreaCollapsed);
 	}
 
 	private renderForkBannerEl(): void {
@@ -1488,7 +1512,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			async (conv) => {
 				await this.plugin.conversationStore.save(conv);
 				this.updateModelBadge();
-			}
+			},
+			this.plugin.settings.temperature
 		).open();
 	}
 

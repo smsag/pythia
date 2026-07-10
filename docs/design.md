@@ -1,6 +1,6 @@
 # Pythia — Design System
 
-*Last updated: 2026-06-01 at v1.11.6 (session 2)*
+*Last updated: 2026-07-10 (session) — temperature slider; collapsible input area*
 
 Visual reference: `docs/pythia-v3.html` — open in browser before any UI work.
 
@@ -171,6 +171,12 @@ Three collapsible sections — **Forks** (collapsed by default), **Starred**, **
 ### Input area
 
 Textarea: min 3 lines desktop / 2 lines mobile, max 72–150 px. IME guard: `e.isComposing` prevents CJK candidate confirmation from sending.
+
+**Collapsed state:** a toolbar toggle button (`arrow-down`, `setIcon`) collapses the whole input area — textarea and toolbar both hide, replaced by a thin `.p-input-collapsed-bar` with a single expand button (same `arrow-down` icon, reused rather than swapped) — reclaiming vertical space for the chat scroll area. Instant `display` swap on a `collapsed` class, mirroring the summary panel's toggle pattern; no animation. State is ephemeral (not persisted to `data.json`) and survives conversation switches for the session.
+
+### Conversation settings modal (temperature)
+
+Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic tooltip), defaulting to the effective value (`conversation.temperature ?? settings.temperature ?? 1.0`). Follows the modal's existing draft-until-Save convention — dragging updates a local value; Save commits it alongside provider/model, Cancel discards it.
 
 ---
 

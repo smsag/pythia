@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Modal, Notice, Setting } from "obsidian";
+import { App, DropdownComponent, Modal, Setting } from "obsidian";
 import type { Conversation, Provider } from "../models/types";
 import { t } from "../i18n";
 import { KNOWN_MODELS as MODELS_BY_PROVIDER } from "../models/knownModels";
@@ -6,15 +6,18 @@ import { KNOWN_MODELS as MODELS_BY_PROVIDER } from "../models/knownModels";
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;
 	private onSave: (conversation: Conversation) => Promise<void>;
+	private defaultTemperature: number | undefined;
 
 	constructor(
 		app: App,
 		conversation: Conversation,
-		onSave: (conversation: Conversation) => Promise<void>
+		onSave: (conversation: Conversation) => Promise<void>,
+		defaultTemperature?: number
 	) {
 		super(app);
 		this.conversation = conversation;
 		this.onSave = onSave;
+		this.defaultTemperature = defaultTemperature;
 	}
 
 	onOpen(): void {
@@ -98,17 +101,19 @@ export class ConversationSettingsModal extends Modal {
 			}
 		});
 
-		// Temperature override — blank means "use the global default"
-		let temperatureInput = this.conversation.temperature?.toString() ?? "";
+		// Temperature override — defaults to the effective value (conversation override, else global default)
+		let temperatureValue =
+			this.conversation.temperature ?? this.defaultTemperature ?? 1.0;
 		new Setting(contentEl)
 			.setName(t("convTemperatureLabel"))
 			.setDesc(t("convTemperatureDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("0.0 – 1.0")
-					.setValue(temperatureInput)
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 1, 0.05)
+					.setValue(temperatureValue)
+					.setDynamicTooltip()
 					.onChange((value) => {
-						temperatureInput = value;
+						temperatureValue = value;
 					})
 			);
 
@@ -127,22 +132,9 @@ export class ConversationSettingsModal extends Modal {
 							selectedModel = customInput.value.trim();
 						}
 
-						const trimmedTemperature = temperatureInput.trim();
-						let newTemperature: number | undefined;
-						if (trimmedTemperature === "") {
-							newTemperature = undefined;
-						} else {
-							const n = parseFloat(trimmedTemperature);
-							if (!Number.isFinite(n) || n < 0 || n > 1) {
-								new Notice(t("invalidTemperature"));
-								return;
-							}
-							newTemperature = n;
-						}
-
 						this.conversation.provider = selectedProvider;
 						this.conversation.model = selectedModel;
-						this.conversation.temperature = newTemperature;
+						this.conversation.temperature = temperatureValue;
 						await this.onSave(this.conversation);
 						this.close();
 					})

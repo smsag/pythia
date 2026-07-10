@@ -290,10 +290,13 @@ const en = {
 	providerLabel:     "Provider",
 	modelLabel:        "Model",
 	convTemperatureLabel: "Temperature",
-	convTemperatureDesc:  "Override the default temperature (0–1) for this conversation. Leave blank to use the global default.",
-	invalidTemperature:   "Temperature must be a number between 0 and 1 (or blank for the default).",
+	convTemperatureDesc:  "Override the default temperature (0–1) for this conversation.",
 	saveBtn:           "Save",
 	okBtn:             "OK",
+
+	// ── Input area ──────────────────────────────────────────────────────────────
+	minimizeInputTooltip: "Minimize input",
+	expandInputTooltip:   "Expand input",
 };
 
 export type Strings = typeof en;
