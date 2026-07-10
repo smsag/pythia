@@ -110,6 +110,7 @@ export class PythiaSidebarView extends ItemView {
 	private copyLinkBtn!: HTMLButtonElement;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
+	private referenceRowHasEntries = false;
 
 	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
@@ -126,6 +127,7 @@ export class PythiaSidebarView extends ItemView {
 	private summaryPanelOpen = false;
 
 	private inputAreaEl!: HTMLElement;
+	private inputCollapseBtn!: HTMLButtonElement;
 	private inputAreaCollapsed = false;
 
 	private inlineSuggest!: InlineSuggest;
@@ -589,7 +591,10 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		attachSvg.createSvg("path", {
 			attr: { d: "M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" },
 		});
-		attachBtn.addEventListener("click", () => this.onAttachNote());
+		this.registerDomEvent(attachBtn, "click", () => {
+			this.ensureInputExpanded();
+			this.onAttachNote();
+		});
 
 		const saveBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -603,7 +608,10 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		});
 		saveSvg.createSvg("polyline", { attr: { points: "17 21 17 13 7 13 7 21" } });
 		saveSvg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
-		saveBtn.addEventListener("click", () => this.onSaveResponse());
+		this.registerDomEvent(saveBtn, "click", () => {
+			this.ensureInputExpanded();
+			void this.onSaveResponse();
+		});
 
 		this.toolbarSparkleBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -611,6 +619,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		});
 		setIcon(this.toolbarSparkleBtn, "sparkles");
 		this.registerDomEvent(this.toolbarSparkleBtn, "click", () => {
+			this.ensureInputExpanded();
 			if (this.activeConversation?.summaryText?.trim()) {
 				this.toggleSummaryPanel();
 			} else {
@@ -635,21 +644,27 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		optimizeSvg.createSvg("path", { attr: { d: "M10 2v2" } });
 		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
 		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
-		this.registerDomEvent(this.optimizeBtnEl, "click", () => void this.optimizationController.start());
+		this.registerDomEvent(this.optimizeBtnEl, "click", () => {
+			this.ensureInputExpanded();
+			void this.optimizationController.start();
+		});
 
 		const applyTemplateBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
 			attr: { title: t("applyTemplateTooltip") },
 		});
 		setIcon(applyTemplateBtn, "layout-template");
-		this.registerDomEvent(applyTemplateBtn, "click", () => void this.onApplyTemplate());
+		this.registerDomEvent(applyTemplateBtn, "click", () => {
+			this.ensureInputExpanded();
+			void this.onApplyTemplate();
+		});
 
-		const inputCollapseBtn = toolbarLeft.createEl("button", {
+		this.inputCollapseBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
 			attr: { title: t("minimizeInputTooltip") },
 		});
-		setIcon(inputCollapseBtn, "arrow-down");
-		this.registerDomEvent(inputCollapseBtn, "click", () => this.toggleInputArea());
+		setIcon(this.inputCollapseBtn, "arrow-down");
+		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
 
 		this.sendBtn = toolbar.createEl("button", {
 			cls: "p-send",
@@ -662,14 +677,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				this.sendMessage();
 			}
 		});
-
-		const inputCollapsedBarEl = inputArea.createDiv({ cls: "p-input-collapsed-bar" });
-		const expandBtn = inputCollapsedBarEl.createEl("button", {
-			cls: "p-tool-btn",
-			attr: { title: t("expandInputTooltip") },
-		});
-		setIcon(expandBtn, "arrow-down");
-		this.registerDomEvent(inputCollapsedBarEl, "click", () => this.toggleInputArea());
 
 		this.optimizationController = new OptimizationController({
 			app: this.app,
@@ -779,6 +786,21 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 	private toggleInputArea(): void {
 		this.inputAreaCollapsed = !this.inputAreaCollapsed;
 		this.inputAreaEl.toggleClass("collapsed", this.inputAreaCollapsed);
+		setIcon(this.inputCollapseBtn, this.inputAreaCollapsed ? "arrow-up" : "arrow-down");
+		this.inputCollapseBtn.setAttribute(
+			"title",
+			this.inputAreaCollapsed ? t("expandInputTooltip") : t("minimizeInputTooltip")
+		);
+		this.updateReferenceRowVisibility();
+	}
+
+	private ensureInputExpanded(): void {
+		if (this.inputAreaCollapsed) this.toggleInputArea();
+	}
+
+	private updateReferenceRowVisibility(): void {
+		this.referenceSectionEl.style.display =
+			this.referenceRowHasEntries && !this.inputAreaCollapsed ? "" : "none";
 	}
 
 	private renderForkBannerEl(): void {
@@ -835,7 +857,8 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		const conv = this.activeConversation;
 
 		if (!conv) {
-			this.referenceSectionEl.style.display = "none";
+			this.referenceRowHasEntries = false;
+			this.updateReferenceRowVisibility();
 			return;
 		}
 
@@ -855,7 +878,8 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
 		}
 
-		this.referenceSectionEl.style.display = entries.length > 0 ? "" : "none";
+		this.referenceRowHasEntries = entries.length > 0;
+		this.updateReferenceRowVisibility();
 		if (entries.length === 0) return;
 
 		for (const entry of entries) {

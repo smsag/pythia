@@ -1205,22 +1205,8 @@ body.is-mobile .p-textarea {
 }
 
 .p-input-area.collapsed .p-textarea,
-.p-input-area.collapsed .p-toolbar {
+.p-input-area.collapsed .p-send {
   display: none;
-}
-.p-input-collapsed-bar {
-  display: none;
-}
-.p-input-area.collapsed .p-input-collapsed-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--s2) var(--s3);
-  cursor: pointer;
-  color: var(--text-faint);
-}
-.p-input-collapsed-bar:hover {
-  color: var(--text-normal);
 }
 
 /* ── Settings — folder picker display ───────────────────────── */
