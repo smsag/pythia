@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	anthropicSecretName: "pythia-anthropic",
 	openaiSecretName: "pythia-openai",
 	defaultProvider: "anthropic",
-	defaultAnthropicModel: "claude-sonnet-4-6",
+	defaultAnthropicModel: "claude-sonnet-5",
 	defaultOpenAIModel: "gpt-4o",
 	templatesFolder: "Pythia/Templates",
 	conversationsFolder: "Pythia/Conversations",

@@ -10,7 +10,7 @@ import type { Provider } from "./types";
  * o4-mini request fail.
  */
 export const KNOWN_MODELS: Record<Provider, string[]> = {
-	anthropic: ["claude-fable-5", "claude-opus-4", "claude-sonnet-4-6", "claude-haiku-3-5"],
+	anthropic: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
 	openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"],
 };
 
@@ -27,9 +27,10 @@ export function isReasoningModel(model: string): boolean {
 }
 
 export const MODEL_ABBREVIATIONS: Record<string, string> = {
-	"claude-opus-4":     "Opus 4",
-	"claude-sonnet-4-6": "Sonnet 4.6",
-	"claude-haiku-3-5":  "Haiku 3.5",
+	"claude-fable-5":  "Fable 5",
+	"claude-opus-4-8": "Opus 4.8",
+	"claude-sonnet-5": "Sonnet 5",
+	"claude-haiku-4-5": "Haiku 4.5",
 	"gpt-4o":            "GPT-4o",
 	"gpt-4o-mini":       "GPT-4o mini",
 	"o3":                "o3",
