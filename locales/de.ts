@@ -156,6 +156,7 @@ const de: Strings = {
 	anthropicKeyNotConfigured: "Anthropic-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
 	openaiKeyNotConfigured:    "OpenAI-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
 	contextNotesWarning:       "Warnung: {{count}} Kontextnotiz(en) nicht gefunden und übersprungen.",
+	oversizedPdfWarning:       "Warnung: {{count}} PDF(s) überschreiten die Größenbegrenzung und wurden übersprungen.",
 
 	// ── Settings ─────────────────────────────────────────────────────────────
 	settingsTitle:           "Pythia",

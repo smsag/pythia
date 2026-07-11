@@ -5,7 +5,8 @@ import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { parseTitleAndSummary, langInstruction, langSuffix } from "./messageUtils";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
-import { buildSystemPrompt, buildAttachedNotesContent } from "./ContextBuilder";
+import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
+import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
 
 /** Repeated verbatim in generateChapterName and generateConversationTitle below. */
@@ -81,12 +82,26 @@ export abstract class BaseProvider implements LLMProvider {
 		conversation: Conversation,
 		attachedNotes: string[],
 		newMessage: string
-	): Promise<{ userContent: string; systemPrompt: string }> {
-		const { content: attachedContent, missingNotes, estimatedTokens } =
-			await buildAttachedNotesContent(this.app, attachedNotes, newMessage);
+	): Promise<{ userContent: string; systemPrompt: string; pdfAttachments: PdfAttachment[] }> {
+		const pdfPaths = attachedNotes.filter((p) => p.toLowerCase().endsWith(".pdf"));
+		const notePaths = attachedNotes.filter((p) => !p.toLowerCase().endsWith(".pdf"));
+
+		const [
+			{ content: attachedContent, missingNotes, estimatedTokens },
+			{ pdfs, missingPdfs, oversizedPdfs },
+		] = await Promise.all([
+			buildAttachedNotesContent(this.app, notePaths, newMessage),
+			buildAttachedPdfs(this.app, pdfPaths),
+		]);
 
 		if (missingNotes.length > 0) {
 			new Notice(t("contextNotesWarning", { count: missingNotes.length }));
+		}
+		if (missingPdfs.length > 0) {
+			new Notice(t("contextNotesWarning", { count: missingPdfs.length }));
+		}
+		if (oversizedPdfs.length > 0) {
+			new Notice(t("oversizedPdfWarning", { count: oversizedPdfs.length }));
 		}
 
 		const noteTokenLimit = this.settings.maxAttachedNotesTokens;
@@ -97,6 +112,7 @@ export abstract class BaseProvider implements LLMProvider {
 		return {
 			userContent: newMessage + attachedContent,
 			systemPrompt: buildSystemPrompt(conversation),
+			pdfAttachments: pdfs,
 		};
 	}
 

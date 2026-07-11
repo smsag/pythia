@@ -1,8 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { TFileMock } = vi.hoisted(() => {
+	class TFileMock {
+		path: string;
+		name: string;
+		stat: { size: number };
+		constructor(path: string, size = 0) {
+			this.path = path;
+			this.name = path.split("/").pop() ?? path;
+			this.stat = { size };
+		}
+	}
+	return { TFileMock };
+});
+
 vi.mock("obsidian", () => ({
 	App: class {},
-	TFile: class {},
+	TFile: TFileMock,
 	Notice: class { constructor(public message?: string) {} },
 }));
 
@@ -23,6 +37,16 @@ vi.mock("@anthropic-ai/sdk", () => {
 import { AnthropicService } from "../services/AnthropicService";
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
+
+function makeAppWithPdf(path: string, size: number, bytes: Uint8Array): import("obsidian").App {
+	const file = new TFileMock(path, size);
+	return {
+		vault: {
+			getAbstractFileByPath: (p: string) => (p === path ? file : null),
+			readBinary: async () => bytes.buffer,
+		},
+	} as unknown as import("obsidian").App;
+}
 
 function makeFakeStream(textChunks: string[], finalMessage: unknown) {
 	return {
@@ -200,5 +224,70 @@ describe("AnthropicService — effort gating", () => {
 		);
 
 		expect(streamMock.mock.calls[0][0]).not.toHaveProperty("output_config");
+	});
+});
+
+describe("AnthropicService — PDF attachments", () => {
+	it("splices a document content block onto the final user message when a PDF is attached", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const bytes = new Uint8Array([1, 2, 3, 4]);
+		const app = makeAppWithPdf("Papers/paper.pdf", bytes.length, bytes);
+
+		const provider = new AnthropicService(app, makeSettings(), "key");
+		await provider.streamMessage(
+			makeConv(), "Summarize this", ["Papers/paper.pdf"], () => {}, () => {}, () => {}
+		);
+
+		const params = streamMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		const last = params.messages[params.messages.length - 1];
+		expect(Array.isArray(last.content)).toBe(true);
+		const blocks = last.content as Array<{ type: string; title?: string; text?: string }>;
+		expect(blocks[0]).toMatchObject({ type: "document", title: "paper.pdf" });
+		expect(blocks[blocks.length - 1]).toMatchObject({ type: "text", text: "Summarize this" });
+	});
+
+	it("skips PDFs over the size limit and does not add a content block for them", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const bytes = new Uint8Array([1, 2, 3]);
+		const app = makeAppWithPdf("Papers/huge.pdf", 21 * 1024 * 1024, bytes);
+
+		const provider = new AnthropicService(app, makeSettings(), "key");
+		await provider.streamMessage(
+			makeConv(), "Summarize this", ["Papers/huge.pdf"], () => {}, () => {}, () => {}
+		);
+
+		const params = streamMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		const last = params.messages[params.messages.length - 1];
+		expect(typeof last.content).toBe("string");
+	});
+
+	it("keeps message content a plain string when no PDFs are attached", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings(), "key");
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => {}, () => {});
+
+		const params = streamMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		expect(typeof params.messages[params.messages.length - 1].content).toBe("string");
 	});
 });

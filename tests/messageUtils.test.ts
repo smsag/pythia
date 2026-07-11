@@ -6,6 +6,7 @@ import {
 	langInstruction,
 	langSuffix,
 	LANG_LABELS,
+	arrayBufferToBase64,
 } from "../services/messageUtils";
 
 // ── parseTitleAndSummary ──────────────────────────────────────────────────────
@@ -226,5 +227,27 @@ describe("LANG_LABELS", () => {
 
 	it("maps 'de' to 'German'", () => {
 		expect(LANG_LABELS["de"]).toBe("German");
+	});
+});
+
+// ── arrayBufferToBase64 ────────────────────────────────────────────────────────
+
+describe("arrayBufferToBase64", () => {
+	it("round-trips arbitrary bytes through base64", () => {
+		const bytes = new Uint8Array([0, 1, 2, 253, 254, 255, 42, 7]);
+		const b64 = arrayBufferToBase64(bytes.buffer);
+		expect(b64).toBe(Buffer.from(bytes).toString("base64"));
+	});
+
+	it("handles a buffer larger than one 0x8000-byte chunk", () => {
+		const size = 0x8000 * 2 + 17;
+		const bytes = new Uint8Array(size);
+		for (let i = 0; i < size; i++) bytes[i] = i % 256;
+		const b64 = arrayBufferToBase64(bytes.buffer);
+		expect(b64).toBe(Buffer.from(bytes).toString("base64"));
+	});
+
+	it("returns an empty string for an empty buffer", () => {
+		expect(arrayBufferToBase64(new ArrayBuffer(0))).toBe("");
 	});
 });

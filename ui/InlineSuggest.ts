@@ -92,7 +92,8 @@ export class InlineSuggest {
 		// doesn't narrow things down (or several notes match it equally) the topically
 		// relevant ones surface first instead of arbitrary vault order.
 		const contextTokens = tokenize(context);
-		const matchingFiles = this.app.vault.getMarkdownFiles()
+		const matchingFiles = this.app.vault.getFiles()
+			.filter((f) => f.extension === "md" || f.extension === "pdf")
 			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
 			.map((f) => ({
 				file: f,

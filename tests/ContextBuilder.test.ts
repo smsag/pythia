@@ -3,7 +3,13 @@ import { describe, it, expect, vi } from "vitest";
 const { TFileMock } = vi.hoisted(() => {
 	class TFileMock {
 		path: string;
-		constructor(path: string) { this.path = path; }
+		name: string;
+		stat: { size: number };
+		constructor(path: string, size = 0) {
+			this.path = path;
+			this.name = path.split("/").pop() ?? path;
+			this.stat = { size };
+		}
 	}
 	return { TFileMock };
 });
@@ -13,18 +19,28 @@ vi.mock("obsidian", () => ({
 	App: class {},
 }));
 
-import { buildSystemPrompt, buildAttachedNotesContent } from "../services/ContextBuilder";
+import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "../services/ContextBuilder";
 import type { Conversation } from "../models/types";
 
 class MockVault {
 	private files = new Map<string, string>();
+	private binaries = new Map<string, { size: number; bytes: Uint8Array }>();
 	getAbstractFileByPath(path: string): unknown {
-		return this.files.has(path) ? new TFileMock(path) : null;
+		if (this.files.has(path)) return new TFileMock(path);
+		if (this.binaries.has(path)) return new TFileMock(path, this.binaries.get(path)!.size);
+		return null;
 	}
 	async read(file: { path: string }): Promise<string> {
 		return this.files.get(file.path) ?? "";
 	}
+	async readBinary(file: { path: string }): Promise<ArrayBuffer> {
+		const bin = this.binaries.get(file.path);
+		return bin ? (bin.bytes.buffer as ArrayBuffer) : new ArrayBuffer(0);
+	}
 	seed(path: string, content: string): void { this.files.set(path, content); }
+	seedBinary(path: string, size: number, bytes: Uint8Array = new Uint8Array(size)): void {
+		this.binaries.set(path, { size, bytes });
+	}
 }
 
 const baseConv = (overrides: Partial<Conversation> = {}): Conversation => ({
@@ -130,5 +146,48 @@ describe("buildAttachedNotesContent", () => {
 		const { content } = await buildAttachedNotesContent(app, ["Notes/Short.md"], "anything");
 		expect(content).not.toContain("excerpt=");
 		expect(content).toContain("Just a short note.");
+	});
+});
+
+// ── buildAttachedPdfs ──────────────────────────────────────────────────────────
+
+describe("buildAttachedPdfs", () => {
+	it("returns empty result for no attached paths", async () => {
+		const vault = new MockVault();
+		const app = { vault } as unknown as import("obsidian").App;
+		const result = await buildAttachedPdfs(app, []);
+		expect(result).toEqual({ pdfs: [], missingPdfs: [], oversizedPdfs: [] });
+	});
+
+	it("base64-encodes a PDF's bytes and includes its filename", async () => {
+		const vault = new MockVault();
+		const bytes = new Uint8Array([1, 2, 3, 4]);
+		vault.seedBinary("Papers/paper.pdf", bytes.length, bytes);
+		const app = { vault } as unknown as import("obsidian").App;
+
+		const { pdfs, missingPdfs, oversizedPdfs } = await buildAttachedPdfs(app, ["Papers/paper.pdf"]);
+		expect(missingPdfs).toHaveLength(0);
+		expect(oversizedPdfs).toHaveLength(0);
+		expect(pdfs).toHaveLength(1);
+		expect(pdfs[0].filename).toBe("paper.pdf");
+		expect(pdfs[0].mediaType).toBe("application/pdf");
+		expect(pdfs[0].base64).toBe(Buffer.from(bytes).toString("base64"));
+	});
+
+	it("reports missing PDFs without throwing", async () => {
+		const vault = new MockVault();
+		const app = { vault } as unknown as import("obsidian").App;
+		const { missingPdfs, pdfs } = await buildAttachedPdfs(app, ["Ghost.pdf"]);
+		expect(missingPdfs).toEqual(["Ghost.pdf"]);
+		expect(pdfs).toHaveLength(0);
+	});
+
+	it("flags oversized PDFs and does not read them", async () => {
+		const vault = new MockVault();
+		vault.seedBinary("Papers/huge.pdf", 21 * 1024 * 1024);
+		const app = { vault } as unknown as import("obsidian").App;
+		const { oversizedPdfs, pdfs } = await buildAttachedPdfs(app, ["Papers/huge.pdf"]);
+		expect(oversizedPdfs).toEqual(["Papers/huge.pdf"]);
+		expect(pdfs).toHaveLength(0);
 	});
 });

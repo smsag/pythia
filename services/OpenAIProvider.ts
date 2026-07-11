@@ -100,7 +100,7 @@ export class OpenAIProvider extends BaseProvider {
 		let fullText = "";
 
 		try {
-			const { userContent, systemPrompt } =
+			const { userContent, systemPrompt, pdfAttachments } =
 				await this.resolveUserContent(conversation, attachedNotes, newMessage);
 
 			const model = this.resolveModel(conversation.model);
@@ -156,6 +156,7 @@ export class OpenAIProvider extends BaseProvider {
 					model,
 					temperature,
 					reasoningEffort,
+					pdfAttachments: pdfAttachments.length,
 					messages: apiMessages.length,
 					systemPromptChars: systemPrompt.length,
 					noSystemRole,
@@ -166,6 +167,22 @@ export class OpenAIProvider extends BaseProvider {
 			}
 
 			const loopMessages: OAILoopMessage[] = [...apiMessages];
+
+			// Splice PDF file blocks onto the final user message. This is the
+			// first array-content message in this file — a narrow cast is used
+			// rather than widening OAIMessage/OAILoopMessage, which would ripple
+			// into every other loopMessages.push(...) call in the tool loop below.
+			if (pdfAttachments.length > 0) {
+				const last = loopMessages[loopMessages.length - 1];
+				if (last.role === "user" && typeof last.content === "string") {
+					const fileParts: OpenAI.Chat.Completions.ChatCompletionContentPart.File[] = pdfAttachments.map((pdf) => ({
+						type: "file",
+						file: { file_data: `data:application/pdf;base64,${pdf.base64}`, filename: pdf.filename },
+					}));
+					(loopMessages[loopMessages.length - 1] as { content: unknown }).content =
+						[...fileParts, { type: "text", text: last.content }];
+				}
+			}
 
 			const openaiTools = onToolCall
 				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def) => ({
