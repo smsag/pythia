@@ -4,7 +4,7 @@ export function getFilesInFolder(folder: TFolder): TFile[] {
 	const results: TFile[] = [];
 	const walk = (f: TFolder) => {
 		for (const child of f.children) {
-			if (child instanceof TFile && child.extension === "md") {
+			if (child instanceof TFile && (child.extension === "md" || child.extension === "pdf")) {
 				results.push(child);
 			} else if (child instanceof TFolder) {
 				walk(child);

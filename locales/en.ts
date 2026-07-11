@@ -154,6 +154,7 @@ const en = {
 	anthropicKeyNotConfigured: "Anthropic API key not configured. Set it in Settings → Pythia.",
 	openaiKeyNotConfigured:    "OpenAI API key not configured. Set it in Settings → Pythia.",
 	contextNotesWarning:       "Warning: {{count}} context note(s) not found and were skipped.",
+	oversizedPdfWarning:       "Warning: {{count}} PDF(s) exceeded the size limit and were skipped.",
 
 	// ── Settings ─────────────────────────────────────────────────────────────
 	settingsTitle:           "Pythia",

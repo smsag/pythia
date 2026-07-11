@@ -104,6 +104,20 @@ export function estimateTokensFromText(text: string): number {
 	return Math.round(text.length / 4);
 }
 
+/** Buffer-free ArrayBuffer → base64 conversion — Node's Buffer is unavailable
+ *  on Obsidian mobile (see main.ts's legacyDecrypt guard). Processes in chunks
+ *  to avoid a call-stack overflow from String.fromCharCode(...hugeArray) on
+ *  large files. */
+export function arrayBufferToBase64(buf: ArrayBuffer): string {
+	const bytes = new Uint8Array(buf);
+	const CHUNK = 0x8000; // 32K — safe call-stack size for String.fromCharCode spread
+	let binary = "";
+	for (let i = 0; i < bytes.length; i += CHUNK) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+	}
+	return btoa(binary);
+}
+
 // ── Output language helpers ───────────────────────────────────────────────────
 
 /**

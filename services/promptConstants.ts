@@ -26,3 +26,11 @@ export const SUMMARY_MARKER = "SUMMARY";
 
 /** Fallback max-output-tokens when a conversation has no explicit override. */
 export const DEFAULT_MAX_TOKENS = 4096;
+
+/** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
+ *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves
+ *  headroom for the ~27MB encoded payload plus system prompt, history, and
+ *  tool definitions in the same request. Oversized PDFs are skipped, not
+ *  truncated — a hard API limit, not a soft quality tradeoff, so this blocks
+ *  rather than warns-and-sends (unlike maxAttachedNotesTokens). */
+export const MAX_PDF_FILE_SIZE_BYTES = 20 * 1024 * 1024;

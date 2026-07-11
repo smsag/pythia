@@ -1,6 +1,6 @@
 import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
-import { estimateTokensFromText } from "./messageUtils";
+import { estimateTokensFromText, arrayBufferToBase64 } from "./messageUtils";
 import { selectRelevantChunks } from "./noteChunking";
 import {
 	SYSTEM_PROMPT_TAG,
@@ -8,6 +8,7 @@ import {
 	ATTACHED_NOTE_TAG,
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
+	MAX_PDF_FILE_SIZE_BYTES,
 } from "./promptConstants";
 
 /**
@@ -75,4 +76,55 @@ export async function buildAttachedNotesContent(
 		missingNotes,
 		estimatedTokens: estimateTokensFromText(content),
 	};
+}
+
+export interface PdfAttachment {
+	path: string;
+	filename: string;
+	base64: string;
+	mediaType: "application/pdf";
+}
+
+/**
+ * Reads attached PDFs as base64 for native document/file content blocks —
+ * sent whole to the model (no local text extraction, no chunking; the model's
+ * own PDF understanding handles that). Kept separate from
+ * buildAttachedNotesContent rather than merged into it: the two file kinds
+ * are fundamentally different at the wire level (inline text vs. a binary
+ * content block), and each function classifying its own paths independently
+ * means a third attachment kind later doesn't require touching either.
+ */
+export async function buildAttachedPdfs(
+	app: App,
+	attachedPaths: string[]
+): Promise<{ pdfs: PdfAttachment[]; missingPdfs: string[]; oversizedPdfs: string[] }> {
+	if (attachedPaths.length === 0) return { pdfs: [], missingPdfs: [], oversizedPdfs: [] };
+	const results = await Promise.all(
+		attachedPaths.map(async (path): Promise<
+			{ path: string; pdf?: PdfAttachment; missing?: true; oversized?: true }
+		> => {
+			const file = app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) return { path, missing: true };
+			if (file.stat.size > MAX_PDF_FILE_SIZE_BYTES) return { path, oversized: true };
+			const buf = await app.vault.readBinary(file);
+			return {
+				path,
+				pdf: {
+					path,
+					filename: file.name,
+					base64: arrayBufferToBase64(buf),
+					mediaType: "application/pdf",
+				},
+			};
+		})
+	);
+	const pdfs: PdfAttachment[] = [];
+	const missingPdfs: string[] = [];
+	const oversizedPdfs: string[] = [];
+	for (const r of results) {
+		if (r.pdf) pdfs.push(r.pdf);
+		else if (r.oversized) oversizedPdfs.push(r.path);
+		else missingPdfs.push(r.path);
+	}
+	return { pdfs, missingPdfs, oversizedPdfs };
 }

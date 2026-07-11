@@ -1,8 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { TFileMock } = vi.hoisted(() => {
+	class TFileMock {
+		path: string;
+		name: string;
+		stat: { size: number };
+		constructor(path: string, size = 0) {
+			this.path = path;
+			this.name = path.split("/").pop() ?? path;
+			this.stat = { size };
+		}
+	}
+	return { TFileMock };
+});
+
 vi.mock("obsidian", () => ({
 	App: class {},
-	TFile: class {},
+	TFile: TFileMock,
 	Notice: class { constructor(public message?: string) {} },
 }));
 
@@ -23,6 +37,16 @@ vi.mock("openai", () => {
 import { OpenAIProvider } from "../services/OpenAIProvider";
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
+
+function makeAppWithPdf(path: string, size: number, bytes: Uint8Array): import("obsidian").App {
+	const file = new TFileMock(path, size);
+	return {
+		vault: {
+			getAbstractFileByPath: (p: string) => (p === path ? file : null),
+			readBinary: async () => bytes.buffer,
+		},
+	} as unknown as import("obsidian").App;
+}
 
 async function* chunkStream(chunks: unknown[]) {
 	for (const c of chunks) yield c;
@@ -142,6 +166,70 @@ describe("OpenAIProvider — effort gating", () => {
 
 		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
 		expect(args).not.toHaveProperty("reasoning_effort");
+	});
+});
+
+describe("OpenAIProvider — PDF attachments", () => {
+	it("splices a file content part onto the final user message when a PDF is attached", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const bytes = new Uint8Array([1, 2, 3, 4]);
+		const app = makeAppWithPdf("Papers/paper.pdf", bytes.length, bytes);
+
+		const provider = new OpenAIProvider(app, makeSettings(), "key");
+		await provider.streamMessage(
+			makeConv(), "Summarize this", ["Papers/paper.pdf"], () => {}, () => {}, () => {}
+		);
+
+		const args = createMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		const last = args.messages[args.messages.length - 1];
+		expect(Array.isArray(last.content)).toBe(true);
+		const parts = last.content as Array<{ type: string; file?: { filename: string; file_data: string } }>;
+		expect(parts[0].type).toBe("file");
+		expect(parts[0].file?.filename).toBe("paper.pdf");
+		expect(parts[0].file?.file_data.startsWith("data:application/pdf;base64,")).toBe(true);
+		expect(parts[parts.length - 1]).toMatchObject({ type: "text", text: "Summarize this" });
+	});
+
+	it("skips PDFs over the size limit and does not add a content part for them", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const bytes = new Uint8Array([1, 2, 3]);
+		const app = makeAppWithPdf("Papers/huge.pdf", 21 * 1024 * 1024, bytes);
+
+		const provider = new OpenAIProvider(app, makeSettings(), "key");
+		await provider.streamMessage(
+			makeConv(), "Summarize this", ["Papers/huge.pdf"], () => {}, () => {}, () => {}
+		);
+
+		const args = createMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		const last = args.messages[args.messages.length - 1];
+		expect(typeof last.content).toBe("string");
+	});
+
+	it("keeps message content a plain string when no PDFs are attached", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
+		expect(typeof args.messages[args.messages.length - 1].content).toBe("string");
 	});
 });
 

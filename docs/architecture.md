@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-11 — added `effort` as a first-class parameter (global setting, template frontmatter, per-conversation override) alongside `temperature`, mapped to Anthropic's `output_config.effort` and OpenAI's `reasoning_effort`; both the global settings tab and the conversation settings modal now reactively disable (`Setting.setDisabled()`) the temperature/effort controls when the selected provider+model doesn't support them, closing the gap where the backend silently dropped unsupported values but the UI still showed the control as active. See ADR-040. Also fixed live 400s from the model catalog refresh: `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` reject the `temperature` parameter outright, but `AnthropicService.streamMessage` was still sending it whenever a conversation or global default temperature was set. Added `models/knownModels.ts`'s `supportsTemperature()` (mirrors the existing `isReasoningModel()` pattern) and gated `temperature` on it; refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-11 — added PDF attachments as native document/file content blocks (Anthropic `DocumentBlockParam`, OpenAI `ChatCompletionContentPart.File`), dispatched by extension with no new persisted types; new `ContextBuilder.buildAttachedPdfs`, `messageUtils.arrayBufferToBase64` (Buffer-free for mobile), and a hardcoded 20 MB size guard (`MAX_PDF_FILE_SIZE_BYTES`) that skips oversized PDFs with a Notice rather than sending and failing mid-stream; `BaseProvider.resolveUserContent` now splits attachments by extension and each provider splices PDF blocks onto the last user message post-`normalizeMessages`; UI file pickers (`NoteSuggestModal`, `ui/InlineSuggest.ts`, `utils.ts`'s `getFilesInFolder`) widened to include `.pdf`, `suggest/FileSuggest.ts`'s base class deliberately left markdown-only. See ADR-041. Also added `effort` as a first-class parameter (global setting, template frontmatter, per-conversation override) alongside `temperature`, mapped to Anthropic's `output_config.effort` and OpenAI's `reasoning_effort`; both the global settings tab and the conversation settings modal now reactively disable (`Setting.setDisabled()`) the temperature/effort controls when the selected provider+model doesn't support them, closing the gap where the backend silently dropped unsupported values but the UI still showed the control as active. See ADR-040. Also fixed live 400s from the model catalog refresh: `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` reject the `temperature` parameter outright, but `AnthropicService.streamMessage` was still sending it whenever a conversation or global default temperature was set. Added `models/knownModels.ts`'s `supportsTemperature()` (mirrors the existing `isReasoningModel()` pattern) and gated `temperature` on it; refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -18,16 +18,17 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
 | `main.ts` | 930 | Plugin entry, commands, conversation lifecycle, data.json watcher |
 | `settings.ts` | 460 | Settings schema, defaults, settings tab UI (incl. temperature/effort reactive availability gating) |
-| `services/OpenAIProvider.ts` | 300 | OpenAI streaming (extends BaseProvider); retry, temperature/`reasoning_effort`, resumeMode gating, bounded tool loop |
-| `services/AnthropicService.ts` | 255 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature/`output_config.effort`, resumeMode gating, bounded tool loop |
-| `services/BaseProvider.ts` | 184 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` streamMessage helpers, all generate* utility methods |
+| `utils.ts` | 20 | Root-level pure helpers: `getFilesInFolder` (md + pdf), `todayISO` |
+| `services/OpenAIProvider.ts` | 317 | OpenAI streaming (extends BaseProvider); retry, temperature/`reasoning_effort`, PDF file-block splice, resumeMode gating, bounded tool loop |
+| `services/AnthropicService.ts` | 273 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature/`output_config.effort`, PDF document-block splice, resumeMode gating, bounded tool loop |
+| `services/BaseProvider.ts` | 200 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` streamMessage helpers (incl. PDF/note attachment split), all generate* utility methods |
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard |
-| `services/messageUtils.ts` | 129 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers |
+| `services/messageUtils.ts` | 143 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 78 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens |
-| `services/promptConstants.ts` | 28 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS` |
+| `services/ContextBuilder.ts` | 130 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
+| `services/promptConstants.ts` | 36 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`, `MAX_PDF_FILE_SIZE_BYTES` |
 | `services/noteChunking.ts` | 70 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
 | `services/noteRelevance.ts` | 27 | Pure keyword-overlap scoring (`scoreRelevance` + pre-tokenized `scoreRelevanceTokens`) shared by note chunking and `#` suggestion ranking |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
@@ -40,11 +41,11 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
-| `ui/InlineSuggest.ts` | 172 | `#` note-path autocomplete in textarea; relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
-| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` is a thin subclass of `FileSuggestModal` |
+| `ui/InlineSuggest.ts` | 173 | `#` note-path autocomplete in textarea (md + pdf); relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
+| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker) |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (207 tests, ~1 s) |
+| `tests/` | — | Vitest unit tests (230 tests, ~1 s) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -136,18 +137,35 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
                 `attached_note` and its `path`/`excerpt` attributes) are defined once in
                 `services/promptConstants.ts` and reused by `ToolHandler.ts`'s tool-call
                 descriptions, which reference `attached_note` by name in prose read by the LLM
-          → ContextBuilder.buildAttachedNotesContent(conv.contextNotes, newMessage)
-              — attached notes are read in parallel (Promise.all), then notes over
-                NOTE_CHUNK_THRESHOLD_CHARS are split by heading
-                (noteChunking.chunkByHeadings) and filtered to the sections most
-                relevant to `newMessage` (noteRelevance.scoreRelevanceTokens, query
-                tokenized once and reused across every chunk/candidate) instead
-                of inlining the whole note; result is tagged excerpt="true"
-              — if the resulting estimated token count exceeds
-                settings.maxAttachedNotesTokens, a Notice warns before sending
+          → BaseProvider.resolveUserContent() splits conv.contextNotes by
+              extension (path.toLowerCase().endsWith(".pdf")) and fetches both
+              kinds in parallel:
+              → ContextBuilder.buildAttachedNotesContent(notePaths, newMessage)
+                  — attached notes are read in parallel (Promise.all), then notes over
+                    NOTE_CHUNK_THRESHOLD_CHARS are split by heading
+                    (noteChunking.chunkByHeadings) and filtered to the sections most
+                    relevant to `newMessage` (noteRelevance.scoreRelevanceTokens, query
+                    tokenized once and reused across every chunk/candidate) instead
+                    of inlining the whole note; result is tagged excerpt="true"
+                  — if the resulting estimated token count exceeds
+                    settings.maxAttachedNotesTokens, a Notice warns before sending
+              → ContextBuilder.buildAttachedPdfs(pdfPaths)
+                  — each PDF is read whole via vault.readBinary (parallelized),
+                    size-checked against MAX_PDF_FILE_SIZE_BYTES (20 MB raw) before
+                    reading — oversized PDFs are skipped with a Notice, not sent —
+                    and base64-encoded (messageUtils.arrayBufferToBase64, Buffer-free
+                    for Obsidian mobile); sent whole, uncondensed — no local text
+                    extraction or chunking, the model's own PDF understanding
+                    handles that
           → selectHistoryForSend(conv.messages, conv.resumeMode)
               — "summary" mode sends no prior messages at all (relies on
                 summaryText already in the system prompt); "full" sends everything
+          → after loopMessages is built (post-normalizeMessages, whose same-role
+              merge does string concatenation and would corrupt array content),
+              any pdfAttachments are spliced onto the last user message as native
+              content blocks — Anthropic: DocumentBlockParam (base64 + title);
+              OpenAI: ChatCompletionContentPart.File (data-URL-prefixed file_data)
+              — each provider file does its own splice; see ADR-041
           → Provider SDK streaming call
               — Anthropic: system prompt + tool defs carry cache_control: ephemeral
                 (cached after turn 1); temperature/output_config.effort included
@@ -200,18 +218,20 @@ LLM requests tool_use / tool_calls during streamMessage
 
 ### Attaching notes to a conversation
 
-All note-attachment paths write to `conv.contextNotes` (persisted) and render in the reference row:
+All note-attachment paths write to `conv.contextNotes` (persisted) and render in the reference row. Attachments are plain vault-path strings with no type-level distinction between markdown notes and PDFs — dispatch happens by extension at read time (`path.toLowerCase().endsWith(".pdf")`), matching the same pattern used for model-capability checks like `isReasoningModel()`. A template can declare a PDF path in `context_notes` frontmatter with no changes needed in `TemplateLoader.ts`.
 
-| Entry point | Code path |
-|---|---|
-| File-menu "Chat about this note" | `attachNoteToInput()` → `conv.contextNotes` |
-| 📎 toolbar button | `onAttachNote()` → `conv.contextNotes` |
-| Inline `[[` suggest | InlineSuggest callback → `conv.contextNotes` |
-| Reference row `+` button | `NoteSuggestModal` callback → `conv.contextNotes` |
+| Entry point | Code path | PDF-aware? |
+|---|---|---|
+| File-menu "Chat about this note" | `attachNoteToInput()` → `conv.contextNotes` | md only (file-menu action is markdown-file-scoped) |
+| 📎 toolbar button | `onAttachNote()` → `NoteSuggestModal` → `conv.contextNotes` | yes |
+| Inline `#` suggest | `ui/InlineSuggest.ts` callback → `conv.contextNotes` | yes |
+| Reference row `+` button | `NoteSuggestModal` callback → `conv.contextNotes` | yes |
+| Folder attach | `utils.ts`'s `getFilesInFolder()` → `conv.contextNotes` | yes |
+| Template `context_notes` frontmatter | `TemplateLoader.ts` (unfiltered path string) | yes |
 
-`conv.contextNotes` is passed as `attachedNotes` to `streamMessage` on every send, so the LLM always has access to all attached notes.
+`conv.contextNotes` is passed as `attachedNotes` to `streamMessage` on every send, so the LLM always has access to all attached notes and PDFs (see "Sending a message" above for how each kind is resolved and, for PDFs, sent as a native document/file content block instead of inlined text). `suggest/FileSuggest.ts`'s base `FileSuggestModal` deliberately stays markdown-only — it also backs the prompt-optimizer template picker in `settings.ts`, which must never surface a PDF.
 
-The inline `#` suggestion dropdown (`ui/InlineSuggest.ts`) ranks candidate notes by a cheap keyword-overlap score (`services/noteRelevance.ts`) between the message being composed and each note's basename, frontmatter title, and headings (read from Obsidian's cached `metadataCache` — no per-keystroke disk reads). A filename match on the typed `#fragment` still dominates and gates the result set; the relevance score is the tiebreaker, which matters most when the fragment is empty or matches several notes equally.
+The inline `#` suggestion dropdown (`ui/InlineSuggest.ts`) ranks candidate notes by a cheap keyword-overlap score (`services/noteRelevance.ts`) between the message being composed and each note's basename, frontmatter title, and headings (read from Obsidian's cached `metadataCache` — no per-keystroke disk reads). A filename match on the typed `#fragment` still dominates and gates the result set; the relevance score is the tiebreaker, which matters most when the fragment is empty or matches several notes equally. For a PDF candidate, `noteHaystack()` has no headings to parse and falls back to the basename alone — the filename-substring match still ranks it correctly.
 
 ### Conversation rename
 
@@ -304,7 +324,7 @@ On load, migrations run:
 
 Both providers extend `BaseProvider` (which implements `LLMProvider`). `LLMRouter` dispatches by `conversation.provider`.
 
-`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), two `streamMessage` helpers shared by both providers (`resolveUserContent` — attached-notes fetch + missing/oversized-note `Notice`s + system-prompt build; `finishOrError` — routes a caught error to `onComplete` on user abort or `onError` otherwise, reusing `retry.ts`'s `ABORT_ERROR_NAMES`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`).
+`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), two `streamMessage` helpers shared by both providers (`resolveUserContent` — splits `attachedNotes` into note/PDF paths by extension, fetches both in parallel (`ContextBuilder.buildAttachedNotesContent`/`buildAttachedPdfs`), surfaces missing/oversized-note and missing/oversized-PDF `Notice`s, builds the system prompt, and returns `pdfAttachments` alongside `userContent`/`systemPrompt` for each provider to splice in its own wire format; `finishOrError` — routes a caught error to `onComplete` on user abort or `onError` otherwise, reusing `retry.ts`'s `ABORT_ERROR_NAMES`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`).
 
 Each provider implements:
 - `resetClient()` — nulls the cached SDK client on credential/settings change

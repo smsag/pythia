@@ -9,4 +9,10 @@ export class NoteSuggestModal extends FileSuggestModal {
 			selectInstruction: t("instrAttach"),
 		});
 	}
+
+	// Overrides the markdown-only base — notes can be attached as context
+	// alongside PDFs (sent as native document blocks, see ContextBuilder.ts).
+	getItems(): TFile[] {
+		return this.app.vault.getFiles().filter((f) => f.extension === "md" || f.extension === "pdf");
+	}
 }

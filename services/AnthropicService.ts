@@ -99,7 +99,7 @@ export class AnthropicService extends BaseProvider {
 		let fullText = "";
 
 		try {
-			const { userContent, systemPrompt } =
+			const { userContent, systemPrompt, pdfAttachments } =
 				await this.resolveUserContent(conversation, attachedNotes, newMessage);
 
 			// Exclude the last message — already pushed by the caller; sending it
@@ -124,6 +124,23 @@ export class AnthropicService extends BaseProvider {
 				role => role !== "user"
 			).map((m) => ({ role: m.role, content: m.content }));
 
+			// Splice PDF document blocks onto the final user message, after
+			// normalizeMessages has run — its same-role merge does string
+			// concatenation (messageUtils.ts) and would corrupt array content.
+			// Mirrors the array-content bypass already used for tool-loop
+			// messages further down in this file.
+			if (pdfAttachments.length > 0) {
+				const last = loopMessages[loopMessages.length - 1];
+				if (last.role === "user" && typeof last.content === "string") {
+					const documentBlocks: Anthropic.DocumentBlockParam[] = pdfAttachments.map((pdf) => ({
+						type: "document",
+						source: { type: "base64", media_type: "application/pdf", data: pdf.base64 },
+						title: pdf.filename,
+					}));
+					last.content = [...documentBlocks, { type: "text", text: last.content }];
+				}
+			}
+
 			// Tool definitions are identical on every turn of a conversation — mark the
 			// last one as a cache breakpoint so the whole block is cached after turn 1.
 			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
@@ -143,6 +160,7 @@ export class AnthropicService extends BaseProvider {
 					temperatureDropped: requestedTemperature !== undefined && temperature === undefined,
 					effort,
 					effortDropped: requestedEffort !== undefined && effort === undefined,
+					pdfAttachments: pdfAttachments.length,
 					messages: historyMessages.length + 1,
 					systemPromptChars: systemPrompt.length,
 					tools: !!onToolCall,
