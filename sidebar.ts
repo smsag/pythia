@@ -1536,7 +1536,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				await this.plugin.conversationStore.save(conv);
 				this.updateModelBadge();
 			},
-			this.plugin.settings.temperature
+			this.plugin.settings.temperature,
+			this.plugin.settings.effort
 		).open();
 	}
 
@@ -1688,6 +1689,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			if (tpl.model)      conv.model      = tpl.model;
 			if (tpl.maxTokens)  conv.maxTokens  = tpl.maxTokens;
 			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+			if (tpl.effort !== undefined) conv.effort = tpl.effort;
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			if (tpl.writeMode)  conv.writeMode  = tpl.writeMode;
 

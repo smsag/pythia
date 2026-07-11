@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { App } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import type { Conversation, ToolCall, TokenUsage, EffortLevel } from "../models/types";
 import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
@@ -9,8 +9,16 @@ import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtil
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { DEFAULT_MAX_TOKENS } from "./promptConstants";
+import { supportsTemperature, supportsEffort } from "../models/knownModels";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
+
+// `output_config.effort` isn't in the installed SDK's TypeScript types yet,
+// though the API accepts it — extend the SDK's own param type locally rather
+// than casting the request literal or bumping the SDK.
+type AnthropicStreamParams = Anthropic.MessageStreamParams & {
+	output_config?: { effort: EffortLevel };
+};
 
 /** Safety net against a confused model looping on tool calls indefinitely. */
 const MAX_TOOL_ROUNDS = 25;
@@ -105,7 +113,10 @@ export class AnthropicService extends BaseProvider {
 
 			const model = this.resolveModel(conversation.model);
 			const maxTokens = conversation.maxTokens ?? DEFAULT_MAX_TOKENS;
-			const temperature = conversation.temperature ?? this.settings.temperature;
+			const requestedTemperature = conversation.temperature ?? this.settings.temperature;
+			const temperature = supportsTemperature(model) ? requestedTemperature : undefined;
+			const requestedEffort = conversation.effort ?? this.settings.effort;
+			const effort = requestedEffort !== undefined && supportsEffort(model) ? requestedEffort : undefined;
 
 			// Anthropic requires the first message to be "user" (no system role in messages array).
 			const loopMessages: Anthropic.MessageParam[] = normalizeMessages(
@@ -129,6 +140,9 @@ export class AnthropicService extends BaseProvider {
 				console.log("[Pythia] Anthropic API call →", {
 					model,
 					temperature,
+					temperatureDropped: requestedTemperature !== undefined && temperature === undefined,
+					effort,
+					effortDropped: requestedEffort !== undefined && effort === undefined,
 					messages: historyMessages.length + 1,
 					systemPromptChars: systemPrompt.length,
 					tools: !!onToolCall,
@@ -152,21 +166,20 @@ export class AnthropicService extends BaseProvider {
 
 				for (let attempt = 0; !finalMsg; ) {
 					try {
-						const stream = this.getClient().messages.stream(
-							{
-								model,
-								max_tokens: maxTokens,
-								...(temperature !== undefined ? { temperature } : {}),
-								// Cache the system prompt — it's identical on every turn of a
-								// conversation and is often the largest stable chunk of the request.
-								...(systemPrompt
-									? { system: [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }] }
-									: {}),
-								messages: loopMessages,
-								...(anthropicTools?.length ? { tools: anthropicTools } : {}),
-							},
-							{ signal }
-						);
+						const params: AnthropicStreamParams = {
+							model,
+							max_tokens: maxTokens,
+							...(temperature !== undefined ? { temperature } : {}),
+							...(effort !== undefined ? { output_config: { effort } } : {}),
+							// Cache the system prompt — it's identical on every turn of a
+							// conversation and is often the largest stable chunk of the request.
+							...(systemPrompt
+								? { system: [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }] }
+								: {}),
+							messages: loopMessages,
+							...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+						};
+						const stream = this.getClient().messages.stream(params, { signal });
 
 						stream.on("text", (text) => {
 							fullText += text;

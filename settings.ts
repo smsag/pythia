@@ -1,10 +1,10 @@
 import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidian";
 import type PythiaPlugin from "./main";
-import type { Provider } from "./models/types";
+import type { Provider, EffortLevel } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { t } from "./i18n";
-import { KNOWN_MODELS } from "./models/knownModels";
+import { KNOWN_MODELS, supportsTemperature, supportsEffort, isReasoningModel } from "./models/knownModels";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
 // that service modules can import them without pulling in the Obsidian UI layer.
@@ -29,6 +29,19 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h3", { text: t("anthropicSection") });
 
+		// Populated once the temperature/effort Settings are created below;
+		// referenced from the model/provider dropdowns registered before that
+		// point — safe because those handlers only fire later, on interaction.
+		// eslint-disable-next-line prefer-const -- forward reference: assigned after the dropdowns that close over it
+		let temperatureSetting: Setting | undefined;
+		// eslint-disable-next-line prefer-const -- forward reference: assigned after the dropdowns that close over it
+		let effortSetting: Setting | undefined;
+		const refreshTempEffortAvailability = (): void => {
+			if (temperatureSetting && effortSetting) {
+				this.updateTempEffortAvailability(temperatureSetting, effortSetting);
+			}
+		};
+
 		new Setting(containerEl)
 			.setName(t("anthropicKeyName"))
 			.setDesc(t("anthropicKeyDesc"))
@@ -49,7 +62,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 			async (value) => {
 				this.plugin.settings.defaultAnthropicModel = value;
 				await this.plugin.saveSettings();
-			}
+			},
+			refreshTempEffortAvailability
 		);
 
 		containerEl.createEl("h3", { text: t("openaiSection") });
@@ -74,7 +88,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 			async (value) => {
 				this.plugin.settings.defaultOpenAIModel = value;
 				await this.plugin.saveSettings();
-			}
+			},
+			refreshTempEffortAvailability
 		);
 
 		containerEl.createEl("h3", { text: t("defaultsSection") });
@@ -90,6 +105,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.defaultProvider = value as Provider;
 						await this.plugin.saveSettings();
+						refreshTempEffortAvailability();
 					})
 			);
 
@@ -159,7 +175,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
+		temperatureSetting = new Setting(containerEl)
 			.setName(t("temperatureName"))
 			.setDesc(t("temperatureDesc"))
 			.addText((text) =>
@@ -180,6 +196,23 @@ export class PythiaSettingTab extends PluginSettingTab {
 						}
 					})
 			);
+
+		effortSetting = new Setting(containerEl)
+			.setName(t("effortName"))
+			.setDesc(t("effortDesc"))
+			.addDropdown((drop) => {
+				drop.addOption("", t("effortUnsetOption"));
+				drop.addOption("low", t("effortLevelLow"));
+				drop.addOption("medium", t("effortLevelMedium"));
+				drop.addOption("high", t("effortLevelHigh"));
+				drop.setValue(this.plugin.settings.effort ?? "");
+				drop.onChange(async (value) => {
+					this.plugin.settings.effort = value === "" ? undefined : (value as EffortLevel);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		refreshTempEffortAvailability();
 
 		new Setting(containerEl)
 			.setName(t("messageCapName"))
@@ -322,13 +355,35 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 	}
 
+	// Advisory only: gates the global temperature/effort defaults against
+	// defaultProvider + the corresponding default*Model setting. Any given
+	// conversation can still override provider/model independently, so this
+	// doesn't reflect every possible runtime combination — just the pairing
+	// new conversations get when created with current defaults.
+	private updateTempEffortAvailability(temperatureSetting: Setting, effortSetting: Setting): void {
+		const provider = this.plugin.settings.defaultProvider;
+		const model = provider === "openai"
+			? this.plugin.settings.defaultOpenAIModel
+			: this.plugin.settings.defaultAnthropicModel;
+
+		const tempSupported = provider === "anthropic" ? supportsTemperature(model) : !isReasoningModel(model);
+		const effortSupported = provider === "anthropic" ? supportsEffort(model) : isReasoningModel(model);
+
+		temperatureSetting.setDisabled(!tempSupported);
+		temperatureSetting.setDesc(tempSupported ? t("temperatureDesc") : `${t("temperatureDesc")} ${t("paramUnsupportedSuffix")}`);
+
+		effortSetting.setDisabled(!effortSupported);
+		effortSetting.setDesc(effortSupported ? t("effortDesc") : `${t("effortDesc")} ${t("paramUnsupportedSuffix")}`);
+	}
+
 	private addModelSetting(
 		containerEl: HTMLElement,
 		name: string,
 		desc: string,
 		knownModels: string[],
 		getValue: () => string,
-		setValue: (v: string) => Promise<void>
+		setValue: (v: string) => Promise<void>,
+		onAnyChange?: () => void
 	): void {
 		const currentValue = getValue();
 		const isCustom = !knownModels.includes(currentValue);
@@ -349,6 +404,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					} else {
 						if (customInput) customInput.style.display = "none";
 						await setValue(val);
+						onAnyChange?.();
 					}
 				});
 			});
@@ -363,6 +419,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		customInput.addEventListener("change", async () => {
 			if (customInput && customInput.value.trim()) {
 				await setValue(customInput.value.trim());
+				onAnyChange?.();
 			}
 		});
 	}

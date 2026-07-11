@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { KNOWN_MODELS, REASONING_MODELS, isReasoningModel, MODEL_ABBREVIATIONS } from "../models/knownModels";
+import { KNOWN_MODELS, REASONING_MODELS, isReasoningModel, MODEL_ABBREVIATIONS, supportsEffort } from "../models/knownModels";
 
 describe("isReasoningModel", () => {
 	it("is true for every OpenAI o-series model", () => {
@@ -20,6 +20,23 @@ describe("isReasoningModel", () => {
 		for (const model of KNOWN_MODELS.openai) {
 			const looksLikeReasoningModel = /^o\d/.test(model);
 			expect(REASONING_MODELS.has(model)).toBe(looksLikeReasoningModel);
+		}
+	});
+});
+
+describe("supportsEffort", () => {
+	it("is true for every model in the effort allow-list", () => {
+		for (const model of [
+			"claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7",
+			"claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6",
+		]) {
+			expect(supportsEffort(model)).toBe(true);
+		}
+	});
+
+	it("is false for models that reject the effort parameter", () => {
+		for (const model of ["claude-haiku-4-5", "gpt-4o", "o4-mini"]) {
+			expect(supportsEffort(model)).toBe(false);
 		}
 	});
 });

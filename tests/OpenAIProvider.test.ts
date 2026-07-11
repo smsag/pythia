@@ -109,6 +109,42 @@ describe("OpenAIProvider — reasoning-model request shaping (regression for the
 	});
 });
 
+describe("OpenAIProvider — effort gating", () => {
+	it("sends reasoning_effort for reasoning models", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ effort: "high" }), "key");
+		const conv = makeConv({ model: "o4-mini" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.reasoning_effort).toBe("high");
+	});
+
+	it("omits reasoning_effort for non-reasoning models", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ effort: "high" }), "key");
+		const conv = makeConv({ model: "gpt-4o" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args).not.toHaveProperty("reasoning_effort");
+	});
+});
+
 describe("OpenAIProvider — token usage across tool-call rounds (regression for undercounting)", () => {
 	it("sums input/output tokens across every round instead of keeping only the last", async () => {
 		createMock

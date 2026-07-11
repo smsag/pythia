@@ -1,4 +1,4 @@
-import type { Provider } from "./types";
+import type { Provider, EffortLevel } from "./types";
 
 export interface PythiaSettings {
 	/** Secret ID referencing the Anthropic API key in Obsidian SecretStorage. */
@@ -34,6 +34,8 @@ export interface PythiaSettings {
 	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
 	/** Default sampling temperature (0–1) sent to both providers. Undefined = use the API's own default. */
 	temperature?: number;
+	/** Default reasoning/output effort sent to models that support it. Undefined = use the API's own default. */
+	effort?: EffortLevel;
 	/** Warn when attached notes exceed this many estimated tokens. 0 = no limit. */
 	maxAttachedNotesTokens: number;
 }

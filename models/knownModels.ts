@@ -26,6 +26,45 @@ export function isReasoningModel(model: string): boolean {
 	return REASONING_MODELS.has(model);
 }
 
+/**
+ * Anthropic models that reject the `temperature` parameter outright (Claude
+ * Fable 5 / Mythos 5 and the Opus 4.7+ / Sonnet 5 generation dropped sampling
+ * parameters from the API — sending `temperature` at all returns a 400,
+ * regardless of value).
+ */
+export const ANTHROPIC_NO_TEMPERATURE_MODELS = new Set([
+	"claude-fable-5",
+	"claude-mythos-5",
+	"claude-opus-4-8",
+	"claude-opus-4-7",
+	"claude-sonnet-5",
+]);
+
+export function supportsTemperature(model: string): boolean {
+	return !ANTHROPIC_NO_TEMPERATURE_MODELS.has(model);
+}
+
+/**
+ * Anthropic models that support the `output_config.effort` request parameter
+ * (low/medium/high — the app-wide capped scale; some of these models also
+ * accept xhigh/max, but we don't expose those). Allow-list, not a deny-list
+ * like ANTHROPIC_NO_TEMPERATURE_MODELS — effort is newly-added-for-some
+ * models rather than removed-for-some.
+ */
+export const ANTHROPIC_EFFORT_MODELS = new Set([
+	"claude-fable-5",
+	"claude-mythos-5",
+	"claude-opus-4-8",
+	"claude-opus-4-7",
+	"claude-opus-4-6",
+	"claude-sonnet-5",
+	"claude-sonnet-4-6",
+]);
+
+export function supportsEffort(model: string): boolean {
+	return ANTHROPIC_EFFORT_MODELS.has(model);
+}
+
 export const MODEL_ABBREVIATIONS: Record<string, string> = {
 	"claude-fable-5":  "Fable 5",
 	"claude-opus-4-8": "Opus 4.8",

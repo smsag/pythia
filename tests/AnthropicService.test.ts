@@ -124,3 +124,81 @@ describe("AnthropicService — token/cache usage across tool-call rounds", () =>
 		expect(usage?.cacheCreationTokens).toBeUndefined();
 	});
 });
+
+describe("AnthropicService — temperature gating", () => {
+	it("sends temperature for models that still accept sampling parameters", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ temperature: 0.7 }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-sonnet-4-6" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ temperature: 0.7 });
+	});
+
+	// claude-fable-5, claude-opus-4-8, and claude-sonnet-5 return a 400
+	// ("temperature is deprecated for this model") if `temperature` is sent
+	// at all — regression coverage for that bug.
+	it.each(["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"])(
+		"omits temperature for %s, which rejects the parameter outright",
+		async (model) => {
+			streamMock.mockReturnValueOnce(
+				makeFakeStream(["hi"], {
+					content: [{ type: "text", text: "hi" }],
+					stop_reason: "end_turn",
+					usage: { input_tokens: 5, output_tokens: 2 },
+				})
+			);
+
+			const provider = new AnthropicService({} as never, makeSettings({ temperature: 0.7 }), "key");
+			await provider.streamMessage(
+				makeConv({ model }), "hi", [], () => {}, () => {}, () => {}
+			);
+
+			expect(streamMock.mock.calls[0][0]).not.toHaveProperty("temperature");
+		}
+	);
+});
+
+describe("AnthropicService — effort gating", () => {
+	it("sends output_config.effort for models that support it", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ effort: "high" }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-sonnet-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ output_config: { effort: "high" } });
+	});
+
+	it("omits output_config.effort for models that don't support it", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ effort: "high" }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-haiku-4-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).not.toHaveProperty("output_config");
+	});
+});

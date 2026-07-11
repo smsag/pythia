@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-11 — refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-11 — added `effort` as a first-class parameter (global setting, template frontmatter, per-conversation override) alongside `temperature`, mapped to Anthropic's `output_config.effort` and OpenAI's `reasoning_effort`; both the global settings tab and the conversation settings modal now reactively disable (`Setting.setDisabled()`) the temperature/effort controls when the selected provider+model doesn't support them, closing the gap where the backend silently dropped unsupported values but the UI still showed the control as active. See ADR-040. Also fixed live 400s from the model catalog refresh: `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` reject the `temperature` parameter outright, but `AnthropicService.streamMessage` was still sending it whenever a conversation or global default temperature was set. Added `models/knownModels.ts`'s `supportsTemperature()` (mirrors the existing `isReasoningModel()` pattern) and gated `temperature` on it; refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -14,16 +14,16 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 
 | File | Lines | Role |
 |---|---:|---|
-| `sidebar.ts` | 2 303 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
+| `sidebar.ts` | 2 357 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
-| `main.ts` | 924 | Plugin entry, commands, conversation lifecycle, data.json watcher |
-| `settings.ts` | 419 | Settings schema, defaults, settings tab UI |
-| `services/OpenAIProvider.ts` | 294 | OpenAI streaming (extends BaseProvider); retry, temperature, resumeMode gating, bounded tool loop |
-| `services/AnthropicService.ts` | 242 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature, resumeMode gating, bounded tool loop |
+| `main.ts` | 930 | Plugin entry, commands, conversation lifecycle, data.json watcher |
+| `settings.ts` | 460 | Settings schema, defaults, settings tab UI (incl. temperature/effort reactive availability gating) |
+| `services/OpenAIProvider.ts` | 300 | OpenAI streaming (extends BaseProvider); retry, temperature/`reasoning_effort`, resumeMode gating, bounded tool loop |
+| `services/AnthropicService.ts` | 255 | Anthropic streaming (extends BaseProvider); retry, prompt caching, temperature/`output_config.effort`, resumeMode gating, bounded tool loop |
 | `services/BaseProvider.ts` | 184 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` streamMessage helpers, all generate* utility methods |
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
-| `services/TemplateLoader.ts` | 101 | Template discovery + frontmatter parsing (incl. `temperature`); parallelized reads, empty-folder guard |
+| `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard |
 | `services/messageUtils.ts` | 129 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
 | `services/ContextBuilder.ts` | 78 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens |
@@ -36,13 +36,13 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/persistence.ts` | 111 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
-| `models/knownModels.ts` | 38 | Single source of truth for known model IDs per provider, the OpenAI reasoning-model set, and model-abbreviation labels |
-| `models/settings.ts` | 61 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
+| `models/knownModels.ts` | 78 | Single source of truth for known model IDs per provider, the OpenAI reasoning-model set, the Anthropic temperature deny-list/effort allow-list, and model-abbreviation labels |
+| `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
 | `ui/InlineSuggest.ts` | 172 | `#` note-path autocomplete in textarea; relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` is a thin subclass of `FileSuggestModal` |
-| `models/types.ts` | 97 | All shared TypeScript interfaces, incl. `ToolLoopLimitError` |
+| `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
 | `tests/` | — | Vitest unit tests (207 tests, ~1 s) |
 | `eslint.config.mjs` | 40 | ESLint flat config (typescript-eslint) |
@@ -82,7 +82,7 @@ PythiaPlugin (main.ts)
 ```
 Conversation
   id, name, createdAt, updatedAt
-  provider ("anthropic" | "openai"), model, maxTokens?, temperature?
+  provider ("anthropic" | "openai"), model, maxTokens?, temperature?, effort? ("low"|"medium"|"high")
   systemPrompt, contextNotes[]   ← permanent per-conv note attachments; sent with every message
   writeMode ("create" | "update" | "rewrite" | "none")
   resumeMode ("full" | "summary")   ← "summary" now actually excludes prior messages from the
@@ -108,6 +108,7 @@ PythiaSettings
   autoSaveSummary, defaultResumeMode
   injectActiveNoteOnTemplate, debugMode
   temperature?                              ← global sampling-temperature default (0–1); undefined = API default
+  effort?                                   ← global reasoning/output-effort default ("low"|"medium"|"high"); undefined = API default
   maxAttachedNotesTokens                    ← warn above this estimated token count (default 8000); 0 = no warning
   anthropicSecretName, openaiSecretName     ← keys into Obsidian SecretStorage
 
@@ -149,7 +150,8 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
                 summaryText already in the system prompt); "full" sends everything
           → Provider SDK streaming call
               — Anthropic: system prompt + tool defs carry cache_control: ephemeral
-                (cached after turn 1); temperature included when resolved
+                (cached after turn 1); temperature/output_config.effort included
+                when resolved and supported by the model
               — transient rate-limit/network/server-error (5xx/529) failures before
                 any token is emitted are retried with backoff (services/retry.ts),
                 up to 2 attempts
@@ -312,7 +314,9 @@ Each provider implements:
 - `callUtility(model, userMessage, maxTokens, systemMessage?)` — single-turn non-streaming call
 - `streamMessage(...)` — full streaming implementation; the SDK-specific streaming/tool-loop body stays per-provider (Anthropic's Messages API and OpenAI's Chat Completions API have genuinely different shapes there), capped at `MAX_TOOL_ROUNDS = 25` rounds (throws `ToolLoopLimitError` beyond that) and capturing `this.abortController.signal` into a local once at the top of the call — a mid-loop abort (e.g. while a tool confirmation is pending) must not read `.signal` off a controller `BaseProvider.abort()` may have already nulled out
 
-`OpenAIProvider` additionally uses `models/knownModels.ts`'s `isReasoningModel()` to decide, per model: whether the system prompt is injected as a leading `user` message vs. a real `system` role, whether a custom `temperature` is sent, and whether the request uses `max_tokens` or `max_completion_tokens` (the o-series reasoning models reject the first two and require the last).
+`OpenAIProvider` additionally uses `models/knownModels.ts`'s `isReasoningModel()` to decide, per model: whether the system prompt is injected as a leading `user` message vs. a real `system` role, whether a custom `temperature` is sent, and whether the request uses `max_tokens` or `max_completion_tokens` (the o-series reasoning models reject the first two and require the last). Symmetrically, `AnthropicService` uses `models/knownModels.ts`'s `supportsTemperature()` to decide whether `temperature` is sent at all — Claude Fable 5/Mythos 5 and the Opus 4.7+/Sonnet 5 generation return a 400 if `temperature` is present in the request regardless of its value, so `streamMessage` resolves `temperature` from `conversation.temperature ?? settings.temperature` and then drops it to `undefined` for those model IDs before building the request.
+
+`effort` (`"low"|"medium"|"high"`, capped below the full Anthropic range — see ADR-040) follows the mirror-image gating shape: `AnthropicService` uses `supportsEffort()` (an allow-list, `ANTHROPIC_EFFORT_MODELS`, unlike `ANTHROPIC_NO_TEMPERATURE_MODELS`'s deny-list) to decide whether to send `output_config.effort`; `OpenAIProvider` reuses the existing `isReasoningModel()` gate to decide whether to send `reasoning_effort` — the same o-series models that reject `temperature` are the only ones that accept `reasoning_effort`, so the two parameters are naturally mutually exclusive per model. `output_config` isn't in the installed `@anthropic-ai/sdk`'s TypeScript types (`0.40.1`), so `AnthropicService` declares a local `AnthropicStreamParams` type (`Anthropic.MessageStreamParams & { output_config?: {...} }`) and builds the request as a separately-typed `const` rather than an inline object literal, avoiding TypeScript's excess-property check without a cast or an SDK bump.
 
 The `TITLE:`/`SUMMARY:` markers used by `generateSummaryWithTitle` and parsed by `messageUtils.parseTitleAndSummary` are defined once in `services/promptConstants.ts` (`TITLE_MARKER`, `SUMMARY_MARKER`) so the two can't drift apart. `DEFAULT_MAX_TOKENS` (also in `promptConstants.ts`) is the shared `conversation.maxTokens ?? …` fallback for both providers.
 
