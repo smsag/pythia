@@ -70,18 +70,21 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "new-conversation",
 			name: t("cmdNewConversation"),
+			icon: "bot",
 			callback: () => this.cmdNewConversation(),
 		});
 
 		this.addCommand({
 			id: "resume-conversation",
 			name: t("cmdResumeConversation"),
+			icon: "bot",
 			callback: () => this.cmdResumeConversation(),
 		});
 
 		this.addCommand({
 			id: "hub",
 			name: t("cmdHub"),
+			icon: "bot",
 			callback: () => new CommandHubModal(this.app, [
 				{
 					label: t("cmdNewConversationFromTemplate"),
@@ -124,6 +127,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "send-selection-to-pythia",
 			name: t("sendSelectionToPythia"),
+			icon: "bot",
 			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
@@ -137,6 +141,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "send-selection-to-pythia-with-template",
 			name: t("sendSelectionToPythiaWithTemplate"),
+			icon: "bot",
 			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
