@@ -9,6 +9,7 @@ import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtil
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { DEFAULT_MAX_TOKENS } from "./promptConstants";
+import { supportsTemperature } from "../models/knownModels";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
@@ -105,7 +106,8 @@ export class AnthropicService extends BaseProvider {
 
 			const model = this.resolveModel(conversation.model);
 			const maxTokens = conversation.maxTokens ?? DEFAULT_MAX_TOKENS;
-			const temperature = conversation.temperature ?? this.settings.temperature;
+			const requestedTemperature = conversation.temperature ?? this.settings.temperature;
+			const temperature = supportsTemperature(model) ? requestedTemperature : undefined;
 
 			// Anthropic requires the first message to be "user" (no system role in messages array).
 			const loopMessages: Anthropic.MessageParam[] = normalizeMessages(
@@ -129,6 +131,7 @@ export class AnthropicService extends BaseProvider {
 				console.log("[Pythia] Anthropic API call →", {
 					model,
 					temperature,
+					temperatureDropped: requestedTemperature !== undefined && temperature === undefined,
 					messages: historyMessages.length + 1,
 					systemPromptChars: systemPrompt.length,
 					tools: !!onToolCall,

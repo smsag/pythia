@@ -16,6 +16,7 @@
 *Updated: 2026-07-09 — second-round audit (post-1.21.1): #77–#83 resolved (second delete-guard gap via the conversation switcher, resume-mode race with concurrent deletion, eviction crash on malformed `updatedAt`, eviction only protecting one sidebar leaf, silent multi-line frontmatter corruption, deep-link double-decode, summary-generation stale-conversation race). Remaining medium/low findings from this audit and pre-existing architectural backlog (#3, #10, #50, #73, #74) reviewed and explicitly deferred, not silently dropped.*
 *Updated: 2026-07-10 — #84 resolved: `cmdForkConversation` now carries `temperature` over from the source conversation, matching `provider`/`model`/`maxTokens`. Also added a settings-modal UI to view/edit a conversation's temperature after creation (not a bug — new capability, not separately numbered).*
 *Updated: 2026-07-11 — #85 resolved: `models/knownModels.ts`'s Anthropic entries had gone stale — `claude-opus-4` and `claude-haiku-3-5` had both been retired by Anthropic, and `AnthropicService.fastModel` hardcoded the dead `claude-haiku-3-5` as its fallback utility model (silently broken for any call not passing an explicit model). Swapped to the current catalog: `claude-fable-5`, `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`; `defaultAnthropicModel` and `fastModel` updated to match.*
+*Updated: 2026-07-11 — #86 resolved: the #85 catalog refresh introduced a live regression — `claude-fable-5`, `claude-opus-4-8`, and `claude-sonnet-5` all reject the `temperature` request parameter outright (400 `invalid_request_error`, "temperature is deprecated for this model"), but `AnthropicService.streamMessage` sent it unconditionally whenever a conversation or global default temperature was configured, breaking every request on 3 of the 4 listed Anthropic models. Added `models/knownModels.ts`'s `supportsTemperature()` (same shape as the existing `isReasoningModel()` guard) and gated the parameter on it; added regression tests in `tests/AnthropicService.test.ts` covering both the send and omit paths.*
 
 ---
 
@@ -38,6 +39,7 @@
 | 2026-07-09 | #77–#83 second-round audit resolved (post-1.21.1 release); remaining medium/low findings deferred |
 | 2026-07-10 | #84 resolved (fork drops temperature override); added per-conversation temperature editing UI |
 | 2026-07-11 | #85 resolved (stale/retired Anthropic model IDs — `claude-opus-4`, `claude-haiku-3-5` — replaced with `claude-opus-4-8`, `claude-sonnet-5`, `claude-haiku-4-5`; dead `fastModel` fallback fixed) |
+| 2026-07-11 | #86 resolved (live 400s on `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` from unconditionally-sent `temperature`; added `supportsTemperature()` gate + regression tests) |
 
 ---
 
