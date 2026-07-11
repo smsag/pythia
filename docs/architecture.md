@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-09 — second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-11 — refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -306,7 +306,7 @@ Both providers extend `BaseProvider` (which implements `LLMProvider`). `LLMRoute
 
 Each provider implements:
 - `resetClient()` — nulls the cached SDK client on credential/settings change
-- `fastModel` — cheap model for utility calls (`claude-haiku-3-5` / `gpt-4o-mini`)
+- `fastModel` — cheap model for utility calls (`claude-haiku-4-5` / `gpt-4o-mini`)
 - `assistantLabel` — `"Claude"` / `"Assistant"` in conversation transcripts
 - `resolveModel(override?)` — falls back to provider-specific default model
 - `callUtility(model, userMessage, maxTokens, systemMessage?)` — single-turn non-streaming call

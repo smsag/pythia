@@ -27,7 +27,7 @@ export class AnthropicService extends BaseProvider {
 	}
 
 	protected get fastModel(): string {
-		return "claude-haiku-3-5";
+		return "claude-haiku-4-5";
 	}
 
 	protected get assistantLabel(): string {
