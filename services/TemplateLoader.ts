@@ -1,5 +1,6 @@
 import { App, TFile, parseYaml } from "obsidian";
-import type { PythiaTemplate, Provider } from "../models/types";
+import type { PythiaTemplate, Provider, EffortLevel } from "../models/types";
+import { EFFORT_LEVELS } from "../models/types";
 import type { PythiaSettings } from "../settings";
 
 export class TemplateLoader {
@@ -79,6 +80,13 @@ export class TemplateLoader {
 					? rawTemperature
 					: undefined;
 
+			// Validate effort — must be one of the known effort levels.
+			const rawEffort = fm.effort;
+			const validEffort: EffortLevel | undefined =
+				typeof rawEffort === "string" && (EFFORT_LEVELS as string[]).includes(rawEffort)
+					? (rawEffort as EffortLevel)
+					: undefined;
+
 			return {
 				id: file.path,
 				name: (fm.name as string) ?? file.basename,
@@ -86,6 +94,7 @@ export class TemplateLoader {
 				model: fm.model as string | undefined,
 				maxTokens: fm.max_tokens as number | undefined,
 				temperature: validTemperature,
+				effort: validEffort,
 				contextNotes: validContextNotes,
 				resumeMode: validResumeMode,
 				outputFolder: validOutputFolder,

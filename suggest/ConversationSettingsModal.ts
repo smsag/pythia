@@ -1,23 +1,31 @@
 import { App, DropdownComponent, Modal, Setting } from "obsidian";
-import type { Conversation, Provider } from "../models/types";
+import type { Conversation, Provider, EffortLevel } from "../models/types";
 import { t } from "../i18n";
-import { KNOWN_MODELS as MODELS_BY_PROVIDER } from "../models/knownModels";
+import {
+	KNOWN_MODELS as MODELS_BY_PROVIDER,
+	supportsTemperature,
+	supportsEffort,
+	isReasoningModel,
+} from "../models/knownModels";
 
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;
 	private onSave: (conversation: Conversation) => Promise<void>;
 	private defaultTemperature: number | undefined;
+	private defaultEffort: EffortLevel | undefined;
 
 	constructor(
 		app: App,
 		conversation: Conversation,
 		onSave: (conversation: Conversation) => Promise<void>,
-		defaultTemperature?: number
+		defaultTemperature?: number,
+		defaultEffort?: EffortLevel
 	) {
 		super(app);
 		this.conversation = conversation;
 		this.onSave = onSave;
 		this.defaultTemperature = defaultTemperature;
+		this.defaultEffort = defaultEffort;
 	}
 
 	onOpen(): void {
@@ -30,6 +38,10 @@ export class ConversationSettingsModal extends Modal {
 		let selectedModel = this.conversation.model;
 		let customInput: HTMLInputElement | null = null;
 		let modelDropdown: DropdownComponent | null = null;
+		// Reassigned once the temperature/effort Settings exist below; referenced
+		// from the provider/model handlers registered before that point — safe
+		// because those handlers only fire later, on user interaction.
+		let updateParamAvailability: () => void = () => {};
 
 		const rebuildModelOptions = (
 			drop: DropdownComponent,
@@ -67,6 +79,7 @@ export class ConversationSettingsModal extends Modal {
 					if (modelDropdown) {
 						rebuildModelOptions(modelDropdown, selectedProvider, selectedModel);
 					}
+					updateParamAvailability();
 				});
 			});
 
@@ -82,6 +95,7 @@ export class ConversationSettingsModal extends Modal {
 					selectedModel = value;
 					if (customInput) customInput.style.display = "none";
 				}
+				updateParamAvailability();
 			});
 		});
 
@@ -99,12 +113,13 @@ export class ConversationSettingsModal extends Modal {
 			if (customInput && customInput.value.trim()) {
 				selectedModel = customInput.value.trim();
 			}
+			updateParamAvailability();
 		});
 
 		// Temperature override — defaults to the effective value (conversation override, else global default)
 		let temperatureValue =
 			this.conversation.temperature ?? this.defaultTemperature ?? 1.0;
-		new Setting(contentEl)
+		const temperatureSetting = new Setting(contentEl)
 			.setName(t("convTemperatureLabel"))
 			.setDesc(t("convTemperatureDesc"))
 			.addSlider((slider) =>
@@ -116,6 +131,40 @@ export class ConversationSettingsModal extends Modal {
 						temperatureValue = value;
 					})
 			);
+
+		// Effort override — unlike temperature, defaults to "unset" (not the effective
+		// value): a dropdown can represent "no override", so opening/closing this modal
+		// without touching effort should not silently pin the current default in place.
+		let effortValue: EffortLevel | "" = this.conversation.effort ?? "";
+		const effortSetting = new Setting(contentEl)
+			.setName(t("convEffortLabel"))
+			.setDesc(t("convEffortDesc"))
+			.addDropdown((drop) => {
+				drop.addOption("", t("effortUnsetOption"));
+				drop.addOption("low", t("effortLevelLow"));
+				drop.addOption("medium", t("effortLevelMedium"));
+				drop.addOption("high", t("effortLevelHigh"));
+				drop.setValue(effortValue);
+				drop.onChange((value) => {
+					effortValue = value as EffortLevel | "";
+				});
+			});
+
+		updateParamAvailability = (): void => {
+			const tempSupported = selectedProvider === "anthropic"
+				? supportsTemperature(selectedModel)
+				: !isReasoningModel(selectedModel);
+			const effortSupported = selectedProvider === "anthropic"
+				? supportsEffort(selectedModel)
+				: isReasoningModel(selectedModel);
+
+			temperatureSetting.setDisabled(!tempSupported);
+			temperatureSetting.setDesc(tempSupported ? t("convTemperatureDesc") : `${t("convTemperatureDesc")} ${t("paramUnsupportedSuffix")}`);
+
+			effortSetting.setDisabled(!effortSupported);
+			effortSetting.setDesc(effortSupported ? t("convEffortDesc") : `${t("convEffortDesc")} ${t("paramUnsupportedSuffix")}`);
+		};
+		updateParamAvailability();
 
 		// Action buttons
 		new Setting(contentEl)
@@ -135,6 +184,7 @@ export class ConversationSettingsModal extends Modal {
 						this.conversation.provider = selectedProvider;
 						this.conversation.model = selectedModel;
 						this.conversation.temperature = temperatureValue;
+						this.conversation.effort = effortValue === "" ? undefined : effortValue;
 						await this.onSave(this.conversation);
 						this.close();
 					})

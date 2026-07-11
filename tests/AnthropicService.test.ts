@@ -166,3 +166,39 @@ describe("AnthropicService — temperature gating", () => {
 		}
 	);
 });
+
+describe("AnthropicService — effort gating", () => {
+	it("sends output_config.effort for models that support it", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ effort: "high" }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-sonnet-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ output_config: { effort: "high" } });
+	});
+
+	it("omits output_config.effort for models that don't support it", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ effort: "high" }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-haiku-4-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).not.toHaveProperty("output_config");
+	});
+});

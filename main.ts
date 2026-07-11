@@ -171,6 +171,7 @@ export default class PythiaPlugin extends Plugin {
 					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 					if (tpl.writeMode) conv.writeMode = tpl.writeMode;
 					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+					if (tpl.effort !== undefined) conv.effort = tpl.effort;
 					await this.conversationStore.save(conv);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
@@ -291,6 +292,7 @@ export default class PythiaPlugin extends Plugin {
 					);
 					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+					if (tpl.effort !== undefined) conv.effort = tpl.effort;
 					await this.conversationStore.save(conv);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
@@ -327,6 +329,7 @@ export default class PythiaPlugin extends Plugin {
 						if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 						if (tpl.writeMode) conv.writeMode = tpl.writeMode;
 						if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+						if (tpl.effort !== undefined) conv.effort = tpl.effort;
 						await this.conversationStore.save(conv);
 						const view = await this.activateView();
 						await view.setActiveConversation(conv);
@@ -690,6 +693,7 @@ export default class PythiaPlugin extends Plugin {
 			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 			if (tpl.writeMode) conv.writeMode = tpl.writeMode;
 			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+			if (tpl.effort !== undefined) conv.effort = tpl.effort;
 			await this.conversationStore.save(conv);
 
 			const view = await this.activateView();
@@ -757,6 +761,7 @@ export default class PythiaPlugin extends Plugin {
 			source.maxTokens,
 		);
 		conv.temperature = source.temperature;
+		conv.effort = source.effort;
 		conv.forkedFromId = sourceConvId;
 		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
 		if (selectedText) conv.forkedFromSelection = selectedText;

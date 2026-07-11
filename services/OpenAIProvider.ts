@@ -110,6 +110,10 @@ export class OpenAIProvider extends BaseProvider {
 			const temperature = isReasoningModel(model)
 				? undefined
 				: conversation.temperature ?? this.settings.temperature;
+			const requestedEffort = conversation.effort ?? this.settings.effort;
+			const reasoningEffort = requestedEffort !== undefined && isReasoningModel(model)
+				? requestedEffort
+				: undefined;
 
 			// Exclude the last message — already pushed by the caller; sending it
 			// again in history would duplicate it. In "summary" resume mode, skip
@@ -151,6 +155,7 @@ export class OpenAIProvider extends BaseProvider {
 				console.log("[Pythia] OpenAI API call →", {
 					model,
 					temperature,
+					reasoningEffort,
 					messages: apiMessages.length,
 					systemPromptChars: systemPrompt.length,
 					noSystemRole,
@@ -191,6 +196,7 @@ export class OpenAIProvider extends BaseProvider {
 									? { max_completion_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }
 									: { max_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }),
 								...(temperature !== undefined ? { temperature } : {}),
+								...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
 								messages: loopMessages,
 								stream: true,
 								stream_options: { include_usage: true },

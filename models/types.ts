@@ -1,5 +1,8 @@
 export type Provider = "anthropic" | "openai";
 
+export type EffortLevel = "low" | "medium" | "high";
+export const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high"];
+
 export interface Conversation {
 	id: string;
 	name: string;
@@ -13,6 +16,7 @@ export interface Conversation {
 	model: string;            // model ID for the selected provider
 	maxTokens?: number;       // override the default 4096 max-token limit
 	temperature?: number;     // override the default sampling temperature (0–1)
+	effort?: EffortLevel;     // override the default reasoning/output effort
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryUpdatedAt?: string; // ISO 8601 timestamp of last summary generation
 	summaryNote?: string;     // vault path to the human-readable summary note
@@ -57,6 +61,7 @@ export interface PythiaTemplate {
 	model?: string;
 	maxTokens?: number;
 	temperature?: number;
+	effort?: EffortLevel;
 	contextNotes: string[];
 	resumeMode?: "full" | "summary";
 	outputFolder?: string;    // "." = same folder as the active note at creation time
