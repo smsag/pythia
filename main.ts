@@ -756,6 +756,27 @@ export default class PythiaPlugin extends Plugin {
 		const source = this.conversationStore.getById(sourceConvId);
 		if (!source) return;
 
+		// Resolve the summary before the fork is created so it's part of the
+		// new conversation's context from the moment it opens, rather than
+		// arriving asynchronously after the fact.
+		let summary = source.summaryText;
+		let summaryUpdatedAt = source.summaryUpdatedAt;
+		if (!summary && source.messages.length > 0) {
+			const notice = new Notice(t("generatingSummary"), 0);
+			try {
+				summary = await this.llmRouter.generateSummary(source);
+				if (summary) {
+					summaryUpdatedAt = new Date().toISOString();
+					source.summaryText = summary;
+					source.summaryUpdatedAt = summaryUpdatedAt;
+				}
+			} catch (e) {
+				new Notice(t("forkSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
+			} finally {
+				notice.hide();
+			}
+		}
+
 		const conv = await this.createConversation(
 			`Fork of ${source.name}`,
 			source.systemPrompt,
@@ -770,27 +791,14 @@ export default class PythiaPlugin extends Plugin {
 		conv.forkedFromId = sourceConvId;
 		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
 		if (selectedText) conv.forkedFromSelection = selectedText;
-		await this.saveConversations();
-
-		if (!source.summaryText && source.messages.length > 0) {
-			this.llmRouter.generateSummary(source).then(async (summary) => {
-				if (summary) {
-					source.summaryText = summary;
-					source.summaryUpdatedAt = new Date().toISOString();
-					await this.saveConversations();
-					const view = this.getSidebarView();
-					if (view?.getActiveConversationId() === conv.id) {
-						await view.renderForkBanner();
-					}
-				}
-			}).catch((e) => {
-				new Notice(t("forkSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
-			});
+		if (summary) {
+			conv.summaryText = summary;
+			conv.summaryUpdatedAt = summaryUpdatedAt;
 		}
+		await this.saveConversations();
 
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
-		view.prefillInput(selectedText);
 	}
 
 	private async cmdBrowseConversations(): Promise<void> {
