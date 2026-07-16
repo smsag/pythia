@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-07-11 — added PDF attachments as native document/file content blocks (Anthropic `DocumentBlockParam`, OpenAI `ChatCompletionContentPart.File`), dispatched by extension with no new persisted types; new `ContextBuilder.buildAttachedPdfs`, `messageUtils.arrayBufferToBase64` (Buffer-free for mobile), and a hardcoded 20 MB size guard (`MAX_PDF_FILE_SIZE_BYTES`) that skips oversized PDFs with a Notice rather than sending and failing mid-stream; `BaseProvider.resolveUserContent` now splits attachments by extension and each provider splices PDF blocks onto the last user message post-`normalizeMessages`; UI file pickers (`NoteSuggestModal`, `ui/InlineSuggest.ts`, `utils.ts`'s `getFilesInFolder`) widened to include `.pdf`, `suggest/FileSuggest.ts`'s base class deliberately left markdown-only. See ADR-041. Also added `effort` as a first-class parameter (global setting, template frontmatter, per-conversation override) alongside `temperature`, mapped to Anthropic's `output_config.effort` and OpenAI's `reasoning_effort`; both the global settings tab and the conversation settings modal now reactively disable (`Setting.setDisabled()`) the temperature/effort controls when the selected provider+model doesn't support them, closing the gap where the backend silently dropped unsupported values but the UI still showed the control as active. See ADR-040. Also fixed live 400s from the model catalog refresh: `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` reject the `temperature` parameter outright, but `AnthropicService.streamMessage` was still sending it whenever a conversation or global default temperature was set. Added `models/knownModels.ts`'s `supportsTemperature()` (mirrors the existing `isReasoningModel()` pattern) and gated `temperature` on it; refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
+*Last updated: 2026-07-11 — fork now awaits and carries the source conversation's summary over as context before opening (`cmdForkConversation` resolves `summaryText` synchronously, `generateSummary()` behind a loading Notice when uncached, no more fire-and-forget post-hoc update); the forked conversation's input box is no longer pre-filled with the text that triggered the fork; removed the now-dead `PythiaSidebarView.renderForkBanner()` wrapper (the private `renderForkBannerEl()` already renders on the fork's first paint via the normal message-rebuild path). See ADR-042. Also added PDF attachments as native document/file content blocks (Anthropic `DocumentBlockParam`, OpenAI `ChatCompletionContentPart.File`), dispatched by extension with no new persisted types; new `ContextBuilder.buildAttachedPdfs`, `messageUtils.arrayBufferToBase64` (Buffer-free for mobile), and a hardcoded 20 MB size guard (`MAX_PDF_FILE_SIZE_BYTES`) that skips oversized PDFs with a Notice rather than sending and failing mid-stream; `BaseProvider.resolveUserContent` now splits attachments by extension and each provider splices PDF blocks onto the last user message post-`normalizeMessages`; UI file pickers (`NoteSuggestModal`, `ui/InlineSuggest.ts`, `utils.ts`'s `getFilesInFolder`) widened to include `.pdf`, `suggest/FileSuggest.ts`'s base class deliberately left markdown-only. See ADR-041. Also added `effort` as a first-class parameter (global setting, template frontmatter, per-conversation override) alongside `temperature`, mapped to Anthropic's `output_config.effort` and OpenAI's `reasoning_effort`; both the global settings tab and the conversation settings modal now reactively disable (`Setting.setDisabled()`) the temperature/effort controls when the selected provider+model doesn't support them, closing the gap where the backend silently dropped unsupported values but the UI still showed the control as active. See ADR-040. Also fixed live 400s from the model catalog refresh: `claude-fable-5`/`claude-opus-4-8`/`claude-sonnet-5` reject the `temperature` parameter outright, but `AnthropicService.streamMessage` was still sending it whenever a conversation or global default temperature was set. Added `models/knownModels.ts`'s `supportsTemperature()` (mirrors the existing `isReasoningModel()` pattern) and gated `temperature` on it; refreshed the Anthropic model catalog in `models/knownModels.ts` (retired `claude-opus-4`/`claude-haiku-3-5` IDs swapped for `claude-opus-4-8`/`claude-haiku-4-5`, `claude-sonnet-4-6` bumped to `claude-sonnet-5`; `AnthropicService.fastModel` and `defaultAnthropicModel` updated to match); second-round bug-fix pass: second delete-guard gap closed, resume-mode/eviction/frontmatter/deep-link races fixed, eviction now protects every open sidebar leaf; bug-fix/reliability/observability/maintainability/performance pass: `models/knownModels.ts` (reasoning-model + model-list centralization), additive token/cache accounting, abort-signal capture, retry/tool-loop bounds, single-active-stream enforcement, `debugLog` convention, BaseProvider extraction extended; prompt-tag/marker centralization (`services/promptConstants.ts`); response-quality pass: resumeMode fix, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard + chunking, relevance-ranked note suggestions.*
 
 ---
 
@@ -242,6 +242,36 @@ Two paths share the same inline-edit UI in the header:
 **LLM-generated name** — clicking the sparkle button while in rename mode calls `LLMRouter.generateConversationTitle` with the first user and first assistant message content of the conversation (empty strings if none exist). On success the new name is saved and rename mode exits immediately. On failure a `Notice` is shown and the input remains open for manual editing.
 
 The rename flow lives entirely in `sidebar.ts` (`enterRenameMode`, `exitRenameMode`, `onRenameLLM`). No new modal is needed.
+
+### Forking a conversation
+
+Triggered by selecting text in an assistant message bubble and invoking the fork action (`sidebar.ts` → `plugin.cmdForkConversation(sourceConvId, selectedText, sourceMessageId)`). The fork is a new, message-less `Conversation` — it copies the source's `systemPrompt`/`provider`/`model`/`maxTokens`/`temperature`/`effort` but starts with empty `messages`/`contextNotes`.
+
+```
+cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId?) [main.ts]
+  → resolve summary BEFORE creating the fork, so it's part of the fork's
+    context from the moment it opens (not delivered asynchronously after):
+      — source.summaryText already cached → reuse it directly, no LLM call
+      — source has messages but no cached summary → await LLMRouter.generateSummary(source)
+          behind a Notice(t("generatingSummary"), 0) loading indicator;
+          cache the result on source (future forks/resumeMode:"summary" reuse it for free)
+      — source has no messages → no summary, nothing to carry
+  → createConversation(...) with the copied fields above
+  → conv.forkedFromId / forkedFromMessageId / forkedFromSelection set
+      (forkedFromSelection is display-only — it feeds the fork banner's
+      selection excerpt, sidebar.ts's renderForkBannerEl; it does NOT
+      pre-fill the new conversation's input box)
+  → conv.summaryText/summaryUpdatedAt set from the resolved summary, if any
+      — ContextBuilder.buildSystemPrompt() picks this up automatically on
+        every future send (a <previous_conversation_summary> tag), independent
+        of resumeMode; no extra wiring needed
+  → view.setActiveConversation(conv)
+      — this alone triggers a full message rebuild, which renders the fork
+        banner (conv.forkedFromId set) and the summary bar (conv.summaryText
+        set) correctly on first paint — no separate post-hoc refresh call
+```
+
+See ADR-042 for why summary resolution is awaited synchronously rather than fired in the background, and why the input box is deliberately left empty.
 
 ### Deep-link navigation (`obsidian://pythia`)
 

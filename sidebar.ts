@@ -841,17 +841,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		}
 	}
 
-	async renderForkBanner(): Promise<void> {
-		const existing = this.messagesEl.querySelector(".pythia-fork-banner");
-		if (existing) existing.remove();
-		this.renderForkBannerEl();
-		const firstChild = this.messagesEl.firstChild;
-		const fork = this.messagesEl.querySelector(".pythia-fork-banner");
-		if (fork && firstChild && fork !== firstChild) {
-			this.messagesEl.insertBefore(fork, firstChild);
-		}
-	}
-
 	private renderReferencePills(): void {
 		this.referencePillsEl.empty();
 		const conv = this.activeConversation;
