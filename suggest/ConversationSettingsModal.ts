@@ -7,25 +7,29 @@ import {
 	supportsEffort,
 	isReasoningModel,
 } from "../models/knownModels";
+import { resolveDefaultMaxTokens } from "../services/promptConstants";
 
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;
 	private onSave: (conversation: Conversation) => Promise<void>;
 	private defaultTemperature: number | undefined;
 	private defaultEffort: EffortLevel | undefined;
+	private defaultMaxTokens: number | undefined;
 
 	constructor(
 		app: App,
 		conversation: Conversation,
 		onSave: (conversation: Conversation) => Promise<void>,
 		defaultTemperature?: number,
-		defaultEffort?: EffortLevel
+		defaultEffort?: EffortLevel,
+		defaultMaxTokens?: number
 	) {
 		super(app);
 		this.conversation = conversation;
 		this.onSave = onSave;
 		this.defaultTemperature = defaultTemperature;
 		this.defaultEffort = defaultEffort;
+		this.defaultMaxTokens = defaultMaxTokens;
 	}
 
 	onOpen(): void {
@@ -150,6 +154,31 @@ export class ConversationSettingsModal extends Modal {
 				});
 			});
 
+		// Max tokens override — like temperature, defaults to the effective value
+		// (conversation override, else global default, else the model-aware
+		// resolved default); unlike temperature's slider, this is a text field so
+		// it can also represent "no override" by being cleared.
+		let maxTokensValue: number | undefined =
+			this.conversation.maxTokens ?? this.defaultMaxTokens ?? resolveDefaultMaxTokens(selectedModel);
+		new Setting(contentEl)
+			.setName(t("convMaxTokensLabel"))
+			.setDesc(t("convMaxTokensDesc"))
+			.addText((text) =>
+				text
+					.setValue(maxTokensValue !== undefined ? String(maxTokensValue) : "")
+					.onChange((value) => {
+						const trimmed = value.trim();
+						if (trimmed === "") {
+							maxTokensValue = undefined;
+							return;
+						}
+						const n = parseInt(trimmed, 10);
+						if (!isNaN(n) && n > 0) {
+							maxTokensValue = n;
+						}
+					})
+			);
+
 		updateParamAvailability = (): void => {
 			const tempSupported = selectedProvider === "anthropic"
 				? supportsTemperature(selectedModel)
@@ -185,6 +214,7 @@ export class ConversationSettingsModal extends Modal {
 						this.conversation.model = selectedModel;
 						this.conversation.temperature = temperatureValue;
 						this.conversation.effort = effortValue === "" ? undefined : effortValue;
+						this.conversation.maxTokens = maxTokensValue;
 						await this.onSave(this.conversation);
 						this.close();
 					})

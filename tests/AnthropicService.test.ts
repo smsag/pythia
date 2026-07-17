@@ -227,6 +227,59 @@ describe("AnthropicService — effort gating", () => {
 	});
 });
 
+describe("AnthropicService — maxTokens resolution", () => {
+	it("uses conversation.maxTokens when set, regardless of settings or model", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ maxTokens: 2000 }), "key");
+		await provider.streamMessage(
+			makeConv({ maxTokens: 500, model: "claude-sonnet-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ max_tokens: 500 });
+	});
+
+	it("falls back to settings.maxTokens when the conversation has no override", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings({ maxTokens: 2000 }), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-sonnet-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ max_tokens: 2000 });
+	});
+
+	it("falls back to the model-aware default when neither conversation nor settings specify one", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["hi"], {
+				content: [{ type: "text", text: "hi" }],
+				stop_reason: "end_turn",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+
+		const provider = new AnthropicService({} as never, makeSettings(), "key");
+		await provider.streamMessage(
+			makeConv({ model: "claude-sonnet-5" }), "hi", [], () => {}, () => {}, () => {}
+		);
+
+		expect(streamMock.mock.calls[0][0]).toMatchObject({ max_tokens: 8192 });
+	});
+});
+
 describe("AnthropicService — PDF attachments", () => {
 	it("splices a document content block onto the final user message when a PDF is attached", async () => {
 		streamMock.mockReturnValueOnce(

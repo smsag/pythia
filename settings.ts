@@ -5,6 +5,7 @@ import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { t } from "./i18n";
 import { KNOWN_MODELS, supportsTemperature, supportsEffort, isReasoningModel } from "./models/knownModels";
+import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
 // that service modules can import them without pulling in the Obsidian UI layer.
@@ -172,6 +173,28 @@ export class PythiaSettingTab extends PluginSettingTab {
 							| "full"
 							| "summary";
 						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("maxTokensName"))
+			.setDesc(t("maxTokensDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder(String(DEFAULT_MAX_TOKENS))
+					.setValue(this.plugin.settings.maxTokens?.toString() ?? "")
+					.onChange(async (value) => {
+						const trimmed = value.trim();
+						if (trimmed === "") {
+							this.plugin.settings.maxTokens = undefined;
+							await this.plugin.saveSettings();
+							return;
+						}
+						const n = parseInt(trimmed, 10);
+						if (!isNaN(n) && n > 0) {
+							this.plugin.settings.maxTokens = n;
+							await this.plugin.saveSettings();
+						}
 					})
 			);
 

@@ -169,6 +169,77 @@ describe("OpenAIProvider — effort gating", () => {
 	});
 });
 
+describe("OpenAIProvider — maxTokens resolution", () => {
+	it("uses conversation.maxTokens when set, regardless of settings or model", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ maxTokens: 2000 }), "key");
+		const conv = makeConv({ maxTokens: 500, model: "gpt-4o" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.max_tokens).toBe(500);
+	});
+
+	it("falls back to settings.maxTokens when the conversation has no override", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ maxTokens: 2000 }), "key");
+		const conv = makeConv({ model: "gpt-4o" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.max_tokens).toBe(2000);
+	});
+
+	it("falls back to the general default for a non-reasoning model with no override", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		const conv = makeConv({ model: "gpt-4o" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.max_tokens).toBe(8192);
+	});
+
+	it("uses max_completion_tokens with the larger reasoning-model default for a reasoning model with no override", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ defaultOpenAIModel: "o4-mini" }), "key");
+		const conv = makeConv({ model: "o4-mini" });
+
+		await provider.streamMessage(conv, "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.max_completion_tokens).toBe(16384);
+		expect(args.max_tokens).toBeUndefined();
+	});
+});
+
 describe("OpenAIProvider — PDF attachments", () => {
 	it("splices a file content part onto the final user message when a PDF is attached", async () => {
 		createMock.mockImplementation(async () =>

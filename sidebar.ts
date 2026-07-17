@@ -1526,7 +1526,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				this.updateModelBadge();
 			},
 			this.plugin.settings.temperature,
-			this.plugin.settings.effort
+			this.plugin.settings.effort,
+			this.plugin.settings.maxTokens
 		).open();
 	}
 

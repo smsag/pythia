@@ -32,6 +32,8 @@ export interface PythiaSettings {
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
 	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
+	/** Default max-output-tokens sent to both providers. Undefined = use the model-aware default (services/promptConstants.ts). */
+	maxTokens?: number;
 	/** Default sampling temperature (0–1) sent to both providers. Undefined = use the API's own default. */
 	temperature?: number;
 	/** Default reasoning/output effort sent to models that support it. Undefined = use the API's own default. */

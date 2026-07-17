@@ -8,7 +8,7 @@ import { getToolDefinitions } from "./ToolHandler";
 import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
-import { DEFAULT_MAX_TOKENS } from "./promptConstants";
+import { resolveDefaultMaxTokens } from "./promptConstants";
 import { supportsTemperature, supportsEffort } from "../models/knownModels";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
@@ -112,7 +112,7 @@ export class AnthropicService extends BaseProvider {
 			).map((m) => ({ role: m.role, content: m.content }));
 
 			const model = this.resolveModel(conversation.model);
-			const maxTokens = conversation.maxTokens ?? DEFAULT_MAX_TOKENS;
+			const maxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(model);
 			const requestedTemperature = conversation.temperature ?? this.settings.temperature;
 			const temperature = supportsTemperature(model) ? requestedTemperature : undefined;
 			const requestedEffort = conversation.effort ?? this.settings.effort;
