@@ -9,7 +9,7 @@ import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtil
 import { BaseProvider } from "./BaseProvider";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { isReasoningModel } from "../models/knownModels";
-import { DEFAULT_MAX_TOKENS } from "./promptConstants";
+import { resolveDefaultMaxTokens } from "./promptConstants";
 
 type OAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -114,6 +114,7 @@ export class OpenAIProvider extends BaseProvider {
 			const reasoningEffort = requestedEffort !== undefined && isReasoningModel(model)
 				? requestedEffort
 				: undefined;
+			const maxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(model);
 
 			// Exclude the last message — already pushed by the caller; sending it
 			// again in history would duplicate it. In "summary" resume mode, skip
@@ -210,8 +211,8 @@ export class OpenAIProvider extends BaseProvider {
 							{
 								model,
 								...(noSystemRole
-									? { max_completion_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }
-									: { max_tokens: conversation.maxTokens ?? DEFAULT_MAX_TOKENS }),
+									? { max_completion_tokens: maxTokens }
+									: { max_tokens: maxTokens }),
 								...(temperature !== undefined ? { temperature } : {}),
 								...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
 								messages: loopMessages,
