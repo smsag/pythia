@@ -6,6 +6,8 @@ import {
 	supportsTemperature,
 	supportsEffort,
 	isReasoningModel,
+	isMistralReasoningModel,
+	supportsMistralEffort,
 } from "../models/knownModels";
 import { resolveDefaultMaxTokens } from "../services/promptConstants";
 
@@ -76,6 +78,7 @@ export class ConversationSettingsModal extends Modal {
 			.addDropdown((drop) => {
 				drop.addOption("anthropic", t("providerAnthropic"));
 				drop.addOption("openai", t("providerOpenAI"));
+				drop.addOption("mistral", t("providerMistral"));
 				drop.setValue(selectedProvider);
 				drop.onChange((value) => {
 					selectedProvider = value as Provider;
@@ -180,12 +183,26 @@ export class ConversationSettingsModal extends Modal {
 			);
 
 		updateParamAvailability = (): void => {
-			const tempSupported = selectedProvider === "anthropic"
-				? supportsTemperature(selectedModel)
-				: !isReasoningModel(selectedModel);
-			const effortSupported = selectedProvider === "anthropic"
-				? supportsEffort(selectedModel)
-				: isReasoningModel(selectedModel);
+			let tempSupported: boolean;
+			let effortSupported: boolean;
+			switch (selectedProvider) {
+				case "anthropic":
+					tempSupported = supportsTemperature(selectedModel);
+					effortSupported = supportsEffort(selectedModel);
+					break;
+				case "openai":
+					tempSupported = !isReasoningModel(selectedModel);
+					effortSupported = isReasoningModel(selectedModel);
+					break;
+				case "mistral":
+					tempSupported = !isMistralReasoningModel(selectedModel);
+					effortSupported = supportsMistralEffort(selectedModel);
+					break;
+				default: {
+					const exhaustiveCheck: never = selectedProvider;
+					throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
+				}
+			}
 
 			temperatureSetting.setDisabled(!tempSupported);
 			temperatureSetting.setDesc(tempSupported ? t("convTemperatureDesc") : `${t("convTemperatureDesc")} ${t("paramUnsupportedSuffix")}`);

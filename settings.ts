@@ -4,7 +4,15 @@ import type { Provider, EffortLevel } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { t } from "./i18n";
-import { KNOWN_MODELS, supportsTemperature, supportsEffort, isReasoningModel } from "./models/knownModels";
+import {
+	KNOWN_MODELS,
+	supportsTemperature,
+	supportsEffort,
+	isReasoningModel,
+	isMistralReasoningModel,
+	supportsMistralEffort,
+	resolveDefaultModelForProvider,
+} from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
@@ -14,6 +22,7 @@ import type { PythiaSettings } from "./models/settings";
 
 const ANTHROPIC_MODELS = KNOWN_MODELS.anthropic;
 const OPENAI_MODELS = KNOWN_MODELS.openai;
+const MISTRAL_MODELS = KNOWN_MODELS.mistral;
 
 export class PythiaSettingTab extends PluginSettingTab {
 	private plugin: PythiaPlugin;
@@ -93,6 +102,32 @@ export class PythiaSettingTab extends PluginSettingTab {
 			refreshTempEffortAvailability
 		);
 
+		containerEl.createEl("h3", { text: t("mistralSection") });
+
+		new Setting(containerEl)
+			.setName(t("mistralKeyName"))
+			.setDesc(t("mistralKeyDesc"))
+			.addComponent((el) =>
+				new SecretComponent(this.app, el)
+					.setValue(this.plugin.settings.mistralSecretName)
+					.onChange(async (secretName) => {
+						await this.plugin.setMistralKey(secretName);
+					})
+			);
+
+		this.addModelSetting(
+			containerEl,
+			t("defaultMistralModel"),
+			t("defaultMistralModelDesc"),
+			MISTRAL_MODELS,
+			() => this.plugin.settings.defaultMistralModel,
+			async (value) => {
+				this.plugin.settings.defaultMistralModel = value;
+				await this.plugin.saveSettings();
+			},
+			refreshTempEffortAvailability
+		);
+
 		containerEl.createEl("h3", { text: t("defaultsSection") });
 
 		new Setting(containerEl)
@@ -102,6 +137,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 				drop
 					.addOption("anthropic", t("providerAnthropic"))
 					.addOption("openai", t("providerOpenAI"))
+					.addOption("mistral", t("providerMistral"))
 					.setValue(this.plugin.settings.defaultProvider)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultProvider = value as Provider;
@@ -385,12 +421,28 @@ export class PythiaSettingTab extends PluginSettingTab {
 	// new conversations get when created with current defaults.
 	private updateTempEffortAvailability(temperatureSetting: Setting, effortSetting: Setting): void {
 		const provider = this.plugin.settings.defaultProvider;
-		const model = provider === "openai"
-			? this.plugin.settings.defaultOpenAIModel
-			: this.plugin.settings.defaultAnthropicModel;
+		const model = resolveDefaultModelForProvider(provider, this.plugin.settings);
 
-		const tempSupported = provider === "anthropic" ? supportsTemperature(model) : !isReasoningModel(model);
-		const effortSupported = provider === "anthropic" ? supportsEffort(model) : isReasoningModel(model);
+		let tempSupported: boolean;
+		let effortSupported: boolean;
+		switch (provider) {
+			case "anthropic":
+				tempSupported = supportsTemperature(model);
+				effortSupported = supportsEffort(model);
+				break;
+			case "openai":
+				tempSupported = !isReasoningModel(model);
+				effortSupported = isReasoningModel(model);
+				break;
+			case "mistral":
+				tempSupported = !isMistralReasoningModel(model);
+				effortSupported = supportsMistralEffort(model);
+				break;
+			default: {
+				const exhaustiveCheck: never = provider;
+				throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
+			}
+		}
 
 		temperatureSetting.setDisabled(!tempSupported);
 		temperatureSetting.setDesc(tempSupported ? t("temperatureDesc") : `${t("temperatureDesc")} ${t("paramUnsupportedSuffix")}`);

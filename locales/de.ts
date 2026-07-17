@@ -155,6 +155,8 @@ const de: Strings = {
 	// ── Services ──────────────────────────────────────────────────────────────
 	anthropicKeyNotConfigured: "Anthropic-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
 	openaiKeyNotConfigured:    "OpenAI-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
+	mistralKeyNotConfigured:   "Mistral-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
+	mistralPdfUnsupported:     "Warnung: {{count}} PDF(s) nicht gesendet — PDF-Anhänge werden für Mistral noch nicht unterstützt.",
 	contextNotesWarning:       "Warnung: {{count}} Kontextnotiz(en) nicht gefunden und übersprungen.",
 	oversizedPdfWarning:       "Warnung: {{count}} PDF(s) überschreiten die Größenbegrenzung und wurden übersprungen.",
 
@@ -162,6 +164,7 @@ const de: Strings = {
 	settingsTitle:           "Pythia",
 	anthropicSection:        "Anthropic",
 	openaiSection:           "OpenAI",
+	mistralSection:          "Mistral",
 	defaultsSection:         "Standardwerte",
 	vaultFoldersSection:     "Vault-Ordner",
 	behaviourSection:        "Verhalten",
@@ -174,6 +177,10 @@ const de: Strings = {
 	openaiKeyDesc:           "Wähle ein Geheimnis aus Obsidians Secret Storage. Schlüssel werden nie als Klartext in data.json gespeichert.",
 	defaultOpenAIModel:      "Standard-OpenAI-Modell",
 	defaultOpenAIModelDesc:  "Wird verwendet, wenn eine Vorlage kein Modell angibt.",
+	mistralKeyName:          "Mistral-API-Schlüssel",
+	mistralKeyDesc:          "Wähle ein Geheimnis aus Obsidians Secret Storage. Schlüssel werden nie als Klartext in data.json gespeichert.",
+	defaultMistralModel:     "Standard-Mistral-Modell",
+	defaultMistralModelDesc: "Wird verwendet, wenn eine Vorlage kein Modell angibt.",
 	defaultProviderName:     "Standardanbieter",
 	defaultProviderDesc:     "Anbieter für neue Gespräche ohne Vorlage.",
 	templatesFolderName:     "Vorlagenordner",
@@ -221,6 +228,7 @@ const de: Strings = {
 	customModelOption:       "Benutzerdefiniert…",
 	providerAnthropic:       "Anthropic",
 	providerOpenAI:          "OpenAI",
+	providerMistral:         "Mistral",
 
 	// ── Prompt optimizer ─────────────────────────────────────────────────────
 	cmdNewConversationFromPrompt:     "Neue Unterhaltung aus Prompt",

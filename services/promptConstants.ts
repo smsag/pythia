@@ -15,7 +15,7 @@
  * that file.
  */
 
-import { isReasoningModel } from "../models/knownModels";
+import { isReasoningModel, isMistralReasoningModel } from "../models/knownModels";
 
 export const SYSTEM_PROMPT_TAG = "system_prompt";
 export const PREVIOUS_SUMMARY_TAG = "previous_conversation_summary";
@@ -36,7 +36,9 @@ export const DEFAULT_MAX_TOKENS = 8192;
 export const DEFAULT_MAX_TOKENS_REASONING = 16384;
 
 export function resolveDefaultMaxTokens(model: string): number {
-	return isReasoningModel(model) ? DEFAULT_MAX_TOKENS_REASONING : DEFAULT_MAX_TOKENS;
+	return isReasoningModel(model) || isMistralReasoningModel(model)
+		? DEFAULT_MAX_TOKENS_REASONING
+		: DEFAULT_MAX_TOKENS;
 }
 
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size

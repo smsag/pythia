@@ -38,7 +38,7 @@ export class TemplateLoader {
 
 			const rawProvider = fm.provider;
 			const validProvider: Provider | undefined =
-				rawProvider === "anthropic" || rawProvider === "openai"
+				rawProvider === "anthropic" || rawProvider === "openai" || rawProvider === "mistral"
 					? rawProvider
 					: undefined;
 

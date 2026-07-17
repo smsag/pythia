@@ -1,4 +1,5 @@
 import type { Provider } from "./types";
+import type { PythiaSettings } from "./settings";
 
 /**
  * Single source of truth for known model IDs per provider. Previously
@@ -12,7 +13,43 @@ import type { Provider } from "./types";
 export const KNOWN_MODELS: Record<Provider, string[]> = {
 	anthropic: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
 	openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"],
+	mistral: ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "magistral-medium-latest"],
 };
+
+/**
+ * Single source of truth for "which default-model setting applies to this
+ * provider" — an exhaustive switch (not a two-way ternary) so that adding a
+ * fourth provider fails to compile here instead of silently falling through
+ * to an existing provider's default, the exact bug class this function
+ * replaces (main.ts's createConversation() used to resolve this with
+ * `provider === "openai" ? settings.defaultOpenAIModel : settings.defaultAnthropicModel`,
+ * which would have silently given Mistral conversations the Anthropic default).
+ */
+export function resolveDefaultModelForProvider(provider: Provider, settings: PythiaSettings): string {
+	switch (provider) {
+		case "anthropic":
+			return settings.defaultAnthropicModel;
+		case "openai":
+			return settings.defaultOpenAIModel;
+		case "mistral":
+			return settings.defaultMistralModel;
+		default: {
+			const exhaustiveCheck: never = provider;
+			throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
+		}
+	}
+}
+
+/**
+ * Mistral's reasoning line (Magistral). Like OpenAI's o-series, these spend
+ * tokens on internal reasoning from the same budget as visible output —
+ * gated the same way via resolveDefaultMaxTokens() in promptConstants.ts.
+ */
+export const MISTRAL_REASONING_MODELS = new Set(["magistral-medium-latest", "magistral-small-latest"]);
+
+export function isMistralReasoningModel(model: string): boolean {
+	return MISTRAL_REASONING_MODELS.has(model) || model.startsWith("magistral-");
+}
 
 /**
  * OpenAI reasoning models (o-series). These reject a `system`-role message
@@ -65,6 +102,17 @@ export function supportsEffort(model: string): boolean {
 	return ANTHROPIC_EFFORT_MODELS.has(model);
 }
 
+/**
+ * Mistral's `reasoningEffort` request field has no per-model restriction
+ * encoded anywhere in the installed SDK's types (confirmed by direct
+ * inspection) — unlike OpenAI's `reasoning_effort`, which is genuinely
+ * rejected outside the o-series. Treated as universally available rather
+ * than gated to an allow-list built from an unverified assumption.
+ */
+export function supportsMistralEffort(_model: string): boolean {
+	return true;
+}
+
 export const MODEL_ABBREVIATIONS: Record<string, string> = {
 	"claude-fable-5":  "Fable 5",
 	"claude-opus-4-8": "Opus 4.8",
@@ -75,4 +123,8 @@ export const MODEL_ABBREVIATIONS: Record<string, string> = {
 	"o3":                "o3",
 	"o3-mini":           "o3 mini",
 	"o4-mini":           "o4 mini",
+	"mistral-large-latest":   "Mistral Large",
+	"mistral-small-latest":   "Mistral Small",
+	"codestral-latest":       "Codestral",
+	"magistral-medium-latest": "Magistral Medium",
 };
