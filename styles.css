@@ -656,36 +656,55 @@
 }
 .p-ai-body li,
 .p-summary-panel-body li { font-size: var(--font-small); }
+/* Blockquotes (LLM-quoted text) — neutral divider bar, no accent (accent is
+   reserved for interactive/active elements), no italic, no background box:
+   the wrapper stays "plain text, no container" — anything nested inside
+   (e.g. a fenced code block) still gets its own .p-code-frame box. */
+.p-ai-body blockquote,
+.p-summary-panel-body blockquote {
+  margin: var(--s1) 0;
+  padding-left: var(--s3);
+  border-left: 3px solid var(--background-modifier-border);
+  font-style: normal;
+  color: var(--text-muted);
+}
 /* Summary panel pre: unchanged positioning */
 .p-summary-panel-body pre {
   position: relative;
-  background: var(--code-background);
+  background: var(--background-secondary);
   border-radius: 6px;
   padding: 8px 10px;
   overflow-x: auto;
   font-size: 0.88em;
+  font-family: var(--font-monospace);
   margin: var(--s1) 0;
 }
 
-/* AI message code blocks: wrapped in .p-code-frame, no own margin/position */
+/* AI message code blocks: wrapped in .p-code-frame, no own margin/position.
+   Background/border/radius match the app's other "framed content box"
+   components (.pythia-tool-call, .p-msg-optimize-result) — same token
+   formula, same visual family. */
 .p-code-frame {
   position: relative;
   margin: var(--s1) 0;
 }
 .p-code-frame > pre {
-  background: var(--code-background);
+  background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  padding: 8px 10px;
+  /* Extra top padding reserves a clear strip for the always-visible
+     .p-code-type-icon so it never overlaps the first line of code. */
+  padding: 22px 10px 8px;
   overflow-x: auto;
   font-size: 0.88em;
+  font-family: var(--font-monospace);
   margin: 0;
   max-width: 100%;
   min-width: 0;
   cursor: grab;
   /* Thin scrollbar — visible as affordance, not obtrusive */
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
 }
 .p-code-frame > pre::-webkit-scrollbar        { height: 4px; }
 .p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
@@ -708,7 +727,7 @@
   margin: var(--s1) 0;
   cursor: grab;
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
 }
 .p-ai-body [class*='block-language-']::-webkit-scrollbar       { height: 4px; }
 .p-ai-body [class*='block-language-']::-webkit-scrollbar-track { background: transparent; }
@@ -732,7 +751,7 @@
   margin: var(--s1) 0;
   cursor: grab;
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-bg, rgba(128,128,128,0.25)) transparent;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
 }
 .p-scroll-frame::-webkit-scrollbar        { height: 4px; }
 .p-scroll-frame::-webkit-scrollbar-track  { background: transparent; }
@@ -765,12 +784,39 @@
   color: var(--text-faint);
   transition: color 0.15s, background 0.15s;
 }
+/* Fix the icon glyph itself, not just the hit area — otherwise the "copy"
+   and "check" (copy-confirmed) icons setIcon() swaps between can render at
+   visibly different sizes, since Lucide glyphs don't share one proportion. */
+.p-code-btn svg {
+  width: 14px;
+  height: 14px;
+}
 .p-code-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
+/* Confirmation feedback uses accent (the app's existing token for
+   interactive/confirmation states — send button, hover states), not green:
+   this is a momentary click acknowledgment, not one of the app's few
+   persistent semantic-color states (bookmark/error/done-link). */
 .p-code-copy.copied {
-  color: var(--color-green);
+  color: var(--color-accent);
+}
+
+/* Code-block type indicator: pinned to the top-left corner, mirroring the
+   copy button's top-right position. Unlike the copy button this is a
+   permanent label, not an interactive affordance — no hover/opacity
+   treatment, no button semantics. */
+.p-code-type-icon {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  color: var(--text-faint);
+}
+.p-code-type-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Diagram copy button: pinned to the top-right corner INSIDE the container.
@@ -801,6 +847,17 @@
 
 .p-ai-body code,
 .p-summary-panel-body code { font-size: 0.88em; }
+
+/* Inline single-backtick code — same background token as block code
+   (.p-code-frame > pre), scoped off code already inside a <pre> so the two
+   backgrounds don't stack. */
+.p-ai-body code:not(pre code),
+.p-summary-panel-body code:not(pre code) {
+  background: var(--background-secondary);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: var(--font-monospace);
+}
 
 /* ── Token line (v3) ────────────────────────────────────────── */
 .p-tokens {

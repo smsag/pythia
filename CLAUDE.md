@@ -45,8 +45,6 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
-    pythia-v3.html            ← living visual reference — open in browser before any UI work
-    design-system.css         ← CSS token definitions and component styles
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
@@ -146,7 +144,7 @@ await MarkdownRenderer.render(
 );
 ```
 
-**Exception:** Icon buttons defined in the design system (attach, save, sparkle ✦, `#` navigator) use inline SVG as specified in `design-system.css`. Only Obsidian chrome icons (trash, plus, etc.) use `setIcon`.
+**Exception:** Icon buttons defined in the design system (attach, save, sparkle ✦, `#` navigator) use inline SVG as specified in `docs/design.md`. Only Obsidian chrome icons (trash, plus, etc.) use `setIcon`.
 
 ### Modals and dialogs
 
@@ -169,8 +167,7 @@ this.registerEvent(this.app.vault.on("modify", () => { … }));
 
 ## Design system
 
-**Visual reference:** `docs/pythia-v3.html` — open in browser before any UI work.
-**Token definitions:** `docs/design-system.css`
+**Source of truth:** `docs/design.md` — component inventory, CSS tokens, and spacing/typography rules. Read it before any UI work.
 
 This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not like a standalone app embedded in a panel.
 

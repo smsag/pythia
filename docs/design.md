@@ -1,8 +1,10 @@
 # Pythia — Design System
 
-*Last updated: 2026-07-10 (session) — temperature slider; input-area minimize reworked (persistent toolbar, reference row folded in, expand-and-act icons); summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
+*Last updated: 2026-07-17 — code-block/blockquote design-system fix: `.p-code-frame` background unified to `var(--background-secondary)` (matching the tool-call chip/optimizer-result "framed box" convention), new blockquote styling, new persistent code-type icon, copy-confirmed icon color changed from green to accent. See ADR-046.*
 
-Visual reference: `docs/pythia-v3.html` — open in browser before any UI work.
+*Previously, 2026-07-10 — temperature slider; input-area minimize reworked (persistent toolbar, reference row folded in, expand-and-act icons); summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
+
+This document is the source of truth for Pythia's design system — component inventory, CSS tokens, spacing/typography rules. Read it before any UI work.
 
 ---
 
@@ -18,16 +20,16 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 
 | Token | Usage |
 |---|---|
-| `--color-accent` | User bubble background, pill borders, send button |
+| `--color-accent` | User bubble background, pill borders, send button, copy-confirmed icon |
 | `--text-normal` | Primary readable text, AI response body |
-| `--text-muted` | Secondary text |
-| `--text-faint` | Labels, badges, token counts, inactive icons |
+| `--text-muted` | Secondary text, blockquote text |
+| `--text-faint` | Labels, badges, token counts, inactive icons, code-block type icon |
 | `--text-on-accent` | Text on accent-coloured surfaces (user bubble) |
 | `--background-primary` | Panel background, input area |
-| `--background-secondary` | Summary bar background |
-| `--background-modifier-border` | All dividers and borders |
+| `--background-secondary` | Summary bar background; framed content boxes (tool-call chip, optimizer result, code blocks, inline code) |
+| `--background-modifier-border` | All dividers and borders, including the blockquote left bar |
 | `--background-modifier-hover` | Button hover states |
-| `--color-green` | Copied-to-clipboard confirmation on copy button |
+| `--color-green` | Tool-call "done" link text (a persistent semantic state — not used for momentary click feedback like copy-confirmation) |
 
 For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a plain `var(--color-accent)` fallback on the preceding line for Chromium < 111.
 
@@ -141,9 +143,17 @@ Messages longer than **280 characters** render collapsed to ~3 lines with a fade
 
 Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay.
 
+### Blockquote
+
+LLM-quoted text: `border-left: 3px solid var(--background-modifier-border)` (neutral divider token — **not** `--color-accent`, which is reserved for interactive/active elements), `padding-left: var(--s3)`, `color: var(--text-muted)`, `font-style: normal` (overrides Obsidian's default italic — this app never uses italics). No background/box on the wrapper itself, consistent with "AI message: plain text, no container." Content nested inside (e.g. a fenced code block) still gets its own `.p-code-frame` box, unaffected by the blockquote's own styling.
+
+### Code block frame (`.p-code-frame`)
+
+Background `var(--background-secondary)`, `border: 1px solid var(--background-modifier-border)`, `border-radius: 6px` — the same background+border+radius formula as the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`), not a bespoke code-specific token. `font-family: var(--font-monospace)` set explicitly. A persistent `.p-code-type-icon` (Lucide `code-2`, `--text-faint`, top-left, always visible — not a hover-reveal like the copy button) labels the block as code; the frame's top padding is widened to keep it clear of the first line of code.
+
 ### Code block copy button
 
-`.p-code-actions`: `position: absolute; top: 4px; right: 4px` on the frame. Opacity 0, reveals on `.p-code-frame:hover`. On touch: always visible via `@media (hover: none)`.
+`.p-code-actions`: `position: absolute; top: 4px; right: 4px` on the frame. Opacity 0, reveals on `.p-code-frame:hover`. On touch: always visible via `@media (hover: none)`. The icon glyph itself is fixed at `14×14px` (`.p-code-btn svg`) so the "copy" and "check" (copy-confirmed) icons render at identical size when swapped. Copy-confirmed color is `var(--color-accent)` — not green; green is reserved elsewhere in this app for a few persistent semantic states (tool error/done), not a momentary click acknowledgment.
 
 ### Diagram blocks (Mermaid, PlantUML, Vega, …)
 
