@@ -1137,6 +1137,11 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				return `\`\`\`${lang}\n${raw}\n\`\`\``;
 			};
 
+			// Persistent "this is code" glyph, top-left — unlike the copy button
+			// this is a label, not an affordance, so it's always visible and
+			// has no click handler.
+			setIcon(frame.createEl("span", { cls: "p-code-type-icon" }), "code-2");
+
 			// Copy button lives on the frame so it stays fixed while the pre scrolls.
 			const actions = frame.createEl("div", { cls: "p-code-actions" });
 			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
