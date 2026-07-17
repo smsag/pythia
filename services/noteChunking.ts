@@ -1,4 +1,4 @@
-import { scoreRelevanceTokens, tokenize } from "./noteRelevance";
+import { scoreRelevanceTokensWeighted, tokenize } from "./noteRelevance";
 
 /** Notes longer than this are chunked and filtered instead of inlined whole. */
 export const NOTE_CHUNK_THRESHOLD_CHARS = 4000;
@@ -53,8 +53,10 @@ export function selectRelevantChunks(
 	if (chunks.length <= 1) return { text: content, isExcerpt: false };
 
 	const queryTokens = tokenize(query);
+	const haystacks = chunks.map((c) => `${c.heading} ${c.text}`);
+	const scores = scoreRelevanceTokensWeighted(queryTokens, haystacks);
 	const ranked = chunks
-		.map((c) => ({ ...c, score: scoreRelevanceTokens(queryTokens, `${c.heading} ${c.text}`) }))
+		.map((c, i) => ({ ...c, score: scores[i] }))
 		.sort((a, b) => b.score - a.score);
 
 	const kept: typeof ranked = [];

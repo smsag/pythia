@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
-import { scoreRelevanceTokens, tokenize } from "../services/noteRelevance";
+import { scoreRelevanceTokensWeighted, tokenize } from "../services/noteRelevance";
 
 export class InlineSuggest {
 	private app: App;
@@ -92,14 +92,14 @@ export class InlineSuggest {
 		// doesn't narrow things down (or several notes match it equally) the topically
 		// relevant ones surface first instead of arbitrary vault order.
 		const contextTokens = tokenize(context);
-		const matchingFiles = this.app.vault.getFiles()
+		const candidates = this.app.vault.getFiles()
 			.filter((f) => f.extension === "md" || f.extension === "pdf")
-			.filter((f) => q === "" || f.path.toLowerCase().includes(q))
-			.map((f) => ({
+			.filter((f) => q === "" || f.path.toLowerCase().includes(q));
+		const scores = scoreRelevanceTokensWeighted(contextTokens, candidates.map((f) => this.noteHaystack(f)));
+		const matchingFiles = candidates
+			.map((f, i) => ({
 				file: f,
-				score:
-					(f.basename.toLowerCase().includes(q) ? 1000 : 0) +
-					scoreRelevanceTokens(contextTokens, this.noteHaystack(f)),
+				score: (f.basename.toLowerCase().includes(q) ? 1000 : 0) + scores[i],
 			}))
 			.sort((a, b) => b.score - a.score)
 			.slice(0, 8 - matchingFolders.length)

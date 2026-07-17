@@ -72,4 +72,35 @@ describe("selectRelevantChunks", () => {
 		expect(firstIdx).toBeGreaterThanOrEqual(0);
 		expect(secondIdx).toBeGreaterThan(firstIdx);
 	});
+
+	it("regression: a token unique to the relevant section beats generic terms shared by several unrelated ones", () => {
+		// 5 distractor sections share "user"/"solution" with the query (and with
+		// each other) but never mention "story"; the one relevant section shares
+		// only "user" plus the single distinctive token "story". Under a flat,
+		// unweighted count both groups tie at 2 matched tokens each, and a stable
+		// sort would keep the first-positioned distractor over the
+		// last-positioned relevant section — reproducing the real bug (a long
+		// reference doc excerpting a plausible-looking but wrong framework
+		// section). IDF weighting must give "story" (df=1 of 6) far more weight
+		// than "user"/"solution" (df=6 and df=5 of 6), so the relevant section
+		// wins outright instead of losing a tie-break on document position.
+		const distractorHeadings = [
+			"Opportunity Canvas",
+			"Lean UX Canvas",
+			"Value Proposition Canvas",
+			"Business Model Canvas",
+			"Lean Canvas",
+		];
+		const distractors = distractorHeadings
+			.map((h) => `# ${h}\nuser solution content for this framework.`)
+			.join("\n\n");
+		const md = `${distractors}\n\n# User Story Map\nuser story content for this framework.`;
+
+		// A tight budget keeps only the single top-ranked chunk, so this
+		// directly asserts which section wins the ranking, not just that it
+		// survives alongside others.
+		const result = selectRelevantChunks(md, "user solution story", 40);
+		expect(result.isExcerpt).toBe(true);
+		expect(result.text).toContain("User Story Map");
+	});
 });
