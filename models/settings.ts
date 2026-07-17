@@ -5,12 +5,16 @@ export interface PythiaSettings {
 	anthropicSecretName: string;
 	/** Secret ID referencing the OpenAI API key in Obsidian SecretStorage. */
 	openaiSecretName: string;
+	/** Secret ID referencing the Mistral API key in Obsidian SecretStorage. */
+	mistralSecretName: string;
 	/** Which provider to use when creating new conversations. */
 	defaultProvider: Provider;
 	/** Default Anthropic model (used when template does not specify one). */
 	defaultAnthropicModel: string;
 	/** Default OpenAI model (used when template does not specify one). */
 	defaultOpenAIModel: string;
+	/** Default Mistral model (used when template does not specify one). */
+	defaultMistralModel: string;
 	templatesFolder: string;
 	conversationsFolder: string;
 	scratchFolder: string;
@@ -45,9 +49,11 @@ export interface PythiaSettings {
 export const DEFAULT_SETTINGS: PythiaSettings = {
 	anthropicSecretName: "pythia-anthropic",
 	openaiSecretName: "pythia-openai",
+	mistralSecretName: "pythia-mistral",
 	defaultProvider: "anthropic",
 	defaultAnthropicModel: "claude-sonnet-5",
 	defaultOpenAIModel: "gpt-4o",
+	defaultMistralModel: "mistral-large-latest",
 	templatesFolder: "Pythia/Templates",
 	conversationsFolder: "Pythia/Conversations",
 	scratchFolder: "Pythia/Scratch",

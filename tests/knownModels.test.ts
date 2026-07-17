@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { KNOWN_MODELS, REASONING_MODELS, isReasoningModel, MODEL_ABBREVIATIONS, supportsEffort } from "../models/knownModels";
+import {
+	KNOWN_MODELS,
+	REASONING_MODELS,
+	isReasoningModel,
+	MODEL_ABBREVIATIONS,
+	supportsEffort,
+	isMistralReasoningModel,
+	supportsMistralEffort,
+	resolveDefaultModelForProvider,
+} from "../models/knownModels";
+import type { PythiaSettings } from "../models/settings";
 
 describe("isReasoningModel", () => {
 	it("is true for every OpenAI o-series model", () => {
@@ -45,5 +55,50 @@ describe("MODEL_ABBREVIATIONS", () => {
 	it("has an entry for every known OpenAI and Anthropic reasoning/non-reasoning model it documents", () => {
 		expect(MODEL_ABBREVIATIONS["o4-mini"]).toBe("o4 mini");
 		expect(MODEL_ABBREVIATIONS["gpt-4o"]).toBe("GPT-4o");
+	});
+
+	it("has an entry for every known Mistral model", () => {
+		for (const model of KNOWN_MODELS.mistral) {
+			expect(MODEL_ABBREVIATIONS[model]).toBeDefined();
+		}
+	});
+});
+
+describe("isMistralReasoningModel", () => {
+	it("is true for the Magistral line", () => {
+		for (const model of ["magistral-medium-latest", "magistral-small-latest", "magistral-new-model"]) {
+			expect(isMistralReasoningModel(model)).toBe(true);
+		}
+	});
+
+	it("is false for non-Magistral Mistral models", () => {
+		for (const model of ["mistral-large-latest", "mistral-small-latest", "codestral-latest"]) {
+			expect(isMistralReasoningModel(model)).toBe(false);
+		}
+	});
+});
+
+describe("supportsMistralEffort", () => {
+	it("is true for every known Mistral model (no per-model restriction in the installed SDK types)", () => {
+		for (const model of KNOWN_MODELS.mistral) {
+			expect(supportsMistralEffort(model)).toBe(true);
+		}
+	});
+});
+
+describe("resolveDefaultModelForProvider", () => {
+	function makeSettings(): PythiaSettings {
+		return {
+			defaultAnthropicModel: "claude-sonnet-5",
+			defaultOpenAIModel: "gpt-4o",
+			defaultMistralModel: "mistral-large-latest",
+		} as PythiaSettings;
+	}
+
+	it("resolves the matching default-model setting for each provider", () => {
+		const settings = makeSettings();
+		expect(resolveDefaultModelForProvider("anthropic", settings)).toBe("claude-sonnet-5");
+		expect(resolveDefaultModelForProvider("openai", settings)).toBe("gpt-4o");
+		expect(resolveDefaultModelForProvider("mistral", settings)).toBe("mistral-large-latest");
 	});
 });

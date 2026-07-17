@@ -2,6 +2,7 @@ import type { Conversation, Provider, ToolCall, TokenUsage } from "../models/typ
 import type { LLMProvider } from "./LLMProvider";
 import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
+import type { MistralService } from "./MistralService";
 import type { PythiaSettings } from "../settings";
 
 export class LLMRouter {
@@ -9,9 +10,10 @@ export class LLMRouter {
 
 	constructor(
 		anthropic: AnthropicService,
-		openai: OpenAIProvider
+		openai: OpenAIProvider,
+		mistral: MistralService
 	) {
-		this.providers = { anthropic, openai };
+		this.providers = { anthropic, openai, mistral };
 	}
 
 	private get(conversation: Conversation): LLMProvider {

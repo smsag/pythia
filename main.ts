@@ -10,7 +10,9 @@ import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ResumeModeModal } from "./suggest/ResumeModeModal";
 import { AnthropicService } from "./services/AnthropicService";
 import { OpenAIProvider } from "./services/OpenAIProvider";
+import { MistralService } from "./services/MistralService";
 import { LLMRouter } from "./services/LLMRouter";
+import { resolveDefaultModelForProvider } from "./models/knownModels";
 import { ConversationStore } from "./services/ConversationStore";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
@@ -32,6 +34,7 @@ export default class PythiaPlugin extends Plugin {
 	/** Decrypted API keys held only in memory — never written to disk as plaintext. */
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
+	plaintextMistralKey = "";
 
 	llmRouter!: LLMRouter;
 	conversationStore!: ConversationStore;
@@ -45,7 +48,8 @@ export default class PythiaPlugin extends Plugin {
 
 		const anthropicSvc = new AnthropicService(this.app, this.settings, this.plaintextApiKey);
 		const openaiSvc = new OpenAIProvider(this.app, this.settings, this.plaintextOpenAIKey);
-		this.llmRouter = new LLMRouter(anthropicSvc, openaiSvc);
+		const mistralSvc = new MistralService(this.app, this.settings, this.plaintextMistralKey);
+		this.llmRouter = new LLMRouter(anthropicSvc, openaiSvc, mistralSvc);
 		this.conversationStore = new ConversationStore(this);
 		this.templateLoader = new TemplateLoader(this.app, this.settings);
 		this.noteWriter = new NoteWriter(this.app, this.settings);
@@ -432,6 +436,8 @@ export default class PythiaPlugin extends Plugin {
 			(await this.app.secretStorage.getSecret(this.settings.anthropicSecretName)) ?? "";
 		this.plaintextOpenAIKey =
 			(await this.app.secretStorage.getSecret(this.settings.openaiSecretName)) ?? "";
+		this.plaintextMistralKey =
+			(await this.app.secretStorage.getSecret(this.settings.mistralSecretName)) ?? "";
 
 		if (needsSave) {
 			await this.saveData({ settings: this.settings, conversations: this.conversations });
@@ -452,6 +458,31 @@ export default class PythiaPlugin extends Plugin {
 		await this.persistData();
 		this.plaintextOpenAIKey = (await this.app.secretStorage.getSecret(secretName)) ?? "";
 		this.llmRouter?.updateApiKey("openai", this.plaintextOpenAIKey);
+	}
+
+	/** Update the Mistral API key reference and refresh the in-memory key from SecretStorage. */
+	async setMistralKey(secretName: string): Promise<void> {
+		this.settings.mistralSecretName = secretName;
+		await this.persistData();
+		this.plaintextMistralKey = (await this.app.secretStorage.getSecret(secretName)) ?? "";
+		this.llmRouter?.updateApiKey("mistral", this.plaintextMistralKey);
+	}
+
+	/** Exhaustive switch (not a two-way ternary) so a fourth provider fails to
+	 *  compile here instead of silently checking the wrong provider's key. */
+	hasApiKeyFor(provider: Provider): boolean {
+		switch (provider) {
+			case "anthropic":
+				return !!this.plaintextApiKey;
+			case "openai":
+				return !!this.plaintextOpenAIKey;
+			case "mistral":
+				return !!this.plaintextMistralKey;
+			default: {
+				const exhaustiveCheck: never = provider;
+				throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
+			}
+		}
 	}
 
 	async saveSettings(): Promise<void> {
@@ -627,11 +658,7 @@ export default class PythiaPlugin extends Plugin {
 		outputFolder?: string
 	): Promise<Conversation> {
 		const resolvedProvider = provider ?? this.settings.defaultProvider;
-		const resolvedModel = model ?? (
-			resolvedProvider === "openai"
-				? this.settings.defaultOpenAIModel
-				: this.settings.defaultAnthropicModel
-		);
+		const resolvedModel = model ?? resolveDefaultModelForProvider(resolvedProvider, this.settings);
 
 		const conv: Conversation = {
 			id: crypto.randomUUID(),
@@ -865,11 +892,7 @@ export default class PythiaPlugin extends Plugin {
 
 					if (mode === "summary") {
 						if (!conv.summaryText) {
-							const hasKey =
-								conv.provider === "openai"
-									? !!this.plaintextOpenAIKey
-									: !!this.plaintextApiKey;
-							if (!hasKey) {
+							if (!this.hasApiKeyFor(conv.provider)) {
 								new Notice(t("setApiKeyFirst"));
 								return;
 							}

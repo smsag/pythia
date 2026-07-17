@@ -153,6 +153,8 @@ const en = {
 	// ── Services ──────────────────────────────────────────────────────────────
 	anthropicKeyNotConfigured: "Anthropic API key not configured. Set it in Settings → Pythia.",
 	openaiKeyNotConfigured:    "OpenAI API key not configured. Set it in Settings → Pythia.",
+	mistralKeyNotConfigured:   "Mistral API key not configured. Set it in Settings → Pythia.",
+	mistralPdfUnsupported:     "Warning: {{count}} PDF(s) not sent — PDF attachments aren't supported for Mistral yet.",
 	contextNotesWarning:       "Warning: {{count}} context note(s) not found and were skipped.",
 	oversizedPdfWarning:       "Warning: {{count}} PDF(s) exceeded the size limit and were skipped.",
 
@@ -160,6 +162,7 @@ const en = {
 	settingsTitle:           "Pythia",
 	anthropicSection:        "Anthropic",
 	openaiSection:           "OpenAI",
+	mistralSection:          "Mistral",
 	defaultsSection:         "Defaults",
 	vaultFoldersSection:     "Vault folders",
 	behaviourSection:        "Behaviour",
@@ -172,6 +175,10 @@ const en = {
 	openaiKeyDesc:           "Select a secret from Obsidian's secret storage. Keys are never written to data.json.",
 	defaultOpenAIModel:      "Default OpenAI model",
 	defaultOpenAIModelDesc:  "Used when a template does not specify a model.",
+	mistralKeyName:          "Mistral API key",
+	mistralKeyDesc:          "Select a secret from Obsidian's secret storage. Keys are never written to data.json.",
+	defaultMistralModel:     "Default Mistral model",
+	defaultMistralModelDesc: "Used when a template does not specify a model.",
 	defaultProviderName:     "Default provider",
 	defaultProviderDesc:     "Provider used when creating new conversations without a template.",
 	templatesFolderName:     "Templates folder",
@@ -219,6 +226,7 @@ const en = {
 	customModelOption:       "Custom…",
 	providerAnthropic:       "Anthropic",
 	providerOpenAI:          "OpenAI",
+	providerMistral:         "Mistral",
 
 	// ── Prompt optimizer ─────────────────────────────────────────────────────
 	cmdNewConversationFromPrompt:     "New conversation from prompt",

@@ -1,4 +1,4 @@
-export type Provider = "anthropic" | "openai";
+export type Provider = "anthropic" | "openai" | "mistral";
 
 export type EffortLevel = "low" | "medium" | "high";
 export const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high"];
