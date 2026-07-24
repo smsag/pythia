@@ -21,7 +21,7 @@ import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
-import { classifyApiError } from "./services/apiError";
+import { buildStreamErrorMessage } from "./services/apiError";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { MODEL_ABBREVIATIONS } from "./models/knownModels";
@@ -2024,33 +2024,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 			(error) => {
 				console.error("[Pythia] stream error:", error);
 
-				const model = conv.model ?? "";
-				let msg: string;
-				if (error.name === "ToolLoopLimitError") {
-					msg = t("toolLoopExceeded");
-				} else {
-					const errClass = classifyApiError(error);
-					switch (errClass) {
-						case "model_not_found":
-							msg = t("modelNotFound", { model });
-							break;
-						case "invalid_key":
-							msg = t("apiKeyRejected");
-							break;
-						case "rate_limit":
-							msg = t("rateLimitHit");
-							break;
-						case "server_error":
-							msg = t("serverError");
-							break;
-						case "network":
-							msg = t("networkError");
-							break;
-						default:
-							msg = error.message;
-					}
-				}
-				new Notice(msg);
+				new Notice(buildStreamErrorMessage(error, conv.model ?? ""));
 
 				// Never leave the streaming bubble stuck mid-render — finalize whatever
 				// partial text arrived, or drop the empty row.
