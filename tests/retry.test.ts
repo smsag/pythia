@@ -1,4 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// services/retry.ts -> services/apiError.ts -> ../i18n, which reads
+// window.moment at module load time (Obsidian-only global, absent in Node).
+vi.mock("../i18n", () => ({ t: (key: string) => key }));
+
 import { isRetryableError, RETRY_BACKOFF_MS, sleep } from "../services/retry";
 
 describe("isRetryableError", () => {

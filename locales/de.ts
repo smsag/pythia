@@ -93,6 +93,7 @@ const de: Strings = {
 	apiKeyRejected: "API-Schlüssel abgelehnt. Prüfe Einstellungen → Pythia.",
 	rateLimitHit:   "Anfragelimit erreicht. Versuche es gleich erneut.",
 	networkError:   "Netzwerkfehler. Prüfe deine Internetverbindung.",
+	networkErrorDetail: "Anfrage fehlgeschlagen: {{detail}}",
 	serverError:    "Der KI-Anbieter ist vorübergehend überlastet. Versuche es gleich erneut.",
 	toolLoopExceeded: "Der Assistent scheint in einer Tool-Aufruf-Schleife festzuhängen und wurde gestoppt.",
 	cannotSwitchWhileStreaming: "Warte, bis die aktuelle Antwort fertig ist, bevor du das Gespräch wechselst.",

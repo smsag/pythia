@@ -91,6 +91,7 @@ const en = {
 	apiKeyRejected: "API key rejected. Check Settings → Pythia.",
 	rateLimitHit:   "Rate limit hit. Try again in a moment.",
 	networkError:   "Network error. Check your internet connection.",
+	networkErrorDetail: "Request failed: {{detail}}",
 	serverError:    "The AI provider is temporarily overloaded. Try again in a moment.",
 	toolLoopExceeded: "The assistant seems stuck in a loop of tool calls and was stopped.",
 	cannotSwitchWhileStreaming: "Wait for the current response to finish before switching conversations.",
