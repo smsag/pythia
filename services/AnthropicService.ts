@@ -1,12 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { App } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, TokenUsage, EffortLevel } from "../models/types";
-import { ToolLoopLimitError } from "../models/types";
+import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
 import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
-import { BaseProvider } from "./BaseProvider";
+import { BaseProvider, type RoundResult } from "./BaseProvider";
+import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { resolveDefaultMaxTokens } from "./promptConstants";
 import { supportsTemperature, supportsEffort } from "../models/knownModels";
@@ -20,11 +20,18 @@ type AnthropicStreamParams = Anthropic.MessageStreamParams & {
 	output_config?: { effort: EffortLevel };
 };
 
-/** Safety net against a confused model looping on tool calls indefinitely. */
-const MAX_TOOL_ROUNDS = 25;
-
 export class AnthropicService extends BaseProvider {
 	private client: Anthropic | null = null;
+
+	// ── Streaming loop state (set in prepareStream, consumed in runStreamRound/handleToolCalls) ──
+	private loopMessages!: Anthropic.MessageParam[];
+	private anthropicTools: Anthropic.Tool[] | undefined;
+	private streamModel!: string;
+	private streamMaxTokens!: number;
+	private streamTemperature: number | undefined;
+	private streamEffort: EffortLevel | undefined;
+	private streamSystemPrompt!: string;
+	private lastFinalMsg: Anthropic.Message | undefined;
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
 		super(app, settings, apiKey);
@@ -79,195 +86,165 @@ export class AnthropicService extends BaseProvider {
 		return this.client;
 	}
 
-	async streamMessage(
+	protected async prepareStream(
 		conversation: Conversation,
-		newMessage: string,
-		attachedNotes: string[],
-		onToken: (text: string) => void,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
-		onError: (error: Error) => void,
+		userContent: string,
+		systemPrompt: string,
+		pdfAttachments: PdfAttachment[],
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
-		this.abort();
-		this.abortController = new AbortController();
-		// Captured once: if the user aborts while a tool confirmation is pending
-		// (BaseProvider.abort() nulls this.abortController), later round trips must
-		// still see a signal — reading this.abortController.signal again would throw
-		// on null instead of surfacing a clean abort.
-		const signal = this.abortController.signal;
+		// Exclude the last message — already pushed by the caller; sending it
+		// again in history would duplicate it. In "summary" resume mode, skip
+		// prior history entirely — summaryText in the system prompt is the
+		// only context sent (see selectHistoryForSend).
+		const historyMessages: ApiMessage[] = selectHistoryForSend(
+			conversation.messages.slice(0, -1),
+			conversation.resumeMode
+		).map((m) => ({ role: m.role, content: m.content }));
 
-		let fullText = "";
+		this.streamModel = this.resolveModel(conversation.model);
+		this.streamMaxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(this.streamModel);
+		const requestedTemperature = conversation.temperature ?? this.settings.temperature;
+		this.streamTemperature = supportsTemperature(this.streamModel) ? requestedTemperature : undefined;
+		const requestedEffort = conversation.effort ?? this.settings.effort;
+		this.streamEffort = requestedEffort !== undefined && supportsEffort(this.streamModel) ? requestedEffort : undefined;
 
-		try {
-			const { userContent, systemPrompt, pdfAttachments } =
-				await this.resolveUserContent(conversation, attachedNotes, newMessage);
+		// Anthropic requires the first message to be "user" (no system role in messages array).
+		this.loopMessages = normalizeMessages(
+			[...historyMessages, { role: "user" as const, content: userContent }],
+			role => role !== "user"
+		).map((m) => ({ role: m.role, content: m.content }));
 
-			// Exclude the last message — already pushed by the caller; sending it
-			// again in history would duplicate it. In "summary" resume mode, skip
-			// prior history entirely — summaryText in the system prompt is the
-			// only context sent (see selectHistoryForSend).
-			const historyMessages: ApiMessage[] = selectHistoryForSend(
-				conversation.messages.slice(0, -1),
-				conversation.resumeMode
-			).map((m) => ({ role: m.role, content: m.content }));
-
-			const model = this.resolveModel(conversation.model);
-			const maxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(model);
-			const requestedTemperature = conversation.temperature ?? this.settings.temperature;
-			const temperature = supportsTemperature(model) ? requestedTemperature : undefined;
-			const requestedEffort = conversation.effort ?? this.settings.effort;
-			const effort = requestedEffort !== undefined && supportsEffort(model) ? requestedEffort : undefined;
-
-			// Anthropic requires the first message to be "user" (no system role in messages array).
-			const loopMessages: Anthropic.MessageParam[] = normalizeMessages(
-				[...historyMessages, { role: "user" as const, content: userContent }],
-				role => role !== "user"
-			).map((m) => ({ role: m.role, content: m.content }));
-
-			// Splice PDF document blocks onto the final user message, after
-			// normalizeMessages has run — its same-role merge does string
-			// concatenation (messageUtils.ts) and would corrupt array content.
-			// Mirrors the array-content bypass already used for tool-loop
-			// messages further down in this file.
-			if (pdfAttachments.length > 0) {
-				const last = loopMessages[loopMessages.length - 1];
-				if (last.role === "user" && typeof last.content === "string") {
-					const documentBlocks: Anthropic.DocumentBlockParam[] = pdfAttachments.map((pdf) => ({
-						type: "document",
-						source: { type: "base64", media_type: "application/pdf", data: pdf.base64 },
-						title: pdf.filename,
-					}));
-					last.content = [...documentBlocks, { type: "text", text: last.content }];
-				}
+		// Splice PDF document blocks onto the final user message, after
+		// normalizeMessages has run — its same-role merge does string
+		// concatenation (messageUtils.ts) and would corrupt array content.
+		// Mirrors the array-content bypass already used for tool-loop
+		// messages further down in this file.
+		if (pdfAttachments.length > 0) {
+			const last = this.loopMessages[this.loopMessages.length - 1];
+			if (last.role === "user" && typeof last.content === "string") {
+				const documentBlocks: Anthropic.DocumentBlockParam[] = pdfAttachments.map((pdf) => ({
+					type: "document",
+					source: { type: "base64", media_type: "application/pdf", data: pdf.base64 },
+					title: pdf.filename,
+				}));
+				last.content = [...documentBlocks, { type: "text", text: last.content }];
 			}
-
-			// Tool definitions are identical on every turn of a conversation — mark the
-			// last one as a cache breakpoint so the whole block is cached after turn 1.
-			const anthropicTools: Anthropic.Tool[] | undefined = onToolCall
-				? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def, i, arr) => ({
-						name: def.name,
-						description: def.description,
-						input_schema: def.inputSchema as Anthropic.Tool.InputSchema,
-						...(i === arr.length - 1 ? { cache_control: { type: "ephemeral" as const } } : {}),
-				  }))
-				: undefined;
-
-			if (this.settings.debugMode) {
-				// eslint-disable-next-line no-console
-				console.log("[Pythia] Anthropic API call →", {
-					model,
-					temperature,
-					temperatureDropped: requestedTemperature !== undefined && temperature === undefined,
-					effort,
-					effortDropped: requestedEffort !== undefined && effort === undefined,
-					pdfAttachments: pdfAttachments.length,
-					messages: historyMessages.length + 1,
-					systemPromptChars: systemPrompt.length,
-					tools: !!onToolCall,
-					resumeMode: conversation.resumeMode ?? "full",
-					historySkipped: conversation.resumeMode === "summary",
-					systemPromptCached: !!systemPrompt,
-					toolsCached: !!(onToolCall && anthropicTools?.length),
-				});
-			}
-
-			let totalInputTokens = 0;
-			let totalOutputTokens = 0;
-			let totalCacheReadTokens = 0;
-			let totalCacheCreationTokens = 0;
-			let round = 0;
-
-			while (true) {
-				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
-				const textLenBeforeAttempt = fullText.length;
-				let finalMsg: Anthropic.Message | undefined;
-
-				for (let attempt = 0; !finalMsg; ) {
-					try {
-						const params: AnthropicStreamParams = {
-							model,
-							max_tokens: maxTokens,
-							...(temperature !== undefined ? { temperature } : {}),
-							...(effort !== undefined ? { output_config: { effort } } : {}),
-							// Cache the system prompt — it's identical on every turn of a
-							// conversation and is often the largest stable chunk of the request.
-							...(systemPrompt
-								? { system: [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }] }
-								: {}),
-							messages: loopMessages,
-							...(anthropicTools?.length ? { tools: anthropicTools } : {}),
-						};
-						const stream = this.getClient().messages.stream(params, { signal });
-
-						stream.on("text", (text) => {
-							fullText += text;
-							onToken(text);
-						});
-
-						finalMsg = await stream.finalMessage();
-					} catch (err) {
-						// Only retry if no tokens were emitted yet this attempt — otherwise
-						// a retry would duplicate partial output already sent via onToken.
-						const noTokensYet = fullText.length === textLenBeforeAttempt;
-						if (noTokensYet && isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
-							debugLog(this.settings, "retry", attempt + 1, err);
-							await sleep(RETRY_BACKOFF_MS[attempt]);
-							attempt++;
-							continue;
-						}
-						throw err;
-					}
-				}
-
-				totalInputTokens += finalMsg.usage.input_tokens;
-				totalOutputTokens += finalMsg.usage.output_tokens;
-				totalCacheReadTokens += finalMsg.usage.cache_read_input_tokens ?? 0;
-				totalCacheCreationTokens += finalMsg.usage.cache_creation_input_tokens ?? 0;
-				debugLog(this.settings, "tool round", round, "stop:", finalMsg.stop_reason, "usage:", {
-					inputTokens: totalInputTokens,
-					outputTokens: totalOutputTokens,
-					cacheReadTokens: totalCacheReadTokens,
-					cacheCreationTokens: totalCacheCreationTokens,
-				});
-
-				if (finalMsg.stop_reason === "tool_use" && onToolCall) {
-					loopMessages.push({
-						role: "assistant",
-						content: finalMsg.content as Anthropic.MessageParam["content"],
-					});
-
-					const toolResults: Anthropic.ToolResultBlockParam[] = [];
-					for (const block of finalMsg.content) {
-						if (block.type === "tool_use") {
-							const result = await onToolCall({
-								id: block.id,
-								name: block.name,
-								input: block.input as Record<string, unknown>,
-							});
-							toolResults.push({
-								type: "tool_result",
-								tool_use_id: block.id,
-								content: result,
-							});
-						}
-					}
-					loopMessages.push({ role: "user", content: toolResults });
-				} else {
-					break;
-				}
-			}
-
-			const tokenUsage: TokenUsage = {
-				inputTokens: totalInputTokens,
-				outputTokens: totalOutputTokens,
-				...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
-				...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
-			};
-			onComplete(fullText, tokenUsage);
-		} catch (error) {
-			this.finishOrError(error, fullText, onComplete, onError);
-		} finally {
-			this.abortController = null;
 		}
+
+		// Tool definitions are identical on every turn of a conversation — mark the
+		// last one as a cache breakpoint so the whole block is cached after turn 1.
+		this.anthropicTools = onToolCall
+			? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def, i, arr) => ({
+					name: def.name,
+					description: def.description,
+					input_schema: def.inputSchema as Anthropic.Tool.InputSchema,
+					...(i === arr.length - 1 ? { cache_control: { type: "ephemeral" as const } } : {}),
+			  }))
+			: undefined;
+
+		this.streamSystemPrompt = systemPrompt;
+
+		if (this.settings.debugMode) {
+			// eslint-disable-next-line no-console
+			console.log("[Pythia] Anthropic API call →", {
+				model: this.streamModel,
+				temperature: this.streamTemperature,
+				temperatureDropped: requestedTemperature !== undefined && this.streamTemperature === undefined,
+				effort: this.streamEffort,
+				effortDropped: requestedEffort !== undefined && this.streamEffort === undefined,
+				pdfAttachments: pdfAttachments.length,
+				messages: historyMessages.length + 1,
+				systemPromptChars: systemPrompt.length,
+				tools: !!onToolCall,
+				resumeMode: conversation.resumeMode ?? "full",
+				historySkipped: conversation.resumeMode === "summary",
+				systemPromptCached: !!systemPrompt,
+				toolsCached: !!(onToolCall && this.anthropicTools?.length),
+			});
+		}
+	}
+
+	protected async runStreamRound(
+		signal: AbortSignal,
+		onToken: (text: string) => void,
+		_textLenBefore: number
+	): Promise<RoundResult> {
+		let finalMsg: Anthropic.Message | undefined;
+		let tokensEmitted = 0;
+
+		for (let attempt = 0; !finalMsg; ) {
+			try {
+				const params: AnthropicStreamParams = {
+					model: this.streamModel,
+					max_tokens: this.streamMaxTokens,
+					...(this.streamTemperature !== undefined ? { temperature: this.streamTemperature } : {}),
+					...(this.streamEffort !== undefined ? { output_config: { effort: this.streamEffort } } : {}),
+					// Cache the system prompt — it's identical on every turn of a
+					// conversation and is often the largest stable chunk of the request.
+					...(this.streamSystemPrompt
+						? { system: [{ type: "text" as const, text: this.streamSystemPrompt, cache_control: { type: "ephemeral" as const } }] }
+						: {}),
+					messages: this.loopMessages,
+					...(this.anthropicTools?.length ? { tools: this.anthropicTools } : {}),
+				};
+				const stream = this.getClient().messages.stream(params, { signal });
+
+				stream.on("text", (text) => {
+					tokensEmitted += text.length;
+					onToken(text);
+				});
+
+				finalMsg = await stream.finalMessage();
+			} catch (err) {
+				// Only retry if no tokens were emitted yet this attempt — otherwise
+				// a retry would duplicate partial output already sent via onToken.
+				if (tokensEmitted === 0 && isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+					debugLog(this.settings, "retry", attempt + 1, err);
+					await sleep(RETRY_BACKOFF_MS[attempt]);
+					attempt++;
+					continue;
+				}
+				throw err;
+			}
+		}
+
+		this.lastFinalMsg = finalMsg;
+
+		return {
+			action: finalMsg.stop_reason === "tool_use" ? "tool_use" : "done",
+			inputTokens: finalMsg.usage.input_tokens,
+			outputTokens: finalMsg.usage.output_tokens,
+			cacheReadTokens: finalMsg.usage.cache_read_input_tokens ?? 0,
+			cacheCreationTokens: finalMsg.usage.cache_creation_input_tokens ?? 0,
+			hasUsage: true,
+		};
+	}
+
+	protected async handleToolCalls(
+		onToolCall: (call: ToolCall) => Promise<string>
+	): Promise<void> {
+		const finalMsg = this.lastFinalMsg!;
+		this.loopMessages.push({
+			role: "assistant",
+			content: finalMsg.content as Anthropic.MessageParam["content"],
+		});
+
+		const toolResults: Anthropic.ToolResultBlockParam[] = [];
+		for (const block of finalMsg.content) {
+			if (block.type === "tool_use") {
+				const result = await onToolCall({
+					id: block.id,
+					name: block.name,
+					input: block.input as Record<string, unknown>,
+				});
+				toolResults.push({
+					type: "tool_result",
+					tool_use_id: block.id,
+					content: result,
+				});
+			}
+		}
+		this.loopMessages.push({ role: "user", content: toolResults });
 	}
 }

@@ -1,9 +1,10 @@
 import { App, Notice } from "obsidian";
 import { t } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
-import { parseTitleAndSummary, langInstruction, langSuffix } from "./messageUtils";
+import { parseTitleAndSummary, langInstruction, langSuffix, debugLog } from "./messageUtils";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
@@ -11,6 +12,21 @@ import { ABORT_ERROR_NAMES } from "./retry";
 
 /** Repeated verbatim in generateChapterName and generateConversationTitle below. */
 const REPLY_TITLE_ONLY_INSTRUCTION = "Reply with ONLY the title, no punctuation, no quotes.";
+
+/** Safety net against a confused model looping on tool calls indefinitely. */
+const MAX_TOOL_ROUNDS = 25;
+
+/** Runs one streaming round. Returns the normalised action and accumulated token usage delta. */
+export interface RoundResult {
+	/** Normalised to "tool_use" or "done". */
+	action: "tool_use" | "done";
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheCreationTokens: number;
+	/** Whether the provider actually received usage data this round. */
+	hasUsage: boolean;
+}
 
 export abstract class BaseProvider implements LLMProvider {
 	protected app: App;
@@ -62,7 +78,33 @@ export abstract class BaseProvider implements LLMProvider {
 		systemMessage?: string
 	): Promise<string>;
 
-	abstract streamMessage(
+	/** Provider-specific: prepare the loop messages, tools, and parameters.
+	 *  Called once before the loop starts. Store state on `this` for use in runStreamRound. */
+	protected abstract prepareStream(
+		conversation: Conversation,
+		userContent: string,
+		systemPrompt: string,
+		pdfAttachments: PdfAttachment[],
+		onToolCall?: (call: ToolCall) => Promise<string>
+	): Promise<void>;
+
+	/** Provider-specific: run one streaming round (create stream, consume chunks).
+	 *  Must handle retry-before-first-token internally.
+	 *  Returns a normalised RoundResult. */
+	protected abstract runStreamRound(
+		signal: AbortSignal,
+		onToken: (text: string) => void,
+		textLenBefore: number
+	): Promise<RoundResult>;
+
+	/** Provider-specific: process tool calls from the last round and append
+	 *  tool result messages to the loop messages.
+	 *  Called when runStreamRound returns action "tool_use". */
+	protected abstract handleToolCalls(
+		onToolCall: (call: ToolCall) => Promise<string>
+	): Promise<void>;
+
+	async streamMessage(
 		conversation: Conversation,
 		newMessage: string,
 		attachedNotes: string[],
@@ -70,11 +112,92 @@ export abstract class BaseProvider implements LLMProvider {
 		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
-	): Promise<void>;
+	): Promise<void> {
+		return this.runStreamLoop(conversation, newMessage, attachedNotes, onToken, onComplete, onError, onToolCall);
+	}
+
+	// ── Shared streaming loop ─────────────────────────────────────────────────
+
+	/** Shared streaming loop — handles abort, retry, tool rounds, and error routing.
+	 *  Subclasses override prepareStream, runStreamRound, and handleToolCalls. */
+	protected async runStreamLoop(
+		conversation: Conversation,
+		newMessage: string,
+		attachedNotes: string[],
+		onToken: (text: string) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
+		onError: (error: Error) => void,
+		onToolCall?: (call: ToolCall) => Promise<string>
+	): Promise<void> {
+		this.abort();
+		this.abortController = new AbortController();
+		// Captured once: if the user aborts while a tool confirmation is pending
+		// (BaseProvider.abort() nulls this.abortController), later round trips must
+		// still see a signal — reading this.abortController.signal again would throw
+		// on null instead of surfacing a clean abort.
+		const signal = this.abortController.signal;
+
+		let fullText = "";
+
+		try {
+			const { userContent, systemPrompt, pdfAttachments } =
+				await this.resolveUserContent(conversation, attachedNotes, newMessage);
+
+			await this.prepareStream(conversation, userContent, systemPrompt, pdfAttachments, onToolCall);
+
+			let totalInputTokens = 0;
+			let totalOutputTokens = 0;
+			let totalCacheReadTokens = 0;
+			let totalCacheCreationTokens = 0;
+			let receivedUsage = false;
+			let round = 0;
+
+			while (true) {
+				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
+
+				const result = await this.runStreamRound(
+					signal,
+					(text) => { fullText += text; onToken(text); },
+					fullText.length
+				);
+
+				totalInputTokens += result.inputTokens;
+				totalOutputTokens += result.outputTokens;
+				totalCacheReadTokens += result.cacheReadTokens;
+				totalCacheCreationTokens += result.cacheCreationTokens;
+				if (result.hasUsage) receivedUsage = true;
+
+				debugLog(this.settings, "tool round", round, "action:", result.action, "usage:", {
+					inputTokens: totalInputTokens,
+					outputTokens: totalOutputTokens,
+					...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
+					...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
+				});
+
+				if (result.action === "tool_use" && onToolCall) {
+					await this.handleToolCalls(onToolCall);
+				} else {
+					break;
+				}
+			}
+
+			const tokenUsage: TokenUsage | undefined = receivedUsage
+				? {
+					inputTokens: totalInputTokens,
+					outputTokens: totalOutputTokens,
+					...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
+					...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
+				}
+				: undefined;
+			onComplete(fullText, tokenUsage);
+		} catch (error) {
+			this.finishOrError(error, fullText, onComplete, onError);
+		} finally {
+			this.abortController = null;
+		}
+	}
 
 	// ── Shared streamMessage helpers ───────────────────────────────────────────
-	// Identical across both providers; the streaming/tool-loop bodies themselves
-	// stay per-provider since the two SDKs' shapes genuinely differ there.
 
 	/** Fetches attached-note content, warns on missing/oversized notes, and builds
 	 *  the outgoing user message + system prompt. */
