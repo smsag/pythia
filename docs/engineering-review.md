@@ -22,6 +22,7 @@
 *Updated: 2026-07-17 — Fixed a real, reproducible bug: attaching a long (34KB), multi-section reference doc and asking for one specific framework's syntax could return a *different* framework's syntax instead. Root cause: `services/noteRelevance.ts`'s `scoreRelevanceTokens()` gave +1 point per shared keyword with zero weighting for how common that word was — many sections shared generic vocabulary ("user," "solution," "outcome"), so a section built from that shared vocabulary could out-score (or tie and win a tie-break by document position against) the one section holding the actual distinctive term the user asked about. Replaced with a smoothed IDF-weighted scorer (`scoreRelevanceWeighted`/`scoreRelevanceTokensWeighted`) — a token shared by every candidate barely moves the score, a token unique to one or a few candidates dominates it. Still fully dependency-free, no embeddings, no vector store, no new I/O — a refinement of ADR-026's direction, not a reversal. Verified directly against the real document that surfaced the bug (the correct section is now retained, the wrong one excluded) plus a generic regression test reproducing the failure shape. Partially addresses #50 (full embeddings remains open if this proves insufficient). See ADR-043.*
 *Updated: 2026-07-17 — `maxTokens` was the only generation parameter with no UI exposure at all — the only way to set it was `max_tokens:` in a template's frontmatter; every other conversation was silently stuck at the hardcoded `DEFAULT_MAX_TOKENS = 4096`. Brought to the same three-level override layering and UI treatment `temperature`/`effort` already had (new `PythiaSettings.maxTokens`, new fields in `settings.ts` and `ConversationSettingsModal.ts`). Also raised the default itself: `DEFAULT_MAX_TOKENS` 4096 → 8192, plus a new `DEFAULT_MAX_TOKENS_REASONING = 16384` for OpenAI reasoning models via the existing `isReasoningModel()` check — reasoning tokens spend from the same budget as visible output, so a low cap risked a silently truncated or empty reply on exactly the models most likely to need a large one. Not a bug fix — a new capability/default-tuning pass, not separately numbered (same convention as recent entries). See ADR-044.*
 *Updated: 2026-07-17 — Added Mistral as a third LLM provider with full streaming/tool-calling/temperature/effort/maxTokens parity (`services/MistralService.ts`, extends `BaseProvider`; `Provider` widened to include `"mistral"`). Pre-implementation audit found a real bug class: several call sites resolved provider behavior via a two-way `provider === "x" ? A : B` ternary that TypeScript does not flag when a third union member is added — converted to exhaustive `switch`es with `never`-typed default cases at every site found (`main.ts`'s default-model resolution and API-key check, `settings.ts`'s and `ConversationSettingsModal.ts`'s temperature/effort gating). Direct SDK type inspection (not docs) found Mistral's `reasoningEffort` has no per-model restriction and native `system`-role support on every model, so both were wired in fully rather than deferred as originally planned. Surfaced two bonus fixes to provider-shared code: `services/retry.ts`'s `ABORT_ERROR_NAMES` didn't recognize Mistral's `"RequestAbortedError"` abort-error name (would have misreported a clean Stop-click as a real error), and `services/apiError.ts`'s `classifyApiError` only read `.status` (Mistral uses `.statusCode`, misclassifying real API errors as network failures). Also root-caused an esbuild failure — the SDK unconditionally pulls in `@opentelemetry/api` via an internal hook-registration chain regardless of which client API is used — fixed by installing it as a real dependency; bundle size roughly doubled (340KB → 680KB) as a result, an accepted, documented tradeoff. PDF attachments and vision input remain out of scope for Mistral, deferred as follow-ups. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-045.*
+*Updated: 2026-08-17 — Maintainability/performance pass: extracted the streaming/tool-calling loop into a BaseProvider template method (`runStreamLoop` + three abstract hooks: `prepareStream`/`runStreamRound`/`handleToolCalls`), eliminating ~600 lines of near-identical code across three providers (#88). ConversationStore gained dirty-flag persistence tracking — `schedulePersist` skips the write when nothing has actually changed (#89). Sidebar performance: `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` (#90). ESLint config upgraded to typed linting (`projectService: true`) and `no-floating-promises: error` (with `ignoreVoid: true`), catching and fixing 8 existing violations (#91). #10 (fire-and-forget hardening) partially addressed by #91.*
 *Updated: 2026-07-17 — Code-block/blockquote design-system fix, from user-reported screenshots. Two separate causes: `.p-code-frame`'s background used an undocumented `var(--code-background)` token instead of the `var(--background-secondary)` formula the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`) already use — unified. Blockquotes had **zero** custom Pythia CSS at all (confirmed via grep) — a purple-tinted, italic Obsidian default was what the user actually saw; added deliberate styling (neutral `--background-modifier-border` bar, not accent; no italic; `--text-muted`). Also added, per explicit user request: a persistent top-left code-type icon (Lucide `code-2`, always visible, not hover-gated like the copy button), an explicit `14px` icon-glyph size so the copy/copy-confirmed icons no longer render at inconsistent sizes, and a copy-confirmed color change from `--color-green` to `--color-accent` (green is used elsewhere for persistent semantic states, not momentary click feedback). Also fixed a dead `var(--scrollbar-thumb-bg, ...)` reference (never defined anywhere, always silently fell through to its fallback) and corrected `CLAUDE.md`/`docs/design.md` references to `docs/pythia-v3.html`/`docs/design-system.css` — neither file exists in the repo or its git history, despite being cited as mandatory pre-work reading. Not a bug fix in the tracked-suggestion sense — a design-system-fidelity pass, not separately numbered (same convention as recent entries). See ADR-046.*
 *Updated: 2026-07-17 — Fixed a real, reported bug: a template using `claude-opus-4-8` with `effort: high` and a PDF attached failed with "Network error. Check your internet connection." despite the user having working internet. Root cause, confirmed by reading the installed `@anthropic-ai/sdk` directly: the SDK collapses any status-less error into the same shape, including a mid-stream SSE `error` event (e.g. a capacity/overload condition reported after the stream already started) and its own internal exceptions re-wrapped without a status — neither is the user's connectivity, but `classifyApiError`'s existing `status === undefined → "network"` fallback (left alone by ADR-030, which only reviewed the narrower `TypeError` branch) bucketed both the same as a real fetch/DNS failure, and `sidebar.ts` then discarded the real, already-available diagnostic message in favor of a hardcoded, in this case false, claim. New `buildStreamErrorMessage()` (`services/apiError.ts`, now unit-tested) surfaces the real message instead — retry behavior is unchanged (network/server_error were already retried identically). See ADR-047.*
 
@@ -57,6 +58,10 @@
 | 2026-07-17 | Added Mistral as a third LLM provider (`services/MistralService.ts`) with full streaming/tool-calling/temperature/effort/maxTokens parity; audited and closed a two-way-provider-ternary bug class across `main.ts`/`settings.ts`/`ConversationSettingsModal.ts`; fixed two provider-shared bugs surfaced by Mistral's different SDK error conventions (`retry.ts`'s abort-name set, `apiError.ts`'s status-property read); bundle size ~340KB → ~680KB from the required `@opentelemetry/api` dependency — new capability, see ADR-045 |
 | 2026-07-17 | Code-block/blockquote design-system fix from user-reported screenshots: `.p-code-frame` background unified to `var(--background-secondary)` (matching the `.pythia-tool-call`/`.p-msg-optimize-result` framed-box convention); new blockquote styling (previously zero custom CSS — pure Obsidian default); new persistent top-left code-type icon; explicit `14px` copy/copy-confirmed icon sizing; copy-confirmed color changed from green to accent; dead `--scrollbar-thumb-bg` reference removed; stale `pythia-v3.html`/`design-system.css` doc references corrected — see ADR-046 |
 | 2026-07-17 | Fixed real bug: a status-less Anthropic SDK error (mid-stream SSE `error` event, e.g. a capacity/overload condition, or an internal exception re-wrap) was shown to users as a false "Network error. Check your internet connection." — the real diagnostic message was discarded by `sidebar.ts`'s error handler. New `buildStreamErrorMessage()` (`services/apiError.ts`, now unit-tested via `tests/apiError.test.ts`) surfaces the real message instead; classification and retry behavior unchanged. See ADR-047 |
+| 2026-08-17 | #88 resolved: streaming/tool-calling loop extracted into BaseProvider template method (`runStreamLoop` + `prepareStream`/`runStreamRound`/`handleToolCalls`), eliminating ~600 lines of near-identical code across three providers |
+| 2026-08-17 | #89 resolved: ConversationStore gained dirty-flag persistence tracking (`dirtyIds` set + `hasDirty`/`clearDirty`/`markDirty`) — `schedulePersist` skips the write when nothing changed |
+| 2026-08-17 | #90 resolved: sidebar performance — `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` |
+| 2026-08-17 | #91 resolved: ESLint upgraded to typed linting (`projectService: true`) + `no-floating-promises: error` (`ignoreVoid: true`); 8 existing violations fixed with `void` operators. #10 partially addressed |
 
 ---
 
@@ -68,9 +73,9 @@
 | 2 | `styles.css` | 1 456 | All plugin CSS |
 | 3 | `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, sync watcher |
 | 4 | `settings.ts` | 419 | Settings schema + settings tab UI |
-| 5 | `services/OpenAIProvider.ts` | 264 | OpenAI streaming (extends BaseProvider) |
-| 6 | `services/AnthropicService.ts` | 197 | Anthropic streaming (extends BaseProvider) |
-| 7 | `services/BaseProvider.ts` | 132 | Abstract base: shared fields, lifecycle, all generate* utility methods |
+| 5 | `services/OpenAIProvider.ts` | 304 | OpenAI streaming (extends BaseProvider); `prepareStream`/`runStreamRound`/`handleToolCalls` |
+| 6 | `services/AnthropicService.ts` | 250 | Anthropic streaming (extends BaseProvider); `prepareStream`/`runStreamRound`/`handleToolCalls` |
+| 7 | `services/BaseProvider.ts` | 323 | Abstract base: `runStreamLoop` template method, shared fields, lifecycle, generate* utilities |
 | 8 | `services/ToolHandler.ts` | 118 | Tool definitions + ToolHandler class (injected NoteWriter) |
 | 9 | `services/NoteWriter.ts` | 186 | Vault write operations |
 | 10 | `services/PromptOptimizerService.ts` | ~170 | Prompt optimizer — `run()` command flow + `optimizeText()` inline review |
@@ -80,7 +85,7 @@
 | 14 | `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing |
 | 15 | `services/messageUtils.ts` | 98 | Shared: parseTitleAndSummary, normalizeMessages, token estimate, lang helpers |
 | 16 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
-| 17 | `services/ConversationStore.ts` | 58 | In-memory store + 300 ms debounced persistence |
+| 17 | `services/ConversationStore.ts` | 81 | In-memory store + 300 ms debounced persistence + dirty-flag tracking |
 | 18 | `services/ContextBuilder.ts` | 48 | Builds system prompt + attaches vault notes |
 | 19 | `services/persistence.ts` | ~100 | Pure functions: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
 | 20 | `models/types.ts` | 78 | All shared TypeScript interfaces |
@@ -90,7 +95,7 @@
 | 24 | `tests/` | — | Vitest unit tests (12 files) |
 
 **Source total:** ~9 000 lines (excl. lock file, generated `main.js`, coverage output).
-**Test suite:** 187 tests across 12 files — `npm test` (~500 ms), `npm run coverage` with enforced thresholds.
+**Test suite:** 269 tests across 17 files — `npm test` (~2 s), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
 ---
@@ -108,7 +113,7 @@
 | 7 | Error handling on persistence failure | ✅ try/catch + Notice + flush-on-unload |
 | 8 | Wrap `MarkdownRenderer.render()` in try/catch | ✅ Done |
 | 9 | Guard `Buffer` in `legacyDecrypt` | ✅ `typeof Buffer !== "undefined"` |
-| 10 | Harden fire-and-forget in fork path | Open — Backlog |
+| 10 | Harden fire-and-forget in fork path | ✅ Partial — `no-floating-promises` lint rule catches bare floating promises at compile time; remaining fork-specific hardening is Backlog |
 | 11 | Split `sidebar.ts` into sub-components | ✅ Partial — OptimizationController + NavigatorController extracted; remaining DOM coupling makes further splits net-negative |
 | 12 | `BaseProvider` abstract class | ✅ `services/BaseProvider.ts` |
 | 13 | Auto-abbreviate unknown model names | ✅ Done |
@@ -253,7 +258,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 3 | Per-conversation file storage (long-term) | Open | High | High | Backlog |
 | 39 | Duplicate identical regex in `NoteWriter.prependWithSeparator` | ✅ Done | Low | Low | — |
 | 4 | Cache context note file reads | Won't fix | Low | Medium | — |
-| 10 | Harden fire-and-forget in fork path | Open | Low | Medium | Backlog |
+| 10 | Harden fire-and-forget in fork path | ✅ Partial — `no-floating-promises` lint | Low | Medium | Backlog (remaining) |
 | 42 | `resumeMode` destructive wipe + dead API-level effect | ✅ Done | High | Low | — |
 | 43 | Retry on transient rate-limit/network failures | ✅ Done | Medium | Low | — |
 | 44 | Anthropic prompt caching | ✅ Done | High | Medium | — |
@@ -292,6 +297,10 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 82 | Deep-link double-decode | ✅ Done | Medium-High | Low | — |
 | 83 | Summary-generation stale-conversation race | ✅ Done | Medium-High | Low | — |
 | 84 | Fork drops temperature override | ✅ Done | Low | Low | — |
+| 88 | Streaming/tool-loop duplicated across three providers (~600 lines) | ✅ Done — BaseProvider template method | High | High | — |
+| 89 | ConversationStore persists on every debounce even when nothing changed | ✅ Done — dirty-flag tracking | Medium | Low | — |
+| 90 | Sidebar hot-path DOM handlers fire too often (selectionchange, token estimate, textarea resize) | ✅ Done — debounced/rAF | Medium | Low | — |
+| 91 | Bare floating promises swallow errors silently; no compile-time guard | ✅ Done — `no-floating-promises: error` + 8 violations fixed | High | Low | — |
 
 ---
 
@@ -575,3 +584,44 @@ A single large attached note could consume most of the context budget or bury th
 **Status:** Open — Backlog
 
 Pythia is described as "RAG-powered" but has no real retrieval — #48/#49 are a dependency-free keyword-overlap approximation, not semantic search. A proper implementation (embed all vault notes, persist a vector index, incrementally re-embed on vault changes, cosine-similarity search at query time) is a multi-day feature with product decisions that need explicit user input first: which provider generates embeddings when only an Anthropic key is configured (Anthropic has no embeddings API), where the index is persisted (a new file, given #3's `data.json` size concerns), and the re-embedding cost/trigger policy. Deliberately not attempted speculatively in the #42–#49 batch — scope as its own follow-up once the keyword-overlap heuristic's real-world limits are understood.
+
+---
+
+## New Suggestions (#88–#91) — maintainability/performance audit, 2026-08-17
+
+A senior-engineer audit targeting maintainability and performance, focused on three areas: structural duplication in the streaming/tool-calling loop across providers, redundant persistence writes in ConversationStore, and DOM event handler frequency in the sidebar. Also upgraded ESLint to catch a class of silent failures at compile time.
+
+### #88 — Streaming/tool-calling loop duplicated across three providers
+
+**Files:** `services/BaseProvider.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `services/MistralService.ts` — **Resolved**
+
+All three providers independently implemented the same streaming loop: abort controller setup, tool-round iteration with `MAX_TOOL_ROUNDS` cap, token accumulation, debug logging, and error routing — ~200 lines each, nearly identical in structure, differing only in SDK-specific stream creation/consumption and tool-result formatting.
+
+**Resolution:** Extracted the loop into `BaseProvider.runStreamLoop()` as a template method pattern. `streamMessage` is now a concrete one-liner that delegates to `runStreamLoop`. Providers implement three abstract hooks: `prepareStream` (build messages, resolve tools/model/temperature/effort), `runStreamRound` (create SDK stream, consume chunks, return normalised `RoundResult`), and `handleToolCalls` (extract tool-use blocks, call `onToolCall`, append results). The exported `RoundResult` interface normalises each round's outcome across providers. Net change: ~600 lines of duplicated code eliminated; any future loop change (e.g. new retry strategy, new accounting field) only needs to be made once.
+
+### #89 — ConversationStore persists on every debounce tick even when nothing changed
+
+**File:** `services/ConversationStore.ts` — **Resolved**
+
+`schedulePersist()` unconditionally called the plugin's `persistData()` on every 300 ms debounce tick, even when no conversation had actually been modified since the last write — a redundant JSON serialization + disk write.
+
+**Resolution:** Added a `dirtyIds: Set<string>` field. `save()` adds the conversation's ID to `dirtyIds` before scheduling. `delete()` removes from `dirtyIds`. The `schedulePersist` callback checks `if (this.dirtyIds.size === 0) return` to skip no-op writes. `main.ts`'s `persistData()` calls `conversationStore.clearDirty()` after a successful write; `createConversation()` calls `markDirty(id)` to ensure new conversations are persisted.
+
+### #90 — Sidebar hot-path DOM handlers fire too often
+
+**File:** `sidebar.ts` — **Resolved**
+
+Three event handlers fired more often than their downstream work justified:
+1. `selectionchange` — fires on every caret movement; the handler (`handleSelectionChange`) only needs to update the fork-action visibility
+2. `input` on the textarea — `updateSendBtnLabel()` runs a token estimate on every keystroke
+3. `autoResizeTextarea()` — triggers a forced layout reflow (read `scrollHeight`, write `style.height`) synchronously on every input event
+
+**Resolution:** (1) `selectionchange` handler debounced at 150 ms. (2) Token-estimate update (`updateSendBtnLabel`) debounced at 250 ms; `autoResizeTextarea` and `inlineSuggest.handleInput` still fire immediately since they're user-facing. (3) `autoResizeTextarea` wrapped in `requestAnimationFrame` to batch the forced reflow with the browser's next paint, avoiding layout thrashing when multiple input events fire in the same frame.
+
+### #91 — Bare floating promises swallow errors silently; no compile-time guard
+
+**Files:** `eslint.config.mjs`, `sidebar.ts`, `main.ts` — **Resolved**
+
+Eight bare floating promises across `sidebar.ts` and `main.ts` — async calls whose rejections were silently swallowed because no `.catch()` or `await` captured them. Without a lint rule, new instances would keep appearing.
+
+**Resolution:** Enabled `@typescript-eslint/no-floating-promises: ["error", { ignoreVoid: true }]` in `eslint.config.mjs`, requiring typed linting (`projectService: true`, `tsconfigRootDir: import.meta.dirname`). Fixed the 8 existing violations by prefixing intentional fire-and-forget calls with `void` (e.g. `void this.sendMessage()`, `void workspace.revealLeaf(leaf)`). This partially addresses #10 (fire-and-forget hardening in the fork path) — bare floating promises are now a compile-time error everywhere, not just in the fork path.
