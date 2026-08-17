@@ -11,9 +11,12 @@ import type { PythiaSettings } from "./settings";
  * o4-mini request fail.
  */
 export const KNOWN_MODELS: Record<Provider, string[]> = {
-	anthropic: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
-	openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "o4-mini"],
-	mistral: ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "magistral-medium-latest"],
+	anthropic: [
+		"claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+		"claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5",
+	],
+	openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini", "o3-pro", "o3", "o3-mini", "o4-mini"],
+	mistral: ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "magistral-medium-latest", "magistral-small-latest"],
 };
 
 /**
@@ -57,7 +60,7 @@ export function isMistralReasoningModel(model: string): boolean {
  * reject a custom `temperature`, and reject `max_tokens` — they require
  * `max_completion_tokens` instead.
  */
-export const REASONING_MODELS = new Set(["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]);
+export const REASONING_MODELS = new Set(["o1", "o1-mini", "o3-pro", "o3", "o3-mini", "o4-mini"]);
 
 export function isReasoningModel(model: string): boolean {
 	return REASONING_MODELS.has(model);
@@ -70,6 +73,7 @@ export function isReasoningModel(model: string): boolean {
  * regardless of value).
  */
 export const ANTHROPIC_NO_TEMPERATURE_MODELS = new Set([
+	"claude-opus-5",
 	"claude-fable-5",
 	"claude-mythos-5",
 	"claude-opus-4-8",
@@ -89,6 +93,7 @@ export function supportsTemperature(model: string): boolean {
  * models rather than removed-for-some.
  */
 export const ANTHROPIC_EFFORT_MODELS = new Set([
+	"claude-opus-5",
 	"claude-fable-5",
 	"claude-mythos-5",
 	"claude-opus-4-8",
@@ -114,17 +119,26 @@ export function supportsMistralEffort(_model: string): boolean {
 }
 
 export const MODEL_ABBREVIATIONS: Record<string, string> = {
-	"claude-fable-5":  "Fable 5",
-	"claude-opus-4-8": "Opus 4.8",
-	"claude-sonnet-5": "Sonnet 5",
+	"claude-opus-5":    "Opus 5",
+	"claude-fable-5":   "Fable 5",
+	"claude-opus-4-8":  "Opus 4.8",
+	"claude-opus-4-7":  "Opus 4.7",
+	"claude-opus-4-6":  "Opus 4.6",
+	"claude-sonnet-5":  "Sonnet 5",
+	"claude-sonnet-4-6": "Sonnet 4.6",
 	"claude-haiku-4-5": "Haiku 4.5",
+	"gpt-4.1":           "GPT-4.1",
+	"gpt-4.1-mini":      "GPT-4.1 mini",
+	"gpt-4.1-nano":      "GPT-4.1 nano",
 	"gpt-4o":            "GPT-4o",
 	"gpt-4o-mini":       "GPT-4o mini",
+	"o3-pro":            "o3 pro",
 	"o3":                "o3",
 	"o3-mini":           "o3 mini",
 	"o4-mini":           "o4 mini",
-	"mistral-large-latest":   "Mistral Large",
-	"mistral-small-latest":   "Mistral Small",
-	"codestral-latest":       "Codestral",
+	"mistral-large-latest":    "Mistral Large",
+	"mistral-small-latest":    "Mistral Small",
+	"codestral-latest":        "Codestral",
 	"magistral-medium-latest": "Magistral Medium",
+	"magistral-small-latest":  "Magistral Small",
 };
