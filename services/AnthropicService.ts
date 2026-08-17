@@ -164,7 +164,6 @@ export class AnthropicService extends BaseProvider {
 	protected async runStreamRound(
 		signal: AbortSignal,
 		onToken: (text: string) => void,
-		_textLenBefore: number
 	): Promise<RoundResult> {
 		let finalMsg: Anthropic.Message | undefined;
 		let tokensEmitted = 0;

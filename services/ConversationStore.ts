@@ -21,9 +21,15 @@ export class ConversationStore {
 		return this.plugin.conversations.find((c) => c.id === id);
 	}
 
-	/** Clears the dirty set — called by persistData after a successful write. */
-	clearDirty(): void {
-		this.dirtyIds.clear();
+	/** Returns a snapshot of the current dirty IDs for race-safe clearing. */
+	snapshotDirty(): Set<string> {
+		return new Set(this.dirtyIds);
+	}
+
+	/** Clears only the IDs that were in the snapshot — IDs added after the
+	 *  snapshot was taken survive for the next persist cycle. */
+	clearDirtySnapshot(snapshot: Set<string>): void {
+		for (const id of snapshot) this.dirtyIds.delete(id);
 	}
 
 	/** Marks a conversation as dirty without triggering a persist — used when a new
@@ -35,8 +41,6 @@ export class ConversationStore {
 	async save(conversation: Conversation): Promise<void> {
 		const idx = this.plugin.conversations.findIndex((c) => c.id === conversation.id);
 		if (idx < 0) {
-			// The conversation was deleted (e.g. by the user, while a stream or
-			// backfill for it was still in flight) — do not resurrect it.
 			debugLog(this.plugin.settings, "save() skipped — conversation no longer exists:", conversation.id);
 			return;
 		}
@@ -55,7 +59,13 @@ export class ConversationStore {
 
 	async flush(): Promise<void> {
 		this.cancelPersist();
+		if (this.dirtyIds.size === 0) return;
 		await this.plugin.saveConversations();
+	}
+
+	/** Cancel any pending debounced persist — exposed for reloadFromDisk(). */
+	cancelPendingPersist(): void {
+		this.cancelPersist();
 	}
 
 	private schedulePersist(): void {

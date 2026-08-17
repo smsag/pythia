@@ -10,7 +10,6 @@ import {
 	supportsEffort,
 	isReasoningModel,
 	isMistralReasoningModel,
-	supportsMistralEffort,
 	resolveDefaultModelForProvider,
 } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
@@ -436,7 +435,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 				break;
 			case "mistral":
 				tempSupported = !isMistralReasoningModel(model);
-				effortSupported = supportsMistralEffort(model);
+				effortSupported = true;
 				break;
 			default: {
 				const exhaustiveCheck: never = provider;
@@ -491,7 +490,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		customInput.value = isCustom ? currentValue : "";
 		customInput.style.display = isCustom ? "" : "none";
 		customInput.style.marginLeft = "8px";
-		customInput.addEventListener("change", async () => {
+		this.plugin.registerDomEvent(customInput, "change", async () => {
 			if (customInput && customInput.value.trim()) {
 				await setValue(customInput.value.trim());
 				onAnyChange?.();

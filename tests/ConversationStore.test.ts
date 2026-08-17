@@ -165,20 +165,34 @@ describe("dirty-flag tracking", () => {
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
-	it("clearDirty() prevents the debounced persist from writing", async () => {
+	it("snapshotDirty() + clearDirtySnapshot() prevents the debounced persist from writing", async () => {
 		const conv = makeConv("d2");
 		plugin.conversations.push(conv);
 		await store.save(conv);
-		store.clearDirty();
+		const snapshot = store.snapshotDirty();
+		store.clearDirtySnapshot(snapshot);
 		vi.advanceTimersByTime(300);
 		expect(plugin.saveConversations).not.toHaveBeenCalled();
+	});
+
+	it("clearDirtySnapshot() only clears IDs from the snapshot, not later additions", async () => {
+		const c1 = makeConv("d2a");
+		const c2 = makeConv("d2b");
+		plugin.conversations.push(c1, c2);
+		await store.save(c1);
+		const snapshot = store.snapshotDirty();
+		await store.save(c2);
+		store.clearDirtySnapshot(snapshot);
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
 	it("markDirty() makes the next debounced persist write", async () => {
 		const conv = makeConv("d3");
 		plugin.conversations.push(conv);
 		await store.save(conv);
-		store.clearDirty();
+		const snapshot = store.snapshotDirty();
+		store.clearDirtySnapshot(snapshot);
 		store.markDirty(conv.id);
 		vi.advanceTimersByTime(300);
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
@@ -200,16 +214,37 @@ describe("dirty-flag tracking", () => {
 // ── flush ─────────────────────────────────────────────────────────────────────
 
 describe("flush", () => {
-	it("calls saveConversations immediately", async () => {
+	it("skips saveConversations when nothing is dirty", async () => {
+		await store.flush();
+		expect(plugin.saveConversations).not.toHaveBeenCalled();
+	});
+
+	it("calls saveConversations when dirty IDs exist", async () => {
+		const conv = makeConv("f");
+		plugin.conversations.push(conv);
+		await store.save(conv);
 		await store.flush();
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
 	it("cancels any pending debounced save before flushing", async () => {
-		await store.save(makeConv("f"));
+		const conv = makeConv("f2");
+		plugin.conversations.push(conv);
+		await store.save(conv);
 		await store.flush();
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 		vi.advanceTimersByTime(300);
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1); // still 1
+	});
+});
+
+describe("cancelPendingPersist", () => {
+	it("cancels any scheduled debounced persist", async () => {
+		const conv = makeConv("cp");
+		plugin.conversations.push(conv);
+		await store.save(conv);
+		store.cancelPendingPersist();
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).not.toHaveBeenCalled();
 	});
 });

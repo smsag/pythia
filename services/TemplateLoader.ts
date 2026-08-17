@@ -87,12 +87,17 @@ export class TemplateLoader {
 					? (rawEffort as EffortLevel)
 					: undefined;
 
+			const validName = typeof fm.name === "string" ? fm.name : undefined;
+			const validModel = typeof fm.model === "string" ? fm.model : undefined;
+			const validMaxTokens = typeof fm.max_tokens === "number" && fm.max_tokens > 0
+				? fm.max_tokens : undefined;
+
 			return {
 				id: file.path,
-				name: (fm.name as string) ?? file.basename,
+				name: validName ?? file.basename,
 				provider: validProvider,
-				model: fm.model as string | undefined,
-				maxTokens: fm.max_tokens as number | undefined,
+				model: validModel,
+				maxTokens: validMaxTokens,
 				temperature: validTemperature,
 				effort: validEffort,
 				contextNotes: validContextNotes,

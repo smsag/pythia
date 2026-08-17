@@ -83,9 +83,6 @@ export function isMistralReasoningModel(model: string): boolean {
 	return MISTRAL_REASONING_SET.has(model) || model.startsWith("magistral-");
 }
 
-export function supportsMistralEffort(_model: string): boolean {
-	return true;
-}
 
 export function resolveDefaultModelForProvider(provider: Provider, settings: PythiaSettings): string {
 	switch (provider) {

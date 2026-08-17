@@ -7,7 +7,6 @@ import {
 	supportsEffort,
 	isReasoningModel,
 	isMistralReasoningModel,
-	supportsMistralEffort,
 } from "../models/knownModels";
 import { resolveDefaultMaxTokens } from "../services/promptConstants";
 
@@ -196,7 +195,7 @@ export class ConversationSettingsModal extends Modal {
 					break;
 				case "mistral":
 					tempSupported = !isMistralReasoningModel(selectedModel);
-					effortSupported = supportsMistralEffort(selectedModel);
+					effortSupported = true;
 					break;
 				default: {
 					const exhaustiveCheck: never = selectedProvider;

@@ -26,7 +26,7 @@ export class NavigatorController {
 	toggle(): void {
 		const { navigatorEl } = this.d;
 		if (navigatorEl.hasClass("open")) {
-			navigatorEl.removeClass("open");
+			this.close();
 			return;
 		}
 

@@ -60,7 +60,7 @@ export class PromptOptimizerService {
 				const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
 				const rawProvider = fm.provider;
 				const provider: Provider | undefined =
-					rawProvider === "anthropic" || rawProvider === "openai" ? rawProvider : undefined;
+					rawProvider === "anthropic" || rawProvider === "openai" || rawProvider === "mistral" ? rawProvider : undefined;
 				return { body: fmMatch[2].trim(), provider, model: fm.model as string | undefined };
 			} catch {
 				return { body: fmMatch[2].trim() };
@@ -150,7 +150,9 @@ export class PromptOptimizerService {
 			const model = template.model ?? (
 				provider === "openai"
 					? this.settings.defaultOpenAIModel
-					: this.settings.defaultAnthropicModel
+					: provider === "mistral"
+						? this.settings.defaultMistralModel
+						: this.settings.defaultAnthropicModel
 			);
 			optimizedPrompt = await this.llmRouter.optimizePrompt(
 				"",

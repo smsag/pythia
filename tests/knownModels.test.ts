@@ -6,7 +6,6 @@ import {
 	MODEL_ABBREVIATIONS,
 	supportsEffort,
 	isMistralReasoningModel,
-	supportsMistralEffort,
 	resolveDefaultModelForProvider,
 } from "../models/knownModels";
 import type { PythiaSettings } from "../models/settings";
@@ -74,14 +73,6 @@ describe("isMistralReasoningModel", () => {
 	it("is false for non-Magistral Mistral models", () => {
 		for (const model of ["mistral-large-latest", "mistral-small-latest", "codestral-latest"]) {
 			expect(isMistralReasoningModel(model)).toBe(false);
-		}
-	});
-});
-
-describe("supportsMistralEffort", () => {
-	it("is true for every known Mistral model (no per-model restriction in the installed SDK types)", () => {
-		for (const model of KNOWN_MODELS.mistral) {
-			expect(supportsMistralEffort(model)).toBe(true);
 		}
 	});
 });

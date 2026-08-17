@@ -182,7 +182,6 @@ export class OpenAIProvider extends BaseProvider {
 	protected async runStreamRound(
 		signal: AbortSignal,
 		onToken: (text: string) => void,
-		_textLenBefore: number
 	): Promise<RoundResult> {
 		let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> | undefined;
 

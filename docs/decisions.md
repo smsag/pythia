@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-17 — ADR-048 (unified model catalog), ADR-049 (BaseProvider concrete defaults), ADR-050 (`buildUI` decomposition + code-block extraction), ADR-051 (`createConversation` options object).*
+*Last updated: 2026-08-17 — ADR-052 (codebase audit: 22-finding cleanup — AbortController race, ConversationStore snapshot-based dirty clearing, writeMode enforcement, dead code/CSS removal, focus-visible accessibility, i18n lazy init, TemplateLoader validation).*
+
+*Previously, 2026-08-17 — ADR-048 (unified model catalog), ADR-049 (BaseProvider concrete defaults), ADR-050 (`buildUI` decomposition + code-block extraction), ADR-051 (`createConversation` options object).*
 
 *Previously, 2026-07-17 — ADR-047 (`buildStreamErrorMessage()` stops discarding the real diagnostic message for status-less Anthropic SDK errors that were being shown to users as a false "check your internet connection" claim).*
 
@@ -641,3 +643,23 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Decision:** Changed to a single options object: `createConversation(opts: { name, systemPrompt?, contextNotes?, templateId?, provider?, model?, maxTokens?, outputFolder? })`. All 10+ call sites updated. Added `createConversationFromTemplate(tpl, contextNotes?)` helper that encapsulates the template-to-options mapping (including `outputFolder`, `writeMode`, `temperature`, `effort` post-creation assignments), replacing duplicated template-handling logic at two call sites. Added `resolveTemplateContext()` private helper for template context-note resolution. Deleted dead `cmdCopyConversationLink()`. Fixed the URI "template" handler to use `createConversationFromTemplate()`, inheriting the `outputFolder`/`writeMode` it was previously missing.
 
 **Consequence:** Adding a new field to conversation creation is a non-breaking change (add an optional property). Call sites are self-documenting (`{ name: "..." }` vs. positional). The template-creation path is DRY and correct by construction — the URI handler bug (missing `outputFolder`/`writeMode`) was fixed as a natural consequence of the refactor, not a separate patch.
+
+---
+
+### ADR-052 — Codebase audit: 22-finding cleanup
+
+**Status:** Active
+
+**Context:** A comprehensive audit of the codebase identified 22 findings across critical, medium, low, and dead-code categories. Rather than addressing them in separate PRs, all were fixed in a single pass to minimize churn.
+
+**Decision:** Key changes:
+- **AbortController race** (BaseProvider): capture the controller in a local const and only null the instance field if it still points to the same controller, preventing a second concurrent request from nulling the first's abort handle.
+- **ConversationStore snapshot-based dirty clearing**: replaced `clearDirty()` (which unconditionally emptied the set) with `snapshotDirty()` / `clearDirtySnapshot(snapshot)` so IDs added between the snapshot and the async `saveData()` completion survive for the next persist cycle. Added `cancelPendingPersist()` for `reloadFromDisk()`.
+- **writeMode enforcement**: `ToolHandler.execute()` now accepts an optional `allowedTools` set; `sidebar.ts` derives it from `conv.writeMode` via `ToolHandler.allowedToolNames()`.
+- **Fork field preservation**: `cmdForkConversation` now copies `contextNotes`, `resumeMode`, `outputFolder`, and `writeMode` from the source.
+- **Dead code removal**: `supportsMistralEffort()` (always returned true), `getActiveConversationId()`, `getLastAssistantMessage()`, ~120 lines of dead CSS selectors.
+- **Focus-visible accessibility**: added `button:focus-visible` rule (WCAG 2.4.7) to replace the blanket `outline: none`.
+- **i18n lazy init**: locale detection deferred to first `t()` call, avoiding a module-load-order dependency on `moment`.
+- **TemplateLoader validation**: frontmatter `name`, `model`, and `max_tokens` validated at the system boundary.
+
+**Consequence:** No behavioral changes for users. ConversationStore's API is narrower and race-safe. Dead code removed reduces maintenance surface. Focus-visible restores keyboard accessibility.

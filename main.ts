@@ -307,8 +307,12 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	async reloadFromDisk(): Promise<void> {
+		this.conversationStore?.cancelPendingPersist();
 		await this.loadPluginData();
 		this.llmRouter?.updateSettings(this.settings);
+		this.llmRouter?.updateApiKey("anthropic", this.plaintextApiKey);
+		this.llmRouter?.updateApiKey("openai", this.plaintextOpenAIKey);
+		this.llmRouter?.updateApiKey("mistral", this.plaintextMistralKey);
 		this.templateLoader?.updateSettings(this.settings);
 		this.noteWriter?.updateSettings(this.settings);
 		this.promptOptimizerService?.updateSettings(this.settings);
@@ -317,7 +321,11 @@ export default class PythiaPlugin extends Plugin {
 			const view = leaf.view as PythiaSidebarView;
 			const still = this.conversations.find(c => c.id === view.activeConversationId);
 			const next  = still ?? this.conversations[0] ?? null;
-			if (next) await view.setActiveConversation(next, false);
+			if (next) {
+				await view.setActiveConversation(next, false);
+			} else {
+				view.renderEmptyState();
+			}
 		}
 		new Notice(t("reloadComplete"));
 	}
@@ -458,12 +466,13 @@ export default class PythiaPlugin extends Plugin {
 				activeIds,
 			);
 
+			const snapshot = this.conversationStore?.snapshotDirty();
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire
 			await this.saveData({
 				settings: this.settings,
 				conversations: this.conversations,
 			});
-			this.conversationStore?.clearDirty();
+			if (snapshot) this.conversationStore?.clearDirtySnapshot(snapshot);
 		} catch (err) {
 			new Notice(
 				`[Pythia] Failed to save data: ${err instanceof Error ? err.message : String(err)}`,
@@ -601,6 +610,8 @@ export default class PythiaPlugin extends Plugin {
 		model?: string;
 		maxTokens?: number;
 		outputFolder?: string;
+		resumeMode?: "full" | "summary";
+		writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 	}): Promise<Conversation> {
 		const resolvedProvider = opts.provider ?? this.settings.defaultProvider;
 		const resolvedModel = opts.model ?? resolveDefaultModelForProvider(resolvedProvider, this.settings);
@@ -613,11 +624,12 @@ export default class PythiaPlugin extends Plugin {
 			templateId: opts.templateId,
 			systemPrompt: opts.systemPrompt ?? "",
 			contextNotes: opts.contextNotes ?? [],
-			resumeMode: this.settings.defaultResumeMode,
+			resumeMode: opts.resumeMode ?? this.settings.defaultResumeMode,
 			provider: resolvedProvider,
 			model: resolvedModel,
 			maxTokens: opts.maxTokens,
 			outputFolder: opts.outputFolder,
+			writeMode: opts.writeMode,
 			messages: [],
 		};
 		this.conversations.push(conv);
@@ -767,6 +779,10 @@ export default class PythiaPlugin extends Plugin {
 			provider: source.provider,
 			model: source.model,
 			maxTokens: source.maxTokens,
+			contextNotes: source.contextNotes ? [...source.contextNotes] : undefined,
+			resumeMode: source.resumeMode,
+			outputFolder: source.outputFolder,
+			writeMode: source.writeMode,
 		});
 		conv.temperature = source.temperature;
 		conv.effort = source.effort;

@@ -157,6 +157,7 @@ const en = {
 	mistralKeyNotConfigured:   "Mistral API key not configured. Set it in Settings → Pythia.",
 	mistralPdfUnsupported:     "Warning: {{count}} PDF(s) not sent — PDF attachments aren't supported for Mistral yet.",
 	contextNotesWarning:       "Warning: {{count}} context note(s) not found and were skipped.",
+	missingPdfsWarning:        "Warning: {{count}} PDF attachment(s) not found and were skipped.",
 	oversizedPdfWarning:       "Warning: {{count}} PDF(s) exceeded the size limit and were skipped.",
 
 	// ── Settings ─────────────────────────────────────────────────────────────

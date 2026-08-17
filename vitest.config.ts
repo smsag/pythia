@@ -6,7 +6,7 @@ export default defineConfig({
 			provider: "v8",
 			reporter: ["text", "html"],
 			// Only report on modules that have tests. sidebar.ts, main.ts, and
-			// the two providers remain excluded — their 0 % would be noise until
+			// the three providers remain excluded — their 0 % would be noise until
 			// the sidebar-split refactor (#11) extracts more testable surface.
 			include: [
 				"services/messageUtils.ts",
@@ -20,6 +20,8 @@ export default defineConfig({
 				"services/retry.ts",
 				"services/promptConstants.ts",
 				"services/ContextBuilder.ts",
+				"services/TemplateLoader.ts",
+				"models/knownModels.ts",
 			],
 			thresholds: {
 				statements: 90,

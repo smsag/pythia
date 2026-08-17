@@ -79,10 +79,16 @@ export function getToolDefinitions(defaultFolder: string, writeMode: "update" | 
 	return [CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL];
 }
 
+const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note"]);
+
 export class ToolHandler {
 	constructor(private readonly writer: NoteWriter) {}
 
-	async execute(call: ToolCall): Promise<string> {
+	async execute(call: ToolCall, allowedTools?: Set<string>): Promise<string> {
+		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
+		if (allowedTools && !allowedTools.has(call.name)) {
+			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
+		}
 		const path = call.input["path"];
 		const content = call.input["content"];
 
@@ -115,5 +121,13 @@ export class ToolHandler {
 		}
 
 		return `Error: unknown tool "${call.name}"`;
+	}
+
+	static allowedToolNames(writeMode: string): Set<string> {
+		if (writeMode === "none") return new Set();
+		if (writeMode === "rewrite") return new Set(["rewrite_note"]);
+		if (writeMode === "update") return new Set(["prepend_note"]);
+		if (writeMode === "create") return new Set(["create_note"]);
+		return KNOWN_TOOLS;
 	}
 }

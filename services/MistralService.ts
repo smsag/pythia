@@ -170,7 +170,6 @@ export class MistralService extends BaseProvider {
 	protected async runStreamRound(
 		signal: AbortSignal,
 		onToken: (text: string) => void,
-		_textLenBefore: number
 	): Promise<RoundResult> {
 		let stream: EventStream<{ data: CompletionChunk }> | undefined;
 

@@ -99,7 +99,6 @@ export abstract class BaseProvider implements LLMProvider {
 	protected abstract runStreamRound(
 		signal: AbortSignal,
 		onToken: (text: string) => void,
-		textLenBefore: number
 	): Promise<RoundResult>;
 
 	/** Provider-specific: process tool calls from the last round and append
@@ -121,12 +120,9 @@ export abstract class BaseProvider implements LLMProvider {
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
 		this.abort();
-		this.abortController = new AbortController();
-		// Captured once: if the user aborts while a tool confirmation is pending
-		// (BaseProvider.abort() nulls this.abortController), later round trips must
-		// still see a signal — reading this.abortController.signal again would throw
-		// on null instead of surfacing a clean abort.
-		const signal = this.abortController.signal;
+		const controller = new AbortController();
+		this.abortController = controller;
+		const signal = controller.signal;
 
 		let fullText = "";
 
@@ -149,7 +145,6 @@ export abstract class BaseProvider implements LLMProvider {
 				const result = await this.runStreamRound(
 					signal,
 					(text) => { fullText += text; onToken(text); },
-					fullText.length
 				);
 
 				totalInputTokens += result.inputTokens;
@@ -184,7 +179,7 @@ export abstract class BaseProvider implements LLMProvider {
 		} catch (error) {
 			this.finishOrError(error, fullText, onComplete, onError);
 		} finally {
-			this.abortController = null;
+			if (this.abortController === controller) this.abortController = null;
 		}
 	}
 
@@ -212,7 +207,7 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("contextNotesWarning", { count: missingNotes.length }));
 		}
 		if (missingPdfs.length > 0) {
-			new Notice(t("contextNotesWarning", { count: missingPdfs.length }));
+			new Notice(t("missingPdfsWarning", { count: missingPdfs.length }));
 		}
 		if (oversizedPdfs.length > 0) {
 			new Notice(t("oversizedPdfWarning", { count: oversizedPdfs.length }));

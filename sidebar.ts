@@ -22,6 +22,7 @@ import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { buildStreamErrorMessage } from "./services/apiError";
+import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
@@ -245,10 +246,6 @@ export class PythiaSidebarView extends ItemView {
 		return this.activeConversation;
 	}
 
-	getActiveConversationId(): string | undefined {
-		return this.activeConversation?.id;
-	}
-
 	attachNoteToInput(path: string): void {
 		const conv = this.activeConversation;
 		if (!conv) return;
@@ -289,15 +286,6 @@ export class PythiaSidebarView extends ItemView {
 				this.backfillInFlight.delete(conversation.id);
 			}
 		})();
-	}
-
-	getLastAssistantMessage(): string | null {
-		if (!this.activeConversation) return null;
-		const messages = this.activeConversation.messages;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].role === "assistant") return messages[i].content;
-		}
-		return null;
 	}
 
 	prefillInput(text: string): void {
@@ -688,7 +676,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 	}
 
-	private renderEmptyState(): void {
+	renderEmptyState(): void {
 		this.messagesEl.empty();
 		const empty = this.messagesEl.createDiv({ cls: "pythia-empty" });
 		empty.createEl("p", {
@@ -718,8 +706,10 @@ export class PythiaSidebarView extends ItemView {
 					.pop()
 					?.replace(/\.md$/, "") ?? "";
 			this.templateLabelEl.setText(t("templateLabel", { name: tplName }));
+			this.templateLabelEl.style.display = "";
 		} else {
 			this.templateLabelEl.setText("");
+			this.templateLabelEl.style.display = "none";
 		}
 	}
 
@@ -1606,7 +1596,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
 				}
 
-				const result = await this.plugin.toolHandler.execute(call);
+				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all");
+				const result = await this.plugin.toolHandler.execute(call, allowed);
 
 				if (result.startsWith("Error")) {
 					chipEl.addClass("pythia-tool-call--error");
@@ -1652,75 +1643,71 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 					return;
 				}
 
-				if (fullText) {
-					const assistantMsg: Message = {
-						id: crypto.randomUUID(),
-						role: "assistant",
-						content: fullText,
-						timestamp: new Date().toISOString(),
-						tokenUsage,
-					};
-					conv.messages.push(assistantMsg);
-					if (this.activeConversation?.id === conv.id) {
-						this.lastRenderedMsgId = assistantMsg.id;
+				const assistantMsg: Message = {
+					id: crypto.randomUUID(),
+					role: "assistant",
+					content: fullText,
+					timestamp: new Date().toISOString(),
+					tokenUsage,
+				};
+				conv.messages.push(assistantMsg);
+				if (this.activeConversation?.id === conv.id) {
+					this.lastRenderedMsgId = assistantMsg.id;
+				}
+				const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
+				const lastRow = rows[rows.length - 1] as HTMLElement | null;
+				if (lastRow && !lastRow.getAttribute("data-msg-id")) {
+					lastRow.setAttribute("data-msg-id", assistantMsg.id);
+					const footer = streamingRow.createDiv({ cls: "p-tokens" });
+					const star = footer.createEl("button", {
+						cls: "p-star",
+						text: "☆",
+						attr: { title: t("addToFavorites") },
+					});
+					star.addEventListener("click", () =>
+						this.onStarClick(assistantMsg, star)
+					);
+					if (tokenUsage) {
+						footer.createSpan({ cls: "p-tok-sep", text: "|" });
+						this.renderTokenCount(footer, tokenUsage);
 					}
-					// Only wire the star when conv is still the displayed conversation.
-					const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
-					const lastRow = rows[rows.length - 1] as HTMLElement | null;
-					if (lastRow && !lastRow.getAttribute("data-msg-id")) {
-						lastRow.setAttribute("data-msg-id", assistantMsg.id);
-						const footer = streamingRow.createDiv({ cls: "p-tokens" });
-						const star = footer.createEl("button", {
-							cls: "p-star",
-							text: "☆",
-							attr: { title: t("addToFavorites") },
-						});
-						star.addEventListener("click", () =>
-							this.onStarClick(assistantMsg, star)
-						);
-						if (tokenUsage) {
-							footer.createSpan({ cls: "p-tok-sep", text: "|" });
-							this.renderTokenCount(footer, tokenUsage);
-						}
-					}
-					await this.plugin.conversationStore.save(conv);
-					if (this.activeConversation?.id === conv.id) {
-						this.attachLastBubbleLongPress();
-					}
+				}
+				await this.plugin.conversationStore.save(conv);
+				if (this.activeConversation?.id === conv.id) {
+					this.attachLastBubbleLongPress();
+				}
 
-					if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
-						// Capture IDs so the callback doesn't write to a deleted conversation (#27).
-						const convId = conv.id;
-						this.plugin.llmRouter
-							.generateConversationTitle(userMsg.content, fullText, conv.provider)
-							.then(async (title) => {
-								const c = this.plugin.conversationStore.getById(convId);
-								if (!c) return; // conversation deleted in the interim
-								c.name = title;
-								await this.plugin.conversationStore.save(c);
-								if (this.activeConversation?.id === convId) {
-									this.convNameEl.setText(c.name + " ▾");
-								}
-							})
-							.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
-					}
+				if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
+					const convId = conv.id;
+					this.plugin.llmRouter
+						.generateConversationTitle(userMsg.content, fullText, conv.provider)
+						.then(async (title) => {
+							const c = this.plugin.conversationStore.getById(convId);
+							if (!c) return;
+							c.name = title;
+							await this.plugin.conversationStore.save(c);
+							if (this.activeConversation?.id === convId) {
+								this.convNameEl.setText(c.name + " ▾");
+							}
+						})
+						.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
+				}
 
-					if (!userMsg.chapterName) {
-						const convId = conv.id;
-						const msgId  = userMsg.id;
-						this.plugin.llmRouter
-							.generateChapterName(userMsg.content, conv.provider)
-							.then(async (name) => {
-								if (!name) return;
-								const c = this.plugin.conversationStore.getById(convId);
-								if (!c) return; // conversation deleted in the interim
-								const m = c.messages.find(msg => msg.id === msgId);
-								if (!m) return; // message deleted in the interim
-								m.chapterName = name;
-								await this.plugin.conversationStore.save(c);
-							})
-							.catch((e) => console.warn("[Pythia] chapter name generation failed:", e));
-					}
+				if (!userMsg.chapterName) {
+					const convId = conv.id;
+					const msgId  = userMsg.id;
+					this.plugin.llmRouter
+						.generateChapterName(userMsg.content, conv.provider)
+						.then(async (name) => {
+							if (!name) return;
+							const c = this.plugin.conversationStore.getById(convId);
+							if (!c) return;
+							const m = c.messages.find(msg => msg.id === msgId);
+							if (!m) return;
+							m.chapterName = name;
+							await this.plugin.conversationStore.save(c);
+						})
+						.catch((e) => console.warn("[Pythia] chapter name generation failed:", e));
 				}
 			},
 			(error) => {

@@ -29,6 +29,10 @@
   outline: none;
   -webkit-tap-highlight-color: transparent;
 }
+.pythia-view button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
 
 /* ── Header ─────────────────────────────────────────────────── */
 .p-header {
@@ -180,86 +184,7 @@
   opacity: 0.9;
 }
 
-/* ── Context notes section ──────────────────────────────────── */
-.pythia-context-section,
-.pythia-favorites-section {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  min-height: 32px;
-  overflow: hidden;
-}
-
-.pythia-section-label {
-  font-size: 0.75em;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding-top: 3px;
-  flex-shrink: 0;
-  min-width: 64px;
-}
-
-/* ── Pills ──────────────────────────────────────────────────── */
-.pythia-pills {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  align-items: center;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  flex: 1;
-  min-width: 0;
-}
-.pythia-pills::-webkit-scrollbar {
-  display: none;
-}
-
-.pythia-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  background: var(--background-secondary-alt);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 12px;
-  padding: 1px 8px 1px 8px;
-  font-size: 0.78em;
-  color: var(--text-muted);
-}
-
-.pythia-pill-attached {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-}
-
-.pythia-pill-label {
-  max-width: 140px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pythia-pill-remove {
-  all: unset;
-  cursor: pointer;
-  color: var(--text-faint);
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  font-size: 1.1em;
-  line-height: 1;
-  padding: 0 1px;
-  border-radius: 50%;
-}
-.pythia-pill-remove:hover {
-  color: var(--text-error);
-}
-
+/* ── Pill add button ────────────────────────────────────────── */
 .pythia-view .pythia-pill-add {
   all: unset;
   cursor: pointer;
@@ -278,101 +203,6 @@
 .pythia-view .pythia-pill-add:hover {
   border-color: var(--interactive-accent);
   color: var(--interactive-accent);
-}
-
-/* ── Summary note row ───────────────────────────────────────── */
-.pythia-summary-note-section {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
-  min-height: 28px;
-  overflow: hidden;
-}
-
-.pythia-summary-note-path {
-  flex: 1;
-  font-size: 0.78em;
-  color: var(--text-muted);
-  font-family: var(--font-monospace);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.pythia-summary-note-move {
-  flex-shrink: 0;
-  border-color: transparent !important;
-  background: transparent !important;
-  color: var(--text-faint);
-}
-.pythia-summary-note-move:hover {
-  color: var(--text-muted);
-}
-
-/* ── Summary banner ─────────────────────────────────────────── */
-.pythia-summary-banner {
-  flex-shrink: 0;
-  padding: 8px 12px 8px 10px;
-  border-left: 2px solid var(--text-faint);
-  background: var(--background-secondary);
-  border-radius: 0 6px 6px 0;
-}
-
-.pythia-summary-body {
-  color: var(--text-normal);
-  font-size: 0.9em;
-  line-height: 1.6;
-  word-break: break-word;
-}
-.pythia-summary-body--collapsed {
-  max-height: 3.5em;
-  overflow: hidden;
-}
-.pythia-summary-body p {
-  margin: 0 0 4px 0;
-}
-.pythia-summary-body h1,
-.pythia-summary-body h2,
-.pythia-summary-body h3,
-.pythia-summary-body h4,
-.pythia-summary-body h5,
-.pythia-summary-body h6 {
-  font-size: 1em;
-  font-weight: 600;
-  margin: 10px 0 6px 0;
-  color: var(--text-muted);
-  border: none;
-  padding: 0;
-}
-.pythia-summary-body :first-child {
-  margin-top: 0;
-}
-.pythia-summary-body ul,
-.pythia-summary-body ol {
-  padding-left: 14px;
-  margin: 2px 0;
-}
-.pythia-summary-body li {
-  margin: 1px 0;
-}
-
-.pythia-summary-toggle {
-  all: unset;
-  cursor: pointer;
-  color: var(--interactive-accent);
-  font-size: 0.85em;
-  margin-top: 4px;
-  display: block;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-.pythia-summary-toggle:hover {
-  text-decoration: underline;
 }
 
 /* ── Fork banner ────────────────────────────────────────────── */
@@ -891,14 +721,6 @@
   user-select: none;
 }
 
-/* ── Favorite pill variant ───────────────────────────────────── */
-.pythia-favorite-pill .pythia-pill-label {
-  cursor: pointer;
-}
-.pythia-favorite-pill .pythia-pill-label:hover {
-  color: var(--text-normal);
-}
-
 /* ── Delete-exchange preview ─────────────────────────────────── */
 .p-msg-user.p-del-preview,
 .p-msg-ai.p-del-preview {
@@ -1148,7 +970,7 @@
   position: relative;
   border-top: 1px solid var(--background-modifier-border);
   padding: var(--s2) var(--s3);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(var(--s2), env(safe-area-inset-bottom, var(--s2)));
   display: flex;
   flex-direction: column;
   gap: var(--s3);

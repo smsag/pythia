@@ -159,6 +159,7 @@ const de: Strings = {
 	mistralKeyNotConfigured:   "Mistral-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
 	mistralPdfUnsupported:     "Warnung: {{count}} PDF(s) nicht gesendet — PDF-Anhänge werden für Mistral noch nicht unterstützt.",
 	contextNotesWarning:       "Warnung: {{count}} Kontextnotiz(en) nicht gefunden und übersprungen.",
+	missingPdfsWarning:        "Warnung: {{count}} PDF-Anhang/Anhänge nicht gefunden und übersprungen.",
 	oversizedPdfWarning:       "Warnung: {{count}} PDF(s) überschreiten die Größenbegrenzung und wurden übersprungen.",
 
 	// ── Settings ─────────────────────────────────────────────────────────────
