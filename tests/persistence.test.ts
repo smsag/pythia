@@ -134,9 +134,9 @@ describe("mergeSettings", () => {
 		expect(DEFAULT_SETTINGS).toEqual(before);
 	});
 
-	it("leaves temperature undefined when absent from old saved data (pre-B2 data.json)", () => {
+	it("defaults temperature to 0.7 when absent from old saved data", () => {
 		const result = mergeSettings({ defaultProvider: "anthropic" });
-		expect(result.temperature).toBeUndefined();
+		expect(result.temperature).toBe(0.7);
 	});
 
 	it("preserves an explicitly saved temperature", () => {

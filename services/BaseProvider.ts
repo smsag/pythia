@@ -186,7 +186,9 @@ export abstract class BaseProvider implements LLMProvider {
 	// ── Shared streamMessage helpers ───────────────────────────────────────────
 
 	/** Fetches attached-note content, warns on missing/oversized notes, and builds
-	 *  the outgoing user message + system prompt. */
+	 *  the outgoing user message + system prompt. Notes are placed in the system
+	 *  prompt (not the user message) so the model treats them as reference material
+	 *  and they benefit from Anthropic's prompt caching. */
 	protected async resolveUserContent(
 		conversation: Conversation,
 		attachedNotes: string[],
@@ -218,9 +220,11 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
 		}
 
+		const systemPrompt = buildSystemPrompt(conversation) + attachedContent;
+
 		return {
-			userContent: newMessage + attachedContent,
-			systemPrompt: buildSystemPrompt(conversation),
+			userContent: newMessage,
+			systemPrompt,
 			pdfAttachments: pdfs,
 		};
 	}

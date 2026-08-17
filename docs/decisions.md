@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-17 — ADR-052 (codebase audit: 22-finding cleanup — AbortController race, ConversationStore snapshot-based dirty clearing, writeMode enforcement, dead code/CSS removal, focus-visible accessibility, i18n lazy init, TemplateLoader validation).*
+*Last updated: 2026-08-17 — ADR-053 (LLM response quality audit: 10-finding implementation — enriched default system prompt, structured grounding instruction, notes moved to system prompt, hybrid resume mode, context window budget trimming, paragraph-level fallback chunking, raised chunk threshold to 12K, always-include-first-chunk, improved CJK token estimation, default effort "high").*
+
+*Previously, 2026-08-17 — ADR-052 (codebase audit: 22-finding cleanup — AbortController race, ConversationStore snapshot-based dirty clearing, writeMode enforcement, dead code/CSS removal, focus-visible accessibility, i18n lazy init, TemplateLoader validation).*
 
 *Previously, 2026-08-17 — ADR-048 (unified model catalog), ADR-049 (BaseProvider concrete defaults), ADR-050 (`buildUI` decomposition + code-block extraction), ADR-051 (`createConversation` options object).*
 
@@ -663,3 +665,35 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 - **TemplateLoader validation**: frontmatter `name`, `model`, and `max_tokens` validated at the system boundary.
 
 **Consequence:** No behavioral changes for users. ConversationStore's API is narrower and race-safe. Dead code removed reduces maintenance surface. Focus-visible restores keyboard accessibility.
+
+---
+
+### ADR-053 — LLM response quality audit: 10-finding implementation
+
+**Status:** Active
+
+**Context:** A structured audit of the LLM prompt-construction and response-quality pipeline identified 10 areas where the plugin's defaults, prompt engineering, or context management produced shallow or suboptimal LLM responses. Findings spanned: empty default system prompt, passive grounding instruction, notes buried in user message, no hybrid resume mode, no context window budget enforcement, heading-only chunking, small chunk threshold, no first-chunk inclusion, imprecise CJK token estimation, and no default effort level.
+
+**Decision:** All 10 findings implemented in a single pass:
+
+1. **Default system prompt** (`promptConstants.ts`): `DEFAULT_SYSTEM_PROMPT` provides explicit depth instructions — comprehensive answers, structured sections, specific details, and tone matching for simple questions. `buildSystemPrompt` always includes a system prompt (falling back to the default when none is set).
+
+2. **Structured grounding instruction** (`promptConstants.ts`): `GROUNDING_INSTRUCTION` replaces the previous one-liner, instructing the model to synthesize across notes, cite paths, analyze rather than summarize, and explicitly flag missing information.
+
+3. **Notes in system prompt** (`BaseProvider.ts`): Attached note content moved from the user message to the system prompt (`systemPrompt + attachedContent`), giving the model stable reference material it can attend to across the full conversation rather than treating it as one-shot user input.
+
+4. **Hybrid resume mode** (`messageUtils.ts`, `types.ts`, `settings.ts`, locale files, `ResumeModeModal.ts`): New `"hybrid"` mode sends the summary (in system prompt) plus the last 6 messages (`HYBRID_TAIL_COUNT`), balancing cost savings with recent-detail fidelity. Added to the resume modal, settings dropdown, and template frontmatter validation.
+
+5. **Context window budget trimming** (`messageUtils.ts`, all three providers): `trimHistoryToBudget()` trims oldest messages when estimated tokens exceed `contextWindow - outputBudget - systemPromptTokens`. `models/knownModels.ts` gained per-model `contextWindow` values (Anthropic 1M, OpenAI gpt-4.1 1M / gpt-4o 128K / o-series 200K, Mistral 128K / Codestral 256K) and a `getContextWindow()` accessor.
+
+6. **Paragraph-level fallback chunking** (`noteChunking.ts`): `chunkByParagraphs()` splits heading-less notes on `\n{2,}` boundaries, enabling relevance-filtered excerpting for notes that use paragraphs instead of headings.
+
+7. **Raised chunk threshold** (`noteChunking.ts`): `NOTE_CHUNK_THRESHOLD_CHARS` raised from 4000 to 12000 — the previous threshold was too aggressive, excerpting notes that could fit whole in the context window.
+
+8. **Always-include-first-chunk** (`noteChunking.ts`): `selectRelevantChunks` now always includes the first chunk (order 0) for framing context before filling remaining budget with highest-scoring chunks.
+
+9. **CJK-aware token estimation** (`messageUtils.ts`): `estimateTokensFromText()` now uses a weighted heuristic — ASCII at ~4 chars/token, non-ASCII at ~1.5 chars/token — instead of a flat ÷4 that undercounted CJK/non-Latin text by 2–3×.
+
+10. **Default effort "high"** (`models/settings.ts`): `DEFAULT_SETTINGS.effort` set to `"high"` so new conversations default to substantive responses without requiring manual configuration.
+
+**Consequence:** LLM responses should be materially deeper and better-grounded for the same conversation inputs. The hybrid resume mode gives users a middle ground between the cost of full history and the quality loss of summary-only. Context window budget enforcement prevents silent truncation on long conversations. The chunk threshold and first-chunk inclusion changes preserve more note content by default while still excerpting truly large notes intelligently.

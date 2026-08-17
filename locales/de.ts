@@ -198,6 +198,7 @@ const de: Strings = {
 	resumeModeName:          "Standard-Fortsetzungsmodus",
 	resumeModeDesc:          "Wie Gespräche fortgesetzt werden, sofern nicht pro Gespräch überschrieben.",
 	resumeModeSummaryOpt:    "Zusammenfassung — geringere Token-Kosten",
+	resumeModeHybridOpt:     "Hybrid — Zusammenfassung + letzte Nachrichten",
 	resumeModeFullOpt:       "Vollständiger Verlauf — höhere Genauigkeit",
 	messageCapName:          "Nachrichtenlimit pro Sitzung",
 	messageCapDesc:          "Maximale Nachrichtenanzahl pro Gespräch. Bei 0 unbegrenzt.",
@@ -291,9 +292,11 @@ const de: Strings = {
 	resumeConvDesc:   "Wie möchtest du \"{{name}}\" fortsetzen?",
 	summaryModeBtn:   "Zusammenfassung",
 	summaryModeTitle: "KI-Zusammenfassung als Kontext senden — geringere Token-Kosten",
+	hybridModeBtn:    "Hybrid",
+	hybridModeTitle:  "Zusammenfassung + letzte Nachrichten — ausgewogene Kosten und Genauigkeit",
 	fullModeBtn:      "Vollständiger Verlauf",
 	fullModeTitle:    "Alle vorherigen Nachrichten erneut senden — höhere Genauigkeit, höhere Token-Kosten",
-	resumeHint:       "Zusammenfassung empfohlen für lange Gespräche. Vollständiger Verlauf bewahrt alle Details.",
+	resumeHint:       "Zusammenfassung ist am günstigsten. Hybrid bewahrt aktuelle Details. Vollständiger Verlauf bewahrt alle Nuancen.",
 
 	// ── Sync / reload ─────────────────────────────────────────────────────────
 	reloadComplete: "Pythia: Gespräche neu geladen.",

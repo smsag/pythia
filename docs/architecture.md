@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-17 — 22-finding codebase audit: `ConversationStore.ts` API changed (`clearDirty` → `snapshotDirty`/`clearDirtySnapshot`, added `cancelPendingPersist`); `ToolHandler.ts` gained writeMode enforcement (`allowedToolNames` static method, `execute` accepts `allowedTools` set); `models/knownModels.ts` removed dead `supportsMistralEffort`; `i18n.ts` rewritten for lazy locale detection; ~120 lines of dead CSS removed from `styles.css`, `:focus-visible` added; `main.ts` fork now copies `contextNotes`/`resumeMode`/`outputFolder`/`writeMode`. See ADR-052.*
+*Last updated: 2026-08-17 — LLM response quality audit: enriched default system prompt and grounding instruction (`promptConstants.ts`), notes moved from user message to system prompt (`BaseProvider.ts`), hybrid resume mode (`messageUtils.ts`, `types.ts`, `settings.ts`, `ResumeModeModal.ts`), context window budget trimming (`messageUtils.ts`, all providers, `models/knownModels.ts` gained `contextWindow` field + `getContextWindow()`), paragraph-level fallback chunking and raised threshold to 12K (`noteChunking.ts`), always-include-first-chunk, CJK-aware token estimation, default effort "high". See ADR-053.*
+
+*Previously, 2026-08-17 — 22-finding codebase audit: `ConversationStore.ts` API changed (`clearDirty` → `snapshotDirty`/`clearDirtySnapshot`, added `cancelPendingPersist`); `ToolHandler.ts` gained writeMode enforcement (`allowedToolNames` static method, `execute` accepts `allowedTools` set); `models/knownModels.ts` removed dead `supportsMistralEffort`; `i18n.ts` rewritten for lazy locale detection; ~120 lines of dead CSS removed from `styles.css`, `:focus-visible` added; `main.ts` fork now copies `contextNotes`/`resumeMode`/`outputFolder`/`writeMode`. See ADR-052.*
 
 *Previously, 2026-08-17 — Engineering review implementation: `models/knownModels.ts` unified 5 parallel data structures into a single `MODEL_CATALOG: ModelInfo[]` array with derived exports. `BaseProvider` made `assistantLabel` and `resolveModel` concrete with default implementations, added `providerType` field. `sidebar.ts` split `buildUI()` into `buildHeader()`/`buildChatArea()`/`buildInputArea()`, extracted `DeleteFileModal` to `suggest/`, extracted code-block decoration to `ui/CodeBlockDecorator.ts`. `main.ts` changed `createConversation()` from 8 positional params to options object, added `createConversationFromTemplate()` helper, deleted dead `cmdCopyConversationLink()`, fixed URI "template" handler. `TemplateLoader.ts` fixed prefix-match bug. `ConversationStore.ts` removed dead `hasDirty()`. Removed boilerplate `resolveModel`/`assistantLabel` overrides from providers.*
 
@@ -36,11 +38,11 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
-| `services/messageUtils.ts` | 143 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
+| `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
 | `services/ContextBuilder.ts` | 130 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
-| `services/promptConstants.ts` | 48 | Shared literal constants: XML-ish prompt tags (`system_prompt`, `attached_note`, …), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES` |
-| `services/noteChunking.ts` | 72 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
+| `services/promptConstants.ts` | 65 | Shared literal constants: XML-ish prompt tags, `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |
+| `services/noteChunking.ts` | 95 | Heading-based chunking with paragraph-level fallback + relevance-filtered excerpting (always includes first chunk) for notes over 12K chars |
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking and `#` suggestion ranking |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
 | `services/ConversationStore.ts` | 76 | In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` set + `markDirty`/`clearDirty`) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
@@ -48,7 +50,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/persistence.ts` | 111 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
-| `models/knownModels.ts` | 103 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`); all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
+| `models/knownModels.ts` | 120 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`) and `contextWindow`; all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, `getContextWindow()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
@@ -57,7 +59,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (286 tests across 18 files, ~2 s) |
+| `tests/` | — | Vitest unit tests (300 tests across 18 files, ~2 s) |
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -104,8 +106,10 @@ Conversation
   provider ("anthropic" | "openai" | "mistral"), model, maxTokens?, temperature?, effort? ("low"|"medium"|"high")
   systemPrompt, contextNotes[]   ← permanent per-conv note attachments; sent with every message
   writeMode ("create" | "update" | "rewrite" | "none")
-  resumeMode ("full" | "summary")   ← "summary" now actually excludes prior messages from the
-                                      API request (see selectHistoryForSend); history itself
+  resumeMode ("full" | "summary" | "hybrid")
+                                    ← "summary" excludes prior messages entirely (relies on
+                                      summaryText in system prompt); "hybrid" sends summary +
+                                      last 6 messages; "full" sends everything. History itself
                                       is preserved in conv.messages for UI/scrollback
   outputFolder?                  ← default folder for AI-created notes
   messages[]
@@ -161,11 +165,13 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
               kinds in parallel:
               → ContextBuilder.buildAttachedNotesContent(notePaths, newMessage)
                   — attached notes are read in parallel (Promise.all), then notes over
-                    NOTE_CHUNK_THRESHOLD_CHARS are split by heading
-                    (noteChunking.chunkByHeadings) and filtered to the sections most
-                    relevant to `newMessage` (noteRelevance.scoreRelevanceTokensWeighted —
-                    IDF-weighted, query tokenized once and reused across every chunk) instead
-                    of inlining the whole note; result is tagged excerpt="true"
+                    NOTE_CHUNK_THRESHOLD_CHARS (12K) are split by heading
+                    (noteChunking.chunkByHeadings) with a paragraph-level fallback
+                    (chunkByParagraphs) for heading-less notes, and filtered to the
+                    sections most relevant to `newMessage` (noteRelevance.
+                    scoreRelevanceTokensWeighted — IDF-weighted, query tokenized once
+                    and reused across every chunk); the first chunk is always kept for
+                    framing context; result is tagged excerpt="true"
                   — if the resulting estimated token count exceeds
                     settings.maxAttachedNotesTokens, a Notice warns before sending
               → ContextBuilder.buildAttachedPdfs(pdfPaths)
@@ -178,7 +184,13 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
                     handles that
           → selectHistoryForSend(conv.messages, conv.resumeMode)
               — "summary" mode sends no prior messages at all (relies on
-                summaryText already in the system prompt); "full" sends everything
+                summaryText already in the system prompt); "hybrid" sends
+                the last 6 messages (summary in system prompt covers earlier
+                context); "full" sends everything
+          → trimHistoryToBudget(selected, contextWindow, maxTokens, systemTokens)
+              — trims oldest messages from front if estimated tokens exceed
+                the available context window budget (contextWindow - output -
+                system prompt); uses CJK-weighted token estimation
           → after loopMessages is built (post-normalizeMessages, whose same-role
               merge does string concatenation and would corrupt array content),
               any pdfAttachments are spliced onto the last user message as native
@@ -400,7 +412,8 @@ The `TITLE:`/`SUMMARY:` markers used by `generateSummaryWithTitle` and parsed by
 Shared logic in `services/messageUtils.ts`:
 - `parseTitleAndSummary` — parses `TITLE: / SUMMARY:` structured response
 - `normalizeMessages<T>(messages, isInvalidFirst)` — coalesces same-role messages
-- `selectHistoryForSend(messages, resumeMode)` — returns `[]` in `"summary"` mode, `messages` unchanged in `"full"` mode
+- `selectHistoryForSend(messages, resumeMode)` — returns `[]` in `"summary"` mode, last 6 messages in `"hybrid"` mode, `messages` unchanged in `"full"` mode
+- `trimHistoryToBudget(history, contextWindow, outputBudget, systemPromptTokens)` — trims oldest messages from front when estimated tokens exceed the available context window budget
 - `estimateTokensFromBytes(bytes)` / `estimateTokensFromText(text)` — token count helpers
 - `LANG_LABELS`, `langInstruction`, `langSuffix` — output language helpers
 - `debugLog(settings, ...args)` — verbose diagnostic trace gated on `settings.debugMode`; used for retry attempts and tool-round outcomes. Genuine errors (as opposed to opt-in diagnostics) use un-gated `console.warn`/`console.error` instead, so they're visible without enabling debug mode first.
@@ -422,7 +435,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`, typed linting (`projectService: true`). `no-console: warn`, `no-explicit-any: off`, `no-floating-promises: error` (with `ignoreVoid: true`). 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 286 unit tests across 18 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
+- **Testing:** Vitest, 300 unit tests across 18 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.
 - **`@anthropic-ai/sdk`:** pinned at `^0.40.0` (bumped from `^0.28.0`) — the minimum version whose main (non-beta) Messages API types support `cache_control`, needed for prompt caching. See ADR for the caching decision.

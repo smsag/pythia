@@ -3,6 +3,8 @@ import {
 	parseTitleAndSummary,
 	normalizeMessages,
 	selectHistoryForSend,
+	trimHistoryToBudget,
+	estimateTokensFromText,
 	langInstruction,
 	langSuffix,
 	LANG_LABELS,
@@ -179,6 +181,80 @@ describe("selectHistoryForSend", () => {
 		const copy = msgs.map(m => ({ ...m }));
 		selectHistoryForSend(msgs, "summary");
 		expect(msgs).toEqual(copy);
+	});
+
+	it("returns only the last 6 messages in 'hybrid' mode", () => {
+		const longHistory: Msg[] = Array.from({ length: 12 }, (_, i) => ({
+			role: i % 2 === 0 ? "user" as const : "assistant" as const,
+			content: `msg-${i}`,
+		}));
+		const result = selectHistoryForSend(longHistory, "hybrid");
+		expect(result).toHaveLength(6);
+		expect(result[0].content).toBe("msg-6");
+		expect(result[5].content).toBe("msg-11");
+	});
+
+	it("returns all messages in 'hybrid' mode when history is shorter than the tail count", () => {
+		expect(selectHistoryForSend(msgs, "hybrid")).toEqual(msgs);
+	});
+});
+
+// ── trimHistoryToBudget ──────────────────────────────────────────────────────
+
+describe("trimHistoryToBudget", () => {
+	const mkMsg = (content: string) => ({ role: "user", content });
+
+	it("returns history unchanged when within budget", () => {
+		const history = [mkMsg("short")];
+		const result = trimHistoryToBudget(history, 100_000, 4096, 500);
+		expect(result).toBe(history);
+	});
+
+	it("trims oldest messages when history exceeds budget", () => {
+		const big = "x".repeat(4000);
+		const history = [mkMsg(big), mkMsg(big), mkMsg("keep")];
+		const result = trimHistoryToBudget(history, 3000, 1000, 500);
+		expect(result.length).toBeLessThan(history.length);
+		expect(result[result.length - 1].content).toBe("keep");
+	});
+
+	it("never trims below one message", () => {
+		const history = [mkMsg("x".repeat(100_000))];
+		const result = trimHistoryToBudget(history, 1000, 500, 500);
+		expect(result).toHaveLength(1);
+	});
+
+	it("does not mutate the input array", () => {
+		const big = "x".repeat(4000);
+		const history = [mkMsg(big), mkMsg(big), mkMsg("last")];
+		const copy = [...history];
+		trimHistoryToBudget(history, 4000, 1000, 500);
+		expect(history).toEqual(copy);
+	});
+
+	it("returns history unchanged when available budget is zero or negative", () => {
+		const history = [mkMsg("hello")];
+		const result = trimHistoryToBudget(history, 1000, 900, 200);
+		expect(result).toBe(history);
+	});
+});
+
+// ── estimateTokensFromText ──────────────────────────────────────────────────
+
+describe("estimateTokensFromText", () => {
+	it("returns 0 for empty string", () => {
+		expect(estimateTokensFromText("")).toBe(0);
+	});
+
+	it("estimates ~1 token per 4 ASCII characters", () => {
+		const tokens = estimateTokensFromText("a".repeat(400));
+		expect(tokens).toBe(100);
+	});
+
+	it("estimates more tokens for non-ASCII text", () => {
+		const ascii = estimateTokensFromText("a".repeat(300));
+		const cjk = estimateTokensFromText("一".repeat(300));
+		expect(cjk).toBeGreaterThan(ascii);
 	});
 });
 

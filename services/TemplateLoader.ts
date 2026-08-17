@@ -44,8 +44,8 @@ export class TemplateLoader {
 
 			// Validate resumeMode against allowed values
 			const rawResumeMode = fm.resume_mode;
-			const validResumeMode: "full" | "summary" | undefined =
-				rawResumeMode === "full" || rawResumeMode === "summary"
+			const validResumeMode: "full" | "summary" | "hybrid" | undefined =
+				rawResumeMode === "full" || rawResumeMode === "summary" || rawResumeMode === "hybrid"
 					? rawResumeMode
 					: undefined;
 

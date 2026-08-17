@@ -38,7 +38,18 @@ describe("selectRelevantChunks", () => {
 		expect(result).toEqual({ text: short, isExcerpt: false });
 	});
 
-	it("returns content unchanged when over threshold but has no headings to split on", () => {
+	it("falls back to paragraph chunking for heading-less notes over the threshold", () => {
+		const para1 = "Introduction paragraph. ".repeat(250);
+		const para2 = "Roadmap details for Q3. ".repeat(250);
+		const para3 = "Unrelated weather data. ".repeat(250);
+		const long = `${para1}\n\n${para2}\n\n${para3}`;
+		expect(long.length).toBeGreaterThan(NOTE_CHUNK_THRESHOLD_CHARS);
+		const result = selectRelevantChunks(long, "roadmap Q3");
+		expect(result.isExcerpt).toBe(true);
+		expect(result.text).toContain("Roadmap");
+	});
+
+	it("returns heading-less content unchanged when it has only one paragraph", () => {
 		const long = "x".repeat(NOTE_CHUNK_THRESHOLD_CHARS + 100);
 		const result = selectRelevantChunks(long, "anything");
 		expect(result.isExcerpt).toBe(false);
@@ -46,7 +57,7 @@ describe("selectRelevantChunks", () => {
 	});
 
 	it("excerpts a long, headed note down to the relevant sections", () => {
-		const filler = "lorem ipsum ".repeat(200); // padding to exceed the threshold
+		const filler = "lorem ipsum ".repeat(600);
 		const md =
 			`# Budget\n${filler}\n` +
 			`# Weather\nIt rained on Tuesday. ${filler}\n` +
@@ -59,8 +70,22 @@ describe("selectRelevantChunks", () => {
 		expect(result.text).not.toContain("Weather");
 	});
 
+	it("always includes the first chunk for framing context", () => {
+		const filler = "lorem ipsum ".repeat(600);
+		const md =
+			`# Introduction\nKey background info.\n` +
+			`# Budget\n${filler}\n` +
+			`# Roadmap\nQ3 roadmap details. ${filler}`;
+		expect(md.length).toBeGreaterThan(NOTE_CHUNK_THRESHOLD_CHARS);
+
+		const result = selectRelevantChunks(md, "what is the roadmap for Q3");
+		expect(result.isExcerpt).toBe(true);
+		expect(result.text).toContain("Key background info.");
+		expect(result.text).toContain("Roadmap");
+	});
+
 	it("preserves original document order among kept chunks", () => {
-		const filler = "lorem ipsum ".repeat(200);
+		const filler = "lorem ipsum ".repeat(600);
 		const md =
 			`# First budget section\nbudget details. ${filler}\n` +
 			`# Second budget section\nmore budget details. ${filler}\n` +
@@ -74,16 +99,6 @@ describe("selectRelevantChunks", () => {
 	});
 
 	it("regression: a token unique to the relevant section beats generic terms shared by several unrelated ones", () => {
-		// 5 distractor sections share "user"/"solution" with the query (and with
-		// each other) but never mention "story"; the one relevant section shares
-		// only "user" plus the single distinctive token "story". Under a flat,
-		// unweighted count both groups tie at 2 matched tokens each, and a stable
-		// sort would keep the first-positioned distractor over the
-		// last-positioned relevant section — reproducing the real bug (a long
-		// reference doc excerpting a plausible-looking but wrong framework
-		// section). IDF weighting must give "story" (df=1 of 6) far more weight
-		// than "user"/"solution" (df=6 and df=5 of 6), so the relevant section
-		// wins outright instead of losing a tie-break on document position.
 		const distractorHeadings = [
 			"Opportunity Canvas",
 			"Lean UX Canvas",
@@ -96,10 +111,9 @@ describe("selectRelevantChunks", () => {
 			.join("\n\n");
 		const md = `${distractors}\n\n# User Story Map\nuser story content for this framework.`;
 
-		// A tight budget keeps only the single top-ranked chunk, so this
-		// directly asserts which section wins the ranking, not just that it
-		// survives alongside others.
-		const result = selectRelevantChunks(md, "user solution story", 40);
+		// Budget must exceed the first chunk + relevant chunk combined so the
+		// "always include first" heuristic doesn't push the relevant one out.
+		const result = selectRelevantChunks(md, "user solution story", 200);
 		expect(result.isExcerpt).toBe(true);
 		expect(result.text).toContain("User Story Map");
 	});

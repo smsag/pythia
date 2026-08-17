@@ -196,6 +196,7 @@ const en = {
 	resumeModeName:          "Default resume mode",
 	resumeModeDesc:          "How conversations are resumed unless overridden per-conversation.",
 	resumeModeSummaryOpt:    "Summary — lower token cost",
+	resumeModeHybridOpt:     "Hybrid — summary + recent messages",
 	resumeModeFullOpt:       "Full history — higher fidelity",
 	messageCapName:          "Message cap per session",
 	messageCapDesc:          "Maximum messages per conversation before further sends are blocked. Set to 0 for unlimited.",
@@ -289,9 +290,11 @@ const en = {
 	resumeConvDesc:    "How would you like to resume \"{{name}}\"?",
 	summaryModeBtn:    "Summary",
 	summaryModeTitle:  "Send an AI-generated summary as context — lower token cost",
+	hybridModeBtn:     "Hybrid",
+	hybridModeTitle:   "Summary + last few messages — balanced cost and fidelity",
 	fullModeBtn:       "Full history",
 	fullModeTitle:     "Re-send all previous messages — higher fidelity, higher token cost",
-	resumeHint:        "Summary is recommended for long conversations. Full history preserves all nuance.",
+	resumeHint:        "Summary is cheapest. Hybrid keeps recent detail. Full history preserves all nuance.",
 
 	// ── Sync / reload ─────────────────────────────────────────────────────────
 	reloadComplete: "Pythia: conversations reloaded.",

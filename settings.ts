@@ -201,12 +201,14 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.addDropdown((drop) =>
 				drop
 					.addOption("summary", t("resumeModeSummaryOpt"))
+					.addOption("hybrid", t("resumeModeHybridOpt"))
 					.addOption("full", t("resumeModeFullOpt"))
 					.setValue(this.plugin.settings.defaultResumeMode)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultResumeMode = value as
 							| "full"
-							| "summary";
+							| "summary"
+							| "hybrid";
 						await this.plugin.saveSettings();
 					})
 			);

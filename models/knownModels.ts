@@ -5,6 +5,8 @@ export interface ModelInfo {
 	id: string;
 	provider: Provider;
 	abbreviation: string;
+	/** Context window size in tokens. Used for budget allocation. */
+	contextWindow: number;
 	noTemperature?: boolean;
 	supportsEffort?: boolean;
 	isReasoning?: boolean;
@@ -12,35 +14,38 @@ export interface ModelInfo {
 	hidden?: boolean;
 }
 
+/** Fallback context window for custom/unknown models (128K is a safe floor). */
+export const DEFAULT_CONTEXT_WINDOW = 128_000;
+
 export const MODEL_CATALOG: ModelInfo[] = [
-	// Anthropic
-	{ id: "claude-opus-5",     provider: "anthropic", abbreviation: "Opus 5",     noTemperature: true, supportsEffort: true },
-	{ id: "claude-fable-5",    provider: "anthropic", abbreviation: "Fable 5",    noTemperature: true, supportsEffort: true },
-	{ id: "claude-mythos-5",   provider: "anthropic", abbreviation: "Mythos 5",   noTemperature: true, supportsEffort: true, hidden: true },
-	{ id: "claude-opus-4-8",   provider: "anthropic", abbreviation: "Opus 4.8",   noTemperature: true, supportsEffort: true },
-	{ id: "claude-opus-4-7",   provider: "anthropic", abbreviation: "Opus 4.7",   noTemperature: true, supportsEffort: true },
-	{ id: "claude-opus-4-6",   provider: "anthropic", abbreviation: "Opus 4.6",   supportsEffort: true },
-	{ id: "claude-sonnet-5",   provider: "anthropic", abbreviation: "Sonnet 5",   noTemperature: true, supportsEffort: true },
-	{ id: "claude-sonnet-4-6", provider: "anthropic", abbreviation: "Sonnet 4.6", supportsEffort: true },
-	{ id: "claude-haiku-4-5",  provider: "anthropic", abbreviation: "Haiku 4.5" },
+	// Anthropic — all current models: 1M tokens
+	{ id: "claude-opus-5",     provider: "anthropic", abbreviation: "Opus 5",     contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
+	{ id: "claude-fable-5",    provider: "anthropic", abbreviation: "Fable 5",    contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
+	{ id: "claude-mythos-5",   provider: "anthropic", abbreviation: "Mythos 5",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true, hidden: true },
+	{ id: "claude-opus-4-8",   provider: "anthropic", abbreviation: "Opus 4.8",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
+	{ id: "claude-opus-4-7",   provider: "anthropic", abbreviation: "Opus 4.7",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
+	{ id: "claude-opus-4-6",   provider: "anthropic", abbreviation: "Opus 4.6",   contextWindow: 1_000_000, supportsEffort: true },
+	{ id: "claude-sonnet-5",   provider: "anthropic", abbreviation: "Sonnet 5",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
+	{ id: "claude-sonnet-4-6", provider: "anthropic", abbreviation: "Sonnet 4.6", contextWindow: 1_000_000, supportsEffort: true },
+	{ id: "claude-haiku-4-5",  provider: "anthropic", abbreviation: "Haiku 4.5",  contextWindow: 200_000 },
 
 	// OpenAI
-	{ id: "gpt-4.1",      provider: "openai", abbreviation: "GPT-4.1" },
-	{ id: "gpt-4.1-mini", provider: "openai", abbreviation: "GPT-4.1 mini" },
-	{ id: "gpt-4.1-nano", provider: "openai", abbreviation: "GPT-4.1 nano" },
-	{ id: "gpt-4o",       provider: "openai", abbreviation: "GPT-4o" },
-	{ id: "gpt-4o-mini",  provider: "openai", abbreviation: "GPT-4o mini" },
-	{ id: "o3-pro",       provider: "openai", abbreviation: "o3 pro",  isReasoning: true },
-	{ id: "o3",           provider: "openai", abbreviation: "o3",      isReasoning: true },
-	{ id: "o3-mini",      provider: "openai", abbreviation: "o3 mini", isReasoning: true },
-	{ id: "o4-mini",      provider: "openai", abbreviation: "o4 mini", isReasoning: true },
+	{ id: "gpt-4.1",      provider: "openai", abbreviation: "GPT-4.1",      contextWindow: 1_000_000 },
+	{ id: "gpt-4.1-mini", provider: "openai", abbreviation: "GPT-4.1 mini", contextWindow: 1_000_000 },
+	{ id: "gpt-4.1-nano", provider: "openai", abbreviation: "GPT-4.1 nano", contextWindow: 1_000_000 },
+	{ id: "gpt-4o",       provider: "openai", abbreviation: "GPT-4o",       contextWindow: 128_000 },
+	{ id: "gpt-4o-mini",  provider: "openai", abbreviation: "GPT-4o mini",  contextWindow: 128_000 },
+	{ id: "o3-pro",       provider: "openai", abbreviation: "o3 pro",       contextWindow: 200_000, isReasoning: true },
+	{ id: "o3",           provider: "openai", abbreviation: "o3",           contextWindow: 200_000, isReasoning: true },
+	{ id: "o3-mini",      provider: "openai", abbreviation: "o3 mini",      contextWindow: 200_000, isReasoning: true },
+	{ id: "o4-mini",      provider: "openai", abbreviation: "o4 mini",      contextWindow: 200_000, isReasoning: true },
 
 	// Mistral
-	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large" },
-	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small" },
-	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral" },
-	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium", isMistralReasoning: true },
-	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",  isMistralReasoning: true },
+	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 128_000 },
+	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 128_000 },
+	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
+	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 128_000, isMistralReasoning: true },
+	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",   contextWindow: 128_000, isMistralReasoning: true },
 ];
 
 // ── Derived exports ───────────────────────────────────────────────────────
@@ -83,6 +88,11 @@ export function isMistralReasoningModel(model: string): boolean {
 	return MISTRAL_REASONING_SET.has(model) || model.startsWith("magistral-");
 }
 
+const CONTEXT_WINDOW_MAP = new Map(MODEL_CATALOG.map((m) => [m.id, m.contextWindow]));
+
+export function getContextWindow(model: string): number {
+	return CONTEXT_WINDOW_MAP.get(model) ?? DEFAULT_CONTEXT_WINDOW;
+}
 
 export function resolveDefaultModelForProvider(provider: Provider, settings: PythiaSettings): string {
 	switch (provider) {

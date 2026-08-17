@@ -4,12 +4,12 @@ import { t } from "../i18n";
 import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { resolveDefaultMaxTokens } from "./promptConstants";
-import { supportsTemperature, supportsEffort } from "../models/knownModels";
+import { supportsTemperature, supportsEffort, getContextWindow } from "../models/knownModels";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
@@ -93,13 +93,19 @@ export class AnthropicService extends BaseProvider {
 		// again in history would duplicate it. In "summary" resume mode, skip
 		// prior history entirely — summaryText in the system prompt is the
 		// only context sent (see selectHistoryForSend).
-		const historyMessages: ApiMessage[] = selectHistoryForSend(
-			conversation.messages.slice(0, -1),
-			conversation.resumeMode
-		).map((m) => ({ role: m.role, content: m.content }));
-
 		this.streamModel = this.resolveModel(conversation.model);
 		this.streamMaxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(this.streamModel);
+
+		const selected = selectHistoryForSend(
+			conversation.messages.slice(0, -1),
+			conversation.resumeMode
+		);
+		const historyMessages: ApiMessage[] = trimHistoryToBudget(
+			selected.map((m) => ({ role: m.role, content: m.content })),
+			getContextWindow(this.streamModel),
+			this.streamMaxTokens,
+			estimateTokensFromText(systemPrompt),
+		);
 		const requestedTemperature = conversation.temperature ?? this.settings.temperature;
 		this.streamTemperature = supportsTemperature(this.streamModel) ? requestedTemperature : undefined;
 		const requestedEffort = conversation.effort ?? this.settings.effort;

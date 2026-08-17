@@ -610,7 +610,7 @@ export default class PythiaPlugin extends Plugin {
 		model?: string;
 		maxTokens?: number;
 		outputFolder?: string;
-		resumeMode?: "full" | "summary";
+		resumeMode?: "full" | "summary" | "hybrid";
 		writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 	}): Promise<Conversation> {
 		const resolvedProvider = opts.provider ?? this.settings.defaultProvider;

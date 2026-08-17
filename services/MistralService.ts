@@ -22,11 +22,12 @@ import { t } from "../i18n";
 import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend, debugLog } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { resolveDefaultMaxTokens } from "./promptConstants";
+import { getContextWindow } from "../models/knownModels";
 
 type MistralMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -113,10 +114,16 @@ export class MistralService extends BaseProvider {
 		// again in history would duplicate it. In "summary" resume mode, skip
 		// prior history entirely — summaryText in the system prompt is the
 		// only context sent (see selectHistoryForSend).
-		const historyMessages: MistralMessage[] = selectHistoryForSend(
+		const selected = selectHistoryForSend(
 			conversation.messages.slice(0, -1),
 			conversation.resumeMode
-		).map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+		);
+		const historyMessages: MistralMessage[] = trimHistoryToBudget(
+			selected.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+			getContextWindow(this.streamModel),
+			this.streamMaxTokens,
+			estimateTokensFromText(systemPrompt),
+		);
 
 		// Mistral supports a native "system" role on every model (confirmed via
 		// the installed SDK's SystemMessage type) — no OpenAI-o-series-style

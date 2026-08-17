@@ -19,7 +19,7 @@ export interface PythiaSettings {
 	conversationsFolder: string;
 	scratchFolder: string;
 	autoSaveSummary: boolean;
-	defaultResumeMode: "full" | "summary";
+	defaultResumeMode: "full" | "summary" | "hybrid";
 	/** Soft cap on messages per conversation session. 0 = unlimited. */
 	maxMessagesPerSession: number;
 	/** Maximum conversations kept in data.json. Oldest non-starred are evicted. 0 = unlimited. */
@@ -67,5 +67,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	debugMode: false,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
+	temperature: 0.7,
+	effort: "high",
 	maxAttachedNotesTokens: 8000,
 };

@@ -60,8 +60,10 @@ const baseConv = (overrides: Partial<Conversation> = {}): Conversation => ({
 // ── buildSystemPrompt ─────────────────────────────────────────────────────────
 
 describe("buildSystemPrompt", () => {
-	it("returns an empty string when there is no system prompt, summary, or notes", () => {
-		expect(buildSystemPrompt(baseConv())).toBe("");
+	it("returns the default system prompt when there is no custom prompt, summary, or notes", () => {
+		const result = buildSystemPrompt(baseConv());
+		expect(result).toContain("<system_prompt>");
+		expect(result).toContain("research assistant");
 	});
 
 	it("wraps the system prompt in a system_prompt tag", () => {
@@ -77,8 +79,8 @@ describe("buildSystemPrompt", () => {
 	it("adds a grounding instruction only when notes are attached", () => {
 		const withoutNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
 		const withNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi", contextNotes: ["Note.md"] }));
-		expect(withoutNotes).not.toMatch(/ground/i);
-		expect(withNotes).toMatch(/ground/i);
+		expect(withoutNotes).not.toMatch(/Synthesize/);
+		expect(withNotes).toMatch(/Synthesize/);
 	});
 
 	it("joins multiple parts with a blank line", () => {
@@ -127,8 +129,8 @@ describe("buildAttachedNotesContent", () => {
 
 	it("excerpts a long note and marks it as a partial excerpt, using the query for relevance", async () => {
 		const vault = new MockVault();
-		const filler = "lorem ipsum ".repeat(400);
-		const longNote = `# Budget\n${filler}\n# Roadmap\nQ3 roadmap details. ${filler}`;
+		const filler = "lorem ipsum ".repeat(600);
+		const longNote = `# Budget\n${filler}\n# Weather\n${filler}\n# Roadmap\nQ3 roadmap details. ${filler}`;
 		vault.seed("Notes/Long.md", longNote);
 		const app = { vault } as unknown as import("obsidian").App;
 

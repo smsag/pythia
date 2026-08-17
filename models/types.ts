@@ -11,7 +11,7 @@ export interface Conversation {
 	templateId?: string;      // vault path of the template used
 	systemPrompt: string;     // resolved at creation time
 	contextNotes: string[];   // vault paths of attached notes
-	resumeMode: "full" | "summary";
+	resumeMode: "full" | "summary" | "hybrid";
 	provider: Provider;       // which LLM provider to use
 	model: string;            // model ID for the selected provider
 	maxTokens?: number;       // override the default 4096 max-token limit
@@ -63,7 +63,7 @@ export interface PythiaTemplate {
 	temperature?: number;
 	effort?: EffortLevel;
 	contextNotes: string[];
-	resumeMode?: "full" | "summary";
+	resumeMode?: "full" | "summary" | "hybrid";
 	outputFolder?: string;    // "." = same folder as the active note at creation time
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 	autoPrompt?: string;      // message auto-sent when the conversation opens

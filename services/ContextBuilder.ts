@@ -9,6 +9,8 @@ import {
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
 	MAX_PDF_FILE_SIZE_BYTES,
+	DEFAULT_SYSTEM_PROMPT,
+	GROUNDING_INSTRUCTION,
 } from "./promptConstants";
 
 /**
@@ -18,11 +20,10 @@ import {
 export function buildSystemPrompt(conversation: Conversation): string {
 	const parts: string[] = [];
 
-	if (conversation.systemPrompt) {
-		parts.push(
-			`<${SYSTEM_PROMPT_TAG}>\n${conversation.systemPrompt}\n</${SYSTEM_PROMPT_TAG}>`
-		);
-	}
+	const promptText = conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+	parts.push(
+		`<${SYSTEM_PROMPT_TAG}>\n${promptText}\n</${SYSTEM_PROMPT_TAG}>`
+	);
 
 	if (conversation.summaryText) {
 		parts.push(
@@ -31,10 +32,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 	}
 
 	if (conversation.contextNotes.length > 0) {
-		parts.push(
-			"Ground your answers in the content of the attached notes below. " +
-			"If they don't contain the information needed to answer, say so explicitly rather than guessing."
-		);
+		parts.push(GROUNDING_INSTRUCTION);
 	}
 
 	return parts.join("\n\n");

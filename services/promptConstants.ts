@@ -41,6 +41,29 @@ export function resolveDefaultMaxTokens(model: string): number {
 		: DEFAULT_MAX_TOKENS;
 }
 
+/** Default system prompt injected when a conversation has no custom prompt.
+ *  Kept here rather than in ContextBuilder so it's easy to find and tune. */
+export const DEFAULT_SYSTEM_PROMPT =
+	"You are a knowledgeable research assistant integrated into the user's personal knowledge base. " +
+	"Provide thorough, well-structured answers that demonstrate genuine depth of understanding.\n\n" +
+	"When the user's question is substantive:\n" +
+	"- Give a comprehensive answer, not a surface-level overview\n" +
+	"- Structure longer answers with clear sections\n" +
+	"- Include specific details, examples, and reasoning\n" +
+	"- Use the full response length available when the topic warrants it — do not truncate prematurely\n\n" +
+	"When the user's question is simple or conversational, match their tone — don't over-elaborate on a quick question.";
+
+/** Grounding instruction prepended to the system prompt when notes are attached.
+ *  Drives synthesis rather than mere quoting. */
+export const GROUNDING_INSTRUCTION =
+	"The user has attached notes from their knowledge base below.\n" +
+	"When answering:\n" +
+	"- Synthesize information across multiple notes when relevant\n" +
+	"- Connect ideas and identify relationships between sources\n" +
+	"- Cite specific notes by their path when referencing them\n" +
+	"- Go beyond surface-level summaries — analyze, compare, and draw conclusions from the material\n" +
+	"- If the notes don't contain sufficient information to answer fully, say so explicitly and explain what's missing";
+
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves
  *  headroom for the ~27MB encoded payload plus system prompt, history, and

@@ -4,12 +4,12 @@ import { t } from "../i18n";
 
 export class ResumeModeModal extends Modal {
 	private conversation: Conversation;
-	private onChoose: (mode: "full" | "summary") => void;
+	private onChoose: (mode: "full" | "summary" | "hybrid") => void;
 
 	constructor(
 		app: App,
 		conversation: Conversation,
-		onChoose: (mode: "full" | "summary") => void
+		onChoose: (mode: "full" | "summary" | "hybrid") => void
 	) {
 		super(app);
 		this.conversation = conversation;
@@ -34,6 +34,13 @@ export class ResumeModeModal extends Modal {
 		summaryBtn.title = t("summaryModeTitle");
 		summaryBtn.addEventListener("click", () => {
 			this.onChoose("summary");
+			this.close();
+		});
+
+		const hybridBtn = buttons.createEl("button", { text: t("hybridModeBtn") });
+		hybridBtn.title = t("hybridModeTitle");
+		hybridBtn.addEventListener("click", () => {
+			this.onChoose("hybrid");
 			this.close();
 		});
 

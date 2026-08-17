@@ -24,6 +24,7 @@
 *Updated: 2026-07-17 — Added Mistral as a third LLM provider with full streaming/tool-calling/temperature/effort/maxTokens parity (`services/MistralService.ts`, extends `BaseProvider`; `Provider` widened to include `"mistral"`). Pre-implementation audit found a real bug class: several call sites resolved provider behavior via a two-way `provider === "x" ? A : B` ternary that TypeScript does not flag when a third union member is added — converted to exhaustive `switch`es with `never`-typed default cases at every site found (`main.ts`'s default-model resolution and API-key check, `settings.ts`'s and `ConversationSettingsModal.ts`'s temperature/effort gating). Direct SDK type inspection (not docs) found Mistral's `reasoningEffort` has no per-model restriction and native `system`-role support on every model, so both were wired in fully rather than deferred as originally planned. Surfaced two bonus fixes to provider-shared code: `services/retry.ts`'s `ABORT_ERROR_NAMES` didn't recognize Mistral's `"RequestAbortedError"` abort-error name (would have misreported a clean Stop-click as a real error), and `services/apiError.ts`'s `classifyApiError` only read `.status` (Mistral uses `.statusCode`, misclassifying real API errors as network failures). Also root-caused an esbuild failure — the SDK unconditionally pulls in `@opentelemetry/api` via an internal hook-registration chain regardless of which client API is used — fixed by installing it as a real dependency; bundle size roughly doubled (340KB → 680KB) as a result, an accepted, documented tradeoff. PDF attachments and vision input remain out of scope for Mistral, deferred as follow-ups. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-045.*
 *Updated: 2026-08-17 — Maintainability/performance pass: extracted the streaming/tool-calling loop into a BaseProvider template method (`runStreamLoop` + three abstract hooks: `prepareStream`/`runStreamRound`/`handleToolCalls`), eliminating ~600 lines of near-identical code across three providers (#88). ConversationStore gained dirty-flag persistence tracking — `schedulePersist` skips the write when nothing has actually changed (#89). Sidebar performance: `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` (#90). ESLint config upgraded to typed linting (`projectService: true`) and `no-floating-promises: error` (with `ignoreVoid: true`), catching and fixing 8 existing violations (#91). #10 (fire-and-forget hardening) partially addressed by #91.
 *Updated: 2026-08-17 — 22-finding codebase audit: AbortController race, ConversationStore snapshot-based dirty clearing, writeMode enforcement, dead code/CSS removal, focus-visible accessibility, i18n lazy init, TemplateLoader validation. See ADR-052.*
+*Updated: 2026-08-17 — LLM response quality audit: #99 resolved (10-finding implementation — enriched default system prompt + grounding instruction, notes moved to system prompt, hybrid resume mode, context window budget trimming, paragraph-level fallback chunking, raised threshold to 12K, always-include-first-chunk, CJK-aware token estimation, default effort "high"). See ADR-053.*
 *Updated: 2026-08-17 — Engineering review implementation: #92 unified model catalog (5 parallel data structures into `MODEL_CATALOG`), #93 BaseProvider concrete defaults (`assistantLabel`/`resolveModel`), #94 `buildUI` decomposition + `DeleteFileModal`/`CodeBlockDecorator` extraction, #95 `createConversation` options object + `createConversationFromTemplate` helper, #96 TemplateLoader prefix-match bug fix, #97 dead code removal (`hasDirty()`, `cmdCopyConversationLink()`, redundant provider overrides), #98 vitest coverage config updated. All resolved. See ADR-048 through ADR-051.*
 *Updated: 2026-07-17 — Code-block/blockquote design-system fix, from user-reported screenshots. Two separate causes: `.p-code-frame`'s background used an undocumented `var(--code-background)` token instead of the `var(--background-secondary)` formula the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`) already use — unified. Blockquotes had **zero** custom Pythia CSS at all (confirmed via grep) — a purple-tinted, italic Obsidian default was what the user actually saw; added deliberate styling (neutral `--background-modifier-border` bar, not accent; no italic; `--text-muted`). Also added, per explicit user request: a persistent top-left code-type icon (Lucide `code-2`, always visible, not hover-gated like the copy button), an explicit `14px` icon-glyph size so the copy/copy-confirmed icons no longer render at inconsistent sizes, and a copy-confirmed color change from `--color-green` to `--color-accent` (green is used elsewhere for persistent semantic states, not momentary click feedback). Also fixed a dead `var(--scrollbar-thumb-bg, ...)` reference (never defined anywhere, always silently fell through to its fallback) and corrected `CLAUDE.md`/`docs/design.md` references to `docs/pythia-v3.html`/`docs/design-system.css` — neither file exists in the repo or its git history, despite being cited as mandatory pre-work reading. Not a bug fix in the tracked-suggestion sense — a design-system-fidelity pass, not separately numbered (same convention as recent entries). See ADR-046.*
 *Updated: 2026-07-17 — Fixed a real, reported bug: a template using `claude-opus-4-8` with `effort: high` and a PDF attached failed with "Network error. Check your internet connection." despite the user having working internet. Root cause, confirmed by reading the installed `@anthropic-ai/sdk` directly: the SDK collapses any status-less error into the same shape, including a mid-stream SSE `error` event (e.g. a capacity/overload condition reported after the stream already started) and its own internal exceptions re-wrapped without a status — neither is the user's connectivity, but `classifyApiError`'s existing `status === undefined → "network"` fallback (left alone by ADR-030, which only reviewed the narrower `TypeError` branch) bucketed both the same as a real fetch/DNS failure, and `sidebar.ts` then discarded the real, already-available diagnostic message in favor of a hardcoded, in this case false, claim. New `buildStreamErrorMessage()` (`services/apiError.ts`, now unit-tested) surfaces the real message instead — retry behavior is unchanged (network/server_error were already retried identically). See ADR-047.*
@@ -64,6 +65,7 @@
 | 2026-08-17 | #89 resolved: ConversationStore gained dirty-flag persistence tracking (`dirtyIds` set + `hasDirty`/`clearDirty`/`markDirty`) — `schedulePersist` skips the write when nothing changed |
 | 2026-08-17 | #90 resolved: sidebar performance — `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` |
 | 2026-08-17 | #91 resolved: ESLint upgraded to typed linting (`projectService: true`) + `no-floating-promises: error` (`ignoreVoid: true`); 8 existing violations fixed with `void` operators. #10 partially addressed |
+| 2026-08-17 | #99 resolved: LLM response quality audit — 10-finding implementation: enriched default system prompt + grounding instruction (`promptConstants.ts`), notes moved to system prompt (`BaseProvider.ts`), hybrid resume mode (`messageUtils.ts`, `types.ts`, `settings.ts`, `ResumeModeModal.ts`), context window budget trimming (`messageUtils.ts`, all providers, `knownModels.ts`), paragraph-level fallback chunking + raised threshold to 12K + always-include-first-chunk (`noteChunking.ts`), CJK-aware token estimation (`messageUtils.ts`), default effort "high" (`settings.ts`). See ADR-053 |
 | 2026-08-17 | #92 resolved: `models/knownModels.ts` unified 5 parallel data structures (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `REASONING_MODELS`, temperature deny-list, effort allow-list) into single `MODEL_CATALOG: ModelInfo[]`; dead `o1`/`o1-mini` entries removed. See ADR-048 |
 | 2026-08-17 | #93 resolved: `BaseProvider` made `assistantLabel` and `resolveModel` concrete with defaults; removed redundant overrides from OpenAI/Mistral (`assistantLabel`) and all three providers (`resolveModel`). Added `providerType` field. See ADR-049 |
 | 2026-08-17 | #94 resolved: `sidebar.ts`'s `buildUI()` split into `buildHeader()`/`buildChatArea()`/`buildInputArea()`; `DeleteFileModal` extracted to `suggest/DeleteFileModal.ts`; code-block decoration (4 methods) extracted to `ui/CodeBlockDecorator.ts`; `scrollToTop()` helper replaced 3 duplicates. See ADR-050 |
@@ -108,7 +110,7 @@
 | 24 | `tests/` | — | Vitest unit tests (18 files) |
 
 **Source total:** ~9 000 lines (excl. lock file, generated `main.js`, coverage output).
-**Test suite:** 286 tests across 18 files — `npm test` (~2 s), `npm run coverage` with enforced thresholds.
+**Test suite:** 300 tests across 18 files — `npm test` (~2 s), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
 ---
@@ -160,7 +162,7 @@
 | 46 | No token-budget guard on attached notes | ✅ `maxAttachedNotesTokens` setting + `Notice` warning |
 | 47 | System prompt gave no grounding/no-hallucination instruction for attached notes | ✅ Added to `ContextBuilder.buildSystemPrompt` when notes are attached |
 | 48 | `#` note suggestions ranked by filename substring only, no query relevance | ✅ `services/noteRelevance.ts` keyword-overlap tiebreak in `ui/InlineSuggest.ts` |
-| 49 | Oversized attached notes inlined whole, no chunking | ✅ `services/noteChunking.ts` — heading-based, relevance-filtered excerpting above 4000 chars |
+| 49 | Oversized attached notes inlined whole, no chunking | ✅ `services/noteChunking.ts` — heading-based (with paragraph fallback), relevance-filtered excerpting above 12000 chars |
 | 50 | True embedding/vector-similarity note retrieval | Partially addressed — IDF-weighted scoring (below) is a cheaper interim fix for a real excerpting bug; full embeddings remains Open — Backlog if this proves insufficient |
 | 51 | `o4-mini` selectable but always broken (missing from `NO_SYSTEM_ROLE_MODELS`) | ✅ `models/knownModels.ts` — `isReasoningModel()` single source of truth |
 | 52 | Model lists independently duplicated across 4 files | ✅ `KNOWN_MODELS`/`MODEL_ABBREVIATIONS` centralized in `models/knownModels.ts` |
@@ -321,6 +323,7 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 96 | `TemplateLoader` prefix-match: `"templates"` matches `"templates-archive/"` | ✅ Done — `folder + "/"` guard | Medium | Low | — |
 | 97 | Dead code: `hasDirty()`, `cmdCopyConversationLink()`, redundant provider overrides | ✅ Done — removed | Low | Low | — |
 | 98 | 5 files missing from vitest coverage include | ✅ Done — added to `vitest.config.ts` | Low | Low | — |
+| 99 | LLM response quality audit — 10 findings (shallow prompts, missing budget trimming, heading-only chunking, etc.) | ✅ Done — see ADR-053 | High | Medium | — |
 
 ---
 
@@ -706,4 +709,28 @@ Three providers identically implemented `resolveModel()` (one-liner delegating t
 
 Coverage thresholds could be met without covering 5 source files because they weren't listed in the `include` array.
 
-**Resolution:** Added the missing files. Test suite now 286 tests across 18 files.
+**Resolution:** Added the missing files. Test suite now 300 tests across 18 files.
+
+---
+
+## New Suggestion (#99) — LLM response quality audit, 2026-08-17
+
+A structured audit of LLM response quality identified 10 areas where the plugin's defaults, prompt engineering, and context management produced shallower-than-necessary responses. All 10 implemented in a single pass.
+
+### #99 — LLM response quality: 10-finding implementation
+
+**Files:** `services/promptConstants.ts`, `services/ContextBuilder.ts`, `services/BaseProvider.ts`, `services/messageUtils.ts`, `services/noteChunking.ts`, `models/knownModels.ts`, `models/types.ts`, `models/settings.ts`, `settings.ts`, `suggest/ResumeModeModal.ts`, `services/TemplateLoader.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `services/MistralService.ts`, `locales/en.ts`, `locales/de.ts`, `main.ts` — **Resolved**
+
+Ten findings:
+1. Empty default system prompt → `DEFAULT_SYSTEM_PROMPT` with explicit depth instructions
+2. Passive one-line grounding instruction → structured `GROUNDING_INSTRUCTION` (synthesize, cite, analyze, flag gaps)
+3. Notes buried in user message → moved to system prompt for stable reference
+4. No hybrid resume mode → `"hybrid"` sends summary + last 6 messages
+5. No context window budget enforcement → `trimHistoryToBudget()` + per-model `contextWindow` values in `knownModels.ts`
+6. Heading-only chunking → paragraph-level fallback for heading-less notes
+7. Chunk threshold too low (4K) → raised to 12K
+8. No first-chunk inclusion → always keep first chunk for framing context
+9. Flat ÷4 token estimation → CJK-weighted heuristic (ASCII ÷4, non-ASCII ÷1.5)
+10. No default effort → `DEFAULT_SETTINGS.effort = "high"`
+
+See ADR-053.
