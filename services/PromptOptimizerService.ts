@@ -166,7 +166,7 @@ export class PromptOptimizerService {
 		if (!optimizedPrompt) return;
 
 		// Step 4 — open new conversation and pre-fill input
-		const conv = await this.plugin.createConversation(t("promptOptimizerConvName"));
+		const conv = await this.plugin.createConversation({ name: t("promptOptimizerConvName") });
 		const view = await this.plugin.activateView();
 		await view.setActiveConversation(conv);
 		view.prefillInput(optimizedPrompt);

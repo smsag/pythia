@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-17 — Model catalog refresh: added `claude-opus-5`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6` (Anthropic); `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `o3-pro` (OpenAI); `magistral-small-latest` (Mistral) to `KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, and the appropriate temperature/effort/reasoning gating sets.*
+*Last updated: 2026-08-17 — Engineering review implementation: `models/knownModels.ts` unified 5 parallel data structures into a single `MODEL_CATALOG: ModelInfo[]` array with derived exports. `BaseProvider` made `assistantLabel` and `resolveModel` concrete with default implementations, added `providerType` field. `sidebar.ts` split `buildUI()` into `buildHeader()`/`buildChatArea()`/`buildInputArea()`, extracted `DeleteFileModal` to `suggest/`, extracted code-block decoration to `ui/CodeBlockDecorator.ts`. `main.ts` changed `createConversation()` from 8 positional params to options object, added `createConversationFromTemplate()` helper, deleted dead `cmdCopyConversationLink()`, fixed URI "template" handler. `TemplateLoader.ts` fixed prefix-match bug. `ConversationStore.ts` removed dead `hasDirty()`. Removed boilerplate `resolveModel`/`assistantLabel` overrides from providers.*
+
+*Previously, 2026-08-17 — Model catalog refresh: added `claude-opus-5`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6` (Anthropic); `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `o3-pro` (OpenAI); `magistral-small-latest` (Mistral) to `KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, and the appropriate temperature/effort/reasoning gating sets.*
 
 *Previously, 2026-08-17 — Streaming/tool-loop extracted into BaseProvider template method (`prepareStream`/`runStreamRound`/`handleToolCalls`); `streamMessage` is now a concrete one-liner in BaseProvider that delegates to `runStreamLoop`, eliminating ~600 lines of near-identical code across three providers. ConversationStore gained dirty-flag persistence tracking (`dirtyIds` set + `hasDirty`/`clearDirty`/`markDirty`) — `schedulePersist` skips the write when nothing has actually changed. Sidebar performance: `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame`. ESLint config upgraded to typed linting (`projectService: true`) and `no-floating-promises: error` (with `ignoreVoid: true`), catching 8 existing violations fixed with `void` operators. See engineering-review.md for the full list of changes.*
 
@@ -20,18 +22,18 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 
 | File | Lines | Role |
 |---|---:|---|
-| `sidebar.ts` | 2 342 | `PythiaSidebarView` — all UI, rendering, streaming, interaction |
+| `sidebar.ts` | 2 028 | `PythiaSidebarView` — UI, rendering, streaming, interaction; `buildUI()` split into `buildHeader()`/`buildChatArea()`/`buildInputArea()` |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
-| `main.ts` | 930 | Plugin entry, commands, conversation lifecycle, data.json watcher |
+| `main.ts` | 908 | Plugin entry, commands, conversation lifecycle, data.json watcher; `createConversation()` takes options object; `createConversationFromTemplate()` helper |
 | `settings.ts` | 460 | Settings schema, defaults, settings tab UI (incl. temperature/effort reactive availability gating) |
 | `utils.ts` | 20 | Root-level pure helpers: `getFilesInFolder` (md + pdf), `todayISO` |
 | `services/OpenAIProvider.ts` | 304 | OpenAI streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls` for the template method loop; retry, temperature/`reasoning_effort`, PDF file-block splice, resumeMode gating |
 | `services/AnthropicService.ts` | 250 | Anthropic streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; retry, prompt caching, temperature/`output_config.effort`, PDF document-block splice, resumeMode gating |
 | `services/MistralService.ts` | 295 | Mistral streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; uses `MistralCore` + tree-shakeable standalone `chatComplete`/`chatStream` functions, temperature/`reasoningEffort`, resumeMode gating; PDFs unsupported (warns via Notice) |
-| `services/BaseProvider.ts` | 323 | Abstract base: shared fields, lifecycle, `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
+| `services/BaseProvider.ts` | 314 | Abstract base: shared fields, lifecycle, concrete `assistantLabel` (default "Assistant") + `resolveModel` (delegates to `resolveDefaultModelForProvider` via `providerType`), `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
 | `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
-| `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard |
+| `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
 | `services/messageUtils.ts` | 143 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend`, `debugLog`, token estimation, lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
 | `services/ContextBuilder.ts` | 130 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
@@ -39,20 +41,21 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/noteChunking.ts` | 72 | Heading-based chunking + relevance-filtered excerpting for oversized attached notes |
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking and `#` suggestion ranking |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
-| `services/ConversationStore.ts` | 81 | In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` set) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
+| `services/ConversationStore.ts` | 76 | In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` set + `markDirty`/`clearDirty`) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
 | `services/persistence.ts` | 111 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
-| `models/knownModels.ts` | 78 | Single source of truth for known model IDs per provider, the OpenAI/Mistral reasoning-model sets, the Anthropic temperature deny-list/effort allow-list, `resolveDefaultModelForProvider()`, and model-abbreviation labels |
+| `models/knownModels.ts` | 103 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`); all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
 | `ui/InlineSuggest.ts` | 173 | `#` note-path autocomplete in textarea (md + pdf); relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
-| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker) |
+| `ui/CodeBlockDecorator.ts` | 220 | Code block decoration extracted from sidebar: `decorateCodeBlocks`, `stampSvgSize` (was `fixDiagramSvgSize`), `wrapInScrollFrame`, `attachDragToPan` |
+| `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (269 tests, ~2 s) |
+| `tests/` | — | Vitest unit tests (286 tests across 18 files, ~2 s) |
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
@@ -85,7 +88,8 @@ PythiaPlugin (main.ts)
     ├── OptimizationController — inline prompt optimizer state + flow
     ├── NavigatorController    — # navigator popover
     ├── InlineSuggest          — textarea autocomplete
-    └── suggest/*.ts           — Modal dialogs (opened on demand)
+    ├── CodeBlockDecorator     — code-block/diagram decoration (decorateCodeBlocks, stampSvgSize)
+    └── suggest/*.ts           — Modal dialogs (opened on demand, incl. DeleteFileModal)
 ```
 
 ---
@@ -196,10 +200,10 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
               → onComplete() → finalize() (only if the conversation is still the
                     one displayed — defense-in-depth against a torn-down view)
                   → MarkdownRenderer.render() (try/catch)
-                  → decorateCodeBlocks()
+                  → decorateCodeBlocks() (ui/CodeBlockDecorator.ts)
                       → code blocks: .p-code-frame wrapper + copy button
                       → diagrams ([class*='block-language-']): in-container copy button,
-                              fixDiagramSvgSize() — MutationObserver + ResizeObserver
+                              stampSvgSize() — MutationObserver + ResizeObserver
                   → conversationStore.save() (debounced 300 ms; no-ops if the
                         conversation was deleted while the stream was in flight)
                   → generateConversationTitle() fire-and-forget (guarded by ID)
@@ -269,7 +273,7 @@ cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId?) [main.ts]
           behind a Notice(t("generatingSummary"), 0) loading indicator;
           cache the result on source (future forks/resumeMode:"summary" reuse it for free)
       — source has no messages → no summary, nothing to carry
-  → createConversation(...) with the copied fields above
+  → createConversation({ name, systemPrompt, templateId, provider, model, maxTokens, ... })
   → conv.forkedFromId / forkedFromMessageId / forkedFromSelection set
       (forkedFromSelection is display-only — it feeds the fork banner's
       selection excerpt, sidebar.ts's renderForkBannerEl; it does NOT
@@ -324,8 +328,9 @@ Every 5 seconds:
 ConversationStore.save(conv)
   → updatedAt = now
   → upsert into this.plugin.conversations[]
-  → dirtyIds.add(conv.id)
+  → dirtyIds.add(conv.id)     ← markDirty(id)
   → schedulePersist()  ← 300 ms debounce; skips the write if dirtyIds is empty
+                          clearDirty() called by main.ts after successful persistData()
 
 onunload()
   → conversationStore.flush() ← cancels debounce, writes immediately
@@ -358,8 +363,8 @@ On load, migrations run:
 
 1. LLM returns ` ```mermaid … ``` ` in response text
 2. `finalize()` calls `MarkdownRenderer.render()` → Obsidian creates `.block-language-mermaid` with `<pre><code>` inside
-3. `decorateCodeBlocks()` captures source from `code.innerText` before Mermaid renders, adds in-container copy button
-4. `fixDiagramSvgSize()` arms a `MutationObserver` (two-phase: childList + SVG style/attribute) and a `ResizeObserver` fallback to stamp natural pixel dimensions once the renderer inserts/sizes the SVG. Covers Mermaid v10, Vega, and any plugin using `[class*='block-language-']`
+3. `decorateCodeBlocks()` (`ui/CodeBlockDecorator.ts`) captures source from `code.innerText` before Mermaid renders, adds in-container copy button
+4. `stampSvgSize()` (was `fixDiagramSvgSize()`) arms a `MutationObserver` (two-phase: childList + SVG style/attribute) and a `ResizeObserver` fallback to stamp natural pixel dimensions once the renderer inserts/sizes the SVG. Covers Mermaid v10, Vega, and any plugin using `[class*='block-language-']`
 5. CSS: `[class*='block-language-'] { overflow-x: auto; width: 100% }` — any diagram renderer scrolls within its frame; `.p-chat { overflow-x: clip }` prevents whole-conversation horizontal scroll
 
 ---
@@ -368,17 +373,19 @@ On load, migrations run:
 
 All three providers extend `BaseProvider` (which implements `LLMProvider`). `LLMRouter` dispatches by `conversation.provider`; its constructor takes `anthropic`/`openai`/`mistral` instances and stores them in a `Record<Provider, LLMProvider>`, so its `updateSettings`/`abort` loops (both `Object.values()`-based) needed no change to support the third provider.
 
-`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), the `runStreamLoop` template method that drives the entire streaming/tool-calling loop (abort controller setup, `resolveUserContent`, tool-round while loop capped at `MAX_TOOL_ROUNDS = 25` with `ToolLoopLimitError`, token accumulation, debug logging, error routing via `finishOrError`, cleanup in `finally`), two helpers used by that loop (`resolveUserContent` — splits `attachedNotes` into note/PDF paths by extension, fetches both in parallel (`ContextBuilder.buildAttachedNotesContent`/`buildAttachedPdfs`), surfaces missing/oversized-note and missing/oversized-PDF `Notice`s, builds the system prompt, and returns `pdfAttachments` alongside `userContent`/`systemPrompt` for each provider to splice in its own wire format; `finishOrError` — routes a caught error to `onComplete` on user abort or `onError` otherwise, reusing `retry.ts`'s `ABORT_ERROR_NAMES`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`). The exported `RoundResult` interface normalises each streaming round's outcome (action, token counts, cache stats, usage presence) across providers.
+`BaseProvider` holds: shared fields (`app`, `settings`, `apiKey`, `abortController`, `providerType`), concrete lifecycle methods (`abort`, `updateSettings`, `updateApiKey`), concrete default implementations for `assistantLabel` (returns `"Assistant"`) and `resolveModel(override?)` (delegates to `resolveDefaultModelForProvider(this.providerType, this.settings)`), the `runStreamLoop` template method that drives the entire streaming/tool-calling loop (abort controller setup, `resolveUserContent`, tool-round while loop capped at `MAX_TOOL_ROUNDS = 25` with `ToolLoopLimitError`, token accumulation, debug logging, error routing via `finishOrError`, cleanup in `finally`), two helpers used by that loop (`resolveUserContent` — splits `attachedNotes` into note/PDF paths by extension, fetches both in parallel (`ContextBuilder.buildAttachedNotesContent`/`buildAttachedPdfs`), surfaces missing/oversized-note and missing/oversized-PDF `Notice`s, builds the system prompt, and returns `pdfAttachments` alongside `userContent`/`systemPrompt` for each provider to splice in its own wire format; `finishOrError` — routes a caught error to `onComplete` on user abort or `onError` otherwise, reusing `retry.ts`'s `ABORT_ERROR_NAMES`), and all six generate* utility methods (`generateSummary`, `generateSummaryWithTitle`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`, `optimizePrompt`). The exported `RoundResult` interface normalises each streaming round's outcome (action, token counts, cache stats, usage presence) across providers.
 
-Each provider implements:
+Each provider implements (abstract members):
 - `resetClient()` — nulls the cached SDK client on credential/settings change
 - `fastModel` — cheap model for utility calls (`claude-haiku-4-5` / `gpt-4o-mini`)
-- `assistantLabel` — `"Claude"` / `"Assistant"` in conversation transcripts
-- `resolveModel(override?)` — falls back to provider-specific default model
 - `callUtility(model, userMessage, maxTokens, systemMessage?)` — single-turn non-streaming call
 - `prepareStream(...)` — called once before the loop starts; builds loop messages, resolves tools/model/temperature/effort, stores state on `this` for use in `runStreamRound`
 - `runStreamRound(signal, onToken, textLenBefore)` — runs one streaming round (SDK stream creation, chunk consumption, retry-before-first-token); returns a normalised `RoundResult`
 - `handleToolCalls(onToolCall)` — extracts tool-use blocks from the last round's response, calls `onToolCall` for each, appends tool results to the loop messages
+
+Providers may override the concrete defaults:
+- `assistantLabel` — only `AnthropicService` overrides (returns `"Claude"`); OpenAI and Mistral inherit the default `"Assistant"`
+- `resolveModel(override?)` — inherited from BaseProvider; providers no longer need to override unless they have custom resolution logic
 
 `OpenAIProvider` additionally uses `models/knownModels.ts`'s `isReasoningModel()` to decide, per model: whether the system prompt is injected as a leading `user` message vs. a real `system` role, whether a custom `temperature` is sent, and whether the request uses `max_tokens` or `max_completion_tokens` (the o-series reasoning models reject the first two and require the last). Symmetrically, `AnthropicService` uses `models/knownModels.ts`'s `supportsTemperature()` to decide whether `temperature` is sent at all — Claude Fable 5/Mythos 5 and the Opus 4.7+/Sonnet 5 generation return a 400 if `temperature` is present in the request regardless of its value, so `streamMessage` resolves `temperature` from `conversation.temperature ?? settings.temperature` and then drops it to `undefined` for those model IDs before building the request. `MistralService` sends `temperature` unconditionally when resolved — direct SDK type inspection found no per-model deny-list equivalent to Anthropic's, and Mistral's chat API accepts a native `system`-role message on every model (confirmed via the SDK's `SystemMessage` type), so unlike `OpenAIProvider` it needs no leading-user-message workaround for any model.
 
@@ -413,7 +420,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`, typed linting (`projectService: true`). `no-console: warn`, `no-explicit-any: off`, `no-floating-promises: error` (with `ignoreVoid: true`). 0 errors, ~8 intentional warnings.
-- **Testing:** Vitest, 269 unit tests across 17 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
+- **Testing:** Vitest, 286 unit tests across 18 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
 - **`minAppVersion`:** `"1.4.0"` — reflects the actual minimum Obsidian version where all used APIs are available.
 - **`@anthropic-ai/sdk`:** pinned at `^0.40.0` (bumped from `^0.28.0`) — the minimum version whose main (non-beta) Messages API types support `cache_control`, needed for prompt caching. See ADR for the caching decision.

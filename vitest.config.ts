@@ -15,6 +15,11 @@ export default defineConfig({
 				"services/ToolHandler.ts",
 				"services/ConversationStore.ts",
 				"services/persistence.ts",
+				"services/noteRelevance.ts",
+				"services/noteChunking.ts",
+				"services/retry.ts",
+				"services/promptConstants.ts",
+				"services/ContextBuilder.ts",
 			],
 			thresholds: {
 				statements: 90,

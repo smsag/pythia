@@ -21,11 +21,6 @@ export class ConversationStore {
 		return this.plugin.conversations.find((c) => c.id === id);
 	}
 
-	/** Returns true if any conversation has been modified since the last persist. */
-	hasDirty(): boolean {
-		return this.dirtyIds.size > 0;
-	}
-
 	/** Clears the dirty set — called by persistData after a successful write. */
 	clearDirty(): void {
 		this.dirtyIds.clear();

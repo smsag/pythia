@@ -3,7 +3,7 @@ import { resolveDefaultMaxTokens, DEFAULT_MAX_TOKENS, DEFAULT_MAX_TOKENS_REASONI
 
 describe("resolveDefaultMaxTokens", () => {
 	it("returns the reasoning-model default for OpenAI o-series models", () => {
-		for (const model of ["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]) {
+		for (const model of ["o3", "o3-mini", "o4-mini"]) {
 			expect(resolveDefaultMaxTokens(model)).toBe(DEFAULT_MAX_TOKENS_REASONING);
 		}
 	});

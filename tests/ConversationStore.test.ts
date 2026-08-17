@@ -154,6 +154,49 @@ describe("delete", () => {
 	});
 });
 
+// ── dirty-flag behavior ──────────────────────────────────────────────────────
+
+describe("dirty-flag tracking", () => {
+	it("save() marks the conversation dirty and the debounce fires a persist", async () => {
+		const conv = makeConv("d1");
+		plugin.conversations.push(conv);
+		await store.save(conv);
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
+	});
+
+	it("clearDirty() prevents the debounced persist from writing", async () => {
+		const conv = makeConv("d2");
+		plugin.conversations.push(conv);
+		await store.save(conv);
+		store.clearDirty();
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).not.toHaveBeenCalled();
+	});
+
+	it("markDirty() makes the next debounced persist write", async () => {
+		const conv = makeConv("d3");
+		plugin.conversations.push(conv);
+		await store.save(conv);
+		store.clearDirty();
+		store.markDirty(conv.id);
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
+	});
+
+	it("delete() removes the ID from the dirty set", async () => {
+		const conv = makeConv("d4");
+		plugin.conversations.push(conv);
+		await store.save(conv);
+		await store.delete(conv.id);
+		// After delete + immediate flush, advance past the debounce timer
+		// The debounced save from save() should not fire because delete() cancelled it
+		vi.advanceTimersByTime(300);
+		// Only the immediate save from delete() should have happened
+		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
+	});
+});
+
 // ── flush ─────────────────────────────────────────────────────────────────────
 
 describe("flush", () => {

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-07-17 — ADR-047 (`buildStreamErrorMessage()` stops discarding the real diagnostic message for status-less Anthropic SDK errors that were being shown to users as a false "check your internet connection" claim).*
+*Last updated: 2026-08-17 — ADR-048 (unified model catalog), ADR-049 (BaseProvider concrete defaults), ADR-050 (`buildUI` decomposition + code-block extraction), ADR-051 (`createConversation` options object).*
+
+*Previously, 2026-07-17 — ADR-047 (`buildStreamErrorMessage()` stops discarding the real diagnostic message for status-less Anthropic SDK errors that were being shown to users as a false "check your internet connection" claim).*
 
 Each entry records a decision, the context that drove it, and the consequence. Entries are append-only; superseded decisions are marked rather than deleted.
 
@@ -591,3 +593,51 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Decision:** The switch previously inlined in `sidebar.ts`'s `onError` callback moved, unchanged in behavior for every other case, into a new `buildStreamErrorMessage(error: Error, model: string): string` in `services/apiError.ts` — colocated with `classifyApiError()`, which it calls, and covered by the same test file (`tests/apiError.test.ts`) rather than left untestable inside `sidebar.ts` (which has no dedicated unit-test suite). For the `"network"` class specifically: if `error.message` is present, it's shown via a new `networkErrorDetail` locale key (`"Request failed: {{detail}}"`) instead of the generic connectivity claim; the original `networkError` string is kept only as a last-resort fallback for the rare case there's truly no message at all. Messages longer than 160 characters are truncated for Notice display (raw SDK/SSE payloads can be verbose JSON) — the untruncated error is already unconditionally logged via `sidebar.ts`'s existing `console.error("[Pythia] stream error:", error)`, unaffected by this change. `classifyApiError`, `retry.ts`, and every provider service file are untouched — retry behavior was already correct; this is purely a messaging fix for what happens after retries are exhausted.
 
 **Consequence:** Users now see the real cause of a failed request instead of an assertion about their own internet connection that may well be false — for the triggering case (an overload/capacity error arriving mid-stream on a large `effort: high` request), the actual backend error text is now visible instead of a generic, misleading string. `services/apiError.ts` importing `../i18n` (a new dependency for that file, though already an established pattern elsewhere in `services/`, e.g. `BaseProvider.ts`) meant `tests/retry.test.ts` — which imports `retry.ts`, which imports `apiError.ts` — needed a minimal `vi.mock("../i18n", ...)` added, since `i18n.ts` reads `window.moment` at module load time and `window` doesn't exist in Vitest's Node environment; this mirrors the mock pattern already used in every provider test file. New tests in `tests/apiError.test.ts` cover `buildStreamErrorMessage`'s `ToolLoopLimitError` special-case, each unchanged friendly-string class, the `"network"` detail-surfacing behavior (including truncation), and the no-message fallback. While making this edit, an unrelated doc-integrity issue from the prior session was also fixed in passing: ADR-045's closing "Consequence" paragraph had been displaced to the very end of this file (after ADR-046) by an imprecise edit; it's now back in its correct place immediately after ADR-045's own content.
+
+---
+
+### ADR-048 — Unified model catalog replaces five parallel data structures
+
+**Status:** Active
+
+**Context:** `models/knownModels.ts` maintained five independently-updated data structures: `KNOWN_MODELS` (per-provider model lists), `MODEL_ABBREVIATIONS` (display labels), `REASONING_MODELS`/`isReasoningModel()` (OpenAI reasoning gate), `ANTHROPIC_NO_TEMPERATURE_MODELS`/`supportsTemperature()` (temperature deny-list), and `ANTHROPIC_EFFORT_MODELS`/`supportsEffort()` (effort allow-list). Adding a model required touching up to 5 separate lists, with no compiler signal if one was missed — the exact bug class that caused #51 (o4-mini) and #86 (temperature on new Anthropic models). The dead `o1`/`o1-mini` entries (removed from OpenAI's API, never reachable) were still present in `REASONING_MODELS`.
+
+**Decision:** All five structures replaced by a single `MODEL_CATALOG: ModelInfo[]` array. Each entry carries the model `id`, `provider`, `abbreviation`, and boolean flags: `noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`. All existing exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `isMistralReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, `supportsMistralEffort()`, `resolveDefaultModelForProvider()`) are now computed from `MODEL_CATALOG` via `.filter()` and `.find()` calls, preserving every call site's API unchanged. Dead `o1`/`o1-mini` entries removed.
+
+**Consequence:** Adding a model is a one-line addition to one array. Model capability flags are co-located with the model ID, so it's impossible to list a model as selectable without also declaring its capabilities — the gap that caused #51 and #86 is structurally closed. All existing tests pass unchanged.
+
+---
+
+### ADR-049 — BaseProvider `assistantLabel` and `resolveModel` made concrete with default implementations
+
+**Status:** Active
+
+**Context:** `BaseProvider` declared `assistantLabel` and `resolveModel(override?)` as abstract, requiring every provider to implement them. In practice, `OpenAIProvider` and `MistralService` both returned `"Assistant"` from `assistantLabel`, and all three providers' `resolveModel` implementations were identical one-liners delegating to `resolveDefaultModelForProvider()` — three copies of the same code.
+
+**Decision:** `assistantLabel` is now a concrete getter on `BaseProvider` returning `"Assistant"`. Only `AnthropicService` overrides it (returns `"Claude"`). `resolveModel(override?)` is now a concrete method on `BaseProvider` that calls `resolveDefaultModelForProvider(this.providerType, this.settings)`, using the new `providerType: Provider` field set by the constructor. Removed the redundant overrides from `OpenAIProvider`, `MistralService` (both `assistantLabel` and `resolveModel`), and `AnthropicService` (`resolveModel` only). Also removed the pass-through `streamMessage` wrapper from `BaseProvider` (consolidated into the inherited `streamMessage` from the template method).
+
+**Consequence:** Fewer lines per provider. Adding a fourth provider only requires implementing `resetClient`, `fastModel`, `callUtility`, and the three streaming hooks — `assistantLabel` and `resolveModel` are inherited for free unless the provider needs custom behavior.
+
+---
+
+### ADR-050 — `buildUI` decomposed; `DeleteFileModal` and `CodeBlockDecorator` extracted from sidebar
+
+**Status:** Active (extends ADR-018)
+
+**Context:** `sidebar.ts`'s `buildUI()` was ~380 lines of sequential DOM construction — header, chat area, and input area built in one monolithic method. Additionally, `DeleteFileModal` (a `Modal` subclass) was defined inline in `sidebar.ts`, violating the project rule that all modals go in `suggest/`. Code block decoration (4 methods: `decorateCodeBlocks`, `fixDiagramSvgSize`, `wrapInScrollFrame`, `attachDragToPan`) was tightly coupled to `sidebar.ts` despite being self-contained rendering logic with no view-state dependencies.
+
+**Decision:** `buildUI()` split into three builder methods: `buildHeader()`, `buildChatArea()`, `buildInputArea()`. Each returns `void` and appends to the container. `buildUI()` is now a 4-line coordinator that empties the container, adds the class, and calls the three builders. `DeleteFileModal` extracted to `suggest/DeleteFileModal.ts`. Code block decoration extracted to `ui/CodeBlockDecorator.ts` as four exported functions: `decorateCodeBlocks`, `stampSvgSize` (renamed from `fixDiagramSvgSize` for clarity), `wrapInScrollFrame`, `attachDragToPan`. A `scrollToTop()` helper replaced 3 duplicate `messagesEl.scrollTop = 0` blocks.
+
+**Consequence:** `sidebar.ts` reduced from ~2,342 to ~2,028 lines. The builder methods are navigable by name without scrolling through unrelated DOM construction. Code block decoration is independently readable and could be unit-tested in the future. This is a continuation of ADR-018's decomposition, reaching into the areas that session identified as "the remaining DOM coupling" — the builder split works because it follows the natural sequential structure (header then chat then input) rather than trying to extract interleaved state.
+
+---
+
+### ADR-051 — `createConversation` changed from positional parameters to options object
+
+**Status:** Active
+
+**Context:** `main.ts`'s `createConversation()` took 8 positional parameters (`name`, `systemPrompt`, `contextNotes`, `templateId`, `provider`, `model`, `maxTokens`, `outputFolder`). Most call sites passed only `name` with the rest defaulting, but the template-driven path passed most of them — requiring careful positional alignment with `undefined` gaps. The URI "template" handler was missing `outputFolder` and `writeMode` entirely.
+
+**Decision:** Changed to a single options object: `createConversation(opts: { name, systemPrompt?, contextNotes?, templateId?, provider?, model?, maxTokens?, outputFolder? })`. All 10+ call sites updated. Added `createConversationFromTemplate(tpl, contextNotes?)` helper that encapsulates the template-to-options mapping (including `outputFolder`, `writeMode`, `temperature`, `effort` post-creation assignments), replacing duplicated template-handling logic at two call sites. Added `resolveTemplateContext()` private helper for template context-note resolution. Deleted dead `cmdCopyConversationLink()`. Fixed the URI "template" handler to use `createConversationFromTemplate()`, inheriting the `outputFolder`/`writeMode` it was previously missing.
+
+**Consequence:** Adding a new field to conversation creation is a non-breaking change (add an optional property). Call sites are self-documenting (`{ name: "..." }` vs. positional). The template-creation path is DRY and correct by construction — the URI handler bug (missing `outputFolder`/`writeMode`) was fixed as a natural consequence of the refactor, not a separate patch.

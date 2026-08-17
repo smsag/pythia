@@ -21,7 +21,7 @@ export class TemplateLoader {
 		if (!folder || !folder.trim()) return [];
 		const files = this.app.vault
 			.getMarkdownFiles()
-			.filter((f) => f.path.startsWith(folder + "/") || f.path.startsWith(folder));
+			.filter((f) => f.path.startsWith(folder + "/"));
 
 		const templates = await Promise.all(files.map((file) => this.loadTemplate(file)));
 		return templates.filter((tpl): tpl is PythiaTemplate => tpl !== null);

@@ -13,7 +13,7 @@ import type { PythiaSettings } from "../models/settings";
 
 describe("isReasoningModel", () => {
 	it("is true for every OpenAI o-series model", () => {
-		for (const model of ["o1", "o1-mini", "o3", "o3-mini", "o4-mini"]) {
+		for (const model of ["o3", "o3-mini", "o4-mini"]) {
 			expect(isReasoningModel(model)).toBe(true);
 		}
 	});

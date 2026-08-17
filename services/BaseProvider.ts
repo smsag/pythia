@@ -1,10 +1,11 @@
 import { App, Notice } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import type { Conversation, ToolCall, TokenUsage, Provider } from "../models/types";
 import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { parseTitleAndSummary, langInstruction, langSuffix, debugLog } from "./messageUtils";
+import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
@@ -33,11 +34,13 @@ export abstract class BaseProvider implements LLMProvider {
 	protected settings: PythiaSettings;
 	protected apiKey = "";
 	protected abortController: AbortController | null = null;
+	protected providerType: Provider;
 
-	constructor(app: App, settings: PythiaSettings, apiKey: string) {
+	constructor(app: App, settings: PythiaSettings, apiKey: string, providerType: Provider) {
 		this.app = app;
 		this.settings = settings;
 		this.apiKey = apiKey;
+		this.providerType = providerType;
 	}
 
 	updateSettings(settings: PythiaSettings): void {
@@ -62,10 +65,12 @@ export abstract class BaseProvider implements LLMProvider {
 	protected abstract get fastModel(): string;
 
 	/** Label used for the assistant role in conversation transcripts sent to the API. */
-	protected abstract get assistantLabel(): string;
+	protected get assistantLabel(): string { return "Assistant"; }
 
 	/** Resolve the model to use, falling back to the provider's configured default. */
-	protected abstract resolveModel(modelOverride?: string): string;
+	protected resolveModel(modelOverride?: string): string {
+		return modelOverride || resolveDefaultModelForProvider(this.providerType, this.settings);
+	}
 
 	/**
 	 * Single-turn, non-streaming API call used by all generate* utility methods.
@@ -104,23 +109,9 @@ export abstract class BaseProvider implements LLMProvider {
 		onToolCall: (call: ToolCall) => Promise<string>
 	): Promise<void>;
 
-	async streamMessage(
-		conversation: Conversation,
-		newMessage: string,
-		attachedNotes: string[],
-		onToken: (text: string) => void,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
-		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>
-	): Promise<void> {
-		return this.runStreamLoop(conversation, newMessage, attachedNotes, onToken, onComplete, onError, onToolCall);
-	}
-
 	// ── Shared streaming loop ─────────────────────────────────────────────────
 
-	/** Shared streaming loop — handles abort, retry, tool rounds, and error routing.
-	 *  Subclasses override prepareStream, runStreamRound, and handleToolCalls. */
-	protected async runStreamLoop(
+	async streamMessage(
 		conversation: Conversation,
 		newMessage: string,
 		attachedNotes: string[],

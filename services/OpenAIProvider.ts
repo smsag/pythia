@@ -33,7 +33,7 @@ export class OpenAIProvider extends BaseProvider {
 	private lastPendingCalls: Array<{ id: string; name: string; arguments: string }> = [];
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
-		super(app, settings, apiKey);
+		super(app, settings, apiKey, "openai");
 	}
 
 	protected resetClient(): void {
@@ -42,14 +42,6 @@ export class OpenAIProvider extends BaseProvider {
 
 	protected get fastModel(): string {
 		return "gpt-4o-mini";
-	}
-
-	protected get assistantLabel(): string {
-		return "Assistant";
-	}
-
-	protected resolveModel(modelOverride?: string): string {
-		return modelOverride || this.settings.defaultOpenAIModel;
 	}
 
 	protected async callUtility(

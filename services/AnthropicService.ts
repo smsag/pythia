@@ -34,7 +34,7 @@ export class AnthropicService extends BaseProvider {
 	private lastFinalMsg: Anthropic.Message | undefined;
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
-		super(app, settings, apiKey);
+		super(app, settings, apiKey, "anthropic");
 	}
 
 	protected resetClient(): void {
@@ -47,10 +47,6 @@ export class AnthropicService extends BaseProvider {
 
 	protected get assistantLabel(): string {
 		return "Claude";
-	}
-
-	protected resolveModel(modelOverride?: string): string {
-		return modelOverride || this.settings.defaultAnthropicModel;
 	}
 
 	protected async callUtility(

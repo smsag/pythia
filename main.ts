@@ -1,7 +1,7 @@
 import { Editor, Menu, Notice, Plugin, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { DEFAULT_SETTINGS, PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
-import type { Conversation, Provider } from "./models/types";
+import type { Conversation, Provider, PythiaTemplate } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "./suggest/ConversationSuggest";
@@ -135,7 +135,7 @@ export default class PythiaPlugin extends Plugin {
 			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
-				const conv = await this.createConversation(`Conversation ${todayISO()}`);
+				const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
 				const view = await this.activateView();
 				await view.setActiveConversation(conv);
 				view.triggerAutoPrompt(selection);
@@ -156,32 +156,8 @@ export default class PythiaPlugin extends Plugin {
 				}
 				const activeFile = this.app.workspace.getActiveFile();
 				new TemplateSuggestModal(this.app, templates, async (tpl) => {
-					const contextNotes = [...tpl.contextNotes];
-					if (this.settings.injectActiveNoteOnTemplate && activeFile) {
-						if (!contextNotes.includes(activeFile.path)) {
-							contextNotes.push(activeFile.path);
-						}
-					}
-					let outputFolder = tpl.outputFolder;
-					if (outputFolder === "." && activeFile) {
-						const parentPath = activeFile.parent?.path ?? "";
-						outputFolder = parentPath === "/" ? "" : parentPath;
-					}
-					const conv = await this.createConversation(
-						`${tpl.name} ${todayISO()}`,
-						tpl.systemPrompt,
-						contextNotes,
-						tpl.id,
-						tpl.provider,
-						tpl.model,
-						tpl.maxTokens,
-						outputFolder
-					);
-					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-					if (tpl.writeMode) conv.writeMode = tpl.writeMode;
-					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-					if (tpl.effort !== undefined) conv.effort = tpl.effort;
-					await this.conversationStore.save(conv);
+					const { contextNotes, outputFolder } = this.resolveTemplateContext(tpl, activeFile);
+					const conv = await this.createConversationFromTemplate(tpl, contextNotes, outputFolder);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
 					view.triggerAutoPrompt(selection);
@@ -198,11 +174,9 @@ export default class PythiaPlugin extends Plugin {
 							.setSection("open")
 							.setIcon("bot")
 							.onClick(async () => {
-								const conv = await this.createConversation(
-									`${file.basename} ${todayISO()}`,
-									"",
-									[]
-								);
+								const conv = await this.createConversation({
+									name: `${file.basename} ${todayISO()}`,
+								});
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								view.attachNoteToInput(file.path);
@@ -223,11 +197,9 @@ export default class PythiaPlugin extends Plugin {
 									new Notice(t("noMarkdownInFolder"));
 									return;
 								}
-								const conv = await this.createConversation(
-									`${file.name} ${todayISO()}`,
-									"",
-									[]
-								);
+								const conv = await this.createConversation({
+									name: `${file.name} ${todayISO()}`,
+								});
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								for (const f of files) view.attachNoteToInput(f.path);
@@ -258,7 +230,7 @@ export default class PythiaPlugin extends Plugin {
 				}
 
 					if (action === "new") {
-					const conv = await this.createConversation(`Conversation ${todayISO()}`);
+					const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
 					return;
@@ -290,19 +262,7 @@ export default class PythiaPlugin extends Plugin {
 						new Notice(t("templateNotFound", { name: params.name }));
 						return;
 					}
-					const conv = await this.createConversation(
-						`${tpl.name} ${todayISO()}`,
-						tpl.systemPrompt,
-						[...tpl.contextNotes],
-						tpl.id,
-						tpl.provider,
-						tpl.model,
-						tpl.maxTokens
-					);
-					if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-					if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-					if (tpl.effort !== undefined) conv.effort = tpl.effort;
-					await this.conversationStore.save(conv);
+					const conv = await this.createConversationFromTemplate(tpl);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
 					return;
@@ -323,23 +283,7 @@ export default class PythiaPlugin extends Plugin {
 					}
 					await this.activateView();
 					new TemplateSuggestModal(this.app, templates, async (tpl) => {
-						const contextNotes = [...tpl.contextNotes];
-						const outputFolder = tpl.outputFolder;
-						const conv = await this.createConversation(
-							`${tpl.name} ${todayISO()}`,
-							tpl.systemPrompt,
-							contextNotes,
-							tpl.id,
-							tpl.provider,
-							tpl.model,
-							tpl.maxTokens,
-							outputFolder
-						);
-						if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-						if (tpl.writeMode) conv.writeMode = tpl.writeMode;
-						if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-						if (tpl.effort !== undefined) conv.effort = tpl.effort;
-						await this.conversationStore.save(conv);
+						const conv = await this.createConversationFromTemplate(tpl);
 						const view = await this.activateView();
 						await view.setActiveConversation(conv);
 						view.triggerAutoPrompt(rawText);
@@ -648,32 +592,32 @@ export default class PythiaPlugin extends Plugin {
 		}
 	}
 
-	async createConversation(
-		name: string,
-		systemPrompt = "",
-		contextNotes: string[] = [],
-		templateId?: string,
-		provider?: Provider,
-		model?: string,
-		maxTokens?: number,
-		outputFolder?: string
-	): Promise<Conversation> {
-		const resolvedProvider = provider ?? this.settings.defaultProvider;
-		const resolvedModel = model ?? resolveDefaultModelForProvider(resolvedProvider, this.settings);
+	async createConversation(opts: {
+		name: string;
+		systemPrompt?: string;
+		contextNotes?: string[];
+		templateId?: string;
+		provider?: Provider;
+		model?: string;
+		maxTokens?: number;
+		outputFolder?: string;
+	}): Promise<Conversation> {
+		const resolvedProvider = opts.provider ?? this.settings.defaultProvider;
+		const resolvedModel = opts.model ?? resolveDefaultModelForProvider(resolvedProvider, this.settings);
 
 		const conv: Conversation = {
 			id: crypto.randomUUID(),
-			name,
+			name: opts.name,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
-			templateId,
-			systemPrompt,
-			contextNotes,
+			templateId: opts.templateId,
+			systemPrompt: opts.systemPrompt ?? "",
+			contextNotes: opts.contextNotes ?? [],
 			resumeMode: this.settings.defaultResumeMode,
 			provider: resolvedProvider,
 			model: resolvedModel,
-			maxTokens,
-			outputFolder,
+			maxTokens: opts.maxTokens,
+			outputFolder: opts.outputFolder,
 			messages: [],
 		};
 		this.conversations.push(conv);
@@ -682,8 +626,49 @@ export default class PythiaPlugin extends Plugin {
 		return conv;
 	}
 
+	async createConversationFromTemplate(
+		tpl: PythiaTemplate,
+		contextNotes?: string[],
+		outputFolder?: string
+	): Promise<Conversation> {
+		const conv = await this.createConversation({
+			name: `${tpl.name} ${todayISO()}`,
+			systemPrompt: tpl.systemPrompt,
+			contextNotes: contextNotes ?? [...tpl.contextNotes],
+			templateId: tpl.id,
+			provider: tpl.provider,
+			model: tpl.model,
+			maxTokens: tpl.maxTokens,
+			outputFolder: outputFolder ?? tpl.outputFolder,
+		});
+		if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
+		if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+		if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
+		if (tpl.effort !== undefined) conv.effort = tpl.effort;
+		await this.conversationStore.save(conv);
+		return conv;
+	}
+
+	private resolveTemplateContext(
+		tpl: PythiaTemplate,
+		activeFile: TFile | null
+	): { contextNotes: string[]; outputFolder: string | undefined } {
+		const contextNotes = [...tpl.contextNotes];
+		if (this.settings.injectActiveNoteOnTemplate && activeFile) {
+			if (!contextNotes.includes(activeFile.path)) {
+				contextNotes.push(activeFile.path);
+			}
+		}
+		let outputFolder = tpl.outputFolder;
+		if (outputFolder === "." && activeFile) {
+			const parentPath = activeFile.parent?.path ?? "";
+			outputFolder = parentPath === "/" ? "" : parentPath;
+		}
+		return { contextNotes, outputFolder };
+	}
+
 	async cmdNewConversation(): Promise<void> {
-		const conv = await this.createConversation(`Conversation ${todayISO()}`);
+		const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 	}
@@ -699,46 +684,16 @@ export default class PythiaPlugin extends Plugin {
 		const activeFile = this.app.workspace.getActiveFile();
 
 		new TemplateSuggestModal(this.app, templates, async (tpl) => {
-			// Resolve context notes: template's own notes + active note (if setting is on)
-			const contextNotes = [...tpl.contextNotes];
-			if (this.settings.injectActiveNoteOnTemplate && activeFile) {
-				if (!contextNotes.includes(activeFile.path)) {
-					contextNotes.push(activeFile.path);
-				}
-			}
-
-			// Resolve output folder: "." means same folder as the active note
-			let outputFolder = tpl.outputFolder;
-			if (outputFolder === "." && activeFile) {
-				const parentPath = activeFile.parent?.path ?? "";
-				outputFolder = parentPath === "/" ? "" : parentPath;
-			}
-
-			const conv = await this.createConversation(
-				`${tpl.name} ${todayISO()}`,
-				tpl.systemPrompt,
-				contextNotes,
-				tpl.id,
-				tpl.provider,
-				tpl.model,
-				tpl.maxTokens,
-				outputFolder
-			);
-			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-			if (tpl.writeMode) conv.writeMode = tpl.writeMode;
-			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-			if (tpl.effort !== undefined) conv.effort = tpl.effort;
-			await this.conversationStore.save(conv);
+			const { contextNotes, outputFolder } = this.resolveTemplateContext(tpl, activeFile);
+			const conv = await this.createConversationFromTemplate(tpl, contextNotes, outputFolder);
 
 			const view = await this.activateView();
 			await view.setActiveConversation(conv);
 
-			const totalContext = contextNotes.length;
-			if (totalContext > 0) {
-				new Notice(t("loadedTemplate", { name: tpl.name, count: String(totalContext) }));
+			if (contextNotes.length > 0) {
+				new Notice(t("loadedTemplate", { name: tpl.name, count: String(contextNotes.length) }));
 			}
 
-			// Fire auto_prompt immediately after the conversation is ready
 			if (tpl.autoPrompt) {
 				view.triggerAutoPrompt(tpl.autoPrompt);
 			}
@@ -752,11 +707,10 @@ export default class PythiaPlugin extends Plugin {
 			return;
 		}
 
-		const conv = await this.createConversation(
-			`${activeFile.basename} ${todayISO()}`,
-			"",
-			[activeFile.path]
-		);
+		const conv = await this.createConversation({
+			name: `${activeFile.basename} ${todayISO()}`,
+			contextNotes: [activeFile.path],
+		});
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 		new Notice(t("attachedAsContext", { name: activeFile.name }));
@@ -775,7 +729,7 @@ export default class PythiaPlugin extends Plugin {
 			new Notice(t("clipboardEmpty"));
 			return;
 		}
-		const conv = await this.createConversation(`Conversation ${todayISO()}`);
+		const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
 		const view = await this.activateView();
 		await view.setActiveConversation(conv);
 		view.prefillInput(text);
@@ -806,15 +760,14 @@ export default class PythiaPlugin extends Plugin {
 			}
 		}
 
-		const conv = await this.createConversation(
-			`Fork of ${source.name}`,
-			source.systemPrompt,
-			[],
-			source.templateId,
-			source.provider,
-			source.model,
-			source.maxTokens,
-		);
+		const conv = await this.createConversation({
+			name: `Fork of ${source.name}`,
+			systemPrompt: source.systemPrompt,
+			templateId: source.templateId,
+			provider: source.provider,
+			model: source.model,
+			maxTokens: source.maxTokens,
+		});
 		conv.temperature = source.temperature;
 		conv.effort = source.effort;
 		conv.forkedFromId = sourceConvId;
@@ -864,19 +817,6 @@ export default class PythiaPlugin extends Plugin {
 				view.scrollToMessage(messageId);
 			}
 		).open();
-	}
-
-	private async cmdCopyConversationLink(): Promise<void> {
-		const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
-		const view = leaves[0]?.view as PythiaSidebarView | undefined;
-		const convId = view?.activeConversationId;
-		if (!convId) {
-			new Notice(t("noActiveConvToSend"));
-			return;
-		}
-		const link = `obsidian://pythia?cmd=resume&id=${encodeURIComponent(convId)}`;
-		await navigator.clipboard.writeText(link);
-		new Notice(t("convLinkCopied"));
 	}
 
 	private async cmdResumeConversation(): Promise<void> {

@@ -3,7 +3,6 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
-	Modal,
 	Notice,
 	setIcon,
 	TFile,
@@ -15,6 +14,7 @@ import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
+import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import type { Conversation, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
@@ -23,6 +23,7 @@ import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { buildStreamErrorMessage } from "./services/apiError";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
+import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { MODEL_ABBREVIATIONS } from "./models/knownModels";
 
@@ -35,34 +36,6 @@ function formatSummaryTimestamp(iso: string): string {
 	return `${date} · ${time}`;
 }
 
-
-class DeleteFileModal extends Modal {
-	private fileName: string;
-	private onConfirm: () => void;
-
-	constructor(app: App, fileName: string, onConfirm: () => void) {
-		super(app);
-		this.fileName = fileName;
-		this.onConfirm = onConfirm;
-	}
-
-	onOpen(): void {
-		this.modalEl.addClass("pythia-modal");
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("deleteFileTitle") });
-		contentEl.createEl("p", {
-			text: t("deleteFileConfirm", { name: this.fileName }),
-			cls: "pythia-modal-desc",
-		});
-		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
-		const deleteBtn = buttons.createEl("button", { text: t("deleteBtn"), cls: "mod-warning" });
-		deleteBtn.addEventListener("click", () => { this.onConfirm(); this.close(); });
-		const cancelBtn = buttons.createEl("button", { text: t("cancelBtn") });
-		cancelBtn.addEventListener("click", () => this.close());
-	}
-
-	onClose(): void { this.contentEl.empty(); }
-}
 
 function abbreviateModel(model: string): string {
 	if (MODEL_ABBREVIATIONS[model]) return MODEL_ABBREVIATIONS[model];
@@ -349,10 +322,50 @@ export class PythiaSidebarView extends ItemView {
 		container.empty();
 		container.addClass("pythia-view");
 
+		this.buildHeader(container);
+
+		// ── Summary panel (below header, above messages) ────────────
+		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
+		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
+		this.summaryPanelEl.style.display = "none";
+
+		this.buildChatArea(container);
+
+		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
+		this.referencePillsEl = this.referenceSectionEl.createDiv({ cls: "p-pills" });
+		this.referenceSectionEl.style.display = "none";
+
+		this.buildInputArea(container);
+
+		this.optimizationController = new OptimizationController({
+			app: this.app,
+			component: this,
+			plugin: this.plugin,
+			messagesEl: this.messagesEl,
+			inputEl: this.inputEl,
+			sendBtn: this.sendBtn,
+			optimizeBtnEl: this.optimizeBtnEl,
+			getConversation: () => this.activeConversation,
+			isStreaming: () => this.isStreaming,
+			scrollToBottom: () => this.scrollToBottom(),
+			autoResizeTextarea: () => this.autoResizeTextarea(),
+			sendMessage: () => this.sendMessage(),
+			registerDomEvent: (el, event, cb) => this.registerDomEvent(el, event, cb),
+		});
+
+		this.navigatorController = new NavigatorController({
+			plugin: this.plugin,
+			navigatorEl: this.navigatorEl,
+			indexTriggerEl: this.indexTriggerEl,
+			getConversation: () => this.activeConversation,
+			setActiveConversation: (conv) => this.setActiveConversation(conv),
+			scrollToMessage: (id) => this.scrollToMessage(id),
+		});
+	}
+
+	private buildHeader(container: HTMLElement): void {
 		const header = container.createDiv({ cls: "p-header" });
 
-		// Title group: [title button] [pencil] — groups them so pencil always
-		// sits immediately right of the title regardless of edit mode.
 		const titleGroup = header.createDiv({ cls: "p-title-group" });
 
 		this.convNameEl = titleGroup.createEl("button", {
@@ -361,8 +374,6 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
 
-		// Inline rename editor — shown inside titleGroup replacing convNameEl.
-		// Wrapper holds [ ↺ icon | input ] flush with the title position.
 		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
 		this.renameWrapEl.style.display = "none";
 
@@ -371,7 +382,6 @@ export class PythiaSidebarView extends ItemView {
 			attr: { title: t("renameLLMTooltip") },
 		});
 		setIcon(this.renameLLMBtn, "refresh-cw");
-		// mousedown + preventDefault keeps input focused (fires before blur).
 		this.renameLLMBtn.addEventListener("mousedown", (e) => {
 			e.preventDefault();
 			void this.onRenameLLM();
@@ -385,8 +395,6 @@ export class PythiaSidebarView extends ItemView {
 			if (e.key === "Enter") { e.preventDefault(); this.exitRenameMode(true); }
 			if (e.key === "Escape") { e.preventDefault(); this.exitRenameMode(false); }
 		});
-		// blur = click outside → save. Safe here because the refresh button uses
-		// mousedown+preventDefault to keep focus, so blur never fires from it.
 		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
 
 		this.renameBtn = titleGroup.createEl("button", {
@@ -429,17 +437,14 @@ export class PythiaSidebarView extends ItemView {
 
 		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
 		this.templateLabelEl.style.display = "none";
+	}
 
-		// ── Summary panel (below header, above messages) ────────────
-		this.summaryPanelEl = container.createDiv({ cls: "p-summary-panel" });
-		this.summaryPanelBodyEl = this.summaryPanelEl.createDiv({ cls: "p-summary-panel-body" });
-		this.summaryPanelEl.style.display = "none";
-
-const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
+	private buildChatArea(container: HTMLElement): void {
+		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
 		this.messagesEl.addEventListener("scroll", () => {
-			if (this.isScrolling) return; // programmatic scroll — ignore
+			if (this.isScrolling) return;
 			const el = this.messagesEl;
 			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 			if (distFromBottom > 50) this.autoScroll = false;
@@ -447,8 +452,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		this.selectionToolbar = container.createDiv({ cls: "pythia-sel-toolbar" });
 		this.selectionToolbar.style.display = "none";
 
-		// Passive touchstart on the container: save the selection and swipe origin
-		// before iOS dismisses the selection. Passive = does NOT block scroll gestures.
 		let savedSelRange: Range | null = null;
 		let selTouchStartX = 0;
 		this.selectionToolbar.addEventListener("touchstart", (e: TouchEvent) => {
@@ -459,11 +462,9 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			selTouchStartX = e.touches[0].clientX;
 		}, { passive: true });
 
-		// Helper: returns a touchend handler that fires the action only on taps
-		// (not swipes), restoring the saved selection first.
 		const makeSelTouch = (action: () => void) => (e: TouchEvent) => {
 			if (Math.abs(e.changedTouches[0].clientX - selTouchStartX) > 12) return;
-			e.preventDefault(); // suppress the synthetic click that follows touchend
+			e.preventDefault();
 			if (savedSelRange) {
 				const sel = window.getSelection();
 				if (sel) { sel.removeAllRanges(); sel.addRange(savedSelRange); }
@@ -533,12 +534,9 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			e.stopPropagation();
 			this.navigatorController.toggle();
 		});
+	}
 
-		// ── Reference row (context + output pills, hidden when empty) ───────
-		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
-		this.referencePillsEl = this.referenceSectionEl.createDiv({ cls: "p-pills" });
-		this.referenceSectionEl.style.display = "none";
-
+	private buildInputArea(container: HTMLElement): void {
 		const inputArea = container.createDiv({ cls: "p-input-area" });
 		this.inputAreaEl = inputArea;
 
@@ -565,8 +563,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		);
 		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (this.inlineSuggest.handleKeydown(e)) return;
-			// e.isComposing is true while an IME (CJK) composition is in progress.
-			// Without this guard, pressing Enter to confirm a candidate sends the message. (#24)
 			if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 				e.preventDefault();
 				void this.sendMessage();
@@ -585,8 +581,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			});
 		}
 
-		// visualViewport resize is unreliable in some WKWebView versions;
-		// focus/blur fire unconditionally. 300 ms lets the keyboard slide in.
 		this.inputEl.addEventListener("focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
@@ -650,7 +644,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		const optimizeSvg = this.optimizeBtnEl.createSvg("svg", {
 			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
 		});
-		// Lucide wand-2: diagonal wand body + sparkle tick
 		optimizeSvg.createSvg("path", {
 			attr: { d: "m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.21 1.21 0 0 0 0-1.72z" },
 		});
@@ -692,31 +685,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			} else {
 				void this.sendMessage();
 			}
-		});
-
-		this.optimizationController = new OptimizationController({
-			app: this.app,
-			component: this,
-			plugin: this.plugin,
-			messagesEl: this.messagesEl,
-			inputEl: this.inputEl,
-			sendBtn: this.sendBtn,
-			optimizeBtnEl: this.optimizeBtnEl,
-			getConversation: () => this.activeConversation,
-			isStreaming: () => this.isStreaming,
-			scrollToBottom: () => this.scrollToBottom(),
-			autoResizeTextarea: () => this.autoResizeTextarea(),
-			sendMessage: () => this.sendMessage(),
-			registerDomEvent: (el, event, cb) => this.registerDomEvent(el, event, cb),
-		});
-
-		this.navigatorController = new NavigatorController({
-			plugin: this.plugin,
-			navigatorEl: this.navigatorEl,
-			indexTriggerEl: this.indexTriggerEl,
-			getConversation: () => this.activeConversation,
-			setActiveConversation: (conv) => this.setActiveConversation(conv),
-			scrollToMessage: (id) => this.scrollToMessage(id),
 		});
 	}
 
@@ -960,11 +928,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		// The DOM already reflects the full message list — only handle scroll.
 		if (this.renderedConvId === conv.id && this.lastRenderedMsgId === tailId) {
 			if (scrollTo === "top") {
-				this.autoScroll = false;
-				this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-				requestAnimationFrame(() => {
-					this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-				});
+				this.scrollToTop();
 			} else {
 				this.scrollToBottom();
 			}
@@ -983,11 +947,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				}
 				this.lastRenderedMsgId = tailId;
 				if (scrollTo === "top") {
-					this.autoScroll = false;
-					this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-					requestAnimationFrame(() => {
-						this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-					});
+					this.scrollToTop();
 				} else {
 					this.scrollToBottom();
 				}
@@ -1016,13 +976,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		this.lastRenderedMsgId = tailId;
 
 		if (scrollTo === "top") {
-			this.autoScroll = false;
-			// Use 'instant' to bypass smooth-scroll animation — animated scrolls
-			// get overridden mid-flight when async renderers (Mermaid etc.) settle.
-			this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-			requestAnimationFrame(() => {
-				this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-			});
+			this.scrollToTop();
 		} else {
 			this.scrollToBottom();
 		}
@@ -1072,7 +1026,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
-		this.decorateCodeBlocks(aiBody);
+		decorateCodeBlocks(aiBody, this.diagObservers);
 
 		const isFav = this.activeConversation?.favorites?.some(
 			(f) => f.messageId === msg.id
@@ -1118,7 +1072,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
-				this.decorateCodeBlocks(aiBody);
+				decorateCodeBlocks(aiBody, this.diagObservers);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -1137,282 +1091,6 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		);
 	}
 
-	private decorateCodeBlocks(container: HTMLElement): void {
-		// Fenced code blocks — skip the source-listing pre inside diagram blocks;
-		// those are handled (and eventually replaced) by Mermaid/PlantUML renderers.
-		container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
-			if (pre.closest(".block-language-mermaid, .block-language-plantuml")) return;
-			pre.dataset.decorated = "1";
-			const frame = this.wrapInScrollFrame(pre);
-
-			// Extract language identifier for the fenced-block wrapper.
-			const codeEl = pre.querySelector("code");
-			const lang = codeEl?.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
-			const makeFenced = (): string => {
-				const raw = (codeEl ?? pre).innerText.replace(/\n$/, "");
-				return `\`\`\`${lang}\n${raw}\n\`\`\``;
-			};
-
-			// Persistent "this is code" glyph, top-left — unlike the copy button
-			// this is a label, not an affordance, so it's always visible and
-			// has no click handler.
-			setIcon(frame.createEl("span", { cls: "p-code-type-icon" }), "code-2");
-
-			// Copy button lives on the frame so it stays fixed while the pre scrolls.
-			const actions = frame.createEl("div", { cls: "p-code-actions" });
-			const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
-			setIcon(copyBtn, "copy");
-			copyBtn.addEventListener("click", async (e) => {
-				e.stopPropagation();
-				await navigator.clipboard.writeText(makeFenced());
-				setIcon(copyBtn, "check");
-				copyBtn.addClass("copied");
-				setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
-			});
-
-			this.attachDragToPan(pre);
-		});
-
-		// Diagram blocks — covers Mermaid, PlantUML and any other renderer that
-		// produces SVG inside a .block-language-* container (Vega, Chart.js wrappers…).
-		// Do NOT move elements in the DOM; async renderers expect to find and replace
-		// content in its original position. Scroll behaviour comes from CSS;
-		// JS stamps explicit SVG pixel size and enables drag-to-pan.
-		const DIAG_SELECTOR = "[class*='block-language-']:not([data-decorated])";
-		container.querySelectorAll<HTMLElement>(DIAG_SELECTOR).forEach((el) => {
-			// Skip pure code blocks — those are handled by the pre loop above.
-			if (el.querySelector("pre") && !el.querySelector("svg")) return;
-			el.dataset.decorated = "1";
-
-			// Capture the source before Mermaid's async renderer replaces the
-			// code element with the SVG.
-			const codeEl = el.querySelector("code");
-			const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
-			const source = codeEl?.innerText.replace(/\n$/, "") ?? "";
-
-			if (source) {
-				const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
-
-				// Copy button lives INSIDE the diagram container, pinned to the
-				// top-right corner with position:absolute. The container has
-				// position:relative and overflow-x:auto; the button sits within
-				// the container's padding box so it is NOT clipped by overflow and
-				// does NOT scroll with the SVG content — it stays in the corner
-				// as the user pans the diagram. Reveals on hover via CSS.
-				const copyBtn = el.createEl("button", {
-					cls:  "p-code-btn p-code-copy p-diag-copy",
-					attr: { title: "Copy diagram source" },
-				});
-				setIcon(copyBtn, "copy");
-				copyBtn.addEventListener("click", async (e) => {
-					e.stopPropagation();
-					await navigator.clipboard.writeText(makeFenced());
-					setIcon(copyBtn, "check");
-					copyBtn.addClass("copied");
-					setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
-				});
-			}
-
-			this.fixDiagramSvgSize(el);
-			this.attachDragToPan(el);
-		});
-
-		// Wide tables — wrap in a scroll frame (overflow scroll pattern).
-		container.querySelectorAll<HTMLElement>("table:not([data-decorated])").forEach((table) => {
-			table.dataset.decorated = "1";
-			const frame = createEl("div", { cls: "p-scroll-frame" });
-			table.parentNode!.insertBefore(frame, table);
-			frame.appendChild(table);
-			this.attachDragToPan(frame);
-		});
-	}
-
-	/**
-	 * Mermaid and PlantUML renderers set `width="100%"` on the SVG, which
-	 * causes the browser to scale it down to fit its container.  Read the
-	 * `viewBox` intrinsic size and stamp explicit pixel dimensions instead so
-	 * the diagram keeps its natural size and the container scrolls.
-	 *
-	 * Uses a MutationObserver so the stamp fires exactly when the SVG element
-	 * is inserted by Mermaid's async renderer — more reliable than ResizeObserver.
-	 */
-	private fixDiagramSvgSize(el: HTMLElement): void {
-		/**
-		 * Attempt to stamp explicit pixel dimensions on the SVG.
-		 * Returns true when dimensions were applied so the observers know to stop.
-		 *
-		 * Priority:
-		 *   1. viewBox  — most reliable; set by Mermaid for flowcharts, sequence, class …
-		 *   2. explicit numeric width/height attributes — Gantt and some other types
-		 *   3. inline style width/height — Mermaid v10 sets svg.style.width directly
-		 *   4. inline style maxWidth — Gantt charts on older Mermaid
-		 */
-		const stamp = (svg: SVGElement): boolean => {
-			// 1. viewBox
-			const vb = svg.getAttribute("viewBox");
-			if (vb) {
-				const parts = vb.trim().split(/[\s,]+/).map(Number);
-				if (parts.length >= 4 && parts[2] > 0) {
-					const [, , w, h] = parts;
-					svg.style.setProperty("width",     `${w}px`, "important");
-					svg.style.setProperty("height",    `${h}px`, "important");
-					svg.style.setProperty("max-width", "none",   "important");
-					svg.style.display = "block";
-					return true;
-				}
-			}
-			// 2. Explicit numeric width/height HTML attributes (not percentages)
-			const rawW = svg.getAttribute("width") ?? "";
-			const rawH = svg.getAttribute("height") ?? "";
-			const attrW = rawW.includes("%") ? NaN : parseFloat(rawW);
-			const attrH = rawH.includes("%") ? NaN : parseFloat(rawH);
-			if (attrW > 0) {
-				svg.style.setProperty("width",     `${attrW}px`, "important");
-				svg.style.setProperty("max-width", "none",       "important");
-				svg.style.display = "block";
-				if (attrH > 0) svg.style.setProperty("height", `${attrH}px`, "important");
-				return true;
-			}
-			// 3. Inline style width — Mermaid v10 sets svg.style.width directly
-			//    as a CSS property rather than an HTML attribute.
-			const styleW = parseFloat(svg.style.width);
-			if (styleW > 0) {
-				svg.style.setProperty("width",     `${styleW}px`, "important");
-				svg.style.setProperty("max-width", "none",        "important");
-				svg.style.display = "block";
-				const styleH = parseFloat(svg.style.height);
-				if (styleH > 0) svg.style.setProperty("height", `${styleH}px`, "important");
-				return true;
-			}
-			// 4. max-width in inline style — Gantt charts on older Mermaid
-			const styleMaxW = parseFloat(svg.style.maxWidth);
-			if (styleMaxW > 0) {
-				svg.style.setProperty("width",     `${styleMaxW}px`, "important");
-				svg.style.setProperty("max-width", "none",           "important");
-				svg.style.display = "block";
-				return true;
-			}
-			// 5. getBBox() — for renderers (e.g. Vizardry) that produce an SVG
-			//    with no viewBox and no size attributes. getBBox() returns the
-			//    bounding box of the rendered content; only valid once the SVG is
-			//    in the DOM and painted, so this runs last after the observers fire.
-			try {
-				const bbox = (svg as unknown as SVGGraphicsElement).getBBox();
-				const bboxW = bbox.width + Math.max(0, bbox.x);
-				const bboxH = bbox.height + Math.max(0, bbox.y);
-				if (bboxW > 0) {
-					svg.style.setProperty("width",     `${bboxW}px`, "important");
-					svg.style.setProperty("height",    `${bboxH}px`, "important");
-					svg.style.setProperty("max-width", "none",       "important");
-					svg.style.display = "block";
-					return true;
-				}
-			} catch { /* SVG not yet painted — keep observing */ }
-			return false; // not ready yet — keep observing
-		};
-
-		// Disconnect any observers armed during a previous DOM rebuild (#20).
-		const prev = this.diagObservers.get(el);
-		prev?.mo.disconnect();
-		prev?.ro.disconnect();
-
-		// If already rendered (conversation reload), stamp immediately.
-		const existing = el.querySelector<SVGElement>("svg");
-		if (existing && stamp(existing)) return;
-
-		// Phase 1: watch the container for SVG insertion.
-		// Phase 2: once the SVG appears, also watch the SVG element's own
-		//   style/attribute mutations. Gantt charts and Mermaid v10 write
-		//   dimensions via style mutations after the initial SVG insertion.
-		let svgWatched = false;
-		const done = () => {
-			mo.disconnect();
-			ro.disconnect();
-			this.diagObservers.delete(el);
-		};
-		const mo = new MutationObserver(() => {
-			const svg = el.querySelector<SVGElement>("svg");
-			if (!svg) return;
-			if (stamp(svg)) { done(); return; }
-			if (!svgWatched) {
-				svgWatched = true;
-				mo.observe(svg, {
-					attributes:      true,
-					attributeFilter: ["style", "viewBox", "width", "height"],
-				});
-			}
-		});
-		mo.observe(el, {
-			childList:       true,
-			subtree:         true,
-			attributes:      true,
-			attributeFilter: ["viewBox", "width", "height"],
-		});
-
-		// ResizeObserver fallback: catches renderers that mutate dimensions via
-		// CSS classes or layout (not attribute/style mutations), e.g. Vega,
-		// Mermaid v10 with certain diagram types.
-		const ro = new ResizeObserver(() => {
-			const svg = el.querySelector<SVGElement>("svg");
-			if (svg && stamp(svg)) done();
-		});
-		ro.observe(el);
-
-		this.diagObservers.set(el, { mo, ro });
-
-		// Safety: disconnect after 10 s to avoid leaks if the renderer never fires.
-		setTimeout(done, 10_000);
-	}
-
-	/** Wraps `scrollEl` in a `.p-code-frame` positioning shell and returns the frame. */
-	private wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
-		const frame = createEl("div", { cls: "p-code-frame" });
-		scrollEl.parentNode!.insertBefore(frame, scrollEl);
-		frame.appendChild(scrollEl);
-		return frame;
-	}
-
-	/**
-	 * Attach mouse-drag-to-pan to `el` (must be overflow-x: auto).
-	 * A 5 px threshold keeps small clicks from fighting text selection.
-	 * Touch devices (iOS) rely on native overflow scroll — not intercepted here.
-	 */
-	private attachDragToPan(el: HTMLElement): void {
-		const THRESHOLD = 5;
-		let startX         = 0;
-		let startScrollLeft = 0;
-		let panning        = false;
-
-		const onMove = (e: PointerEvent) => {
-			const dx = e.clientX - startX;
-			if (!panning) {
-				if (Math.abs(dx) < THRESHOLD) return;
-				panning = true;
-				el.classList.add("p-panning");
-			}
-			el.scrollLeft = startScrollLeft - dx;
-		};
-
-		const cleanup = () => {
-			if (panning) el.classList.remove("p-panning");
-			panning = false;
-			document.removeEventListener("pointermove",  onMove);
-			document.removeEventListener("pointerup",    cleanup);
-			document.removeEventListener("pointercancel", cleanup);
-		};
-
-		el.addEventListener("pointerdown", (e) => {
-			// Only mouse left-button; let native touch scroll handle other pointer types.
-			if (e.pointerType !== "mouse" || e.button !== 0) return;
-			if (el.scrollWidth <= el.clientWidth) return; // nothing to pan
-			startX          = e.clientX;
-			startScrollLeft = el.scrollLeft;
-			panning         = false;
-			document.addEventListener("pointermove",  onMove);
-			document.addEventListener("pointerup",    cleanup);
-			document.addEventListener("pointercancel", cleanup);
-		});
-	}
 
 	private autoResizeTextarea(): void {
 		requestAnimationFrame(() => {
@@ -1424,6 +1102,14 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			const maxH = Math.ceil(lineHeight * 5);
 			this.inputEl.style.height = "auto";
 			this.inputEl.style.height = `${Math.min(Math.max(this.inputEl.scrollHeight, minH), maxH)}px`;
+		});
+	}
+
+	private scrollToTop(): void {
+		this.autoScroll = false;
+		this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
+		requestAnimationFrame(() => {
+			this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
 		});
 	}
 

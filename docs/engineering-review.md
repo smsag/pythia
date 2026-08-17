@@ -22,7 +22,8 @@
 *Updated: 2026-07-17 — Fixed a real, reproducible bug: attaching a long (34KB), multi-section reference doc and asking for one specific framework's syntax could return a *different* framework's syntax instead. Root cause: `services/noteRelevance.ts`'s `scoreRelevanceTokens()` gave +1 point per shared keyword with zero weighting for how common that word was — many sections shared generic vocabulary ("user," "solution," "outcome"), so a section built from that shared vocabulary could out-score (or tie and win a tie-break by document position against) the one section holding the actual distinctive term the user asked about. Replaced with a smoothed IDF-weighted scorer (`scoreRelevanceWeighted`/`scoreRelevanceTokensWeighted`) — a token shared by every candidate barely moves the score, a token unique to one or a few candidates dominates it. Still fully dependency-free, no embeddings, no vector store, no new I/O — a refinement of ADR-026's direction, not a reversal. Verified directly against the real document that surfaced the bug (the correct section is now retained, the wrong one excluded) plus a generic regression test reproducing the failure shape. Partially addresses #50 (full embeddings remains open if this proves insufficient). See ADR-043.*
 *Updated: 2026-07-17 — `maxTokens` was the only generation parameter with no UI exposure at all — the only way to set it was `max_tokens:` in a template's frontmatter; every other conversation was silently stuck at the hardcoded `DEFAULT_MAX_TOKENS = 4096`. Brought to the same three-level override layering and UI treatment `temperature`/`effort` already had (new `PythiaSettings.maxTokens`, new fields in `settings.ts` and `ConversationSettingsModal.ts`). Also raised the default itself: `DEFAULT_MAX_TOKENS` 4096 → 8192, plus a new `DEFAULT_MAX_TOKENS_REASONING = 16384` for OpenAI reasoning models via the existing `isReasoningModel()` check — reasoning tokens spend from the same budget as visible output, so a low cap risked a silently truncated or empty reply on exactly the models most likely to need a large one. Not a bug fix — a new capability/default-tuning pass, not separately numbered (same convention as recent entries). See ADR-044.*
 *Updated: 2026-07-17 — Added Mistral as a third LLM provider with full streaming/tool-calling/temperature/effort/maxTokens parity (`services/MistralService.ts`, extends `BaseProvider`; `Provider` widened to include `"mistral"`). Pre-implementation audit found a real bug class: several call sites resolved provider behavior via a two-way `provider === "x" ? A : B` ternary that TypeScript does not flag when a third union member is added — converted to exhaustive `switch`es with `never`-typed default cases at every site found (`main.ts`'s default-model resolution and API-key check, `settings.ts`'s and `ConversationSettingsModal.ts`'s temperature/effort gating). Direct SDK type inspection (not docs) found Mistral's `reasoningEffort` has no per-model restriction and native `system`-role support on every model, so both were wired in fully rather than deferred as originally planned. Surfaced two bonus fixes to provider-shared code: `services/retry.ts`'s `ABORT_ERROR_NAMES` didn't recognize Mistral's `"RequestAbortedError"` abort-error name (would have misreported a clean Stop-click as a real error), and `services/apiError.ts`'s `classifyApiError` only read `.status` (Mistral uses `.statusCode`, misclassifying real API errors as network failures). Also root-caused an esbuild failure — the SDK unconditionally pulls in `@opentelemetry/api` via an internal hook-registration chain regardless of which client API is used — fixed by installing it as a real dependency; bundle size roughly doubled (340KB → 680KB) as a result, an accepted, documented tradeoff. PDF attachments and vision input remain out of scope for Mistral, deferred as follow-ups. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-045.*
-*Updated: 2026-08-17 — Maintainability/performance pass: extracted the streaming/tool-calling loop into a BaseProvider template method (`runStreamLoop` + three abstract hooks: `prepareStream`/`runStreamRound`/`handleToolCalls`), eliminating ~600 lines of near-identical code across three providers (#88). ConversationStore gained dirty-flag persistence tracking — `schedulePersist` skips the write when nothing has actually changed (#89). Sidebar performance: `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` (#90). ESLint config upgraded to typed linting (`projectService: true`) and `no-floating-promises: error` (with `ignoreVoid: true`), catching and fixing 8 existing violations (#91). #10 (fire-and-forget hardening) partially addressed by #91.*
+*Updated: 2026-08-17 — Maintainability/performance pass: extracted the streaming/tool-calling loop into a BaseProvider template method (`runStreamLoop` + three abstract hooks: `prepareStream`/`runStreamRound`/`handleToolCalls`), eliminating ~600 lines of near-identical code across three providers (#88). ConversationStore gained dirty-flag persistence tracking — `schedulePersist` skips the write when nothing has actually changed (#89). Sidebar performance: `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` (#90). ESLint config upgraded to typed linting (`projectService: true`) and `no-floating-promises: error` (with `ignoreVoid: true`), catching and fixing 8 existing violations (#91). #10 (fire-and-forget hardening) partially addressed by #91.
+*Updated: 2026-08-17 — Engineering review implementation: #92 unified model catalog (5 parallel data structures into `MODEL_CATALOG`), #93 BaseProvider concrete defaults (`assistantLabel`/`resolveModel`), #94 `buildUI` decomposition + `DeleteFileModal`/`CodeBlockDecorator` extraction, #95 `createConversation` options object + `createConversationFromTemplate` helper, #96 TemplateLoader prefix-match bug fix, #97 dead code removal (`hasDirty()`, `cmdCopyConversationLink()`, redundant provider overrides), #98 vitest coverage config updated. All resolved. See ADR-048 through ADR-051.*
 *Updated: 2026-07-17 — Code-block/blockquote design-system fix, from user-reported screenshots. Two separate causes: `.p-code-frame`'s background used an undocumented `var(--code-background)` token instead of the `var(--background-secondary)` formula the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`) already use — unified. Blockquotes had **zero** custom Pythia CSS at all (confirmed via grep) — a purple-tinted, italic Obsidian default was what the user actually saw; added deliberate styling (neutral `--background-modifier-border` bar, not accent; no italic; `--text-muted`). Also added, per explicit user request: a persistent top-left code-type icon (Lucide `code-2`, always visible, not hover-gated like the copy button), an explicit `14px` icon-glyph size so the copy/copy-confirmed icons no longer render at inconsistent sizes, and a copy-confirmed color change from `--color-green` to `--color-accent` (green is used elsewhere for persistent semantic states, not momentary click feedback). Also fixed a dead `var(--scrollbar-thumb-bg, ...)` reference (never defined anywhere, always silently fell through to its fallback) and corrected `CLAUDE.md`/`docs/design.md` references to `docs/pythia-v3.html`/`docs/design-system.css` — neither file exists in the repo or its git history, despite being cited as mandatory pre-work reading. Not a bug fix in the tracked-suggestion sense — a design-system-fidelity pass, not separately numbered (same convention as recent entries). See ADR-046.*
 *Updated: 2026-07-17 — Fixed a real, reported bug: a template using `claude-opus-4-8` with `effort: high` and a PDF attached failed with "Network error. Check your internet connection." despite the user having working internet. Root cause, confirmed by reading the installed `@anthropic-ai/sdk` directly: the SDK collapses any status-less error into the same shape, including a mid-stream SSE `error` event (e.g. a capacity/overload condition reported after the stream already started) and its own internal exceptions re-wrapped without a status — neither is the user's connectivity, but `classifyApiError`'s existing `status === undefined → "network"` fallback (left alone by ADR-030, which only reviewed the narrower `TypeError` branch) bucketed both the same as a real fetch/DNS failure, and `sidebar.ts` then discarded the real, already-available diagnostic message in favor of a hardcoded, in this case false, claim. New `buildStreamErrorMessage()` (`services/apiError.ts`, now unit-tested) surfaces the real message instead — retry behavior is unchanged (network/server_error were already retried identically). See ADR-047.*
 
@@ -62,6 +63,13 @@
 | 2026-08-17 | #89 resolved: ConversationStore gained dirty-flag persistence tracking (`dirtyIds` set + `hasDirty`/`clearDirty`/`markDirty`) — `schedulePersist` skips the write when nothing changed |
 | 2026-08-17 | #90 resolved: sidebar performance — `selectionchange` debounced at 150 ms, token-estimate update debounced at 250 ms, `autoResizeTextarea` wrapped in `requestAnimationFrame` |
 | 2026-08-17 | #91 resolved: ESLint upgraded to typed linting (`projectService: true`) + `no-floating-promises: error` (`ignoreVoid: true`); 8 existing violations fixed with `void` operators. #10 partially addressed |
+| 2026-08-17 | #92 resolved: `models/knownModels.ts` unified 5 parallel data structures (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `REASONING_MODELS`, temperature deny-list, effort allow-list) into single `MODEL_CATALOG: ModelInfo[]`; dead `o1`/`o1-mini` entries removed. See ADR-048 |
+| 2026-08-17 | #93 resolved: `BaseProvider` made `assistantLabel` and `resolveModel` concrete with defaults; removed redundant overrides from OpenAI/Mistral (`assistantLabel`) and all three providers (`resolveModel`). Added `providerType` field. See ADR-049 |
+| 2026-08-17 | #94 resolved: `sidebar.ts`'s `buildUI()` split into `buildHeader()`/`buildChatArea()`/`buildInputArea()`; `DeleteFileModal` extracted to `suggest/DeleteFileModal.ts`; code-block decoration (4 methods) extracted to `ui/CodeBlockDecorator.ts`; `scrollToTop()` helper replaced 3 duplicates. See ADR-050 |
+| 2026-08-17 | #95 resolved: `createConversation()` changed from 8 positional params to options object; `createConversationFromTemplate()` and `resolveTemplateContext()` helpers added; dead `cmdCopyConversationLink()` deleted; URI "template" handler fixed (was missing `outputFolder`/`writeMode`). See ADR-051 |
+| 2026-08-17 | #96 resolved: `TemplateLoader.ts` prefix-match fixed (`f.path.startsWith(folder)` to `f.path.startsWith(folder + "/")`) — prevented `"templates-archive/"` from matching when folder is `"templates"` |
+| 2026-08-17 | #97 resolved: dead code removed — `ConversationStore.hasDirty()`, `main.ts`'s `cmdCopyConversationLink()`, redundant `resolveModel`/`assistantLabel` overrides |
+| 2026-08-17 | #98 resolved: 5 missing files added to `vitest.config.ts` coverage include |
 
 ---
 
@@ -69,13 +77,13 @@
 
 | # | File | Lines | Role |
 |---|------|------:|------|
-| 1 | `sidebar.ts` | 2 111 | Main view — UI, rendering, streaming, interaction |
+| 1 | `sidebar.ts` | 2 028 | Main view — UI, rendering, streaming, interaction; `buildUI` split into `buildHeader`/`buildChatArea`/`buildInputArea` |
 | 2 | `styles.css` | 1 456 | All plugin CSS |
-| 3 | `main.ts` | 905 | Plugin entry, commands, conversation lifecycle, sync watcher |
+| 3 | `main.ts` | 908 | Plugin entry, commands, conversation lifecycle, sync watcher; `createConversation` options object |
 | 4 | `settings.ts` | 419 | Settings schema + settings tab UI |
 | 5 | `services/OpenAIProvider.ts` | 304 | OpenAI streaming (extends BaseProvider); `prepareStream`/`runStreamRound`/`handleToolCalls` |
 | 6 | `services/AnthropicService.ts` | 250 | Anthropic streaming (extends BaseProvider); `prepareStream`/`runStreamRound`/`handleToolCalls` |
-| 7 | `services/BaseProvider.ts` | 323 | Abstract base: `runStreamLoop` template method, shared fields, lifecycle, generate* utilities |
+| 7 | `services/BaseProvider.ts` | 314 | Abstract base: `runStreamLoop` template method, shared fields, lifecycle, concrete `assistantLabel`/`resolveModel` defaults, generate* utilities |
 | 8 | `services/ToolHandler.ts` | 118 | Tool definitions + ToolHandler class (injected NoteWriter) |
 | 9 | `services/NoteWriter.ts` | 186 | Vault write operations |
 | 10 | `services/PromptOptimizerService.ts` | ~170 | Prompt optimizer — `run()` command flow + `optimizeText()` inline review |
@@ -85,17 +93,20 @@
 | 14 | `services/TemplateLoader.ts` | 95 | Template discovery + frontmatter parsing |
 | 15 | `services/messageUtils.ts` | 98 | Shared: parseTitleAndSummary, normalizeMessages, token estimate, lang helpers |
 | 16 | `services/LLMRouter.ts` | 72 | Dispatches calls to the active provider |
-| 17 | `services/ConversationStore.ts` | 81 | In-memory store + 300 ms debounced persistence + dirty-flag tracking |
+| 17 | `services/ConversationStore.ts` | 76 | In-memory store + 300 ms debounced persistence + dirty-flag tracking (`markDirty`/`clearDirty`) |
 | 18 | `services/ContextBuilder.ts` | 48 | Builds system prompt + attaches vault notes |
 | 19 | `services/persistence.ts` | ~100 | Pure functions: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` |
 | 20 | `models/types.ts` | 78 | All shared TypeScript interfaces |
 | 21 | `models/settings.ts` | ~55 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | 22 | `locales/de.ts` / `locales/en.ts` | ~283 | i18n strings (German / English) |
 | 23 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.) |
-| 24 | `tests/` | — | Vitest unit tests (12 files) |
+| — | `ui/CodeBlockDecorator.ts` | 220 | Code-block/diagram decoration (extracted from sidebar): `decorateCodeBlocks`, `stampSvgSize`, `wrapInScrollFrame`, `attachDragToPan` |
+| — | `suggest/DeleteFileModal.ts` | 30 | Delete-file confirmation modal (extracted from sidebar) |
+| — | `models/knownModels.ts` | 103 | `MODEL_CATALOG: ModelInfo[]` — unified model array with derived exports |
+| 24 | `tests/` | — | Vitest unit tests (18 files) |
 
 **Source total:** ~9 000 lines (excl. lock file, generated `main.js`, coverage output).
-**Test suite:** 269 tests across 17 files — `npm test` (~2 s), `npm run coverage` with enforced thresholds.
+**Test suite:** 286 tests across 18 files — `npm test` (~2 s), `npm run coverage` with enforced thresholds.
 **CI:** lint → build → test on every push to `main` and every PR.
 
 ---
@@ -301,6 +312,13 @@ The guard `if (this.conversations.length === 0 && this.loadedConversationCount >
 | 89 | ConversationStore persists on every debounce even when nothing changed | ✅ Done — dirty-flag tracking | Medium | Low | — |
 | 90 | Sidebar hot-path DOM handlers fire too often (selectionchange, token estimate, textarea resize) | ✅ Done — debounced/rAF | Medium | Low | — |
 | 91 | Bare floating promises swallow errors silently; no compile-time guard | ✅ Done — `no-floating-promises: error` + 8 violations fixed | High | Low | — |
+| 92 | 5 parallel model data structures in `knownModels.ts` — adding a model requires touching up to 5 lists | ✅ Done — unified `MODEL_CATALOG: ModelInfo[]` | High | Medium | — |
+| 93 | `assistantLabel`/`resolveModel` identically overridden in every provider (boilerplate) | ✅ Done — concrete defaults in BaseProvider | Low | Low | — |
+| 94 | `buildUI()` is a 380-line monolith; `DeleteFileModal` inline in sidebar; code-block decoration coupled to sidebar | ✅ Done — split into 3 builders + 2 extracted files | Medium | Medium | — |
+| 95 | `createConversation` takes 8 positional params; template-handling duplicated; URI handler missing fields | ✅ Done — options object + `createConversationFromTemplate()` | Medium | Medium | — |
+| 96 | `TemplateLoader` prefix-match: `"templates"` matches `"templates-archive/"` | ✅ Done — `folder + "/"` guard | Medium | Low | — |
+| 97 | Dead code: `hasDirty()`, `cmdCopyConversationLink()`, redundant provider overrides | ✅ Done — removed | Low | Low | — |
+| 98 | 5 files missing from vitest coverage include | ✅ Done — added to `vitest.config.ts` | Low | Low | — |
 
 ---
 
@@ -625,3 +643,65 @@ Three event handlers fired more often than their downstream work justified:
 Eight bare floating promises across `sidebar.ts` and `main.ts` — async calls whose rejections were silently swallowed because no `.catch()` or `await` captured them. Without a lint rule, new instances would keep appearing.
 
 **Resolution:** Enabled `@typescript-eslint/no-floating-promises: ["error", { ignoreVoid: true }]` in `eslint.config.mjs`, requiring typed linting (`projectService: true`, `tsconfigRootDir: import.meta.dirname`). Fixed the 8 existing violations by prefixing intentional fire-and-forget calls with `void` (e.g. `void this.sendMessage()`, `void workspace.revealLeaf(leaf)`). This partially addresses #10 (fire-and-forget hardening in the fork path) — bare floating promises are now a compile-time error everywhere, not just in the fork path.
+
+---
+
+## New Suggestions (#92–#98) — engineering review implementation, 2026-08-17
+
+A focused implementation session resolving structural findings from the engineering review: model-catalog unification, BaseProvider simplification, sidebar decomposition, `createConversation` API cleanup, a TemplateLoader prefix-match bug, dead code removal, and coverage config. Full rationale in `docs/decisions.md` ADR-048 through ADR-051.
+
+### #92 — 5 parallel model data structures in `knownModels.ts`
+
+**File:** `models/knownModels.ts` — **Resolved**
+
+Adding a model required updating up to 5 independent data structures (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `REASONING_MODELS`, `ANTHROPIC_NO_TEMPERATURE_MODELS`, `ANTHROPIC_EFFORT_MODELS`) with no compiler signal if one was missed — the exact bug class behind #51 and #86.
+
+**Resolution:** Unified into `MODEL_CATALOG: ModelInfo[]`. Each entry carries `id`, `provider`, `abbreviation`, and boolean flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`). All existing exports computed from the catalog. Dead `o1`/`o1-mini` entries removed.
+
+### #93 — `assistantLabel`/`resolveModel` boilerplate across providers
+
+**Files:** `services/BaseProvider.ts`, `services/AnthropicService.ts`, `services/OpenAIProvider.ts`, `services/MistralService.ts` — **Resolved**
+
+Three providers identically implemented `resolveModel()` (one-liner delegating to `resolveDefaultModelForProvider()`), and two of three returned `"Assistant"` from `assistantLabel`.
+
+**Resolution:** Both made concrete in `BaseProvider` with default implementations. `providerType: Provider` field added to the constructor. Only `AnthropicService` overrides `assistantLabel` (returns `"Claude"`). Redundant `resolveModel` overrides removed from all three providers.
+
+### #94 — `buildUI()` monolith; inline modal; coupled code-block decoration
+
+**Files:** `sidebar.ts`, `suggest/DeleteFileModal.ts` (new), `ui/CodeBlockDecorator.ts` (new) — **Resolved**
+
+`buildUI()` was ~380 lines of sequential DOM construction. `DeleteFileModal` was defined inline in `sidebar.ts` (violating the project rule that all modals go in `suggest/`). Code-block decoration (4 methods) was tightly coupled to the view despite having no view-state dependencies.
+
+**Resolution:** `buildUI()` split into `buildHeader()`, `buildChatArea()`, `buildInputArea()`. `DeleteFileModal` extracted to `suggest/DeleteFileModal.ts`. Code-block decoration extracted to `ui/CodeBlockDecorator.ts` with 4 exported functions (`decorateCodeBlocks`, `stampSvgSize` (renamed from `fixDiagramSvgSize`), `wrapInScrollFrame`, `attachDragToPan`). `scrollToTop()` helper replaced 3 duplicate blocks.
+
+### #95 — `createConversation` positional parameters; duplicated template handling
+
+**Files:** `main.ts`, `services/PromptOptimizerService.ts` — **Resolved**
+
+`createConversation()` took 8 positional parameters with `undefined` gaps at most call sites. Template-to-conversation mapping was duplicated. The URI "template" handler was missing `outputFolder` and `writeMode`.
+
+**Resolution:** Changed to options object. Added `createConversationFromTemplate()` helper (DRY template handling). Added `resolveTemplateContext()` private helper. Deleted dead `cmdCopyConversationLink()`. URI handler bug fixed as a consequence of using the shared helper.
+
+### #96 — TemplateLoader prefix-match bug
+
+**File:** `services/TemplateLoader.ts` — **Resolved**
+
+`f.path.startsWith(folder)` matched `"templates-archive/"` when the configured folder was `"templates"`.
+
+**Resolution:** Changed to `f.path.startsWith(folder + "/")`. Regression test added in `tests/TemplateLoader.test.ts`.
+
+### #97 — Dead code across multiple files
+
+**Files:** `services/ConversationStore.ts`, `main.ts`, provider files — **Resolved**
+
+`ConversationStore.hasDirty()` was unused. `cmdCopyConversationLink()` was dead. Provider `resolveModel`/`assistantLabel` overrides were now redundant after #93.
+
+**Resolution:** All removed.
+
+### #98 — 5 files missing from vitest coverage include
+
+**File:** `vitest.config.ts` — **Resolved**
+
+Coverage thresholds could be met without covering 5 source files because they weren't listed in the `include` array.
+
+**Resolution:** Added the missing files. Test suite now 286 tests across 18 files.

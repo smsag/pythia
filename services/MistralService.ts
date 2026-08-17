@@ -48,7 +48,7 @@ export class MistralService extends BaseProvider {
 	private lastPendingCalls: Array<{ id: string; name: string; arguments: string }> = [];
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
-		super(app, settings, apiKey);
+		super(app, settings, apiKey, "mistral");
 	}
 
 	protected resetClient(): void {
@@ -57,14 +57,6 @@ export class MistralService extends BaseProvider {
 
 	protected get fastModel(): string {
 		return "mistral-small-latest";
-	}
-
-	protected get assistantLabel(): string {
-		return "Assistant";
-	}
-
-	protected resolveModel(modelOverride?: string): string {
-		return modelOverride || this.settings.defaultMistralModel;
 	}
 
 	protected async callUtility(
