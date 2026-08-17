@@ -231,7 +231,7 @@ export default class PythiaPlugin extends Plugin {
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								for (const f of files) view.attachNoteToInput(f.path);
-								;(async () => {
+								void (async () => {
 									const CAP = 20000;
 									let combined = "";
 									for (const f of files) {
@@ -519,6 +519,7 @@ export default class PythiaPlugin extends Plugin {
 				settings: this.settings,
 				conversations: this.conversations,
 			});
+			this.conversationStore?.clearDirty();
 		} catch (err) {
 			new Notice(
 				`[Pythia] Failed to save data: ${err instanceof Error ? err.message : String(err)}`,
@@ -587,7 +588,7 @@ export default class PythiaPlugin extends Plugin {
 			existing[i].detach();
 		}
 		if (existing.length >= 1) return;
-		workspace.getRightLeaf(false)?.setViewState({ type: PYTHIA_VIEW_TYPE });
+		void workspace.getRightLeaf(false)?.setViewState({ type: PYTHIA_VIEW_TYPE });
 	}
 
 	async activateView(): Promise<PythiaSidebarView> {
@@ -601,7 +602,7 @@ export default class PythiaPlugin extends Plugin {
 			leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
 			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
 		}
-		workspace.revealLeaf(leaf);
+		void workspace.revealLeaf(leaf);
 		return leaf.view as PythiaSidebarView;
 	}
 
@@ -676,6 +677,7 @@ export default class PythiaPlugin extends Plugin {
 			messages: [],
 		};
 		this.conversations.push(conv);
+		this.conversationStore.markDirty(conv.id);
 		await this.saveConversations();
 		return conv;
 	}

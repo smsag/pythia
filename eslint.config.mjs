@@ -8,6 +8,12 @@ export default tseslint.config(
 	{
 		files: ["**/*.ts"],
 		extends: [tseslint.configs.recommended],
+		languageOptions: {
+			parserOptions: {
+				projectService: true,
+				tsconfigRootDir: import.meta.dirname,
+			},
+		},
 		rules: {
 			// ── Warnings ──────────────────────────────────────────────────────
 			// console.warn/error are always acceptable in catch blocks;
@@ -26,8 +32,8 @@ export default tseslint.config(
 			"@typescript-eslint/no-explicit-any":      "off",
 			// Empty catch blocks are used intentionally for non-critical ops
 			"@typescript-eslint/no-empty-object-type": "off",
-			// void operator is used intentionally for fire-and-forget
-			"@typescript-eslint/no-floating-promises": "off",
+			// Fire-and-forget async calls must use void operator to signal intent
+			"@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: true }],
 		},
 	},
 	// Test files may use console for debugging

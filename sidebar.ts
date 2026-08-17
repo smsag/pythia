@@ -493,7 +493,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			text: t("inboxBtn"),
 			attr: { title: t("inboxBtn") },
 		});
-		inboxBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onSaveToInbox(); });
+		inboxBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onSaveToInbox(); });
 		inboxBtn.addEventListener("touchend", makeSelTouch(() => this.onSaveToInbox()));
 
 		const forkBtn = this.selectionToolbar.createEl("button", {
@@ -504,7 +504,16 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
 		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
 
-		this.onSelectionChange = () => this.handleSelectionChange();
+		{
+			let selDebounce: ReturnType<typeof setTimeout> | null = null;
+			this.onSelectionChange = () => {
+				if (selDebounce !== null) clearTimeout(selDebounce);
+				selDebounce = setTimeout(() => {
+					selDebounce = null;
+					this.handleSelectionChange();
+				}, 150);
+			};
+		}
 		document.addEventListener("selectionchange", this.onSelectionChange);
 		this.registerDomEvent(this.messagesEl, "mouseup", () =>
 			setTimeout(() => this.handleSelectionChange(), 10)
@@ -560,14 +569,21 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			// Without this guard, pressing Enter to confirm a candidate sends the message. (#24)
 			if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 				e.preventDefault();
-				this.sendMessage();
+				void this.sendMessage();
 			}
 		});
-		this.inputEl.addEventListener("input", () => {
-			this.autoResizeTextarea();
-			this.inlineSuggest.handleInput();
-			this.updateSendBtnLabel(); // live-update estimate as user types
-		});
+		{
+			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
+			this.inputEl.addEventListener("input", () => {
+				this.autoResizeTextarea();
+				this.inlineSuggest.handleInput();
+				if (tokenDebounce !== null) clearTimeout(tokenDebounce);
+				tokenDebounce = setTimeout(() => {
+					tokenDebounce = null;
+					this.updateSendBtnLabel();
+				}, 250);
+			});
+		}
 
 		// visualViewport resize is unreliable in some WKWebView versions;
 		// focus/blur fire unconditionally. 300 ms lets the keyboard slide in.
@@ -674,7 +690,7 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 			if (this.isStreaming) {
 				this.plugin.llmRouter.abort();
 			} else {
-				this.sendMessage();
+				void this.sendMessage();
 			}
 		});
 
@@ -1399,16 +1415,16 @@ const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 	}
 
 	private autoResizeTextarea(): void {
-		// lineHeight only depends on CSS, not content — computed once per inputEl
-		// lifetime instead of on every keystroke.
-		if (this.cachedLineHeight === null) {
-			this.cachedLineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
-		}
-		const lineHeight = this.cachedLineHeight;
-		const minH = Math.ceil(lineHeight * 2);
-		const maxH = Math.ceil(lineHeight * 5);
-		this.inputEl.style.height = "auto";
-		this.inputEl.style.height = `${Math.min(Math.max(this.inputEl.scrollHeight, minH), maxH)}px`;
+		requestAnimationFrame(() => {
+			if (this.cachedLineHeight === null) {
+				this.cachedLineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
+			}
+			const lineHeight = this.cachedLineHeight;
+			const minH = Math.ceil(lineHeight * 2);
+			const maxH = Math.ceil(lineHeight * 5);
+			this.inputEl.style.height = "auto";
+			this.inputEl.style.height = `${Math.min(Math.max(this.inputEl.scrollHeight, minH), maxH)}px`;
+		});
 	}
 
 	private scrollToBottom(force = false): void {
@@ -1922,7 +1938,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 					});
 					link.addEventListener("click", (e) => {
 						e.preventDefault();
-						this.app.workspace.openLinkText(noteName, "");
+						void this.app.workspace.openLinkText(noteName, "");
 					});
 				}
 
@@ -2106,7 +2122,7 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		this.plugin.cmdForkConversation(conv.id, text, sourceMessageId);
+		void this.plugin.cmdForkConversation(conv.id, text, sourceMessageId);
 	}
 
 	private async onSaveToInbox(): Promise<void> {
