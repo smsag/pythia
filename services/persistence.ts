@@ -1,4 +1,4 @@
-import type { Conversation } from "../models/types";
+import type { Conversation, Favorite } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
 
 /**
@@ -50,6 +50,29 @@ export function mergeSettings(saved: Record<string, unknown>): PythiaSettings {
 }
 
 /**
+ * Normalize a conversation's favorites for the highlight-favorites feature.
+ * Legacy favorites were whole-message `{ messageId, name }` entries created by the
+ * old star button; they have no `id` and no selected `text`. Ensure every favorite
+ * has a stable `id` (needed for DOM tagging and deletion). Legacy entries keep
+ * `text` undefined and remain valid message-level favorites — they list in the
+ * navigator and jump to the message top, they simply do not paint a highlight.
+ * Malformed entries (missing `messageId`) are dropped. Mutates `conv` in place.
+ */
+export function normalizeFavorites(
+	conv: Conversation,
+	makeId: () => string = () => crypto.randomUUID(),
+): void {
+	if (!Array.isArray(conv.favorites)) return;
+	conv.favorites = conv.favorites.filter(
+		(f): f is Favorite =>
+			f !== null && typeof f === "object" && typeof (f as Favorite).messageId === "string"
+	);
+	for (const fav of conv.favorites) {
+		if (typeof fav.id !== "string" || fav.id.length === 0) fav.id = makeId();
+	}
+}
+
+/**
  * Validate raw conversation entries from data.json.
  * Returns valid Conversation objects and the count of dropped malformed entries.
  */
@@ -64,6 +87,7 @@ export function parseConversations(raw: unknown[]): {
 			typeof (c as Record<string, unknown>).id === "string" &&
 			Array.isArray((c as Record<string, unknown>).messages)
 	);
+	for (const conv of conversations) normalizeFavorites(conv);
 	return { conversations, dropped: raw.length - conversations.length };
 }
 

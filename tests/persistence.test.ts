@@ -3,6 +3,7 @@ import {
 	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
+	normalizeFavorites,
 	shouldRefuseLoad,
 	evictConversations,
 } from "../services/persistence";
@@ -199,6 +200,66 @@ describe("parseConversations", () => {
 		const { conversations, dropped } = parseConversations(raw);
 		expect(conversations).toHaveLength(2);
 		expect(dropped).toBe(3);
+	});
+});
+
+// ── normalizeFavorites (highlight-favorites migration) ─────────────────────────
+
+describe("normalizeFavorites", () => {
+	let counter = 0;
+	const makeId = () => `fav-${counter++}`;
+
+	it("assigns ids to legacy message-level favorites and preserves them", () => {
+		counter = 0;
+		const conv = makeConv("c", undefined, [
+			{ messageId: "m1", name: "Old favorite" },
+		]);
+		normalizeFavorites(conv, makeId);
+		expect(conv.favorites).toHaveLength(1);
+		const fav = conv.favorites![0];
+		expect(fav.id).toBe("fav-0");
+		expect(fav.messageId).toBe("m1");
+		expect(fav.name).toBe("Old favorite");
+		// Legacy favorites have no span to paint.
+		expect(fav.text).toBeUndefined();
+		expect(fav.occurrenceIndex).toBeUndefined();
+	});
+
+	it("keeps existing ids untouched", () => {
+		const conv = makeConv("c", undefined, [
+			{ id: "keep-me", messageId: "m1", name: "n", text: "hello", occurrenceIndex: 0 },
+		]);
+		normalizeFavorites(conv, makeId);
+		expect(conv.favorites![0].id).toBe("keep-me");
+		expect(conv.favorites![0].text).toBe("hello");
+	});
+
+	it("drops malformed favorites missing messageId", () => {
+		const conv = makeConv("c", undefined, [
+			{ name: "no message id" },
+			null,
+			{ messageId: "ok", name: "good" },
+		]);
+		normalizeFavorites(conv, makeId);
+		expect(conv.favorites).toHaveLength(1);
+		expect(conv.favorites![0].messageId).toBe("ok");
+	});
+
+	it("is a no-op when there are no favorites", () => {
+		const conv = makeConv("c");
+		conv.favorites = undefined;
+		normalizeFavorites(conv, makeId);
+		expect(conv.favorites).toBeUndefined();
+	});
+
+	it("runs automatically via parseConversations, ensuring every favorite has an id", () => {
+		const raw = [
+			{ id: "c", messages: [], favorites: [{ messageId: "m1", name: "legacy" }] },
+		];
+		const { conversations } = parseConversations(raw);
+		const fav = conversations[0].favorites![0];
+		expect(typeof fav.id).toBe("string");
+		expect(fav.id.length).toBeGreaterThan(0);
 	});
 });
 

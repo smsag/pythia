@@ -5,6 +5,7 @@
 
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import type { PythiaSettings } from "../models/settings";
+import type { Conversation } from "../models/types";
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 
@@ -181,4 +182,51 @@ export function langInstruction(lang: string): string {
 export function langSuffix(lang: string): string {
 	const label = LANG_LABELS[lang];
 	return label ? ` in ${label}` : "";
+}
+
+// ── Favorites digest ────────────────────────────────────────────────────────────
+
+/**
+ * Build the text a favorites-summary LLM call summarizes. Favorites are the spans
+ * the user hand-picked as the conversation's most important insights.
+ *
+ * Each favorite becomes a block pairing the question that prompted the insight
+ * (the nearest preceding user turn, by `chapterName ?? content`) with the insight
+ * itself (`fav.text`, or the whole message content for legacy message-level
+ * favorites that carry no span). Blocks are ordered by their message's position in
+ * the conversation so the digest follows the conversation's flow; favorites whose
+ * `messageId` no longer resolves are skipped. Returns "" when nothing usable
+ * remains — the caller uses that to skip the LLM call entirely.
+ */
+export function buildFavoritesDigest(conversation: Conversation): string {
+	const favorites = conversation.favorites ?? [];
+	if (favorites.length === 0) return "";
+
+	const msgIndex = new Map(conversation.messages.map((m, i) => [m.id, i]));
+
+	const usable = favorites
+		.filter((f) => msgIndex.has(f.messageId))
+		.sort((a, b) => (msgIndex.get(a.messageId)! - msgIndex.get(b.messageId)!));
+	if (usable.length === 0) return "";
+
+	const blocks = usable.map((fav, i) => {
+		const idx = msgIndex.get(fav.messageId)!;
+		const message = conversation.messages[idx];
+		// Nearest preceding user turn gives the insight its question/context.
+		let question = "";
+		for (let j = idx; j >= 0; j--) {
+			const m = conversation.messages[j];
+			if (m.role === "user") {
+				question = (m.chapterName ?? m.content).replace(/\s+/g, " ").trim();
+				break;
+			}
+		}
+		const insight = (fav.text ?? message.content).trim();
+		const lines = [`## Highlight ${i + 1}`];
+		if (question) lines.push(`Context (question): ${question}`);
+		lines.push(`Insight: ${insight}`);
+		return lines.join("\n");
+	});
+
+	return blocks.join("\n\n");
 }

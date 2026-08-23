@@ -16,8 +16,9 @@ const en = {
 	chaptersSection: "Chapters",
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
+	summarizeFavoritesTooltip: "Summarize favorites",
 	navNoForks:      "No forks yet",
-	navNoStarred:    "No starred messages",
+	navNoFavorites:  "No highlights yet",
 	navNoChapters:   "No chapters yet",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
@@ -26,8 +27,8 @@ const en = {
 	startConversationBelow:    "Start the conversation below.",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
-	addToFavorites:     "Add to favorites",
-	removeFromFavorites:"Remove from favorites",
+	removeHighlight:            "Remove highlight",
+	favoriteSpanSingleMessage:  "Select text within a single message to favorite it.",
 	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 
@@ -52,6 +53,7 @@ const en = {
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",
 	forkBtn:     "Fork",
+	favoriteBtn: "Favorite",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",
@@ -84,6 +86,12 @@ const en = {
 	noMessagesToSummarize:     "No messages to summarize.",
 	generatingSummary:         "Generating summary…",
 	summaryFailed:             "Summary failed: {{error}}",
+	noFavoritesToSummarize:    "No favorites to summarize. Highlight text and favorite it first.",
+	generatingFavoritesSummary:"Summarizing favorites…",
+	favoritesSummaryFailed:    "Favorites summary failed: {{error}}",
+	favoritesSummaryTitle:     "Favorites summary",
+	saveToNoteBtn:             "Save to note",
+	regenerateBtn:             "Regenerate",
 	fileNotFound:              "File not found: {{path}}",
 
 	// ── API error notices (sendMessage) ────────────────────────────────────────
@@ -108,6 +116,7 @@ const en = {
 	cmdResumeConversation:             "Resume conversation",
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
+	cmdSummarizeFavorites:             "Summarize favorites",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
 
@@ -119,6 +128,7 @@ const en = {
 	cmdNewConversationFromClipboardDesc:     "Start a conversation with clipboard content as first message",
 	cmdNewConversationFromPromptDesc:        "Optimize a prompt with AI before starting a conversation",
 	cmdBrowseConversationsDesc:              "Search and open any saved conversation",
+	cmdSummarizeFavoritesDesc:              "Synthesize this conversation's favorites into key learnings and action items",
 	cmdBrowseFavoritesDesc:                  "Jump to starred messages across conversations",
 	cmdReloadConversationsDesc:              "Force-sync if conversations were edited externally",
 

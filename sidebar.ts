@@ -15,7 +15,13 @@ import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
-import type { Conversation, Message, ToolCall, TokenUsage } from "./models/types";
+import {
+	findRange,
+	computeOccurrenceIndex,
+	repaintBody,
+	flashHighlight,
+} from "./ui/HighlightPainter";
+import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -26,6 +32,7 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
+import { FavoritesSummaryModal } from "./suggest/FavoritesSummaryModal";
 import { MODEL_ABBREVIATIONS } from "./models/knownModels";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -348,6 +355,9 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			scrollToMessage: (id) => this.scrollToMessage(id),
+			scrollToFavorite: (fav) => this.scrollToFavorite(fav),
+			removeFavorite: (favId) => this.removeFavorite(favId),
+			summarizeFavorites: () => void this.summarizeFavorites(),
 		});
 	}
 
@@ -492,6 +502,14 @@ export class PythiaSidebarView extends ItemView {
 		});
 		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
 		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
+
+		const favBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("favoriteBtn"),
+			attr: { title: t("favoriteBtn") },
+		});
+		favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
+		favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
 
 		{
 			let selDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -988,6 +1006,7 @@ export class PythiaSidebarView extends ItemView {
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
 			}
+			this.repaintFavorites(bubble, msg.id);
 			if (isLong) {
 				const toggle = row.createEl("button", {
 					cls: "p-bubble-toggle",
@@ -1017,19 +1036,10 @@ export class PythiaSidebarView extends ItemView {
 			console.error("[Pythia] render error:", e);
 		}
 		decorateCodeBlocks(aiBody, this.diagObservers);
+		this.repaintFavorites(aiBody, msg.id);
 
-		const isFav = this.activeConversation?.favorites?.some(
-			(f) => f.messageId === msg.id
-		) ?? false;
-		const footer = row.createDiv({ cls: "p-tokens" });
-		const star = footer.createEl("button", {
-			cls: `p-star${isFav ? " on" : ""}`,
-			text: isFav ? "★" : "☆",
-			attr: { title: isFav ? t("removeFromFavorites") : t("addToFavorites") },
-		});
-		star.addEventListener("click", () => this.onStarClick(msg, star));
 		if (msg.tokenUsage) {
-			footer.createSpan({ cls: "p-tok-sep", text: "|" });
+			const footer = row.createDiv({ cls: "p-tokens" });
 			this.renderTokenCount(footer, msg.tokenUsage);
 		}
 
@@ -1128,58 +1138,104 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void> {
-		if (!this.activeConversation) return;
-		const conv = this.activeConversation;
-		const existing = conv.favorites?.findIndex((f) => f.messageId === msg.id) ?? -1;
+	/** Derive a short navigator label from the favorited text: first ~6 words, ≤40 chars. */
+	private favoriteLabel(text: string): string {
+		const clean = text.replace(/\s+/g, " ").trim();
+		const words = clean.split(" ").slice(0, 6).join(" ");
+		const label = words.length > 40 ? words.slice(0, 40).trimEnd() + "…" : words;
+		return label || clean.slice(0, 40);
+	}
 
-		if (existing >= 0) {
-			// Already favorited — remove
-			await this.removeFavorite(msg.id);
-			starEl.setText("☆");
-			starEl.removeClass("on");
-			starEl.title = t("addToFavorites");
+	/** Re-apply every stored highlight for `messageId` onto its rendered body. */
+	private repaintFavorites(body: HTMLElement, messageId: string): void {
+		const favs = this.activeConversation?.favorites?.filter(
+			(f) => f.messageId === messageId
+		);
+		if (!favs || favs.length === 0) return;
+		repaintBody(body, favs);
+	}
+
+	/**
+	 * Favorite the current text selection as a highlighted span. Toggles off if the
+	 * selection sits inside an existing highlight. Selections must stay within a
+	 * single message; cross-message selections are rejected.
+	 */
+	private async onFavoriteSelection(): Promise<void> {
+		const conv = this.activeConversation;
+		const sel = window.getSelection();
+		const text = sel?.toString().trim() ?? "";
+		if (!conv || !sel || sel.rangeCount === 0 || !text) return;
+
+		// If the selection lands inside an existing highlight, treat the action as
+		// "remove that favorite" — the replacement for the old star toggle.
+		const anchorEl = sel.anchorNode instanceof Element
+			? sel.anchorNode
+			: sel.anchorNode?.parentElement;
+		const existingMark = anchorEl?.closest("mark.p-highlight");
+		const existingId = existingMark?.getAttribute("data-fav-id");
+		if (existingId) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			await this.removeFavorite(existingId);
 			return;
 		}
 
+		// Resolve the single owning message. Reject selections that span messages.
+		const startEl = sel.anchorNode instanceof Element
+			? sel.anchorNode
+			: sel.anchorNode?.parentElement;
+		const endEl = sel.focusNode instanceof Element
+			? sel.focusNode
+			: sel.focusNode?.parentElement;
+		const startMsg = startEl?.closest("[data-msg-id]");
+		const endMsg = endEl?.closest("[data-msg-id]");
+		if (!startMsg || startMsg !== endMsg) {
+			this.selectionToolbar.style.display = "none";
+			new Notice(t("favoriteSpanSingleMessage"));
+			return;
+		}
+		const messageId = startMsg.getAttribute("data-msg-id");
+		if (!messageId) return;
+
+		// Compute the occurrence index within the message body so re-find later
+		// paints the same span when the text appears more than once.
+		const body = startMsg.querySelector<HTMLElement>(".p-ai-body, .p-bubble")
+			?? (startMsg as HTMLElement);
+		const range = sel.getRangeAt(0);
+		const occurrenceIndex = computeOccurrenceIndex(body, range);
+
+		const fav: Favorite = {
+			id: crypto.randomUUID(),
+			messageId,
+			name: this.favoriteLabel(text),
+			text,
+			occurrenceIndex,
+			createdAt: todayISO(),
+		};
 		if (!conv.favorites) conv.favorites = [];
-
-		// Reuse the chapter name of the preceding user turn — it was already
-		// generated when the conversation was loaded, so no extra API call needed.
-		// Fall back to the first 40 chars of the answer only if there is no
-		// chapter name available (e.g. very first message or backfill still pending).
-		const msgIndex = conv.messages.findIndex((m) => m.id === msg.id);
-		const precedingUser = conv.messages
-			.slice(0, msgIndex)
-			.reverse()
-			.find((m) => m.role === "user");
-		const name =
-			precedingUser?.chapterName ??
-			msg.content.slice(0, 40).replace(/\s+/g, " ").trim();
-
-		conv.favorites.push({ messageId: msg.id, name });
+		conv.favorites.push(fav);
 		await this.plugin.conversationStore.save(conv);
-		starEl.setText("★");
-		starEl.addClass("on");
-		starEl.title = t("removeFromFavorites");
+
+		this.selectionToolbar.style.display = "none";
+		window.getSelection()?.removeAllRanges();
+		// Repaint the whole message body so the new mark is applied cleanly.
+		this.repaintFavorites(body, messageId);
 	}
 
-	private async removeFavorite(messageId: string): Promise<void> {
+	/** Remove a favorite by its id and strip its highlight from the DOM. */
+	private async removeFavorite(favId: string): Promise<void> {
 		if (!this.activeConversation) return;
 		const conv = this.activeConversation;
-		conv.favorites = (conv.favorites ?? []).filter(
-			(f) => f.messageId !== messageId
-		);
+		const fav = conv.favorites?.find((f) => f.id === favId);
+		conv.favorites = (conv.favorites ?? []).filter((f) => f.id !== favId);
 		await this.plugin.conversationStore.save(conv);
-		// Update the star button in the DOM
-		const row = this.messagesEl.querySelector(
-			`[data-msg-id="${messageId}"]`
-		) as HTMLElement | null;
-		const star = row?.querySelector(".p-star") as HTMLButtonElement | null;
-		if (star) {
-			star.setText("☆");
-			star.removeClass("on");
-			star.title = t("addToFavorites");
+		// Repaint the affected message so the removed highlight disappears.
+		if (fav) {
+			const row = this.messagesEl.querySelector(
+				`[data-msg-id="${fav.messageId}"]`
+			) as HTMLElement | null;
+			const body = row?.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
+			if (body) this.repaintFavorites(body, fav.messageId);
 		}
 	}
 
@@ -1201,6 +1257,48 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		const TOP_MARGIN = 8;
 		const rowTop = row.offsetTop - this.messagesEl.offsetTop;
 		this.messagesEl.scrollTo({ top: rowTop - TOP_MARGIN, behavior: "smooth" });
+	}
+
+	/**
+	 * Jump to a favorite. Prefers the painted highlight mark (scrolls its start to
+	 * the top), re-finds the text if the mark is missing, and falls back to the
+	 * message top for legacy favorites or text that can no longer be located.
+	 */
+	scrollToFavorite(fav: Favorite): void {
+		const row = this.messagesEl.querySelector(
+			`[data-msg-id="${fav.messageId}"]`
+		) as HTMLElement | null;
+		if (!row) return;
+
+		const TOP_MARGIN = 8;
+		const scrollToOffsetTop = (top: number) =>
+			this.messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
+
+		// 1) Painted mark — the common case.
+		const mark = row.querySelector<HTMLElement>(
+			`mark.p-highlight[data-fav-id="${fav.id}"]`
+		);
+		if (mark) {
+			scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
+			flashHighlight(fav.id, row);
+			return;
+		}
+
+		// 2) Re-find the text (highlight not yet painted, e.g. collapsed bubble).
+		if (fav.text) {
+			const body = row.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
+			const range = findRange(body, fav.text, fav.occurrenceIndex ?? 0);
+			if (range) {
+				const rect = range.getBoundingClientRect();
+				const containerRect = this.messagesEl.getBoundingClientRect();
+				const top = this.messagesEl.scrollTop + (rect.top - containerRect.top);
+				scrollToOffsetTop(top);
+				return;
+			}
+		}
+
+		// 3) Legacy / not-found — scroll to the message top.
+		scrollToOffsetTop(row.offsetTop - this.messagesEl.offsetTop);
 	}
 
 	private updateModelBadge(): void {
@@ -1437,6 +1535,58 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 		}
 	}
 
+	/** Generate (or re-open) the favorites synthesis and show it in a modal. */
+	async summarizeFavorites(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv || (conv.favorites?.length ?? 0) === 0) {
+			new Notice(t("noFavoritesToSummarize"));
+			return;
+		}
+
+		const openModal = () => {
+			new FavoritesSummaryModal(
+				this.app,
+				conv.favoritesSummary?.text ?? "",
+				() => this.runFavoritesSummary(conv),
+				async (text) => {
+					try {
+						const path = await this.plugin.noteWriter.saveFavoritesSummaryNote(conv, text);
+						new Notice(t("savedToPath", { path }));
+					} catch (e) {
+						new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
+					}
+				},
+			).open();
+		};
+
+		// Instant reopen when a summary already exists.
+		if (conv.favoritesSummary?.text) {
+			openModal();
+			return;
+		}
+
+		const text = await this.runFavoritesSummary(conv);
+		if (text) openModal();
+	}
+
+	/** Run the LLM favorites-summary call, persist the result, and return it. */
+	private async runFavoritesSummary(conv: Conversation): Promise<string> {
+		const notice = new Notice(t("generatingFavoritesSummary"), 0);
+		try {
+			const text = await this.plugin.llmRouter.generateFavoritesSummary(conv);
+			if (text) {
+				conv.favoritesSummary = { text, updatedAt: new Date().toISOString() };
+				await this.plugin.conversationStore.save(conv);
+			}
+			return text;
+		} catch (e) {
+			new Notice(t("favoritesSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
+			return "";
+		} finally {
+			notice.hide();
+		}
+	}
+
 	private async onSaveResponse(): Promise<void> {
 		const conv = this.activeConversation;
 		if (!conv || conv.messages.length === 0) {
@@ -1658,17 +1808,8 @@ private async onStarClick(msg: Message, starEl: HTMLButtonElement): Promise<void
 				const lastRow = rows[rows.length - 1] as HTMLElement | null;
 				if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
-					const footer = streamingRow.createDiv({ cls: "p-tokens" });
-					const star = footer.createEl("button", {
-						cls: "p-star",
-						text: "☆",
-						attr: { title: t("addToFavorites") },
-					});
-					star.addEventListener("click", () =>
-						this.onStarClick(assistantMsg, star)
-					);
 					if (tokenUsage) {
-						footer.createSpan({ cls: "p-tok-sep", text: "|" });
+						const footer = streamingRow.createDiv({ cls: "p-tokens" });
 						this.renderTokenCount(footer, tokenUsage);
 					}
 				}

@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-17 — ADR-053 (LLM response quality audit: 10-finding implementation — enriched default system prompt, structured grounding instruction, notes moved to system prompt, hybrid resume mode, context window budget trimming, paragraph-level fallback chunking, raised chunk threshold to 12K, always-include-first-chunk, improved CJK token estimation, default effort "high").*
+*Last updated: 2026-08-23 — ADR-055 (summarize a conversation's favorites into Key learnings + Action items: reuse the utility-call path via `generateFavoritesSummary`, a pure `buildFavoritesDigest` input builder, modal preview with a result cached on the conversation).*
+
+*Previously, 2026-08-23 — ADR-054 (favorites become highlighted text spans: `Favorite` model carries the selected `text`/`occurrenceIndex`; `ui/HighlightPainter.ts` re-finds and paints spans after every render; per-message star replaced by a selection-toolbar action; legacy favorites migrated by `normalizeFavorites`).*
+
+*Previously, 2026-08-17 — ADR-053 (LLM response quality audit: 10-finding implementation — enriched default system prompt, structured grounding instruction, notes moved to system prompt, hybrid resume mode, context window budget trimming, paragraph-level fallback chunking, raised chunk threshold to 12K, always-include-first-chunk, improved CJK token estimation, default effort "high").*
 
 *Previously, 2026-08-17 — ADR-052 (codebase audit: 22-finding cleanup — AbortController race, ConversationStore snapshot-based dirty clearing, writeMode enforcement, dead code/CSS removal, focus-visible accessibility, i18n lazy init, TemplateLoader validation).*
 
@@ -697,3 +701,49 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 10. **Default effort "high"** (`models/settings.ts`): `DEFAULT_SETTINGS.effort` set to `"high"` so new conversations default to substantive responses without requiring manual configuration.
 
 **Consequence:** LLM responses should be materially deeper and better-grounded for the same conversation inputs. The hybrid resume mode gives users a middle ground between the cost of full history and the quality loss of summary-only. Context window budget enforcement prevents silent truncation on long conversations. The chunk threshold and first-chunk inclusion changes preserve more note content by default while still excerpting truly large notes intelligently.
+
+---
+
+### ADR-054 — Favorites become highlighted text spans
+
+**Status:** Active
+
+**Context:** Favorites were whole-message references (`Favorite { messageId, name }`) toggled by a ☆/★ button under each assistant message; the navigator's "Starred" section jumped to the message row. Users wanted to favorite an arbitrary *span* of text within a conversation, keep it visibly highlighted, and jump back to the exact start of that text — not just to the message that contained it.
+
+**Decision:** Replace message-level favorites with span-level highlight favorites.
+
+1. **Data model** (`models/types.ts`): `Favorite` gains `id`, `text` (the exact selected string), `occurrenceIndex` (which occurrence of `text` within the message, disambiguating duplicates), and `createdAt`. `messageId`/`name` remain. `text`/`occurrenceIndex` are optional so legacy favorites stay representable.
+
+2. **Text, not offsets** (`ui/HighlightPainter.ts`): The message body is produced by `MarkdownRenderer` and re-created on every render, so source-markdown character offsets do not map onto the rendered DOM. Favorites therefore store the exact selected text and are re-located at paint time by walking the body's text nodes (`findRange`). A selection frequently crosses element boundaries, so painting splits the range per text node and wraps each fragment in its own `mark.p-highlight` (rather than `Range.surroundContents`, which throws on boundary-crossing ranges). `repaintBody` runs after every render path (message render, user bubble, favorite add/remove).
+
+3. **Creation via selection** (`sidebar.ts`): The per-message star is removed; a "Favorite" button joins the existing selection toolbar (Copy/Insert/Inbox/Fork). Selections must stay within one message (rejected otherwise with a Notice). Selecting inside an existing highlight toggles it off.
+
+4. **Jump precision** (`sidebar.ts` `scrollToFavorite`): Prefers the painted mark, falls back to re-finding the text, then to the message top.
+
+5. **Legacy favorites** (`services/persistence.ts` `normalizeFavorites`, run from `parseConversations`): Existing `{ messageId, name }` favorites are kept and assigned an `id`; with no `text` they list in the navigator and jump to the message top (no painted highlight). Malformed entries missing `messageId` are dropped. No data loss, no fabricated spans.
+
+**Alternatives rejected:** Storing character offsets (fragile across re-render); auto-converting legacy favorites into whole-message highlights (visually noisy, misrepresents intent); dropping legacy favorites (data loss).
+
+**Consequence:** Favoriting is finer-grained and visually persistent. A new `happy-dom` dev dependency backs DOM-based unit tests for `HighlightPainter`. The token line under AI messages no longer carries a star (shows only token counts when present). i18n keys `addToFavorites`/`removeFromFavorites`/`navNoStarred` were replaced by `favoriteBtn`/`removeHighlight`/`favoriteSpanSingleMessage`/`navNoFavorites`.
+
+---
+
+### ADR-055 — Summarize a conversation's favorites into learnings + actions
+
+**Status:** Active
+
+**Context:** Favorites are the spans a user hand-picks as a conversation's most important insights (ADR-054). They wanted those consolidated into something that aids retention and drives action, rather than re-reading scattered highlights.
+
+**Decision:** Add a per-conversation "summarize favorites" synthesis that reuses the existing utility-call machinery.
+
+1. **Input** (`services/messageUtils.ts` `buildFavoritesDigest`): a pure function (so it lives in the vitest coverage set, unlike provider classes) that pairs each favorite with its nearest preceding user question, orders blocks by message position, uses `fav.text` for span favorites and full message content for legacy ones, skips favorites whose `messageId` no longer resolves, and returns `""` when nothing is usable.
+
+2. **Generation** (`BaseProvider.generateFavoritesSummary`, routed by `LLMRouter`/`LLMProvider`): mirrors `generateSummary` — the conversation's own model (a high-value synthesis, not a `fastModel` micro-task), `maxTokens` 1536, prompt fixed to two Markdown sections (`## Key learnings` synthesized+deduplicated, `## Action items` as `- [ ]` checkboxes), grounded in the digest.
+
+3. **Output** (`suggest/FavoritesSummaryModal.ts`): modal preview of the rendered Markdown with Copy / Save-to-note / Regenerate; result cached on `Conversation.favoritesSummary` for instant reopen. Save-to-note goes through `NoteWriter.saveFavoritesSummaryNote`.
+
+4. **Triggers**: a ✦ action in the navigator Favorites header (`ui/NavigatorController.ts`, via a new `NavigatorDeps.summarizeFavorites`) and a `Pythia: Summarize favorites` command (`main.ts`, also in the command hub).
+
+**Alternatives rejected:** auto-save straight to a note (no preview/iteration); a pinned in-conversation panel (more UI surface, duplicates the resume-summary bar); a new dedicated summary prompt constant (the inline-literal style matches the other `generate*` methods); cross-conversation "summarize all favorites everywhere" (out of scope — the request was per-conversation).
+
+**Consequence:** Favorites become a learning + action artifact. Cost is one main-model call per generation (cached thereafter). `Conversation` gains an optional `favoritesSummary` field (no migration — optional). New i18n keys added to both locales.

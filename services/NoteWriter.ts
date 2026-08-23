@@ -135,6 +135,28 @@ ${summary}${outputSection}
 		return file.path;
 	}
 
+	async saveFavoritesSummaryNote(
+		conversation: Conversation,
+		summary: string
+	): Promise<string> {
+		const safeName = conversation.name.replace(/[\\/:*?"<>|]/g, "-");
+		const filePath = `${this.settings.conversationsFolder}/${todayISO()}-${safeName}-favorites.md`;
+
+		const noteContent = `---
+type: pythia-favorites
+conversation: ${conversation.name}
+created: ${todayISO()}
+tags: [pythia]
+---
+
+## Favorites summary
+${summary}
+`;
+
+		const file = await this.writeNote(noteContent, filePath);
+		return file.path;
+	}
+
 	async prependToInbox(text: string, inboxPath: string): Promise<void> {
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");

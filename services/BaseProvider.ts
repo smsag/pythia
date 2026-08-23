@@ -4,7 +4,7 @@ import type { Conversation, ToolCall, TokenUsage, Provider } from "../models/typ
 import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
-import { parseTitleAndSummary, langInstruction, langSuffix, debugLog } from "./messageUtils";
+import { parseTitleAndSummary, langInstruction, langSuffix, debugLog, buildFavoritesDigest } from "./messageUtils";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
@@ -291,6 +291,17 @@ export abstract class BaseProvider implements LLMProvider {
 				`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
 				20
 			)) || "New Conversation"
+		);
+	}
+
+	async generateFavoritesSummary(conversation: Conversation): Promise<string> {
+		const digest = buildFavoritesDigest(conversation);
+		if (!digest) return "";
+		const model = this.resolveModel(conversation.model);
+		return this.callUtility(
+			model,
+			`The following are the highlights a user hand-picked from a conversation as its most important insights. Synthesize them into a learning aid that helps the user retain the knowledge and act on it.\n\nReply in Markdown with EXACTLY these two sections and no preamble:\n\n## Key learnings\nA bullet list that consolidates and deduplicates the insights across the highlights — group related points, state each learning clearly, and stay grounded in the provided text. Do not restate the highlights one by one.\n\n## Action items\nA list of concrete, actionable next steps derived from the highlights, each written as a checkbox: "- [ ] <action>". Only include actions the highlights actually support.${langInstruction(this.settings.outputLanguage)}\n\n${digest}`,
+			1536
 		);
 	}
 
