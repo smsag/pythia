@@ -128,7 +128,7 @@ export class NoteWriter {
 type: "LLM Note"
 template: ${conversation.templateId ?? "none"}
 created: ${todayISO()}
-conversation: "${this.resumeUri(conversation)}"
+source: "${this.resumeUri(conversation)}"
 context:
 ${contextList}
 ---
@@ -151,7 +151,7 @@ ${summary}${outputSection}
 		const noteContent = `---
 type: "LLM Note"
 created: ${todayISO()}
-conversation: "${this.resumeUri(conversation)}"
+source: "${this.resumeUri(conversation)}"
 ---
 
 ## Favorites summary

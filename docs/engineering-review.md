@@ -819,7 +819,7 @@ Both summaries are now surfaced identically as collapsible cards at the top of t
 
 When a user saves a summary (conversation or favorites) from a summary card, the written note's frontmatter now:
 - uses `type: "LLM Note"` (was `pythia-conversation` / `pythia-favorites`),
-- carries a clickable `conversation:` deep link (`obsidian://pythia?vault=…&cmd=resume&id=<id>`, via new `resumeUri` helper — same URI pattern as `appendConversationSlice`) that reopens Pythia with the conversation active,
+- carries a clickable `source:` deep link (`obsidian://pythia?vault=…&cmd=resume&id=<id>`, via new `resumeUri` helper — same URI pattern as `appendConversationSlice`) that reopens Pythia with the conversation active,
 - no longer writes `tags: [pythia]`.
 
 Tests updated for `saveSummaryNote` and a new `saveFavoritesSummaryNote` case.

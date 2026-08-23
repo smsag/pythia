@@ -238,7 +238,7 @@ describe("saveSummaryNote", () => {
 		expect(content).not.toContain("pythia-conversation");
 		expect(content).not.toContain("tags:");
 		// Frontmatter link back to the conversation (deep link opens Pythia active).
-		expect(content).toContain("conversation:");
+		expect(content).toContain("source:");
 		expect(content).toContain("obsidian://pythia?vault=");
 		expect(content).toContain("cmd=resume&id=c1");
 		expect(content).toContain("Great conversation.");
@@ -294,7 +294,7 @@ describe("saveFavoritesSummaryNote", () => {
 		expect(content).toContain('type: "LLM Note"');
 		expect(content).not.toContain("pythia-favorites");
 		expect(content).not.toContain("tags:");
-		expect(content).toContain("conversation:");
+		expect(content).toContain("source:");
 		expect(content).toContain("obsidian://pythia?vault=");
 		expect(content).toContain("cmd=resume&id=fav-1");
 		expect(content).toContain("Key learnings…");
