@@ -3,7 +3,6 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
-	Menu,
 	Notice,
 	setIcon,
 	TFile,
@@ -113,6 +112,8 @@ export class PythiaSidebarView extends ItemView {
 	private summaryCardObserver: IntersectionObserver | null = null;
 	private sendLongPressCleanup: (() => void) | null = null;
 	private suppressNextSendClick = false;
+	private sendMenuWrap!: HTMLElement;
+	private sendMenuCleanup: (() => void) | null = null;
 
 	private inputAreaEl!: HTMLElement;
 	private inputCollapseBtn!: HTMLButtonElement;
@@ -200,6 +201,7 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryCardObserver = null;
 		this.sendLongPressCleanup?.();
 		this.sendLongPressCleanup = null;
+		this.closeSummaryMenu();
 
 		// Discard any pending optimization state.
 		this.optimizationController?.cancel();
@@ -667,7 +669,9 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.inputCollapseBtn, "arrow-down");
 		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
 
-		this.sendBtn = toolbar.createEl("button", {
+		// Wrap the send button so the summary menu can open directly above it.
+		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
+		this.sendBtn = this.sendMenuWrap.createEl("button", {
 			cls: "p-send",
 			text: t("sendBtn"),
 		});
@@ -696,19 +700,18 @@ export class PythiaSidebarView extends ItemView {
 		const cancel = () => {
 			if (timer !== null) { clearTimeout(timer); timer = null; }
 		};
-		const fire = (x: number, y: number) => {
+		const fire = () => {
 			timer = null;
 			if (this.isStreaming) return;
 			this.suppressNextSendClick = true;
-			this.openSummaryMenu(x, y);
+			this.openSummaryMenu();
 		};
-		const onTouchStart = (e: TouchEvent) => {
-			const trg = e.touches[0];
-			timer = setTimeout(() => fire(trg.clientX, trg.clientY), 450);
+		const onTouchStart = () => {
+			timer = setTimeout(fire, 450);
 		};
 		const onMouseDown = (e: MouseEvent) => {
 			if (e.button !== 0) return;
-			timer = setTimeout(() => fire(e.clientX, e.clientY), 450);
+			timer = setTimeout(fire, 450);
 		};
 
 		btn.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -731,25 +734,55 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	/** The long-press Send menu: the only entry point for generating summaries. */
-	private openSummaryMenu(x: number, y: number): void {
+	/** The long-press Send menu — a small popover stacked directly above the Send
+	 *  button. The only entry point for generating summaries. */
+	private openSummaryMenu(): void {
 		const conv = this.activeConversation;
 		if (!conv) { new Notice(t("noActiveConvToSend")); return; }
-		const menu = new Menu();
-		menu.addItem((item) =>
-			item
-				.setTitle(t("menuSummarizeConversation"))
-				.setIcon("align-left")
-				.onClick(() => void this.generateConversationSummary())
-		);
-		menu.addItem((item) => {
-			item
-				.setTitle(t("menuSummarizeFavorites"))
-				.setIcon("star")
-				.onClick(() => void this.summarizeFavorites());
-			if ((conv.favorites?.length ?? 0) === 0) item.setDisabled(true);
-		});
-		menu.showAtPosition({ x, y });
+		if (this.sendMenuCleanup) { this.closeSummaryMenu(); return; } // toggle off
+
+		const menu = this.sendMenuWrap.createDiv({ cls: "p-send-menu" });
+
+		const addItem = (label: string, icon: string, disabled: boolean, action: () => void) => {
+			const item = menu.createDiv({
+				cls: `p-send-menu-item${disabled ? " p-send-menu-item-disabled" : ""}`,
+			});
+			const ic = item.createSpan({ cls: "p-send-menu-icon" });
+			setIcon(ic, icon);
+			item.createSpan({ cls: "p-send-menu-label", text: label });
+			if (disabled) return;
+			// mousedown (not click) so the selection/keyboard focus isn't disturbed.
+			item.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.closeSummaryMenu();
+				action();
+			});
+		};
+
+		addItem(t("menuSummarizeConversation"), "align-left", false,
+			() => void this.generateConversationSummary());
+		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
+			() => void this.summarizeFavorites());
+
+		// Outside-click / outside-touch dismissal (deferred so this gesture doesn't self-close).
+		const onOutside = (e: Event) => {
+			if (!this.sendMenuWrap.contains(e.target as Node)) this.closeSummaryMenu();
+		};
+		window.setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			document.addEventListener("touchstart", onOutside, true);
+		}, 0);
+		this.sendMenuCleanup = () => {
+			document.removeEventListener("mousedown", onOutside, true);
+			document.removeEventListener("touchstart", onOutside, true);
+			menu.remove();
+		};
+	}
+
+	private closeSummaryMenu(): void {
+		this.sendMenuCleanup?.();
+		this.sendMenuCleanup = null;
 	}
 
 	renderEmptyState(): void {

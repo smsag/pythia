@@ -1146,6 +1146,55 @@ body.is-mobile .p-textarea {
   display: none;
 }
 
+/* ── Long-press Send menu (summary options, opens above the button) ── */
+.p-send-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.p-send-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: max(160px, 100%);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-l);
+  z-index: 30;
+  overflow: hidden;
+  animation: navIn 0.14s ease;
+}
+
+.p-send-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.p-send-menu-item:hover {
+  background: var(--background-modifier-hover);
+}
+.p-send-menu-item-disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.p-send-menu-item-disabled:hover {
+  background: transparent;
+}
+
+.p-send-menu-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.p-send-menu-icon svg { width: 14px; height: 14px; }
+.p-send-menu-item-disabled .p-send-menu-icon { color: var(--text-faint); }
+
 /* ── Settings — folder picker display ───────────────────────── */
 .pythia-folder-display {
   margin-left: 8px;

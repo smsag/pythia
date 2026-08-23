@@ -141,7 +141,7 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 - **Collapsed by default.** Body (`.p-summary-card-body`) reveals on `.open`; the rendered markdown (`.p-summary-card-md`, shares `.p-ai-body` typography, `max-height: 40vh` internal scroll) plus a footer with the timestamp and **Copy** / **Save-to-note** actions.
 - **Auto-collapse on scroll-out:** an `IntersectionObserver` (root = `.p-chat`) collapses an expanded card once it leaves the viewport.
 
-**Generation is button-only:** long-pressing the **Send** button opens an Obsidian `Menu` with **Summarize Conversation** and **Summarize Favorites** (the latter disabled with no favorites); choosing one generates or regenerates that summary with current context and reveals its card. There is no sparkle/refresh icon and no auto-generation on close or note-injection.
+**Generation is button-only:** long-pressing the **Send** button opens a small popover (`.p-send-menu`) stacked **directly above the button** (the Send button is wrapped in a relatively-positioned `.p-send-wrap`; the menu opens upward, right-aligned, dismissed on outside click) with **Summarize Conversation** and **Summarize Favorites** (the latter greyed with no favorites); choosing one generates or regenerates that summary with current context and reveals its card. A native Obsidian `Menu` is deliberately **not** used — on mobile it renders as a bottom sheet rather than at the button. There is no sparkle/refresh icon and no auto-generation on close or note-injection.
 
 ### Chat scroll area
 
