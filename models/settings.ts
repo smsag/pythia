@@ -18,7 +18,6 @@ export interface PythiaSettings {
 	templatesFolder: string;
 	conversationsFolder: string;
 	scratchFolder: string;
-	autoSaveSummary: boolean;
 	defaultResumeMode: "full" | "summary" | "hybrid";
 	/** Soft cap on messages per conversation session. 0 = unlimited. */
 	maxMessagesPerSession: number;
@@ -57,7 +56,6 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	templatesFolder: "Pythia/Templates",
 	conversationsFolder: "Pythia/Conversations",
 	scratchFolder: "Pythia/Scratch",
-	autoSaveSummary: true,
 	defaultResumeMode: "full",
 	maxMessagesPerSession: 100,
 	maxConversations: 200,

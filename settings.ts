@@ -184,18 +184,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl.createEl("h3", { text: t("behaviourSection") });
 
 		new Setting(containerEl)
-			.setName(t("autoSaveName"))
-			.setDesc(t("autoSaveDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.autoSaveSummary)
-					.onChange(async (value) => {
-						this.plugin.settings.autoSaveSummary = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
 			.setName(t("resumeModeName"))
 			.setDesc(t("resumeModeDesc"))
 			.addDropdown((drop) =>

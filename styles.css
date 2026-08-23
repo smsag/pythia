@@ -44,10 +44,6 @@
   flex-shrink: 0;
   min-height: 34px;
 }
-.p-header:has(+ .p-summary-panel .p-summary-panel-body.open) {
-  border-bottom: none;
-}
-
 .p-title {
   all: unset;
   cursor: pointer;
@@ -267,48 +263,89 @@
   flex-direction: column;
 }
 
-/* ── Summary panel (below header, collapsible) ───────────────── */
-.p-summary-panel {
-  flex-shrink: 0;
+/* ── Summary "Speisekarte" cards (top of the message list) ───── */
+.p-summary-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.p-summary-card {
   background: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
-.p-summary-panel-body {
-  display: none;
-  max-height: 170px;
-  overflow-y: auto;
-  padding: var(--s2) var(--s3);
-}
-.p-summary-panel-body.open { display: block; }
-.p-summary-panel-body::-webkit-scrollbar { width: 2px; }
-.p-summary-panel-body::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 1px;
-}
-
-.p-summary-footer {
+.p-summary-card-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--s1);
-  margin-top: var(--s1);
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  cursor: pointer;
+  user-select: none;
+}
+.p-summary-card-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.p-summary-card-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.p-summary-card-icon svg { width: 14px; height: 14px; }
+
+.p-summary-card-title {
+  flex: 1;
+  font-family: var(--font-interface);
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.p-summary-card-chevron {
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.p-summary-card-body {
+  display: none;
+  padding: 0 var(--s3) var(--s2);
+}
+.p-summary-card.open .p-summary-card-body { display: block; }
+
+.p-summary-card-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
 }
 
 .p-summary-ts {
   font-family: var(--font-monospace);
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-faint);
   user-select: none;
+  margin-right: auto;
 }
 
-.p-summary-refresh {
-  width: 16px;
-  height: 16px;
+.p-summary-card-action {
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  padding: 2px var(--s2);
+  border-radius: 3px;
+  cursor: pointer;
 }
-.p-summary-refresh svg {
-  width: 10px;
-  height: 10px;
+
+/* Cap very long summaries; scroll inside the expanded card. */
+.p-summary-card-md {
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 /* Title group — keeps title + pencil glued together in the flex row */
@@ -352,11 +389,6 @@
   animation: p-sparkle-pulse 0.7s ease-in-out infinite;
 }
 
-/* Toolbar sparkle — loading state */
-.p-tool-btn.p-sparkle-loading {
-  color: var(--color-accent);
-  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
-}
 @keyframes p-sparkle-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
@@ -456,7 +488,7 @@
 }
 
 .p-ai-body,
-.p-summary-panel-body {
+.p-summary-card-md {
   font-size: var(--font-small);
   line-height: 1.65;
   word-break: break-word;
@@ -467,17 +499,17 @@
   max-width: 100%;
 }
 .p-ai-body { color: var(--text-normal); }
-.p-summary-panel-body { color: var(--text-muted); }
+.p-summary-card-md { color: var(--text-muted); }
 .p-ai-body strong,
-.p-summary-panel-body strong { font-weight: 600; }
+.p-summary-card-md strong { font-weight: 600; }
 .p-ai-body p,
-.p-summary-panel-body p { margin: 0 0 6px; }
+.p-summary-card-md p { margin: 0 0 6px; }
 .p-ai-body p:last-child,
-.p-summary-panel-body p:last-child { margin-bottom: 0; }
+.p-summary-card-md p:last-child { margin-bottom: 0; }
 .p-ai-body ol,
 .p-ai-body ul,
-.p-summary-panel-body ol,
-.p-summary-panel-body ul {
+.p-summary-card-md ol,
+.p-summary-card-md ul {
   padding-left: var(--s4);
   display: flex;
   flex-direction: column;
@@ -485,13 +517,13 @@
   margin-top: var(--s1);
 }
 .p-ai-body li,
-.p-summary-panel-body li { font-size: var(--font-small); }
+.p-summary-card-md li { font-size: var(--font-small); }
 /* Blockquotes (LLM-quoted text) — neutral divider bar, no accent (accent is
    reserved for interactive/active elements), no italic, no background box:
    the wrapper stays "plain text, no container" — anything nested inside
    (e.g. a fenced code block) still gets its own .p-code-frame box. */
 .p-ai-body blockquote,
-.p-summary-panel-body blockquote {
+.p-summary-card-md blockquote {
   margin: var(--s1) 0;
   padding-left: var(--s3);
   border-left: 3px solid var(--background-modifier-border);
@@ -499,7 +531,7 @@
   color: var(--text-muted);
 }
 /* Summary panel pre: unchanged positioning */
-.p-summary-panel-body pre {
+.p-summary-card-md pre {
   position: relative;
   background: var(--background-secondary);
   border-radius: 6px;
@@ -676,13 +708,13 @@
 }
 
 .p-ai-body code,
-.p-summary-panel-body code { font-size: 0.88em; }
+.p-summary-card-md code { font-size: 0.88em; }
 
 /* Inline single-backtick code — same background token as block code
    (.p-code-frame > pre), scoped off code already inside a <pre> so the two
    backgrounds don't stack. */
 .p-ai-body code:not(pre code),
-.p-summary-panel-body code:not(pre code) {
+.p-summary-card-md code:not(pre code) {
   background: var(--background-secondary);
   border-radius: 4px;
   padding: 1px 4px;
@@ -920,22 +952,17 @@ mark.p-highlight.p-highlight-flash {
   opacity: 0.7;
 }
 
-/* ✦ Summarize-favorites action in the Favorites section header. */
-.p-nav-action {
-  margin-left: auto;
-  font-size: 11px;
+/* Favorites section label: links to the favorites summary card when one exists. */
+.p-nav-group-name.p-nav-link {
   color: var(--color-accent);
-  flex-shrink: 0;
   cursor: pointer;
-  opacity: 0.8;
-  transition: opacity 0.12s, transform 0.12s;
 }
-.p-nav-count + .p-nav-action {
-  margin-left: var(--s2);
+.p-nav-group-name.p-nav-link:hover {
+  text-decoration: underline;
 }
-.p-nav-action:hover {
-  opacity: 1;
-  transform: scale(1.15);
+.p-nav-group-name.p-nav-disabled {
+  color: var(--text-faint);
+  cursor: default;
 }
 
 .p-nav-item {
@@ -1154,17 +1181,6 @@ body.is-mobile .p-textarea {
   font-size: 0.82em;
   color: var(--text-faint);
   margin-top: 10px;
-}
-
-/* Favorites summary modal — scrollable rendered-markdown body. */
-.pythia-fav-summary-modal {
-  width: min(680px, 92vw);
-}
-.pythia-fav-summary-body {
-  max-height: 60vh;
-  overflow-y: auto;
-  color: var(--text-normal);
-  line-height: 1.5;
 }
 
 /* ── Tool call chips ─────────────────────────────────────────── */

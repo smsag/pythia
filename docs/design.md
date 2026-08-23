@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-23 — highlight-favorite interaction fixes: tapping a highlight now selects its span and shows the toolbar with a **Unfavorite** button; removal is surgical (`removeHighlightById`) so other highlights keep their color; navigator jump lands on the first tap (deferred measure + collapsed-bubble expand); selection toolbar reordered to Copy · Favorite/Unfavorite · Branch · Insert · Inbox. See ADR-056.*
+*Last updated: 2026-08-23 — summaries reworked into top-of-conversation "Speisekarte" cards: both conversation and favorites summaries render as collapsible in-scroll cards (`.p-summary-card`) generated only via a long-press on the Send button (Obsidian `Menu`); cards auto-collapse when scrolled out of view; the pinned summary panel, input-toolbar sparkle, panel refresh icon, navigator ✦ action, and `FavoritesSummaryModal` are removed; nav Favorites label links to the favorites card. See ADR-057.*
+
+*Previously, 2026-08-23 — highlight-favorite interaction fixes: tapping a highlight now selects its span and shows the toolbar with a **Unfavorite** button; removal is surgical (`removeHighlightById`) so other highlights keep their color; navigator jump lands on the first tap (deferred measure + collapsed-bubble expand); selection toolbar reordered to Copy · Favorite/Unfavorite · Branch · Insert · Inbox. See ADR-056.*
 
 *Previously, 2026-08-23 — summarize favorites: the navigator Favorites section header gains a ✦ `.p-nav-action` trigger (shown only when favorites exist) that synthesizes the highlights into a Key-learnings + Action-items summary, shown in `FavoritesSummaryModal` (rendered Markdown, scrollable `.pythia-fav-summary-body`, Copy / Save-to-note / Regenerate). See ADR-055.*
 
@@ -131,9 +133,15 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 Pills: `var(--color-accent)` border + text, 10px mono, `border-radius: 10px`
 
-### Summary bar
+### Summary cards ("Speisekarten")
 
-Triggered from the sparkle in the input-area toolbar (`.p-toolbar-left`), not the header: no summary yet → generates one and auto-opens the panel; summary already exists → toggles the panel open/closed showing the latest summary. Sticky, only rendered when a summary exists. Fixed-height body (`max-height: 170px`, `overflow-y: auto`). A refresh icon (`.p-summary-refresh`, `refresh-cw`) sits next to the timestamp at the bottom of the open body and regenerates the summary in place — the sole way to start a new summary once one exists. Auto-saved on view close when `autoSaveSummary` is enabled.
+Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container prepended to the **top of the message list** (`.p-chat`), so they scroll with the conversation. A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
+
+- **Header** (`.p-summary-card-header`): `setIcon` glyph (`align-left` for conversation, `star` for favorites) + title (`conversationSummaryTitle` / `favoritesSummaryTitle`) + a ▸/▾ chevron. Click toggles expand/collapse.
+- **Collapsed by default.** Body (`.p-summary-card-body`) reveals on `.open`; the rendered markdown (`.p-summary-card-md`, shares `.p-ai-body` typography, `max-height: 40vh` internal scroll) plus a footer with the timestamp and **Copy** / **Save-to-note** actions.
+- **Auto-collapse on scroll-out:** an `IntersectionObserver` (root = `.p-chat`) collapses an expanded card once it leaves the viewport.
+
+**Generation is button-only:** long-pressing the **Send** button opens an Obsidian `Menu` with **Summarize Conversation** and **Summarize Favorites** (the latter disabled with no favorites); choosing one generates or regenerates that summary with current context and reveals its card. There is no sparkle/refresh icon and no auto-generation on close or note-injection.
 
 ### Chat scroll area
 
@@ -187,11 +195,7 @@ Any text selection inside a message can be favorited via the **Favorite** button
 
 Trigger button: 24×24 px, `--color-accent`, monospace, bottom-right of the message area. Popover 200 px wide, opens upward. Closes on outside click (listener tracked as `navigatorOutsideCleanup`, removed on view close and conversation switch).
 
-Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. When favorites exist, the Favorites header also carries a ✦ `.p-nav-action` (accent-colored, right-aligned after the count) that opens the favorites summary. Legacy message-level favorites (pre-highlight feature) list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
-
-### Favorites summary modal (`FavoritesSummaryModal`)
-
-Opened by the navigator ✦ action or the `Pythia: Summarize favorites` command. Uses the shared `.pythia-modal` chrome; body is `.pythia-fav-summary-body` (rendered Markdown via `MarkdownRenderer`, `max-height: 60vh`, internal scroll). Footer buttons (`.pythia-modal-buttons`): Copy, Save to note, and Regenerate (`.mod-cta`, shows the `.p-sparkle-loading` state while regenerating). The generated text is cached on `Conversation.favoritesSummary` so reopening is instant; Regenerate overwrites it.
+Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. The Favorites section **label** links to the favorites summary card (`.p-nav-group-name.p-nav-link`) when a favorites summary exists — clicking it closes the popover and scrolls to + expands that card; with no favorites summary the label is greyed and non-clickable (`.p-nav-disabled`). Legacy message-level favorites list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
 
 ### Input area
 

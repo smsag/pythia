@@ -11,7 +11,7 @@ export interface NavigatorDeps {
 	scrollToMessage(id: string): void;
 	scrollToFavorite(fav: Favorite): void;
 	removeFavorite(favId: string): Promise<void>;
-	summarizeFavorites(): void;
+	goToFavoritesSummary(): void;
 }
 
 export class NavigatorController {
@@ -41,14 +41,23 @@ export class NavigatorController {
 			defaultCollapsed: boolean,
 			count: number,
 			buildItems: (body: HTMLElement) => void,
-			headerAction?: (header: HTMLElement) => void
+			labelLink?: { onClick: () => void } | { disabled: true }
 		): HTMLElement => {
 			const section = navigatorEl.createDiv({ cls: "p-nav-section" });
 			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
 			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
-			header.createEl("span", { text: label });
+			const labelEl = header.createEl("span", { cls: "p-nav-group-name", text: label });
+			if (labelLink && "onClick" in labelLink) {
+				labelEl.addClass("p-nav-link");
+				labelEl.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					labelLink.onClick();
+				});
+			} else if (labelLink && "disabled" in labelLink) {
+				labelEl.addClass("p-nav-disabled");
+			}
 			if (count > 0) header.createEl("span", { cls: "p-nav-count", text: String(count) });
-			if (headerAction) headerAction(header);
 			const body = section.createDiv({ cls: "p-nav-section-body" });
 
 			if (defaultCollapsed) {
@@ -98,7 +107,19 @@ export class NavigatorController {
 		});
 
 		// ── Favorites (highlighted spans) ───────────────────────────
+		// The section label links to the favorites summary card when one exists;
+		// otherwise it is shown greyed and non-clickable.
 		const favs = conv?.favorites ?? [];
+		const hasFavSummary = !!conv?.favoritesSummary?.text?.trim();
+		const favLabelLink = hasFavSummary
+			? {
+					onClick: () => {
+						navigatorEl.removeClass("open");
+						document.removeEventListener("mousedown", onOutside, true);
+						this.d.goToFavoritesSummary();
+					},
+			  }
+			: ({ disabled: true } as const);
 		makeSection(t("favoritesSection"), false, favs.length, (body) => {
 			if (favs.length === 0) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoFavorites") });
@@ -135,22 +156,7 @@ export class NavigatorController {
 					});
 				}
 			}
-		}, (header) => {
-			// ✦ Summarize favorites — synthesize highlights into learnings + actions.
-			if (favs.length === 0) return;
-			const btn = header.createEl("span", {
-				cls: "p-nav-action",
-				text: "✦",
-				attr: { title: t("summarizeFavoritesTooltip") },
-			});
-			btn.addEventListener("mousedown", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				navigatorEl.removeClass("open");
-				document.removeEventListener("mousedown", onOutside, true);
-				this.d.summarizeFavorites();
-			});
-		});
+		}, favLabelLink);
 
 		// ── Chapters ─────────────────────────────────────────────────
 		const userMsgs = conv?.messages.filter((m) => m.role === "user") ?? [];

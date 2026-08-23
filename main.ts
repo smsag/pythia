@@ -192,9 +192,6 @@ export default class PythiaPlugin extends Plugin {
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								view.attachNoteToInput(file.path);
-								void this.app.vault.read(file).then((content) =>
-									this.generateAndInjectSummary(conv, content.slice(0, 20000))
-								);
 							});
 					});
 				} else if (file instanceof TFolder) {
@@ -215,15 +212,6 @@ export default class PythiaPlugin extends Plugin {
 								const view = await this.activateView();
 								await view.setActiveConversation(conv);
 								for (const f of files) view.attachNoteToInput(f.path);
-								void (async () => {
-									const CAP = 20000;
-									let combined = "";
-									for (const f of files) {
-										if (combined.length >= CAP) break;
-										combined += `# [[${f.basename}]]\n${await this.app.vault.read(f)}\n\n`;
-									}
-									void this.generateAndInjectSummary(conv, combined.slice(0, CAP));
-								})();
 							});
 					});
 				}
@@ -593,23 +581,6 @@ export default class PythiaPlugin extends Plugin {
 			await this.conversationStore.save(conv);
 		} catch (e) {
 			new Notice(`Could not rename file: ${e instanceof Error ? e.message : String(e)}`);
-		}
-	}
-
-	private async generateAndInjectSummary(conv: Conversation, content: string): Promise<void> {
-		try {
-			const summary = await this.llmRouter.summarizeNotes(content, conv.provider);
-			if (summary) {
-				conv.summaryText = summary;
-				conv.summaryUpdatedAt = new Date().toISOString();
-				await this.conversationStore.save(conv);
-				const view = this.getSidebarView();
-				if (view?.getActiveConversation()?.id === conv.id) {
-					view.refreshSummaryBar();
-				}
-			}
-		} catch (e) {
-			new Notice(t("summaryGenerationFailed", { error: e instanceof Error ? e.message : String(e) }));
 		}
 	}
 

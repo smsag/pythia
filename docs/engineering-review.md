@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — summary UX rework (#103): top-of-conversation "Speisekarte" cards, long-press Send menu as sole generator, removed pinned panel / sparkle / favorites modal / auto-generation paths.*
 *Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
 *Updated: 2026-08-23 — summarize-favorites feature (#101): per-conversation favorites synthesis (Key learnings + Action items) via `buildFavoritesDigest` + `generateFavoritesSummary`, modal preview, navigator ✦ + command triggers.*
 *Updated: 2026-08-23 — favorite highlights feature (#100): span-level favorites with persistent `mark.p-highlight`, `ui/HighlightPainter.ts`, legacy migration, new happy-dom DOM tests.*
@@ -789,3 +790,20 @@ Three issues reported against the 1.27.0 highlight-favorites UX.
 - **Two-tap jump:** navigator closes the popover then defers `scrollToFavorite` to `requestAnimationFrame`, which expands a collapsed bubble (`expandBubbleIfCollapsed`) before measuring.
 - **Toolbar reordered:** Copy · Favorite/Unfavorite · Branch · Insert · Inbox.
 - Tests: 6 new `removeHighlightById` / `rangeForHighlight` cases (happy-dom).
+
+---
+
+## Feature rework (#103) — summaries as top-of-conversation cards, 2026-08-23
+
+Both summaries are now surfaced identically as collapsible cards at the top of the conversation, generated from one place.
+
+### #103 — Summary "Speisekarte" cards + long-press Send menu
+
+**Files:** `sidebar.ts`, `ui/NavigatorController.ts`, `main.ts`, `models/settings.ts`, `settings.ts`, `suggest/FavoritesSummaryModal.ts` (**deleted**), `styles.css`, `locales/en.ts`, `locales/de.ts` — **Resolved**
+
+- Long-press Send → Obsidian `Menu` (Summarize Conversation / Summarize Favorites; latter disabled with no favorites); sole generation entry point.
+- `renderSummaryCards`/`buildSummaryCard`/`revealSummaryCard` render collapsible `.p-summary-card`s prepended to `.p-chat`; `IntersectionObserver` auto-collapses on scroll-out; expanded body has Copy + Save-to-note.
+- Removed the pinned summary panel + sparkle/refresh icons, the `FavoritesSummaryModal`, the `autoSaveSummary` setting + on-close generation, and `main.ts`'s note-injection auto-summary.
+- Nav Favorites label links to the favorites card (greyed when none); per-highlight jumps unchanged.
+- Resume-summary/fork still populate `summaryText` (may surface a card) — accepted.
+- No new pure helpers; existing 333 tests still pass.

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
+*Last updated: 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
+
+*Previously, 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
 
 *Previously, 2026-08-23 — ADR-055 (summarize a conversation's favorites into Key learnings + Action items: reuse the utility-call path via `generateFavoritesSummary`, a pure `buildFavoritesDigest` input builder, modal preview with a result cached on the conversation).*
 
@@ -769,3 +771,21 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 4. **Toolbar order** reordered to Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox, per user preference.
 
 **Consequence:** Tapping a highlight is now the primary unfavorite gesture; highlight colors are stable under add/remove; navigator jumps land on the first tap. New i18n key `unfavoriteBtn`; new pure helpers `removeHighlightById`/`rangeForHighlight` are unit-tested.
+
+---
+
+### ADR-057 — Summaries as top-of-conversation cards, generated only via the Send button
+
+**Status:** Active (supersedes the summary-panel UI of ADR-053 and the favorites-modal UI of ADR-055; the underlying generation and data model are unchanged)
+
+**Context:** The conversation summary lived in a pinned panel toggled by an input-toolbar sparkle (+ refresh icon), and the favorites summary opened in a modal launched by a ✦ navigator action. Two different surfaces for two summaries, plus several implicit auto-generation paths. The user wanted both summaries surfaced identically and generated from one obvious place.
+
+**Decision:**
+1. **Cards ("Speisekarten").** Both summaries render as collapsible cards (`.p-summary-card`) inside `.p-summary-cards`, prepended to the top of the message list so they scroll with the conversation. A card exists only when its summary exists. Collapsed by default; the expanded body shows the rendered markdown plus Copy / Save-to-note. An `IntersectionObserver` (root = `.p-chat`) re-collapses an expanded card once it scrolls out of view.
+2. **Button-only generation.** A long-press on the Send button opens an Obsidian `Menu` with *Summarize Conversation* and *Summarize Favorites* (the latter disabled with no favorites). Choosing one generates or regenerates that summary with current context and reveals its card. This is the sole generation entry point: the auto-save-on-close summary (and its `autoSaveSummary` setting) and the note-injection auto-summary (`generateAndInjectSummary`) are removed. Resume-in-summary-mode and Fork still populate `summaryText` for their own context needs, so a conversation card may legitimately appear from those.
+3. **Navigator.** The ✦ action is gone; the Favorites section label links to the favorites card when a favorites summary exists, and is greyed/non-clickable otherwise. Per-highlight jumps and the section chevron are unchanged.
+4. **Removed UI.** Pinned `.p-summary-panel` + `updateSummaryBar`/`toggleSummaryPanel`/`refreshSummaryBar`, the toolbar sparkle, the panel refresh icon, and `FavoritesSummaryModal`.
+
+**Alternatives rejected:** a pinned band that never scrolls away (doesn't match "collapses when it leaves the view"); keeping the modal alongside the card (two surfaces again); decoupling resume/fork summaries into a context-only field (larger change, breaks nothing by leaving them).
+
+**Consequence:** One consistent surface and one generation gesture. Summaries no longer appear unbidden on close or note-injection. i18n: added `menuSummarizeConversation`, `menuSummarizeFavorites`, `conversationSummaryTitle`; removed `summarizeTooltip`, `regenerateSummaryTooltip`, `summarizeFavoritesTooltip`, `regenerateBtn`, and the auto-save keys.
