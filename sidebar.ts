@@ -1474,42 +1474,40 @@ export class PythiaSidebarView extends ItemView {
 		if (!row) return;
 
 		// Expand a collapsed long bubble first so the highlight mark is laid out and
-		// its offset is measurable (otherwise the first jump reads a zero offset).
+		// its offset is measurable. Reading offsetTop below forces synchronous layout,
+		// so no requestAnimationFrame is needed — mirrors scrollToMessage (Chapters),
+		// which navigates correctly on the first tap.
 		this.expandBubbleIfCollapsed(row);
 
-		// Defer measurement to the next frame so any layout change (bubble expand,
-		// navigator popover close) has settled before we read offsets.
-		requestAnimationFrame(() => {
-			const TOP_MARGIN = 8;
-			const scrollToOffsetTop = (top: number) =>
-				this.messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
+		const TOP_MARGIN = 8;
+		const scrollToOffsetTop = (top: number) =>
+			this.messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
 
-			// 1) Painted mark — the common case.
-			const mark = row.querySelector<HTMLElement>(
-				`mark.p-highlight[data-fav-id="${fav.id}"]`
-			);
-			if (mark) {
-				scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
-				flashHighlight(fav.id, row);
+		// 1) Painted mark — the common case.
+		const mark = row.querySelector<HTMLElement>(
+			`mark.p-highlight[data-fav-id="${fav.id}"]`
+		);
+		if (mark) {
+			scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
+			flashHighlight(fav.id, row);
+			return;
+		}
+
+		// 2) Re-find the text (e.g. legacy favorite, or mark not painted).
+		if (fav.text) {
+			const body = row.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
+			const range = findRange(body, fav.text, fav.occurrenceIndex ?? 0);
+			if (range) {
+				const rect = range.getBoundingClientRect();
+				const containerRect = this.messagesEl.getBoundingClientRect();
+				const top = this.messagesEl.scrollTop + (rect.top - containerRect.top);
+				scrollToOffsetTop(top);
 				return;
 			}
+		}
 
-			// 2) Re-find the text (e.g. legacy favorite, or mark not painted).
-			if (fav.text) {
-				const body = row.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
-				const range = findRange(body, fav.text, fav.occurrenceIndex ?? 0);
-				if (range) {
-					const rect = range.getBoundingClientRect();
-					const containerRect = this.messagesEl.getBoundingClientRect();
-					const top = this.messagesEl.scrollTop + (rect.top - containerRect.top);
-					scrollToOffsetTop(top);
-					return;
-				}
-			}
-
-			// 3) Legacy / not-found — scroll to the message top.
-			scrollToOffsetTop(row.offsetTop - this.messagesEl.offsetTop);
-		});
+		// 3) Legacy / not-found — scroll to the message top.
+		scrollToOffsetTop(row.offsetTop - this.messagesEl.offsetTop);
 	}
 
 	/** Expand a collapsed long user bubble in `row`, syncing its toggle icon. */

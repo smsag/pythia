@@ -136,11 +136,10 @@ export class NavigatorController {
 					item.addEventListener("mousedown", (e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						// Close the popover first, then jump on the next frame so the
-						// scroll is measured after layout settles (fixes the two-tap jump).
+						// Mirror the Chapters handler exactly: jump synchronously, then close.
+						this.d.scrollToFavorite(fav);
 						navigatorEl.removeClass("open");
 						document.removeEventListener("mousedown", onOutside, true);
-						requestAnimationFrame(() => this.d.scrollToFavorite(fav));
 					});
 					del.addEventListener("mousedown", (e) => {
 						e.preventDefault();
