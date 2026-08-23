@@ -332,6 +332,8 @@
   color: var(--text-faint);
   user-select: none;
   margin-right: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .p-summary-card-action {
@@ -518,6 +520,19 @@
 }
 .p-ai-body li,
 .p-summary-card-md li { font-size: var(--font-small); }
+/* Task-list checkboxes (Action items): lay out inline so the checkbox sits
+   inside the card padding — its default negative margin hangs it left where the
+   card body's overflow (from max-height) clips it. */
+.p-summary-card-md .task-list-item {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+.p-summary-card-md .task-list-item-checkbox {
+  margin: 3px 0 0 0;
+  flex-shrink: 0;
+}
 /* Blockquotes (LLM-quoted text) — neutral divider bar, no accent (accent is
    reserved for interactive/active elements), no italic, no background box:
    the wrapper stays "plain text, no container" — anything nested inside
