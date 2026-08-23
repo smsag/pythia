@@ -760,7 +760,7 @@ export class PythiaSidebarView extends ItemView {
 			});
 		};
 
-		addItem(t("menuSummarizeConversation"), "align-left", false,
+		addItem(t("menuSummarizeConversation"), "align-left", conv.messages.length === 0,
 			() => void this.generateConversationSummary());
 		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
 			() => void this.summarizeFavorites());
