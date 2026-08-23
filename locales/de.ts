@@ -19,7 +19,7 @@ const de: Strings = {
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
 	navNoForks:      "Noch keine Abzweigungen",
-	navNoStarred:    "Keine markierten Nachrichten",
+	navNoFavorites:  "Noch keine Markierungen",
 	navNoChapters:   "Noch keine Kapitel",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
@@ -28,8 +28,8 @@ const de: Strings = {
 	startConversationBelow:    "Beginne das Gespräch unten.",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
-	addToFavorites:      "Zu Favoriten hinzufügen",
-	removeFromFavorites: "Aus Favoriten entfernen",
+	removeHighlight:            "Markierung entfernen",
+	favoriteSpanSingleMessage:  "Markiere Text innerhalb einer einzelnen Nachricht, um ihn zu favorisieren.",
 	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
 
@@ -54,6 +54,7 @@ const de: Strings = {
 	insertBtn:"In Notiz einfügen",
 	inboxBtn: "Im Posteingang speichern",
 	forkBtn:  "Verzweigen",
+	favoriteBtn: "Favorit",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",

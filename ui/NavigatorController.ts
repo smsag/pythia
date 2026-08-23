@@ -1,5 +1,5 @@
 import type PythiaPlugin from "../main";
-import type { Conversation } from "../models/types";
+import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 
 export interface NavigatorDeps {
@@ -9,6 +9,8 @@ export interface NavigatorDeps {
 	getConversation(): Conversation | null;
 	setActiveConversation(conv: Conversation): Promise<void>;
 	scrollToMessage(id: string): void;
+	scrollToFavorite(fav: Favorite): void;
+	removeFavorite(favId: string): Promise<void>;
 }
 
 export class NavigatorController {
@@ -92,22 +94,39 @@ export class NavigatorController {
 			}
 		});
 
-		// ── Starred ─────────────────────────────────────────────────
+		// ── Favorites (highlighted spans) ───────────────────────────
 		const favs = conv?.favorites ?? [];
 		makeSection(t("favoritesSection"), false, favs.length, (body) => {
 			if (favs.length === 0) {
-				body.createDiv({ cls: "p-nav-empty", text: t("navNoStarred") });
+				body.createDiv({ cls: "p-nav-empty", text: t("navNoFavorites") });
 			} else {
 				for (const fav of favs) {
 					const item = body.createDiv({ cls: "p-nav-item" });
 					item.createEl("span", { cls: "p-nav-star", text: "★" });
 					item.createEl("span", { cls: "p-nav-label", text: fav.name });
+					const del = item.createEl("span", {
+						cls: "p-nav-del",
+						text: "✕",
+						attr: { title: t("removeHighlight") },
+					});
 					item.addEventListener("mousedown", (e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						this.d.scrollToMessage(fav.messageId);
+						this.d.scrollToFavorite(fav);
 						navigatorEl.removeClass("open");
 						document.removeEventListener("mousedown", onOutside, true);
+					});
+					del.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						void this.d.removeFavorite(fav.id).then(() => {
+							item.remove();
+							// Keep the header count in sync without a full rebuild.
+							const count = item.parentElement?.querySelectorAll(".p-nav-item").length ?? 0;
+							if (count === 0) {
+								body.createDiv({ cls: "p-nav-empty", text: t("navNoFavorites") });
+							}
+						});
 					});
 				}
 			}

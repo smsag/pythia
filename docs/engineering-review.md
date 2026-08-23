@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — favorite highlights feature (#100): span-level favorites with persistent `mark.p-highlight`, `ui/HighlightPainter.ts`, legacy migration, new happy-dom DOM tests.*
 *Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
 *Updated: 2026-07-09 — second-round audit (post-1.21.1): #77–#83 resolved (second delete-guard gap via the conversation switcher, resume-mode race with concurrent deletion, eviction crash on malformed `updatedAt`, eviction only protecting one sidebar leaf, silent multi-line frontmatter corruption, deep-link double-decode, summary-generation stale-conversation race). Remaining medium/low findings from this audit and pre-existing architectural backlog (#3, #10, #50, #73, #74) reviewed and explicitly deferred, not silently dropped.*
 *Updated: 2026-07-10 — #84 resolved: `cmdForkConversation` now carries `temperature` over from the source conversation, matching `provider`/`model`/`maxTokens`. Also added a settings-modal UI to view/edit a conversation's temperature after creation (not a bug — new capability, not separately numbered).*
@@ -734,3 +735,22 @@ Ten findings:
 10. No default effort → `DEFAULT_SETTINGS.effort = "high"`
 
 See ADR-053.
+
+---
+
+## New Feature (#100) — favorites become highlighted text spans, 2026-08-23
+
+Favorites were whole-message references toggled by a per-message ☆ star. This feature replaces them with span-level highlight favorites: the user selects text, favorites it from the selection toolbar, the span stays visibly highlighted, and the navigator lists it by its first words and jumps to the exact start.
+
+### #100 — Highlight-favorites
+
+**Files:** `models/types.ts`, `ui/HighlightPainter.ts` (new), `sidebar.ts`, `ui/NavigatorController.ts`, `services/persistence.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts`, `tests/HighlightPainter.test.ts` (new), `tests/persistence.test.ts` — **Resolved**
+
+- `Favorite` model extended with `text`/`occurrenceIndex`/`id`/`createdAt`; span text (not offsets) is stored because the markdown body is re-rendered.
+- `ui/HighlightPainter.ts` re-finds and paints highlights (`findRange`, `paintRange` splitting across element boundaries, `repaintBody`, `flashHighlight`), re-applied after every render.
+- Per-message star removed; "Favorite" action added to the selection toolbar; overlapping selection toggles a favorite off.
+- Navigator "Starred" → "Favorites": lists by first words, hover ✕ to delete, jumps to the span (`scrollToFavorite`).
+- Legacy favorites migrated by `normalizeFavorites` (assigns ids, preserves them, jumps to message top).
+- Tests: 17 `HighlightPainter` cases (happy-dom) + 5 migration cases. New `happy-dom` dev dependency for DOM-based UI tests.
+
+**Backlog note:** `sidebar.ts` remains excluded from vitest coverage (per #98's rationale) — the new highlight logic that lives there (`onFavoriteSelection`, `scrollToFavorite`) is exercised only indirectly via the extracted, tested `HighlightPainter` helpers.

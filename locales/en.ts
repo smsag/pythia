@@ -17,7 +17,7 @@ const en = {
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
 	navNoForks:      "No forks yet",
-	navNoStarred:    "No starred messages",
+	navNoFavorites:  "No highlights yet",
 	navNoChapters:   "No chapters yet",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
@@ -26,8 +26,8 @@ const en = {
 	startConversationBelow:    "Start the conversation below.",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
-	addToFavorites:     "Add to favorites",
-	removeFromFavorites:"Remove from favorites",
+	removeHighlight:            "Remove highlight",
+	favoriteSpanSingleMessage:  "Select text within a single message to favorite it.",
 	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 
@@ -52,6 +52,7 @@ const en = {
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",
 	forkBtn:     "Fork",
+	favoriteBtn: "Favorite",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",

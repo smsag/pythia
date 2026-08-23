@@ -50,8 +50,14 @@ export interface Message {
 }
 
 export interface Favorite {
-	messageId: string;  // refers to Message.id
-	name: string;       // LLM-generated short title
+	id: string;               // unique per favorite (crypto.randomUUID)
+	messageId: string;        // refers to Message.id — the message the highlight lives in
+	name: string;             // short label shown in the navigator (first words of `text`)
+	text?: string;            // exact selected text; drives re-highlight, re-find and label.
+	                          // Absent for legacy message-level favorites (pre-highlight feature).
+	occurrenceIndex?: number; // which occurrence of `text` within the message (disambiguates
+	                          // duplicate spans). Absent for legacy favorites.
+	createdAt?: string;       // ISO 8601 — when the favorite was created
 }
 
 export interface PythiaTemplate {

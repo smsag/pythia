@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-07-17 — code-block/blockquote design-system fix: `.p-code-frame` background unified to `var(--background-secondary)` (matching the tool-call chip/optimizer-result "framed box" convention), new blockquote styling, new persistent code-type icon, copy-confirmed icon color changed from green to accent. See ADR-046.*
+*Last updated: 2026-08-23 — favorite highlights: per-message ☆ star replaced by span-level favoriting from the selection toolbar. Favorited text is wrapped in `mark.p-highlight` and re-painted after every render (`ui/HighlightPainter.ts`); navigator "Starred" section renamed "Favorites", lists each highlight by its first words with a hover ✕ delete, and jumps to the span start. See ADR-054.*
+
+*Previously, 2026-07-17 — code-block/blockquote design-system fix: `.p-code-frame` background unified to `var(--background-secondary)` (matching the tool-call chip/optimizer-result "framed box" convention), new blockquote styling, new persistent code-type icon, copy-confirmed icon color changed from green to accent. See ADR-046.*
 
 *Previously, 2026-07-10 — temperature slider; input-area minimize reworked (persistent toolbar, reference row folded in, expand-and-act icons); summary trigger moved from header to input-area sparkle with a regenerate icon next to the summary timestamp*
 
@@ -166,16 +168,20 @@ Copy button `.p-diag-copy`: `position: absolute; top: 6px; right: 6px; z-index: 
 ### Token line (below each AI message)
 
 ```
-☆  |  ↑~4.2k ↓430
+↑~4.2k ↓430
 ```
 
-Send button shows **estimated next-send cost**: `lastInputTokens + lastOutputTokens + round(draft.length/4)`. Updates live as user types.
+Only rendered when the message carries `tokenUsage`; no per-message star button (favoriting moved to text selection — see below). Send button shows **estimated next-send cost**: `lastInputTokens + lastOutputTokens + round(draft.length/4)`. Updates live as user types.
+
+### Favorite highlights (`mark.p-highlight`)
+
+Any text selection inside a message can be favorited via the **Favorite** button in the selection toolbar (alongside Copy / Insert / Inbox / Fork). The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render). Selecting text that already sits inside a highlight toggles that favorite off. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
 
 ### Chapter navigator (`#`)
 
 Trigger button: 24×24 px, `--color-accent`, monospace, bottom-right of the message area. Popover 200 px wide, opens upward. Closes on outside click (listener tracked as `navigatorOutsideCleanup`, removed on view close and conversation switch).
 
-Three collapsible sections — **Forks** (collapsed by default), **Starred**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Starred items sit above it.
+Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. Legacy message-level favorites (pre-highlight feature) list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
 
 ### Input area
 
