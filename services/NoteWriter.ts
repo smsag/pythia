@@ -129,7 +129,7 @@ type: "LLM Note"
 template: ${conversation.templateId ?? "none"}
 created: ${todayISO()}
 conversation: "${this.resumeUri(conversation)}"
-context_notes:
+context:
 ${contextList}
 ---
 
