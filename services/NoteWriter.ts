@@ -101,10 +101,10 @@ export class NoteWriter {
 		return toAdd.length > 0 ? base + toAdd.join("\n") + "\n" : base;
 	}
 
-	/** Deep link that reopens Pythia with this conversation active when clicked. */
-	private resumeUri(conversation: Conversation): string {
+	/** Deep link that reopens Pythia with the given conversation active when clicked. */
+	private resumeUri(conversationId: string): string {
 		const vaultName = encodeURIComponent(this.app.vault.getName());
-		return `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${encodeURIComponent(conversation.id)}`;
+		return `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
 	}
 
 	async saveSummaryNote(
@@ -128,7 +128,7 @@ export class NoteWriter {
 type: "LLM Note"
 template: ${conversation.templateId ?? "none"}
 created: ${todayISO()}
-source: "${this.resumeUri(conversation)}"
+source: "${this.resumeUri(conversation.id)}"
 context:
 ${contextList}
 ---
@@ -151,7 +151,7 @@ ${summary}${outputSection}
 		const noteContent = `---
 type: "LLM Note"
 created: ${todayISO()}
-source: "${this.resumeUri(conversation)}"
+source: "${this.resumeUri(conversation.id)}"
 ---
 
 ## Favorites summary
@@ -204,9 +204,7 @@ ${summary}
 		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
 
 		if (!current && conversationId) {
-			const vaultName = encodeURIComponent(this.app.vault.getName());
-			const resumeUri = `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${conversationId}`;
-			const frontmatter = `---\npythia: "${resumeUri}"\n---\n\n`;
+			const frontmatter = `---\nsource: "${this.resumeUri(conversationId)}"\n---\n\n`;
 			await this.writeNote(frontmatter + block, filePath);
 		} else {
 			await this.writeNote(current ? current + "\n\n" + block : block, filePath);

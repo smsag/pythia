@@ -330,8 +330,9 @@ describe("appendConversationSlice", () => {
 		const messages = [{ id: "m1", role: "user" as const, content: "hi", timestamp: "" }];
 		await writer.appendConversationSlice(messages, "Log/new.md", "conv-123");
 		const content = vault.content("Log/new.md");
-		expect(content).toContain("pythia:");
-		expect(content).toContain("conv-123");
+		expect(content).toContain("source:");
+		expect(content).toContain("obsidian://pythia?vault=");
+		expect(content).toContain("cmd=resume&id=conv-123");
 	});
 
 	it("does not add frontmatter when file already has content", async () => {
@@ -339,7 +340,7 @@ describe("appendConversationSlice", () => {
 		const messages = [{ id: "m1", role: "user" as const, content: "hi", timestamp: "" }];
 		await writer.appendConversationSlice(messages, "Log/existing.md", "conv-123");
 		const content = vault.content("Log/existing.md");
-		expect(content).not.toContain("pythia:");
+		expect(content).not.toContain("source:");
 	});
 });
 
