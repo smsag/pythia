@@ -225,16 +225,23 @@ describe("updateSettings", () => {
 // ── saveSummaryNote ───────────────────────────────────────────────────────────
 
 describe("saveSummaryNote", () => {
-	it("creates a note under the conversations folder with pythia frontmatter", async () => {
+	it("creates a note with an LLM Note type, a resume link, and no pythia tag", async () => {
 		const conv = {
 			id: "c1", name: "My Chat", createdAt: "", updatedAt: "",
 			systemPrompt: "", contextNotes: [], resumeMode: "full" as const,
 			provider: "anthropic" as const, model: "m", messages: [],
 		};
 		const path = await writer.saveSummaryNote(conv, "Great conversation.");
+		const content = vault.content(path);
 		expect(path).toContain("Conversations");
-		expect(vault.content(path)).toContain("type: pythia-conversation");
-		expect(vault.content(path)).toContain("Great conversation.");
+		expect(content).toContain('type: "LLM Note"');
+		expect(content).not.toContain("pythia-conversation");
+		expect(content).not.toContain("tags:");
+		// Frontmatter link back to the conversation (deep link opens Pythia active).
+		expect(content).toContain("conversation:");
+		expect(content).toContain("obsidian://pythia?vault=");
+		expect(content).toContain("cmd=resume&id=c1");
+		expect(content).toContain("Great conversation.");
 	});
 
 	it("sanitises illegal characters in the conversation name", async () => {
@@ -269,6 +276,28 @@ describe("saveSummaryNote", () => {
 		};
 		const path = await writer.saveSummaryNote(conv, "summary", "Output/result.md");
 		expect(vault.content(path)).toContain("[[Output/result.md]]");
+	});
+});
+
+// ── saveFavoritesSummaryNote ──────────────────────────────────────────────────
+
+describe("saveFavoritesSummaryNote", () => {
+	it("writes an LLM Note with a resume link and no pythia tag", async () => {
+		const conv = {
+			id: "fav-1", name: "My Chat", createdAt: "", updatedAt: "",
+			systemPrompt: "", contextNotes: [], resumeMode: "full" as const,
+			provider: "anthropic" as const, model: "m", messages: [],
+		};
+		const path = await writer.saveFavoritesSummaryNote(conv, "Key learnings…");
+		const content = vault.content(path);
+		expect(path).toContain("-favorites.md");
+		expect(content).toContain('type: "LLM Note"');
+		expect(content).not.toContain("pythia-favorites");
+		expect(content).not.toContain("tags:");
+		expect(content).toContain("conversation:");
+		expect(content).toContain("obsidian://pythia?vault=");
+		expect(content).toContain("cmd=resume&id=fav-1");
+		expect(content).toContain("Key learnings…");
 	});
 });
 

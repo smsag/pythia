@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — saved-summary frontmatter (#104): `type: "LLM Note"` (was `pythia-conversation`/`pythia-favorites`), a clickable `conversation:` resume deep link, and no `tags: [pythia]` (`NoteWriter`).*
 *Updated: 2026-08-23 — summary UX rework (#103): top-of-conversation "Speisekarte" cards, long-press Send menu as sole generator, removed pinned panel / sparkle / favorites modal / auto-generation paths.*
 *Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
 *Updated: 2026-08-23 — summarize-favorites feature (#101): per-conversation favorites synthesis (Key learnings + Action items) via `buildFavoritesDigest` + `generateFavoritesSummary`, modal preview, navigator ✦ + command triggers.*
@@ -807,3 +808,18 @@ Both summaries are now surfaced identically as collapsible cards at the top of t
 - Nav Favorites label links to the favorites card (greyed when none); per-highlight jumps unchanged.
 - Resume-summary/fork still populate `summaryText` (may surface a card) — accepted.
 - No new pure helpers; existing 333 tests still pass.
+
+---
+
+## Change (#104) — saved-summary note frontmatter, 2026-08-23
+
+### #104 — LLM Note type + resume link, no pythia tag
+
+**Files:** `services/NoteWriter.ts`, `tests/NoteWriter.test.ts` — **Resolved**
+
+When a user saves a summary (conversation or favorites) from a summary card, the written note's frontmatter now:
+- uses `type: "LLM Note"` (was `pythia-conversation` / `pythia-favorites`),
+- carries a clickable `conversation:` deep link (`obsidian://pythia?vault=…&cmd=resume&id=<id>`, via new `resumeUri` helper — same URI pattern as `appendConversationSlice`) that reopens Pythia with the conversation active,
+- no longer writes `tags: [pythia]`.
+
+Tests updated for `saveSummaryNote` and a new `saveFavoritesSummaryNote` case.

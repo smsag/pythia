@@ -101,6 +101,12 @@ export class NoteWriter {
 		return toAdd.length > 0 ? base + toAdd.join("\n") + "\n" : base;
 	}
 
+	/** Deep link that reopens Pythia with this conversation active when clicked. */
+	private resumeUri(conversation: Conversation): string {
+		const vaultName = encodeURIComponent(this.app.vault.getName());
+		return `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${encodeURIComponent(conversation.id)}`;
+	}
+
 	async saveSummaryNote(
 		conversation: Conversation,
 		summary: string,
@@ -119,12 +125,12 @@ export class NoteWriter {
 			: "";
 
 		const noteContent = `---
-type: pythia-conversation
+type: "LLM Note"
 template: ${conversation.templateId ?? "none"}
 created: ${todayISO()}
+conversation: "${this.resumeUri(conversation)}"
 context_notes:
 ${contextList}
-tags: [pythia]
 ---
 
 ## Summary
@@ -143,10 +149,9 @@ ${summary}${outputSection}
 		const filePath = `${this.settings.conversationsFolder}/${todayISO()}-${safeName}-favorites.md`;
 
 		const noteContent = `---
-type: pythia-favorites
-conversation: ${conversation.name}
+type: "LLM Note"
 created: ${todayISO()}
-tags: [pythia]
+conversation: "${this.resumeUri(conversation)}"
 ---
 
 ## Favorites summary
