@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-23 — ADR-055 (summarize a conversation's favorites into Key learnings + Action items: reuse the utility-call path via `generateFavoritesSummary`, a pure `buildFavoritesDigest` input builder, modal preview with a result cached on the conversation).*
+*Last updated: 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
+
+*Previously, 2026-08-23 — ADR-055 (summarize a conversation's favorites into Key learnings + Action items: reuse the utility-call path via `generateFavoritesSummary`, a pure `buildFavoritesDigest` input builder, modal preview with a result cached on the conversation).*
 
 *Previously, 2026-08-23 — ADR-054 (favorites become highlighted text spans: `Favorite` model carries the selected `text`/`occurrenceIndex`; `ui/HighlightPainter.ts` re-finds and paints spans after every render; per-message star replaced by a selection-toolbar action; legacy favorites migrated by `normalizeFavorites`).*
 
@@ -747,3 +749,23 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** auto-save straight to a note (no preview/iteration); a pinned in-conversation panel (more UI surface, duplicates the resume-summary bar); a new dedicated summary prompt constant (the inline-literal style matches the other `generate*` methods); cross-conversation "summarize all favorites everywhere" (out of scope — the request was per-conversation).
 
 **Consequence:** Favorites become a learning + action artifact. Cost is one main-model call per generation (cached thereafter). `Conversation` gains an optional `favoritesSummary` field (no migration — optional). New i18n keys added to both locales.
+
+---
+
+### ADR-056 — Highlight-favorite interaction fixes
+
+**Status:** Active
+
+**Context:** Three issues were reported against the 1.27.0 highlight-favorites UX: (1) tapping a highlight did nothing — there was no way to unfavorite by tapping; (2) removing/interacting with a highlight could make its (or others') color vanish; (3) jumping to a favorite from the navigator required two taps.
+
+**Decision:**
+
+1. **Tap to unfavorite.** A tap (collapsed selection) inside a `mark.p-highlight` (`onMessageClick`) selects the highlight's whole span via `rangeForHighlight` and opens the selection toolbar with the favorite button relabeled to **Unfavorite** (`setFavButtonMode`, driven by `tappedFavId`). A *dragged* selection never removes a highlight — it always creates a new favorite (overlaps allowed) — so the old "drag anchored inside a mark removes it" heuristic was deleted. This separates the two intents by gesture.
+
+2. **Surgical removal.** `removeFavorite` now calls `removeHighlightById` (unwraps only the target favorite's marks) instead of the clear-all-then-repaint path, so removing one highlight can never drop another's color, and a failed `findRange` can't erase a surviving highlight. `repaintFavorites` also clears stale marks when a message's last favorite is gone.
+
+3. **Single-tap jump.** The navigator item handler closes the popover first, then defers `scrollToFavorite` to `requestAnimationFrame`; `scrollToFavorite` expands a collapsed long bubble (`expandBubbleIfCollapsed`) before measuring so the mark is laid out. This removes the stale/zero-offset first measurement that caused the two-tap behavior.
+
+4. **Toolbar order** reordered to Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox, per user preference.
+
+**Consequence:** Tapping a highlight is now the primary unfavorite gesture; highlight colors are stable under add/remove; navigator jumps land on the first tap. New i18n key `unfavoriteBtn`; new pure helpers `removeHighlightById`/`rangeForHighlight` are unit-tested.

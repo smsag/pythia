@@ -54,6 +54,7 @@ const en = {
 	inboxBtn:    "Save to inbox",
 	forkBtn:     "Fork",
 	favoriteBtn: "Favorite",
+	unfavoriteBtn: "Unfavorite",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",

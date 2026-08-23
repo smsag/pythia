@@ -56,6 +56,7 @@ const de: Strings = {
 	inboxBtn: "Im Posteingang speichern",
 	forkBtn:  "Verzweigen",
 	favoriteBtn: "Favorit",
+	unfavoriteBtn: "Entfernen",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",

@@ -115,9 +115,11 @@ export class NavigatorController {
 					item.addEventListener("mousedown", (e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						this.d.scrollToFavorite(fav);
+						// Close the popover first, then jump on the next frame so the
+						// scroll is measured after layout settles (fixes the two-tap jump).
 						navigatorEl.removeClass("open");
 						document.removeEventListener("mousedown", onOutside, true);
+						requestAnimationFrame(() => this.d.scrollToFavorite(fav));
 					});
 					del.addEventListener("mousedown", (e) => {
 						e.preventDefault();

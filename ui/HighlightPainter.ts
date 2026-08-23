@@ -149,9 +149,8 @@ export function paintRange(range: Range, favId: string): void {
 	}
 }
 
-/** Remove every highlight <mark> under `root`, restoring the original text nodes. */
-export function clearHighlights(root: HTMLElement): void {
-	const marks = root.querySelectorAll<HTMLElement>(`mark.${HIGHLIGHT_CLASS}`);
+/** Unwrap a set of <mark> elements, restoring their text nodes into the DOM. */
+function unwrapMarks(marks: NodeListOf<HTMLElement> | HTMLElement[]): void {
 	marks.forEach((mark) => {
 		const parent = mark.parentNode;
 		if (!parent) return;
@@ -159,6 +158,38 @@ export function clearHighlights(root: HTMLElement): void {
 		parent.removeChild(mark);
 		parent.normalize();
 	});
+}
+
+/** Remove every highlight <mark> under `root`, restoring the original text nodes. */
+export function clearHighlights(root: HTMLElement): void {
+	unwrapMarks(root.querySelectorAll<HTMLElement>(`mark.${HIGHLIGHT_CLASS}`));
+}
+
+/**
+ * Remove only the highlight marks for a single favorite, leaving every other
+ * highlight untouched. Surgical alternative to clear-all-then-repaint, so removing
+ * one favorite can never drop another's color.
+ */
+export function removeHighlightById(root: HTMLElement, favId: string): void {
+	unwrapMarks(
+		root.querySelectorAll<HTMLElement>(`mark.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`)
+	);
+}
+
+/**
+ * Build a Range spanning all mark fragments of a single favorite (a highlight may
+ * be split across several <mark> elements at element boundaries). Returns null
+ * when no marks for `favId` are present. Does not touch the selection.
+ */
+export function rangeForHighlight(root: HTMLElement, favId: string): Range | null {
+	const marks = root.querySelectorAll<HTMLElement>(
+		`mark.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`
+	);
+	if (marks.length === 0) return null;
+	const range = document.createRange();
+	range.setStartBefore(marks[0]);
+	range.setEndAfter(marks[marks.length - 1]);
+	return range;
 }
 
 /**

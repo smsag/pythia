@@ -20,6 +20,9 @@ import {
 	computeOccurrenceIndex,
 	repaintBody,
 	flashHighlight,
+	clearHighlights,
+	removeHighlightById,
+	rangeForHighlight,
 } from "./ui/HighlightPainter";
 import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -98,6 +101,10 @@ export class PythiaSidebarView extends ItemView {
 	private inputEl!: HTMLTextAreaElement;
 	private sendBtn!: HTMLButtonElement;
 	private selectionToolbar!: HTMLElement;
+	private favBtn!: HTMLButtonElement;
+	/** When set, the current selection came from tapping this favorite's highlight,
+	 *  so the toolbar's favorite button acts as "Unfavorite" targeting this id. */
+	private tappedFavId: string | null = null;
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 
@@ -471,6 +478,8 @@ export class PythiaSidebarView extends ItemView {
 			action();
 		};
 
+		// Toolbar order (left → right): Copy, Favorite/Unfavorite, Branch (Fork),
+		// Insert into note, Save to inbox.
 		const copyBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("copyBtn"),
@@ -478,6 +487,22 @@ export class PythiaSidebarView extends ItemView {
 		});
 		copyBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onCopySelection(); });
 		copyBtn.addEventListener("touchend", makeSelTouch(() => this.onCopySelection()));
+
+		this.favBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("favoriteBtn"),
+			attr: { title: t("favoriteBtn") },
+		});
+		this.favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
+		this.favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
+
+		const forkBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("forkBtn"),
+			attr: { title: t("forkBtn") },
+		});
+		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
+		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -495,22 +520,6 @@ export class PythiaSidebarView extends ItemView {
 		inboxBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onSaveToInbox(); });
 		inboxBtn.addEventListener("touchend", makeSelTouch(() => this.onSaveToInbox()));
 
-		const forkBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
-			text: t("forkBtn"),
-			attr: { title: t("forkBtn") },
-		});
-		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
-		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
-
-		const favBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
-			text: t("favoriteBtn"),
-			attr: { title: t("favoriteBtn") },
-		});
-		favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
-		favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
-
 		{
 			let selDebounce: ReturnType<typeof setTimeout> | null = null;
 			this.onSelectionChange = () => {
@@ -527,6 +536,11 @@ export class PythiaSidebarView extends ItemView {
 		);
 		this.registerDomEvent(this.messagesEl, "touchend", () =>
 			setTimeout(() => this.handleSelectionChange(), 300)
+		);
+		// Tapping a highlight (no drag) selects its whole span and surfaces the
+		// toolbar with the favorite button acting as "Unfavorite".
+		this.registerDomEvent(this.messagesEl, "click", (e) =>
+			this.onMessageClick(e)
 		);
 
 		const indexWrap = messagesWrapper.createDiv({ cls: "p-index-wrap" });
@@ -1151,34 +1165,62 @@ export class PythiaSidebarView extends ItemView {
 		const favs = this.activeConversation?.favorites?.filter(
 			(f) => f.messageId === messageId
 		);
-		if (!favs || favs.length === 0) return;
+		if (!favs || favs.length === 0) {
+			// No favorites left for this message — strip any stale marks.
+			clearHighlights(body);
+			return;
+		}
 		repaintBody(body, favs);
 	}
 
 	/**
-	 * Favorite the current text selection as a highlighted span. Toggles off if the
-	 * selection sits inside an existing highlight. Selections must stay within a
+	 * Tap (no drag) inside a highlight → select its whole span and open the toolbar
+	 * with the favorite button acting as "Unfavorite". A dragged selection is left
+	 * alone here so it flows through the normal add path.
+	 */
+	private onMessageClick(e: MouseEvent): void {
+		this.tappedFavId = null;
+		const sel = window.getSelection();
+		// Only react to a plain tap — a drag leaves a non-collapsed selection.
+		if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
+		const target = e.target instanceof Element ? e.target : null;
+		const mark = target?.closest("mark.p-highlight");
+		const favId = mark?.getAttribute("data-fav-id");
+		if (!favId) return;
+
+		const row = mark?.closest("[data-msg-id]") as HTMLElement | null;
+		const body = row?.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
+		if (!body) return;
+		const range = rangeForHighlight(body, favId);
+		if (!range || !sel) return;
+
+		this.tappedFavId = favId;
+		sel.removeAllRanges();
+		sel.addRange(range);
+		this.handleSelectionChange();
+	}
+
+	/**
+	 * Favorite the current text selection as a highlighted span, or unfavorite the
+	 * tapped highlight when `tappedFavId` is set. Selections must stay within a
 	 * single message; cross-message selections are rejected.
 	 */
 	private async onFavoriteSelection(): Promise<void> {
 		const conv = this.activeConversation;
 		const sel = window.getSelection();
 		const text = sel?.toString().trim() ?? "";
-		if (!conv || !sel || sel.rangeCount === 0 || !text) return;
 
-		// If the selection lands inside an existing highlight, treat the action as
-		// "remove that favorite" — the replacement for the old star toggle.
-		const anchorEl = sel.anchorNode instanceof Element
-			? sel.anchorNode
-			: sel.anchorNode?.parentElement;
-		const existingMark = anchorEl?.closest("mark.p-highlight");
-		const existingId = existingMark?.getAttribute("data-fav-id");
-		if (existingId) {
+		// Tapped an existing highlight → remove exactly that one.
+		if (this.tappedFavId) {
+			const id = this.tappedFavId;
+			this.tappedFavId = null;
 			this.selectionToolbar.style.display = "none";
 			window.getSelection()?.removeAllRanges();
-			await this.removeFavorite(existingId);
+			await this.removeFavorite(id);
 			return;
 		}
+
+		if (!conv || !sel || sel.rangeCount === 0 || !text) return;
 
 		// Resolve the single owning message. Reject selections that span messages.
 		const startEl = sel.anchorNode instanceof Element
@@ -1229,13 +1271,14 @@ export class PythiaSidebarView extends ItemView {
 		const fav = conv.favorites?.find((f) => f.id === favId);
 		conv.favorites = (conv.favorites ?? []).filter((f) => f.id !== favId);
 		await this.plugin.conversationStore.save(conv);
-		// Repaint the affected message so the removed highlight disappears.
+		// Surgically unwrap only this favorite's marks so other highlights in the
+		// same message are never affected (no clear-all-then-repaint).
 		if (fav) {
 			const row = this.messagesEl.querySelector(
 				`[data-msg-id="${fav.messageId}"]`
 			) as HTMLElement | null;
 			const body = row?.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
-			if (body) this.repaintFavorites(body, fav.messageId);
+			if (body) removeHighlightById(body, favId);
 		}
 	}
 
@@ -1270,35 +1313,56 @@ export class PythiaSidebarView extends ItemView {
 		) as HTMLElement | null;
 		if (!row) return;
 
-		const TOP_MARGIN = 8;
-		const scrollToOffsetTop = (top: number) =>
-			this.messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
+		// Expand a collapsed long bubble first so the highlight mark is laid out and
+		// its offset is measurable (otherwise the first jump reads a zero offset).
+		this.expandBubbleIfCollapsed(row);
 
-		// 1) Painted mark — the common case.
-		const mark = row.querySelector<HTMLElement>(
-			`mark.p-highlight[data-fav-id="${fav.id}"]`
-		);
-		if (mark) {
-			scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
-			flashHighlight(fav.id, row);
-			return;
-		}
+		// Defer measurement to the next frame so any layout change (bubble expand,
+		// navigator popover close) has settled before we read offsets.
+		requestAnimationFrame(() => {
+			const TOP_MARGIN = 8;
+			const scrollToOffsetTop = (top: number) =>
+				this.messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
 
-		// 2) Re-find the text (highlight not yet painted, e.g. collapsed bubble).
-		if (fav.text) {
-			const body = row.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
-			const range = findRange(body, fav.text, fav.occurrenceIndex ?? 0);
-			if (range) {
-				const rect = range.getBoundingClientRect();
-				const containerRect = this.messagesEl.getBoundingClientRect();
-				const top = this.messagesEl.scrollTop + (rect.top - containerRect.top);
-				scrollToOffsetTop(top);
+			// 1) Painted mark — the common case.
+			const mark = row.querySelector<HTMLElement>(
+				`mark.p-highlight[data-fav-id="${fav.id}"]`
+			);
+			if (mark) {
+				scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
+				flashHighlight(fav.id, row);
 				return;
 			}
-		}
 
-		// 3) Legacy / not-found — scroll to the message top.
-		scrollToOffsetTop(row.offsetTop - this.messagesEl.offsetTop);
+			// 2) Re-find the text (e.g. legacy favorite, or mark not painted).
+			if (fav.text) {
+				const body = row.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
+				const range = findRange(body, fav.text, fav.occurrenceIndex ?? 0);
+				if (range) {
+					const rect = range.getBoundingClientRect();
+					const containerRect = this.messagesEl.getBoundingClientRect();
+					const top = this.messagesEl.scrollTop + (rect.top - containerRect.top);
+					scrollToOffsetTop(top);
+					return;
+				}
+			}
+
+			// 3) Legacy / not-found — scroll to the message top.
+			scrollToOffsetTop(row.offsetTop - this.messagesEl.offsetTop);
+		});
+	}
+
+	/** Expand a collapsed long user bubble in `row`, syncing its toggle icon. */
+	private expandBubbleIfCollapsed(row: HTMLElement): void {
+		const bubble = row.querySelector<HTMLElement>(".p-bubble.p-bubble-collapsed");
+		if (!bubble) return;
+		bubble.removeClass("p-bubble-collapsed");
+		bubble.addClass("p-bubble-expanded");
+		const toggle = row.querySelector<HTMLElement>(".p-bubble-toggle");
+		if (toggle) {
+			setIcon(toggle, "chevron-up");
+			toggle.title = t("showLess");
+		}
 	}
 
 	private updateModelBadge(): void {
@@ -1877,16 +1941,30 @@ export class PythiaSidebarView extends ItemView {
 
 		if (!text || !sel || sel.rangeCount === 0) {
 			this.selectionToolbar.style.display = "none";
+			this.tappedFavId = null;
+			this.setFavButtonMode(false);
 			return;
 		}
 
 		const range = sel.getRangeAt(0);
 		if (!this.messagesEl.contains(range.commonAncestorContainer)) {
 			this.selectionToolbar.style.display = "none";
+			this.tappedFavId = null;
+			this.setFavButtonMode(false);
 			return;
 		}
 
+		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
+		this.setFavButtonMode(this.tappedFavId !== null);
 		this.selectionToolbar.style.display = "flex";
+	}
+
+	/** Relabel the toolbar's favorite button between "Favorite" and "Unfavorite". */
+	private setFavButtonMode(unfavorite: boolean): void {
+		if (!this.favBtn) return;
+		const label = unfavorite ? t("unfavoriteBtn") : t("favoriteBtn");
+		this.favBtn.setText(label);
+		this.favBtn.title = label;
 	}
 
 	private onCopySelection(): void {

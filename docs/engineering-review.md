@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
 *Updated: 2026-08-23 — summarize-favorites feature (#101): per-conversation favorites synthesis (Key learnings + Action items) via `buildFavoritesDigest` + `generateFavoritesSummary`, modal preview, navigator ✦ + command triggers.*
 *Updated: 2026-08-23 — favorite highlights feature (#100): span-level favorites with persistent `mark.p-highlight`, `ui/HighlightPainter.ts`, legacy migration, new happy-dom DOM tests.*
 *Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
@@ -772,3 +773,19 @@ Turns a conversation's favorites (the user's hand-picked insights) into a synthe
 - Triggers: ✦ in the navigator Favorites header + `Pythia: Summarize favorites` command (also in the command hub).
 - Note sink: `NoteWriter.saveFavoritesSummaryNote` (mirrors `saveSummaryNote`).
 - Tests: 6 `buildFavoritesDigest` cases (order, span-vs-legacy, context inclusion, missing-message skip, empty → "").
+
+---
+
+## Bug fixes (#102) — highlight-favorite interactions, 2026-08-23
+
+Three issues reported against the 1.27.0 highlight-favorites UX.
+
+### #102 — Tap-to-unfavorite, color stability, single-tap jump
+
+**Files:** `sidebar.ts`, `ui/HighlightPainter.ts`, `ui/NavigatorController.ts`, `locales/en.ts`, `locales/de.ts`, `tests/HighlightPainter.test.ts` — **Resolved**
+
+- **Couldn't unfavorite by tapping:** tap inside a highlight now selects its span (`onMessageClick` + `rangeForHighlight`) and shows the toolbar with the button relabeled **Unfavorite** (`setFavButtonMode`/`tappedFavId`). Drag always adds (overlaps allowed); the old drag-anchored-in-mark auto-remove was removed.
+- **Highlight color removed:** removal is surgical (`removeHighlightById` unwraps only the target's marks) instead of clear-all-then-repaint, so other highlights are never dropped; `repaintFavorites` clears the last stale mark.
+- **Two-tap jump:** navigator closes the popover then defers `scrollToFavorite` to `requestAnimationFrame`, which expands a collapsed bubble (`expandBubbleIfCollapsed`) before measuring.
+- **Toolbar reordered:** Copy · Favorite/Unfavorite · Branch · Insert · Inbox.
+- Tests: 6 new `removeHighlightById` / `rangeForHighlight` cases (happy-dom).

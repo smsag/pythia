@@ -6,6 +6,8 @@ import {
 	paintRange,
 	clearHighlights,
 	repaintBody,
+	removeHighlightById,
+	rangeForHighlight,
 } from "../ui/HighlightPainter";
 
 function makeBody(html: string): HTMLElement {
@@ -151,6 +153,59 @@ describe("HighlightPainter", () => {
 			repaintBody(body, favs);
 			expect(body.querySelectorAll("mark.p-highlight").length).toBe(1);
 			expect(body.textContent).toBe("alpha beta gamma");
+		});
+	});
+
+	describe("removeHighlightById", () => {
+		it("unwraps only the target favorite, leaving others intact", () => {
+			const body = makeBody("<p>alpha beta gamma delta</p>");
+			repaintBody(body, [
+				{ id: "a", text: "alpha", occurrenceIndex: 0 },
+				{ id: "b", text: "gamma delta", occurrenceIndex: 0 },
+			]);
+			removeHighlightById(body, "a");
+			expect(body.querySelector('mark[data-fav-id="a"]')).toBeNull();
+			expect(body.querySelector('mark[data-fav-id="b"]')).not.toBeNull();
+			expect(body.textContent).toBe("alpha beta gamma delta");
+		});
+
+		it("removes all fragments of a boundary-crossing highlight", () => {
+			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
+			paintRange(findRange(body, "brave world")!, "x");
+			expect(body.querySelectorAll('mark[data-fav-id="x"]').length).toBeGreaterThanOrEqual(2);
+			removeHighlightById(body, "x");
+			expect(body.querySelector("mark.p-highlight")).toBeNull();
+			expect(body.textContent).toBe("hello brave world");
+		});
+
+		it("is a no-op for an unknown id", () => {
+			const body = makeBody("<p>alpha beta</p>");
+			repaintBody(body, [{ id: "a", text: "alpha", occurrenceIndex: 0 }]);
+			removeHighlightById(body, "nope");
+			expect(body.querySelector('mark[data-fav-id="a"]')).not.toBeNull();
+		});
+	});
+
+	describe("rangeForHighlight", () => {
+		it("returns a range spanning a single-fragment highlight", () => {
+			const body = makeBody("<p>alpha beta gamma</p>");
+			paintRange(findRange(body, "beta")!, "a");
+			const range = rangeForHighlight(body, "a");
+			expect(range).not.toBeNull();
+			expect(range!.toString()).toBe("beta");
+		});
+
+		it("spans all fragments of a boundary-crossing highlight", () => {
+			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
+			paintRange(findRange(body, "brave world")!, "x");
+			const range = rangeForHighlight(body, "x");
+			expect(range).not.toBeNull();
+			expect(range!.toString()).toBe("brave world");
+		});
+
+		it("returns null when the favorite has no marks", () => {
+			const body = makeBody("<p>alpha beta</p>");
+			expect(rangeForHighlight(body, "missing")).toBeNull();
 		});
 	});
 });

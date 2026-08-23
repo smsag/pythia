@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-23 — summarize favorites: the navigator Favorites section header gains a ✦ `.p-nav-action` trigger (shown only when favorites exist) that synthesizes the highlights into a Key-learnings + Action-items summary, shown in `FavoritesSummaryModal` (rendered Markdown, scrollable `.pythia-fav-summary-body`, Copy / Save-to-note / Regenerate). See ADR-055.*
+*Last updated: 2026-08-23 — highlight-favorite interaction fixes: tapping a highlight now selects its span and shows the toolbar with a **Unfavorite** button; removal is surgical (`removeHighlightById`) so other highlights keep their color; navigator jump lands on the first tap (deferred measure + collapsed-bubble expand); selection toolbar reordered to Copy · Favorite/Unfavorite · Branch · Insert · Inbox. See ADR-056.*
+
+*Previously, 2026-08-23 — summarize favorites: the navigator Favorites section header gains a ✦ `.p-nav-action` trigger (shown only when favorites exist) that synthesizes the highlights into a Key-learnings + Action-items summary, shown in `FavoritesSummaryModal` (rendered Markdown, scrollable `.pythia-fav-summary-body`, Copy / Save-to-note / Regenerate). See ADR-055.*
 
 *Previously, 2026-08-23 — favorite highlights: per-message ☆ star replaced by span-level favoriting from the selection toolbar. Favorited text is wrapped in `mark.p-highlight` and re-painted after every render (`ui/HighlightPainter.ts`); navigator "Starred" section renamed "Favorites", lists each highlight by its first words with a hover ✕ delete, and jumps to the span start. See ADR-054.*
 
@@ -177,7 +179,9 @@ Only rendered when the message carries `tokenUsage`; no per-message star button 
 
 ### Favorite highlights (`mark.p-highlight`)
 
-Any text selection inside a message can be favorited via the **Favorite** button in the selection toolbar (alongside Copy / Insert / Inbox / Fork). The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render). Selecting text that already sits inside a highlight toggles that favorite off. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
+Any text selection inside a message can be favorited via the **Favorite** button in the selection toolbar. Toolbar order (left → right): **Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox**. The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render).
+
+**Unfavorite:** *tapping* a highlight (no drag) selects its whole span (`rangeForHighlight`) and opens the toolbar with the Favorite button relabeled **Unfavorite**; pressing it removes exactly that highlight (`removeHighlightById` — surgical, never touches other highlights). A *dragged* selection always creates a new favorite, even overlapping an existing highlight — dragging never removes one. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
 
 ### Chapter navigator (`#`)
 
