@@ -11,6 +11,7 @@ export interface NavigatorDeps {
 	scrollToMessage(id: string): void;
 	scrollToFavorite(fav: Favorite): void;
 	removeFavorite(favId: string): Promise<void>;
+	summarizeFavorites(): void;
 }
 
 export class NavigatorController {
@@ -39,13 +40,15 @@ export class NavigatorController {
 			label: string,
 			defaultCollapsed: boolean,
 			count: number,
-			buildItems: (body: HTMLElement) => void
+			buildItems: (body: HTMLElement) => void,
+			headerAction?: (header: HTMLElement) => void
 		): HTMLElement => {
 			const section = navigatorEl.createDiv({ cls: "p-nav-section" });
 			const header = section.createDiv({ cls: "p-nav-group-label p-nav-group-header" });
 			const chevron = header.createEl("span", { cls: "p-nav-chevron" });
 			header.createEl("span", { text: label });
 			if (count > 0) header.createEl("span", { cls: "p-nav-count", text: String(count) });
+			if (headerAction) headerAction(header);
 			const body = section.createDiv({ cls: "p-nav-section-body" });
 
 			if (defaultCollapsed) {
@@ -130,6 +133,21 @@ export class NavigatorController {
 					});
 				}
 			}
+		}, (header) => {
+			// ✦ Summarize favorites — synthesize highlights into learnings + actions.
+			if (favs.length === 0) return;
+			const btn = header.createEl("span", {
+				cls: "p-nav-action",
+				text: "✦",
+				attr: { title: t("summarizeFavoritesTooltip") },
+			});
+			btn.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				navigatorEl.removeClass("open");
+				document.removeEventListener("mousedown", onOutside, true);
+				this.d.summarizeFavorites();
+			});
 		});
 
 		// ── Chapters ─────────────────────────────────────────────────

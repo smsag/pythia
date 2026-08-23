@@ -20,6 +20,7 @@ export interface Conversation {
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryUpdatedAt?: string; // ISO 8601 timestamp of last summary generation
 	summaryNote?: string;     // vault path to the human-readable summary note
+	favoritesSummary?: { text: string; updatedAt: string }; // last generated favorites synthesis
 	messages: Message[];
 	favorites?: Favorite[];   // starred assistant messages
 	savedNotePath?: string;           // vault path last saved to via save button

@@ -18,6 +18,7 @@ const de: Strings = {
 	chaptersSection: "Kapitel",
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
+	summarizeFavoritesTooltip: "Favoriten zusammenfassen",
 	navNoForks:      "Noch keine Abzweigungen",
 	navNoFavorites:  "Noch keine Markierungen",
 	navNoChapters:   "Noch keine Kapitel",
@@ -87,6 +88,12 @@ const de: Strings = {
 	noMessagesToSummarize:     "Keine Nachrichten zum Zusammenfassen.",
 	generatingSummary:         "Zusammenfassung wird erstellt…",
 	summaryFailed:             "Zusammenfassung fehlgeschlagen: {{error}}",
+	noFavoritesToSummarize:    "Keine Favoriten zum Zusammenfassen. Markiere zuerst Text und favorisiere ihn.",
+	generatingFavoritesSummary:"Favoriten werden zusammengefasst…",
+	favoritesSummaryFailed:    "Favoriten-Zusammenfassung fehlgeschlagen: {{error}}",
+	favoritesSummaryTitle:     "Favoriten-Zusammenfassung",
+	saveToNoteBtn:             "In Notiz speichern",
+	regenerateBtn:             "Neu erzeugen",
 	fileNotFound:              "Datei nicht gefunden: {{path}}",
 
 	// ── API error notices ─────────────────────────────────────────────────────
@@ -111,6 +118,7 @@ const de: Strings = {
 	cmdResumeConversation:             "Gespräch fortsetzen",
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
+	cmdSummarizeFavorites:             "Favoriten zusammenfassen",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 
@@ -122,6 +130,7 @@ const de: Strings = {
 	cmdNewConversationFromClipboardDesc:     "Gespräch mit Zwischenablage-Inhalt als erste Nachricht starten",
 	cmdNewConversationFromPromptDesc:        "Prompt mit KI optimieren, bevor das Gespräch beginnt",
 	cmdBrowseConversationsDesc:              "Alle gespeicherten Gespräche suchen und öffnen",
+	cmdSummarizeFavoritesDesc:              "Die Favoriten dieses Gesprächs zu Kernerkenntnissen und To-dos verdichten",
 	cmdBrowseFavoritesDesc:                  "Zu markierten Nachrichten aus allen Gesprächen springen",
 	cmdReloadConversationsDesc:              "Neu synchronisieren, falls Gespräche extern bearbeitet wurden",
 

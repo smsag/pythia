@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-23 — favorite highlights: per-message ☆ star replaced by span-level favoriting from the selection toolbar. Favorited text is wrapped in `mark.p-highlight` and re-painted after every render (`ui/HighlightPainter.ts`); navigator "Starred" section renamed "Favorites", lists each highlight by its first words with a hover ✕ delete, and jumps to the span start. See ADR-054.*
+*Last updated: 2026-08-23 — summarize favorites: the navigator Favorites section header gains a ✦ `.p-nav-action` trigger (shown only when favorites exist) that synthesizes the highlights into a Key-learnings + Action-items summary, shown in `FavoritesSummaryModal` (rendered Markdown, scrollable `.pythia-fav-summary-body`, Copy / Save-to-note / Regenerate). See ADR-055.*
+
+*Previously, 2026-08-23 — favorite highlights: per-message ☆ star replaced by span-level favoriting from the selection toolbar. Favorited text is wrapped in `mark.p-highlight` and re-painted after every render (`ui/HighlightPainter.ts`); navigator "Starred" section renamed "Favorites", lists each highlight by its first words with a hover ✕ delete, and jumps to the span start. See ADR-054.*
 
 *Previously, 2026-07-17 — code-block/blockquote design-system fix: `.p-code-frame` background unified to `var(--background-secondary)` (matching the tool-call chip/optimizer-result "framed box" convention), new blockquote styling, new persistent code-type icon, copy-confirmed icon color changed from green to accent. See ADR-046.*
 
@@ -181,7 +183,11 @@ Any text selection inside a message can be favorited via the **Favorite** button
 
 Trigger button: 24×24 px, `--color-accent`, monospace, bottom-right of the message area. Popover 200 px wide, opens upward. Closes on outside click (listener tracked as `navigatorOutsideCleanup`, removed on view close and conversation switch).
 
-Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. Legacy message-level favorites (pre-highlight feature) list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
+Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. When favorites exist, the Favorites header also carries a ✦ `.p-nav-action` (accent-colored, right-aligned after the count) that opens the favorites summary. Legacy message-level favorites (pre-highlight feature) list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
+
+### Favorites summary modal (`FavoritesSummaryModal`)
+
+Opened by the navigator ✦ action or the `Pythia: Summarize favorites` command. Uses the shared `.pythia-modal` chrome; body is `.pythia-fav-summary-body` (rendered Markdown via `MarkdownRenderer`, `max-height: 60vh`, internal scroll). Footer buttons (`.pythia-modal-buttons`): Copy, Save to note, and Regenerate (`.mod-cta`, shows the `.p-sparkle-loading` state while regenerating). The generated text is cached on `Conversation.favoritesSummary` so reopening is instant; Regenerate overwrites it.
 
 ### Input area
 

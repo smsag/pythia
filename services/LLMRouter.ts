@@ -61,6 +61,10 @@ export class LLMRouter {
 		return this.get(conversation).generateSummaryWithTitle(conversation);
 	}
 
+	generateFavoritesSummary(conversation: Conversation): Promise<string> {
+		return this.get(conversation).generateFavoritesSummary(conversation);
+	}
+
 	generateChapterName(content: string, provider: Provider): Promise<string> {
 		return this.providers[provider].generateChapterName(content);
 	}

@@ -121,11 +121,23 @@ export default class PythiaPlugin extends Plugin {
 					action: () => this.cmdBrowseFavorites(),
 				},
 				{
+					label: t("cmdSummarizeFavorites"),
+					desc:   t("cmdSummarizeFavoritesDesc"),
+					action: () => this.cmdSummarizeFavorites(),
+				},
+				{
 					label: t("cmdReloadConversations"),
 					desc:   t("cmdReloadConversationsDesc"),
 					action: () => this.reloadFromDisk(),
 				},
 			]).open(),
+		});
+
+		this.addCommand({
+			id: "summarize-favorites",
+			name: t("cmdSummarizeFavorites"),
+			icon: "bot",
+			callback: () => this.cmdSummarizeFavorites(),
 		});
 
 		this.addCommand({
@@ -833,6 +845,11 @@ export default class PythiaPlugin extends Plugin {
 				view.scrollToMessage(messageId);
 			}
 		).open();
+	}
+
+	private async cmdSummarizeFavorites(): Promise<void> {
+		const view = await this.activateView();
+		await view.summarizeFavorites();
 	}
 
 	private async cmdResumeConversation(): Promise<void> {

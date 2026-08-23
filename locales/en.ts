@@ -16,6 +16,7 @@ const en = {
 	chaptersSection: "Chapters",
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
+	summarizeFavoritesTooltip: "Summarize favorites",
 	navNoForks:      "No forks yet",
 	navNoFavorites:  "No highlights yet",
 	navNoChapters:   "No chapters yet",
@@ -85,6 +86,12 @@ const en = {
 	noMessagesToSummarize:     "No messages to summarize.",
 	generatingSummary:         "Generating summary…",
 	summaryFailed:             "Summary failed: {{error}}",
+	noFavoritesToSummarize:    "No favorites to summarize. Highlight text and favorite it first.",
+	generatingFavoritesSummary:"Summarizing favorites…",
+	favoritesSummaryFailed:    "Favorites summary failed: {{error}}",
+	favoritesSummaryTitle:     "Favorites summary",
+	saveToNoteBtn:             "Save to note",
+	regenerateBtn:             "Regenerate",
 	fileNotFound:              "File not found: {{path}}",
 
 	// ── API error notices (sendMessage) ────────────────────────────────────────
@@ -109,6 +116,7 @@ const en = {
 	cmdResumeConversation:             "Resume conversation",
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
+	cmdSummarizeFavorites:             "Summarize favorites",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
 
@@ -120,6 +128,7 @@ const en = {
 	cmdNewConversationFromClipboardDesc:     "Start a conversation with clipboard content as first message",
 	cmdNewConversationFromPromptDesc:        "Optimize a prompt with AI before starting a conversation",
 	cmdBrowseConversationsDesc:              "Search and open any saved conversation",
+	cmdSummarizeFavoritesDesc:              "Synthesize this conversation's favorites into key learnings and action items",
 	cmdBrowseFavoritesDesc:                  "Jump to starred messages across conversations",
 	cmdReloadConversationsDesc:              "Force-sync if conversations were edited externally",
 

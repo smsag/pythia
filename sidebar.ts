@@ -32,6 +32,7 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
+import { FavoritesSummaryModal } from "./suggest/FavoritesSummaryModal";
 import { MODEL_ABBREVIATIONS } from "./models/knownModels";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -356,6 +357,7 @@ export class PythiaSidebarView extends ItemView {
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			scrollToFavorite: (fav) => this.scrollToFavorite(fav),
 			removeFavorite: (favId) => this.removeFavorite(favId),
+			summarizeFavorites: () => void this.summarizeFavorites(),
 		});
 	}
 
@@ -1530,6 +1532,58 @@ export class PythiaSidebarView extends ItemView {
 			this.toolbarSparkleBtn.disabled = false;
 			this.summaryRefreshBtnEl?.removeClass("p-sparkle-loading");
 			if (this.summaryRefreshBtnEl) this.summaryRefreshBtnEl.disabled = false;
+		}
+	}
+
+	/** Generate (or re-open) the favorites synthesis and show it in a modal. */
+	async summarizeFavorites(): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv || (conv.favorites?.length ?? 0) === 0) {
+			new Notice(t("noFavoritesToSummarize"));
+			return;
+		}
+
+		const openModal = () => {
+			new FavoritesSummaryModal(
+				this.app,
+				conv.favoritesSummary?.text ?? "",
+				() => this.runFavoritesSummary(conv),
+				async (text) => {
+					try {
+						const path = await this.plugin.noteWriter.saveFavoritesSummaryNote(conv, text);
+						new Notice(t("savedToPath", { path }));
+					} catch (e) {
+						new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
+					}
+				},
+			).open();
+		};
+
+		// Instant reopen when a summary already exists.
+		if (conv.favoritesSummary?.text) {
+			openModal();
+			return;
+		}
+
+		const text = await this.runFavoritesSummary(conv);
+		if (text) openModal();
+	}
+
+	/** Run the LLM favorites-summary call, persist the result, and return it. */
+	private async runFavoritesSummary(conv: Conversation): Promise<string> {
+		const notice = new Notice(t("generatingFavoritesSummary"), 0);
+		try {
+			const text = await this.plugin.llmRouter.generateFavoritesSummary(conv);
+			if (text) {
+				conv.favoritesSummary = { text, updatedAt: new Date().toISOString() };
+				await this.plugin.conversationStore.save(conv);
+			}
+			return text;
+		} catch (e) {
+			new Notice(t("favoritesSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
+			return "";
+		} finally {
+			notice.hide();
 		}
 	}
 

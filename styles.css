@@ -920,6 +920,24 @@ mark.p-highlight.p-highlight-flash {
   opacity: 0.7;
 }
 
+/* ✦ Summarize-favorites action in the Favorites section header. */
+.p-nav-action {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.p-nav-count + .p-nav-action {
+  margin-left: var(--s2);
+}
+.p-nav-action:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
 .p-nav-item {
   display: flex;
   align-items: baseline;
@@ -1136,6 +1154,17 @@ body.is-mobile .p-textarea {
   font-size: 0.82em;
   color: var(--text-faint);
   margin-top: 10px;
+}
+
+/* Favorites summary modal — scrollable rendered-markdown body. */
+.pythia-fav-summary-modal {
+  width: min(680px, 92vw);
+}
+.pythia-fav-summary-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  color: var(--text-normal);
+  line-height: 1.5;
 }
 
 /* ── Tool call chips ─────────────────────────────────────────── */

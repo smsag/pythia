@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — summarize-favorites feature (#101): per-conversation favorites synthesis (Key learnings + Action items) via `buildFavoritesDigest` + `generateFavoritesSummary`, modal preview, navigator ✦ + command triggers.*
 *Updated: 2026-08-23 — favorite highlights feature (#100): span-level favorites with persistent `mark.p-highlight`, `ui/HighlightPainter.ts`, legacy migration, new happy-dom DOM tests.*
 *Updated: 2026-07-09 — bug-fix/reliability/observability/maintainability/performance audit: #51–#55, #57–#72, #75, #76 resolved (broken o4-mini model, cross-conversation streaming race, OpenAI token undercounting, abort-during-tool-call crash, retry gap for 5xx/529, unbounded tool-call loop, conversation resurrection on delete, stuck error bubble, optimizer stale-response race, debugLog observability convention, three silent-catch fixes, six performance quick wins, BaseProvider extraction, duplicate suggest modals merged). #56 (classifyApiError heuristic) deliberately not done — see ADR-030. #73, #74 (note-chunk caching, InlineSuggest candidate cap) added as backlog.*
 *Updated: 2026-07-09 — second-round audit (post-1.21.1): #77–#83 resolved (second delete-guard gap via the conversation switcher, resume-mode race with concurrent deletion, eviction crash on malformed `updatedAt`, eviction only protecting one sidebar leaf, silent multi-line frontmatter corruption, deep-link double-decode, summary-generation stale-conversation race). Remaining medium/low findings from this audit and pre-existing architectural backlog (#3, #10, #50, #73, #74) reviewed and explicitly deferred, not silently dropped.*
@@ -754,3 +755,20 @@ Favorites were whole-message references toggled by a per-message ☆ star. This 
 - Tests: 17 `HighlightPainter` cases (happy-dom) + 5 migration cases. New `happy-dom` dev dependency for DOM-based UI tests.
 
 **Backlog note:** `sidebar.ts` remains excluded from vitest coverage (per #98's rationale) — the new highlight logic that lives there (`onFavoriteSelection`, `scrollToFavorite`) is exercised only indirectly via the extracted, tested `HighlightPainter` helpers.
+
+---
+
+## New Feature (#101) — summarize a conversation's favorites, 2026-08-23
+
+Turns a conversation's favorites (the user's hand-picked insights) into a synthesis that increases retention and yields actionable outcomes.
+
+### #101 — Summarize favorites
+
+**Files:** `models/types.ts`, `services/messageUtils.ts`, `services/BaseProvider.ts`, `services/LLMProvider.ts`, `services/LLMRouter.ts`, `services/NoteWriter.ts`, `suggest/FavoritesSummaryModal.ts` (new), `ui/NavigatorController.ts`, `sidebar.ts`, `main.ts`, `locales/en.ts`, `locales/de.ts`, `tests/messageUtils.test.ts`, `styles.css` — **Resolved**
+
+- `buildFavoritesDigest(conversation)` (pure, unit-tested): pairs each favorite with its preceding user question, ordered by message position; `fav.text` for spans, full content for legacy favorites; `""` when empty.
+- `generateFavoritesSummary` on `BaseProvider` (routed via `LLMRouter`/`LLMProvider`): conversation model, 1536 max tokens, fixed `## Key learnings` + `## Action items` (checkbox) format.
+- `FavoritesSummaryModal`: rendered Markdown + Copy / Save-to-note / Regenerate; result cached on `Conversation.favoritesSummary`.
+- Triggers: ✦ in the navigator Favorites header + `Pythia: Summarize favorites` command (also in the command hub).
+- Note sink: `NoteWriter.saveFavoritesSummaryNote` (mirrors `saveSummaryNote`).
+- Tests: 6 `buildFavoritesDigest` cases (order, span-vs-legacy, context inclusion, missing-message skip, empty → "").

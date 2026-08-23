@@ -9,7 +9,9 @@ import {
 	langSuffix,
 	LANG_LABELS,
 	arrayBufferToBase64,
+	buildFavoritesDigest,
 } from "../services/messageUtils";
+import type { Conversation, Message, Favorite } from "../models/types";
 
 // ── parseTitleAndSummary ──────────────────────────────────────────────────────
 
@@ -325,5 +327,74 @@ describe("arrayBufferToBase64", () => {
 
 	it("returns an empty string for an empty buffer", () => {
 		expect(arrayBufferToBase64(new ArrayBuffer(0))).toBe("");
+	});
+});
+
+// ── buildFavoritesDigest ───────────────────────────────────────────────────────
+
+describe("buildFavoritesDigest", () => {
+	const msg = (id: string, role: "user" | "assistant", content: string, chapterName?: string): Message =>
+		({ id, role, content, timestamp: "2026-01-01T00:00:00.000Z", ...(chapterName ? { chapterName } : {}) });
+
+	const fav = (messageId: string, extra: Partial<Favorite> = {}): Favorite =>
+		({ id: `f-${messageId}-${extra.text ?? "x"}`, messageId, name: "n", ...extra });
+
+	const makeConv = (messages: Message[], favorites: Favorite[]): Conversation =>
+		({
+			id: "c", name: "c", createdAt: "", updatedAt: "", systemPrompt: "",
+			contextNotes: [], resumeMode: "full", provider: "anthropic",
+			model: "m", messages, favorites,
+		});
+
+	it("returns empty string when there are no favorites", () => {
+		const conv = makeConv([msg("m1", "user", "hi")], []);
+		expect(buildFavoritesDigest(conv)).toBe("");
+	});
+
+	it("uses fav.text as the insight and includes the preceding user question", () => {
+		const conv = makeConv(
+			[msg("u1", "user", "What is X?", "About X"), msg("a1", "assistant", "X is a long answer about many things.")],
+			[fav("a1", { text: "X is a long answer" })],
+		);
+		const digest = buildFavoritesDigest(conv);
+		expect(digest).toContain("Insight: X is a long answer");
+		expect(digest).toContain("Context (question): About X");
+	});
+
+	it("falls back to full message content for legacy favorites with no text", () => {
+		const conv = makeConv(
+			[msg("u1", "user", "Q?"), msg("a1", "assistant", "Full assistant content.")],
+			[fav("a1")], // no text → legacy
+		);
+		const digest = buildFavoritesDigest(conv);
+		expect(digest).toContain("Insight: Full assistant content.");
+	});
+
+	it("orders favorites by their message position in the conversation", () => {
+		const conv = makeConv(
+			[
+				msg("u1", "user", "first"), msg("a1", "assistant", "answer one"),
+				msg("u2", "user", "second"), msg("a2", "assistant", "answer two"),
+			],
+			// Provided out of order — should be reordered a1 before a2.
+			[fav("a2", { text: "answer two" }), fav("a1", { text: "answer one" })],
+		);
+		const digest = buildFavoritesDigest(conv);
+		expect(digest.indexOf("answer one")).toBeLessThan(digest.indexOf("answer two"));
+	});
+
+	it("skips favorites whose messageId no longer resolves", () => {
+		const conv = makeConv(
+			[msg("a1", "assistant", "kept")],
+			[fav("a1", { text: "kept" }), fav("deleted", { text: "gone" })],
+		);
+		const digest = buildFavoritesDigest(conv);
+		expect(digest).toContain("kept");
+		expect(digest).not.toContain("gone");
+	});
+
+	it("returns empty string when every favorite references a missing message", () => {
+		const conv = makeConv([msg("a1", "assistant", "x")], [fav("ghost", { text: "y" })]);
+		expect(buildFavoritesDigest(conv)).toBe("");
 	});
 });
