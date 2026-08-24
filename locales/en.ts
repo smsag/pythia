@@ -92,6 +92,8 @@ const en = {
 	saveToNoteBtn:             "Save to note",
 	menuSummarizeConversation: "Summarize conversation",
 	menuSummarizeFavorites:    "Summarize favorites",
+	summarizeForkBtn:          "Summarize fork",
+	openForkBtn:               "Open fork →",
 	fileNotFound:              "File not found: {{path}}",
 
 	// ── API error notices (sendMessage) ────────────────────────────────────────

@@ -25,9 +25,12 @@ export function buildSystemPrompt(conversation: Conversation): string {
 		`<${SYSTEM_PROMPT_TAG}>\n${promptText}\n</${SYSTEM_PROMPT_TAG}>`
 	);
 
-	if (conversation.summaryText) {
+	// A fork carries its source's summary as context in `forkedFromSummary`; a
+	// conversation's own `summaryText` (once it has one) takes precedence.
+	const priorSummary = conversation.summaryText ?? conversation.forkedFromSummary;
+	if (priorSummary) {
 		parts.push(
-			`<${PREVIOUS_SUMMARY_TAG}>\n${conversation.summaryText}\n</${PREVIOUS_SUMMARY_TAG}>`
+			`<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
 		);
 	}
 

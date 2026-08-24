@@ -12,6 +12,7 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
+*Updated: 2026-08-23 — fork branch-back (#105): forked snippets accent-highlighted in the source, tap-to-expand inline fork summary + open/return links, source summary decoupled into `forkedFromSummary`.*
 *Updated: 2026-08-23 — saved-summary frontmatter (#104): `type: "LLM Note"` (was `pythia-conversation`/`pythia-favorites`), a clickable `conversation:` resume deep link, and no `tags: [pythia]` (`NoteWriter`).*
 *Updated: 2026-08-23 — summary UX rework (#103): top-of-conversation "Speisekarte" cards, long-press Send menu as sole generator, removed pinned panel / sparkle / favorites modal / auto-generation paths.*
 *Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
@@ -823,3 +824,19 @@ When a user saves a summary (conversation or favorites) from a summary card, the
 - no longer writes `tags: [pythia]`.
 
 Tests updated for `saveSummaryNote` and a new `saveFavoritesSummaryNote` case.
+
+---
+
+## New Feature (#105) — fork branch-back, 2026-08-23
+
+Closes the fork↔source loop so users don't lose track of side-explorations.
+
+### #105 — Fork summaries anchored at their origin snippet
+
+**Files:** `models/types.ts`, `main.ts`, `services/ContextBuilder.ts`, `ui/HighlightPainter.ts`, `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts`, tests — **Resolved**
+
+- Source paints each forked snippet as `mark.p-fork-origin` (accent) via `repaintForkOrigins`; `paintRange` generalized with class/attr params.
+- Tapping expands an inline `.p-fork-anchor` (fork's favorites → conversation summary → on-demand "Summarize fork") + "Open fork"; fork wins over favorites; one open at a time.
+- Fork banner link returns to + expands the origin anchor (`revealForkOrigin`).
+- `forkedFromOccurrenceIndex` captured at fork time; source summary moved to `forkedFromSummary` (context via `ContextBuilder`, `summaryText ?? forkedFromSummary`), decoupled from the fork's own summary.
+- Tests: painter class/attr + `repaintForkOrigins`/`rangeForForkOrigin` (happy-dom); `ContextBuilder` fallback/precedence. 341 total pass.

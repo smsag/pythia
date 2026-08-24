@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-23 — summaries reworked into top-of-conversation "Speisekarte" cards: both conversation and favorites summaries render as collapsible in-scroll cards (`.p-summary-card`) generated only via a long-press on the Send button (Obsidian `Menu`); cards auto-collapse when scrolled out of view; the pinned summary panel, input-toolbar sparkle, panel refresh icon, navigator ✦ action, and `FavoritesSummaryModal` are removed; nav Favorites label links to the favorites card. See ADR-057.*
+*Last updated: 2026-08-23 — fork "branch-back": in the source, a forked snippet is highlighted in `--color-accent` (`mark.p-fork-origin`, distinct from favorites); tapping it expands an inline quote (`.p-fork-anchor`) right after the snippet with the fork's summary + "Open fork". The fork's "Forked from" link returns to and expands that anchor. See ADR-058.*
+
+*Previously, 2026-08-23 — summaries reworked into top-of-conversation "Speisekarte" cards: both conversation and favorites summaries render as collapsible in-scroll cards (`.p-summary-card`) generated only via a long-press on the Send button (Obsidian `Menu`); cards auto-collapse when scrolled out of view; the pinned summary panel, input-toolbar sparkle, panel refresh icon, navigator ✦ action, and `FavoritesSummaryModal` are removed; nav Favorites label links to the favorites card. See ADR-057.*
 
 *Previously, 2026-08-23 — highlight-favorite interaction fixes: tapping a highlight now selects its span and shows the toolbar with a **Unfavorite** button; removal is surgical (`removeHighlightById`) so other highlights keep their color; navigator jump lands on the first tap (deferred measure + collapsed-bubble expand); selection toolbar reordered to Copy · Favorite/Unfavorite · Branch · Insert · Inbox. See ADR-056.*
 

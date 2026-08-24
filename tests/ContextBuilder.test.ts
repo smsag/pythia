@@ -76,6 +76,17 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("<previous_conversation_summary>\nWe discussed X.\n</previous_conversation_summary>");
 	});
 
+	it("falls back to forkedFromSummary when the conversation has no own summary", () => {
+		const result = buildSystemPrompt(baseConv({ forkedFromSummary: "Source said Y." }));
+		expect(result).toContain("<previous_conversation_summary>\nSource said Y.\n</previous_conversation_summary>");
+	});
+
+	it("prefers the conversation's own summaryText over forkedFromSummary", () => {
+		const result = buildSystemPrompt(baseConv({ summaryText: "Own summary.", forkedFromSummary: "Source said Y." }));
+		expect(result).toContain("Own summary.");
+		expect(result).not.toContain("Source said Y.");
+	});
+
 	it("adds a grounding instruction only when notes are attached", () => {
 		const withoutNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
 		const withNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi", contextNotes: ["Note.md"] }));

@@ -8,6 +8,8 @@ import {
 	repaintBody,
 	removeHighlightById,
 	rangeForHighlight,
+	repaintForkOrigins,
+	rangeForForkOrigin,
 } from "../ui/HighlightPainter";
 
 function makeBody(html: string): HTMLElement {
@@ -206,6 +208,52 @@ describe("HighlightPainter", () => {
 		it("returns null when the favorite has no marks", () => {
 			const body = makeBody("<p>alpha beta</p>");
 			expect(rangeForHighlight(body, "missing")).toBeNull();
+		});
+	});
+
+	describe("paintRange with a custom class/attr", () => {
+		it("wraps in the given class and data attribute", () => {
+			const body = makeBody("<p>alpha beta gamma</p>");
+			paintRange(findRange(body, "beta")!, "f1", "p-fork-origin", "data-fork-id");
+			const mark = body.querySelector("mark.p-fork-origin");
+			expect(mark).not.toBeNull();
+			expect(mark!.getAttribute("data-fork-id")).toBe("f1");
+			expect(body.querySelector("mark.p-highlight")).toBeNull();
+		});
+	});
+
+	describe("repaintForkOrigins", () => {
+		it("paints fork-origin marks and coexists with favorite highlights", () => {
+			const body = makeBody("<p>alpha beta gamma delta</p>");
+			repaintBody(body, [{ id: "fav", text: "alpha", occurrenceIndex: 0 }]);
+			repaintForkOrigins(body, [{ id: "fork1", text: "gamma delta", occurrenceIndex: 0 }]);
+			expect(body.querySelector('mark.p-highlight[data-fav-id="fav"]')).not.toBeNull();
+			expect(body.querySelector('mark.p-fork-origin[data-fork-id="fork1"]')).not.toBeNull();
+			expect(body.textContent).toBe("alpha beta gamma delta");
+		});
+
+		it("clears prior fork marks and skips text that is absent", () => {
+			const body = makeBody("<p>alpha beta</p>");
+			repaintForkOrigins(body, [{ id: "f1", text: "beta", occurrenceIndex: 0 }]);
+			expect(body.querySelectorAll("mark.p-fork-origin").length).toBe(1);
+			repaintForkOrigins(body, [{ id: "f2", text: "missing", occurrenceIndex: 0 }]);
+			expect(body.querySelector('mark[data-fork-id="f1"]')).toBeNull();
+			expect(body.querySelector("mark.p-fork-origin")).toBeNull();
+		});
+	});
+
+	describe("rangeForForkOrigin", () => {
+		it("spans a multi-fragment fork snippet", () => {
+			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
+			repaintForkOrigins(body, [{ id: "f1", text: "brave world", occurrenceIndex: 0 }]);
+			const range = rangeForForkOrigin(body, "f1");
+			expect(range).not.toBeNull();
+			expect(range!.toString()).toBe("brave world");
+		});
+
+		it("returns null when absent", () => {
+			const body = makeBody("<p>alpha</p>");
+			expect(rangeForForkOrigin(body, "nope")).toBeNull();
 		});
 	});
 });

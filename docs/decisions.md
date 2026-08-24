@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
+*Last updated: 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
+
+*Previously, 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
 
 *Previously, 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
 
@@ -789,3 +791,21 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a pinned band that never scrolls away (doesn't match "collapses when it leaves the view"); keeping the modal alongside the card (two surfaces again); decoupling resume/fork summaries into a context-only field (larger change, breaks nothing by leaving them).
 
 **Consequence:** One consistent surface and one generation gesture. Summaries no longer appear unbidden on close or note-injection. i18n: added `menuSummarizeConversation`, `menuSummarizeFavorites`, `conversationSummaryTitle`; removed `summarizeTooltip`, `regenerateSummaryTooltip`, `summarizeFavoritesTooltip`, `regenerateBtn`, and the auto-save keys.
+
+---
+
+### ADR-058 — Fork "branch-back": fork summaries anchored at their origin snippet in the source
+
+**Status:** Active
+
+**Context:** A fork is a separate conversation. When a user branches off a snippet to get an explanation, that explanation is stranded in the fork and they lose track of it while reading the source. The connection existed only as a thin fork banner (in the fork) and the navigator's Forks list.
+
+**Decision:** Make the source the hub.
+1. **Accent origin marks.** For every child fork (`getAll().filter(forkedFromId === source.id && forkedFromMessageId === msg.id)`), the source paints `forkedFromSelection` inside the branch message as `mark.p-fork-origin` in `--color-accent` — the same highlight-painter machinery as favorites (`paintRange` gained `className`/`dataAttr` params; `repaintForkOrigins`), a different class + `data-fork-id`. `forkedFromOccurrenceIndex` (captured at fork time via `computeOccurrenceIndex`) disambiguates repeated snippets.
+2. **Inline anchor on tap.** Tapping a fork-origin mark inserts a quote block (`.p-fork-anchor`) immediately after the snippet showing one summary + "Open fork". Summary precedence: the fork's `favoritesSummary` → its `summaryText` → a "Summarize fork" button that generates on demand (`generateSummary(fork)`, cached on the fork). Only one anchor open at a time. Fork-origin taps take precedence over favorite highlights (the fork wins).
+3. **Return path.** The fork's "Forked from" banner link opens the source, scrolls to the snippet, and expands its anchor (`revealForkOrigin`).
+4. **Decouple summaries.** `cmdForkConversation` previously copied the source summary into the fork's `summaryText`, which post-card-rework mislabeled it as the fork's own summary. It now stores it in `forkedFromSummary`; `ContextBuilder.buildSystemPrompt` injects `summaryText ?? forkedFromSummary`, preserving the fork's source-context while keeping its own summary genuinely its own for the branch-back display.
+
+**Alternatives rejected:** a top "Forks" card (not tied to reading position); auto-summarizing every fork (cost, and reuse-existing was preferred); making the fork's `summaryText` do double duty (the conflation this fixes).
+
+**Consequence:** Reading the source, the branch points are visible and expandable in place; the fork↔source loop is closed both ways. Scope: one level of forking. New i18n: `summarizeForkBtn`, `openForkBtn`.

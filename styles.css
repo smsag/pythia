@@ -765,6 +765,48 @@ mark.p-highlight.p-highlight-flash {
   100% { background: var(--text-highlight-bg); }
 }
 
+/* ── Fork-origin marks + inline anchor ───────────────────────── */
+/* Snippet in the source that spawned a fork — accent-tinted, distinct from
+   favorite highlights; tapping it reveals the fork's summary anchor. */
+mark.p-fork-origin {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent); /* preferred */
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+mark.p-fork-origin.p-highlight-flash {
+  animation: pythia-hl-flash 1.2s ease-out;
+}
+
+.p-fork-anchor {
+  display: block;
+  margin: var(--s1) 0;
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--color-accent);
+  background: var(--background-secondary);
+  border-radius: 4px;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+.p-fork-anchor-body { margin-bottom: var(--s2); }
+.p-fork-anchor-body > :first-child { margin-top: 0; }
+.p-fork-anchor-body > :last-child { margin-bottom: 0; }
+.p-fork-anchor-action,
+.p-fork-anchor-open {
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  padding: 2px var(--s2);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.p-fork-anchor-open {
+  color: var(--color-accent);
+  margin-left: var(--s2);
+}
+
 /* ── Delete-exchange preview ─────────────────────────────────── */
 .p-msg-user.p-del-preview,
 .p-msg-ai.p-del-preview {

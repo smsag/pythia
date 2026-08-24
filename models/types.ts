@@ -28,6 +28,8 @@ export interface Conversation {
 	forkedFromId?: string;            // ID of the conversation this was forked from
 	forkedFromMessageId?: string;     // ID of the source message within that conversation
 	forkedFromSelection?: string;     // The text selected when the fork was created
+	forkedFromOccurrenceIndex?: number; // which occurrence of the selection within the source message
+	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 }
