@@ -22,6 +22,7 @@ export const PREVIOUS_SUMMARY_TAG = "previous_conversation_summary";
 export const ATTACHED_NOTE_TAG = "attached_note";
 export const ATTACHED_NOTE_PATH_ATTR = "path";
 export const ATTACHED_NOTE_EXCERPT_ATTR = "excerpt";
+export const RECENT_CONTEXT_TAG = "recent_context";
 
 export const TITLE_MARKER = "TITLE";
 export const SUMMARY_MARKER = "SUMMARY";

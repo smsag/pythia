@@ -7,6 +7,8 @@ export interface PythiaSettings {
 	openaiSecretName: string;
 	/** Secret ID referencing the Mistral API key in Obsidian SecretStorage. */
 	mistralSecretName: string;
+	/** Secret ID referencing the Tavily web-search API key in Obsidian SecretStorage. */
+	searchSecretName: string;
 	/** Which provider to use when creating new conversations. */
 	defaultProvider: Provider;
 	/** Default Anthropic model (used when template does not specify one). */
@@ -43,12 +45,17 @@ export interface PythiaSettings {
 	effort?: EffortLevel;
 	/** Warn when attached notes exceed this many estimated tokens. 0 = no limit. */
 	maxAttachedNotesTokens: number;
+	/** Default state of the per-conversation web-search "research" toggle for new conversations. */
+	webSearchDefault: boolean;
+	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
+	webSearchMaxResults: number;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
 	anthropicSecretName: "pythia-anthropic",
 	openaiSecretName: "pythia-openai",
 	mistralSecretName: "pythia-mistral",
+	searchSecretName: "pythia-tavily",
 	defaultProvider: "anthropic",
 	defaultAnthropicModel: "claude-sonnet-5",
 	defaultOpenAIModel: "gpt-4o",
@@ -68,4 +75,6 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	temperature: 0.7,
 	effort: "high",
 	maxAttachedNotesTokens: 8000,
+	webSearchDefault: false,
+	webSearchMaxResults: 5,
 };

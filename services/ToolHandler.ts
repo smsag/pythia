@@ -1,6 +1,26 @@
 import { NoteWriter } from "./NoteWriter";
+import type { WebSearchService } from "./WebSearchService";
 import type { ToolCall, ToolDefinition } from "../models/types";
 import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR } from "./promptConstants";
+
+const WEB_SEARCH_TOOL: ToolDefinition = {
+	name: "web_search",
+	description:
+		`Search the live web for current information. ` +
+		`Use this whenever the question concerns recent events, or facts that may have changed since your training cutoff, or anything you are not confident is up to date — prices, versions, people's current roles, news, dates, statistics. ` +
+		`Prefer searching over guessing when recency matters. ` +
+		`Results come back with source URLs — cite them inline in your answer.`,
+	inputSchema: {
+		type: "object",
+		properties: {
+			query: {
+				type: "string",
+				description: "The search query. Use natural language keywords, as you would type into a search engine.",
+			},
+		},
+		required: ["query"],
+	},
+};
 
 const CREATE_NOTE_TOOL = (defaultFolder: string): ToolDefinition => ({
 	name: "create_note",
@@ -70,25 +90,54 @@ const REWRITE_NOTE_TOOL: ToolDefinition = {
 	},
 };
 
-export function getToolDefinitions(defaultFolder: string, writeMode: "update" | "create" | "none" | "rewrite" | "all" = "all"): ToolDefinition[] {
-	if (writeMode === "none") return [];
-	if (writeMode === "rewrite") return [REWRITE_NOTE_TOOL];
-	if (writeMode === "update") return [PREPEND_NOTE_TOOL];
-	if (writeMode === "create") return [CREATE_NOTE_TOOL(defaultFolder)];
-	// "all" — inject all three tools; descriptions guide the LLM to pick the right one
-	return [CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL];
+export function getToolDefinitions(
+	defaultFolder: string,
+	writeMode: "update" | "create" | "none" | "rewrite" | "all" = "all",
+	researchEnabled = false
+): ToolDefinition[] {
+	const tools: ToolDefinition[] = [];
+
+	// Note-writing tools are gated by writeMode.
+	if (writeMode === "rewrite") tools.push(REWRITE_NOTE_TOOL);
+	else if (writeMode === "update") tools.push(PREPEND_NOTE_TOOL);
+	else if (writeMode === "create") tools.push(CREATE_NOTE_TOOL(defaultFolder));
+	else if (writeMode !== "none") {
+		// "all" — inject all three; descriptions guide the LLM to pick the right one
+		tools.push(CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL);
+	}
+
+	// web_search is read-only, so it's gated on the research flag rather than
+	// writeMode — it must be available even when writeMode is "none".
+	if (researchEnabled) tools.push(WEB_SEARCH_TOOL);
+
+	return tools;
 }
 
-const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note"]);
+const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search"]);
 
 export class ToolHandler {
-	constructor(private readonly writer: NoteWriter) {}
+	constructor(
+		private readonly writer: NoteWriter,
+		private readonly webSearch?: WebSearchService
+	) {}
 
 	async execute(call: ToolCall, allowedTools?: Set<string>): Promise<string> {
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		if (allowedTools && !allowedTools.has(call.name)) {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
 		}
+
+		// web_search is not a vault write — handle it before the path/content
+		// validation below, which is specific to the note-writing tools.
+		if (call.name === "web_search") {
+			if (!this.webSearch) return "Error: web search is not available.";
+			const query = call.input["query"];
+			if (typeof query !== "string" || !query.trim()) {
+				return "Error: 'query' must be a non-empty string.";
+			}
+			return this.webSearch.search(query);
+		}
+
 		const path = call.input["path"];
 		const content = call.input["content"];
 
@@ -123,11 +172,17 @@ export class ToolHandler {
 		return `Error: unknown tool "${call.name}"`;
 	}
 
-	static allowedToolNames(writeMode: string): Set<string> {
-		if (writeMode === "none") return new Set();
-		if (writeMode === "rewrite") return new Set(["rewrite_note"]);
-		if (writeMode === "update") return new Set(["prepend_note"]);
-		if (writeMode === "create") return new Set(["create_note"]);
-		return KNOWN_TOOLS;
+	static allowedToolNames(writeMode: string, researchEnabled = false): Set<string> {
+		const names = new Set<string>();
+		if (writeMode === "rewrite") names.add("rewrite_note");
+		else if (writeMode === "update") names.add("prepend_note");
+		else if (writeMode === "create") names.add("create_note");
+		else if (writeMode !== "none") {
+			names.add("create_note");
+			names.add("rewrite_note");
+			names.add("prepend_note");
+		}
+		if (researchEnabled) names.add("web_search");
+		return names;
 	}
 }

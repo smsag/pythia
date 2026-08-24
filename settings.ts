@@ -127,6 +127,47 @@ export class PythiaSettingTab extends PluginSettingTab {
 			refreshTempEffortAvailability
 		);
 
+		containerEl.createEl("h3", { text: t("webSearchSection") });
+
+		new Setting(containerEl)
+			.setName(t("searchKeyName"))
+			.setDesc(t("searchKeyDesc"))
+			.addComponent((el) =>
+				new SecretComponent(this.app, el)
+					.setValue(this.plugin.settings.searchSecretName)
+					.onChange(async (secretName) => {
+						await this.plugin.setSearchKey(secretName);
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("webSearchDefaultName"))
+			.setDesc(t("webSearchDefaultDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.webSearchDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.webSearchDefault = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("webSearchMaxResultsName"))
+			.setDesc(t("webSearchMaxResultsDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("5")
+					.setValue(String(this.plugin.settings.webSearchMaxResults))
+					.onChange(async (value) => {
+						const n = parseInt(value, 10);
+						if (!isNaN(n) && n >= 0) {
+							this.plugin.settings.webSearchMaxResults = n;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
 		containerEl.createEl("h3", { text: t("defaultsSection") });
 
 		new Setting(containerEl)

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
+*Last updated: 2026-08-24 — ADR-058 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
+
+*Previously, 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
 
 *Previously, 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
 
@@ -789,3 +791,21 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a pinned band that never scrolls away (doesn't match "collapses when it leaves the view"); keeping the modal alongside the card (two surfaces again); decoupling resume/fork summaries into a context-only field (larger change, breaks nothing by leaving them).
 
 **Consequence:** One consistent surface and one generation gesture. Summaries no longer appear unbidden on close or note-injection. i18n: added `menuSummarizeConversation`, `menuSummarizeFavorites`, `conversationSummaryTitle`; removed `summarizeTooltip`, `regenerateSummaryTooltip`, `summarizeFavoritesTooltip`, `regenerateBtn`, and the auto-save keys.
+
+---
+
+## ADR-058 — Client-executed web search ("research mode") over provider-native search
+
+**Status:** Active
+
+**Context:** Every model Pythia supports answers only from frozen training data, with no path to anything after its cutoff — unlike the "research modes" shipped by major providers. Pythia already grounds answers in vault notes but had no live-recency path. Two options existed: enable each provider's own server-side web-search tool (Anthropic `web_search`, OpenAI/Mistral built-ins), or run the search ourselves and feed results back through the existing tool loop.
+
+**Decision:** Run the search client-side (in the plugin) and expose it as a normal tool. A single `web_search` `ToolDefinition` in `ToolHandler.getToolDefinitions` flows into all three providers automatically (each already maps the shared `ToolDefinition[]` into its own SDK shape), and `ToolHandler.execute` routes `web_search` to a new `services/WebSearchService.ts` that queries **Tavily** via Obsidian's `requestUrl`. The result string is returned through the same `onToolCall → string` contract the note-writing tools use, so `BaseProvider`'s agentic loop feeds it back for a follow-up turn with zero loop changes. A per-conversation `researchMode` flag gates the tool (independent of `writeMode`, since search is read-only and must work even when `writeMode` is `"none"`); it is toggled from a `globe` button in the input toolbar and defaults from the `webSearchDefault` setting. When on, `ContextBuilder.buildSystemPrompt` injects a `<recent_context>` block with the current date and an instruction to prefer `web_search` for time-sensitive questions and cite source URLs.
+
+**Alternatives rejected:**
+- *Provider-native search tools* — three separate integrations with divergent shapes, per-provider result/citation formats, and no vault-side control over the backend. The client tool is one implementation behind the existing tool interface.
+- *`fetch` instead of `requestUrl`* — most search APIs (Tavily included) do not send CORS headers to a renderer origin; `requestUrl` runs in the Electron main process and bypasses that. The trade-off — a request in flight cannot be aborted — is acceptable for a ~1–3 s search.
+- *Always injecting the date block* — gated on `researchMode` instead, so plain conversations are unchanged (and two exact-equality prompt tests stay valid); the guidance is only meaningful when the tool is available.
+- *Caching fetched sources into the vault* — deferred; this pass is search + recency only.
+
+**Consequence:** Live recency for all three providers from one tool definition and one execution branch. `WebSearchService` never throws — a missing key, HTTP error, or network failure returns an `"Error: …"` string the model reads and recovers from, matching the note-tool convention. New settings: `searchSecretName` (Tavily key via Obsidian SecretStorage), `webSearchDefault`, `webSearchMaxResults` (caps results, bounding a research turn's token cost). `Conversation`/`PythiaTemplate` gained `researchMode`; templates can preset it via `research_mode` frontmatter. i18n: added `webSearchSection`, `searchKeyName`/`Desc`, `webSearchDefaultName`/`Desc`, `webSearchMaxResultsName`/`Desc`, `researchToggleTooltip`, `research{Enabled,Disabled,NoKey}Notice`, `searchingLabel`, `searchedLabel`, `searchFailedLabel`.

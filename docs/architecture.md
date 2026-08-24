@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-23 — summaries reworked into top-of-conversation cards (`sidebar.ts` `renderSummaryCards`/`buildSummaryCard`/`revealSummaryCard`, IntersectionObserver auto-collapse): both summaries render as collapsible cards prepended to `.p-chat`. Generation is button-only via a long-press on Send (`attachSendLongPress`/`openSummaryMenu`, a custom `.p-send-menu` popover above the button) — `onGenerateSummary`→`generateConversationSummary`, favorites via `summarizeFavorites`. Removed: the pinned summary panel + `updateSummaryBar`/`toggleSummaryPanel`/`refreshSummaryBar`, the toolbar sparkle, `FavoritesSummaryModal`, the `autoSaveSummary` setting and `main.ts` `generateAndInjectSummary` note-injection. Nav Favorites label links to the favorites card (`goToFavoritesSummary`). See ADR-057.*
+*Last updated: 2026-08-24 — web search "research mode" (`services/WebSearchService.ts`): a client-executed `web_search` tool exposed through the existing agentic loop. `ToolHandler.getToolDefinitions`/`allowedToolNames` gained a `researchEnabled` param (gates `web_search` independently of `writeMode` — read-only, available even when `writeMode` is `"none"`) and `execute` routes `web_search` to the injected `WebSearchService` (Tavily via Obsidian `requestUrl`, results returned as an "Error:"-on-failure string like the note tools). `ContextBuilder.buildSystemPrompt` injects a `<recent_context>` date/grounding block when `conversation.researchMode` is on; new `RECENT_CONTEXT_TAG` in `promptConstants.ts`. All three providers pass `conversation.researchMode` into `getToolDefinitions`. `sidebar.ts` added a `globe` toolbar toggle (`toggleResearchMode`/`updateResearchButton`) and a non-confirming "Searching…" chip branch in `onToolCall`. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; `Conversation`/`PythiaTemplate` gained `researchMode` (template `research_mode` frontmatter). See ADR-058.*
+
+*Previously, 2026-08-23 — summaries reworked into top-of-conversation cards (`sidebar.ts` `renderSummaryCards`/`buildSummaryCard`/`revealSummaryCard`, IntersectionObserver auto-collapse): both summaries render as collapsible cards prepended to `.p-chat`. Generation is button-only via a long-press on Send (`attachSendLongPress`/`openSummaryMenu`, a custom `.p-send-menu` popover above the button) — `onGenerateSummary`→`generateConversationSummary`, favorites via `summarizeFavorites`. Removed: the pinned summary panel + `updateSummaryBar`/`toggleSummaryPanel`/`refreshSummaryBar`, the toolbar sparkle, `FavoritesSummaryModal`, the `autoSaveSummary` setting and `main.ts` `generateAndInjectSummary` note-injection. Nav Favorites label links to the favorites card (`goToFavoritesSummary`). See ADR-057.*
 
 *Previously, 2026-08-23 — highlight-favorite interaction fixes (`sidebar.ts`, `ui/NavigatorController.ts`, `ui/HighlightPainter.ts`): tap-to-unfavorite (`onMessageClick` + `rangeForHighlight`, favorite button relabels via `setFavButtonMode`/`tappedFavId`); surgical removal (`removeHighlightById`) replaces clear-all-repaint so removing one highlight can't drop others; navigator jump deferred to `requestAnimationFrame` after popover close and expands a collapsed bubble first (`scrollToFavorite`/`expandBubbleIfCollapsed`). See ADR-056.*
 
@@ -43,13 +45,14 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/AnthropicService.ts` | 250 | Anthropic streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; retry, prompt caching, temperature/`output_config.effort`, PDF document-block splice, resumeMode gating |
 | `services/MistralService.ts` | 295 | Mistral streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; uses `MistralCore` + tree-shakeable standalone `chatComplete`/`chatStream` functions, temperature/`reasoningEffort`, resumeMode gating; PDFs unsupported (warns via Notice) |
 | `services/BaseProvider.ts` | 314 | Abstract base: shared fields, lifecycle, concrete `assistantLabel` (default "Assistant") + `resolveModel` (delegates to `resolveDefaultModelForProvider` via `providerType`), `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
-| `services/ToolHandler.ts` | 119 | Tool definitions + `ToolHandler` class (injected NoteWriter) |
+| `services/ToolHandler.ts` | 165 | Tool definitions (`create_note`/`rewrite_note`/`prepend_note` + read-only `web_search`) + `ToolHandler` class (injected NoteWriter + optional WebSearchService); `researchEnabled` gates `web_search` independently of `writeMode` |
+| `services/WebSearchService.ts` | 145 | Client-executed web search for research mode: queries Tavily via Obsidian `requestUrl`, formats results with source URLs, never throws (returns an "Error:" string on failure) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
 | `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 130 | Builds system prompt (incl. grounding instruction), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
-| `services/promptConstants.ts` | 65 | Shared literal constants: XML-ish prompt tags, `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |
+| `services/ContextBuilder.ts` | 147 | Builds system prompt (grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
+| `services/promptConstants.ts` | 66 | Shared literal constants: XML-ish prompt tags (incl. `RECENT_CONTEXT_TAG`), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |
 | `services/noteChunking.ts` | 95 | Heading-based chunking with paragraph-level fallback + relevance-filtered excerpting (always includes first chunk) for notes over 12K chars |
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking and `#` suggestion ranking |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
@@ -96,7 +99,8 @@ PythiaPlugin (main.ts)
 │   └── noteChunking / noteRelevance — heading-based excerpting for oversized notes
 ├── TemplateLoader             — discovers pythia_template notes in vault
 ├── NoteWriter                 — writes/updates vault notes
-├── ToolHandler                — wraps NoteWriter; executes tool calls from the LLM
+├── ToolHandler                — wraps NoteWriter + WebSearchService; executes tool calls from the LLM
+├── WebSearchService           — client-executed Tavily search for research mode (Obsidian requestUrl)
 └── PythiaSidebarView (sidebar.ts)
     ├── OptimizationController — inline prompt optimizer state + flow
     ├── NavigatorController    — # navigator popover
@@ -255,6 +259,22 @@ LLM requests tool_use / tool_calls during streamMessage
       → if confirmed: plugin.toolHandler.execute(call)
           → ToolHandler (holds NoteWriter) routes to writeNote / prependWithSeparator
           → chip updated to done (green border + clickable link) or error state
+```
+
+### Tool call (web search / research mode)
+
+Gated on `conversation.researchMode` (toolbar `globe` toggle, default from `webSearchDefault`). When on, each provider's `prepareStream` includes `web_search` in its tools via `getToolDefinitions(folder, writeMode, researchMode)`, and `ContextBuilder.buildSystemPrompt` prepends a `<recent_context>` block (current date + "prefer web_search for time-sensitive questions, cite URLs").
+
+```
+LLM requests web_search during streamMessage
+  → onToolCall(call) [sidebar.ts]
+      → read-only: NO confirm prompt; show live "Searching: <query>" chip
+      → plugin.toolHandler.execute(call, allowed incl. web_search)
+          → ToolHandler routes web_search (before path/content validation)
+            → WebSearchService.search(query) → Tavily via requestUrl
+            → formatted results string (answer + sources w/ URLs), or "Error:" string
+      → chip updated to done or error; result returned to LLM
+  → BaseProvider feeds the string back as a tool result → follow-up round → cited answer
 ```
 
 ### Attaching notes to a conversation

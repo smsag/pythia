@@ -46,6 +46,9 @@ const en = {
 	createdNote:   "✓ Created [[{{name}}]]",
 	rewrittenNote:  "✓ Overwrote [[{{name}}]]",
 	prependedNote:  "✓ Prepended to [[{{name}}]]",
+	searchingLabel:  "Searching the web: \"{{query}}\"",
+	searchedLabel:   "✓ Searched: \"{{query}}\"",
+	searchFailedLabel: "Web search failed",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:     "Copy",
@@ -65,6 +68,10 @@ const en = {
 	showChaptersTooltip: "Show chapters",
 	applyTemplateTooltip: "Apply template",
 	appliedTemplate:      "Applied template \"{{name}}\"",
+	researchToggleTooltip: "Web search (research mode)",
+	researchEnabledNotice:  "Web search on for this conversation",
+	researchDisabledNotice: "Web search off for this conversation",
+	researchNoKeyNotice:    "Set a Tavily API key in Pythia settings to use web search.",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Copied",
@@ -191,6 +198,13 @@ const en = {
 	mistralKeyDesc:          "Select a secret from Obsidian's secret storage. Keys are never written to data.json.",
 	defaultMistralModel:     "Default Mistral model",
 	defaultMistralModelDesc: "Used when a template does not specify a model.",
+	webSearchSection:        "Web search",
+	searchKeyName:           "Tavily API key",
+	searchKeyDesc:           "Select a secret from Obsidian's secret storage. Enables the web_search tool so models can look up current information. Keys are never written to data.json.",
+	webSearchDefaultName:    "Enable web search by default",
+	webSearchDefaultDesc:    "Turn on research mode automatically for new conversations. You can still toggle it per conversation from the input toolbar.",
+	webSearchMaxResultsName: "Web search results per query",
+	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5).",
 	defaultProviderName:     "Default provider",
 	defaultProviderDesc:     "Provider used when creating new conversations without a template.",
 	templatesFolderName:     "Templates folder",

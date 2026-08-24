@@ -48,6 +48,9 @@ const de: Strings = {
 	createdNote:   "✓ [[{{name}}]] erstellt",
 	rewrittenNote:  "✓ [[{{name}}]] überschrieben",
 	prependedNote:  "✓ [[{{name}}]] ergänzt",
+	searchingLabel:  "Websuche läuft: „{{query}}“",
+	searchedLabel:   "✓ Gesucht: „{{query}}“",
+	searchFailedLabel: "Websuche fehlgeschlagen",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
@@ -67,6 +70,10 @@ const de: Strings = {
 	showChaptersTooltip: "Kapitel anzeigen",
 	applyTemplateTooltip: "Vorlage anwenden",
 	appliedTemplate:      "Vorlage „{{name}}“ angewendet",
+	researchToggleTooltip: "Websuche (Recherchemodus)",
+	researchEnabledNotice:  "Websuche für dieses Gespräch aktiviert",
+	researchDisabledNotice: "Websuche für dieses Gespräch deaktiviert",
+	researchNoKeyNotice:    "Hinterlege einen Tavily-API-Schlüssel in den Pythia-Einstellungen, um die Websuche zu nutzen.",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Kopiert",
@@ -193,6 +200,13 @@ const de: Strings = {
 	mistralKeyDesc:          "Wähle ein Geheimnis aus Obsidians Secret Storage. Schlüssel werden nie als Klartext in data.json gespeichert.",
 	defaultMistralModel:     "Standard-Mistral-Modell",
 	defaultMistralModelDesc: "Wird verwendet, wenn eine Vorlage kein Modell angibt.",
+	webSearchSection:        "Websuche",
+	searchKeyName:           "Tavily-API-Schlüssel",
+	searchKeyDesc:           "Wähle ein Secret aus Obsidians Secret-Storage. Aktiviert das web_search-Tool, damit Modelle aktuelle Informationen nachschlagen können. Schlüssel werden nie in data.json gespeichert.",
+	webSearchDefaultName:    "Websuche standardmäßig aktivieren",
+	webSearchDefaultDesc:    "Aktiviert den Recherchemodus automatisch für neue Gespräche. Du kannst ihn pro Gespräch über die Eingabeleiste umschalten.",
+	webSearchMaxResultsName: "Websuchergebnisse pro Anfrage",
+	webSearchMaxResultsDesc: "Wie viele Ergebnisse pro Suche abgerufen werden. Weniger Ergebnisse verbrauchen weniger Tokens. Bei 0 wird der Standard (5) verwendet.",
 	defaultProviderName:     "Standardanbieter",
 	defaultProviderDesc:     "Anbieter für neue Gespräche ohne Vorlage.",
 	templatesFolderName:     "Vorlagenordner",

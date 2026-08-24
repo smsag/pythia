@@ -130,6 +130,7 @@ export class PythiaSidebarView extends ItemView {
 	private renameLLMBtn!: HTMLButtonElement;
 
 	private optimizeBtnEl!: HTMLButtonElement;
+	private researchBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
@@ -242,6 +243,7 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.renderHeader();
 		this.updateModelBadge();
+		this.updateResearchButton();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -661,6 +663,14 @@ export class PythiaSidebarView extends ItemView {
 			this.ensureInputExpanded();
 			void this.onApplyTemplate();
 		});
+
+		this.researchBtnEl = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("researchToggleTooltip") },
+		});
+		setIcon(this.researchBtnEl, "globe");
+		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
+		this.updateResearchButton();
 
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -1533,6 +1543,32 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.style.display = "";
 	}
 
+	/** Reflect the active conversation's research (web-search) state on the
+	 *  toolbar toggle. Called on build and on every conversation switch, since
+	 *  the input toolbar is not rebuilt when the active conversation changes. */
+	private updateResearchButton(): void {
+		if (!this.researchBtnEl) return;
+		const on = !!this.activeConversation?.researchMode;
+		this.researchBtnEl.toggleClass("is-active", on);
+		this.researchBtnEl.setAttr("aria-pressed", String(on));
+	}
+
+	/** Toggle web search for the active conversation. Warns (but still toggles)
+	 *  when no Tavily key is configured so the intent is remembered for when one
+	 *  is added. Persists so the choice survives reloads and device sync. */
+	private toggleResearchMode(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		conv.researchMode = !conv.researchMode;
+		this.updateResearchButton();
+		if (conv.researchMode && !this.plugin.webSearchService.hasApiKey()) {
+			new Notice(t("researchNoKeyNotice"));
+		} else {
+			new Notice(conv.researchMode ? t("researchEnabledNotice") : t("researchDisabledNotice"));
+		}
+		void this.plugin.conversationStore.save(conv);
+	}
+
 	private onModelBadgeClick(): void {
 		if (!this.activeConversation) return;
 		new ConversationSettingsModal(
@@ -1872,6 +1908,38 @@ export class PythiaSidebarView extends ItemView {
 		const { appendToken, finalize, getPartial, row: streamingRow } = this.createStreamingBubble();
 
 		const onToolCall = async (call: ToolCall): Promise<string> => {
+				// web_search is read-only — run it directly with a live status chip,
+				// no write-confirmation prompt (that would make research unusable).
+				if (call.name === "web_search") {
+					const query =
+						typeof call.input["query"] === "string" ? call.input["query"] : "";
+					const searchChip = this.messagesEl.createDiv({ cls: "pythia-tool-call" });
+					searchChip.createSpan({
+						cls: "pythia-tool-call-label",
+						text: t("searchingLabel", { query }),
+					});
+					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+					const allowedSearch = ToolHandler.allowedToolNames(
+						conv.writeMode ?? "all",
+						conv.researchMode ?? false
+					);
+					const searchResult = await this.plugin.toolHandler.execute(call, allowedSearch);
+
+					searchChip.empty();
+					if (searchResult.startsWith("Error")) {
+						searchChip.addClass("pythia-tool-call--error");
+						searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchFailedLabel") });
+					} else {
+						searchChip.addClass("pythia-tool-call--done");
+						searchChip.createSpan({
+							cls: "pythia-tool-call-label",
+							text: t("searchedLabel", { query }),
+						});
+					}
+					return searchResult;
+				}
+
 				const rawPath =
 					typeof call.input["path"] === "string"
 						? call.input["path"]
@@ -1938,7 +2006,7 @@ export class PythiaSidebarView extends ItemView {
 					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
 				}
 
-				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all");
+				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", conv.researchMode ?? false);
 				const result = await this.plugin.toolHandler.execute(call, allowed);
 
 				if (result.startsWith("Error")) {

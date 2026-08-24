@@ -73,6 +73,11 @@ export class TemplateLoader {
 					? rawWriteMode
 					: undefined;
 
+			// Validate researchMode — must be a boolean if present.
+			const rawResearchMode = fm.research_mode;
+			const validResearchMode: boolean | undefined =
+				typeof rawResearchMode === "boolean" ? rawResearchMode : undefined;
+
 			// Validate temperature — must be a finite number in [0, 1].
 			const rawTemperature = fm.temperature;
 			const validTemperature: number | undefined =
@@ -104,6 +109,7 @@ export class TemplateLoader {
 				resumeMode: validResumeMode,
 				outputFolder: validOutputFolder,
 				writeMode: validWriteMode,
+				researchMode: validResearchMode,
 				autoPrompt: fm.auto_prompt as string | undefined,
 				systemPrompt: match[2].trim(),
 			};
