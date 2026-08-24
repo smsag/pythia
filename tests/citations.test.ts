@@ -3,6 +3,8 @@ import {
 	parseCitations,
 	stripCitationMarkers,
 	eachCitationSegment,
+	stripForeignCitations,
+	appendWebSources,
 } from "../services/citations";
 
 describe("parseCitations", () => {
@@ -70,5 +72,36 @@ describe("eachCitationSegment", () => {
 		const seen: (number | null)[] = [];
 		eachCitationSegment("x⟦cite:note:Z.md⟧", [], () => {}, (s) => seen.push(s ? s.n : null));
 		expect(seen).toEqual([null]);
+	});
+});
+
+describe("stripForeignCitations", () => {
+	it("removes GPT-style 【N†source】 markers and tidies spacing", () => {
+		const c = "Mbappé: 22 goals 【1†source】 【2†source】 【4†source】 .";
+		expect(stripForeignCitations(c)).toBe("Mbappé: 22 goals.");
+	});
+	it("leaves ordinary 【…】 without a dagger untouched", () => {
+		expect(stripForeignCitations("見出し【重要】です")).toBe("見出し【重要】です");
+	});
+	it("is a no-op with no fullwidth brackets", () => {
+		expect(stripForeignCitations("plain text")).toBe("plain text");
+	});
+});
+
+describe("appendWebSources", () => {
+	it("appends deduped web sources numbered after existing ones, domain as title", () => {
+		const base = parseCitations("A⟦cite:note:Memo.md⟧");
+		const out = appendWebSources(base, [
+			{ title: "ECB", url: "https://www.ecb.europa.eu/x" },
+			{ title: "ECB dup", url: "https://www.ecb.europa.eu/x" },
+			{ title: "HB", url: "https://handelsblatt.com/y" },
+		]);
+		expect(out.map((s) => [s.n, s.kind, s.title])).toEqual([
+			[1, "vault", "Memo"],
+			[2, "web", "ecb.europa.eu"],
+			[3, "web", "handelsblatt.com"],
+		]);
+		// full URL retained in ref for opening
+		expect(out[1].ref).toBe("https://www.ecb.europa.eu/x");
 	});
 });

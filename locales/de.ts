@@ -148,7 +148,8 @@ const de: Strings = {
 	saveToNoteBtn:             "In Notiz speichern",
 	menuSummarizeConversation: "Gespräch zusammenfassen",
 	menuSummarizeFavorites:    "Favoriten zusammenfassen",
-	openForkBtn:               "Abzweigung öffnen →",
+	forkAnchorLabel:           "ABZWEIGUNG",
+	forkOpenShort:             "Öffnen →",
 	fileNotFound:              "Datei nicht gefunden: {{path}}",
 
 	// ── API error notices ─────────────────────────────────────────────────────

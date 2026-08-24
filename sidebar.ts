@@ -11,7 +11,8 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
-import { parseCitations, eachCitationSegment } from "./services/citations";
+import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
+import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -107,6 +108,10 @@ export class PythiaSidebarView extends ItemView {
 	private quickSwitcherCleanup: (() => void) | null = null;
 	// In-panel history view (F10) teardown.
 	private historyCleanup: (() => void) | null = null;
+	// Web-search sources captured (deterministically) during the current send,
+	// so the sources row reflects the real Tavily results regardless of how the
+	// model chooses to cite them.
+	private pendingWebSources: { title: string; url: string }[] = [];
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -1382,7 +1387,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.renderedConvId === conv.id && this.lastRenderedMsgId !== null) {
 			const anchorIdx = msgs.findIndex(m => m.id === this.lastRenderedMsgId);
 			if (anchorIdx !== -1) {
-				this.messagesEl.querySelector(".pythia-empty")?.remove();
+				this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 				for (let i = anchorIdx + 1; i < msgs.length; i++) {
 					await this.appendMessageBubble(msgs[i]);
 				}
@@ -1409,13 +1414,13 @@ export class PythiaSidebarView extends ItemView {
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
-		// Summary "Speisekarte" cards sit at the very top and scroll with content.
-		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
-		this.renderSummaryCards();
-
-		// Context inspector sits directly under the summary cards.
+		// Context inspector is the very first thing in the conversation view.
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
 		this.fillContextInspector();
+
+		// Summary "Speisekarte" cards sit directly under the context inspector.
+		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
+		this.renderSummaryCards();
 
 		if (conv.forkedFromId) this.renderForkBannerEl();
 
@@ -1452,7 +1457,21 @@ export class PythiaSidebarView extends ItemView {
 			if (model) parts.push(abbreviateModel(model).toUpperCase());
 			if (time) parts.push(time);
 		}
-		row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+		const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+		if (msg.role === "assistant" && msg.tokenUsage) {
+			this.appendTokensToTurnLabel(label, msg.tokenUsage);
+		}
+	}
+
+	/** Append the input/output token counts inline to a turn label
+	 *  ("… · ↑7.028 ↓125"), replacing the old separate footer row. */
+	private appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage): void {
+		const fmt = (n: number) => n.toLocaleString();
+		label.createSpan({
+			cls: "p-turn-tokens",
+			text: ` · ${t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) })}`,
+			attr: { title: t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }) },
+		});
 	}
 
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
@@ -1488,7 +1507,8 @@ export class PythiaSidebarView extends ItemView {
 
 	private async onCitationClick(src: MessageSource): Promise<void> {
 		if (src.kind === "web") {
-			window.open(`https://${src.ref}`, "_blank");
+			const url = /^https?:\/\//i.test(src.ref) ? src.ref : `https://${src.ref}`;
+			window.open(url, "_blank");
 			return;
 		}
 		const f = this.app.vault.getAbstractFileByPath(src.ref)
@@ -1574,7 +1594,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderTurnLabel(row, msg);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
-			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), aiBody, "", this);
+			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
@@ -1586,11 +1606,8 @@ export class PythiaSidebarView extends ItemView {
 		const sources = msg.sources ?? parseCitations(msg.content);
 		this.paintCitations(aiBody, sources);
 		this.renderSourcesRow(row, sources);
-
-		if (msg.tokenUsage) {
-			const footer = row.createDiv({ cls: "p-tokens" });
-			this.renderTokenCount(footer, msg.tokenUsage);
-		}
+		// Token counts are shown inline in the turn label (renderTurnLabel),
+		// not a separate footer.
 
 		return aiBody;
 	}
@@ -1621,12 +1638,12 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				try {
-					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(fullText), aiBody, "", this);
+					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(fullText)), aiBody, "", this);
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
-				const sources = parseCitations(fullText);
+				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				this.paintCitations(aiBody, sources);
 				this.renderSourcesRow(row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
@@ -1812,19 +1829,30 @@ export class PythiaSidebarView extends ItemView {
 		else if (preferType === "favorites") summary = favText || convText;
 		else summary = favText || convText;
 
+		// Header: branch icon + ABZWEIGUNG micro-label (F1).
+		const head = anchor.createDiv({ cls: "p-fork-anchor-head" });
+		setIcon(head.createSpan({ cls: "p-fork-anchor-icon" }), "git-branch");
+		head.createSpan({ cls: "p-fork-anchor-label", text: t("forkAnchorLabel") });
+
+		// Fork title.
+		anchor.createDiv({ cls: "p-fork-anchor-title", text: fork.name });
+
+		// One or more summary paragraphs (multi-paragraph is the norm — no clamp).
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			void MarkdownRenderer.render(this.app, summary, body, "", this)
 				.catch((e) => console.error("[Pythia] fork summary render:", e));
 		}
 
-		// All actions live in a right-aligned row.
-		const actions = anchor.createDiv({ cls: "p-fork-anchor-actions" });
-
-		// Open-fork button: short-press opens the fork, long-press opens the
-		// generate-summary menu (mirrors the Send button's long-press menu).
-		const openWrap = actions.createDiv({ cls: "p-fork-open-wrap" });
-		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
+		// Meta line: "N Nachrichten · Model · Öffnen →". The Öffnen link
+		// short-presses to open the fork, long-presses for the summary menu.
+		const meta = anchor.createDiv({ cls: "p-fork-anchor-meta" });
+		meta.createSpan({
+			cls: "p-fork-anchor-metatext",
+			text: `${t("msgCount", { n: String(fork.messages.length) })} · ${abbreviateModel(fork.model)} · `,
+		});
+		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
+		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (this.suppressNextForkOpen) {
@@ -2033,13 +2061,6 @@ export class PythiaSidebarView extends ItemView {
 			const body = row?.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
 			if (body) removeHighlightById(body, favId);
 		}
-	}
-
-	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
-		const fmt = (n: number) => n.toLocaleString();
-		const el = row.createEl("span");
-		el.setText(t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }));
-		el.title = t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) });
 	}
 
 	scrollToMessage(messageId: string): void {
@@ -2860,13 +2881,14 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
-		this.messagesEl.querySelector(".pythia-empty")?.remove();
+		this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 		await this.appendMessageBubble(userMsg);
 		this.lastRenderedMsgId = userMsg.id;
 
 		const attachedNotes = [...(conv.contextNotes ?? [])];
 
 		const { appendToken, finalize, getPartial, row: streamingRow } = this.createStreamingBubble();
+		this.pendingWebSources = [];
 
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				// web_search is read-only — run it directly with a live status chip,
@@ -2897,6 +2919,8 @@ export class PythiaSidebarView extends ItemView {
 							cls: "pythia-tool-call-label",
 							text: t("searchedLabel", { query }),
 						});
+						// Capture the real Tavily sources for the message's sources row.
+						this.pendingWebSources.push(...parseWebSourcesFromResult(searchResult));
 					}
 					return searchResult;
 				}
@@ -3014,7 +3038,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
-				const parsedSources = parseCitations(fullText);
+				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
@@ -3033,8 +3057,8 @@ export class PythiaSidebarView extends ItemView {
 				if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
-						const footer = streamingRow.createDiv({ cls: "p-tokens" });
-						this.renderTokenCount(footer, tokenUsage);
+						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
+						if (label) this.appendTokensToTurnLabel(label, tokenUsage);
 					}
 				}
 				await this.plugin.conversationStore.save(conv);

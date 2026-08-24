@@ -109,6 +109,20 @@ function truncate(s: string, max: number): string {
 	return s.length > max ? s.slice(0, max).trimEnd() + "…" : s;
 }
 
+/** Extract the `{title, url}` sources from a formatted web-search tool result
+ *  (the string `formatResults` produces). Lets the UI surface the real Tavily
+ *  sources deterministically instead of depending on the model to cite them.
+ *  Pure — safe to unit-test without any network. */
+export function parseWebSourcesFromResult(text: string): { title: string; url: string }[] {
+	const out: { title: string; url: string }[] = [];
+	const re = /^###\s+\d+\.\s*(.+)\r?\nURL:\s*(\S+)/gm;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(text)) !== null) {
+		out.push({ title: m[1].trim(), url: m[2].trim() });
+	}
+	return out;
+}
+
 /** Shapes Tavily's response into a plain-text block the model reads as tool
  *  output: the synthesized answer first (when present), then each source with
  *  its URL so the model can cite it. Kept a pure function for straightforward
@@ -122,7 +136,7 @@ function formatResults(query: string, json: TavilyResponse, maxResults: number):
 	}
 
 	const parts: string[] = [
-		`Web search results for "${query}". Use these to answer, and cite sources by their URL.`,
+		`Web search results for "${query}". Use these to answer. Do not add inline source markers or a sources list — Pythia lists the sources for the user automatically.`,
 	];
 	if (answer) parts.push(`Summary: ${answer}`);
 

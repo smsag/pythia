@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
+*Last updated: 2026-08-24 — ADR-077 (research/web sources are now captured deterministically from the Tavily tool result and shown as the `WEB` sources row, instead of relying on the model's citation markers; foreign `【…†source】` markers are stripped from the text).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F9): ADR-075 (header title opens an anchored quick switcher — search, fork-indented rows, keyboard nav, hover-delete — additive to the command-palette fuzzy modal).*
 
@@ -1080,3 +1082,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a full `buildUI` view-mode swap (far more invasive — an overlay gives the same full-panel takeover without threading a mode through every render path); replacing the quick switcher or palette modal (the plan keeps all three surfaces); paginating/virtualizing the list (unnecessary at expected conversation counts — revisit if it grows).
 
 **Consequence:** A browsable, grouped history with branch structure and per-conversation signal, without disturbing the chat render path. Store-only reads; no data-model change. A dedicated `history` header button is the entry point (a future `⋯` overflow menu could host it instead).
+
+### ADR-077 — Web sources are deterministic; foreign citation markers stripped
+
+**Status:** Active (refines ADR-072 for the web/research path)
+
+**Context:** ADR-072 relied on the model emitting `⟦cite:note:…⟧` / `⟦cite:web:…⟧` markers. In practice models have strong, divergent native citation habits for web results — e.g. GPT-4o mini emits `【1†source】` — and ignore the requested `⟦cite:web:…⟧` format. The result: the model's markers leaked into the answer as raw text and no `WEB` sources row appeared, even though Tavily returned the sources deterministically in the `web_search` tool result.
+
+**Decision:** Stop depending on the model to cite web results.
+- **Capture sources deterministically.** `parseWebSourcesFromResult()` (pure, in `WebSearchService`) parses the `### N. Title` / `URL:` blocks of the formatted tool result. `sidebar` accumulates these per send in `pendingWebSources` (reset when the stream starts, appended in the `web_search` tool-call branch) and merges them into the message's sources via `appendWebSources()` (deduped by URL, numbered after any vault citations, bare domain as the display title, full URL kept in `ref` for opening). The existing `renderSourcesRow` then shows the `WEB` row.
+- **Stop instructing web citations.** The `<recent_context>` block and the tool-result header no longer ask the model to emit markers or a sources list (which also avoids duplicate web sources when a model *does* comply).
+- **Strip foreign markers.** `stripForeignCitations()` removes `【…†…】`-style markers before rendering AI content and in `stripCitationMarkers` (note export). Only fullwidth brackets containing a `†` are removed, so ordinary CJK `【…】` text is untouched.
+- **Vault citations stay model-declared** (`⟦cite:note:…⟧`) — there is no competing native habit there, and the note path isn't otherwise recoverable.
+
+**Alternatives rejected:** mapping the model's `【N†source】` indices to Tavily results (the numbering isn't guaranteed to align across models); per-model citation-format prompts (brittle, endless); keeping the model-declared web markers (unreliable, and leaks raw text). 
+
+**Consequence:** Research answers now show a clean `WEB` sources row built from the real Tavily results regardless of the model, and stray `【…†source】` noise no longer appears. Adds two pure, unit-tested helpers; no data-model change (`Message.sources` already existed).

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("obsidian", () => ({ requestUrl: vi.fn() }));
 
 import { requestUrl } from "obsidian";
-import { WebSearchService } from "../services/WebSearchService";
+import { WebSearchService, parseWebSourcesFromResult } from "../services/WebSearchService";
 import type { PythiaSettings } from "../models/settings";
 
 const requestUrlMock = requestUrl as unknown as ReturnType<typeof vi.fn>;
@@ -59,7 +59,7 @@ describe("WebSearchService — result formatting", () => {
 		expect(result).toContain("Summary: Paris is the capital of France.");
 		expect(result).toContain("https://example.com/fr");
 		expect(result).toContain("https://example.com/paris");
-		expect(result).toContain("cite sources by their URL");
+		expect(result).toContain("Pythia lists the sources for the user automatically");
 		expect(result).not.toMatch(/^Error:/);
 	});
 
@@ -126,5 +126,31 @@ describe("WebSearchService — error handling", () => {
 		const result = await svc.search("q");
 		expect(result).toMatch(/^Error:/);
 		expect(result).toContain("network down");
+	});
+});
+
+describe("parseWebSourcesFromResult", () => {
+	it("extracts {title, url} from the formatted tool result", () => {
+		const text = [
+			'Web search results for "q". Use these to answer, and cite sources by their URL.',
+			"",
+			"Summary: something",
+			"",
+			"### 1. ECB cuts rates",
+			"URL: https://www.ecb.europa.eu/press",
+			"snippet one",
+			"",
+			"### 2. Handelsblatt report",
+			"URL: https://handelsblatt.com/a/b",
+			"snippet two",
+		].join("\n");
+		const out = parseWebSourcesFromResult(text);
+		expect(out).toEqual([
+			{ title: "ECB cuts rates", url: "https://www.ecb.europa.eu/press" },
+			{ title: "Handelsblatt report", url: "https://handelsblatt.com/a/b" },
+		]);
+	});
+	it("returns [] when there are no result blocks", () => {
+		expect(parseWebSourcesFromResult('No web results found for "q".')).toEqual([]);
 	});
 });

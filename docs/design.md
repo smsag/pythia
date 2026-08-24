@@ -147,6 +147,10 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 Note references render as **wikilinks** (`.p-wikilink`, ADR-068): faint `[[`/`]]` brackets (`--text-faint`), accent clickable name (`.md` stripped), optional mono `~tokens` estimate (`--text-faint`, 9px), faint `×` remove (`--text-error` on hover). The add affordance is a `+ Notiz` text link (`.pythia-pill-add`, faint → accent on hover). The bordered `.p-pill` chip is retired.
 
+### Fork anchor (`.p-fork-anchor`, frameless, F1)
+
+The inline branch-back anchor (expands when a `mark.p-fork-origin` snippet is tapped) is **frameless** (ADR-066): a 2px `--color-accent` left-rule, 12px left padding, **no fill or radius**. Structure, top to bottom: `.p-fork-anchor-head` (`git-branch` icon in accent + `ABZWEIGUNG` mono 9px/600 label), `.p-fork-anchor-title` (11.5px/600 `--text-normal` = fork name), one or more `.p-fork-anchor-body` summary paragraphs (11px/1.55 `--text-muted`, **not clamped**), and a `.p-fork-anchor-meta` line `N Nachrichten · Model · Öffnen →` (the accent `.p-fork-anchor-open` short-presses to open the fork, long-presses for the summary-generate menu). Previously this was a grey `--background-secondary` box with only the summary + an open button.
+
 ### Summary cards ("Speisekarten")
 
 Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container prepended to the **top of the message list** (`.p-chat`), so they scroll with the conversation. A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
@@ -159,7 +163,7 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 
 ### Context inspector (`.p-inspector`, F2/F3)
 
-Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` directly under the summary cards; `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
+Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` as the **first element of the conversation view** (above the summary cards); `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
 
 ### In-panel history view (`.p-history`, F10)
 
@@ -189,7 +193,7 @@ Mono, **9px**, `letter-spacing: 0.08em`, `--text-faint`, as the first child of e
 
 ### Code block frame (`.p-code-frame`) — frameless (ADR-066)
 
-No background fill, border, or radius. Structure comes from **top/bottom hairlines** (`--background-modifier-border`) plus a header row `.p-code-head`: a `.p-code-type-icon` (Lucide `code-2`, `--text-faint`), the language name `.p-code-lang` (mono 9px `--text-faint`), and — right-aligned — the copy button in `.p-code-actions`. `font-family: var(--font-monospace)` set explicitly on the `<pre>`, which carries only horizontal scroll + drag-to-pan (no box, no reserved top padding). Copy stays hover-reveal on desktop and always-visible under `@media (hover: none)`. Outline cards (summaries, context inspector) remain the only components that keep the filled-box formula.
+No background fill, border, or radius. Structure comes from **top/bottom hairlines** (`--background-modifier-border`) plus a header row `.p-code-head`: a `.p-code-type-icon` (Lucide `code-2`, `--text-faint`), the language name `.p-code-lang` (mono 9px `--text-faint`), and — right-aligned — the copy button in `.p-code-actions`. `font-family: var(--font-monospace)` set explicitly on the `<pre>`, which carries only horizontal scroll + drag-to-pan (no box, no reserved top padding). Copy stays hover-reveal on desktop and always-visible under `@media (hover: none)`. The `<pre>` (and its `code`) **must explicitly set `background: var(--background-primary); border: none`, scoped under `.pythia-view`** (0,2,1) — otherwise Obsidian core's default grey `pre` fill/border wins the tie and the block looks boxed again (ADR-065). Outline cards (summaries, context inspector) remain the only components that keep the filled-box formula.
 
 ### Code block copy button
 
@@ -205,15 +209,11 @@ Copy button `.p-diag-copy`: `position: absolute; top: 6px; right: 6px; z-index: 
 
 ### Citations & sources (`.p-cite`, `.p-sources`, F2/F11)
 
-Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `⟦cite:web:<domain>⟧` markers (instructed only when notes are attached / research is on); `services/citations.ts` parses them into a numbered, deduped `Message.sources`. `paintCitations()` re-paints markers into `.p-cite` superscript chips (mono 9px accent on `color-mix(accent 10%)`) after every render; `renderSourcesRow()` adds a sources row under the message — a single `QUELLEN` row of `[[wikilinks]]`, or split `WEB` (accent `domain ↗`) + `VAULT` rows when any web source is present. Chips/links open the note or `https://<domain>`. `stripCitationMarkers()` keeps raw markers out of saved notes.
+Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `⟦cite:web:<domain>⟧` markers (instructed only when notes are attached / research is on); `services/citations.ts` parses them into a numbered, deduped `Message.sources`. `paintCitations()` re-paints markers into `.p-cite` superscript chips (mono 9px accent on `color-mix(accent 10%)`) after every render; `renderSourcesRow()` adds a sources row under the message — a single `QUELLEN` row of `[[wikilinks]]`, or split `WEB` (accent `domain ↗`) + `VAULT` rows when any web source is present. Chips/links open the note or the source URL. `stripCitationMarkers()` keeps raw markers out of saved notes. **Web sources (research mode, ADR-077) are deterministic:** they're parsed from the actual Tavily `web_search` result (`parseWebSourcesFromResult` → `appendWebSources`), not from model markers, so the `WEB` row always reflects the real sources; the model's own `【…†source】`-style markers are stripped from the text (`stripForeignCitations`). Vault citations remain model-declared.
 
-### Token line (below each AI message)
+### Token counts (inline in the AI turn label)
 
-```
-↑~4.2k ↓430
-```
-
-Only rendered when the message carries `tokenUsage`; no per-message star button (favoriting moved to text selection — see below). Send button shows **estimated next-send cost**: `lastInputTokens + lastOutputTokens + round(draft.length/4)`. Updates live as user types.
+Input/output token counts render **inline in the AI turn micro-label**, not as a separate footer: `PYTHIA · MODEL · HH:MM · ↑7.028 ↓125` (appended by `appendTokensToTurnLabel`, only when the message carries `tokenUsage`). No per-message star button (favoriting moved to text selection — see below). Send button shows **estimated next-send cost**: `lastInputTokens + lastOutputTokens + round(draft.length/4)`. Updates live as user types.
 
 ### Favorite highlights (`mark.p-highlight`)
 
@@ -235,7 +235,7 @@ Textarea: min 3 lines desktop / 2 lines mobile, max 72–150 px. IME guard: `e.i
 
 ### Empty / welcome state (`.p-welcome`, F6)
 
-Empty conversations render a centered welcome via `renderWelcome()`: an accent `sparkles` icon (22px), a 13px/600 heading (`emptyHeading`), and three mono keycap hints (`.p-welcome-hint` with `.p-keycap` chips): `#` attach note, `⌘P` commands, `⇧↵` newline. Used for a new conversation and after the last exchange is deleted. The distinct *no-active-conversation* fallback keeps the plain `.pythia-empty` hint.
+Empty conversations render a centered welcome via `renderWelcome()`: an accent `sparkles` icon (22px), a 13px/600 heading (`emptyHeading`), and three mono keycap hints (`.p-welcome-hint` with `.p-keycap` chips): `#` attach note, `⌘P` commands, `⇧↵` newline. Used for a new conversation and after the last exchange is deleted. It is removed as soon as the first message is sent (the send + append paths clear `.pythia-empty, .p-welcome`), so it never lingers above a started conversation. The distinct *no-active-conversation* fallback keeps the plain `.pythia-empty` hint.
 
 ### Effort segmented control (`.p-effort-seg`, F8)
 
