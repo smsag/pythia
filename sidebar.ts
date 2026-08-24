@@ -1387,7 +1387,7 @@ export class PythiaSidebarView extends ItemView {
 		if (this.renderedConvId === conv.id && this.lastRenderedMsgId !== null) {
 			const anchorIdx = msgs.findIndex(m => m.id === this.lastRenderedMsgId);
 			if (anchorIdx !== -1) {
-				this.messagesEl.querySelector(".pythia-empty")?.remove();
+				this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 				for (let i = anchorIdx + 1; i < msgs.length; i++) {
 					await this.appendMessageBubble(msgs[i]);
 				}
@@ -1414,13 +1414,13 @@ export class PythiaSidebarView extends ItemView {
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
-		// Summary "Speisekarte" cards sit at the very top and scroll with content.
-		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
-		this.renderSummaryCards();
-
-		// Context inspector sits directly under the summary cards.
+		// Context inspector is the very first thing in the conversation view.
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
 		this.fillContextInspector();
+
+		// Summary "Speisekarte" cards sit directly under the context inspector.
+		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
+		this.renderSummaryCards();
 
 		if (conv.forkedFromId) this.renderForkBannerEl();
 
@@ -1457,7 +1457,21 @@ export class PythiaSidebarView extends ItemView {
 			if (model) parts.push(abbreviateModel(model).toUpperCase());
 			if (time) parts.push(time);
 		}
-		row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+		const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+		if (msg.role === "assistant" && msg.tokenUsage) {
+			this.appendTokensToTurnLabel(label, msg.tokenUsage);
+		}
+	}
+
+	/** Append the input/output token counts inline to a turn label
+	 *  ("… · ↑7.028 ↓125"), replacing the old separate footer row. */
+	private appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage): void {
+		const fmt = (n: number) => n.toLocaleString();
+		label.createSpan({
+			cls: "p-turn-tokens",
+			text: ` · ${t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) })}`,
+			attr: { title: t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }) },
+		});
 	}
 
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
@@ -1592,11 +1606,8 @@ export class PythiaSidebarView extends ItemView {
 		const sources = msg.sources ?? parseCitations(msg.content);
 		this.paintCitations(aiBody, sources);
 		this.renderSourcesRow(row, sources);
-
-		if (msg.tokenUsage) {
-			const footer = row.createDiv({ cls: "p-tokens" });
-			this.renderTokenCount(footer, msg.tokenUsage);
-		}
+		// Token counts are shown inline in the turn label (renderTurnLabel),
+		// not a separate footer.
 
 		return aiBody;
 	}
@@ -2050,13 +2061,6 @@ export class PythiaSidebarView extends ItemView {
 			const body = row?.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? row;
 			if (body) removeHighlightById(body, favId);
 		}
-	}
-
-	private renderTokenCount(row: HTMLElement, usage: TokenUsage): void {
-		const fmt = (n: number) => n.toLocaleString();
-		const el = row.createEl("span");
-		el.setText(t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }));
-		el.title = t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) });
 	}
 
 	scrollToMessage(messageId: string): void {
@@ -2877,7 +2881,7 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
-		this.messagesEl.querySelector(".pythia-empty")?.remove();
+		this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 		await this.appendMessageBubble(userMsg);
 		this.lastRenderedMsgId = userMsg.id;
 
@@ -3053,8 +3057,8 @@ export class PythiaSidebarView extends ItemView {
 				if (lastRow && !lastRow.getAttribute("data-msg-id")) {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
-						const footer = streamingRow.createDiv({ cls: "p-tokens" });
-						this.renderTokenCount(footer, tokenUsage);
+						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
+						if (label) this.appendTokensToTurnLabel(label, tokenUsage);
 					}
 				}
 				await this.plugin.conversationStore.save(conv);

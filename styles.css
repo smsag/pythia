@@ -927,6 +927,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--s1);
+  /* Extra breathing room between a user prompt and the AI answer below it,
+     on top of the inter-turn gap. */
+  margin-top: var(--s1);
   min-width: 0;      /* flex items default to min-width:auto; 0 lets them shrink
                         so width:100% on children resolves to the chat width */
   max-width: 100%;
@@ -1042,6 +1045,15 @@
   /* Thin scrollbar — visible as affordance, not obtrusive */
   scrollbar-width: thin;
   scrollbar-color: rgba(128,128,128,0.25) transparent;
+}
+/* Frameless: strip Obsidian core's default grey <pre> fill + border. Scoped
+   under .pythia-view (0,2,1) so it out-ranks `.markdown-rendered pre` (0,1,1),
+   which loads after the plugin and would otherwise win the tie (ADR-065). */
+.pythia-view .p-code-frame > pre,
+.pythia-view .p-code-frame > pre code {
+  background: var(--background-primary);
+  border: none;
+  box-shadow: none;
 }
 .p-code-frame > pre::-webkit-scrollbar        { height: 4px; }
 .p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
@@ -1987,7 +1999,8 @@ body.is-mobile .p-textarea {
 .pythia-tool-call--done {
   background: transparent;
   border: none;
-  padding: 0 0 0 var(--s3);
+  /* Left-aligned with the message text — no extra indent. */
+  padding: 0;
   margin: 0;
   gap: 0;
 }
