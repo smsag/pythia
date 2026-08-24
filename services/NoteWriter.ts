@@ -2,6 +2,7 @@ import { App, TFile } from "obsidian";
 import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { todayISO } from "../utils";
+import { stripCitationMarkers } from "./citations";
 
 export class NoteWriter {
 	private app: App;
@@ -195,7 +196,7 @@ ${summary}
 		const lines: string[] = [heading, ""];
 		for (const msg of messages) {
 			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
-			lines.push(`${label} ${msg.content}`, "");
+			lines.push(`${label} ${stripCitationMarkers(msg.content)}`, "");
 		}
 		const block = lines.join("\n").trimEnd();
 

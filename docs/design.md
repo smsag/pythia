@@ -199,6 +199,10 @@ JS (`fixDiagramSvgSize`) stamps explicit pixel dimensions on the SVG from `viewB
 
 Copy button `.p-diag-copy`: `position: absolute; top: 6px; right: 6px; z-index: 2`. Opacity 0, reveals on container hover. On touch: always visible. Stays pinned in the top-right corner while the user pans — does not scroll with the SVG.
 
+### Citations & sources (`.p-cite`, `.p-sources`, F2/F11)
+
+Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `⟦cite:web:<domain>⟧` markers (instructed only when notes are attached / research is on); `services/citations.ts` parses them into a numbered, deduped `Message.sources`. `paintCitations()` re-paints markers into `.p-cite` superscript chips (mono 9px accent on `color-mix(accent 10%)`) after every render; `renderSourcesRow()` adds a sources row under the message — a single `QUELLEN` row of `[[wikilinks]]`, or split `WEB` (accent `domain ↗`) + `VAULT` rows when any web source is present. Chips/links open the note or `https://<domain>`. `stripCitationMarkers()` keeps raw markers out of saved notes.
+
 ### Token line (below each AI message)
 
 ```

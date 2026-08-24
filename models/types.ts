@@ -43,6 +43,15 @@ export interface TokenUsage {
 	cacheCreationTokens?: number;
 }
 
+/** A citation source parsed from an assistant message's ⟦cite:…⟧ markers.
+ *  Shape matches services/citations.ts CitationSource. */
+export interface MessageSource {
+	n: number;                // 1-based, in order of first appearance
+	kind: "vault" | "web";
+	ref: string;              // vault path or web domain
+	title: string;            // display label
+}
+
 export interface Message {
 	id: string;
 	role: "user" | "assistant";
@@ -51,6 +60,7 @@ export interface Message {
 	model?: string;           // model ID that generated this assistant message (for the turn label)
 	attachedNotes?: string[]; // notes attached to this specific message
 	tokenUsage?: TokenUsage;  // token counts for assistant messages
+	sources?: MessageSource[]; // parsed citation sources (assistant messages, from ⟦cite:…⟧ markers)
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
 }
 

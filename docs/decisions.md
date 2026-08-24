@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 4: ADR-071 (context inspector card `F2/F3` — an outline card under the summary cards listing context notes as wikilinks + system-prompt estimate, switching to a per-source budget breakdown with mini-bars and a `Zusammenfassen` action at ≥80% usage).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 5: ADR-072 (model-declared citations `F2/F11` — `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers, parsed/numbered by Pythia into a new `Message.sources`, painted into `.p-cite` chips with a `QUELLEN` / `WEB`+`VAULT` sources row; markers stripped from note exports).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 4: ADR-071 (context inspector card `F2/F3` — an outline card under the summary cards listing context notes as wikilinks + system-prompt estimate, switching to a per-source budget breakdown with mini-bars and a `Zusammenfassen` action at ≥80% usage).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 6: ADR-070 (minimal centered empty state `F6` — accent sparkle, heading, mono keycap hints — and the conversation-settings Effort control becomes a segmented Standard/Niedrig/Mittel/Hoch control `F8`, keeping a "Standard = no override" segment).*
 
@@ -1005,3 +1007,20 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** always showing the inspector even with no notes (noise); a separate token-accounting pass (the header already derives usage from `tokenUsage` — reuse it); making the system-prompt row removable (it isn't user-editable context); computing exact per-source tokens by re-tokenizing note bodies each render (the byte/4 estimate matches the reference-row estimate and is far cheaper).
 
 **Consequence:** Users can see and prune what fills the window, and get a one-tap path to condense history before hitting the limit. Reuses existing token accounting and the wikilink + summary plumbing; no data-model change.
+
+### ADR-072 — Model-declared citations (F2/F11)
+
+**Status:** Active
+
+**Context:** The Final design shows numbered citation chips inside AI text (¹²) that map to a sources row under the message (a single `QUELLEN` row, or split `WEB`/`VAULT` rows in research mode). The RAG pipeline does not track which note produced which claim — but the model already receives note paths (`<attached_note path=…>`) and web results, and is already asked to cite. The gap is turning free-text citing into a structured, renderable contract.
+
+**Decision:** A model-declared marker contract, parsed and numbered by Pythia.
+- **Marker:** `⟦cite:note:<path>⟧` and `⟦cite:web:<domain>⟧`. The kind prefix removes vault/web ambiguity; `⟦ ⟧` are not Markdown and the web form is a bare domain (no scheme), so a marker survives `MarkdownRenderer.render()` as literal text — no wikilink transform, no URL autolinking — which is what lets it be painted afterward. The instructions live in `GROUNDING_INSTRUCTION` (notes, gated on attached notes) and the research/recency block (web, gated on research mode), so citations are only requested when a real source exists.
+- **Parsing:** pure `services/citations.ts` (`parseCitations`, `stripCitationMarkers`, `eachCitationSegment`) — deduped by (kind, ref), numbered by first appearance, unit-tested.
+- **State:** an additive `Message.sources` (`MessageSource[]`), set on the assistant turn; legacy/absent → parsed from content on render (backfill-safe).
+- **Render:** `paintCitations()` walks text nodes and swaps each marker for a `.p-cite` chip (mirrors the favorites re-paint since `MarkdownRenderer` rebuilds the DOM each time); `renderSourcesRow()` appends `QUELLEN` or `WEB`+`VAULT` rows. A chip/link opens the note or `https://<domain>`.
+- **Export hygiene:** `stripCitationMarkers()` is applied in `NoteWriter.appendConversationSlice` so saved notes never carry raw markers; selection copy/insert read painted DOM text, which already has none.
+
+**Alternatives rejected:** `[[cite:…]]` (Obsidian renders it as an internal link); embedding raw URLs in markers (autolinking splits the marker across nodes); numbering by the model (it can't know the final order, and duplicates break); a retrieval-grounded citation index (a much larger pipeline change — this is model-declared attribution, explicitly scoped as such). Degrades gracefully: no markers → no chips, no row.
+
+**Consequence:** Sourced answers are attributable inline with no retrieval-layer change. One additive schema field; markers only appear with notes/research attached. Not yet done: the F11 token line "· N Suchen" search count (needs per-message search tracking) and German comma number formatting.

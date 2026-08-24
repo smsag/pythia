@@ -11,6 +11,7 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
+import { parseCitations, eachCitationSegment } from "./services/citations";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -26,7 +27,7 @@ import {
 	rangeForHighlight,
 	repaintForkOrigins,
 } from "./ui/HighlightPainter";
-import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
+import type { Conversation, Favorite, Message, MessageSource, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -1420,6 +1421,82 @@ export class PythiaSidebarView extends ItemView {
 		row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
 	}
 
+	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
+	 *  superscript chips. Mirrors the favorites re-paint: walk text nodes and
+	 *  swap each marker for a `.p-cite` chip that opens its source on click. */
+	private paintCitations(body: HTMLElement, sources: MessageSource[]): void {
+		const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+		const targets: Text[] = [];
+		let node: Node | null;
+		while ((node = walker.nextNode())) {
+			if (node.nodeValue && node.nodeValue.indexOf("⟦cite:") !== -1) targets.push(node as Text);
+		}
+		for (const textNode of targets) {
+			const text = textNode.nodeValue ?? "";
+			const frag = document.createDocumentFragment();
+			eachCitationSegment(
+				text,
+				sources,
+				(t) => { if (t) frag.appendChild(document.createTextNode(t)); },
+				(src) => {
+					if (!src) return; // drop an unresolved marker entirely
+					const chip = document.createElement("sup");
+					chip.className = "p-cite";
+					chip.textContent = String(src.n);
+					chip.title = src.title;
+					chip.addEventListener("click", (e) => { e.stopPropagation(); void this.onCitationClick(src); });
+					frag.appendChild(chip);
+				},
+			);
+			textNode.parentNode?.replaceChild(frag, textNode);
+		}
+	}
+
+	private async onCitationClick(src: MessageSource): Promise<void> {
+		if (src.kind === "web") {
+			window.open(`https://${src.ref}`, "_blank");
+			return;
+		}
+		const f = this.app.vault.getAbstractFileByPath(src.ref)
+			?? this.app.metadataCache.getFirstLinkpathDest(src.ref, "");
+		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
+		else new Notice(t("fileNotFound", { path: src.ref }));
+	}
+
+	/** Sources row under an assistant message. A single QUELLEN row when all
+	 *  sources are vault notes; split WEB / VAULT rows when any are web. */
+	private renderSourcesRow(row: HTMLElement, sources: MessageSource[]): void {
+		if (!sources.length) return;
+		const web = sources.filter((s) => s.kind === "web");
+		const vault = sources.filter((s) => s.kind === "vault");
+		const container = row.createDiv({ cls: "p-sources" });
+
+		const makeRow = (label: string, items: MessageSource[]) => {
+			const r = container.createDiv({ cls: "p-sources-row" });
+			r.createSpan({ cls: "p-sources-label", text: label });
+			for (const s of items) {
+				const item = r.createSpan({ cls: "p-source" });
+				item.createSpan({ cls: "p-source-num", text: String(s.n) });
+				if (s.kind === "web") {
+					const link = item.createSpan({ cls: "p-source-web", text: `${s.title} ↗` });
+					link.addEventListener("click", () => void this.onCitationClick(s));
+				} else {
+					item.createSpan({ cls: "p-wikilink-bracket", text: " [[" });
+					const name = item.createSpan({ cls: "p-wikilink-name", text: s.title });
+					name.addEventListener("click", () => void this.onCitationClick(s));
+					item.createSpan({ cls: "p-wikilink-bracket", text: "]]" });
+				}
+			}
+		};
+
+		if (web.length) {
+			makeRow(t("sourcesWeb"), web);
+			if (vault.length) makeRow(t("sourcesVault"), vault);
+		} else {
+			makeRow(t("sourcesLabel"), vault);
+		}
+	}
+
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		// ── User message ────────────────────────────────────────────
 		if (msg.role === "user") {
@@ -1470,6 +1547,11 @@ export class PythiaSidebarView extends ItemView {
 		decorateCodeBlocks(aiBody, this.diagObservers);
 		this.repaintFavorites(aiBody, msg.id);
 		this.repaintForkOrigins(aiBody, msg.id);
+		// Citations: paint markers → chips, then render the sources row. Backfill
+		// sources from content for messages saved before the field existed.
+		const sources = msg.sources ?? parseCitations(msg.content);
+		this.paintCitations(aiBody, sources);
+		this.renderSourcesRow(row, sources);
 
 		if (msg.tokenUsage) {
 			const footer = row.createDiv({ cls: "p-tokens" });
@@ -1510,6 +1592,9 @@ export class PythiaSidebarView extends ItemView {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
+				const sources = parseCitations(fullText);
+				this.paintCitations(aiBody, sources);
+				this.renderSourcesRow(row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -2545,6 +2630,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
+				const parsedSources = parseCitations(fullText);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
@@ -2552,6 +2638,7 @@ export class PythiaSidebarView extends ItemView {
 					timestamp: new Date().toISOString(),
 					model: conv.model,
 					tokenUsage,
+					...(parsedSources.length ? { sources: parsedSources } : {}),
 				};
 				conv.messages.push(assistantMsg);
 				if (this.activeConversation?.id === conv.id) {

@@ -468,6 +468,44 @@
   padding: 24px 16px;
 }
 
+/* ── Citations: inline chip + sources row (F2/F11) ──────────────── */
+.p-cite {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 2px;
+  cursor: pointer;
+}
+.p-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 6px;
+}
+.p-sources-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.p-sources-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-source { font-size: 11.5px; display: inline-flex; align-items: baseline; gap: 3px; }
+.p-source-num { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); }
+.p-source-web { color: var(--color-accent); cursor: pointer; }
+.p-source-web:hover { text-decoration: underline; }
+
 /* ── Context inspector (F2/F3) ──────────────────────────────────── */
 .p-inspector-wrap { min-width: 0; }
 .p-inspector {

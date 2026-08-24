@@ -76,6 +76,11 @@ const de: Strings = {
 	ctxNearFull:       "Fast voll — Verlauf verdichten spart {{n}}.",
 	ctxSummarize:      "Zusammenfassen",
 
+	// ── Citations / sources ───────────────────────────────────────────────────
+	sourcesLabel: "QUELLEN",
+	sourcesWeb:   "WEB",
+	sourcesVault: "VAULT",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",

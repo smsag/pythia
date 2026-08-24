@@ -74,7 +74,7 @@ export const GROUNDING_INSTRUCTION =
 	"When answering:\n" +
 	"- Synthesize information across multiple notes when relevant\n" +
 	"- Connect ideas and identify relationships between sources\n" +
-	"- Cite specific notes by their path when referencing them\n" +
+	"- When a statement draws on an attached note, append a citation marker immediately after it, in this exact format: ⟦cite:note:<note-path>⟧ (use the note's exact path, e.g. ⟦cite:note:Germanismen-Liste.md⟧). Do not number them yourself and do not add a separate sources list — the app renders the markers.\n" +
 	"- Go beyond surface-level summaries — analyze, compare, and draw conclusions from the material\n" +
 	"- If the notes don't contain sufficient information to answer fully, say so explicitly and explain what's missing";
 
