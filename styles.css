@@ -272,6 +272,8 @@
   text-overflow: ellipsis;
 }
 .p-switcher-hl { background: var(--text-highlight-bg); font-weight: 600; }
+.p-switcher-fork-count { color: var(--color-accent); }
+.p-switcher-fav-count { color: var(--color-yellow); }
 .p-switcher-sub {
   font-family: var(--font-monospace);
   font-size: 9px;
