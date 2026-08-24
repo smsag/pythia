@@ -224,6 +224,23 @@
   min-width: 0;
   font-size: var(--font-small);
   color: var(--text-normal);
+  /* Inline field — no form-control chrome. Obsidian/themes style search
+     inputs with a grey fill + border + radius that `all: unset` doesn't
+     always defeat once their sheet loads after ours, so force it. */
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+.pythia-view .p-switcher-input:focus,
+.pythia-view .p-switcher-input:active {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 .p-switcher-list { overflow-y: auto; padding: 4px 0; }
 .pythia-view .p-switcher-row {
@@ -239,7 +256,15 @@
 .p-switcher-fork-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
 .p-switcher-fork-icon svg { width: 11px; height: 11px; }
 .p-switcher-main { flex: 1; min-width: 0; }
+/* Fork icon inline with the title text, on the same line. */
+.p-switcher-title-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
 .p-switcher-title {
+  flex: 1;
   font-size: var(--font-small);
   color: var(--text-normal);
   white-space: nowrap;

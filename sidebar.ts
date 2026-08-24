@@ -2408,8 +2408,10 @@ export class PythiaSidebarView extends ItemView {
 			if (q && !conv.name.toLowerCase().includes(q)) return;
 			const row = listEl.createDiv({ cls: isFork ? "p-switcher-row fork" : "p-switcher-row" });
 			const main = row.createDiv({ cls: "p-switcher-main" });
-			if (isFork) setIcon(main.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
-			const titleEl = main.createDiv({ cls: "p-switcher-title" });
+			// Fork icon sits inline with the title text (not stacked above it).
+			const titleRow = main.createDiv({ cls: "p-switcher-title-row" });
+			if (isFork) setIcon(titleRow.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const titleEl = titleRow.createDiv({ cls: "p-switcher-title" });
 			// Highlight the matched substring.
 			const name = conv.name;
 			const idx = q ? name.toLowerCase().indexOf(q) : -1;
