@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F7): ADR-074 (the model chip opens an anchored quick-pick popover — provider groups, context-window labels, Reasoning tags, active check, and a footer to the full settings modal — instead of jumping straight to the modal).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F9): ADR-075 (header title opens an anchored quick switcher — search, fork-indented rows, keyboard nav, hover-delete — additive to the command-palette fuzzy modal).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F7): ADR-074 (the model chip opens an anchored quick-pick popover — provider groups, context-window labels, Reasoning tags, active check, and a footer to the full settings modal — instead of jumping straight to the modal).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F5): ADR-073 (the `#` navigator's Abzweigungen section becomes a fork **tree** — source row with a `Quelle` tag, child forks indented under a vertical rule with status dots, active branch tinted with an `aktiv` tag).*
 
@@ -1052,3 +1054,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** replacing the settings modal entirely (temperature/effort/max-tokens still need it — the popover complements it via the footer); a native Obsidian `Menu` (renders as a bottom sheet on mobile, not anchored to the chip — same reason the summary menu is hand-rolled); appending to `document.body` (would lose the `.pythia-view` scoping that keeps Obsidian's grey button reset from repainting the rows).
 
 **Consequence:** One-tap model switching from the header, full settings one tap deeper. Reuses the model catalog and settings modal; no data-model change.
+
+### ADR-075 — Anchored quick switcher on title click (F9)
+
+**Status:** Active (additive — the command-palette fuzzy modal remains)
+
+**Context:** The Final design opens conversation switching from the header title as an anchored panel (inset under the title, shadowed) with a search field, result rows showing a mono `Model · N Nachrichten · date` sub-line, forks indented under their source with a branch icon and `Zweig · N Nachrichten`, hover-delete, keyboard nav, and a footer key-hint — distinct from the centered fuzzy `ConversationSuggestModal`. The agreed direction keeps three switching surfaces: this anchored switcher (title click), the in-panel history (F10), and the existing modal (command palette).
+
+**Decision:** Repoint `onConvNameClick` at `openQuickSwitcher()`, which builds a fixed-position `.p-switcher` anchored to the header (kept under `.pythia-view` for style scoping). Sources are listed by recency with their forks indented; typing filters by title with the match highlighted; ↑/↓ move a selection, ↵ opens, Esc/outside-click closes; a hover `✕` deletes via the shared `deleteConversationWithConfirm()` (extracted from the old handler). `cmdBrowseConversations` in `main.ts` still constructs `ConversationSuggestModal`, so the palette keeps the fuzzy modal untouched.
+
+**Alternatives rejected:** replacing the fuzzy modal (the plan explicitly keeps it as a separate surface); a full fuzzy-scoring match in the panel (a plain substring highlight is enough for the anchored quick-pick; the modal covers fuzzy search); appending to `document.body` (loses `.pythia-view` scoping).
+
+**Consequence:** Fast, in-context switching with fork structure visible, without giving up the palette modal. Store-only reads; no data-model change. Date sub-lines use a small `formatConvDate` helper (today/yesterday/short date), reused by the in-panel history view.

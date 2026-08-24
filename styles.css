@@ -127,6 +127,85 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
+/* ── Quick switcher (F9) ────────────────────────────────────────── */
+.pythia-view .p-switcher {
+  z-index: 40;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+.p-switcher-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+.p-switcher-search-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-switcher-search-icon svg { width: 13px; height: 13px; }
+.pythia-view .p-switcher-input {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-small);
+  color: var(--text-normal);
+}
+.p-switcher-list { overflow-y: auto; padding: 4px 0; }
+.pythia-view .p-switcher-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.p-switcher-row.fork { padding-left: 26px; }
+.p-switcher-row:hover,
+.p-switcher-row.selected { background: var(--background-modifier-hover); }
+.p-switcher-fork-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-switcher-fork-icon svg { width: 11px; height: 11px; }
+.p-switcher-main { flex: 1; min-width: 0; }
+.p-switcher-title {
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-switcher-hl { background: var(--text-highlight-bg); font-weight: 600; }
+.p-switcher-sub {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-switcher-del {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.08s, color 0.12s;
+}
+.p-switcher-row:hover .p-switcher-del { opacity: 1; }
+.p-switcher-del:hover { color: var(--text-error, var(--color-red)); }
+.p-switcher-footer {
+  padding: 5px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
 /* ── Model popover (F7) ─────────────────────────────────────────── */
 .pythia-view .p-model-pop {
   z-index: 40;

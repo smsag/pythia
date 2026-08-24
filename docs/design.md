@@ -237,6 +237,10 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 
 The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` (accent fill, `--text-on-accent`). The leading **Standard** segment means "no override" (the semantic the old dropdown's empty option carried). When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
 
+### Quick switcher (`.p-switcher`, F9)
+
+Header title click opens an anchored `.p-switcher` (fixed under the header, shadowed, kept under `.pythia-view`): a search row, then result rows (title with matched-substring highlight + mono `Model · N Nachrichten · date` sub-line) with forks indented under their source (`git-branch` icon, `Zweig · N Nachrichten`), a hover `✕` delete, keyboard nav (↑/↓/↵/Esc), and a footer key-hint. Additive — the command palette still opens the centered fuzzy `ConversationSuggestModal`.
+
 ### Conversation settings modal (temperature)
 
 Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic tooltip), defaulting to the effective value (`conversation.temperature ?? settings.temperature ?? 1.0`). Follows the modal's existing draft-until-Save convention — dragging updates a local value; Save commits it alongside provider/model, Cancel discards it.

@@ -24,6 +24,14 @@ const de: Strings = {
 	navNoForks:      "Noch keine Abzweigungen",
 	navSourceTag:    "Quelle",
 	navActiveTag:    "aktiv",
+
+	// ── Quick switcher / history ──────────────────────────────────────────────
+	switcherSearchPlaceholder: "Suchen…",
+	switcherHint:              "↑↓ Navigieren · ↵ Öffnen · esc Schließen",
+	msgCount:                  "{{n}} Nachrichten",
+	branchLabel:               "Zweig",
+	dateToday:                 "heute",
+	dateYesterday:             "gestern",
 	navNoFavorites:  "Noch keine Markierungen",
 	navNoChapters:   "Noch keine Kapitel",
 

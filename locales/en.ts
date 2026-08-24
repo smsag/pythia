@@ -22,6 +22,12 @@ const en = {
 	navNoForks:      "No forks yet",
 	navSourceTag:    "Source",
 	navActiveTag:    "active",
+	switcherSearchPlaceholder: "Search…",
+	switcherHint:              "↑↓ Navigate · ↵ Open · esc Close",
+	msgCount:                  "{{n}} messages",
+	branchLabel:               "Branch",
+	dateToday:                 "today",
+	dateYesterday:             "yesterday",
 	navNoFavorites:  "No highlights yet",
 	navNoChapters:   "No chapters yet",
 

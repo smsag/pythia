@@ -29,7 +29,6 @@ import {
 } from "./ui/HighlightPainter";
 import type { Conversation, Favorite, Message, MessageSource, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
-import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
@@ -104,6 +103,8 @@ export class PythiaSidebarView extends ItemView {
 	private sendEstimateEl!: HTMLElement;
 	// Anchored model popover (F7) teardown.
 	private modelPopoverCleanup: (() => void) | null = null;
+	// Anchored quick switcher (F9) teardown.
+	private quickSwitcherCleanup: (() => void) | null = null;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -234,6 +235,7 @@ export class PythiaSidebarView extends ItemView {
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
 		this.modelPopoverCleanup?.();
+		this.quickSwitcherCleanup?.();
 
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
@@ -338,6 +340,7 @@ export class PythiaSidebarView extends ItemView {
 
 	private buildUI(): void {
 		this.modelPopoverCleanup?.();
+		this.quickSwitcherCleanup?.();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
 		this.cachedLineHeight = null; // inputEl is about to be recreated below
@@ -2259,35 +2262,157 @@ export class PythiaSidebarView extends ItemView {
 		).open();
 	}
 
-	private onConvNameClick(): void {
-		const convs = this.plugin.conversations;
-		if (convs.length === 0) return;
-
-		new ConversationSuggestModal(
-			this.app,
-			convs,
-			async (conv) => {
-				await this.setActiveConversation(conv);
-			},
-			(conv) => {
-				if (this.isStreaming) {
-					new Notice(t("cannotDeleteWhileStreaming"));
-					return;
+	/** Confirm-and-delete a conversation, reselecting a remaining one (or a fresh
+	 *  conversation) if the active one was removed. `onDone` fires after deletion. */
+	private deleteConversationWithConfirm(conv: Conversation, onDone?: () => void): void {
+		if (this.isStreaming) {
+			new Notice(t("cannotDeleteWhileStreaming"));
+			return;
+		}
+		new DeleteConversationModal(this.app, conv, async () => {
+			await this.plugin.conversationStore.delete(conv.id);
+			new Notice(t("conversationDeleted"));
+			if (this.activeConversation?.id === conv.id) {
+				const remaining = this.plugin.conversations;
+				if (remaining.length > 0) {
+					await this.setActiveConversation(remaining[remaining.length - 1]);
+				} else {
+					await this.plugin.cmdNewConversation();
 				}
-				new DeleteConversationModal(this.app, conv, async () => {
-					await this.plugin.conversationStore.delete(conv.id);
-					new Notice(t("conversationDeleted"));
-					if (this.activeConversation?.id === conv.id) {
-						const remaining = this.plugin.conversations;
-						if (remaining.length > 0) {
-							await this.setActiveConversation(remaining[remaining.length - 1]);
-						} else {
-							await this.plugin.cmdNewConversation();
-						}
-					}
-				}).open();
 			}
-		).open();
+			onDone?.();
+		}).open();
+	}
+
+	private onConvNameClick(): void {
+		this.openQuickSwitcher();
+	}
+
+	/** Short relative date for switcher/history sub-lines: today, yesterday,
+	 *  else a localized "12 Aug"-style date. */
+	private formatConvDate(iso: string | undefined): string {
+		if (!iso) return "";
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "";
+		const now = new Date();
+		const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+		if (dayDiff <= 0) return t("dateToday");
+		if (dayDiff === 1) return t("dateYesterday");
+		return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+	}
+
+	/** Anchored quick switcher (F9) opened from the header title. Search over
+	 *  conversations with forks indented under their source; keyboard nav;
+	 *  hover-delete. The command-palette fuzzy modal remains a separate surface. */
+	private openQuickSwitcher(): void {
+		if (this.plugin.conversations.length === 0) return;
+		if (this.quickSwitcherCleanup) { this.quickSwitcherCleanup(); return; } // toggle
+
+		const container = this.containerEl.children[1] as HTMLElement;
+		const headerEl = container.querySelector<HTMLElement>(".p-header");
+		if (!headerEl) return;
+		const panel = container.createDiv({ cls: "p-switcher" });
+		const rect = headerEl.getBoundingClientRect();
+		panel.style.position = "fixed";
+		panel.style.top = `${rect.bottom + 4}px`;
+		panel.style.left = `${rect.left + 16}px`;
+		panel.style.width = `${Math.max(180, rect.width - 32)}px`;
+
+		const searchRow = panel.createDiv({ cls: "p-switcher-search" });
+		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
+		const input = searchRow.createEl("input", {
+			cls: "p-switcher-input",
+			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
+		});
+		const listEl = panel.createDiv({ cls: "p-switcher-list" });
+		panel.createDiv({ cls: "p-switcher-footer", text: t("switcherHint") });
+
+		let rows: { conv: Conversation; el: HTMLElement }[] = [];
+		let selectedIdx = 0;
+
+		const closeSw = () => {
+			panel.remove();
+			document.removeEventListener("mousedown", onOutside, true);
+			this.quickSwitcherCleanup = null;
+		};
+		const openConv = (conv: Conversation) => { closeSw(); void this.setActiveConversation(conv); };
+		const onOutside = (e: MouseEvent) => {
+			if (!panel.contains(e.target as Node) && e.target !== this.convNameEl) closeSw();
+		};
+
+		const paintSelection = () => {
+			rows.forEach((r, i) => r.el.toggleClass("selected", i === selectedIdx));
+			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
+		};
+
+		const addRow = (conv: Conversation, isFork: boolean, q: string) => {
+			if (q && !conv.name.toLowerCase().includes(q)) return;
+			const row = listEl.createDiv({ cls: isFork ? "p-switcher-row fork" : "p-switcher-row" });
+			const main = row.createDiv({ cls: "p-switcher-main" });
+			if (isFork) setIcon(main.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const titleEl = main.createDiv({ cls: "p-switcher-title" });
+			// Highlight the matched substring.
+			const name = conv.name;
+			const idx = q ? name.toLowerCase().indexOf(q) : -1;
+			if (idx >= 0) {
+				titleEl.appendText(name.slice(0, idx));
+				titleEl.createEl("b", { cls: "p-switcher-hl", text: name.slice(idx, idx + q.length) });
+				titleEl.appendText(name.slice(idx + q.length));
+			} else {
+				titleEl.setText(name);
+			}
+			const sub = isFork
+				? `${t("branchLabel")} · ${t("msgCount", { n: String(conv.messages.length) })}`
+				: `${abbreviateModel(conv.model)} · ${t("msgCount", { n: String(conv.messages.length) })} · ${this.formatConvDate(conv.updatedAt)}`;
+			main.createDiv({ cls: "p-switcher-sub", text: sub });
+
+			const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+			del.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+			});
+			row.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				openConv(conv);
+			});
+			rows.push({ conv, el: row });
+		};
+
+		const buildList = (query: string) => {
+			listEl.empty();
+			rows = [];
+			const q = query.toLowerCase().trim();
+			const all = this.plugin.conversations;
+			const byId = new Map(all.map((c) => [c.id, c]));
+			const sources = all
+				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
+				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+			for (const src of sources) {
+				addRow(src, false, q);
+				const forks = all
+					.filter((c) => c.forkedFromId === src.id)
+					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+				for (const f of forks) addRow(f, true, q);
+			}
+			selectedIdx = 0;
+			paintSelection();
+		};
+
+		input.addEventListener("input", () => buildList(input.value));
+		input.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (e.key === "ArrowDown") { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, rows.length - 1); paintSelection(); }
+			else if (e.key === "ArrowUp") { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); paintSelection(); }
+			else if (e.key === "Enter") { e.preventDefault(); const r = rows[selectedIdx]; if (r) openConv(r.conv); }
+			else if (e.key === "Escape") { e.preventDefault(); closeSw(); }
+		});
+
+		buildList("");
+		setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			this.quickSwitcherCleanup = closeSw;
+			input.focus();
+		}, 0);
 	}
 
 	private enterRenameMode(): void {
