@@ -358,7 +358,7 @@ export class PythiaSidebarView extends ItemView {
 		// width = context usage / model window; turns warning-colored at >=80%.
 		this.ctxBarEl = container.createDiv({ cls: "p-ctx-bar" });
 		this.ctxBarFillEl = this.ctxBarEl.createDiv({ cls: "p-ctx-bar-fill" });
-		this.ctxBarEl.addEventListener("click", () => this.scrollToTop());
+		this.ctxBarEl.addEventListener("click", () => this.revealContextInspector());
 		this.ctxBarEl.style.display = "none";
 
 		this.buildChatArea(container);
@@ -445,7 +445,7 @@ export class PythiaSidebarView extends ItemView {
 		// lands there in a later phase).
 		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
 		this.ctxChipEl.style.display = "none";
-		this.ctxChipEl.addEventListener("click", () => this.scrollToTop());
+		this.ctxChipEl.addEventListener("click", () => this.revealContextInspector());
 
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
@@ -892,6 +892,17 @@ export class PythiaSidebarView extends ItemView {
 	/** Short token label like "~4.3k" / "~640". */
 	private fmtTok(n: number): string {
 		return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
+	}
+
+	/** Scroll to the top and expand the context inspector — the click target of
+	 *  the budget bar / percent chip (F3). */
+	private revealContextInspector(): void {
+		this.scrollToTop();
+		this.inspectorOpen = true;
+		if (this.inspectorEl) {
+			this.fillContextInspector();
+			this.inspectorEl.querySelector(".p-inspector")?.scrollIntoView({ block: "nearest" });
+		}
 	}
 
 	/** Build/refresh the context inspector card (F2/F3) inside `inspectorEl`.
@@ -1376,6 +1387,10 @@ export class PythiaSidebarView extends ItemView {
 					await this.appendMessageBubble(msgs[i]);
 				}
 				this.lastRenderedMsgId = tailId;
+				// New turn(s) changed the context size — refresh the inspector so
+				// its budget figure / near-full warning stay current without a
+				// full rebuild.
+				if (this.inspectorEl) this.fillContextInspector();
 				if (scrollTo === "top") {
 					this.scrollToTop();
 				} else {
@@ -2184,14 +2199,20 @@ export class PythiaSidebarView extends ItemView {
 
 		const container = this.containerEl.children[1] as HTMLElement;
 		const pop = container.createDiv({ cls: "p-model-pop" });
+		// Absolute within the (position:relative) view root — robust against an
+		// Obsidian ancestor that turns position:fixed into a clipped containing
+		// block. Height is capped to the space below the chip with internal scroll.
+		const cRect = container.getBoundingClientRect();
 		const rect = this.modelBadgeEl.getBoundingClientRect();
 		const width = 226;
-		let left = rect.right - width;
-		left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
-		pop.style.position = "fixed";
-		pop.style.top = `${rect.bottom + 4}px`;
+		const top = rect.bottom - cRect.top + 4;
+		let left = rect.right - cRect.left - width;
+		left = Math.max(4, Math.min(left, cRect.width - width - 4));
+		pop.style.position = "absolute";
+		pop.style.top = `${top}px`;
 		pop.style.left = `${left}px`;
 		pop.style.width = `${width}px`;
+		pop.style.maxHeight = `${Math.max(120, cRect.height - top - 8)}px`;
 		this.modelBadgeEl.addClass("open");
 
 		const onOutside = (e: MouseEvent) => {
@@ -2256,6 +2277,7 @@ export class PythiaSidebarView extends ItemView {
 		conv.model = m.id;
 		await this.plugin.conversationStore.save(conv);
 		this.updateModelBadge();
+		if (this.inspectorEl) this.fillContextInspector();
 	}
 
 	private onModelBadgeClick(): void {
@@ -2266,6 +2288,7 @@ export class PythiaSidebarView extends ItemView {
 			async (conv) => {
 				await this.plugin.conversationStore.save(conv);
 				this.updateModelBadge();
+				if (this.inspectorEl) this.fillContextInspector();
 			},
 			this.plugin.settings.temperature,
 			this.plugin.settings.effort,
@@ -2324,11 +2347,14 @@ export class PythiaSidebarView extends ItemView {
 		const headerEl = container.querySelector<HTMLElement>(".p-header");
 		if (!headerEl) return;
 		const panel = container.createDiv({ cls: "p-switcher" });
+		const cRect = container.getBoundingClientRect();
 		const rect = headerEl.getBoundingClientRect();
-		panel.style.position = "fixed";
-		panel.style.top = `${rect.bottom + 4}px`;
-		panel.style.left = `${rect.left + 16}px`;
+		const top = rect.bottom - cRect.top + 4;
+		panel.style.position = "absolute";
+		panel.style.top = `${top}px`;
+		panel.style.left = `${rect.left - cRect.left + 16}px`;
 		panel.style.width = `${Math.max(180, rect.width - 32)}px`;
+		panel.style.maxHeight = `${Math.max(160, cRect.height - top - 8)}px`;
 
 		const searchRow = panel.createDiv({ cls: "p-switcher-search" });
 		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
