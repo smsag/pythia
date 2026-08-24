@@ -11,7 +11,8 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
-import { parseCitations, eachCitationSegment } from "./services/citations";
+import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
+import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -107,6 +108,10 @@ export class PythiaSidebarView extends ItemView {
 	private quickSwitcherCleanup: (() => void) | null = null;
 	// In-panel history view (F10) teardown.
 	private historyCleanup: (() => void) | null = null;
+	// Web-search sources captured (deterministically) during the current send,
+	// so the sources row reflects the real Tavily results regardless of how the
+	// model chooses to cite them.
+	private pendingWebSources: { title: string; url: string }[] = [];
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -1488,7 +1493,8 @@ export class PythiaSidebarView extends ItemView {
 
 	private async onCitationClick(src: MessageSource): Promise<void> {
 		if (src.kind === "web") {
-			window.open(`https://${src.ref}`, "_blank");
+			const url = /^https?:\/\//i.test(src.ref) ? src.ref : `https://${src.ref}`;
+			window.open(url, "_blank");
 			return;
 		}
 		const f = this.app.vault.getAbstractFileByPath(src.ref)
@@ -1574,7 +1580,7 @@ export class PythiaSidebarView extends ItemView {
 		this.renderTurnLabel(row, msg);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
-			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), aiBody, "", this);
+			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
@@ -1621,12 +1627,12 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				try {
-					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(fullText), aiBody, "", this);
+					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(fullText)), aiBody, "", this);
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
-				const sources = parseCitations(fullText);
+				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				this.paintCitations(aiBody, sources);
 				this.renderSourcesRow(row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
@@ -2878,6 +2884,7 @@ export class PythiaSidebarView extends ItemView {
 		const attachedNotes = [...(conv.contextNotes ?? [])];
 
 		const { appendToken, finalize, getPartial, row: streamingRow } = this.createStreamingBubble();
+		this.pendingWebSources = [];
 
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				// web_search is read-only — run it directly with a live status chip,
@@ -2908,6 +2915,8 @@ export class PythiaSidebarView extends ItemView {
 							cls: "pythia-tool-call-label",
 							text: t("searchedLabel", { query }),
 						});
+						// Capture the real Tavily sources for the message's sources row.
+						this.pendingWebSources.push(...parseWebSourcesFromResult(searchResult));
 					}
 					return searchResult;
 				}
@@ -3025,7 +3034,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
-				const parsedSources = parseCitations(fullText);
+				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",

@@ -39,7 +39,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 				`Current date: ${today}.\n` +
 				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
 				`When a question is time-sensitive or you are not confident a fact is current, use the web_search tool rather than relying on memory. ` +
-				`When a statement draws on a web result, append a citation marker immediately after it, in this exact format: ⟦cite:web:<domain>⟧ — the bare domain only, no scheme or path (e.g. ⟦cite:web:ecb.europa.eu⟧). Do not number them yourself and do not add a separate sources list.\n` +
+				`Base your answer on the results; do not add your own inline source markers or a sources list — Pythia lists the web sources for you automatically.\n` +
 				`</${RECENT_CONTEXT_TAG}>`
 		);
 	}
