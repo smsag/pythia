@@ -868,3 +868,10 @@ Closes the fork↔source loop so users don't lose track of side-explorations.
 - **Symptom:** summaries shown inline (summary cards, fork anchor) opened with "This conversation is…" / "We discussed…", which reads as a description of a chat rather than standalone content.
 - **Root cause:** the summary-generation prompts predate inline display — framed as "summarize this conversation for future reference" and banned only a "Summary of…" heading, not the meta opener.
 - **Fix (ADR-061):** content-first prompts. Conversation summary leads with the subject matter and bans the meta openers explicitly; favorites summary states each bullet as a direct fact and may omit an empty `## Action items` section. Prompt-only; existing summaries unchanged until regenerated.
+
+### #109 — Low max-tokens silently truncates replies on reasoning models
+
+**Files:** `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts` — **Resolved**
+
+- **Symptom:** after switching a conversation onto a reasoning model, replies could come back truncated or empty when a small per-conversation `maxTokens` was set — the reasoning budget is spent before visible output, and the model-appropriate default only applies when `maxTokens` is unset.
+- **Fix (ADR-062):** a warning icon (`.p-send-hint`) appears beside the Send button when the model is a reasoning model and the effective max-tokens is below `DEFAULT_MAX_TOKENS_REASONING`; tooltip explains the risk, click opens the settings modal. Refreshed via `updateSendHint()` from `updateModelBadge()`. UI-only + one i18n key.

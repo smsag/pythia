@@ -36,7 +36,8 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { MODEL_ABBREVIATIONS } from "./models/knownModels";
+import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel } from "./models/knownModels";
+import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -120,6 +121,9 @@ export class PythiaSidebarView extends ItemView {
 	private suppressNextSendClick = false;
 	private sendMenuWrap!: HTMLElement;
 	private sendMenuCleanup: (() => void) | null = null;
+	// Warning shown beside Send when the effective max-tokens looks too low for
+	// the selected reasoning model (its reasoning budget can truncate the reply).
+	private sendHintEl!: HTMLButtonElement;
 
 	private inputAreaEl!: HTMLElement;
 	private inputCollapseBtn!: HTMLButtonElement;
@@ -684,6 +688,13 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.inputCollapseBtn, "arrow-down");
 		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
+
+		// Max-tokens warning, sits just left of Send. Hidden unless the effective
+		// max-tokens looks too low for a reasoning model; clicking opens settings.
+		this.sendHintEl = toolbar.createEl("button", { cls: "p-send-hint" });
+		setIcon(this.sendHintEl, "alert-triangle");
+		this.sendHintEl.style.display = "none";
+		this.registerDomEvent(this.sendHintEl, "click", () => this.onModelBadgeClick());
 
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
@@ -1779,6 +1790,33 @@ export class PythiaSidebarView extends ItemView {
 		const model = this.activeConversation.model ?? "";
 		this.modelBadgeEl.setText(abbreviateModel(model));
 		this.modelBadgeEl.style.display = "";
+		this.updateSendHint();
+	}
+
+	/** Show a warning beside Send when the effective max-tokens is low enough that
+	 *  a reasoning model's hidden reasoning budget could truncate the reply — the
+	 *  main sharp edge of switching a conversation onto a reasoning model. */
+	private updateSendHint(): void {
+		if (!this.sendHintEl) return;
+		const conv = this.activeConversation;
+		const model = conv?.model ?? "";
+		const isReasoning = !!model && (isReasoningModel(model) || isMistralReasoningModel(model));
+		// undefined ⇒ the model-appropriate default applies, so there is nothing to warn about.
+		const effective = conv?.maxTokens ?? this.plugin.settings.maxTokens;
+		const warn = isReasoning && effective !== undefined && effective < DEFAULT_MAX_TOKENS_REASONING;
+		if (!warn) {
+			this.sendHintEl.style.display = "none";
+			return;
+		}
+		this.sendHintEl.setAttribute(
+			"title",
+			t("sendMaxTokensHint", {
+				max: String(effective),
+				model: abbreviateModel(model),
+				recommended: String(DEFAULT_MAX_TOKENS_REASONING),
+			}),
+		);
+		this.sendHintEl.style.display = "";
 	}
 
 	/** Reflect the active conversation's research (web-search) state on the

@@ -4,6 +4,7 @@ const de: Strings = {
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",
 	changeModelTooltip:     "Anbieter / Modell wechseln",
+	sendMaxTokensHint:      "Max. Tokens ({{max}}) könnten für {{model}} zu niedrig sein — ein Reasoning-Modell verbraucht einen Teil davon für verborgenes Nachdenken, sodass die Antwort abgeschnitten werden kann. Empfohlen: mindestens {{recommended}}. Zum Anpassen klicken.",
 	deleteConvTooltip:      "Gespräch löschen",
 	newConvTooltip:         "Neues Gespräch",
 	templateLabel:          "Vorlage: {{name}}",

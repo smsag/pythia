@@ -1260,6 +1260,24 @@ body.is-mobile .p-textarea {
   display: none;
 }
 
+/* ── Max-tokens warning beside Send ── */
+.p-send-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-right: var(--s2);
+  cursor: pointer;
+  color: var(--text-warning, var(--color-orange));
+  box-shadow: none;
+}
+.p-send-hint svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* ── Long-press Send menu (summary options, opens above the button) ── */
 .p-send-wrap {
   position: relative;

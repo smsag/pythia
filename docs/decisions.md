@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-062 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
+*Last updated: 2026-08-24 — ADR-063 (max-tokens warning surfaced at the Send button when the effective max-tokens looks too low for the selected reasoning model — the truncation sharp edge of mid-conversation model switching, made visible before send; click opens settings).*
+
+*Previously, 2026-08-24 — ADR-062 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
 
 *Previously, 2026-08-24 — ADR-061 (content-first summary generation prompts: conversation- and favorites-summary prompts now produce standalone recaps for inline display — banned "This conversation…"-style meta openers, direct fact-phrasing in favorites bullets, and an omittable Action-items section).*
 
@@ -875,3 +877,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 - *Caching fetched sources into the vault* — deferred; this pass is search + recency only.
 
 **Consequence:** Live recency for all three providers from one tool definition and one execution branch. `WebSearchService` never throws — a missing key, HTTP error, or network failure returns an `"Error: …"` string the model reads and recovers from, matching the note-tool convention. New settings: `searchSecretName` (Tavily key via Obsidian SecretStorage), `webSearchDefault`, `webSearchMaxResults` (caps results, bounding a research turn's token cost). `Conversation`/`PythiaTemplate` gained `researchMode`; templates can preset it via `research_mode` frontmatter. i18n: added `webSearchSection`, `searchKeyName`/`Desc`, `webSearchDefaultName`/`Desc`, `webSearchMaxResultsName`/`Desc`, `researchToggleTooltip`, `research{Enabled,Disabled,NoKey}Notice`, `searchingLabel`, `searchedLabel`, `searchFailedLabel`.
+
+### ADR-063 — Max-tokens warning surfaced at the Send button
+
+**Status:** Active
+
+**Context:** A per-conversation `maxTokens` persists across a provider/model switch, and the model-appropriate default (`resolveDefaultMaxTokens` — larger for reasoning models) only applies when `maxTokens` is unset. So switching a conversation onto a **reasoning model** while a small `maxTokens` is set silently truncates replies: the model spends part of that budget on hidden reasoning before any visible output. The condition was only discoverable by opening the settings modal — the wrong place, since the user notices the problem at send time.
+
+**Decision:** Surface the warning **at the Send button**, where the user acts. A warning icon (`.p-send-hint`, `alert-triangle`, `var(--text-warning)`) appears just left of Send when `isReasoningModel(model)` and the effective max-tokens (`conv.maxTokens ?? settings.maxTokens`) is defined and `< DEFAULT_MAX_TOKENS_REASONING`. Its tooltip names the current value, the model, and the recommended floor; clicking it opens the provider/model settings modal (reusing `onModelBadgeClick`). `updateSendHint()` is driven by `updateModelBadge()`, so it refreshes on render, model change, and template apply. An **unset** max-tokens never warns — the correct default applies automatically.
+
+**Alternatives rejected:** auto-raising a low `maxTokens` on switch (silently overrides an explicit user choice — surfacing beats mutating); warning only inside the settings modal (user sees it too late, after the truncated reply); blocking send (too aggressive — a low cap is legitimate for non-reasoning use and the user may want it anyway).
+
+**Consequence:** The main sharp edge of mid-conversation model switching (ADR discussion) is now visible before the user sends. UI-only + one i18n key (`sendMaxTokensHint`); no data-model change. The heuristic is intentionally conservative (reasoning models + explicit low cap only) to avoid false positives.

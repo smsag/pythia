@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-24 — the fork anchor's "Open fork" button (right-aligned) now long-presses to open a generate-summary menu (`.p-fork-menu`, reusing `.p-send-menu` styling, above the button via `.p-fork-open-wrap`): "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites. Short press opens the fork; the standalone "Summarize fork" button is gone. See ADR-059.*
+*Last updated: 2026-08-24 — a max-tokens warning (`.p-send-hint`, `alert-triangle` icon in `var(--text-warning)`) sits just left of the Send button when the effective max-tokens looks too low for the selected reasoning model; its tooltip explains the truncation risk and clicking it opens the provider/model settings. Hidden otherwise. See ADR-063.*
+
+*Previously, 2026-08-24 — the fork anchor's "Open fork" button (right-aligned) now long-presses to open a generate-summary menu (`.p-fork-menu`, reusing `.p-send-menu` styling, above the button via `.p-fork-open-wrap`): "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites. Short press opens the fork; the standalone "Summarize fork" button is gone. See ADR-059.*
 
 *Previously, 2026-08-23 — fork "branch-back": in the source, a forked snippet is highlighted in `--color-accent` (`mark.p-fork-origin`, distinct from favorites); tapping it expands an inline quote (`.p-fork-anchor`) right after the snippet with the fork's summary + "Open fork". The fork's "Forked from" link returns to and expands that anchor. See ADR-058.*
 
