@@ -836,6 +836,12 @@ mark.p-fork-origin.p-highlight-flash {
   margin: 2px 0 0 0;
   flex-shrink: 0;
 }
+.p-fork-anchor-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--s2);
+}
 .p-fork-anchor-action,
 .p-fork-anchor-open {
   font-family: var(--font-monospace);
@@ -846,7 +852,6 @@ mark.p-fork-origin.p-highlight-flash {
 }
 .p-fork-anchor-open {
   color: var(--color-accent);
-  margin-left: var(--s2);
 }
 
 /* ── Delete-exchange preview ─────────────────────────────────── */

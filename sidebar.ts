@@ -1443,8 +1443,13 @@ export class PythiaSidebarView extends ItemView {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			void MarkdownRenderer.render(this.app, summary, body, "", this)
 				.catch((e) => console.error("[Pythia] fork summary render:", e));
-		} else {
-			const summarizeBtn = anchor.createEl("button", {
+		}
+
+		// All actions live in a right-aligned row.
+		const actions = anchor.createDiv({ cls: "p-fork-anchor-actions" });
+
+		if (!summary) {
+			const summarizeBtn = actions.createEl("button", {
 				cls: "p-fork-anchor-action",
 				text: t("summarizeForkBtn"),
 			});
@@ -1469,7 +1474,7 @@ export class PythiaSidebarView extends ItemView {
 			});
 		}
 
-		const open = anchor.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
+		const open = actions.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.setActiveConversation(fork);
