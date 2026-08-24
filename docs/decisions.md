@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 2: ADR-068 (vault-note references render as `[[wikilinks]]` — faint brackets, accent name, mono token estimate, `×` remove — retiring the bordered `.p-pill`; add affordance becomes a `+ Notiz` text link).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 3: ADR-069 (3px context-budget bar under the header — fill = usage / model window, warning color + header percent chip at ≥80%; the next-send token estimate moves from the Send button label to a mono label left of the button).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 2: ADR-068 (vault-note references render as `[[wikilinks]]` — faint brackets, accent name, mono token estimate, `×` remove — retiring the bordered `.p-pill`; add affordance becomes a `+ Notiz` text link).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 1: ADR-066 (frameless code blocks + selection toolbar — hairlines and a mono header replace the grey `--background-secondary` box) and ADR-067 (per-message turn micro-labels `DU · HH:MM` / `PYTHIA · MODEL · HH:MM`, backed by a new optional `Message.model`).*
 
@@ -963,3 +965,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** keeping the pill (contradicts the Final language and the "outline cards are the only bordered family" rule); rendering references through Obsidian's real internal-link machinery (heavier, and these are context attachments with custom open/remove behavior, not literal document links).
 
 **Consequence:** Note references read natively as notes across every surface. CSS + one DOM builder changed; the same `.p-wikilink` markup will be reused by the context inspector and citation source rows in later phases.
+
+### ADR-069 — Context-budget bar in the header; token estimate beside Send
+
+**Status:** Active
+
+**Context:** The Final design surfaces how full the model's context window is as a 3px bar directly under the header row (fill = usage / window), turning warning-colored with a header percent chip past ~80%. It also moves the next-send token estimate out of the Send button label — the button reads just "Senden"/"Stopp" — into a mono label immediately left of the button. `models/knownModels.ts` already exposes `getContextWindow(model)`.
+
+**Decision:** Add `.p-ctx-bar` (track + `.p-ctx-bar-fill`) between the header and chat, and a `.p-ctx-chip` in the header. `updateContextBar()` computes usage from the last message carrying `tokenUsage` (`inputTokens + outputTokens` — the context as of the last exchange, excluding the unsent draft) over `getContextWindow(conv.model)`; at `frac >= 0.8` it adds `.warn` (fill → `--text-warning`) and shows the percent chip. Both the bar and chip scroll the conversation to the top on click (the context inspector will expand there in the next phase). `updateSendBtnLabel()` now only sets the mono `.p-send-estimate` ("nächste ~Xk", key `nextSendEstimate`) and delegates the bar to `updateContextBar()`. The dead `sendBtnEstTitle` key was removed (enforced by the i18n dead-key test).
+
+**Alternatives rejected:** a composer-level budget banner (the design deliberately frees the composer of this and centralizes budget in the header); recomputing usage by re-tokenizing the whole history each keystroke (the last turn's `inputTokens` already is the measured context size — cheaper and more accurate than an estimate); keeping the estimate in the button label (crowds the button and fights the "Senden/Stopp only" spec).
+
+**Consequence:** Budget is always visible without opening anything, and the composer footer is quieter. No data-model change; usage reads existing `tokenUsage`. Numbers still use the app's existing dot-decimal short format (e.g. `~4.3k`) rather than the mockup's German comma — locale-aware number formatting is a separate, app-wide change.

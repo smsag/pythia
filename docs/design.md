@@ -138,6 +138,8 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 - Model badge: monospace, 10px, `var(--text-faint)`, clickable to change model
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
 - Trash/Plus: standard header actions
+- **Context-budget bar** (`.p-ctx-bar`, ADR-069): 3px track (`--background-modifier-border`) directly under the header row; `.p-ctx-bar-fill` width = context usage / model window (`--color-accent`, → `--text-warning` under `.warn` at ≥80%). Click scrolls to top. A header `.p-ctx-chip` (mono 9px, warning-tinted) shows the percentage only at ≥80%.
+- **Send estimate** (`.p-send-estimate`): mono next-send token estimate ("nächste ~Xk") sits left of the Send button; the Send button label is just `Senden`/`Stopp`.
 
 **Rename mode** replaces the title + pencil with `.p-rename-input` (inline `<input>`, flex: 1, accent border, 20px height) and `.p-rename-llm-btn` (sparkle, accent colour). Enter/blur confirms and saves; Escape cancels. The LLM sparkle generates a name immediately from the first user+assistant message pair and exits rename mode on success.
 

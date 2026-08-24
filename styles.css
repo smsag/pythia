@@ -55,6 +55,37 @@
   flex-shrink: 0;
   min-height: 34px;
 }
+
+/* ── Context-budget bar (ADR-069) ───────────────────────────────
+   3px track directly under the header row; fill = usage / window. */
+.p-ctx-bar {
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--background-modifier-border);
+  cursor: pointer;
+}
+.p-ctx-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-accent);
+  transition: width 0.2s ease;
+}
+.p-ctx-bar.warn .p-ctx-bar-fill {
+  background: var(--text-warning, var(--color-orange));
+}
+/* Header percent chip — only shown at >=80% usage. */
+.p-ctx-chip {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: var(--text-warning, var(--color-orange));
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-orange) 40%, transparent);
+}
 .p-title {
   all: unset;
   cursor: pointer;
@@ -1303,6 +1334,16 @@ body.is-mobile .p-textarea {
 }
 
 /* ── Max-tokens warning beside Send ── */
+/* Next-send token estimate (mono), left of the warning + Send button. */
+.p-send-estimate {
+  font-family: var(--font-monospace);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-right: var(--s2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .p-send-hint {
   display: inline-flex;
   align-items: center;

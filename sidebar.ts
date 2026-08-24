@@ -36,7 +36,7 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel } from "./models/knownModels";
+import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel, getContextWindow } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -93,6 +93,12 @@ export class PythiaSidebarView extends ItemView {
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
 	private copyLinkBtn!: HTMLButtonElement;
+	// Context-budget bar under the header + the >=80% warning percent chip.
+	private ctxBarEl!: HTMLElement;
+	private ctxBarFillEl!: HTMLElement;
+	private ctxChipEl!: HTMLElement;
+	// Mono next-send token estimate shown left of the Send button.
+	private sendEstimateEl!: HTMLElement;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -331,6 +337,13 @@ export class PythiaSidebarView extends ItemView {
 
 		this.buildHeader(container);
 
+		// Context-budget bar: a 3px track directly under the header row. Fill
+		// width = context usage / model window; turns warning-colored at >=80%.
+		this.ctxBarEl = container.createDiv({ cls: "p-ctx-bar" });
+		this.ctxBarFillEl = this.ctxBarEl.createDiv({ cls: "p-ctx-bar-fill" });
+		this.ctxBarEl.addEventListener("click", () => this.scrollToTop());
+		this.ctxBarEl.style.display = "none";
+
 		this.buildChatArea(container);
 
 		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
@@ -409,6 +422,13 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.renameBtn, "pencil");
 		this.renameBtn.style.display = "none";
 		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
+
+		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
+		// Clicking it scrolls to the top of the conversation (context inspector
+		// lands there in a later phase).
+		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
+		this.ctxChipEl.style.display = "none";
+		this.ctxChipEl.addEventListener("click", () => this.scrollToTop());
 
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
@@ -688,6 +708,9 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.inputCollapseBtn, "arrow-down");
 		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
+
+		// Next-send token estimate (mono), sits left of the warning + Send.
+		this.sendEstimateEl = toolbar.createEl("span", { cls: "p-send-estimate" });
 
 		// Max-tokens warning, sits just left of Send. Hidden unless the effective
 		// max-tokens looks too low for a reasoning model; clicking opens settings.
@@ -1819,6 +1842,7 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.setText(abbreviateModel(model));
 		this.modelBadgeEl.style.display = "";
 		this.updateSendHint();
+		this.updateContextBar();
 	}
 
 	/** Show a warning beside Send when the effective max-tokens is low enough that
@@ -2701,12 +2725,22 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
-	private updateSendBtnLabel(): void {
+	/** Return the most recent message carrying token usage (the last completed
+	 *  assistant turn), or undefined if the conversation has none yet. */
+	private lastTokenUsageMsg(): Message | undefined {
 		const messages = this.activeConversation?.messages ?? [];
-		let last: Message | undefined;
 		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].tokenUsage) { last = messages[i]; break; }
+			if (messages[i].tokenUsage) return messages[i];
 		}
+		return undefined;
+	}
+
+	private updateSendBtnLabel(): void {
+		// The token estimate now lives in a mono label left of Send (not the
+		// button label). The button reads just "Senden" / "Stopp".
+		this.sendBtn.setText(t("sendBtn"));
+		this.sendBtn.title = "";
+		const last = this.lastTokenUsageMsg();
 		if (last?.tokenUsage) {
 			// Estimate total input tokens for the NEXT send (#28):
 			//   previous inputTokens  = full context as of the last call
@@ -2718,11 +2752,45 @@ export class PythiaSidebarView extends ItemView {
 			const fmt = estimate >= 1000
 				? `~${(estimate / 1000).toFixed(1)}k`
 				: `~${estimate}`;
-			this.sendBtn.setText(`${t("sendBtn")} · ↑${fmt}`);
-			this.sendBtn.title = t("sendBtnEstTitle", { n: fmt });
+			this.sendEstimateEl.setText(t("nextSendEstimate", { n: fmt }));
+			this.sendEstimateEl.style.display = "";
 		} else {
-			this.sendBtn.setText(t("sendBtn"));
-			this.sendBtn.title = "";
+			this.sendEstimateEl.setText("");
+			this.sendEstimateEl.style.display = "none";
+		}
+		this.updateContextBar();
+	}
+
+	/** Context-budget bar under the header: fill = (last-known context size) /
+	 *  (model context window). Turns warning-colored and surfaces a header
+	 *  percent chip at >=80%. Hidden until a turn has produced token usage. */
+	private updateContextBar(): void {
+		if (!this.ctxBarEl) return;
+		const conv = this.activeConversation;
+		const last = this.lastTokenUsageMsg();
+		if (!conv || !last?.tokenUsage) {
+			this.ctxBarEl.style.display = "none";
+			this.ctxChipEl.style.display = "none";
+			return;
+		}
+		const used = last.tokenUsage.inputTokens + last.tokenUsage.outputTokens;
+		const windowSize = getContextWindow(conv.model);
+		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
+		const pct = Math.round(frac * 100);
+		const warn = frac >= 0.8;
+		this.ctxBarEl.style.display = "";
+		this.ctxBarFillEl.style.width = `${(frac * 100).toFixed(1)}%`;
+		this.ctxBarEl.toggleClass("warn", warn);
+		this.ctxBarEl.setAttr("title", t("ctxBarTooltip", {
+			used: used.toLocaleString(),
+			total: windowSize.toLocaleString(),
+			pct: String(pct),
+		}));
+		if (warn) {
+			this.ctxChipEl.setText(`${pct}%`);
+			this.ctxChipEl.style.display = "";
+		} else {
+			this.ctxChipEl.style.display = "none";
 		}
 	}
 

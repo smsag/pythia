@@ -55,6 +55,8 @@ const en = {
 	turnUser:    "YOU",
 	turnAI:      "PYTHIA",
 	addNoteInline: "+ Note",
+	nextSendEstimate: "next {{n}}",
+	ctxBarTooltip:    "Context: {{used}} / {{total}} tokens ({{pct}}%)",
 	copyBtn:     "Copy",
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",
@@ -65,7 +67,6 @@ const en = {
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",
 	sendBtn:             "Send",
-	sendBtnEstTitle:     "Estimated input tokens for next send: {{n}}",
 	stopBtn:             "Stop",
 	attachNoteTooltip:   "Attach note",
 	saveResponseTooltip: "Save response",

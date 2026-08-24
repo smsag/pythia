@@ -60,6 +60,10 @@ const de: Strings = {
 	// ── Wikilink references ───────────────────────────────────────────────────
 	addNoteInline: "+ Notiz",
 
+	// ── Context budget ────────────────────────────────────────────────────────
+	nextSendEstimate: "nächste {{n}}",
+	ctxBarTooltip:    "Kontext: {{used}} / {{total}} Token ({{pct}}%)",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",
@@ -71,7 +75,6 @@ const de: Strings = {
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
-	sendBtnEstTitle:     "Geschätzte Eingabe-Tokens für nächste Sendung: {{n}}",
 	stopBtn:             "Anfrage abbrechen",
 	attachNoteTooltip:   "Notiz anhängen",
 	saveResponseTooltip: "Antwort speichern",
