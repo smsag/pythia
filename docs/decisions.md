@@ -1,8 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
+*Last updated: 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
 
-*Previously, 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
+*Previously, 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
 
 *Previously, 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
 
@@ -809,3 +809,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a top "Forks" card (not tied to reading position); auto-summarizing every fork (cost, and reuse-existing was preferred); making the fork's `summaryText` do double duty (the conflation this fixes).
 
 **Consequence:** Reading the source, the branch points are visible and expandable in place; the fork↔source loop is closed both ways. Scope: one level of forking. New i18n: `summarizeForkBtn`, `openForkBtn`.
+
+### ADR-059 — Fork anchor summaries generated via a long-press Open-fork menu
+
+**Status:** Active (supersedes ADR-058's standalone "Summarize fork" button)
+
+**Context:** ADR-058 gave the inline fork anchor a single "Summarize fork" button that appeared only when the fork had no summary, and only ever generated the *conversation* summary. But a fork can also carry favorites, and once a summary existed there was no in-place way to (re)generate either kind — the anchor was a dead end for anything but the first conversation summary.
+
+**Decision:** Mirror the Send button's long-press summary menu on the anchor's **Open-fork** button.
+1. **Long-press opens a menu.** A 450 ms touch+mouse long-press on "Open fork" opens a popover (`.p-fork-menu`, reusing `.p-send-menu` styling) stacked above the button; a short press still opens the fork. The press that opens the menu suppresses the click that would otherwise open the fork (`suppressNextForkOpen`), matching `suppressNextSendClick`.
+2. **Two items, favorites conditional.** "Summarize conversation" (`generateSummary(fork)` → `fork.summaryText`, disabled when the fork has no messages) is always present; "Summarize favorites" (`runFavoritesSummary(fork)` → `fork.favoritesSummary`) is **offered only when the fork carries favorites** (per the request: hidden entirely, not merely disabled).
+3. **Show the type just generated.** `buildForkAnchor` gained a `preferType` argument; after generating, the anchor re-renders showing the summary just produced even when both kinds exist. With no preference it stays favorites-preferred (ADR-058 precedence).
+4. **Single generate control.** The standalone "Summarize fork" button is removed; the menu covers both the no-summary and regenerate cases. Regenerating overwrites in place.
+
+**Alternatives rejected:** keeping the standalone button (couldn't reach favorites or regeneration); a native Obsidian `Menu` (renders as a mobile bottom sheet — the same reason ADR-057 chose a custom popover for the Send menu); disabling rather than hiding the favorites item on a fork with no favorites (the request asked for it to be offered only when favorites exist).
+
+**Consequence:** The anchor is a full generate/regenerate surface consistent with the Send menu. Removed i18n: `summarizeForkBtn`. Reused: `menuSummarizeConversation`, `menuSummarizeFavorites`, `openForkBtn`, `generatingSummary`, `summaryFailed`.

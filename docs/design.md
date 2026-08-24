@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-23 — fork "branch-back": in the source, a forked snippet is highlighted in `--color-accent` (`mark.p-fork-origin`, distinct from favorites); tapping it expands an inline quote (`.p-fork-anchor`) right after the snippet with the fork's summary + "Open fork". The fork's "Forked from" link returns to and expands that anchor. See ADR-058.*
+*Last updated: 2026-08-24 — the fork anchor's "Open fork" button (right-aligned) now long-presses to open a generate-summary menu (`.p-fork-menu`, reusing `.p-send-menu` styling, above the button via `.p-fork-open-wrap`): "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites. Short press opens the fork; the standalone "Summarize fork" button is gone. See ADR-059.*
+
+*Previously, 2026-08-23 — fork "branch-back": in the source, a forked snippet is highlighted in `--color-accent` (`mark.p-fork-origin`, distinct from favorites); tapping it expands an inline quote (`.p-fork-anchor`) right after the snippet with the fork's summary + "Open fork". The fork's "Forked from" link returns to and expands that anchor. See ADR-058.*
 
 *Previously, 2026-08-23 — summaries reworked into top-of-conversation "Speisekarte" cards: both conversation and favorites summaries render as collapsible in-scroll cards (`.p-summary-card`) generated only via a long-press on the Send button (Obsidian `Menu`); cards auto-collapse when scrolled out of view; the pinned summary panel, input-toolbar sparkle, panel refresh icon, navigator ✦ action, and `FavoritesSummaryModal` are removed; nav Favorites label links to the favorites card. See ADR-057.*
 

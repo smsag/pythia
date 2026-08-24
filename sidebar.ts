@@ -110,6 +110,9 @@ export class PythiaSidebarView extends ItemView {
 
 	// Currently-open inline fork-origin anchor (only one at a time).
 	private openForkAnchor: HTMLElement | null = null;
+	// Long-press "generate summary" menu on a fork anchor's Open-fork button.
+	private forkMenuCleanup: (() => void) | null = null;
+	private suppressNextForkOpen = false;
 	// Summary "Speisekarte" cards at the top of the message list.
 	private summaryCardsEl: HTMLElement | null = null;
 	private summaryCardObserver: IntersectionObserver | null = null;
@@ -1430,14 +1433,29 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private closeForkAnchor(): void {
+		this.closeForkMenu();
 		this.openForkAnchor?.remove();
 		this.openForkAnchor = null;
 	}
 
-	/** Fill the anchor with the fork's summary (favorites → conversation → generate) and links. */
-	private buildForkAnchor(anchor: HTMLElement, fork: Conversation): void {
+	/** Fill the anchor with the fork's summary and its Open-fork control.
+	 *  `preferType` forces which summary shows (the one just generated); otherwise
+	 *  favorites are preferred over the conversation summary. Long-pressing the
+	 *  Open-fork button opens a menu to (re)generate either summary. */
+	private buildForkAnchor(
+		anchor: HTMLElement,
+		fork: Conversation,
+		preferType?: "conversation" | "favorites",
+	): void {
 		anchor.empty();
-		const summary = fork.favoritesSummary?.text?.trim() || fork.summaryText?.trim();
+		this.closeForkMenu();
+
+		const favText = fork.favoritesSummary?.text?.trim();
+		const convText = fork.summaryText?.trim();
+		let summary: string | undefined;
+		if (preferType === "conversation") summary = convText || favText;
+		else if (preferType === "favorites") summary = favText || convText;
+		else summary = favText || convText;
 
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
@@ -1448,37 +1466,123 @@ export class PythiaSidebarView extends ItemView {
 		// All actions live in a right-aligned row.
 		const actions = anchor.createDiv({ cls: "p-fork-anchor-actions" });
 
-		if (!summary) {
-			const summarizeBtn = actions.createEl("button", {
-				cls: "p-fork-anchor-action",
-				text: t("summarizeForkBtn"),
-			});
-			summarizeBtn.addEventListener("click", async (e) => {
-				e.stopPropagation();
-				summarizeBtn.disabled = true;
-				const notice = new Notice(t("generatingSummary"), 0);
-				try {
-					const text = await this.plugin.llmRouter.generateSummary(fork);
-					if (text) {
-						fork.summaryText = text;
-						fork.summaryUpdatedAt = new Date().toISOString();
-						await this.plugin.conversationStore.save(fork);
-						this.buildForkAnchor(anchor, fork); // re-render with the summary
-					}
-				} catch (err) {
-					new Notice(t("summaryFailed", { error: err instanceof Error ? err.message : String(err) }));
-					summarizeBtn.disabled = false;
-				} finally {
-					notice.hide();
-				}
-			});
-		}
-
-		const open = actions.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
+		// Open-fork button: short-press opens the fork, long-press opens the
+		// generate-summary menu (mirrors the Send button's long-press menu).
+		const openWrap = actions.createDiv({ cls: "p-fork-open-wrap" });
+		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
+			if (this.suppressNextForkOpen) {
+				this.suppressNextForkOpen = false;
+				return;
+			}
 			void this.setActiveConversation(fork);
 		});
+		this.attachForkLongPress(open, openWrap, anchor, fork);
+	}
+
+	/** 450 ms touch+mouse long-press on the Open-fork button → summary menu. */
+	private attachForkLongPress(
+		btn: HTMLElement,
+		wrap: HTMLElement,
+		anchor: HTMLElement,
+		fork: Conversation,
+	): void {
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const cancel = () => {
+			if (timer !== null) { clearTimeout(timer); timer = null; }
+		};
+		const fire = () => {
+			timer = null;
+			this.suppressNextForkOpen = true;
+			this.openForkMenu(wrap, anchor, fork);
+		};
+		this.registerDomEvent(btn, "touchstart", () => { timer = setTimeout(fire, 450); }, { passive: true });
+		this.registerDomEvent(btn, "touchend", cancel, { passive: true });
+		this.registerDomEvent(btn, "touchcancel", cancel, { passive: true });
+		this.registerDomEvent(btn, "touchmove", cancel, { passive: true });
+		this.registerDomEvent(btn, "mousedown", (e: MouseEvent) => { if (e.button === 0) timer = setTimeout(fire, 450); });
+		this.registerDomEvent(btn, "mouseup", cancel);
+		this.registerDomEvent(btn, "mouseleave", cancel);
+	}
+
+	/** The fork anchor's long-press menu — a popover above the Open-fork button.
+	 *  "Summarize favorites" is offered only when the fork carries favorites. */
+	private openForkMenu(wrap: HTMLElement, anchor: HTMLElement, fork: Conversation): void {
+		if (this.forkMenuCleanup) { this.closeForkMenu(); return; } // toggle off
+
+		const menu = wrap.createDiv({ cls: "p-send-menu p-fork-menu" });
+		const hasFavorites = (fork.favorites?.length ?? 0) > 0;
+
+		const addItem = (label: string, icon: string, disabled: boolean, action: () => void) => {
+			const item = menu.createDiv({
+				cls: `p-send-menu-item${disabled ? " p-send-menu-item-disabled" : ""}`,
+			});
+			const ic = item.createSpan({ cls: "p-send-menu-icon" });
+			setIcon(ic, icon);
+			item.createSpan({ cls: "p-send-menu-label", text: label });
+			if (disabled) return;
+			item.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.closeForkMenu();
+				action();
+			});
+		};
+
+		addItem(t("menuSummarizeConversation"), "align-left", fork.messages.length === 0,
+			() => void this.generateForkSummary(anchor, fork, "conversation"));
+		if (hasFavorites) {
+			addItem(t("menuSummarizeFavorites"), "star", false,
+				() => void this.generateForkSummary(anchor, fork, "favorites"));
+		}
+
+		const onOutside = (e: Event) => {
+			if (!wrap.contains(e.target as Node)) this.closeForkMenu();
+		};
+		window.setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			document.addEventListener("touchstart", onOutside, true);
+		}, 0);
+		this.forkMenuCleanup = () => {
+			document.removeEventListener("mousedown", onOutside, true);
+			document.removeEventListener("touchstart", onOutside, true);
+			menu.remove();
+		};
+	}
+
+	private closeForkMenu(): void {
+		this.forkMenuCleanup?.();
+		this.forkMenuCleanup = null;
+	}
+
+	/** Generate (or regenerate) a fork's conversation or favorites summary, then
+	 *  re-render the anchor showing the type just generated. */
+	private async generateForkSummary(
+		anchor: HTMLElement,
+		fork: Conversation,
+		type: "conversation" | "favorites",
+	): Promise<void> {
+		if (type === "favorites") {
+			const text = await this.runFavoritesSummary(fork);
+			if (text && this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "favorites");
+			return;
+		}
+		if (fork.messages.length === 0) { new Notice(t("noMessagesToSummarize")); return; }
+		const notice = new Notice(t("generatingSummary"), 0);
+		try {
+			const text = await this.plugin.llmRouter.generateSummary(fork);
+			if (text) {
+				fork.summaryText = text;
+				fork.summaryUpdatedAt = new Date().toISOString();
+				await this.plugin.conversationStore.save(fork);
+				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
+			}
+		} catch (err) {
+			new Notice(t("summaryFailed", { error: err instanceof Error ? err.message : String(err) }));
+		} finally {
+			notice.hide();
+		}
 	}
 
 	/** From a fork's banner: scroll to its origin snippet in the source and expand its anchor. */

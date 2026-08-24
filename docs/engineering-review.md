@@ -840,3 +840,12 @@ Closes the fork↔source loop so users don't lose track of side-explorations.
 - Fork banner link returns to + expands the origin anchor (`revealForkOrigin`).
 - `forkedFromOccurrenceIndex` captured at fork time; source summary moved to `forkedFromSummary` (context via `ContextBuilder`, `summaryText ?? forkedFromSummary`), decoupled from the fork's own summary.
 - Tests: painter class/attr + `repaintForkOrigins`/`rangeForForkOrigin` (happy-dom); `ContextBuilder` fallback/precedence. 341 total pass.
+
+### #106 — Fork anchor generate-summary menu
+
+**Files:** `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts` — **Resolved**
+
+- Long-press on the anchor's "Open fork" button opens a menu (`.p-fork-menu`, reusing `.p-send-menu`) mirroring the Send-button long-press; short press still opens the fork (`suppressNextForkOpen`).
+- Items: "Summarize conversation" (always; disabled when the fork has no messages) and "Summarize favorites" (offered only when the fork carries favorites — hidden, not disabled).
+- `buildForkAnchor(anchor, fork, preferType?)` re-renders showing the summary type just generated; otherwise favorites-preferred (ADR-058 precedence).
+- Standalone "Summarize fork" button removed (single generate/regenerate control); `summarizeForkBtn` i18n key removed. 341 tests still pass.

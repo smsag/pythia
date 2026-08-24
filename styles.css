@@ -842,16 +842,18 @@ mark.p-fork-origin.p-highlight-flash {
   align-items: center;
   gap: var(--s2);
 }
-.p-fork-anchor-action,
 .p-fork-anchor-open {
   font-family: var(--font-monospace);
   font-size: 10px;
   padding: 2px var(--s2);
   border-radius: 3px;
   cursor: pointer;
-}
-.p-fork-anchor-open {
   color: var(--color-accent);
+}
+/* Wrap so the long-press generate menu can stack directly above Open-fork. */
+.p-fork-open-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
 /* ── Delete-exchange preview ─────────────────────────────────── */
