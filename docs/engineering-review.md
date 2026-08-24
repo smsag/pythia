@@ -12,8 +12,9 @@
 *Updated: 2026-06-14 — #1 incremental DOM rendering implemented.*
 *Updated: 2026-06-14 — #4 closed as won't fix; docs updated to v1.19.5.*
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
-*Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-058.*
+*Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-062.*
 
+*Updated: 2026-08-23 — fork branch-back (#105): forked snippets accent-highlighted in the source, tap-to-expand inline fork summary + open/return links, source summary decoupled into `forkedFromSummary`.*
 *Updated: 2026-08-23 — saved-summary frontmatter (#104): `type: "LLM Note"` (was `pythia-conversation`/`pythia-favorites`), a clickable `conversation:` resume deep link, and no `tags: [pythia]` (`NoteWriter`).*
 *Updated: 2026-08-23 — summary UX rework (#103): top-of-conversation "Speisekarte" cards, long-press Send menu as sole generator, removed pinned panel / sparkle / favorites modal / auto-generation paths.*
 *Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
@@ -825,3 +826,45 @@ When a user saves a summary (conversation or favorites) from a summary card, the
 - no longer writes `tags: [pythia]`.
 
 Tests updated for `saveSummaryNote` and a new `saveFavoritesSummaryNote` case.
+
+---
+
+## New Feature (#105) — fork branch-back, 2026-08-23
+
+Closes the fork↔source loop so users don't lose track of side-explorations.
+
+### #105 — Fork summaries anchored at their origin snippet
+
+**Files:** `models/types.ts`, `main.ts`, `services/ContextBuilder.ts`, `ui/HighlightPainter.ts`, `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts`, tests — **Resolved**
+
+- Source paints each forked snippet as `mark.p-fork-origin` (accent) via `repaintForkOrigins`; `paintRange` generalized with class/attr params.
+- Tapping expands an inline `.p-fork-anchor` (fork's favorites → conversation summary → on-demand "Summarize fork") + "Open fork"; fork wins over favorites; one open at a time.
+- Fork banner link returns to + expands the origin anchor (`revealForkOrigin`).
+- `forkedFromOccurrenceIndex` captured at fork time; source summary moved to `forkedFromSummary` (context via `ContextBuilder`, `summaryText ?? forkedFromSummary`), decoupled from the fork's own summary.
+- Tests: painter class/attr + `repaintForkOrigins`/`rangeForForkOrigin` (happy-dom); `ContextBuilder` fallback/precedence. 341 total pass.
+
+### #106 — Fork anchor generate-summary menu
+
+**Files:** `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts` — **Resolved**
+
+- Long-press on the anchor's "Open fork" button opens a menu (`.p-fork-menu`, reusing `.p-send-menu`) mirroring the Send-button long-press; short press still opens the fork (`suppressNextForkOpen`).
+- Items: "Summarize conversation" (always; disabled when the fork has no messages) and "Summarize favorites" (offered only when the fork carries favorites — hidden, not disabled).
+- `buildForkAnchor(anchor, fork, preferType?)` re-renders showing the summary type just generated; otherwise favorites-preferred (ADR-058 precedence).
+- Standalone "Summarize fork" button removed (single generate/regenerate control); `summarizeForkBtn` i18n key removed. 341 tests still pass.
+
+### #107 — Previous-conversation summary ignored by the model
+
+**Files:** `services/promptConstants.ts`, `services/ContextBuilder.ts`, `tests/ContextBuilder.test.ts` — **Resolved**
+
+- **Symptom:** a fork of a topic-scoped conversation (e.g. "technological revolutions") answered follow-ups in the generic sense ("all revolutions of Germany" → cultural/political), ignoring the source context.
+- **Root cause:** the `<previous_conversation_summary>` block was injected with no instruction (attached notes get `GROUNDING_INSTRUCTION`; the summary got nothing), so the model treated it as background. The summary *was* reaching the model — a framing gap, not a plumbing gap.
+- **Fix:** added `PRIOR_SUMMARY_INSTRUCTION`, prepended to the block in `buildSystemPrompt`; the model now treats the summary as governing context (stay within its topic/scope unless the user changes subject). Applies to both forks and resume-summary conversations.
+- Tests: framing instruction present with a summary / absent without one; exact-join assertion updated. 343 total pass.
+
+### #108 — Summary prompts wrote meta-narration unsuited to inline display
+
+**Files:** `services/BaseProvider.ts` — **Resolved**
+
+- **Symptom:** summaries shown inline (summary cards, fork anchor) opened with "This conversation is…" / "We discussed…", which reads as a description of a chat rather than standalone content.
+- **Root cause:** the summary-generation prompts predate inline display — framed as "summarize this conversation for future reference" and banned only a "Summary of…" heading, not the meta opener.
+- **Fix (ADR-061):** content-first prompts. Conversation summary leads with the subject matter and bans the meta openers explicitly; favorites summary states each bullet as a direct fact and may omit an empty `## Action items` section. Prompt-only; existing summaries unchanged until regenerated.

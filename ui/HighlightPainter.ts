@@ -12,6 +12,7 @@
 // fragment in its own <mark>, all tagged with the same data-fav-id.
 
 const HIGHLIGHT_CLASS = "p-highlight";
+const FORK_ORIGIN_CLASS = "p-fork-origin";
 const FLASH_CLASS = "p-highlight-flash";
 
 interface TextPos {
@@ -114,7 +115,12 @@ export function computeOccurrenceIndex(root: HTMLElement, range: Range): number 
  * DOM in place. Safe to call repeatedly only on freshly rendered bodies (see
  * repaint, which clears prior marks first).
  */
-export function paintRange(range: Range, favId: string): void {
+export function paintRange(
+	range: Range,
+	id: string,
+	className: string = HIGHLIGHT_CLASS,
+	dataAttr = "data-fav-id",
+): void {
 	// Gather the text nodes the range touches before mutating (surrounding nodes
 	// changes the tree, so snapshot first).
 	const root = range.commonAncestorContainer;
@@ -138,8 +144,8 @@ export function paintRange(range: Range, favId: string): void {
 		sub.setStart(textNode, from);
 		sub.setEnd(textNode, to);
 		const mark = document.createElement("mark");
-		mark.className = HIGHLIGHT_CLASS;
-		mark.setAttribute("data-fav-id", favId);
+		mark.className = className;
+		mark.setAttribute(dataAttr, id);
 		try {
 			sub.surroundContents(mark);
 		} catch {
@@ -147,6 +153,36 @@ export function paintRange(range: Range, favId: string): void {
 			// should not throw; ignore defensively rather than break rendering.
 		}
 	}
+}
+
+// ── Fork-origin marks (accent) ──────────────────────────────────────────────
+// A source conversation paints the snippet each fork branched from, in the accent
+// color, so the fork's summary can be surfaced at its origin. Same find/paint
+// machinery as favorites, a different class + data attribute (`data-fork-id`).
+
+/** Repaint fork-origin marks for one message body from the given fork descriptors. */
+export function repaintForkOrigins(
+	body: HTMLElement,
+	forks: { id: string; text: string; occurrenceIndex?: number }[],
+): void {
+	unwrapMarks(body.querySelectorAll<HTMLElement>(`mark.${FORK_ORIGIN_CLASS}`));
+	for (const fork of forks) {
+		if (!fork.text) continue;
+		const range = findRange(body, fork.text, fork.occurrenceIndex ?? 0);
+		if (range) paintRange(range, fork.id, FORK_ORIGIN_CLASS, "data-fork-id");
+	}
+}
+
+/** Range spanning all fork-origin mark fragments for `forkId`, or null if absent. */
+export function rangeForForkOrigin(root: HTMLElement, forkId: string): Range | null {
+	const marks = root.querySelectorAll<HTMLElement>(
+		`mark.${FORK_ORIGIN_CLASS}[data-fork-id="${forkId}"]`
+	);
+	if (marks.length === 0) return null;
+	const range = document.createRange();
+	range.setStartBefore(marks[0]);
+	range.setEndAfter(marks[marks.length - 1]);
+	return range;
 }
 
 /** Unwrap a set of <mark> elements, restoring their text nodes into the DOM. */

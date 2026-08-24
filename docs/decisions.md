@@ -1,6 +1,14 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-058 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
+*Last updated: 2026-08-24 — ADR-062 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
+
+*Previously, 2026-08-24 — ADR-061 (content-first summary generation prompts: conversation- and favorites-summary prompts now produce standalone recaps for inline display — banned "This conversation…"-style meta openers, direct fact-phrasing in favorites bullets, and an omittable Action-items section).*
+
+*Previously, 2026-08-24 — ADR-060 (frame the previous-conversation summary as governing context: `PRIOR_SUMMARY_INSTRUCTION` now precedes the `<previous_conversation_summary>` block so forks/resumed conversations stay within the topic and scope of the conversation they continue).*
+
+*Previously, 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
+
+*Previously, 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
 
 *Previously, 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
 
@@ -794,7 +802,65 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 
 ---
 
-## ADR-058 — Client-executed web search ("research mode") over provider-native search
+### ADR-058 — Fork "branch-back": fork summaries anchored at their origin snippet in the source
+
+**Status:** Active
+
+**Context:** A fork is a separate conversation. When a user branches off a snippet to get an explanation, that explanation is stranded in the fork and they lose track of it while reading the source. The connection existed only as a thin fork banner (in the fork) and the navigator's Forks list.
+
+**Decision:** Make the source the hub.
+1. **Accent origin marks.** For every child fork (`getAll().filter(forkedFromId === source.id && forkedFromMessageId === msg.id)`), the source paints `forkedFromSelection` inside the branch message as `mark.p-fork-origin` in `--color-accent` — the same highlight-painter machinery as favorites (`paintRange` gained `className`/`dataAttr` params; `repaintForkOrigins`), a different class + `data-fork-id`. `forkedFromOccurrenceIndex` (captured at fork time via `computeOccurrenceIndex`) disambiguates repeated snippets.
+2. **Inline anchor on tap.** Tapping a fork-origin mark inserts a quote block (`.p-fork-anchor`) immediately after the snippet showing one summary + "Open fork". Summary precedence: the fork's `favoritesSummary` → its `summaryText` → a "Summarize fork" button that generates on demand (`generateSummary(fork)`, cached on the fork). Only one anchor open at a time. Fork-origin taps take precedence over favorite highlights (the fork wins).
+3. **Return path.** The fork's "Forked from" banner link opens the source, scrolls to the snippet, and expands its anchor (`revealForkOrigin`).
+4. **Decouple summaries.** `cmdForkConversation` previously copied the source summary into the fork's `summaryText`, which post-card-rework mislabeled it as the fork's own summary. It now stores it in `forkedFromSummary`; `ContextBuilder.buildSystemPrompt` injects `summaryText ?? forkedFromSummary`, preserving the fork's source-context while keeping its own summary genuinely its own for the branch-back display.
+
+**Alternatives rejected:** a top "Forks" card (not tied to reading position); auto-summarizing every fork (cost, and reuse-existing was preferred); making the fork's `summaryText` do double duty (the conflation this fixes).
+
+**Consequence:** Reading the source, the branch points are visible and expandable in place; the fork↔source loop is closed both ways. Scope: one level of forking. New i18n: `summarizeForkBtn`, `openForkBtn`.
+
+### ADR-059 — Fork anchor summaries generated via a long-press Open-fork menu
+
+**Status:** Active (supersedes ADR-058's standalone "Summarize fork" button)
+
+**Context:** ADR-058 gave the inline fork anchor a single "Summarize fork" button that appeared only when the fork had no summary, and only ever generated the *conversation* summary. But a fork can also carry favorites, and once a summary existed there was no in-place way to (re)generate either kind — the anchor was a dead end for anything but the first conversation summary.
+
+**Decision:** Mirror the Send button's long-press summary menu on the anchor's **Open-fork** button.
+1. **Long-press opens a menu.** A 450 ms touch+mouse long-press on "Open fork" opens a popover (`.p-fork-menu`, reusing `.p-send-menu` styling) stacked above the button; a short press still opens the fork. The press that opens the menu suppresses the click that would otherwise open the fork (`suppressNextForkOpen`), matching `suppressNextSendClick`.
+2. **Two items, favorites conditional.** "Summarize conversation" (`generateSummary(fork)` → `fork.summaryText`, disabled when the fork has no messages) is always present; "Summarize favorites" (`runFavoritesSummary(fork)` → `fork.favoritesSummary`) is **offered only when the fork carries favorites** (per the request: hidden entirely, not merely disabled).
+3. **Show the type just generated.** `buildForkAnchor` gained a `preferType` argument; after generating, the anchor re-renders showing the summary just produced even when both kinds exist. With no preference it stays favorites-preferred (ADR-058 precedence).
+4. **Single generate control.** The standalone "Summarize fork" button is removed; the menu covers both the no-summary and regenerate cases. Regenerating overwrites in place.
+
+**Alternatives rejected:** keeping the standalone button (couldn't reach favorites or regeneration); a native Obsidian `Menu` (renders as a mobile bottom sheet — the same reason ADR-057 chose a custom popover for the Send menu); disabling rather than hiding the favorites item on a fork with no favorites (the request asked for it to be offered only when favorites exist).
+
+**Consequence:** The anchor is a full generate/regenerate surface consistent with the Send menu. Removed i18n: `summarizeForkBtn`. Reused: `menuSummarizeConversation`, `menuSummarizeFavorites`, `openForkBtn`, `generatingSummary`, `summaryFailed`.
+
+### ADR-060 — Frame the previous-conversation summary as governing context
+
+**Status:** Active
+
+**Context:** A fork (and a "summary" resume-mode conversation) carries the source conversation's summary in the system prompt, wrapped as `<previous_conversation_summary>`. But the block was injected with **no instruction** — unlike attached notes, which get `GROUNDING_INSTRUCTION`. The model therefore treated the summary as ignorable background: a fork of a "technological revolutions" conversation, asked "show me all revolutions of Germany", answered in the generic sense (cultural, political, …) instead of staying within the technological framing the summary established. The summary was reaching the model (plumbing verified, unit-tested); it simply wasn't being *used* as context.
+
+**Decision:** Add `PRIOR_SUMMARY_INSTRUCTION` (in `promptConstants.ts`) and prepend it to the summary block in `buildSystemPrompt`. It tells the model the summary is the *governing context* for the user's questions — interpret and answer within the topic, scope, and framing established there unless the user clearly changes the subject, keeping domain-specific questions within that domain even when the phrasing alone would be broader. Applies whenever a prior summary is present, so both forks (`forkedFromSummary`) and resume-summary conversations (`summaryText`) benefit.
+
+**Alternatives rejected:** restating the framing inside each user message (fragile, pollutes history, not cached); relying on the tag name alone (the whole bug — a name is not an instruction); making it fork-only (resume-summary continuations have the same continuity need).
+
+**Consequence:** Forked/resumed conversations stay on-topic with the conversation they continue. No data-model or i18n change; the instruction is prompt-only. Purely additive to the system prompt (~60 words) and inside Anthropic's cached prefix.
+
+### ADR-061 — Content-first summary generation prompts
+
+**Status:** Active
+
+**Context:** The conversation- and favorites-summary generation prompts were written when summaries were used *only* as model context. Summaries now also surface **to the user inline** — the "Speisekarte" summary cards and the branch-back fork anchor (ADR-054, ADR-058). The conversation-summary prompt framed the task as "summarize this conversation for future reference" and only banned a "Summary of…" heading, so outputs opened with meta-narration ("This conversation is…", "We discussed…") that reads wrong as standalone inline content — and is now redundant with ADR-060's framing instruction on the context side.
+
+**Decision:** Make both summary prompts **content-first** (`services/BaseProvider.ts`).
+1. **Conversation summary** (`generateSummary`, `generateSummaryWithTitle`): recap the *substance* as knowledge — lead with the subject matter, with an explicit banned-openers list ("This conversation…", "In this conversation…", "The user…", "We discussed…", "Summary of…"). A positive "begin directly" instruction alone was not holding; the explicit ban is what removes the meta opener.
+2. **Favorites summary** (`generateFavoritesSummary`): keep the `## Key learnings` / `## Action items` structure, but require each bullet to state the insight directly (no "The user highlighted…" / "This note says…" phrasing), and allow **omitting the `## Action items` section entirely** when no concrete actions are genuinely warranted (previously the header was mandatory, producing empty sections).
+
+**Alternatives rejected:** two separate summaries (one for display, one for context) — doubles generation cost and storage for a difference the content-first wording already removes; post-processing to strip meta openers (brittle string surgery vs. fixing the prompt); keeping the mandatory Action-items header (emitted empty sections in the card/anchor).
+
+**Consequence:** Summaries read as standalone recaps in the cards and fork anchor while remaining good context (paired with ADR-060). Prompt-only — no data model, no i18n, no stored-summary migration; existing summaries are unchanged until regenerated.
+
+### ADR-062 — Client-executed web search ("research mode") over provider-native search
 
 **Status:** Active
 
@@ -805,7 +871,7 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:**
 - *Provider-native search tools* — three separate integrations with divergent shapes, per-provider result/citation formats, and no vault-side control over the backend. The client tool is one implementation behind the existing tool interface.
 - *`fetch` instead of `requestUrl`* — most search APIs (Tavily included) do not send CORS headers to a renderer origin; `requestUrl` runs in the Electron main process and bypasses that. The trade-off — a request in flight cannot be aborted — is acceptable for a ~1–3 s search.
-- *Always injecting the date block* — gated on `researchMode` instead, so plain conversations are unchanged (and two exact-equality prompt tests stay valid); the guidance is only meaningful when the tool is available.
+- *Always injecting the date block* — gated on `researchMode` instead, so plain conversations are unchanged (and the exact-equality prompt tests stay valid); the guidance is only meaningful when the tool is available.
 - *Caching fetched sources into the vault* — deferred; this pass is search + recency only.
 
 **Consequence:** Live recency for all three providers from one tool definition and one execution branch. `WebSearchService` never throws — a missing key, HTTP error, or network failure returns an `"Error: …"` string the model reads and recovers from, matching the note-tool convention. New settings: `searchSecretName` (Tavily key via Obsidian SecretStorage), `webSearchDefault`, `webSearchMaxResults` (caps results, bounding a research turn's token cost). `Conversation`/`PythiaTemplate` gained `researchMode`; templates can preset it via `research_mode` frontmatter. i18n: added `webSearchSection`, `searchKeyName`/`Desc`, `webSearchDefaultName`/`Desc`, `webSearchMaxResultsName`/`Desc`, `researchToggleTooltip`, `research{Enabled,Disabled,NoKey}Notice`, `searchingLabel`, `searchedLabel`, `searchFailedLabel`.

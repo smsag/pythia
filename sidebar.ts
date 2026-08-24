@@ -23,6 +23,7 @@ import {
 	clearHighlights,
 	removeHighlightById,
 	rangeForHighlight,
+	repaintForkOrigins,
 } from "./ui/HighlightPainter";
 import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -107,6 +108,11 @@ export class PythiaSidebarView extends ItemView {
 	private onSelectionChange!: () => void;
 	private lastMarkdownView: MarkdownView | null = null;
 
+	// Currently-open inline fork-origin anchor (only one at a time).
+	private openForkAnchor: HTMLElement | null = null;
+	// Long-press "generate summary" menu on a fork anchor's Open-fork button.
+	private forkMenuCleanup: (() => void) | null = null;
+	private suppressNextForkOpen = false;
 	// Summary "Speisekarte" cards at the top of the message list.
 	private summaryCardsEl: HTMLElement | null = null;
 	private summaryCardObserver: IntersectionObserver | null = null;
@@ -885,6 +891,21 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-summary-card-title",
 			text: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
+		// Timestamp lives in the header now (right-aligned, faint).
+		if (updatedAt) {
+			header.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
+		}
+		// Regenerate icon — re-runs the summary matching this card's kind.
+		const regen = header.createEl("button", {
+			cls: "p-summary-card-regen",
+			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
+		});
+		setIcon(regen, "refresh-cw");
+		regen.addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (kind === "favorites") void this.summarizeFavorites();
+			else void this.generateConversationSummary();
+		});
 		const chevron = header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
 		header.addEventListener("click", () =>
 			this.setSummaryCardOpen(card, !card.hasClass("open"))
@@ -896,9 +917,6 @@ export class PythiaSidebarView extends ItemView {
 			.catch((e) => console.error("[Pythia] summary card render:", e));
 
 		const footer = body.createDiv({ cls: "p-summary-card-footer" });
-		if (updatedAt) {
-			footer.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
-		}
 		const copyBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("copyBtn") });
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
@@ -989,9 +1007,15 @@ export class PythiaSidebarView extends ItemView {
 				cls: "pythia-fork-source-link",
 				text: source.name,
 			});
+			const forkId = conv.id;
 			link.addEventListener("click", async () => {
 				await this.setActiveConversation(source);
-				if (conv.forkedFromMessageId) {
+				// Prefer landing on the fork-origin anchor (scrolls + expands it);
+				// fall back to the branch message if the snippet can't be located.
+				const mark = this.messagesEl.querySelector(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+				if (mark) {
+					this.revealForkOrigin(forkId);
+				} else if (conv.forkedFromMessageId) {
 					this.scrollToMessage(conv.forkedFromMessageId);
 				}
 			});
@@ -1148,6 +1172,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Full rebuild ─────────────────────────────────────────────────────────
 		this.messagesEl.empty();
+		this.openForkAnchor = null; // detached by empty(); drop the stale reference
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
@@ -1191,6 +1216,7 @@ export class PythiaSidebarView extends ItemView {
 				console.error("[Pythia] render error:", e);
 			}
 			this.repaintFavorites(bubble, msg.id);
+			this.repaintForkOrigins(bubble, msg.id);
 			if (isLong) {
 				const toggle = row.createEl("button", {
 					cls: "p-bubble-toggle",
@@ -1221,6 +1247,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 		decorateCodeBlocks(aiBody, this.diagObservers);
 		this.repaintFavorites(aiBody, msg.id);
+		this.repaintForkOrigins(aiBody, msg.id);
 
 		if (msg.tokenUsage) {
 			const footer = row.createDiv({ cls: "p-tokens" });
@@ -1343,17 +1370,37 @@ export class PythiaSidebarView extends ItemView {
 		repaintBody(body, favs);
 	}
 
+	/** Paint the accent fork-origin marks for any forks that branched from `messageId`. */
+	private repaintForkOrigins(body: HTMLElement, messageId: string): void {
+		const convId = this.activeConversation?.id;
+		if (!convId) return;
+		const forks = this.plugin.conversationStore.getAll()
+			.filter((c) => c.forkedFromId === convId && c.forkedFromMessageId === messageId && c.forkedFromSelection)
+			.map((c) => ({ id: c.id, text: c.forkedFromSelection!, occurrenceIndex: c.forkedFromOccurrenceIndex }));
+		repaintForkOrigins(body, forks);
+	}
+
 	/**
 	 * Tap (no drag) inside a highlight → select its whole span and open the toolbar
 	 * with the favorite button acting as "Unfavorite". A dragged selection is left
 	 * alone here so it flows through the normal add path.
+	 * A fork-origin mark takes precedence over a favorite (the fork wins).
 	 */
 	private onMessageClick(e: MouseEvent): void {
-		this.tappedFavId = null;
 		const sel = window.getSelection();
 		// Only react to a plain tap — a drag leaves a non-collapsed selection.
 		if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
 		const target = e.target instanceof Element ? e.target : null;
+
+		// Fork origin wins over favorites.
+		const forkMark = target?.closest("mark.p-fork-origin");
+		const forkId = forkMark?.getAttribute("data-fork-id");
+		if (forkId) {
+			this.toggleForkAnchor(forkId, forkMark as HTMLElement);
+			return;
+		}
+
+		this.tappedFavId = null;
 		const mark = target?.closest("mark.p-highlight");
 		const favId = mark?.getAttribute("data-fav-id");
 		if (!favId) return;
@@ -1368,6 +1415,197 @@ export class PythiaSidebarView extends ItemView {
 		sel.removeAllRanges();
 		sel.addRange(range);
 		this.handleSelectionChange();
+	}
+
+	// ── Fork-origin inline anchor ──────────────────────────────────────────────
+
+	/** Toggle the inline fork-summary anchor for a fork-origin snippet. */
+	private toggleForkAnchor(forkId: string, markEl: HTMLElement): void {
+		// Tapping the already-open anchor's snippet closes it.
+		if (this.openForkAnchor?.getAttribute("data-fork-id") === forkId) {
+			this.closeForkAnchor();
+			return;
+		}
+		this.closeForkAnchor();
+
+		const fork = this.plugin.conversationStore.getById(forkId);
+		if (!fork) return;
+
+		// Insert the anchor immediately after the snippet's last mark fragment.
+		const row = markEl.closest("[data-msg-id]");
+		const marks = row?.querySelectorAll<HTMLElement>(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+		const lastMark = marks && marks.length ? marks[marks.length - 1] : markEl;
+
+		const anchor = createDiv({ cls: "p-fork-anchor", attr: { "data-fork-id": forkId } });
+		lastMark.after(anchor);
+		this.openForkAnchor = anchor;
+		this.buildForkAnchor(anchor, fork);
+	}
+
+	private closeForkAnchor(): void {
+		this.closeForkMenu();
+		this.openForkAnchor?.remove();
+		this.openForkAnchor = null;
+	}
+
+	/** Fill the anchor with the fork's summary and its Open-fork control.
+	 *  `preferType` forces which summary shows (the one just generated); otherwise
+	 *  favorites are preferred over the conversation summary. Long-pressing the
+	 *  Open-fork button opens a menu to (re)generate either summary. */
+	private buildForkAnchor(
+		anchor: HTMLElement,
+		fork: Conversation,
+		preferType?: "conversation" | "favorites",
+	): void {
+		anchor.empty();
+		this.closeForkMenu();
+
+		const favText = fork.favoritesSummary?.text?.trim();
+		const convText = fork.summaryText?.trim();
+		let summary: string | undefined;
+		if (preferType === "conversation") summary = convText || favText;
+		else if (preferType === "favorites") summary = favText || convText;
+		else summary = favText || convText;
+
+		if (summary) {
+			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
+			void MarkdownRenderer.render(this.app, summary, body, "", this)
+				.catch((e) => console.error("[Pythia] fork summary render:", e));
+		}
+
+		// All actions live in a right-aligned row.
+		const actions = anchor.createDiv({ cls: "p-fork-anchor-actions" });
+
+		// Open-fork button: short-press opens the fork, long-press opens the
+		// generate-summary menu (mirrors the Send button's long-press menu).
+		const openWrap = actions.createDiv({ cls: "p-fork-open-wrap" });
+		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
+		open.addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (this.suppressNextForkOpen) {
+				this.suppressNextForkOpen = false;
+				return;
+			}
+			void this.setActiveConversation(fork);
+		});
+		this.attachForkLongPress(open, openWrap, anchor, fork);
+	}
+
+	/** 450 ms touch+mouse long-press on the Open-fork button → summary menu. */
+	private attachForkLongPress(
+		btn: HTMLElement,
+		wrap: HTMLElement,
+		anchor: HTMLElement,
+		fork: Conversation,
+	): void {
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const cancel = () => {
+			if (timer !== null) { clearTimeout(timer); timer = null; }
+		};
+		const fire = () => {
+			timer = null;
+			this.suppressNextForkOpen = true;
+			this.openForkMenu(wrap, anchor, fork);
+		};
+		this.registerDomEvent(btn, "touchstart", () => { timer = setTimeout(fire, 450); }, { passive: true });
+		this.registerDomEvent(btn, "touchend", cancel, { passive: true });
+		this.registerDomEvent(btn, "touchcancel", cancel, { passive: true });
+		this.registerDomEvent(btn, "touchmove", cancel, { passive: true });
+		this.registerDomEvent(btn, "mousedown", (e: MouseEvent) => { if (e.button === 0) timer = setTimeout(fire, 450); });
+		this.registerDomEvent(btn, "mouseup", cancel);
+		this.registerDomEvent(btn, "mouseleave", cancel);
+	}
+
+	/** The fork anchor's long-press menu — a popover above the Open-fork button.
+	 *  "Summarize favorites" is offered only when the fork carries favorites. */
+	private openForkMenu(wrap: HTMLElement, anchor: HTMLElement, fork: Conversation): void {
+		if (this.forkMenuCleanup) { this.closeForkMenu(); return; } // toggle off
+
+		const menu = wrap.createDiv({ cls: "p-send-menu p-fork-menu" });
+		const hasFavorites = (fork.favorites?.length ?? 0) > 0;
+
+		const addItem = (label: string, icon: string, disabled: boolean, action: () => void) => {
+			const item = menu.createDiv({
+				cls: `p-send-menu-item${disabled ? " p-send-menu-item-disabled" : ""}`,
+			});
+			const ic = item.createSpan({ cls: "p-send-menu-icon" });
+			setIcon(ic, icon);
+			item.createSpan({ cls: "p-send-menu-label", text: label });
+			if (disabled) return;
+			item.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.closeForkMenu();
+				action();
+			});
+		};
+
+		addItem(t("menuSummarizeConversation"), "align-left", fork.messages.length === 0,
+			() => void this.generateForkSummary(anchor, fork, "conversation"));
+		if (hasFavorites) {
+			addItem(t("menuSummarizeFavorites"), "star", false,
+				() => void this.generateForkSummary(anchor, fork, "favorites"));
+		}
+
+		const onOutside = (e: Event) => {
+			if (!wrap.contains(e.target as Node)) this.closeForkMenu();
+		};
+		window.setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			document.addEventListener("touchstart", onOutside, true);
+		}, 0);
+		this.forkMenuCleanup = () => {
+			document.removeEventListener("mousedown", onOutside, true);
+			document.removeEventListener("touchstart", onOutside, true);
+			menu.remove();
+		};
+	}
+
+	private closeForkMenu(): void {
+		this.forkMenuCleanup?.();
+		this.forkMenuCleanup = null;
+	}
+
+	/** Generate (or regenerate) a fork's conversation or favorites summary, then
+	 *  re-render the anchor showing the type just generated. */
+	private async generateForkSummary(
+		anchor: HTMLElement,
+		fork: Conversation,
+		type: "conversation" | "favorites",
+	): Promise<void> {
+		if (type === "favorites") {
+			const text = await this.runFavoritesSummary(fork);
+			if (text && this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "favorites");
+			return;
+		}
+		if (fork.messages.length === 0) { new Notice(t("noMessagesToSummarize")); return; }
+		const notice = new Notice(t("generatingSummary"), 0);
+		try {
+			const text = await this.plugin.llmRouter.generateSummary(fork);
+			if (text) {
+				fork.summaryText = text;
+				fork.summaryUpdatedAt = new Date().toISOString();
+				await this.plugin.conversationStore.save(fork);
+				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
+			}
+		} catch (err) {
+			new Notice(t("summaryFailed", { error: err instanceof Error ? err.message : String(err) }));
+		} finally {
+			notice.hide();
+		}
+	}
+
+	/** From a fork's banner: scroll to its origin snippet in the source and expand its anchor. */
+	revealForkOrigin(forkId: string): void {
+		const mark = this.messagesEl.querySelector<HTMLElement>(
+			`mark.p-fork-origin[data-fork-id="${forkId}"]`
+		);
+		if (!mark) return;
+		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
+		if (row) this.expandBubbleIfCollapsed(row);
+		this.toggleForkAnchor(forkId, mark);
+		const top = mark.offsetTop - this.messagesEl.offsetTop;
+		this.messagesEl.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
 	}
 
 	/**
@@ -2208,9 +2446,17 @@ export class PythiaSidebarView extends ItemView {
 			?.closest("[data-msg-id]");
 		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
 
+		// Record which occurrence of the snippet this is, so the source can re-find
+		// and highlight the exact span later (mirrors favorite creation).
+		let occurrenceIndex: number | undefined;
+		if (msgEl && sel && sel.rangeCount > 0) {
+			const body = msgEl.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? (msgEl as HTMLElement);
+			occurrenceIndex = computeOccurrenceIndex(body, sel.getRangeAt(0));
+		}
+
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		void this.plugin.cmdForkConversation(conv.id, text, sourceMessageId);
+		void this.plugin.cmdForkConversation(conv.id, text, sourceMessageId, occurrenceIndex);
 	}
 
 	private async onSaveToInbox(): Promise<void> {

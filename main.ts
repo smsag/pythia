@@ -749,7 +749,7 @@ export default class PythiaPlugin extends Plugin {
 		view.prefillInput(text);
 	}
 
-	async cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string): Promise<void> {
+	async cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string, forkedFromOccurrenceIndex?: number): Promise<void> {
 		const source = this.conversationStore.getById(sourceConvId);
 		if (!source) return;
 
@@ -791,10 +791,11 @@ export default class PythiaPlugin extends Plugin {
 		conv.forkedFromId = sourceConvId;
 		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
 		if (selectedText) conv.forkedFromSelection = selectedText;
-		if (summary) {
-			conv.summaryText = summary;
-			conv.summaryUpdatedAt = summaryUpdatedAt;
-		}
+		if (forkedFromOccurrenceIndex !== undefined) conv.forkedFromOccurrenceIndex = forkedFromOccurrenceIndex;
+		// Carry the source summary as context only — NOT as the fork's own summary
+		// (its own summaryText/favoritesSummary stay empty until the user summarizes
+		// the fork, so the source can surface a genuine fork summary at the origin).
+		if (summary) conv.forkedFromSummary = summary;
 		await this.saveConversations();
 
 		const view = await this.activateView();
