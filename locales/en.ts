@@ -54,6 +54,7 @@ const en = {
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	turnUser:    "YOU",
 	turnAI:      "PYTHIA",
+	addNoteInline: "+ Note",
 	copyBtn:     "Copy",
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",

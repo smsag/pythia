@@ -144,73 +144,62 @@
 }
 .p-pills::-webkit-scrollbar { display: none; }
 
-.p-pill {
+/* ── Wikilink note reference (ADR-068) ──────────────────────────
+   Replaces the bordered pill everywhere a vault note is referenced:
+   faint [[ ]] brackets, accent clickable name, optional mono token
+   estimate, faint × remove affordance. */
+.p-wikilink {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);                                        /* fallback: Chromium < 111 */
-  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);  /* preferred: semi-transparent */
-  border-radius: 10px;
-  padding: 1px 6px;
-  max-width: 160px;
+  font-size: 11.5px;
+  max-width: 200px;
   flex-shrink: 0;
   overflow: hidden;
   scroll-snap-align: start;
 }
-
-.p-pill-label {
+.p-wikilink-bracket {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-wikilink-name {
+  color: var(--color-accent);
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-
-.p-pill-tokens {
+.p-wikilink-name:hover { text-decoration: underline; }
+.p-wikilink-tokens {
   font-family: var(--font-monospace);
   font-size: 9px;
-  opacity: 0.5;
+  color: var(--text-faint);
   flex-shrink: 0;
   white-space: nowrap;
-  margin-left: 1px;
 }
-
-.p-pill-x {
+.p-wikilink-x {
   all: unset;
   cursor: pointer;
-  font-size: 9px;
-  opacity: 0.45;
-  flex-shrink: 0;
-  margin-left: 1px;
+  font-size: 11px;
   line-height: 1;
-  transition: opacity 0.1s;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  transition: color 0.1s;
 }
-.p-pill-x:hover {
-  opacity: 0.9;
-}
+.p-wikilink-x:hover { color: var(--text-error, var(--color-red)); }
 
-/* ── Pill add button ────────────────────────────────────────── */
+/* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
   all: unset;
   cursor: pointer;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px dashed var(--background-modifier-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1em;
-  box-sizing: border-box;
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  padding: 0 2px;
+  transition: color 0.1s;
 }
-.pythia-view .pythia-pill-add:hover {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-}
+.pythia-view .pythia-pill-add:hover { color: var(--color-accent); }
 
 /* ── Fork banner ────────────────────────────────────────────── */
 .pythia-fork-banner {

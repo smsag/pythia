@@ -57,6 +57,9 @@ const de: Strings = {
 	turnUser: "DU",
 	turnAI:   "PYTHIA",
 
+	// ── Wikilink references ───────────────────────────────────────────────────
+	addNoteInline: "+ Notiz",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",

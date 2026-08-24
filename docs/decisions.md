@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 1: ADR-066 (frameless code blocks + selection toolbar — hairlines and a mono header replace the grey `--background-secondary` box) and ADR-067 (per-message turn micro-labels `DU · HH:MM` / `PYTHIA · MODEL · HH:MM`, backed by a new optional `Message.model`).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 2: ADR-068 (vault-note references render as `[[wikilinks]]` — faint brackets, accent name, mono token estimate, `×` remove — retiring the bordered `.p-pill`; add affordance becomes a `+ Notiz` text link).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 1: ADR-066 (frameless code blocks + selection toolbar — hairlines and a mono header replace the grey `--background-secondary` box) and ADR-067 (per-message turn micro-labels `DU · HH:MM` / `PYTHIA · MODEL · HH:MM`, backed by a new optional `Message.model`).*
 
 *Previously, 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
 
@@ -949,3 +951,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** deriving the model label from the conversation only (mislabels historical turns after a model switch); storing a formatted time string on the message (redundant with the ISO `timestamp`, and not reflowable); per-turn avatars (heavier than the design's mono micro-label).
 
 **Consequence:** Every turn is attributable at a glance. One additive, backfill-safe schema field (`Message.model`); no migration. Turn labels also appear on the streaming row (using the conversation's current model) so the live turn is labelled before it is persisted.
+
+### ADR-068 — Wikilink note references replace the bordered pill
+
+**Status:** Active (retires `.p-pill`)
+
+**Context:** The Final design renders every vault-note reference as an Obsidian-style `[[wikilink]]` rather than the bordered accent pill (`.p-pill`): faint `[[`/`]]` brackets (`--text-faint`), an accent clickable name, an optional mono token estimate, and a faint `×` remove affordance. The pill's rounded border reads as a "chip/tag"; the wikilink reads as "a note", matching how the same notes appear in the vault and unifying the reference row, attachments, context inspector and sources on one visual.
+
+**Decision:** Replace the pill DOM/CSS with a `.p-wikilink` (`.p-wikilink-bracket` / `-name` / `-tokens` / `-x`). The `.md` extension is stripped from the displayed name. The dashed circular add-button becomes a `+ Notiz` text link (`addNoteInline`, hover → accent). The horizontal-scroll container (`.p-pills`) is kept as-is.
+
+**Alternatives rejected:** keeping the pill (contradicts the Final language and the "outline cards are the only bordered family" rule); rendering references through Obsidian's real internal-link machinery (heavier, and these are context attachments with custom open/remove behavior, not literal document links).
+
+**Consequence:** Note references read natively as notes across every surface. CSS + one DOM builder changed; the same `.p-wikilink` markup will be reused by the context inspector and citation source rows in later phases.

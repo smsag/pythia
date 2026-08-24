@@ -1080,12 +1080,14 @@ export class PythiaSidebarView extends ItemView {
 
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path;
+			const displayName = fileName.replace(/\.md$/, "");
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
-			const pill = this.referencePillsEl.createEl("span", { cls: "p-pill" });
-			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: entry.path } });
-			label.style.cursor = "pointer";
+			// Wikilink reference: [[ name ]] ~tokens ×
+			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: entry.path } });
 			label.addEventListener("click", async () => {
 				const f = this.app.vault.getAbstractFileByPath(entry.path);
 				if (f instanceof TFile) {
@@ -1094,8 +1096,9 @@ export class PythiaSidebarView extends ItemView {
 					new Notice(t("fileNotFound", { path: entry.path }));
 				}
 			});
-			if (tokEst) pill.createEl("span", { cls: "p-pill-tokens", text: tokEst });
-			const x = pill.createEl("button", { cls: "p-pill-x", text: "✕" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
+			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
+			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
 			if (entry.kind === "context") {
 				x.addEventListener("click", async () => {
 					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
@@ -1118,7 +1121,7 @@ export class PythiaSidebarView extends ItemView {
 		const addBtn = this.referencePillsEl.createEl("button", {
 			cls: "pythia-pill-add",
 			attr: { title: t("addContextNoteTooltip") },
-			text: "+",
+			text: t("addNoteInline"),
 		});
 		addBtn.addEventListener("click", () => {
 			new NoteSuggestModal(this.app, (file) => {
