@@ -88,6 +88,31 @@ describe("buildSystemPrompt", () => {
 		expect(result).not.toContain("Source said Y.");
 	});
 
+	it("wraps the forked selection in a forked_from_excerpt anchor block", () => {
+		const result = buildSystemPrompt(baseConv({ forkedFromSelection: "Germany stands out as a country with a complex history." }));
+		expect(result).toContain("<forked_from_excerpt>\nGermany stands out as a country with a complex history.\n</forked_from_excerpt>");
+		// Framed so the model treats it as the anchor for the opening question.
+		expect(result).toMatch(/specific anchor/);
+		expect(result.indexOf("specific anchor"))
+			.toBeLessThan(result.indexOf("<forked_from_excerpt>"));
+	});
+
+	it("includes both the source summary and the forked excerpt for a fork", () => {
+		const result = buildSystemPrompt(baseConv({
+			forkedFromSummary: "Earlier: an overview of Germany.",
+			forkedFromSelection: "Germany stands out as a country with a complex history.",
+		}));
+		expect(result).toContain("<previous_conversation_summary>");
+		expect(result).toContain("<forked_from_excerpt>");
+		// Summary (topic) comes before the excerpt (specific anchor).
+		expect(result.indexOf("<previous_conversation_summary>"))
+			.toBeLessThan(result.indexOf("<forked_from_excerpt>"));
+	});
+
+	it("adds no forked_from_excerpt block when there is no forked selection", () => {
+		expect(buildSystemPrompt(baseConv())).not.toContain("forked_from_excerpt");
+	});
+
 	it("adds a grounding instruction only when notes are attached", () => {
 		const withoutNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
 		const withNotes = buildSystemPrompt(baseConv({ systemPrompt: "Hi", contextNotes: ["Note.md"] }));

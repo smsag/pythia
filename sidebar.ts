@@ -2408,8 +2408,10 @@ export class PythiaSidebarView extends ItemView {
 			if (q && !conv.name.toLowerCase().includes(q)) return;
 			const row = listEl.createDiv({ cls: isFork ? "p-switcher-row fork" : "p-switcher-row" });
 			const main = row.createDiv({ cls: "p-switcher-main" });
-			if (isFork) setIcon(main.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
-			const titleEl = main.createDiv({ cls: "p-switcher-title" });
+			// Fork icon sits inline with the title text (not stacked above it).
+			const titleRow = main.createDiv({ cls: "p-switcher-title-row" });
+			if (isFork) setIcon(titleRow.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const titleEl = titleRow.createDiv({ cls: "p-switcher-title" });
 			// Highlight the matched substring.
 			const name = conv.name;
 			const idx = q ? name.toLowerCase().indexOf(q) : -1;
@@ -2420,10 +2422,17 @@ export class PythiaSidebarView extends ItemView {
 			} else {
 				titleEl.setText(name);
 			}
-			const sub = isFork
-				? `${t("branchLabel")} · ${t("msgCount", { n: String(conv.messages.length) })}`
-				: `${abbreviateModel(conv.model)} · ${t("msgCount", { n: String(conv.messages.length) })} · ${this.formatConvDate(conv.updatedAt)}`;
-			main.createDiv({ cls: "p-switcher-sub", text: sub });
+			const subEl = main.createDiv({ cls: "p-switcher-sub" });
+			if (isFork) {
+				subEl.appendText(`${t("branchLabel")} · ${t("msgCount", { n: String(conv.messages.length) })}`);
+			} else {
+				subEl.appendText(`${abbreviateModel(conv.model)} · ${t("msgCount", { n: String(conv.messages.length) })} · ${this.formatConvDate(conv.updatedAt)}`);
+				// Fork + favorite counts per conversation, matching the F10 concept.
+				const forkCount = this.plugin.conversations.filter((c) => c.forkedFromId === conv.id).length;
+				if (forkCount) subEl.createSpan({ cls: "p-switcher-fork-count", text: ` ⑂ ${forkCount}` });
+				const favCount = conv.favorites?.length ?? 0;
+				if (favCount) subEl.createSpan({ cls: "p-switcher-fav-count", text: ` ★ ${favCount}` });
+			}
 
 			const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
 			del.addEventListener("mousedown", (e) => {

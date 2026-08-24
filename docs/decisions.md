@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-077 (research/web sources are now captured deterministically from the Tavily tool result and shown as the `WEB` sources row, instead of relying on the model's citation markers; foreign `【…†source】` markers are stripped from the text).*
+*Last updated: 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
 
@@ -1098,3 +1098,33 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** mapping the model's `【N†source】` indices to Tavily results (the numbering isn't guaranteed to align across models); per-model citation-format prompts (brittle, endless); keeping the model-declared web markers (unreliable, and leaks raw text). 
 
 **Consequence:** Research answers now show a clean `WEB` sources row built from the real Tavily results regardless of the model, and stray `【…†source】` noise no longer appears. Adds two pure, unit-tested helpers; no data-model change (`Message.sources` already existed).
+
+### ADR-078 — Frameless code blocks: neutralise the `--code-background` token, don't just override the selector
+
+**Status:** Active (fixes the incomplete ADR-066 frameless code block)
+
+**Context:** ADR-066 made AI code blocks "frameless" (white background, no border) by overriding `.pythia-view .p-code-frame > pre { background: var(--background-primary) }`. In practice a grey fill persisted. Obsidian (and themes) paint code from the `--code-background` CSS variable, read by core `pre`/`code` rules and by any theme-supplied wrapper element. A selector override only wins where our selector actually matches and out-ranks the other rule; it does nothing when the grey is contributed by a nested element or a rule carrying `!important`/hardcoded `background-color`.
+
+**Decision:** Attack the token, not just the selector.
+- **Redefine the token at the view scope:** `.pythia-view { --code-background: var(--background-primary) }`. Anything downstream that reads `--code-background` (core rules, theme wrappers, nested `code`/`span`) now resolves to the panel background — the actual override channel.
+- **Belt-and-braces explicit pin:** `.pythia-view .p-code-frame > pre`, its `code`, and any `code span` also set `background`/`background-color: var(--background-primary) !important` and `border/box-shadow: none !important`, defeating themes that hardcode `background-color` on `<pre>`/`<code>` instead of using the token.
+
+**Scope guard:** inline single-backtick code (`--background-secondary`) and summary-card `pre` (`--background-secondary`, explicit) set their backgrounds directly, not via `--code-background`, so both are untouched by the token redefinition.
+
+**Alternatives rejected:** raising selector specificity further (still loses to a nested element that reads the token); `!important` on the selector alone (misses wrappers we don't select). Redefining the token covers every reader in one line.
+
+**Consequence:** AI code blocks are reliably frameless across themes. Overriding a design token — rather than chasing individual selectors — is the durable pattern for Obsidian-core/theme fills; prefer it whenever core paints from a documented CSS variable.
+
+### ADR-079 — A fork injects the branched-from passage as context, not just the source summary
+
+**Status:** Active (complements ADR-042 / ADR-058 / ADR-060)
+
+**Context:** A fork carried only the *whole-conversation* summary of its source (`forkedFromSummary` → `<previous_conversation_summary>`, ADR-042/058/060). But a fork is started from a **specific selected passage**, and that passage was used only for display (the fork banner and the source's accent origin-mark) — never sent to the model. So the fork knew the broad topic but not the exact point being drilled into. Reported case: a conversation about Germany, forked from the closing "…complex history and robust cultural identity…" sentence, then asked "Name other countries with a similar complex history." The summary carried enough for the model to name Germany, but the answer read as generic — the model was never told *which* passage "similar" pointed back to. (The summary path itself was working; this is the missing second half.)
+
+**Decision:** `buildSystemPrompt` now also emits a `<forked_from_excerpt>` block, framed by `FORKED_EXCERPT_INSTRUCTION`, whenever `conversation.forkedFromSelection` is set. It sits **after** the summary block: the summary gives the topic, the excerpt names the specific anchor the opening question ("this", "these", "similar", "others like it") refers back to. The field was already captured at fork time (`main.ts`) and already persisted — this only routes it into the prompt. No data-model, settings, or locale change; the context-bar token estimate (`buildSystemPrompt(conv)` in `sidebar.ts`) reflects the added block automatically.
+
+**Relation to ADR-042:** ADR-042 removed *pre-filling the compose box* with the selection (a UX annoyance — the user had to delete it). Giving the selection to the **model** as system-prompt context is a different, purely additive mechanism and does not reintroduce that behavior — the input box still starts empty.
+
+**Alternatives rejected:** seeding the selection as a fake first user message (pollutes the visible transcript and the message history sent on every turn); merging it into the summary text (conflates two distinct things — the source's own summary vs. this branch's anchor — the same conflation ADR-058 untangled).
+
+**Consequence:** A fork's first question now resolves its back-references against the exact passage, so branching from a specific point stays on that point instead of drifting to the generic topic. Covered by three `ContextBuilder` unit tests (excerpt block present + framed; summary-before-excerpt ordering; absent when no selection).

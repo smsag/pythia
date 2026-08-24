@@ -6,6 +6,8 @@ import {
 	SYSTEM_PROMPT_TAG,
 	PREVIOUS_SUMMARY_TAG,
 	PRIOR_SUMMARY_INSTRUCTION,
+	FORKED_EXCERPT_TAG,
+	FORKED_EXCERPT_INSTRUCTION,
 	ATTACHED_NOTE_TAG,
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
@@ -50,6 +52,16 @@ export function buildSystemPrompt(conversation: Conversation): string {
 	if (priorSummary) {
 		parts.push(
 			`${PRIOR_SUMMARY_INSTRUCTION}\n\n<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
+		);
+	}
+
+	// A fork also carries the exact passage it was branched from. The summary
+	// above gives the topic; this names the specific point the opening question
+	// refers back to, so a fork's first "name others like this" stays anchored.
+	const forkedExcerpt = conversation.forkedFromSelection?.trim();
+	if (forkedExcerpt) {
+		parts.push(
+			`${FORKED_EXCERPT_INSTRUCTION}\n\n<${FORKED_EXCERPT_TAG}>\n${forkedExcerpt}\n</${FORKED_EXCERPT_TAG}>`
 		);
 	}
 
