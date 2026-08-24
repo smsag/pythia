@@ -254,7 +254,7 @@ export abstract class BaseProvider implements LLMProvider {
 			.join("\n\n");
 		return this.callUtility(
 			model,
-			`Provide a concise summary of this conversation for future reference. Include: key decisions made, main topics discussed, and any important outputs or conclusions. Be brief — this will be used as context when the conversation is resumed. Do not start with a heading or "Summary of…" — begin directly with the content.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Recap the substance of the discussion below so it stands on its own as a reminder of what was covered — and works as context if the discussion continues.\n\n- Lead with the subject matter itself, written as knowledge. Do NOT describe the chat: never open with "This conversation…", "In this conversation…", "The user…", "We discussed…", or a "Summary of…" heading.\n- Capture the main topics, any decisions or conclusions reached, and important outputs.\n- Keep it brief and factual — a few short sentences or tight bullet points.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 			1024
 		);
 	}
@@ -267,7 +267,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const sfx = langSuffix(this.settings.outputLanguage);
 		const raw = await this.callUtility(
 			model,
-			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary: include key decisions, main topics, and important conclusions. Begin directly with content — no "Summary of…" heading.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary: recap the substance so it stands on its own — capture the main topics, any decisions or conclusions, and important outputs, written as knowledge. Lead with the subject matter; do NOT open with "This conversation…", "In this conversation…", "The user…", "We discussed…", or a "Summary of…" heading. Keep it brief and factual.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 			1024
 		);
 		return parseTitleAndSummary(raw);
@@ -300,7 +300,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const model = this.resolveModel(conversation.model);
 		return this.callUtility(
 			model,
-			`The following are the highlights a user hand-picked from a conversation as its most important insights. Synthesize them into a learning aid that helps the user retain the knowledge and act on it.\n\nReply in Markdown with EXACTLY these two sections and no preamble:\n\n## Key learnings\nA bullet list that consolidates and deduplicates the insights across the highlights — group related points, state each learning clearly, and stay grounded in the provided text. Do not restate the highlights one by one.\n\n## Action items\nA list of concrete, actionable next steps derived from the highlights, each written as a checkbox: "- [ ] <action>". Only include actions the highlights actually support.${langInstruction(this.settings.outputLanguage)}\n\n${digest}`,
+			`The following are the highlights a user hand-picked from a conversation as its most important insights. Synthesize them into a learning aid that helps the user retain the knowledge and act on it.\n\nReply in Markdown, starting directly with the "## Key learnings" heading — no preamble:\n\n## Key learnings\nA bullet list that consolidates and deduplicates the insights across the highlights — group related points and stay grounded in the provided text. State each learning directly as a fact; do NOT phrase bullets as "The user highlighted…", "This note says…", or "The conversation covered…". Do not restate the highlights one by one.\n\n## Action items\nA list of concrete, actionable next steps derived from the highlights, each written as a checkbox: "- [ ] <action>". Only include actions the highlights actually support — if none are genuinely warranted, omit this section and its heading entirely.${langInstruction(this.settings.outputLanguage)}\n\n${digest}`,
 			1536
 		);
 	}

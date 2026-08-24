@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-060 (frame the previous-conversation summary as governing context: `PRIOR_SUMMARY_INSTRUCTION` now precedes the `<previous_conversation_summary>` block so forks/resumed conversations stay within the topic and scope of the conversation they continue).*
+*Last updated: 2026-08-24 — ADR-061 (content-first summary generation prompts: conversation- and favorites-summary prompts now produce standalone recaps for inline display — banned "This conversation…"-style meta openers, direct fact-phrasing in favorites bullets, and an omittable Action-items section).*
+
+*Previously, 2026-08-24 — ADR-060 (frame the previous-conversation summary as governing context: `PRIOR_SUMMARY_INSTRUCTION` now precedes the `<previous_conversation_summary>` block so forks/resumed conversations stay within the topic and scope of the conversation they continue).*
 
 *Previously, 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
 
@@ -839,3 +841,17 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** restating the framing inside each user message (fragile, pollutes history, not cached); relying on the tag name alone (the whole bug — a name is not an instruction); making it fork-only (resume-summary continuations have the same continuity need).
 
 **Consequence:** Forked/resumed conversations stay on-topic with the conversation they continue. No data-model or i18n change; the instruction is prompt-only. Purely additive to the system prompt (~60 words) and inside Anthropic's cached prefix.
+
+### ADR-061 — Content-first summary generation prompts
+
+**Status:** Active
+
+**Context:** The conversation- and favorites-summary generation prompts were written when summaries were used *only* as model context. Summaries now also surface **to the user inline** — the "Speisekarte" summary cards and the branch-back fork anchor (ADR-054, ADR-058). The conversation-summary prompt framed the task as "summarize this conversation for future reference" and only banned a "Summary of…" heading, so outputs opened with meta-narration ("This conversation is…", "We discussed…") that reads wrong as standalone inline content — and is now redundant with ADR-060's framing instruction on the context side.
+
+**Decision:** Make both summary prompts **content-first** (`services/BaseProvider.ts`).
+1. **Conversation summary** (`generateSummary`, `generateSummaryWithTitle`): recap the *substance* as knowledge — lead with the subject matter, with an explicit banned-openers list ("This conversation…", "In this conversation…", "The user…", "We discussed…", "Summary of…"). A positive "begin directly" instruction alone was not holding; the explicit ban is what removes the meta opener.
+2. **Favorites summary** (`generateFavoritesSummary`): keep the `## Key learnings` / `## Action items` structure, but require each bullet to state the insight directly (no "The user highlighted…" / "This note says…" phrasing), and allow **omitting the `## Action items` section entirely** when no concrete actions are genuinely warranted (previously the header was mandatory, producing empty sections).
+
+**Alternatives rejected:** two separate summaries (one for display, one for context) — doubles generation cost and storage for a difference the content-first wording already removes; post-processing to strip meta openers (brittle string surgery vs. fixing the prompt); keeping the mandatory Action-items header (emitted empty sections in the card/anchor).
+
+**Consequence:** Summaries read as standalone recaps in the cards and fork anchor while remaining good context (paired with ADR-060). Prompt-only — no data model, no i18n, no stored-summary migration; existing summaries are unchanged until regenerated.

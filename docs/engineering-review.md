@@ -858,3 +858,11 @@ Closes the fork↔source loop so users don't lose track of side-explorations.
 - **Root cause:** the `<previous_conversation_summary>` block was injected with no instruction (attached notes get `GROUNDING_INSTRUCTION`; the summary got nothing), so the model treated it as background. The summary *was* reaching the model — a framing gap, not a plumbing gap.
 - **Fix:** added `PRIOR_SUMMARY_INSTRUCTION`, prepended to the block in `buildSystemPrompt`; the model now treats the summary as governing context (stay within its topic/scope unless the user changes subject). Applies to both forks and resume-summary conversations.
 - Tests: framing instruction present with a summary / absent without one; exact-join assertion updated. 343 total pass.
+
+### #108 — Summary prompts wrote meta-narration unsuited to inline display
+
+**Files:** `services/BaseProvider.ts` — **Resolved**
+
+- **Symptom:** summaries shown inline (summary cards, fork anchor) opened with "This conversation is…" / "We discussed…", which reads as a description of a chat rather than standalone content.
+- **Root cause:** the summary-generation prompts predate inline display — framed as "summarize this conversation for future reference" and banned only a "Summary of…" heading, not the meta opener.
+- **Fix (ADR-061):** content-first prompts. Conversation summary leads with the subject matter and bans the meta openers explicitly; favorites summary states each bullet as a direct fact and may omit an empty `## Action items` section. Prompt-only; existing summaries unchanged until regenerated.
