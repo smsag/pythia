@@ -468,6 +468,99 @@
   padding: 24px 16px;
 }
 
+/* ── Context inspector (F2/F3) ──────────────────────────────────── */
+.p-inspector-wrap { min-width: 0; }
+.p-inspector {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.p-inspector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.p-inspector-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-inspector-icon svg { width: 13px; height: 13px; }
+.p-inspector-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-inspector-pct {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-warning, var(--color-orange));
+  flex-shrink: 0;
+}
+.p-inspector-chevron { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+/* Body hidden until .open, mirroring the summary-card toggle. */
+.p-inspector-body { display: none; padding: 0 12px 10px; flex-direction: column; gap: 5px; }
+.p-inspector.open .p-inspector-body { display: flex; }
+.p-inspector-row { display: flex; align-items: center; gap: 8px; }
+.p-inspector-rowlabel { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-normal); }
+.p-inspector-row .p-wikilink { flex: 1; }
+.p-inspector-rowval {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.p-ins-bar {
+  width: 64px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.p-ins-bar-fill { height: 100%; background: var(--color-accent); }
+.p-ins-bar-fill.warn { background: var(--text-warning, var(--color-orange)); }
+.p-inspector-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.p-inspector-warn-icon { display: flex; color: var(--text-warning, var(--color-orange)); flex-shrink: 0; }
+.p-inspector-warn-icon svg { width: 12px; height: 12px; }
+.p-inspector-warn-text { flex: 1; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-inspector-summarize {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--color-accent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: 3px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  transition: background 0.1s;
+}
+.p-inspector-summarize:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.p-inspector-footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.p-inspector-add {
+  flex: 1;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-faint);
+  transition: color 0.1s;
+}
+.p-inspector-add:hover { color: var(--color-accent); }
+.p-inspector-sys { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+
 /* ── Welcome / empty-conversation state (F6) ────────────────────── */
 .p-welcome {
   margin: auto;

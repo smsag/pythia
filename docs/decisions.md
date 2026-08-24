@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 6: ADR-070 (minimal centered empty state `F6` — accent sparkle, heading, mono keycap hints — and the conversation-settings Effort control becomes a segmented Standard/Niedrig/Mittel/Hoch control `F8`, keeping a "Standard = no override" segment).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 4: ADR-071 (context inspector card `F2/F3` — an outline card under the summary cards listing context notes as wikilinks + system-prompt estimate, switching to a per-source budget breakdown with mini-bars and a `Zusammenfassen` action at ≥80% usage).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 6: ADR-070 (minimal centered empty state `F6` — accent sparkle, heading, mono keycap hints — and the conversation-settings Effort control becomes a segmented Standard/Niedrig/Mittel/Hoch control `F8`, keeping a "Standard = no override" segment).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 3: ADR-069 (3px context-budget bar under the header — fill = usage / model window, warning color + header percent chip at ≥80%; the next-send token estimate moves from the Send button label to a mono label left of the button).*
 
@@ -991,3 +993,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a three-segment control with no "Standard" (silently loses the "no override" state — a behavior regression); reusing `.pythia-empty` for F6 (it's a text block, not the centered sparkle layout); a separate reset button for effort (an extra control where a segment does the job).
 
 **Consequence:** The empty panel matches F6 and the settings modal matches F8 without dropping the override semantics. Keycaps show `⌘P` literally on all platforms (not remapped to Ctrl on Windows/Linux) — acceptable for a hint; a platform-aware keycap is a later refinement.
+
+### ADR-071 — Context inspector card (F2/F3)
+
+**Status:** Active
+
+**Context:** The Final design adds a context inspector: an outline card at the top of the message list (with the summary cards) that makes the prompt's context legible. In normal mode it lists each context note as a wikilink with its token estimate, a `+ Notiz hinzufügen` action and a system-prompt estimate; when the window is ≥80% full it becomes a budget breakdown — conversation history (with message count), each note, and the system prompt, each with a 64px mini-bar and token value, plus an "almost full" warning row with a `Zusammenfassen` action.
+
+**Decision:** Render the inspector into a stable `.p-inspector-wrap` created just under `.p-summary-cards` on every full rebuild; `fillContextInspector()` (re)builds the card and is also called from `renderReferencePills()` so add/remove of notes refreshes it live. It is shown only when there are context notes **or** the budget is tight (no empty card otherwise). Usage/window come from the last turn's `tokenUsage` over `getContextWindow(model)` (same source as the header bar); the system-prompt estimate reuses `buildSystemPrompt()` + `estimateTokensFromText()`; per-note tokens are `round(bytes / 4)`. History tokens in breakdown mode are `used − notes − system`. The `Zusammenfassen` button reuses the existing `generateConversationSummary()`. The card is `--background-primary` filled (the outline-card family) and collapsed by default; open state persists across rebuilds within the session.
+
+**Alternatives rejected:** always showing the inspector even with no notes (noise); a separate token-accounting pass (the header already derives usage from `tokenUsage` — reuse it); making the system-prompt row removable (it isn't user-editable context); computing exact per-source tokens by re-tokenizing note bodies each render (the byte/4 estimate matches the reference-row estimate and is far cheaper).
+
+**Consequence:** Users can see and prune what fills the window, and get a one-tap path to condense history before hitting the limit. Reuses existing token accounting and the wikilink + summary plumbing; no data-model change.

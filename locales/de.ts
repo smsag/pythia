@@ -67,6 +67,15 @@ const de: Strings = {
 	nextSendEstimate: "nächste {{n}}",
 	ctxBarTooltip:    "Kontext: {{used}} / {{total}} Token ({{pct}}%)",
 
+	// ── Context inspector ─────────────────────────────────────────────────────
+	ctxLabel:          "Kontext",
+	ctxHistoryRow:     "Gesprächsverlauf ({{count}} Nachr.)",
+	ctxSystemPrompt:   "Systemprompt",
+	ctxAddNote:        "+ Notiz hinzufügen",
+	ctxSystemPromptEst:"+ Systemprompt {{est}}",
+	ctxNearFull:       "Fast voll — Verlauf verdichten spart {{n}}.",
+	ctxSummarize:      "Zusammenfassen",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",

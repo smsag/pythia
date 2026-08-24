@@ -10,6 +10,7 @@ import {
 } from "obsidian";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
+import { buildSystemPrompt } from "./services/ContextBuilder";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -123,6 +124,9 @@ export class PythiaSidebarView extends ItemView {
 	// Summary "Speisekarte" cards at the top of the message list.
 	private summaryCardsEl: HTMLElement | null = null;
 	private summaryCardObserver: IntersectionObserver | null = null;
+	// Context inspector card (F2/F3) — lives just under the summary cards.
+	private inspectorEl: HTMLElement | null = null;
+	private inspectorOpen = false; // preserved across rebuilds within a session
 	private sendLongPressCleanup: (() => void) | null = null;
 	private suppressNextSendClick = false;
 	private sendMenuWrap!: HTMLElement;
@@ -865,6 +869,143 @@ export class PythiaSidebarView extends ItemView {
 		addHint("⇧↵", t("emptyHintNewline"));
 	}
 
+	/** Short token label like "~4.3k" / "~640". */
+	private fmtTok(n: number): string {
+		return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
+	}
+
+	/** Build/refresh the context inspector card (F2/F3) inside `inspectorEl`.
+	 *  Normal mode lists context notes as wikilinks + a system-prompt estimate;
+	 *  when the context window is ≥80% full it switches to a budget breakdown
+	 *  with per-source mini-bars and a "Zusammenfassen" action. */
+	private fillContextInspector(): void {
+		const wrap = this.inspectorEl;
+		if (!wrap) return;
+		wrap.empty();
+		const conv = this.activeConversation;
+		if (!conv) { wrap.style.display = "none"; return; }
+
+		const notes = conv.contextNotes ?? [];
+		const noteTok = notes.map((p) => {
+			const f = this.app.vault.getAbstractFileByPath(p);
+			const tokens = f instanceof TFile ? Math.round(f.stat.size / 4) : 0;
+			return { path: p, tokens };
+		});
+		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
+		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv));
+		const last = this.lastTokenUsageMsg();
+		const windowSize = getContextWindow(conv.model);
+		const used = last?.tokenUsage
+			? last.tokenUsage.inputTokens + last.tokenUsage.outputTokens
+			: noteTotal + sysTokens;
+		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
+		const budgetTight = frac >= 0.8;
+
+		// Nothing worth a card: no context notes and plenty of budget.
+		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
+		wrap.style.display = "";
+
+		const card = wrap.createDiv({ cls: "p-inspector" });
+		if (budgetTight) card.addClass("warn");
+
+		// ── Header (toggles the body) ────────────────────────────────
+		const header = card.createDiv({ cls: "p-inspector-header" });
+		setIcon(header.createSpan({ cls: "p-inspector-icon" }), "file-text");
+		const shortK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
+		const titleText = budgetTight
+			? `${t("ctxLabel")} · ${shortK(used)} / ${shortK(windowSize)}`
+			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
+		header.createSpan({ cls: "p-inspector-title", text: titleText });
+		if (budgetTight) {
+			header.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
+		}
+		const chevron = header.createSpan({ cls: "p-inspector-chevron", text: this.inspectorOpen ? "▾" : "▸" });
+		header.addEventListener("click", () => {
+			this.inspectorOpen = !this.inspectorOpen;
+			card.toggleClass("open", this.inspectorOpen);
+			chevron.setText(this.inspectorOpen ? "▾" : "▸");
+		});
+		card.toggleClass("open", this.inspectorOpen);
+
+		// ── Body ─────────────────────────────────────────────────────
+		const body = card.createDiv({ cls: "p-inspector-body" });
+
+		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
+			const bar = row.createDiv({ cls: "p-ins-bar" });
+			const fill = bar.createDiv({ cls: "p-ins-bar-fill" });
+			fill.style.width = `${Math.min(100, fraction * 100).toFixed(1)}%`;
+			if (warn) fill.addClass("warn");
+		};
+		const wikilinkRow = (parent: HTMLElement, path: string): HTMLElement => {
+			const row = parent.createDiv({ cls: "p-inspector-row" });
+			const ref = row.createSpan({ cls: "p-wikilink" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			const name = ref.createEl("span", {
+				cls: "p-wikilink-name",
+				text: (path.split("/").pop() ?? path).replace(/\.md$/, ""),
+				attr: { title: path },
+			});
+			name.addEventListener("click", async () => {
+				const f = this.app.vault.getAbstractFileByPath(path);
+				if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
+				else new Notice(t("fileNotFound", { path }));
+			});
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
+			return row;
+		};
+
+		if (budgetTight) {
+			// Conversation history row
+			const histTokens = Math.max(0, used - noteTotal - sysTokens);
+			const histRow = body.createDiv({ cls: "p-inspector-row" });
+			histRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxHistoryRow", { count: String(conv.messages.length) }) });
+			miniBar(histRow, windowSize > 0 ? histTokens / windowSize : 0, true);
+			histRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(histTokens) });
+
+			for (const n of noteTok) {
+				const row = wikilinkRow(body, n.path);
+				miniBar(row, windowSize > 0 ? n.tokens / windowSize : 0);
+				row.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(n.tokens) });
+			}
+
+			const sysRow = body.createDiv({ cls: "p-inspector-row" });
+			sysRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxSystemPrompt") });
+			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
+			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
+
+			// Warning + Zusammenfassen
+			const warnRow = body.createDiv({ cls: "p-inspector-warn" });
+			setIcon(warnRow.createSpan({ cls: "p-inspector-warn-icon" }), "alert-triangle");
+			const savings = Math.round(histTokens * 0.85);
+			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
+			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
+			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.generateConversationSummary(); });
+		} else {
+			for (const n of noteTok) {
+				const row = wikilinkRow(body, n.path);
+				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
+				const x = row.createEl("button", { cls: "p-wikilink-x", text: "×" });
+				x.addEventListener("click", async () => {
+					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
+					await this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
+				});
+			}
+			const footer = body.createDiv({ cls: "p-inspector-footer" });
+			const addLink = footer.createSpan({ cls: "p-inspector-add", text: t("ctxAddNote") });
+			addLink.addEventListener("click", () => {
+				new NoteSuggestModal(this.app, (file) => {
+					if (!conv.contextNotes.includes(file.path)) {
+						conv.contextNotes.push(file.path);
+						void this.plugin.conversationStore.save(conv);
+						this.renderReferencePills();
+					}
+				}).open();
+			});
+			footer.createSpan({ cls: "p-inspector-sys", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+		}
+	}
+
 	private renderHeader(): void {
 		if (!this.activeConversation) {
 			this.convNameEl.setText(t("noConversation"));
@@ -1117,6 +1258,8 @@ export class PythiaSidebarView extends ItemView {
 
 		this.referenceRowHasEntries = entries.length > 0;
 		this.updateReferenceRowVisibility();
+		// Keep the context inspector in sync with note add/remove.
+		if (this.inspectorEl) this.fillContextInspector();
 		if (entries.length === 0) return;
 
 		for (const entry of entries) {
@@ -1234,6 +1377,10 @@ export class PythiaSidebarView extends ItemView {
 		// Summary "Speisekarte" cards sit at the very top and scroll with content.
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
 		this.renderSummaryCards();
+
+		// Context inspector sits directly under the summary cards.
+		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
+		this.fillContextInspector();
 
 		if (conv.forkedFromId) this.renderForkBannerEl();
 

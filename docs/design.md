@@ -157,6 +157,10 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 
 **Generation is button-only:** long-pressing the **Send** button opens a small popover (`.p-send-menu`) stacked **directly above the button** (the Send button is wrapped in a relatively-positioned `.p-send-wrap`; the menu opens upward, right-aligned, dismissed on outside click) with **Summarize Conversation** and **Summarize Favorites** (the latter greyed with no favorites); choosing one generates or regenerates that summary with current context and reveals its card. A native Obsidian `Menu` is deliberately **not** used — on mobile it renders as a bottom sheet rather than at the button. There is no sparkle/refresh icon and no auto-generation on close or note-injection.
 
+### Context inspector (`.p-inspector`, F2/F3)
+
+Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` directly under the summary cards; `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
+
 ### Chat scroll area
 
 `.p-chat`: `flex: 1; overflow-y: auto; overflow-x: clip`. Messages gap `var(--s3)`. Conversation view scrolls to **top** on every conversation switch; new messages sent during a session scroll to the bottom as usual.
