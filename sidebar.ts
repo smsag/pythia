@@ -38,7 +38,8 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel, getContextWindow } from "./models/knownModels";
+import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel, getContextWindow, MODEL_CATALOG } from "./models/knownModels";
+import type { ModelInfo } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -101,6 +102,8 @@ export class PythiaSidebarView extends ItemView {
 	private ctxChipEl!: HTMLElement;
 	// Mono next-send token estimate shown left of the Send button.
 	private sendEstimateEl!: HTMLElement;
+	// Anchored model popover (F7) teardown.
+	private modelPopoverCleanup: (() => void) | null = null;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -230,6 +233,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
+		this.modelPopoverCleanup?.();
 
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
@@ -333,6 +337,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private buildUI(): void {
+		this.modelPopoverCleanup?.();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
 		this.cachedLineHeight = null; // inputEl is about to be recreated below
@@ -441,7 +446,7 @@ export class PythiaSidebarView extends ItemView {
 			attr: { title: t("changeModelTooltip") },
 		});
 		this.modelBadgeEl.style.display = "none";
-		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
+		this.modelBadgeEl.addEventListener("click", () => this.openModelPopover());
 
 		this.copyLinkBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -2144,6 +2149,99 @@ export class PythiaSidebarView extends ItemView {
 			new Notice(conv.researchMode ? t("researchEnabledNotice") : t("researchDisabledNotice"));
 		}
 		void this.plugin.conversationStore.save(conv);
+	}
+
+	/** Format a context window as "1M" / "200k" / "128k". */
+	private fmtWindow(n: number): string {
+		if (n >= 1_000_000) {
+			const m = n / 1_000_000;
+			return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+		}
+		return `${Math.round(n / 1000)}k`;
+	}
+
+	/** Anchored model popover (F7): provider groups with context-window labels,
+	 *  Reasoning tags, an active check, and a footer that opens the full
+	 *  conversation-settings modal. Selecting a model applies it immediately. */
+	private openModelPopover(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		if (this.modelPopoverCleanup) { this.modelPopoverCleanup(); return; } // toggle
+
+		const container = this.containerEl.children[1] as HTMLElement;
+		const pop = container.createDiv({ cls: "p-model-pop" });
+		const rect = this.modelBadgeEl.getBoundingClientRect();
+		const width = 226;
+		let left = rect.right - width;
+		left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+		pop.style.position = "fixed";
+		pop.style.top = `${rect.bottom + 4}px`;
+		pop.style.left = `${left}px`;
+		pop.style.width = `${width}px`;
+		this.modelBadgeEl.addClass("open");
+
+		const onOutside = (e: MouseEvent) => {
+			if (!pop.contains(e.target as Node) && e.target !== this.modelBadgeEl) closePop();
+		};
+		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closePop(); };
+		const closePop = () => {
+			pop.remove();
+			this.modelBadgeEl.removeClass("open");
+			document.removeEventListener("mousedown", onOutside, true);
+			document.removeEventListener("keydown", onKey, true);
+			this.modelPopoverCleanup = null;
+		};
+
+		const providers: { key: typeof conv.provider; label: string }[] = [
+			{ key: "anthropic", label: "ANTHROPIC" },
+			{ key: "openai", label: "OPENAI" },
+			{ key: "mistral", label: "MISTRAL" },
+		];
+		for (const p of providers) {
+			const models = MODEL_CATALOG.filter((m) => m.provider === p.key && !m.hidden);
+			if (!models.length) continue;
+			pop.createDiv({ cls: "p-model-pop-group", text: p.label });
+			for (const m of models) {
+				const active = m.id === conv.model && m.provider === conv.provider;
+				const row = pop.createDiv({ cls: "p-model-pop-row" });
+				if (active) row.addClass("active");
+				row.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
+				if (m.isReasoning || m.isMistralReasoning) {
+					row.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
+				}
+				row.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
+				if (active) setIcon(row.createSpan({ cls: "p-model-pop-check" }), "check");
+				row.addEventListener("mousedown", (e) => {
+					e.preventDefault(); e.stopPropagation();
+					void this.applyModelChoice(m);
+					closePop();
+				});
+			}
+		}
+
+		const footer = pop.createDiv({ cls: "p-model-pop-footer" });
+		setIcon(footer.createSpan({ cls: "p-model-pop-footer-icon" }), "sliders");
+		footer.createSpan({ text: t("openConvSettings") });
+		footer.addEventListener("mousedown", (e) => {
+			e.preventDefault(); e.stopPropagation();
+			closePop();
+			this.onModelBadgeClick();
+		});
+
+		setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			document.addEventListener("keydown", onKey, true);
+			this.modelPopoverCleanup = closePop;
+		}, 0);
+	}
+
+	private async applyModelChoice(m: ModelInfo): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		conv.provider = m.provider;
+		conv.model = m.id;
+		await this.plugin.conversationStore.save(conv);
+		this.updateModelBadge();
 	}
 
 	private onModelBadgeClick(): void {

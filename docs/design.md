@@ -135,7 +135,7 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 ```
 - Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to switch conversations
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
-- Model badge: monospace, 10px, `var(--text-faint)`, clickable to change model
+- Model badge: monospace, 10px, `var(--text-faint)`, clickable to open the **model popover** (`.p-model-pop`, F7/ADR-074): provider groups (ANTHROPIC/OPENAI/MISTRAL), rows of model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` → full settings modal. Selecting applies provider+model immediately. The chip shows an accent inset border (`.p-model.open`) while open.
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
 - Trash/Plus: standard header actions
 - **Context-budget bar** (`.p-ctx-bar`, ADR-069): 3px track (`--background-modifier-border`) directly under the header row; `.p-ctx-bar-fill` width = context usage / model window (`--color-accent`, → `--text-warning` under `.warn` at ≥80%). Click scrolls to top. A header `.p-ctx-chip` (mono 9px, warning-tinted) shows the percentage only at ≥80%.

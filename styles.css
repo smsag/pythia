@@ -122,6 +122,77 @@
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
+.p-model.open {
+  color: var(--text-normal);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* ── Model popover (F7) ─────────────────────────────────────────── */
+.pythia-view .p-model-pop {
+  z-index: 40;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden auto;
+  max-height: 70vh;
+  padding-bottom: var(--s1);
+}
+.p-model-pop-group {
+  padding: 8px 12px 3px;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.p-model-pop-group:not(:first-child) {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--s1);
+}
+.pythia-view .p-model-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.p-model-pop-row:hover { background: var(--background-modifier-hover); }
+.p-model-pop-row.active {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-model-pop-rtag {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-warning, var(--color-orange));
+  flex-shrink: 0;
+}
+.p-model-pop-ctx {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-model-pop-check { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-model-pop-check svg { width: 12px; height: 12px; }
+.pythia-view .p-model-pop-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 5px;
+  margin-top: var(--s1);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.p-model-pop-footer:hover { background: var(--background-modifier-hover); }
+.p-model-pop-footer-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-model-pop-footer-icon svg { width: 12px; height: 12px; }
 
 .p-hdr-btn {
   all: unset;

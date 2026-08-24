@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F5): ADR-073 (the `#` navigator's Abzweigungen section becomes a fork **tree** — source row with a `Quelle` tag, child forks indented under a vertical rule with status dots, active branch tinted with an `aktiv` tag).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F7): ADR-074 (the model chip opens an anchored quick-pick popover — provider groups, context-window labels, Reasoning tags, active check, and a footer to the full settings modal — instead of jumping straight to the modal).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F5): ADR-073 (the `#` navigator's Abzweigungen section becomes a fork **tree** — source row with a `Quelle` tag, child forks indented under a vertical rule with status dots, active branch tinted with an `aktiv` tag).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 5: ADR-072 (model-declared citations `F2/F11` — `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers, parsed/numbered by Pythia into a new `Message.sources`, painted into `.p-cite` chips with a `QUELLEN` / `WEB`+`VAULT` sources row; markers stripped from note exports).*
 
@@ -1038,3 +1040,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a full recursive multi-level tree (forks-of-forks) — the data model is one level deep in practice and the mock shows one level; a deeper tree can extend `.p-nav-tree-children` later; keeping the flat list (loses the source/sibling context that makes branching legible).
 
 **Consequence:** From any fork you can see and jump to its source and siblings, with the active branch marked — the navigation the hero feature needs. Store-only reads; no data-model change.
+
+### ADR-074 — Anchored model popover (F7)
+
+**Status:** Active
+
+**Context:** The Final design changes the model chip from a shortcut that opens the full conversation-settings modal (F8) into an anchored quick-pick popover: provider groups (ANTHROPIC/OPENAI/MISTRAL), each row a model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` that still opens the full modal.
+
+**Decision:** `openModelPopover()` builds a `.p-model-pop` from `MODEL_CATALOG` (skipping `hidden`), positioned `fixed` from the chip's bounding rect but kept a DOM descendant of `.pythia-view` so the scoped control styles still out-rank Obsidian core (ADR-065). Selecting a row applies provider+model immediately (`applyModelChoice` → save + `updateModelBadge`) and closes; the footer opens the existing `ConversationSettingsModal`. Toggle on re-click; close on outside-click or Escape; torn down on view close and rebuild. The chip gets `.open` (accent inset border) while the popover is up. New keys `reasoningTag` / `openConvSettings`.
+
+**Alternatives rejected:** replacing the settings modal entirely (temperature/effort/max-tokens still need it — the popover complements it via the footer); a native Obsidian `Menu` (renders as a bottom sheet on mobile, not anchored to the chip — same reason the summary menu is hand-rolled); appending to `document.body` (would lose the `.pythia-view` scoping that keeps Obsidian's grey button reset from repainting the rows).
+
+**Consequence:** One-tap model switching from the header, full settings one tap deeper. Reuses the model catalog and settings modal; no data-model change.
