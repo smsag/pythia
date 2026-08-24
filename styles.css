@@ -467,6 +467,46 @@
   font-size: 0.9em;
   padding: 24px 16px;
 }
+
+/* ── Welcome / empty-conversation state (F6) ────────────────────── */
+.p-welcome {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 16px;
+  text-align: center;
+}
+.p-welcome-spark {
+  display: flex;
+  color: var(--color-accent);
+}
+.p-welcome-spark svg { width: 22px; height: 22px; }
+.p-welcome-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.p-welcome-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.p-welcome-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.p-keycap {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
 .pythia-empty-hint {
   font-size: 0.85em;
   margin-top: 6px;
@@ -1446,6 +1486,31 @@ body.is-mobile .p-textarea {
   color: var(--text-faint);
   margin-top: 10px;
 }
+
+/* ── Effort segmented control (F8) ──────────────────────────────── */
+.p-effort-seg {
+  display: inline-flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.p-effort-seg-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  color: var(--text-muted);
+  transition: background 0.1s, color 0.1s;
+}
+.p-effort-seg-btn:not(:last-child) {
+  border-right: 1px solid var(--background-modifier-border);
+}
+.p-effort-seg-btn:hover { background: var(--background-modifier-hover); }
+.p-effort-seg-btn.active {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+}
+.p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 
 /* ── Tool call chips ─────────────────────────────────────────── */
 .pythia-tool-call {

@@ -26,7 +26,10 @@ const de: Strings = {
 	// ── Empty states ─────────────────────────────────────────────────────────
 	noActiveConversationHint:  "Kein aktives Gespräch.",
 	startFromPaletteHint:      'Starte eines über die Befehlspalette (Strg/Cmd+P → "Pythia:").',
-	startConversationBelow:    "Beginne das Gespräch unten.",
+	emptyHeading:              "Womit kann ich helfen?",
+	emptyHintAttach:           "Notiz als Kontext anhängen",
+	emptyHintCommands:         "Pythia-Befehle",
+	emptyHintNewline:          "neue Zeile",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	removeHighlight:            "Markierung entfernen",

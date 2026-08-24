@@ -221,6 +221,14 @@ Textarea: min 3 lines desktop / 2 lines mobile, max 72–150 px. IME guard: `e.i
 
 **Collapsed state:** a toolbar toggle button collapses the whole input area — the textarea, the reference row (attached-note pills), and the Send button all hide, reclaiming vertical space for the chat scroll area. The toolbar itself (`.p-toolbar`/`.p-toolbar-left`) stays visible in both states — it *is* the minimized row, so every action icon (attach/save/sparkle/optimize/template) stays reachable and in the same order whether expanded or collapsed. Clicking any of those action icons while collapsed expands the input area and performs that icon's action in the same click; the toggle button itself only expands/collapses, no side effect. The toggle icon swaps direction on each toggle — `arrow-down` when expanded, `arrow-up` when collapsed — rather than reusing one icon for both. Instant `display` swap on a `collapsed` class, mirroring the summary panel's toggle pattern; no animation. State is ephemeral (not persisted to `data.json`) and survives conversation switches for the session; the reference row's own visibility (shown only when there are attached notes) composes with the collapse state rather than being overridden by it.
 
+### Empty / welcome state (`.p-welcome`, F6)
+
+Empty conversations render a centered welcome via `renderWelcome()`: an accent `sparkles` icon (22px), a 13px/600 heading (`emptyHeading`), and three mono keycap hints (`.p-welcome-hint` with `.p-keycap` chips): `#` attach note, `⌘P` commands, `⇧↵` newline. Used for a new conversation and after the last exchange is deleted. The distinct *no-active-conversation* fallback keeps the plain `.pythia-empty` hint.
+
+### Effort segmented control (`.p-effort-seg`, F8)
+
+The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` (accent fill, `--text-on-accent`). The leading **Standard** segment means "no override" (the semantic the old dropdown's empty option carried). When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
+
 ### Conversation settings modal (temperature)
 
 Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic tooltip), defaulting to the effective value (`conversation.temperature ?? settings.temperature ?? 1.0`). Follows the modal's existing draft-until-Save convention — dragging updates a local value; Save commits it alongside provider/model, Cancel discards it.

@@ -144,17 +144,26 @@ export class ConversationSettingsModal extends Modal {
 		let effortValue: EffortLevel | "" = this.conversation.effort ?? "";
 		const effortSetting = new Setting(contentEl)
 			.setName(t("convEffortLabel"))
-			.setDesc(t("convEffortDesc"))
-			.addDropdown((drop) => {
-				drop.addOption("", t("effortUnsetOption"));
-				drop.addOption("low", t("effortLevelLow"));
-				drop.addOption("medium", t("effortLevelMedium"));
-				drop.addOption("high", t("effortLevelHigh"));
-				drop.setValue(effortValue);
-				drop.onChange((value) => {
-					effortValue = value as EffortLevel | "";
-				});
-			});
+			.setDesc(t("convEffortDesc"));
+		// Segmented control (F8). Keeps a "Standard" segment for "no override"
+		// (the reason the old dropdown carried an empty option).
+		const effortOptions: { value: EffortLevel | ""; label: string }[] = [
+			{ value: "",       label: t("effortUnsetOption") },
+			{ value: "low",    label: t("effortLevelLow") },
+			{ value: "medium", label: t("effortLevelMedium") },
+			{ value: "high",   label: t("effortLevelHigh") },
+		];
+		const effortSeg = effortSetting.controlEl.createDiv({ cls: "p-effort-seg" });
+		const effortBtns: HTMLButtonElement[] = [];
+		const paintEffort = () =>
+			effortBtns.forEach((b, i) => b.toggleClass("active", effortOptions[i].value === effortValue));
+		for (const opt of effortOptions) {
+			const b = effortSeg.createEl("button", { cls: "p-effort-seg-btn", text: opt.label });
+			b.type = "button";
+			b.addEventListener("click", () => { effortValue = opt.value; paintEffort(); });
+			effortBtns.push(b);
+		}
+		paintEffort();
 
 		// Max tokens override — like temperature, defaults to the effective value
 		// (conversation override, else global default, else the model-aware
@@ -208,6 +217,8 @@ export class ConversationSettingsModal extends Modal {
 
 			effortSetting.setDisabled(!effortSupported);
 			effortSetting.setDesc(effortSupported ? t("convEffortDesc") : `${t("convEffortDesc")} ${t("paramUnsupportedSuffix")}`);
+			effortSeg.toggleClass("disabled", !effortSupported);
+			effortBtns.forEach((b) => { b.disabled = !effortSupported; });
 		};
 		updateParamAvailability();
 

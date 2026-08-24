@@ -24,7 +24,10 @@ const en = {
 	// ── Empty states ─────────────────────────────────────────────────────────
 	noActiveConversationHint:  "No active conversation.",
 	startFromPaletteHint:      'Use the command palette to start one (Ctrl/Cmd+P → "Pythia:").',
-	startConversationBelow:    "Start the conversation below.",
+	emptyHeading:              "How can I help?",
+	emptyHintAttach:           "Attach a note as context",
+	emptyHintCommands:         "Pythia commands",
+	emptyHintNewline:          "new line",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	removeHighlight:            "Remove highlight",

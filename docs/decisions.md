@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 3: ADR-069 (3px context-budget bar under the header — fill = usage / model window, warning color + header percent chip at ≥80%; the next-send token estimate moves from the Send button label to a mono label left of the button).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 6: ADR-070 (minimal centered empty state `F6` — accent sparkle, heading, mono keycap hints — and the conversation-settings Effort control becomes a segmented Standard/Niedrig/Mittel/Hoch control `F8`, keeping a "Standard = no override" segment).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 3: ADR-069 (3px context-budget bar under the header — fill = usage / model window, warning color + header percent chip at ≥80%; the next-send token estimate moves from the Send button label to a mono label left of the button).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 2: ADR-068 (vault-note references render as `[[wikilinks]]` — faint brackets, accent name, mono token estimate, `×` remove — retiring the bordered `.p-pill`; add affordance becomes a `+ Notiz` text link).*
 
@@ -977,3 +979,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a composer-level budget banner (the design deliberately frees the composer of this and centralizes budget in the header); recomputing usage by re-tokenizing the whole history each keystroke (the last turn's `inputTokens` already is the measured context size — cheaper and more accurate than an estimate); keeping the estimate in the button label (crowds the button and fights the "Senden/Stopp only" spec).
 
 **Consequence:** Budget is always visible without opening anything, and the composer footer is quieter. No data-model change; usage reads existing `tokenUsage`. Numbers still use the app's existing dot-decimal short format (e.g. `~4.3k`) rather than the mockup's German comma — locale-aware number formatting is a separate, app-wide change.
+
+### ADR-070 — Minimal empty state (F6) + effort segmented control (F8)
+
+**Status:** Active
+
+**Context:** Two small Final-design pieces. (F6) The empty conversation should be a calm, centered welcome — accent sparkle, "Womit kann ich helfen?", and three mono keycap hints (`#` attach note, `⌘P` commands, `⇧↵` newline) — not a paragraph of prose. (F8) The conversation-settings Effort control should be a segmented Niedrig/Mittel/Hoch control (active = accent fill) rather than a dropdown.
+
+**Decision:** (F6) Add `renderWelcome()` producing `.p-welcome` (sparkle + `.p-welcome-title` + `.p-welcome-hints` with `.p-keycap` chips), used for every empty-conversation branch (new conversation, and after deleting the last exchange). The no-*active*-conversation fallback keeps its plain hint. New keys `emptyHeading` / `emptyHintAttach` / `emptyHintCommands` / `emptyHintNewline`; the now-dead `startConversationBelow` was removed. (F8) Replace the effort dropdown with a `.p-effort-seg` segmented control, **keeping a leading "Standard" segment** for "no override" — the semantic the old empty dropdown option carried, which a bare Low/Mid/High control cannot express. The disabled state (model doesn't support effort) greys and disables the segments.
+
+**Alternatives rejected:** a three-segment control with no "Standard" (silently loses the "no override" state — a behavior regression); reusing `.pythia-empty` for F6 (it's a text block, not the centered sparkle layout); a separate reset button for effort (an extra control where a segment does the job).
+
+**Consequence:** The empty panel matches F6 and the settings modal matches F8 without dropping the override semantics. Keycaps show `⌘P` literally on all platforms (not remapped to Ctrl on Windows/Linux) — acceptable for a hint; a platform-aware keycap is a later refinement.

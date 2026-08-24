@@ -847,6 +847,24 @@ export class PythiaSidebarView extends ItemView {
 		});
 	}
 
+	/** Minimal centered welcome for an empty conversation (F6): accent sparkle,
+	 *  a heading, and three mono keycap hints. */
+	private renderWelcome(container: HTMLElement): void {
+		const wrap = container.createDiv({ cls: "p-welcome" });
+		const spark = wrap.createDiv({ cls: "p-welcome-spark" });
+		setIcon(spark, "sparkles");
+		wrap.createDiv({ cls: "p-welcome-title", text: t("emptyHeading") });
+		const hints = wrap.createDiv({ cls: "p-welcome-hints" });
+		const addHint = (cap: string, label: string) => {
+			const row = hints.createDiv({ cls: "p-welcome-hint" });
+			row.createEl("span", { cls: "p-keycap", text: cap });
+			row.createEl("span", { text: label });
+		};
+		addHint("#", t("emptyHintAttach"));
+		addHint("⌘P", t("emptyHintCommands"));
+		addHint("⇧↵", t("emptyHintNewline"));
+	}
+
 	private renderHeader(): void {
 		if (!this.activeConversation) {
 			this.convNameEl.setText(t("noConversation"));
@@ -1220,8 +1238,7 @@ export class PythiaSidebarView extends ItemView {
 		if (conv.forkedFromId) this.renderForkBannerEl();
 
 		if (msgs.length === 0) {
-			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
-			hint.createEl("p", { text: t("startConversationBelow") });
+			this.renderWelcome(this.messagesEl);
 			return;
 		}
 		for (const msg of msgs) {
@@ -2718,8 +2735,7 @@ export class PythiaSidebarView extends ItemView {
 		new Notice(t("exchangeDeleted"));
 
 		if (conv.messages.length === 0) {
-			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
-			hint.createEl("p", { text: t("startConversationBelow") });
+			this.renderWelcome(this.messagesEl);
 		}
 
 		this.attachLastBubbleLongPress();
