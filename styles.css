@@ -768,8 +768,10 @@ mark.p-highlight.p-highlight-flash {
 /* ── Fork-origin marks + inline anchor ───────────────────────── */
 /* Snippet in the source that spawned a fork — accent-tinted, distinct from
    favorite highlights; tapping it reveals the fork's summary anchor. */
+/* Forks use the accent color; favorites stay yellow (mark.p-highlight above). */
 mark.p-fork-origin {
-  background: color-mix(in srgb, var(--color-accent) 22%, transparent); /* preferred */
+  background: var(--color-accent);                                          /* fallback */
+  background: color-mix(in srgb, var(--color-accent) 32%, transparent);     /* preferred */
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -788,12 +790,41 @@ mark.p-fork-origin.p-highlight-flash {
   border-left: 2px solid var(--color-accent);
   background: var(--background-secondary);
   border-radius: 4px;
-  font-size: var(--font-small);
+  font-size: var(--font-smaller);
   color: var(--text-muted);
 }
-.p-fork-anchor-body { margin-bottom: var(--s2); }
+/* Compact typography for the inline fork summary — headings especially. */
+.p-fork-anchor-body { margin-bottom: var(--s2); font-size: var(--font-smaller); line-height: 1.5; }
 .p-fork-anchor-body > :first-child { margin-top: 0; }
 .p-fork-anchor-body > :last-child { margin-bottom: 0; }
+.p-fork-anchor-body h1,
+.p-fork-anchor-body h2,
+.p-fork-anchor-body h3,
+.p-fork-anchor-body h4,
+.p-fork-anchor-body h5,
+.p-fork-anchor-body h6 {
+  font-size: var(--font-small);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: var(--s2) 0 var(--s1);
+}
+.p-fork-anchor-body p { margin: 0 0 var(--s1); }
+.p-fork-anchor-body ul,
+.p-fork-anchor-body ol { padding-left: var(--s4); margin: var(--s1) 0; }
+.p-fork-anchor-body li { font-size: var(--font-smaller); }
+/* Task-list checkboxes: smaller and aligned with the first text line. */
+.p-fork-anchor-body .task-list-item {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s1);
+}
+.p-fork-anchor-body .task-list-item-checkbox {
+  width: 13px;
+  height: 13px;
+  margin: 2px 0 0 0;
+  flex-shrink: 0;
+}
 .p-fork-anchor-action,
 .p-fork-anchor-open {
   font-family: var(--font-monospace);
