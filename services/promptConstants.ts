@@ -19,6 +19,7 @@ import { isReasoningModel, isMistralReasoningModel } from "../models/knownModels
 
 export const SYSTEM_PROMPT_TAG = "system_prompt";
 export const PREVIOUS_SUMMARY_TAG = "previous_conversation_summary";
+export const FORKED_EXCERPT_TAG = "forked_from_excerpt";
 export const ATTACHED_NOTE_TAG = "attached_note";
 export const ATTACHED_NOTE_PATH_ATTR = "path";
 export const ATTACHED_NOTE_EXCERPT_ATTR = "excerpt";
@@ -66,6 +67,18 @@ export const PRIOR_SUMMARY_INSTRUCTION =
 	"changes the subject, interpret and answer their requests within the topic, scope, and " +
 	"framing established there. For example, if that conversation was about a specific domain, " +
 	"keep your answers within that domain even when the user's phrasing alone would be broader.";
+
+/** Framing instruction for the exact passage a fork was branched from. The
+ *  whole-conversation summary gives the fork its topic, but a fork is started
+ *  from a *specific* selected passage — without it the model knows the broad
+ *  subject but not which point the user is drilling into, so the branch's first
+ *  question (e.g. "name others like this") reads as if it lost the thread. This
+ *  names that passage as the immediate anchor the opening question refers to. */
+export const FORKED_EXCERPT_INSTRUCTION =
+	"This conversation was branched from the passage below, quoted from the earlier " +
+	"conversation. Treat it as the specific anchor the user's first question refers to: " +
+	"when they say \"this\", \"these\", \"similar\", or otherwise point back without naming " +
+	"a subject, they mean this passage.";
 
 /** Grounding instruction prepended to the system prompt when notes are attached.
  *  Drives synthesis rather than mere quoting. */

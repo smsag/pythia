@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign (ADR-066…076). New pure module `services/citations.ts` (`parseCitations`/`stripCitationMarkers`/`eachCitationSegment`) parses model-emitted `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers into a numbered source list; the note/web cite-marker contract lives in `GROUNDING_INSTRUCTION` (`promptConstants.ts`) and the `<recent_context>` block (`ContextBuilder.ts`), and `NoteWriter.appendConversationSlice` strips markers from saved notes. `models/types.ts` `Message` gained `model?` (turn labels) and `sources?: MessageSource[]` (citations) — both additive/backfill-safe. `services/messageUtils.ts` gained pure `formatClockTime`. `sidebar.ts` added turn labels (`renderTurnLabel`), the header context-budget bar (`updateContextBar`, reads `getContextWindow`), the context inspector (`fillContextInspector`), citation painting + sources row (`paintCitations`/`renderSourcesRow`/`onCitationClick`), the anchored model popover (`openModelPopover`), the quick switcher (`openQuickSwitcher`) and in-panel history (`openHistoryView`) overlays (all torn down on view close/rebuild), plus `renderWelcome`, `fmtWindow`, `formatConvDate`, `deleteConversationWithConfirm`. `ui/CodeBlockDecorator.ts` gained a frameless code header row; `ui/NavigatorController.ts` renders the forks section as a branch tree. `.p-pill` retired for `.p-wikilink`. See ADR-066 through ADR-076.*
+*Last updated: 2026-08-24 — a fork now injects the exact branched-from passage into the model context as a `<forked_from_excerpt>` anchor (after the source summary), so its opening question stays tied to the specific point rather than drifting to the generic topic (`ContextBuilder`, `FORKED_EXCERPT_INSTRUCTION`/`FORKED_EXCERPT_TAG`). See ADR-079.*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign (ADR-066…076). New pure module `services/citations.ts` (`parseCitations`/`stripCitationMarkers`/`eachCitationSegment`) parses model-emitted `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers into a numbered source list; the note/web cite-marker contract lives in `GROUNDING_INSTRUCTION` (`promptConstants.ts`) and the `<recent_context>` block (`ContextBuilder.ts`), and `NoteWriter.appendConversationSlice` strips markers from saved notes. `models/types.ts` `Message` gained `model?` (turn labels) and `sources?: MessageSource[]` (citations) — both additive/backfill-safe. `services/messageUtils.ts` gained pure `formatClockTime`. `sidebar.ts` added turn labels (`renderTurnLabel`), the header context-budget bar (`updateContextBar`, reads `getContextWindow`), the context inspector (`fillContextInspector`), citation painting + sources row (`paintCitations`/`renderSourcesRow`/`onCitationClick`), the anchored model popover (`openModelPopover`), the quick switcher (`openQuickSwitcher`) and in-panel history (`openHistoryView`) overlays (all torn down on view close/rebuild), plus `renderWelcome`, `fmtWindow`, `formatConvDate`, `deleteConversationWithConfirm`. `ui/CodeBlockDecorator.ts` gained a frameless code header row; `ui/NavigatorController.ts` renders the forks section as a branch tree. `.p-pill` retired for `.p-wikilink`. See ADR-066 through ADR-076.*
 
 *Previously, 2026-08-24 — web search "research mode" (`services/WebSearchService.ts`): a client-executed `web_search` tool exposed through the existing agentic loop. `ToolHandler.getToolDefinitions`/`allowedToolNames` gained a `researchEnabled` param (gates `web_search` independently of `writeMode` — read-only, available even when `writeMode` is `"none"`) and `execute` routes `web_search` to the injected `WebSearchService` (Tavily via Obsidian `requestUrl`, results returned as an "Error:"-on-failure string like the note tools). `ContextBuilder.buildSystemPrompt` injects a `<recent_context>` date/grounding block when `conversation.researchMode` is on; new `RECENT_CONTEXT_TAG` in `promptConstants.ts`. All three providers pass `conversation.researchMode` into `getToolDefinitions`. `sidebar.ts` added a `globe` toolbar toggle (`toggleResearchMode`/`updateResearchButton`) and a non-confirming "Searching…" chip branch in `onToolCall`. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; `Conversation`/`PythiaTemplate` gained `researchMode` (template `research_mode` frontmatter). See ADR-062.*
 
@@ -327,8 +329,9 @@ cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId?) [main.ts]
       — source has no messages → no summary, nothing to carry
   → createConversation({ name, systemPrompt, templateId, provider, model, maxTokens, ... })
   → conv.forkedFromId / forkedFromMessageId / forkedFromSelection set
-      (forkedFromSelection is display-only — it feeds the fork banner's
-      selection excerpt, sidebar.ts's renderForkBannerEl; it does NOT
+      (forkedFromSelection feeds the fork banner's selection excerpt
+      [sidebar.ts renderForkBannerEl] AND is injected into the model context
+      as a <forked_from_excerpt> anchor [ContextBuilder, ADR-079]; it does NOT
       pre-fill the new conversation's input box)
   → conv.summaryText/summaryUpdatedAt set from the resolved summary, if any
       — ContextBuilder.buildSystemPrompt() picks this up automatically on
@@ -340,7 +343,7 @@ cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId?) [main.ts]
         set) correctly on first paint — no separate post-hoc refresh call
 ```
 
-See ADR-042 for why summary resolution is awaited synchronously rather than fired in the background, and why the input box is deliberately left empty.
+See ADR-042 for why summary resolution is awaited synchronously rather than fired in the background, and why the input box is deliberately left empty. See ADR-079 for why the forked passage is also injected into the model context (as `<forked_from_excerpt>`, after the summary) so a fork's opening question stays anchored on the specific point, not just the broad topic.
 
 ### Deep-link navigation (`obsidian://pythia`)
 
