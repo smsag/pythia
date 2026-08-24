@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-063 (max-tokens warning surfaced at the Send button when the effective max-tokens looks too low for the selected reasoning model — the truncation sharp edge of mid-conversation model switching, made visible before send; click opens settings).*
+*Last updated: 2026-08-24 — ADR-064 (fork-origin highlight now uses the favorites highlighter mechanism — translucent `color-mix(var(--color-accent) 40%)` mirroring `--text-highlight-bg`, with a readable fallback instead of a solid accent fill).*
+
+*Previously, 2026-08-24 — ADR-063 (max-tokens warning surfaced at the Send button when the effective max-tokens looks too low for the selected reasoning model — the truncation sharp edge of mid-conversation model switching, made visible before send; click opens settings).*
 
 *Previously, 2026-08-24 — ADR-062 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
 
@@ -889,3 +891,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** auto-raising a low `maxTokens` on switch (silently overrides an explicit user choice — surfacing beats mutating); warning only inside the settings modal (user sees it too late, after the truncated reply); blocking send (too aggressive — a low cap is legitimate for non-reasoning use and the user may want it anyway).
 
 **Consequence:** The main sharp edge of mid-conversation model switching (ADR discussion) is now visible before the user sends. UI-only + one i18n key (`sendMaxTokensHint`); no data-model change. The heuristic is intentionally conservative (reasoning models + explicit low cap only) to avoid false positives.
+
+### ADR-064 — Fork-origin highlight uses the favorites highlighter mechanism
+
+**Status:** Active (refines ADR-058's fork-origin styling)
+
+**Context:** ADR-058 introduced the fork-origin mark and later polish set it to `color-mix(var(--color-accent) 32%, transparent)` with a solid `var(--color-accent)` fallback. Two issues: the solid-accent fallback (used when `color-mix` is unavailable) puts normal-colored text on a fully opaque accent fill — potentially unreadable; and the fork mark and the favorite mark, though both "highlights," were built on different mechanisms (a raw tint vs. Obsidian's `--text-highlight-bg` highlighter token), so they didn't read as the same kind of mark.
+
+**Decision:** Give the fork-origin mark the **same highlighter mechanism as favorites**, in the accent hue. Favorites paint `--text-highlight-bg` (a ~40% translucent highlight); forks now paint `color-mix(in srgb, var(--color-accent) 40%, transparent)` — the same translucency, accent-hued — with `--text-highlight-bg` itself as the readable no-`color-mix` fallback. Forks and favorites are now the same kind of highlighter, distinguished only by color (accent vs. yellow).
+
+**Alternatives rejected:** accent underline / no fill (loses the shared "highlighter" language with favorites — the chosen consistency goal); keeping the 32% raw tint with a solid-accent fallback (the readability bug); defining a new accent-highlight CSS token (Obsidian has none, and `color-mix` on `--color-accent` expresses it without inventing a token).
+
+**Consequence:** Consistent highlighter treatment across favorites and forks, and no unreadable fallback. CSS-only; no data-model, i18n, or logic change.

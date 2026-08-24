@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-24 — a max-tokens warning (`.p-send-hint`, `alert-triangle` icon in `var(--text-warning)`) sits just left of the Send button when the effective max-tokens looks too low for the selected reasoning model; its tooltip explains the truncation risk and clicking it opens the provider/model settings. Hidden otherwise. See ADR-063.*
+*Last updated: 2026-08-24 — the fork-origin snippet (`mark.p-fork-origin`) now uses the same highlighter mechanism as favorites: a translucent `color-mix(var(--color-accent) 40%, transparent)` (mirroring favorites' `--text-highlight-bg` alpha) instead of a 32% tint, with the readable `--text-highlight-bg` as the no-`color-mix` fallback (never a solid accent fill). Forks and favorites now read as the same kind of highlighter, differing only by hue (accent vs. yellow). See ADR-064.*
+
+*Previously, 2026-08-24 — a max-tokens warning (`.p-send-hint`, `alert-triangle` icon in `var(--text-warning)`) sits just left of the Send button when the effective max-tokens looks too low for the selected reasoning model; its tooltip explains the truncation risk and clicking it opens the provider/model settings. Hidden otherwise. See ADR-063.*
 
 *Previously, 2026-08-24 — the fork anchor's "Open fork" button (right-aligned) now long-presses to open a generate-summary menu (`.p-fork-menu`, reusing `.p-send-menu` styling, above the button via `.p-fork-open-wrap`): "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites. Short press opens the fork; the standalone "Summarize fork" button is gone. See ADR-059.*
 

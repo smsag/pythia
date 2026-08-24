@@ -779,10 +779,14 @@ mark.p-highlight.p-highlight-flash {
 /* ── Fork-origin marks + inline anchor ───────────────────────── */
 /* Snippet in the source that spawned a fork — accent-tinted, distinct from
    favorite highlights; tapping it reveals the fork's summary anchor. */
-/* Forks use the accent color; favorites stay yellow (mark.p-highlight above). */
+/* Forks use the accent color; favorites stay yellow (mark.p-highlight above).
+   Same highlighter mechanism as favorites: favorites paint --text-highlight-bg
+   (a ~40% translucent highlight); forks mirror that translucency in the accent
+   hue, so both read as highlighter marks and differ only by color. The fallback
+   is the readable highlight token — never a solid, unreadable accent fill. */
 mark.p-fork-origin {
-  background: var(--color-accent);                                          /* fallback */
-  background: color-mix(in srgb, var(--color-accent) 32%, transparent);     /* preferred */
+  background: var(--text-highlight-bg);                                     /* readable fallback */
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);     /* accent highlighter */
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
