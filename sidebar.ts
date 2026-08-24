@@ -878,6 +878,21 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-summary-card-title",
 			text: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
+		// Timestamp lives in the header now (right-aligned, faint).
+		if (updatedAt) {
+			header.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
+		}
+		// Regenerate icon — re-runs the summary matching this card's kind.
+		const regen = header.createEl("button", {
+			cls: "p-summary-card-regen",
+			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
+		});
+		setIcon(regen, "refresh-cw");
+		regen.addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (kind === "favorites") void this.summarizeFavorites();
+			else void this.generateConversationSummary();
+		});
 		const chevron = header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
 		header.addEventListener("click", () =>
 			this.setSummaryCardOpen(card, !card.hasClass("open"))
@@ -889,9 +904,6 @@ export class PythiaSidebarView extends ItemView {
 			.catch((e) => console.error("[Pythia] summary card render:", e));
 
 		const footer = body.createDiv({ cls: "p-summary-card-footer" });
-		if (updatedAt) {
-			footer.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
-		}
 		const copyBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("copyBtn") });
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
