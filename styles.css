@@ -1249,18 +1249,40 @@ mark.p-fork-origin.p-highlight-flash {
   animation: pythia-hl-flash 1.2s ease-out;
 }
 
+/* Frameless fork anchor (ADR-066 / F1): 2px accent left-rule, no fill or
+   radius. Header micro-label + title + summary paragraph(s) + meta line. */
 .p-fork-anchor {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   margin: var(--s1) 0;
-  padding: var(--s2) var(--s3);
+  padding: 2px 0 2px var(--s3);
   border-left: 2px solid var(--color-accent);
-  background: var(--background-secondary);
-  border-radius: 4px;
   font-size: var(--font-smaller);
   color: var(--text-muted);
 }
+.p-fork-anchor-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.p-fork-anchor-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-fork-anchor-icon svg { width: 11px; height: 11px; }
+.p-fork-anchor-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.p-fork-anchor-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.p-fork-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 /* Compact typography for the inline fork summary — headings especially. */
-.p-fork-anchor-body { margin-bottom: var(--s2); font-size: var(--font-smaller); line-height: 1.5; }
+.p-fork-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
 .p-fork-anchor-body > :first-child { margin-top: 0; }
 .p-fork-anchor-body > :last-child { margin-bottom: 0; }
 .p-fork-anchor-body h1,
@@ -1291,20 +1313,13 @@ mark.p-fork-origin.p-highlight-flash {
   margin: 2px 0 0 0;
   flex-shrink: 0;
 }
-.p-fork-anchor-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--s2);
-}
 .p-fork-anchor-open {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  padding: 2px var(--s2);
-  border-radius: 3px;
+  all: unset;
   cursor: pointer;
   color: var(--color-accent);
+  font-size: 11px;
 }
+.p-fork-anchor-open:hover { text-decoration: underline; }
 /* Wrap so the long-press generate menu can stack directly above Open-fork. */
 .p-fork-open-wrap {
   position: relative;

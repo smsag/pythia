@@ -1812,19 +1812,30 @@ export class PythiaSidebarView extends ItemView {
 		else if (preferType === "favorites") summary = favText || convText;
 		else summary = favText || convText;
 
+		// Header: branch icon + ABZWEIGUNG micro-label (F1).
+		const head = anchor.createDiv({ cls: "p-fork-anchor-head" });
+		setIcon(head.createSpan({ cls: "p-fork-anchor-icon" }), "git-branch");
+		head.createSpan({ cls: "p-fork-anchor-label", text: t("forkAnchorLabel") });
+
+		// Fork title.
+		anchor.createDiv({ cls: "p-fork-anchor-title", text: fork.name });
+
+		// One or more summary paragraphs (multi-paragraph is the norm — no clamp).
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			void MarkdownRenderer.render(this.app, summary, body, "", this)
 				.catch((e) => console.error("[Pythia] fork summary render:", e));
 		}
 
-		// All actions live in a right-aligned row.
-		const actions = anchor.createDiv({ cls: "p-fork-anchor-actions" });
-
-		// Open-fork button: short-press opens the fork, long-press opens the
-		// generate-summary menu (mirrors the Send button's long-press menu).
-		const openWrap = actions.createDiv({ cls: "p-fork-open-wrap" });
-		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("openForkBtn") });
+		// Meta line: "N Nachrichten · Model · Öffnen →". The Öffnen link
+		// short-presses to open the fork, long-presses for the summary menu.
+		const meta = anchor.createDiv({ cls: "p-fork-anchor-meta" });
+		meta.createSpan({
+			cls: "p-fork-anchor-metatext",
+			text: `${t("msgCount", { n: String(fork.messages.length) })} · ${abbreviateModel(fork.model)} · `,
+		});
+		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
+		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (this.suppressNextForkOpen) {

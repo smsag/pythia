@@ -147,6 +147,10 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 Note references render as **wikilinks** (`.p-wikilink`, ADR-068): faint `[[`/`]]` brackets (`--text-faint`), accent clickable name (`.md` stripped), optional mono `~tokens` estimate (`--text-faint`, 9px), faint `×` remove (`--text-error` on hover). The add affordance is a `+ Notiz` text link (`.pythia-pill-add`, faint → accent on hover). The bordered `.p-pill` chip is retired.
 
+### Fork anchor (`.p-fork-anchor`, frameless, F1)
+
+The inline branch-back anchor (expands when a `mark.p-fork-origin` snippet is tapped) is **frameless** (ADR-066): a 2px `--color-accent` left-rule, 12px left padding, **no fill or radius**. Structure, top to bottom: `.p-fork-anchor-head` (`git-branch` icon in accent + `ABZWEIGUNG` mono 9px/600 label), `.p-fork-anchor-title` (11.5px/600 `--text-normal` = fork name), one or more `.p-fork-anchor-body` summary paragraphs (11px/1.55 `--text-muted`, **not clamped**), and a `.p-fork-anchor-meta` line `N Nachrichten · Model · Öffnen →` (the accent `.p-fork-anchor-open` short-presses to open the fork, long-presses for the summary-generate menu). Previously this was a grey `--background-secondary` box with only the summary + an open button.
+
 ### Summary cards ("Speisekarten")
 
 Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container prepended to the **top of the message list** (`.p-chat`), so they scroll with the conversation. A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
