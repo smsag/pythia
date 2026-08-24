@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-077 (research/web sources are now captured deterministically from the Tavily tool result and shown as the `WEB` sources row, instead of relying on the model's citation markers; foreign `【…†source】` markers are stripped from the text).*
+*Last updated: 2026-08-24 — ADR-078 (frameless AI code blocks: neutralise the `--code-background` token at the view scope so no grey fill survives, instead of only overriding the `pre` selector).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
 
@@ -1098,3 +1098,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** mapping the model's `【N†source】` indices to Tavily results (the numbering isn't guaranteed to align across models); per-model citation-format prompts (brittle, endless); keeping the model-declared web markers (unreliable, and leaks raw text). 
 
 **Consequence:** Research answers now show a clean `WEB` sources row built from the real Tavily results regardless of the model, and stray `【…†source】` noise no longer appears. Adds two pure, unit-tested helpers; no data-model change (`Message.sources` already existed).
+
+### ADR-078 — Frameless code blocks: neutralise the `--code-background` token, don't just override the selector
+
+**Status:** Active (fixes the incomplete ADR-066 frameless code block)
+
+**Context:** ADR-066 made AI code blocks "frameless" (white background, no border) by overriding `.pythia-view .p-code-frame > pre { background: var(--background-primary) }`. In practice a grey fill persisted. Obsidian (and themes) paint code from the `--code-background` CSS variable, read by core `pre`/`code` rules and by any theme-supplied wrapper element. A selector override only wins where our selector actually matches and out-ranks the other rule; it does nothing when the grey is contributed by a nested element or a rule carrying `!important`/hardcoded `background-color`.
+
+**Decision:** Attack the token, not just the selector.
+- **Redefine the token at the view scope:** `.pythia-view { --code-background: var(--background-primary) }`. Anything downstream that reads `--code-background` (core rules, theme wrappers, nested `code`/`span`) now resolves to the panel background — the actual override channel.
+- **Belt-and-braces explicit pin:** `.pythia-view .p-code-frame > pre`, its `code`, and any `code span` also set `background`/`background-color: var(--background-primary) !important` and `border/box-shadow: none !important`, defeating themes that hardcode `background-color` on `<pre>`/`<code>` instead of using the token.
+
+**Scope guard:** inline single-backtick code (`--background-secondary`) and summary-card `pre` (`--background-secondary`, explicit) set their backgrounds directly, not via `--code-background`, so both are untouched by the token redefinition.
+
+**Alternatives rejected:** raising selector specificity further (still loses to a nested element that reads the token); `!important` on the selector alone (misses wrappers we don't select). Redefining the token covers every reader in one line.
+
+**Consequence:** AI code blocks are reliably frameless across themes. Overriding a design token — rather than chasing individual selectors — is the durable pattern for Obsidian-core/theme fills; prefer it whenever core paints from a documented CSS variable.

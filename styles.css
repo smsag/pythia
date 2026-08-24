@@ -1046,14 +1046,24 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(128,128,128,0.25) transparent;
 }
-/* Frameless: strip Obsidian core's default grey <pre> fill + border. Scoped
-   under .pythia-view (0,2,1) so it out-ranks `.markdown-rendered pre` (0,1,1),
-   which loads after the plugin and would otherwise win the tie (ADR-065). */
+/* Frameless: strip Obsidian core's default grey code fill + border.
+   Obsidian paints code blocks from the --code-background token (read by its
+   own `pre`/`code` rules AND by any theme wrapper), so overriding a selector
+   alone is not enough — a rule we don't out-rank, or a nested element, still
+   reads the grey token. We neutralise the TOKEN at the .pythia-view scope so
+   everything downstream resolves to the panel background, then also pin the
+   background explicitly with !important as a belt-and-braces guard against
+   themes that hardcode background-color on <pre>/<code> (ADR-078). */
+.pythia-view {
+  --code-background: var(--background-primary);
+}
 .pythia-view .p-code-frame > pre,
-.pythia-view .p-code-frame > pre code {
-  background: var(--background-primary);
-  border: none;
-  box-shadow: none;
+.pythia-view .p-code-frame > pre code,
+.pythia-view .p-code-frame > pre code span {
+  background: var(--background-primary) !important;
+  background-color: var(--background-primary) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 .p-code-frame > pre::-webkit-scrollbar        { height: 4px; }
 .p-code-frame > pre::-webkit-scrollbar-track  { background: transparent; }
