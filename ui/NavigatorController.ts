@@ -83,26 +83,56 @@ export class NavigatorController {
 			return section;
 		};
 
-		// ── Forks ────────────────────────────────────────────────────
-		const forks = conv
-			? this.d.plugin.conversationStore.getAll().filter(c => c.forkedFromId === conv.id)
-			: [];
-		makeSection(t("forksSection"), true, forks.length, (body) => {
-			if (forks.length === 0) {
+		// ── Forks (branch tree, F5) ──────────────────────────────────
+		// Show the fork family as a tree: the source conversation (root) with its
+		// child forks indented beneath it. The root is the current conversation's
+		// parent when it is itself a fork, otherwise the current conversation.
+		const all = this.d.plugin.conversationStore.getAll();
+		const parentId = conv?.forkedFromId;
+		const root = (parentId ? all.find((c) => c.id === parentId) : conv) ?? conv;
+		const rootId = root?.id;
+		const children = rootId ? all.filter((c) => c.forkedFromId === rootId) : [];
+		const hasTree = !!root && children.length > 0;
+
+		const openConv = (target: Conversation) => {
+			navigatorEl.removeClass("open");
+			document.removeEventListener("mousedown", onOutside, true);
+			void this.d.setActiveConversation(target);
+		};
+
+		makeSection(t("forksSection"), true, children.length, (body) => {
+			if (!hasTree || !root) {
 				body.createDiv({ cls: "p-nav-empty", text: t("navNoForks") });
-			} else {
-				for (const fork of forks) {
-					const item = body.createDiv({ cls: "p-nav-item" });
-					item.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
-					item.createEl("span", { cls: "p-nav-label", text: fork.name });
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
-						void this.d.setActiveConversation(fork);
-					});
+				return;
+			}
+			// Source (root) row
+			const srcRow = body.createDiv({ cls: "p-nav-tree-source" });
+			if (root.id === conv?.id) srcRow.addClass("active");
+			srcRow.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
+			srcRow.createEl("span", { cls: "p-nav-label", text: root.name });
+			srcRow.createEl("span", { cls: "p-nav-tag", text: t("navSourceTag") });
+			srcRow.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				if (root.id !== conv?.id) openConv(root);
+			});
+			// Children, indented under a vertical rule
+			const kids = body.createDiv({ cls: "p-nav-tree-children" });
+			for (const child of children) {
+				const isActive = child.id === conv?.id;
+				const row = kids.createDiv({ cls: "p-nav-tree-item" });
+				if (isActive) row.addClass("active");
+				const dot = row.createEl("span", { cls: "p-nav-dot" });
+				if (isActive) dot.addClass("active");
+				row.createEl("span", { cls: "p-nav-label", text: child.name });
+				if (isActive) {
+					row.createEl("span", { cls: "p-nav-tag", text: t("navActiveTag") });
+				} else {
+					row.createEl("span", { cls: "p-nav-count-inline", text: String(child.messages.length) });
 				}
+				row.addEventListener("mousedown", (e) => {
+					e.preventDefault(); e.stopPropagation();
+					if (!isActive) openConv(child);
+				});
 			}
 		});
 

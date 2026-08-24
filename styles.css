@@ -1369,6 +1369,64 @@ mark.p-fork-origin.p-highlight-flash {
   flex-shrink: 0;
 }
 
+/* ── Fork tree (F5) ─────────────────────────────────────────────── */
+.p-nav-tree-source {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px var(--s3) 4px calc(var(--s3) + 4px);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.08s;
+}
+.p-nav-tree-source:hover { background: var(--background-modifier-hover); }
+.p-nav-tree-children {
+  margin-left: calc(var(--s3) + 9px);
+  border-left: 1px solid var(--background-modifier-border);
+}
+.p-nav-tree-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px var(--s3) 4px 10px;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 3px 3px 0;
+  transition: background 0.08s;
+}
+.p-nav-tree-item:hover { background: var(--background-modifier-hover); }
+.p-nav-tree-item.active,
+.p-nav-tree-source.active {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+.p-nav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+  align-self: center;
+}
+.p-nav-dot.active { background: var(--color-accent); }
+.p-nav-tag {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+.p-nav-tree-source .p-nav-tag { color: var(--text-faint); }
+.p-nav-count-inline {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
 /* ── Input area (v3) ─────────────────────────────────────────── */
 .p-input-area {
   flex-shrink: 0;

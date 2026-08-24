@@ -18,6 +18,8 @@ const en = {
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
 	navNoForks:      "No forks yet",
+	navSourceTag:    "Source",
+	navActiveTag:    "active",
 	navNoFavorites:  "No highlights yet",
 	navNoChapters:   "No chapters yet",
 

@@ -20,6 +20,8 @@ const de: Strings = {
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
 	navNoForks:      "Noch keine Abzweigungen",
+	navSourceTag:    "Quelle",
+	navActiveTag:    "aktiv",
 	navNoFavorites:  "Noch keine Markierungen",
 	navNoChapters:   "Noch keine Kapitel",
 

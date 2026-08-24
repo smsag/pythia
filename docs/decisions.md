@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 5: ADR-072 (model-declared citations `F2/F11` — `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers, parsed/numbered by Pythia into a new `Message.sources`, painted into `.p-cite` chips with a `QUELLEN` / `WEB`+`VAULT` sources row; markers stripped from note exports).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F5): ADR-073 (the `#` navigator's Abzweigungen section becomes a fork **tree** — source row with a `Quelle` tag, child forks indented under a vertical rule with status dots, active branch tinted with an `aktiv` tag).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 5: ADR-072 (model-declared citations `F2/F11` — `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers, parsed/numbered by Pythia into a new `Message.sources`, painted into `.p-cite` chips with a `QUELLEN` / `WEB`+`VAULT` sources row; markers stripped from note exports).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 4: ADR-071 (context inspector card `F2/F3` — an outline card under the summary cards listing context notes as wikilinks + system-prompt estimate, switching to a per-source budget breakdown with mini-bars and a `Zusammenfassen` action at ≥80% usage).*
 
@@ -1024,3 +1026,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** `[[cite:…]]` (Obsidian renders it as an internal link); embedding raw URLs in markers (autolinking splits the marker across nodes); numbering by the model (it can't know the final order, and duplicates break); a retrieval-grounded citation index (a much larger pipeline change — this is model-declared attribution, explicitly scoped as such). Degrades gracefully: no markers → no chips, no row.
 
 **Consequence:** Sourced answers are attributable inline with no retrieval-layer change. One additive schema field; markers only appear with notes/research attached. Not yet done: the F11 token line "· N Suchen" search count (needs per-message search tracking) and German comma number formatting.
+
+### ADR-073 — Fork branch tree in the navigator (F5)
+
+**Status:** Active (refines the flat Forks list from ADR-054's navigator)
+
+**Context:** Branching is the hero feature; the Final design shows the `#` navigator's Abzweigungen section as a **tree** — the source conversation (root) with a `Quelle` tag, its child forks indented under a vertical rule, each child a status dot + name + (active → tinted with an `aktiv` tag / else message count) — rather than the previous flat list of a conversation's direct forks.
+
+**Decision:** Compute the fork family from the store: the root is the current conversation's parent (`forkedFromId`) when it is a fork, else the current conversation; children are all conversations forked from that root. Render a `.p-nav-tree-source` row (fork icon + name + `Quelle`) and a `.p-nav-tree-children` container (1px left rule) of `.p-nav-tree-item` rows (`.p-nav-dot` + name + `aktiv`/count). The current conversation's row — source or child — gets `.active` (accent 8% tint). Rows open their conversation via the existing `setActiveConversation`. New keys `navSourceTag` / `navActiveTag`.
+
+**Alternatives rejected:** a full recursive multi-level tree (forks-of-forks) — the data model is one level deep in practice and the mock shows one level; a deeper tree can extend `.p-nav-tree-children` later; keeping the flat list (loses the source/sibling context that makes branching legible).
+
+**Consequence:** From any fork you can see and jump to its source and siblings, with the active branch marked — the navigation the hero feature needs. Store-only reads; no data-model change.
