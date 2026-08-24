@@ -4,6 +4,8 @@ const de: Strings = {
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",
 	changeModelTooltip:     "Anbieter / Modell wechseln",
+	reasoningTag:           "Reasoning",
+	openConvSettings:       "Gesprächseinstellungen…",
 	sendMaxTokensHint:      "Max. Tokens ({{max}}) könnten für {{model}} zu niedrig sein — ein Reasoning-Modell verbraucht einen Teil davon für verborgenes Nachdenken, sodass die Antwort abgeschnitten werden kann. Empfohlen: mindestens {{recommended}}. Zum Anpassen klicken.",
 	deleteConvTooltip:      "Gespräch löschen",
 	newConvTooltip:         "Neues Gespräch",
@@ -20,13 +22,33 @@ const de: Strings = {
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
 	navNoForks:      "Noch keine Abzweigungen",
+	navSourceTag:    "Quelle",
+	navActiveTag:    "aktiv",
+
+	// ── Quick switcher / history ──────────────────────────────────────────────
+	switcherSearchPlaceholder: "Suchen…",
+	switcherHint:              "↑↓ Navigieren · ↵ Öffnen · esc Schließen",
+	msgCount:                  "{{n}} Nachrichten",
+	msgCountShort:             "{{n}} Nachr.",
+	branchLabel:               "Zweig",
+	dateToday:                 "heute",
+	dateYesterday:             "gestern",
+	historyTooltip:            "Gespräche",
+	histTitle:                 "Gespräche",
+	backTooltip:               "Zurück",
+	histToday:                 "HEUTE",
+	histYesterday:             "GESTERN",
+	histThisWeek:              "DIESE WOCHE",
 	navNoFavorites:  "Noch keine Markierungen",
 	navNoChapters:   "Noch keine Kapitel",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
 	noActiveConversationHint:  "Kein aktives Gespräch.",
 	startFromPaletteHint:      'Starte eines über die Befehlspalette (Strg/Cmd+P → "Pythia:").',
-	startConversationBelow:    "Beginne das Gespräch unten.",
+	emptyHeading:              "Womit kann ich helfen?",
+	emptyHintAttach:           "Notiz als Kontext anhängen",
+	emptyHintCommands:         "Pythia-Befehle",
+	emptyHintNewline:          "neue Zeile",
 
 	// ── Message bubbles ───────────────────────────────────────────────────────
 	removeHighlight:            "Markierung entfernen",
@@ -53,18 +75,42 @@ const de: Strings = {
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",
 
+	// ── Turn labels ───────────────────────────────────────────────────────────
+	turnUser: "DU",
+	turnAI:   "PYTHIA",
+
+	// ── Wikilink references ───────────────────────────────────────────────────
+	addNoteInline: "+ Notiz",
+
+	// ── Context budget ────────────────────────────────────────────────────────
+	nextSendEstimate: "nächste {{n}}",
+	ctxBarTooltip:    "Kontext: {{used}} / {{total}} Token ({{pct}}%)",
+
+	// ── Context inspector ─────────────────────────────────────────────────────
+	ctxLabel:          "Kontext",
+	ctxHistoryRow:     "Gesprächsverlauf ({{count}} Nachr.)",
+	ctxSystemPrompt:   "Systemprompt",
+	ctxAddNote:        "+ Notiz hinzufügen",
+	ctxSystemPromptEst:"+ Systemprompt {{est}}",
+	ctxNearFull:       "Fast voll — Verlauf verdichten spart {{n}}.",
+	ctxSummarize:      "Zusammenfassen",
+
+	// ── Citations / sources ───────────────────────────────────────────────────
+	sourcesLabel: "QUELLEN",
+	sourcesWeb:   "WEB",
+	sourcesVault: "VAULT",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",
-	inboxBtn: "Im Posteingang speichern",
+	inboxBtn: "In Posteingang kopieren",
 	forkBtn:  "Verzweigen",
-	favoriteBtn: "Favorit",
+	favoriteBtn: "Favorisieren",
 	unfavoriteBtn: "Entfernen",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
-	sendBtnEstTitle:     "Geschätzte Eingabe-Tokens für nächste Sendung: {{n}}",
 	stopBtn:             "Anfrage abbrechen",
 	attachNoteTooltip:   "Notiz anhängen",
 	saveResponseTooltip: "Antwort speichern",

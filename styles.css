@@ -55,6 +55,37 @@
   flex-shrink: 0;
   min-height: 34px;
 }
+
+/* ── Context-budget bar (ADR-069) ───────────────────────────────
+   3px track directly under the header row; fill = usage / window. */
+.p-ctx-bar {
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--background-modifier-border);
+  cursor: pointer;
+}
+.p-ctx-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-accent);
+  transition: width 0.2s ease;
+}
+.p-ctx-bar.warn .p-ctx-bar-fill {
+  background: var(--text-warning, var(--color-orange));
+}
+/* Header percent chip — only shown at >=80% usage. */
+.p-ctx-chip {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: var(--text-warning, var(--color-orange));
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-orange) 40%, transparent);
+}
 .p-title {
   all: unset;
   cursor: pointer;
@@ -91,6 +122,225 @@
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
+.p-model.open {
+  color: var(--text-normal);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* ── In-panel history view (F10) ────────────────────────────────── */
+.p-history {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+}
+.p-history-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s2) var(--s2) var(--s2) var(--s2);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  min-height: 34px;
+}
+.p-history-title {
+  flex: 1;
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.p-history-list { flex: 1; overflow-y: auto; padding: 8px; }
+.p-history-group {
+  padding: 10px 8px 3px;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.p-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.p-history-row:hover { background: var(--background-modifier-hover); }
+.p-history-row.fork { padding-left: 22px; }
+.p-history-row.active {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+.p-history-main { flex: 1; min-width: 0; }
+.p-history-row-title {
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-history-row.fork .p-history-row-title { color: var(--text-muted); }
+.p-history-sub {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-history-fork-count { color: var(--color-accent); }
+.p-history-fav-count { color: var(--color-yellow); }
+.p-history-row .p-switcher-del { opacity: 0; }
+.p-history-row:hover .p-switcher-del { opacity: 1; }
+
+/* ── Quick switcher (F9) ────────────────────────────────────────── */
+.pythia-view .p-switcher {
+  z-index: 40;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+.p-switcher-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+.p-switcher-search-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-switcher-search-icon svg { width: 13px; height: 13px; }
+.pythia-view .p-switcher-input {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-small);
+  color: var(--text-normal);
+}
+.p-switcher-list { overflow-y: auto; padding: 4px 0; }
+.pythia-view .p-switcher-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.p-switcher-row.fork { padding-left: 26px; }
+.p-switcher-row:hover,
+.p-switcher-row.selected { background: var(--background-modifier-hover); }
+.p-switcher-fork-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-switcher-fork-icon svg { width: 11px; height: 11px; }
+.p-switcher-main { flex: 1; min-width: 0; }
+.p-switcher-title {
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-switcher-hl { background: var(--text-highlight-bg); font-weight: 600; }
+.p-switcher-sub {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-switcher-del {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.08s, color 0.12s;
+}
+.p-switcher-row:hover .p-switcher-del { opacity: 1; }
+.p-switcher-del:hover { color: var(--text-error, var(--color-red)); }
+.p-switcher-footer {
+  padding: 5px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* ── Model popover (F7) ─────────────────────────────────────────── */
+.pythia-view .p-model-pop {
+  z-index: 40;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden auto;
+  max-height: 70vh;
+  padding-bottom: var(--s1);
+}
+.p-model-pop-group {
+  padding: 8px 12px 3px;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.p-model-pop-group:not(:first-child) {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--s1);
+}
+.pythia-view .p-model-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.p-model-pop-row:hover { background: var(--background-modifier-hover); }
+.p-model-pop-row.active {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-model-pop-rtag {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-warning, var(--color-orange));
+  flex-shrink: 0;
+}
+.p-model-pop-ctx {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-model-pop-check { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-model-pop-check svg { width: 12px; height: 12px; }
+.pythia-view .p-model-pop-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 5px;
+  margin-top: var(--s1);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.p-model-pop-footer:hover { background: var(--background-modifier-hover); }
+.p-model-pop-footer-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-model-pop-footer-icon svg { width: 12px; height: 12px; }
 
 .p-hdr-btn {
   all: unset;
@@ -144,73 +394,62 @@
 }
 .p-pills::-webkit-scrollbar { display: none; }
 
-.p-pill {
+/* ── Wikilink note reference (ADR-068) ──────────────────────────
+   Replaces the bordered pill everywhere a vault note is referenced:
+   faint [[ ]] brackets, accent clickable name, optional mono token
+   estimate, faint × remove affordance. */
+.p-wikilink {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);                                        /* fallback: Chromium < 111 */
-  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);  /* preferred: semi-transparent */
-  border-radius: 10px;
-  padding: 1px 6px;
-  max-width: 160px;
+  font-size: 11.5px;
+  max-width: 200px;
   flex-shrink: 0;
   overflow: hidden;
   scroll-snap-align: start;
 }
-
-.p-pill-label {
+.p-wikilink-bracket {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-wikilink-name {
+  color: var(--color-accent);
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-
-.p-pill-tokens {
+.p-wikilink-name:hover { text-decoration: underline; }
+.p-wikilink-tokens {
   font-family: var(--font-monospace);
   font-size: 9px;
-  opacity: 0.5;
+  color: var(--text-faint);
   flex-shrink: 0;
   white-space: nowrap;
-  margin-left: 1px;
 }
-
-.p-pill-x {
+.p-wikilink-x {
   all: unset;
   cursor: pointer;
-  font-size: 9px;
-  opacity: 0.45;
-  flex-shrink: 0;
-  margin-left: 1px;
+  font-size: 11px;
   line-height: 1;
-  transition: opacity 0.1s;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  transition: color 0.1s;
 }
-.p-pill-x:hover {
-  opacity: 0.9;
-}
+.p-wikilink-x:hover { color: var(--text-error, var(--color-red)); }
 
-/* ── Pill add button ────────────────────────────────────────── */
+/* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
   all: unset;
   cursor: pointer;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px dashed var(--background-modifier-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1em;
-  box-sizing: border-box;
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  padding: 0 2px;
+  transition: color 0.1s;
 }
-.pythia-view .pythia-pill-add:hover {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
-}
+.pythia-view .pythia-pill-add:hover { color: var(--color-accent); }
 
 /* ── Fork banner ────────────────────────────────────────────── */
 .pythia-fork-banner {
@@ -447,16 +686,198 @@
   font-size: 0.9em;
   padding: 24px 16px;
 }
+
+/* ── Citations: inline chip + sources row (F2/F11) ──────────────── */
+.p-cite {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 2px;
+  cursor: pointer;
+}
+.p-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 6px;
+}
+.p-sources-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.p-sources-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.p-source { font-size: 11.5px; display: inline-flex; align-items: baseline; gap: 3px; }
+.p-source-num { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); }
+.p-source-web { color: var(--color-accent); cursor: pointer; }
+.p-source-web:hover { text-decoration: underline; }
+
+/* ── Context inspector (F2/F3) ──────────────────────────────────── */
+.p-inspector-wrap { min-width: 0; }
+.p-inspector {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.p-inspector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.p-inspector-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-inspector-icon svg { width: 13px; height: 13px; }
+.p-inspector-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-inspector-pct {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-warning, var(--color-orange));
+  flex-shrink: 0;
+}
+.p-inspector-chevron { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+/* Body hidden until .open, mirroring the summary-card toggle. */
+.p-inspector-body { display: none; padding: 0 12px 10px; flex-direction: column; gap: 5px; }
+.p-inspector.open .p-inspector-body { display: flex; }
+.p-inspector-row { display: flex; align-items: center; gap: 8px; }
+.p-inspector-rowlabel { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-normal); }
+.p-inspector-row .p-wikilink { flex: 1; }
+.p-inspector-rowval {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.p-ins-bar {
+  width: 64px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.p-ins-bar-fill { height: 100%; background: var(--color-accent); }
+.p-ins-bar-fill.warn { background: var(--text-warning, var(--color-orange)); }
+.p-inspector-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.p-inspector-warn-icon { display: flex; color: var(--text-warning, var(--color-orange)); flex-shrink: 0; }
+.p-inspector-warn-icon svg { width: 12px; height: 12px; }
+.p-inspector-warn-text { flex: 1; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-inspector-summarize {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--color-accent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-radius: 3px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  transition: background 0.1s;
+}
+.p-inspector-summarize:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.p-inspector-footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.p-inspector-add {
+  flex: 1;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-faint);
+  transition: color 0.1s;
+}
+.p-inspector-add:hover { color: var(--color-accent); }
+.p-inspector-sys { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+
+/* ── Welcome / empty-conversation state (F6) ────────────────────── */
+.p-welcome {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 16px;
+  text-align: center;
+}
+.p-welcome-spark {
+  display: flex;
+  color: var(--color-accent);
+}
+.p-welcome-spark svg { width: 22px; height: 22px; }
+.p-welcome-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.p-welcome-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.p-welcome-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.p-keycap {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
 .pythia-empty-hint {
   font-size: 0.85em;
   margin-top: 6px;
 }
 
 /* ── User message bubble (v3) ───────────────────────────────── */
+/* Turn micro-label above every message (ADR-067): mono 9px, wide tracking,
+   faint. Right-aligned over user bubbles, left-aligned over AI messages. */
+.p-turn-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
 .p-msg-user {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 3px;
 }
 
 .p-bubble {
@@ -583,17 +1004,34 @@
    Background/border/radius match the app's other "framed content box"
    components (.pythia-tool-call, .p-msg-optimize-result) — same token
    formula, same visual family. */
+/* Frameless code block (ADR-066): no background fill or radius. Structure comes
+   from top/bottom hairlines plus a header row (icon + language name + copy). */
 .p-code-frame {
   position: relative;
-  margin: var(--s1) 0;
+  margin: var(--s2) 0;
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.p-code-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: var(--s1);
+}
+.p-code-lang {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .p-code-frame > pre {
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  /* Extra top padding reserves a clear strip for the always-visible
-     .p-code-type-icon so it never overlaps the first line of code. */
-  padding: 22px 10px 8px;
+  padding: 0;
   overflow-x: auto;
   font-size: 0.88em;
   font-family: var(--font-monospace);
@@ -660,11 +1098,8 @@
 /* Copy button: pinned to the top-right of the frame so it stays fixed
    while the pre scrolls horizontally underneath. */
 .p-code-actions {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 2;
   display: flex;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -707,10 +1142,8 @@
    permanent label, not an interactive affordance — no hover/opacity
    treatment, no button semantics. */
 .p-code-type-icon {
-  position: absolute;
-  top: 4px;
-  left: 4px;
   display: flex;
+  flex-shrink: 0;
   color: var(--text-faint);
 }
 .p-code-type-icon svg {
@@ -927,18 +1360,23 @@ mark.p-fork-origin.p-highlight-flash {
 .p-del-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 
 /* ── Selection toolbar ─────────────────────────────────────── */
+/* Frameless selection toolbar (ADR-066): no grey band — panel background with a
+   top hairline only. Overflows horizontally as a carousel; the right-edge mask
+   is the "more actions" affordance. */
 .pythia-sel-toolbar {
   flex-shrink: 0;
   display: flex;
   gap: 2px;
   padding: var(--s1) var(--s2);
-  background: var(--background-secondary);
+  background: var(--background-primary);
   border-top: 1px solid var(--background-modifier-border);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
   animation: sel-slide-in 0.12s ease;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .pythia-sel-toolbar::-webkit-scrollbar { display: none; }
 
@@ -950,8 +1388,8 @@ mark.p-fork-origin.p-highlight-flash {
 .pythia-sel-btn {
   all: unset;
   cursor: pointer;
-  font-size: 0.78em;
-  padding: 5px 10px;
+  font-size: 10.5px;
+  padding: 5px 7px;
   border-radius: 4px;
   color: var(--text-muted);
   white-space: nowrap;
@@ -1150,6 +1588,64 @@ mark.p-fork-origin.p-highlight-flash {
   flex-shrink: 0;
 }
 
+/* ── Fork tree (F5) ─────────────────────────────────────────────── */
+.p-nav-tree-source {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px var(--s3) 4px calc(var(--s3) + 4px);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.08s;
+}
+.p-nav-tree-source:hover { background: var(--background-modifier-hover); }
+.p-nav-tree-children {
+  margin-left: calc(var(--s3) + 9px);
+  border-left: 1px solid var(--background-modifier-border);
+}
+.p-nav-tree-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px var(--s3) 4px 10px;
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 3px 3px 0;
+  transition: background 0.08s;
+}
+.p-nav-tree-item:hover { background: var(--background-modifier-hover); }
+.p-nav-tree-item.active,
+.p-nav-tree-source.active {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+.p-nav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+  align-self: center;
+}
+.p-nav-dot.active { background: var(--color-accent); }
+.p-nav-tag {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+.p-nav-tree-source .p-nav-tag { color: var(--text-faint); }
+.p-nav-count-inline {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
 /* ── Input area (v3) ─────────────────────────────────────────── */
 .p-input-area {
   flex-shrink: 0;
@@ -1286,6 +1782,16 @@ body.is-mobile .p-textarea {
 }
 
 /* ── Max-tokens warning beside Send ── */
+/* Next-send token estimate (mono), left of the warning + Send button. */
+.p-send-estimate {
+  font-family: var(--font-monospace);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-right: var(--s2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .p-send-hint {
   display: inline-flex;
   align-items: center;
@@ -1388,6 +1894,31 @@ body.is-mobile .p-textarea {
   color: var(--text-faint);
   margin-top: 10px;
 }
+
+/* ── Effort segmented control (F8) ──────────────────────────────── */
+.p-effort-seg {
+  display: inline-flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.p-effort-seg-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  color: var(--text-muted);
+  transition: background 0.1s, color 0.1s;
+}
+.p-effort-seg-btn:not(:last-child) {
+  border-right: 1px solid var(--background-modifier-border);
+}
+.p-effort-seg-btn:hover { background: var(--background-modifier-hover); }
+.p-effort-seg-btn.active {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+}
+.p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 
 /* ── Tool call chips ─────────────────────────────────────────── */
 .pythia-tool-call {

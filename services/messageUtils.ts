@@ -135,6 +135,18 @@ export function estimateTokensFromBytes(sizeBytes: number): string {
 	return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
 }
 
+/** Format an ISO-8601 timestamp as a 24-hour clock label "HH:MM" for turn
+ *  micro-labels (e.g. "14:31"). Locale-independent so the output is stable and
+ *  testable; falls back to "" on an unparseable input. */
+export function formatClockTime(iso: string | undefined): string {
+	if (!iso) return "";
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return "";
+	const hh = String(d.getHours()).padStart(2, "0");
+	const mm = String(d.getMinutes()).padStart(2, "0");
+	return `${hh}:${mm}`;
+}
+
 /** Estimate token count from a text string. Uses a weighted heuristic: Latin
  *  characters average ~4 per token, but CJK/non-ASCII characters average ~1.5
  *  per token. Falls back to ÷4 for purely Latin text. */

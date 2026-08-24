@@ -1,6 +1,26 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F9): ADR-075 (header title opens an anchored quick switcher — search, fork-indented rows, keyboard nav, hover-delete — additive to the command-palette fuzzy modal).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F7): ADR-074 (the model chip opens an anchored quick-pick popover — provider groups, context-window labels, Reasoning tags, active check, and a footer to the full settings modal — instead of jumping straight to the modal).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F5): ADR-073 (the `#` navigator's Abzweigungen section becomes a fork **tree** — source row with a `Quelle` tag, child forks indented under a vertical rule with status dots, active branch tinted with an `aktiv` tag).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 5: ADR-072 (model-declared citations `F2/F11` — `⟦cite:note:…⟧`/`⟦cite:web:…⟧` markers, parsed/numbered by Pythia into a new `Message.sources`, painted into `.p-cite` chips with a `QUELLEN` / `WEB`+`VAULT` sources row; markers stripped from note exports).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 4: ADR-071 (context inspector card `F2/F3` — an outline card under the summary cards listing context notes as wikilinks + system-prompt estimate, switching to a per-source budget breakdown with mini-bars and a `Zusammenfassen` action at ≥80% usage).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 6: ADR-070 (minimal centered empty state `F6` — accent sparkle, heading, mono keycap hints — and the conversation-settings Effort control becomes a segmented Standard/Niedrig/Mittel/Hoch control `F8`, keeping a "Standard = no override" segment).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 3: ADR-069 (3px context-budget bar under the header — fill = usage / model window, warning color + header percent chip at ≥80%; the next-send token estimate moves from the Send button label to a mono label left of the button).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 2: ADR-068 (vault-note references render as `[[wikilinks]]` — faint brackets, accent name, mono token estimate, `×` remove — retiring the bordered `.p-pill`; add affordance becomes a `+ Notiz` text link).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 1: ADR-066 (frameless code blocks + selection toolbar — hairlines and a mono header replace the grey `--background-secondary` box) and ADR-067 (per-message turn micro-labels `DU · HH:MM` / `PYTHIA · MODEL · HH:MM`, backed by a new optional `Message.model`).*
+
+*Previously, 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
 
 *Previously, 2026-08-24 — ADR-064 (fork-origin highlight now uses the favorites highlighter mechanism — translucent `color-mix(var(--color-accent) 40%)` mirroring `--text-highlight-bg`, with a readable fallback instead of a solid accent fill).*
 
@@ -921,3 +941,142 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** `!important` (blunt, hard to override later, and unnecessary once specificity is correct); per-component `.pythia-view` prefixes on every button (far more churn than fixing the shared reset + the one solid-fill button); leaving the marks unscoped and only tweaking color values (the values were never the problem — they were being overridden wholesale).
 
 **Consequence:** Fork highlights show the accent color; plugin controls are transparent on desktop except where they intentionally opt into a fill. CSS-only. General rule going forward: **view chrome must be scoped under `.pythia-view` (and marks as `.pythia-view mark.…`) so it out-ranks Obsidian core (0,1,1); a bare element+class tie is not enough because themes and core load after the plugin.**
+
+### ADR-066 — Frameless components (code blocks, selection toolbar, fork anchors)
+
+**Status:** Active (reverses ADR-046's framed-box treatment for these components)
+
+**Context:** The "Pythia Final" design consolidates on a frameless visual language: structure comes from hairlines (`--background-modifier-border`), 2px accent left-rules, and mono micro-labels rather than filled grey boxes. ADR-046 had unified code blocks, tool-call chips and the optimizer result on the `--background-secondary` "framed box" formula. The Final design keeps that formula **only** for outline cards (summaries + the context inspector) and removes the grey fill from code blocks, the selection toolbar, and fork anchors.
+
+**Decision:** Make code blocks and the selection toolbar frameless.
+- **Code block:** `.p-code-frame` drops the `--background-secondary` fill, border and radius; it now carries only top/bottom hairlines and a header row (`.p-code-head`: `code-2` icon + language name `.p-code-lang` at mono 9px + hover/touch copy button). The `<pre>` loses its box and reserved top padding. Copy stays hover-reveal on desktop, always-visible under `@media (hover: none)`.
+- **Selection toolbar:** `.pythia-sel-toolbar` swaps the grey band for the panel background (`--background-primary`) with a top hairline only, and gains a right-edge `mask-image` fade as the horizontal-carousel affordance.
+
+**Alternatives rejected:** keeping the framed boxes (contradicts the Final language); a bespoke code-block token (the point is *removing* the fill, not renaming it); a JS-measured overflow fade for the toolbar (pure-CSS mask is simpler and the fade doubles as a permanent "scrolls sideways" hint).
+
+**Consequence:** Calmer, typography-driven code and toolbar surfaces. Mostly CSS; the code-block decorator gains a header row and a language label. Outline cards remain the only filled component family.
+
+### ADR-067 — Per-message turn micro-labels
+
+**Status:** Active (reverses the earlier "no avatar or label per AI message" / "no turn dividers" rules)
+
+**Context:** The Final design labels every turn: `DU · 14:31` right-aligned above user bubbles and `PYTHIA · SONNET 4.6 · 14:32` above AI messages (mono 9px, letter-spacing 0.08em, `--text-faint`). This supersedes the earlier decision to keep messages label-less. The model shown must reflect the model that actually produced a given message, which can differ from the conversation's current model after a switch.
+
+**Decision:** Render a `.p-turn-label` as the first child of every message row via `renderTurnLabel()`. Add an optional `Message.model` recorded at generation time; the AI label reads `msg.model` and falls back to `Conversation.model` for legacy messages that predate the field. Time is formatted by a pure `formatClockTime()` (locale-independent 24h `HH:MM`, unit-tested). New i18n keys `turnUser` / `turnAI`.
+
+**Alternatives rejected:** deriving the model label from the conversation only (mislabels historical turns after a model switch); storing a formatted time string on the message (redundant with the ISO `timestamp`, and not reflowable); per-turn avatars (heavier than the design's mono micro-label).
+
+**Consequence:** Every turn is attributable at a glance. One additive, backfill-safe schema field (`Message.model`); no migration. Turn labels also appear on the streaming row (using the conversation's current model) so the live turn is labelled before it is persisted.
+
+### ADR-068 — Wikilink note references replace the bordered pill
+
+**Status:** Active (retires `.p-pill`)
+
+**Context:** The Final design renders every vault-note reference as an Obsidian-style `[[wikilink]]` rather than the bordered accent pill (`.p-pill`): faint `[[`/`]]` brackets (`--text-faint`), an accent clickable name, an optional mono token estimate, and a faint `×` remove affordance. The pill's rounded border reads as a "chip/tag"; the wikilink reads as "a note", matching how the same notes appear in the vault and unifying the reference row, attachments, context inspector and sources on one visual.
+
+**Decision:** Replace the pill DOM/CSS with a `.p-wikilink` (`.p-wikilink-bracket` / `-name` / `-tokens` / `-x`). The `.md` extension is stripped from the displayed name. The dashed circular add-button becomes a `+ Notiz` text link (`addNoteInline`, hover → accent). The horizontal-scroll container (`.p-pills`) is kept as-is.
+
+**Alternatives rejected:** keeping the pill (contradicts the Final language and the "outline cards are the only bordered family" rule); rendering references through Obsidian's real internal-link machinery (heavier, and these are context attachments with custom open/remove behavior, not literal document links).
+
+**Consequence:** Note references read natively as notes across every surface. CSS + one DOM builder changed; the same `.p-wikilink` markup will be reused by the context inspector and citation source rows in later phases.
+
+### ADR-069 — Context-budget bar in the header; token estimate beside Send
+
+**Status:** Active
+
+**Context:** The Final design surfaces how full the model's context window is as a 3px bar directly under the header row (fill = usage / window), turning warning-colored with a header percent chip past ~80%. It also moves the next-send token estimate out of the Send button label — the button reads just "Senden"/"Stopp" — into a mono label immediately left of the button. `models/knownModels.ts` already exposes `getContextWindow(model)`.
+
+**Decision:** Add `.p-ctx-bar` (track + `.p-ctx-bar-fill`) between the header and chat, and a `.p-ctx-chip` in the header. `updateContextBar()` computes usage from the last message carrying `tokenUsage` (`inputTokens + outputTokens` — the context as of the last exchange, excluding the unsent draft) over `getContextWindow(conv.model)`; at `frac >= 0.8` it adds `.warn` (fill → `--text-warning`) and shows the percent chip. Both the bar and chip scroll the conversation to the top on click (the context inspector will expand there in the next phase). `updateSendBtnLabel()` now only sets the mono `.p-send-estimate` ("nächste ~Xk", key `nextSendEstimate`) and delegates the bar to `updateContextBar()`. The dead `sendBtnEstTitle` key was removed (enforced by the i18n dead-key test).
+
+**Alternatives rejected:** a composer-level budget banner (the design deliberately frees the composer of this and centralizes budget in the header); recomputing usage by re-tokenizing the whole history each keystroke (the last turn's `inputTokens` already is the measured context size — cheaper and more accurate than an estimate); keeping the estimate in the button label (crowds the button and fights the "Senden/Stopp only" spec).
+
+**Consequence:** Budget is always visible without opening anything, and the composer footer is quieter. No data-model change; usage reads existing `tokenUsage`. Numbers still use the app's existing dot-decimal short format (e.g. `~4.3k`) rather than the mockup's German comma — locale-aware number formatting is a separate, app-wide change.
+
+### ADR-070 — Minimal empty state (F6) + effort segmented control (F8)
+
+**Status:** Active
+
+**Context:** Two small Final-design pieces. (F6) The empty conversation should be a calm, centered welcome — accent sparkle, "Womit kann ich helfen?", and three mono keycap hints (`#` attach note, `⌘P` commands, `⇧↵` newline) — not a paragraph of prose. (F8) The conversation-settings Effort control should be a segmented Niedrig/Mittel/Hoch control (active = accent fill) rather than a dropdown.
+
+**Decision:** (F6) Add `renderWelcome()` producing `.p-welcome` (sparkle + `.p-welcome-title` + `.p-welcome-hints` with `.p-keycap` chips), used for every empty-conversation branch (new conversation, and after deleting the last exchange). The no-*active*-conversation fallback keeps its plain hint. New keys `emptyHeading` / `emptyHintAttach` / `emptyHintCommands` / `emptyHintNewline`; the now-dead `startConversationBelow` was removed. (F8) Replace the effort dropdown with a `.p-effort-seg` segmented control, **keeping a leading "Standard" segment** for "no override" — the semantic the old empty dropdown option carried, which a bare Low/Mid/High control cannot express. The disabled state (model doesn't support effort) greys and disables the segments.
+
+**Alternatives rejected:** a three-segment control with no "Standard" (silently loses the "no override" state — a behavior regression); reusing `.pythia-empty` for F6 (it's a text block, not the centered sparkle layout); a separate reset button for effort (an extra control where a segment does the job).
+
+**Consequence:** The empty panel matches F6 and the settings modal matches F8 without dropping the override semantics. Keycaps show `⌘P` literally on all platforms (not remapped to Ctrl on Windows/Linux) — acceptable for a hint; a platform-aware keycap is a later refinement.
+
+### ADR-071 — Context inspector card (F2/F3)
+
+**Status:** Active
+
+**Context:** The Final design adds a context inspector: an outline card at the top of the message list (with the summary cards) that makes the prompt's context legible. In normal mode it lists each context note as a wikilink with its token estimate, a `+ Notiz hinzufügen` action and a system-prompt estimate; when the window is ≥80% full it becomes a budget breakdown — conversation history (with message count), each note, and the system prompt, each with a 64px mini-bar and token value, plus an "almost full" warning row with a `Zusammenfassen` action.
+
+**Decision:** Render the inspector into a stable `.p-inspector-wrap` created just under `.p-summary-cards` on every full rebuild; `fillContextInspector()` (re)builds the card and is also called from `renderReferencePills()` so add/remove of notes refreshes it live. It is shown only when there are context notes **or** the budget is tight (no empty card otherwise). Usage/window come from the last turn's `tokenUsage` over `getContextWindow(model)` (same source as the header bar); the system-prompt estimate reuses `buildSystemPrompt()` + `estimateTokensFromText()`; per-note tokens are `round(bytes / 4)`. History tokens in breakdown mode are `used − notes − system`. The `Zusammenfassen` button reuses the existing `generateConversationSummary()`. The card is `--background-primary` filled (the outline-card family) and collapsed by default; open state persists across rebuilds within the session.
+
+**Alternatives rejected:** always showing the inspector even with no notes (noise); a separate token-accounting pass (the header already derives usage from `tokenUsage` — reuse it); making the system-prompt row removable (it isn't user-editable context); computing exact per-source tokens by re-tokenizing note bodies each render (the byte/4 estimate matches the reference-row estimate and is far cheaper).
+
+**Consequence:** Users can see and prune what fills the window, and get a one-tap path to condense history before hitting the limit. Reuses existing token accounting and the wikilink + summary plumbing; no data-model change.
+
+### ADR-072 — Model-declared citations (F2/F11)
+
+**Status:** Active
+
+**Context:** The Final design shows numbered citation chips inside AI text (¹²) that map to a sources row under the message (a single `QUELLEN` row, or split `WEB`/`VAULT` rows in research mode). The RAG pipeline does not track which note produced which claim — but the model already receives note paths (`<attached_note path=…>`) and web results, and is already asked to cite. The gap is turning free-text citing into a structured, renderable contract.
+
+**Decision:** A model-declared marker contract, parsed and numbered by Pythia.
+- **Marker:** `⟦cite:note:<path>⟧` and `⟦cite:web:<domain>⟧`. The kind prefix removes vault/web ambiguity; `⟦ ⟧` are not Markdown and the web form is a bare domain (no scheme), so a marker survives `MarkdownRenderer.render()` as literal text — no wikilink transform, no URL autolinking — which is what lets it be painted afterward. The instructions live in `GROUNDING_INSTRUCTION` (notes, gated on attached notes) and the research/recency block (web, gated on research mode), so citations are only requested when a real source exists.
+- **Parsing:** pure `services/citations.ts` (`parseCitations`, `stripCitationMarkers`, `eachCitationSegment`) — deduped by (kind, ref), numbered by first appearance, unit-tested.
+- **State:** an additive `Message.sources` (`MessageSource[]`), set on the assistant turn; legacy/absent → parsed from content on render (backfill-safe).
+- **Render:** `paintCitations()` walks text nodes and swaps each marker for a `.p-cite` chip (mirrors the favorites re-paint since `MarkdownRenderer` rebuilds the DOM each time); `renderSourcesRow()` appends `QUELLEN` or `WEB`+`VAULT` rows. A chip/link opens the note or `https://<domain>`.
+- **Export hygiene:** `stripCitationMarkers()` is applied in `NoteWriter.appendConversationSlice` so saved notes never carry raw markers; selection copy/insert read painted DOM text, which already has none.
+
+**Alternatives rejected:** `[[cite:…]]` (Obsidian renders it as an internal link); embedding raw URLs in markers (autolinking splits the marker across nodes); numbering by the model (it can't know the final order, and duplicates break); a retrieval-grounded citation index (a much larger pipeline change — this is model-declared attribution, explicitly scoped as such). Degrades gracefully: no markers → no chips, no row.
+
+**Consequence:** Sourced answers are attributable inline with no retrieval-layer change. One additive schema field; markers only appear with notes/research attached. Not yet done: the F11 token line "· N Suchen" search count (needs per-message search tracking) and German comma number formatting.
+
+### ADR-073 — Fork branch tree in the navigator (F5)
+
+**Status:** Active (refines the flat Forks list from ADR-054's navigator)
+
+**Context:** Branching is the hero feature; the Final design shows the `#` navigator's Abzweigungen section as a **tree** — the source conversation (root) with a `Quelle` tag, its child forks indented under a vertical rule, each child a status dot + name + (active → tinted with an `aktiv` tag / else message count) — rather than the previous flat list of a conversation's direct forks.
+
+**Decision:** Compute the fork family from the store: the root is the current conversation's parent (`forkedFromId`) when it is a fork, else the current conversation; children are all conversations forked from that root. Render a `.p-nav-tree-source` row (fork icon + name + `Quelle`) and a `.p-nav-tree-children` container (1px left rule) of `.p-nav-tree-item` rows (`.p-nav-dot` + name + `aktiv`/count). The current conversation's row — source or child — gets `.active` (accent 8% tint). Rows open their conversation via the existing `setActiveConversation`. New keys `navSourceTag` / `navActiveTag`.
+
+**Alternatives rejected:** a full recursive multi-level tree (forks-of-forks) — the data model is one level deep in practice and the mock shows one level; a deeper tree can extend `.p-nav-tree-children` later; keeping the flat list (loses the source/sibling context that makes branching legible).
+
+**Consequence:** From any fork you can see and jump to its source and siblings, with the active branch marked — the navigation the hero feature needs. Store-only reads; no data-model change.
+
+### ADR-074 — Anchored model popover (F7)
+
+**Status:** Active
+
+**Context:** The Final design changes the model chip from a shortcut that opens the full conversation-settings modal (F8) into an anchored quick-pick popover: provider groups (ANTHROPIC/OPENAI/MISTRAL), each row a model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` that still opens the full modal.
+
+**Decision:** `openModelPopover()` builds a `.p-model-pop` from `MODEL_CATALOG` (skipping `hidden`), positioned `fixed` from the chip's bounding rect but kept a DOM descendant of `.pythia-view` so the scoped control styles still out-rank Obsidian core (ADR-065). Selecting a row applies provider+model immediately (`applyModelChoice` → save + `updateModelBadge`) and closes; the footer opens the existing `ConversationSettingsModal`. Toggle on re-click; close on outside-click or Escape; torn down on view close and rebuild. The chip gets `.open` (accent inset border) while the popover is up. New keys `reasoningTag` / `openConvSettings`.
+
+**Alternatives rejected:** replacing the settings modal entirely (temperature/effort/max-tokens still need it — the popover complements it via the footer); a native Obsidian `Menu` (renders as a bottom sheet on mobile, not anchored to the chip — same reason the summary menu is hand-rolled); appending to `document.body` (would lose the `.pythia-view` scoping that keeps Obsidian's grey button reset from repainting the rows).
+
+**Consequence:** One-tap model switching from the header, full settings one tap deeper. Reuses the model catalog and settings modal; no data-model change.
+
+### ADR-075 — Anchored quick switcher on title click (F9)
+
+**Status:** Active (additive — the command-palette fuzzy modal remains)
+
+**Context:** The Final design opens conversation switching from the header title as an anchored panel (inset under the title, shadowed) with a search field, result rows showing a mono `Model · N Nachrichten · date` sub-line, forks indented under their source with a branch icon and `Zweig · N Nachrichten`, hover-delete, keyboard nav, and a footer key-hint — distinct from the centered fuzzy `ConversationSuggestModal`. The agreed direction keeps three switching surfaces: this anchored switcher (title click), the in-panel history (F10), and the existing modal (command palette).
+
+**Decision:** Repoint `onConvNameClick` at `openQuickSwitcher()`, which builds a fixed-position `.p-switcher` anchored to the header (kept under `.pythia-view` for style scoping). Sources are listed by recency with their forks indented; typing filters by title with the match highlighted; ↑/↓ move a selection, ↵ opens, Esc/outside-click closes; a hover `✕` deletes via the shared `deleteConversationWithConfirm()` (extracted from the old handler). `cmdBrowseConversations` in `main.ts` still constructs `ConversationSuggestModal`, so the palette keeps the fuzzy modal untouched.
+
+**Alternatives rejected:** replacing the fuzzy modal (the plan explicitly keeps it as a separate surface); a full fuzzy-scoring match in the panel (a plain substring highlight is enough for the anchored quick-pick; the modal covers fuzzy search); appending to `document.body` (loses `.pythia-view` scoping).
+
+**Consequence:** Fast, in-context switching with fork structure visible, without giving up the palette modal. Store-only reads; no data-model change. Date sub-lines use a small `formatConvDate` helper (today/yesterday/short date), reused by the in-panel history view.
+
+### ADR-076 — In-panel history view (F10)
+
+**Status:** Active (additive — the quick switcher and palette modal remain)
+
+**Context:** The Final design adds a full-panel conversation browser: a header (`‹ back · Gespräche · search · +`), date groups (HEUTE/GESTERN/DIESE WOCHE/older), rows with a mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line, forks indented under their source, the active conversation tinted, and hover-delete. It is the third switching surface alongside the anchored quick switcher (F9) and the command-palette modal.
+
+**Decision:** A `history` header button opens `openHistoryView()`, which renders a `.p-history` overlay (`position: absolute; inset: 0`) over the panel — its own header (back/title/new), a search field, and a date-grouped list. Sources are listed by recency; `historyBucket()` labels each group; because the list is sorted, group headers emit on change. Forks are indented under their source with `git-branch`; source sub-lines show fork (`⑂`) and favorite (`★`) counts. Rows open a conversation (reusing `setActiveConversation`) or delete via the shared `deleteConversationWithConfirm()`. Escape or Back closes; torn down on view close/rebuild. Reuses `formatConvDate`/`abbreviateModel` and the switcher's search-row styles.
+
+**Alternatives rejected:** a full `buildUI` view-mode swap (far more invasive — an overlay gives the same full-panel takeover without threading a mode through every render path); replacing the quick switcher or palette modal (the plan keeps all three surfaces); paginating/virtualizing the list (unnecessary at expected conversation counts — revisit if it grows).
+
+**Consequence:** A browsable, grouped history with branch structure and per-conversation signal, without disturbing the chat render path. Store-only reads; no data-model change. A dedicated `history` header button is the entry point (a future `⋯` overflow menu could host it instead).

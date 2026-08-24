@@ -10,6 +10,7 @@ import {
 	LANG_LABELS,
 	arrayBufferToBase64,
 	buildFavoritesDigest,
+	formatClockTime,
 } from "../services/messageUtils";
 import type { Conversation, Message, Favorite } from "../models/types";
 
@@ -396,5 +397,21 @@ describe("buildFavoritesDigest", () => {
 	it("returns empty string when every favorite references a missing message", () => {
 		const conv = makeConv([msg("a1", "assistant", "x")], [fav("ghost", { text: "y" })]);
 		expect(buildFavoritesDigest(conv)).toBe("");
+	});
+});
+
+describe("formatClockTime", () => {
+	it("formats an ISO timestamp as zero-padded 24h HH:MM", () => {
+		// Local-time based; construct via a Date so the assertion is offset-agnostic.
+		const d = new Date(2026, 7, 24, 9, 5);
+		expect(formatClockTime(d.toISOString())).toBe("09:05");
+	});
+	it("pads afternoon hours and minutes", () => {
+		const d = new Date(2026, 0, 1, 14, 31);
+		expect(formatClockTime(d.toISOString())).toBe("14:31");
+	});
+	it("returns empty string for undefined or unparseable input", () => {
+		expect(formatClockTime(undefined)).toBe("");
+		expect(formatClockTime("not-a-date")).toBe("");
 	});
 });

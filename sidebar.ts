@@ -9,7 +9,9 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
+import { buildSystemPrompt } from "./services/ContextBuilder";
+import { parseCitations, eachCitationSegment } from "./services/citations";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -25,9 +27,8 @@ import {
 	rangeForHighlight,
 	repaintForkOrigins,
 } from "./ui/HighlightPainter";
-import type { Conversation, Favorite, Message, ToolCall, TokenUsage } from "./models/types";
+import type { Conversation, Favorite, Message, MessageSource, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
-import { ConversationSuggestModal } from "./suggest/ConversationSuggest";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
@@ -36,7 +37,8 @@ import { ToolHandler } from "./services/ToolHandler";
 import { DeleteConversationModal } from "./suggest/DeleteConversationModal";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel } from "./models/knownModels";
+import { MODEL_ABBREVIATIONS, isReasoningModel, isMistralReasoningModel, getContextWindow, MODEL_CATALOG } from "./models/knownModels";
+import type { ModelInfo } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -93,6 +95,18 @@ export class PythiaSidebarView extends ItemView {
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
 	private copyLinkBtn!: HTMLButtonElement;
+	// Context-budget bar under the header + the >=80% warning percent chip.
+	private ctxBarEl!: HTMLElement;
+	private ctxBarFillEl!: HTMLElement;
+	private ctxChipEl!: HTMLElement;
+	// Mono next-send token estimate shown left of the Send button.
+	private sendEstimateEl!: HTMLElement;
+	// Anchored model popover (F7) teardown.
+	private modelPopoverCleanup: (() => void) | null = null;
+	// Anchored quick switcher (F9) teardown.
+	private quickSwitcherCleanup: (() => void) | null = null;
+	// In-panel history view (F10) teardown.
+	private historyCleanup: (() => void) | null = null;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -117,6 +131,9 @@ export class PythiaSidebarView extends ItemView {
 	// Summary "Speisekarte" cards at the top of the message list.
 	private summaryCardsEl: HTMLElement | null = null;
 	private summaryCardObserver: IntersectionObserver | null = null;
+	// Context inspector card (F2/F3) — lives just under the summary cards.
+	private inspectorEl: HTMLElement | null = null;
+	private inspectorOpen = false; // preserved across rebuilds within a session
 	private sendLongPressCleanup: (() => void) | null = null;
 	private suppressNextSendClick = false;
 	private sendMenuWrap!: HTMLElement;
@@ -219,6 +236,9 @@ export class PythiaSidebarView extends ItemView {
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
+		this.modelPopoverCleanup?.();
+		this.quickSwitcherCleanup?.();
+		this.historyCleanup?.();
 
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
@@ -322,6 +342,9 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private buildUI(): void {
+		this.modelPopoverCleanup?.();
+		this.quickSwitcherCleanup?.();
+		this.historyCleanup?.();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
 		this.cachedLineHeight = null; // inputEl is about to be recreated below
@@ -330,6 +353,13 @@ export class PythiaSidebarView extends ItemView {
 		container.addClass("pythia-view");
 
 		this.buildHeader(container);
+
+		// Context-budget bar: a 3px track directly under the header row. Fill
+		// width = context usage / model window; turns warning-colored at >=80%.
+		this.ctxBarEl = container.createDiv({ cls: "p-ctx-bar" });
+		this.ctxBarFillEl = this.ctxBarEl.createDiv({ cls: "p-ctx-bar-fill" });
+		this.ctxBarEl.addEventListener("click", () => this.revealContextInspector());
+		this.ctxBarEl.style.display = "none";
 
 		this.buildChatArea(container);
 
@@ -410,13 +440,20 @@ export class PythiaSidebarView extends ItemView {
 		this.renameBtn.style.display = "none";
 		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
 
+		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
+		// Clicking it scrolls to the top of the conversation (context inspector
+		// lands there in a later phase).
+		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
+		this.ctxChipEl.style.display = "none";
+		this.ctxChipEl.addEventListener("click", () => this.revealContextInspector());
+
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
 			text: "",
 			attr: { title: t("changeModelTooltip") },
 		});
 		this.modelBadgeEl.style.display = "none";
-		this.modelBadgeEl.addEventListener("click", () => this.onModelBadgeClick());
+		this.modelBadgeEl.addEventListener("click", () => this.openModelPopover());
 
 		this.copyLinkBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -425,6 +462,13 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.copyLinkBtn, "link");
 		this.copyLinkBtn.style.display = "none";
 		this.copyLinkBtn.addEventListener("click", () => this.onCopyConversationLink());
+
+		const historyBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("historyTooltip") },
+		});
+		setIcon(historyBtn, "history");
+		historyBtn.addEventListener("click", () => this.openHistoryView());
 
 		const deleteConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -689,6 +733,9 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.inputCollapseBtn, "arrow-down");
 		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
 
+		// Next-send token estimate (mono), sits left of the warning + Send.
+		this.sendEstimateEl = toolbar.createEl("span", { cls: "p-send-estimate" });
+
 		// Max-tokens warning, sits just left of Send. Hidden unless the effective
 		// max-tokens looks too low for a reasoning model; clicking opens settings.
 		this.sendHintEl = toolbar.createEl("button", { cls: "p-send-hint" });
@@ -822,6 +869,172 @@ export class PythiaSidebarView extends ItemView {
 			text: t("startFromPaletteHint"),
 			cls: "pythia-empty-hint",
 		});
+	}
+
+	/** Minimal centered welcome for an empty conversation (F6): accent sparkle,
+	 *  a heading, and three mono keycap hints. */
+	private renderWelcome(container: HTMLElement): void {
+		const wrap = container.createDiv({ cls: "p-welcome" });
+		const spark = wrap.createDiv({ cls: "p-welcome-spark" });
+		setIcon(spark, "sparkles");
+		wrap.createDiv({ cls: "p-welcome-title", text: t("emptyHeading") });
+		const hints = wrap.createDiv({ cls: "p-welcome-hints" });
+		const addHint = (cap: string, label: string) => {
+			const row = hints.createDiv({ cls: "p-welcome-hint" });
+			row.createEl("span", { cls: "p-keycap", text: cap });
+			row.createEl("span", { text: label });
+		};
+		addHint("#", t("emptyHintAttach"));
+		addHint("⌘P", t("emptyHintCommands"));
+		addHint("⇧↵", t("emptyHintNewline"));
+	}
+
+	/** Short token label like "~4.3k" / "~640". */
+	private fmtTok(n: number): string {
+		return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
+	}
+
+	/** Scroll to the top and expand the context inspector — the click target of
+	 *  the budget bar / percent chip (F3). */
+	private revealContextInspector(): void {
+		this.scrollToTop();
+		this.inspectorOpen = true;
+		if (this.inspectorEl) {
+			this.fillContextInspector();
+			this.inspectorEl.querySelector(".p-inspector")?.scrollIntoView({ block: "nearest" });
+		}
+	}
+
+	/** Build/refresh the context inspector card (F2/F3) inside `inspectorEl`.
+	 *  Normal mode lists context notes as wikilinks + a system-prompt estimate;
+	 *  when the context window is ≥80% full it switches to a budget breakdown
+	 *  with per-source mini-bars and a "Zusammenfassen" action. */
+	private fillContextInspector(): void {
+		const wrap = this.inspectorEl;
+		if (!wrap) return;
+		wrap.empty();
+		const conv = this.activeConversation;
+		if (!conv) { wrap.style.display = "none"; return; }
+
+		const notes = conv.contextNotes ?? [];
+		const noteTok = notes.map((p) => {
+			const f = this.app.vault.getAbstractFileByPath(p);
+			const tokens = f instanceof TFile ? Math.round(f.stat.size / 4) : 0;
+			return { path: p, tokens };
+		});
+		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
+		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv));
+		const last = this.lastTokenUsageMsg();
+		const windowSize = getContextWindow(conv.model);
+		const used = last?.tokenUsage
+			? last.tokenUsage.inputTokens + last.tokenUsage.outputTokens
+			: noteTotal + sysTokens;
+		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
+		const budgetTight = frac >= 0.8;
+
+		// Nothing worth a card: no context notes and plenty of budget.
+		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
+		wrap.style.display = "";
+
+		const card = wrap.createDiv({ cls: "p-inspector" });
+		if (budgetTight) card.addClass("warn");
+
+		// ── Header (toggles the body) ────────────────────────────────
+		const header = card.createDiv({ cls: "p-inspector-header" });
+		setIcon(header.createSpan({ cls: "p-inspector-icon" }), "file-text");
+		const shortK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
+		const titleText = budgetTight
+			? `${t("ctxLabel")} · ${shortK(used)} / ${shortK(windowSize)}`
+			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
+		header.createSpan({ cls: "p-inspector-title", text: titleText });
+		if (budgetTight) {
+			header.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
+		}
+		const chevron = header.createSpan({ cls: "p-inspector-chevron", text: this.inspectorOpen ? "▾" : "▸" });
+		header.addEventListener("click", () => {
+			this.inspectorOpen = !this.inspectorOpen;
+			card.toggleClass("open", this.inspectorOpen);
+			chevron.setText(this.inspectorOpen ? "▾" : "▸");
+		});
+		card.toggleClass("open", this.inspectorOpen);
+
+		// ── Body ─────────────────────────────────────────────────────
+		const body = card.createDiv({ cls: "p-inspector-body" });
+
+		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
+			const bar = row.createDiv({ cls: "p-ins-bar" });
+			const fill = bar.createDiv({ cls: "p-ins-bar-fill" });
+			fill.style.width = `${Math.min(100, fraction * 100).toFixed(1)}%`;
+			if (warn) fill.addClass("warn");
+		};
+		const wikilinkRow = (parent: HTMLElement, path: string): HTMLElement => {
+			const row = parent.createDiv({ cls: "p-inspector-row" });
+			const ref = row.createSpan({ cls: "p-wikilink" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			const name = ref.createEl("span", {
+				cls: "p-wikilink-name",
+				text: (path.split("/").pop() ?? path).replace(/\.md$/, ""),
+				attr: { title: path },
+			});
+			name.addEventListener("click", async () => {
+				const f = this.app.vault.getAbstractFileByPath(path);
+				if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
+				else new Notice(t("fileNotFound", { path }));
+			});
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
+			return row;
+		};
+
+		if (budgetTight) {
+			// Conversation history row
+			const histTokens = Math.max(0, used - noteTotal - sysTokens);
+			const histRow = body.createDiv({ cls: "p-inspector-row" });
+			histRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxHistoryRow", { count: String(conv.messages.length) }) });
+			miniBar(histRow, windowSize > 0 ? histTokens / windowSize : 0, true);
+			histRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(histTokens) });
+
+			for (const n of noteTok) {
+				const row = wikilinkRow(body, n.path);
+				miniBar(row, windowSize > 0 ? n.tokens / windowSize : 0);
+				row.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(n.tokens) });
+			}
+
+			const sysRow = body.createDiv({ cls: "p-inspector-row" });
+			sysRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxSystemPrompt") });
+			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
+			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
+
+			// Warning + Zusammenfassen
+			const warnRow = body.createDiv({ cls: "p-inspector-warn" });
+			setIcon(warnRow.createSpan({ cls: "p-inspector-warn-icon" }), "alert-triangle");
+			const savings = Math.round(histTokens * 0.85);
+			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
+			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
+			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.generateConversationSummary(); });
+		} else {
+			for (const n of noteTok) {
+				const row = wikilinkRow(body, n.path);
+				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
+				const x = row.createEl("button", { cls: "p-wikilink-x", text: "×" });
+				x.addEventListener("click", async () => {
+					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
+					await this.plugin.conversationStore.save(conv);
+					this.renderReferencePills();
+				});
+			}
+			const footer = body.createDiv({ cls: "p-inspector-footer" });
+			const addLink = footer.createSpan({ cls: "p-inspector-add", text: t("ctxAddNote") });
+			addLink.addEventListener("click", () => {
+				new NoteSuggestModal(this.app, (file) => {
+					if (!conv.contextNotes.includes(file.path)) {
+						conv.contextNotes.push(file.path);
+						void this.plugin.conversationStore.save(conv);
+						this.renderReferencePills();
+					}
+				}).open();
+			});
+			footer.createSpan({ cls: "p-inspector-sys", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+		}
 	}
 
 	private renderHeader(): void {
@@ -1076,16 +1289,20 @@ export class PythiaSidebarView extends ItemView {
 
 		this.referenceRowHasEntries = entries.length > 0;
 		this.updateReferenceRowVisibility();
+		// Keep the context inspector in sync with note add/remove.
+		if (this.inspectorEl) this.fillContextInspector();
 		if (entries.length === 0) return;
 
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path;
+			const displayName = fileName.replace(/\.md$/, "");
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
-			const pill = this.referencePillsEl.createEl("span", { cls: "p-pill" });
-			const label = pill.createEl("span", { text: fileName, cls: "p-pill-label", attr: { title: entry.path } });
-			label.style.cursor = "pointer";
+			// Wikilink reference: [[ name ]] ~tokens ×
+			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: entry.path } });
 			label.addEventListener("click", async () => {
 				const f = this.app.vault.getAbstractFileByPath(entry.path);
 				if (f instanceof TFile) {
@@ -1094,8 +1311,9 @@ export class PythiaSidebarView extends ItemView {
 					new Notice(t("fileNotFound", { path: entry.path }));
 				}
 			});
-			if (tokEst) pill.createEl("span", { cls: "p-pill-tokens", text: tokEst });
-			const x = pill.createEl("button", { cls: "p-pill-x", text: "✕" });
+			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
+			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
+			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
 			if (entry.kind === "context") {
 				x.addEventListener("click", async () => {
 					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
@@ -1118,7 +1336,7 @@ export class PythiaSidebarView extends ItemView {
 		const addBtn = this.referencePillsEl.createEl("button", {
 			cls: "pythia-pill-add",
 			attr: { title: t("addContextNoteTooltip") },
-			text: "+",
+			text: t("addNoteInline"),
 		});
 		addBtn.addEventListener("click", () => {
 			new NoteSuggestModal(this.app, (file) => {
@@ -1169,6 +1387,10 @@ export class PythiaSidebarView extends ItemView {
 					await this.appendMessageBubble(msgs[i]);
 				}
 				this.lastRenderedMsgId = tailId;
+				// New turn(s) changed the context size — refresh the inspector so
+				// its budget figure / near-full warning stay current without a
+				// full rebuild.
+				if (this.inspectorEl) this.fillContextInspector();
 				if (scrollTo === "top") {
 					this.scrollToTop();
 				} else {
@@ -1191,11 +1413,14 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
 		this.renderSummaryCards();
 
+		// Context inspector sits directly under the summary cards.
+		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
+		this.fillContextInspector();
+
 		if (conv.forkedFromId) this.renderForkBannerEl();
 
 		if (msgs.length === 0) {
-			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
-			hint.createEl("p", { text: t("startConversationBelow") });
+			this.renderWelcome(this.messagesEl);
 			return;
 		}
 		for (const msg of msgs) {
@@ -1211,6 +1436,101 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
+	/** Turn micro-label above every message: "DU · 14:31" for user turns,
+	 *  "PYTHIA · SONNET 4.6 · 14:32" for assistant turns. The model is taken from
+	 *  the message (recorded at generation time) and falls back to the
+	 *  conversation's current model for legacy messages that predate the field. */
+	private renderTurnLabel(row: HTMLElement, msg: Message): void {
+		const time = formatClockTime(msg.timestamp);
+		const parts: string[] = [];
+		if (msg.role === "user") {
+			parts.push(t("turnUser"));
+			if (time) parts.push(time);
+		} else {
+			parts.push(t("turnAI"));
+			const model = msg.model ?? this.activeConversation?.model;
+			if (model) parts.push(abbreviateModel(model).toUpperCase());
+			if (time) parts.push(time);
+		}
+		row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+	}
+
+	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
+	 *  superscript chips. Mirrors the favorites re-paint: walk text nodes and
+	 *  swap each marker for a `.p-cite` chip that opens its source on click. */
+	private paintCitations(body: HTMLElement, sources: MessageSource[]): void {
+		const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+		const targets: Text[] = [];
+		let node: Node | null;
+		while ((node = walker.nextNode())) {
+			if (node.nodeValue && node.nodeValue.indexOf("⟦cite:") !== -1) targets.push(node as Text);
+		}
+		for (const textNode of targets) {
+			const text = textNode.nodeValue ?? "";
+			const frag = document.createDocumentFragment();
+			eachCitationSegment(
+				text,
+				sources,
+				(t) => { if (t) frag.appendChild(document.createTextNode(t)); },
+				(src) => {
+					if (!src) return; // drop an unresolved marker entirely
+					const chip = document.createElement("sup");
+					chip.className = "p-cite";
+					chip.textContent = String(src.n);
+					chip.title = src.title;
+					chip.addEventListener("click", (e) => { e.stopPropagation(); void this.onCitationClick(src); });
+					frag.appendChild(chip);
+				},
+			);
+			textNode.parentNode?.replaceChild(frag, textNode);
+		}
+	}
+
+	private async onCitationClick(src: MessageSource): Promise<void> {
+		if (src.kind === "web") {
+			window.open(`https://${src.ref}`, "_blank");
+			return;
+		}
+		const f = this.app.vault.getAbstractFileByPath(src.ref)
+			?? this.app.metadataCache.getFirstLinkpathDest(src.ref, "");
+		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
+		else new Notice(t("fileNotFound", { path: src.ref }));
+	}
+
+	/** Sources row under an assistant message. A single QUELLEN row when all
+	 *  sources are vault notes; split WEB / VAULT rows when any are web. */
+	private renderSourcesRow(row: HTMLElement, sources: MessageSource[]): void {
+		if (!sources.length) return;
+		const web = sources.filter((s) => s.kind === "web");
+		const vault = sources.filter((s) => s.kind === "vault");
+		const container = row.createDiv({ cls: "p-sources" });
+
+		const makeRow = (label: string, items: MessageSource[]) => {
+			const r = container.createDiv({ cls: "p-sources-row" });
+			r.createSpan({ cls: "p-sources-label", text: label });
+			for (const s of items) {
+				const item = r.createSpan({ cls: "p-source" });
+				item.createSpan({ cls: "p-source-num", text: String(s.n) });
+				if (s.kind === "web") {
+					const link = item.createSpan({ cls: "p-source-web", text: `${s.title} ↗` });
+					link.addEventListener("click", () => void this.onCitationClick(s));
+				} else {
+					item.createSpan({ cls: "p-wikilink-bracket", text: " [[" });
+					const name = item.createSpan({ cls: "p-wikilink-name", text: s.title });
+					name.addEventListener("click", () => void this.onCitationClick(s));
+					item.createSpan({ cls: "p-wikilink-bracket", text: "]]" });
+				}
+			}
+		};
+
+		if (web.length) {
+			makeRow(t("sourcesWeb"), web);
+			if (vault.length) makeRow(t("sourcesVault"), vault);
+		} else {
+			makeRow(t("sourcesLabel"), vault);
+		}
+	}
+
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		// ── User message ────────────────────────────────────────────
 		if (msg.role === "user") {
@@ -1218,6 +1538,7 @@ export class PythiaSidebarView extends ItemView {
 				cls: "p-msg-user",
 				attr: { "data-msg-id": msg.id },
 			});
+			this.renderTurnLabel(row, msg);
 			const bubble = row.createDiv({ cls: "p-bubble" });
 			const isLong = msg.content.length > 280;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
@@ -1250,6 +1571,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
+		this.renderTurnLabel(row, msg);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), aiBody, "", this);
@@ -1259,6 +1581,11 @@ export class PythiaSidebarView extends ItemView {
 		decorateCodeBlocks(aiBody, this.diagObservers);
 		this.repaintFavorites(aiBody, msg.id);
 		this.repaintForkOrigins(aiBody, msg.id);
+		// Citations: paint markers → chips, then render the sources row. Backfill
+		// sources from content for messages saved before the field existed.
+		const sources = msg.sources ?? parseCitations(msg.content);
+		this.paintCitations(aiBody, sources);
+		this.renderSourcesRow(row, sources);
 
 		if (msg.tokenUsage) {
 			const footer = row.createDiv({ cls: "p-tokens" });
@@ -1275,6 +1602,10 @@ export class PythiaSidebarView extends ItemView {
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
+		this.renderTurnLabel(row, {
+			id: "", role: "assistant", content: "",
+			timestamp: new Date().toISOString(), model: this.activeConversation?.model,
+		});
 		const aiBody = row.createDiv({ cls: "p-ai-body pythia-streaming" });
 		const textNode = document.createTextNode("");
 		aiBody.appendChild(textNode);
@@ -1295,6 +1626,9 @@ export class PythiaSidebarView extends ItemView {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
+				const sources = parseCitations(fullText);
+				this.paintCitations(aiBody, sources);
+				this.renderSourcesRow(row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -1791,6 +2125,7 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.setText(abbreviateModel(model));
 		this.modelBadgeEl.style.display = "";
 		this.updateSendHint();
+		this.updateContextBar();
 	}
 
 	/** Show a warning beside Send when the effective max-tokens is low enough that
@@ -1845,6 +2180,106 @@ export class PythiaSidebarView extends ItemView {
 		void this.plugin.conversationStore.save(conv);
 	}
 
+	/** Format a context window as "1M" / "200k" / "128k". */
+	private fmtWindow(n: number): string {
+		if (n >= 1_000_000) {
+			const m = n / 1_000_000;
+			return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+		}
+		return `${Math.round(n / 1000)}k`;
+	}
+
+	/** Anchored model popover (F7): provider groups with context-window labels,
+	 *  Reasoning tags, an active check, and a footer that opens the full
+	 *  conversation-settings modal. Selecting a model applies it immediately. */
+	private openModelPopover(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		if (this.modelPopoverCleanup) { this.modelPopoverCleanup(); return; } // toggle
+
+		const container = this.containerEl.children[1] as HTMLElement;
+		const pop = container.createDiv({ cls: "p-model-pop" });
+		// Absolute within the (position:relative) view root — robust against an
+		// Obsidian ancestor that turns position:fixed into a clipped containing
+		// block. Height is capped to the space below the chip with internal scroll.
+		const cRect = container.getBoundingClientRect();
+		const rect = this.modelBadgeEl.getBoundingClientRect();
+		const width = 226;
+		const top = rect.bottom - cRect.top + 4;
+		let left = rect.right - cRect.left - width;
+		left = Math.max(4, Math.min(left, cRect.width - width - 4));
+		pop.style.position = "absolute";
+		pop.style.top = `${top}px`;
+		pop.style.left = `${left}px`;
+		pop.style.width = `${width}px`;
+		pop.style.maxHeight = `${Math.max(120, cRect.height - top - 8)}px`;
+		this.modelBadgeEl.addClass("open");
+
+		const onOutside = (e: MouseEvent) => {
+			if (!pop.contains(e.target as Node) && e.target !== this.modelBadgeEl) closePop();
+		};
+		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closePop(); };
+		const closePop = () => {
+			pop.remove();
+			this.modelBadgeEl.removeClass("open");
+			document.removeEventListener("mousedown", onOutside, true);
+			document.removeEventListener("keydown", onKey, true);
+			this.modelPopoverCleanup = null;
+		};
+
+		const providers: { key: typeof conv.provider; label: string }[] = [
+			{ key: "anthropic", label: "ANTHROPIC" },
+			{ key: "openai", label: "OPENAI" },
+			{ key: "mistral", label: "MISTRAL" },
+		];
+		for (const p of providers) {
+			const models = MODEL_CATALOG.filter((m) => m.provider === p.key && !m.hidden);
+			if (!models.length) continue;
+			pop.createDiv({ cls: "p-model-pop-group", text: p.label });
+			for (const m of models) {
+				const active = m.id === conv.model && m.provider === conv.provider;
+				const row = pop.createDiv({ cls: "p-model-pop-row" });
+				if (active) row.addClass("active");
+				row.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
+				if (m.isReasoning || m.isMistralReasoning) {
+					row.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
+				}
+				row.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
+				if (active) setIcon(row.createSpan({ cls: "p-model-pop-check" }), "check");
+				row.addEventListener("mousedown", (e) => {
+					e.preventDefault(); e.stopPropagation();
+					void this.applyModelChoice(m);
+					closePop();
+				});
+			}
+		}
+
+		const footer = pop.createDiv({ cls: "p-model-pop-footer" });
+		setIcon(footer.createSpan({ cls: "p-model-pop-footer-icon" }), "sliders");
+		footer.createSpan({ text: t("openConvSettings") });
+		footer.addEventListener("mousedown", (e) => {
+			e.preventDefault(); e.stopPropagation();
+			closePop();
+			this.onModelBadgeClick();
+		});
+
+		setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			document.addEventListener("keydown", onKey, true);
+			this.modelPopoverCleanup = closePop;
+		}, 0);
+	}
+
+	private async applyModelChoice(m: ModelInfo): Promise<void> {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		conv.provider = m.provider;
+		conv.model = m.id;
+		await this.plugin.conversationStore.save(conv);
+		this.updateModelBadge();
+		if (this.inspectorEl) this.fillContextInspector();
+	}
+
 	private onModelBadgeClick(): void {
 		if (!this.activeConversation) return;
 		new ConversationSettingsModal(
@@ -1853,6 +2288,7 @@ export class PythiaSidebarView extends ItemView {
 			async (conv) => {
 				await this.plugin.conversationStore.save(conv);
 				this.updateModelBadge();
+				if (this.inspectorEl) this.fillContextInspector();
 			},
 			this.plugin.settings.temperature,
 			this.plugin.settings.effort,
@@ -1860,35 +2296,284 @@ export class PythiaSidebarView extends ItemView {
 		).open();
 	}
 
-	private onConvNameClick(): void {
-		const convs = this.plugin.conversations;
-		if (convs.length === 0) return;
-
-		new ConversationSuggestModal(
-			this.app,
-			convs,
-			async (conv) => {
-				await this.setActiveConversation(conv);
-			},
-			(conv) => {
-				if (this.isStreaming) {
-					new Notice(t("cannotDeleteWhileStreaming"));
-					return;
+	/** Confirm-and-delete a conversation, reselecting a remaining one (or a fresh
+	 *  conversation) if the active one was removed. `onDone` fires after deletion. */
+	private deleteConversationWithConfirm(conv: Conversation, onDone?: () => void): void {
+		if (this.isStreaming) {
+			new Notice(t("cannotDeleteWhileStreaming"));
+			return;
+		}
+		new DeleteConversationModal(this.app, conv, async () => {
+			await this.plugin.conversationStore.delete(conv.id);
+			new Notice(t("conversationDeleted"));
+			if (this.activeConversation?.id === conv.id) {
+				const remaining = this.plugin.conversations;
+				if (remaining.length > 0) {
+					await this.setActiveConversation(remaining[remaining.length - 1]);
+				} else {
+					await this.plugin.cmdNewConversation();
 				}
-				new DeleteConversationModal(this.app, conv, async () => {
-					await this.plugin.conversationStore.delete(conv.id);
-					new Notice(t("conversationDeleted"));
-					if (this.activeConversation?.id === conv.id) {
-						const remaining = this.plugin.conversations;
-						if (remaining.length > 0) {
-							await this.setActiveConversation(remaining[remaining.length - 1]);
-						} else {
-							await this.plugin.cmdNewConversation();
-						}
-					}
-				}).open();
 			}
-		).open();
+			onDone?.();
+		}).open();
+	}
+
+	private onConvNameClick(): void {
+		this.openQuickSwitcher();
+	}
+
+	/** Short relative date for switcher/history sub-lines: today, yesterday,
+	 *  else a localized "12 Aug"-style date. */
+	private formatConvDate(iso: string | undefined): string {
+		if (!iso) return "";
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "";
+		const now = new Date();
+		const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+		if (dayDiff <= 0) return t("dateToday");
+		if (dayDiff === 1) return t("dateYesterday");
+		return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+	}
+
+	/** Anchored quick switcher (F9) opened from the header title. Search over
+	 *  conversations with forks indented under their source; keyboard nav;
+	 *  hover-delete. The command-palette fuzzy modal remains a separate surface. */
+	private openQuickSwitcher(): void {
+		if (this.plugin.conversations.length === 0) return;
+		if (this.quickSwitcherCleanup) { this.quickSwitcherCleanup(); return; } // toggle
+
+		const container = this.containerEl.children[1] as HTMLElement;
+		const headerEl = container.querySelector<HTMLElement>(".p-header");
+		if (!headerEl) return;
+		const panel = container.createDiv({ cls: "p-switcher" });
+		const cRect = container.getBoundingClientRect();
+		const rect = headerEl.getBoundingClientRect();
+		const top = rect.bottom - cRect.top + 4;
+		panel.style.position = "absolute";
+		panel.style.top = `${top}px`;
+		panel.style.left = `${rect.left - cRect.left + 16}px`;
+		panel.style.width = `${Math.max(180, rect.width - 32)}px`;
+		panel.style.maxHeight = `${Math.max(160, cRect.height - top - 8)}px`;
+
+		const searchRow = panel.createDiv({ cls: "p-switcher-search" });
+		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
+		const input = searchRow.createEl("input", {
+			cls: "p-switcher-input",
+			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
+		});
+		const listEl = panel.createDiv({ cls: "p-switcher-list" });
+		panel.createDiv({ cls: "p-switcher-footer", text: t("switcherHint") });
+
+		let rows: { conv: Conversation; el: HTMLElement }[] = [];
+		let selectedIdx = 0;
+
+		const closeSw = () => {
+			panel.remove();
+			document.removeEventListener("mousedown", onOutside, true);
+			this.quickSwitcherCleanup = null;
+		};
+		const openConv = (conv: Conversation) => { closeSw(); void this.setActiveConversation(conv); };
+		const onOutside = (e: MouseEvent) => {
+			if (!panel.contains(e.target as Node) && e.target !== this.convNameEl) closeSw();
+		};
+
+		const paintSelection = () => {
+			rows.forEach((r, i) => r.el.toggleClass("selected", i === selectedIdx));
+			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
+		};
+
+		const addRow = (conv: Conversation, isFork: boolean, q: string) => {
+			if (q && !conv.name.toLowerCase().includes(q)) return;
+			const row = listEl.createDiv({ cls: isFork ? "p-switcher-row fork" : "p-switcher-row" });
+			const main = row.createDiv({ cls: "p-switcher-main" });
+			if (isFork) setIcon(main.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const titleEl = main.createDiv({ cls: "p-switcher-title" });
+			// Highlight the matched substring.
+			const name = conv.name;
+			const idx = q ? name.toLowerCase().indexOf(q) : -1;
+			if (idx >= 0) {
+				titleEl.appendText(name.slice(0, idx));
+				titleEl.createEl("b", { cls: "p-switcher-hl", text: name.slice(idx, idx + q.length) });
+				titleEl.appendText(name.slice(idx + q.length));
+			} else {
+				titleEl.setText(name);
+			}
+			const sub = isFork
+				? `${t("branchLabel")} · ${t("msgCount", { n: String(conv.messages.length) })}`
+				: `${abbreviateModel(conv.model)} · ${t("msgCount", { n: String(conv.messages.length) })} · ${this.formatConvDate(conv.updatedAt)}`;
+			main.createDiv({ cls: "p-switcher-sub", text: sub });
+
+			const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+			del.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+			});
+			row.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				openConv(conv);
+			});
+			rows.push({ conv, el: row });
+		};
+
+		const buildList = (query: string) => {
+			listEl.empty();
+			rows = [];
+			const q = query.toLowerCase().trim();
+			const all = this.plugin.conversations;
+			const byId = new Map(all.map((c) => [c.id, c]));
+			const sources = all
+				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
+				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+			for (const src of sources) {
+				addRow(src, false, q);
+				const forks = all
+					.filter((c) => c.forkedFromId === src.id)
+					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+				for (const f of forks) addRow(f, true, q);
+			}
+			selectedIdx = 0;
+			paintSelection();
+		};
+
+		input.addEventListener("input", () => buildList(input.value));
+		input.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (e.key === "ArrowDown") { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, rows.length - 1); paintSelection(); }
+			else if (e.key === "ArrowUp") { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); paintSelection(); }
+			else if (e.key === "Enter") { e.preventDefault(); const r = rows[selectedIdx]; if (r) openConv(r.conv); }
+			else if (e.key === "Escape") { e.preventDefault(); closeSw(); }
+		});
+
+		buildList("");
+		setTimeout(() => {
+			document.addEventListener("mousedown", onOutside, true);
+			this.quickSwitcherCleanup = closeSw;
+			input.focus();
+		}, 0);
+	}
+
+	/** Uppercase mono date-group label for the history view (HEUTE / GESTERN /
+	 *  DIESE WOCHE / "August 2026"). */
+	private historyBucket(iso: string | undefined): string {
+		if (!iso) return "—";
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "—";
+		const now = new Date();
+		const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+		if (dayDiff <= 0) return t("histToday");
+		if (dayDiff === 1) return t("histYesterday");
+		if (dayDiff < 7) return t("histThisWeek");
+		return d.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase();
+	}
+
+	/** In-panel history view (F10): a full-panel overlay listing conversations
+	 *  grouped by date, forks indented under their source with fork/favorite
+	 *  counts, the active conversation highlighted. */
+	private openHistoryView(): void {
+		if (this.historyCleanup) { this.historyCleanup(); return; } // toggle
+		const container = this.containerEl.children[1] as HTMLElement;
+		const overlay = container.createDiv({ cls: "p-history" });
+
+		const close = () => {
+			overlay.remove();
+			document.removeEventListener("keydown", onKey, true);
+			this.historyCleanup = null;
+		};
+		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+		const openConv = (conv: Conversation) => { close(); void this.setActiveConversation(conv); };
+
+		// ── Header ───────────────────────────────────────────────────
+		const head = overlay.createDiv({ cls: "p-history-head" });
+		const backBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("backTooltip") } });
+		setIcon(backBtn, "arrow-left");
+		backBtn.addEventListener("click", () => close());
+		head.createDiv({ cls: "p-history-title", text: t("histTitle") });
+		const newBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("newConvTooltip") } });
+		setIcon(newBtn, "plus");
+		newBtn.addEventListener("click", () => { close(); void this.plugin.cmdNewConversation(); });
+
+		// ── Search ───────────────────────────────────────────────────
+		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
+		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
+		const input = searchRow.createEl("input", {
+			cls: "p-switcher-input",
+			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
+		});
+
+		const listEl = overlay.createDiv({ cls: "p-history-list" });
+
+		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
+			const sub = createDiv({ cls: "p-history-sub" });
+			if (isFork) {
+				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+				return sub;
+			}
+			sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+			const forkCount = this.plugin.conversations.filter((c) => c.forkedFromId === conv.id).length;
+			if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
+			const favCount = conv.favorites?.length ?? 0;
+			if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
+			return sub;
+		};
+
+		const addRow = (conv: Conversation, isFork: boolean, q: string): boolean => {
+			if (q && !conv.name.toLowerCase().includes(q)) return false;
+			const row = listEl.createDiv({ cls: isFork ? "p-history-row fork" : "p-history-row" });
+			if (conv.id === this.activeConversation?.id) row.addClass("active");
+			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const main = row.createDiv({ cls: "p-history-main" });
+			main.createDiv({ cls: "p-history-row-title", text: conv.name });
+			main.appendChild(rowSub(conv, isFork));
+			if (conv.id === this.activeConversation?.id) {
+				row.createSpan({ cls: "p-nav-tag", text: t("navActiveTag") });
+			} else {
+				const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+				del.addEventListener("click", (e) => {
+					e.stopPropagation();
+					this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+				});
+			}
+			row.addEventListener("click", () => openConv(conv));
+			return true;
+		};
+
+		const buildList = (query: string) => {
+			listEl.empty();
+			const q = query.toLowerCase().trim();
+			const all = this.plugin.conversations;
+			const byId = new Map(all.map((c) => [c.id, c]));
+			const sources = all
+				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
+				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+			let currentBucket = "";
+			for (const src of sources) {
+				const forks = all
+					.filter((c) => c.forkedFromId === src.id)
+					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+				// Skip the whole group if nothing matches the query.
+				if (q && !src.name.toLowerCase().includes(q) && !forks.some((f) => f.name.toLowerCase().includes(q))) {
+					continue;
+				}
+				const bucket = this.historyBucket(src.updatedAt);
+				if (bucket !== currentBucket) {
+					currentBucket = bucket;
+					listEl.createDiv({ cls: "p-history-group", text: bucket });
+				}
+				addRow(src, false, ""); // source always shown when its group is shown
+				for (const f of forks) addRow(f, true, q);
+			}
+			if (!listEl.hasChildNodes()) {
+				listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
+			}
+		};
+
+		input.addEventListener("input", () => buildList(input.value));
+		buildList("");
+		setTimeout(() => {
+			document.addEventListener("keydown", onKey, true);
+			this.historyCleanup = close;
+		}, 0);
 	}
 
 	private enterRenameMode(): void {
@@ -2329,12 +3014,15 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
+				const parsedSources = parseCitations(fullText);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
 					content: fullText,
 					timestamp: new Date().toISOString(),
+					model: conv.model,
 					tokenUsage,
+					...(parsedSources.length ? { sources: parsedSources } : {}),
 				};
 				conv.messages.push(assistantMsg);
 				if (this.activeConversation?.id === conv.id) {
@@ -2665,19 +3353,28 @@ export class PythiaSidebarView extends ItemView {
 		new Notice(t("exchangeDeleted"));
 
 		if (conv.messages.length === 0) {
-			const hint = this.messagesEl.createDiv({ cls: "pythia-empty" });
-			hint.createEl("p", { text: t("startConversationBelow") });
+			this.renderWelcome(this.messagesEl);
 		}
 
 		this.attachLastBubbleLongPress();
 	}
 
-	private updateSendBtnLabel(): void {
+	/** Return the most recent message carrying token usage (the last completed
+	 *  assistant turn), or undefined if the conversation has none yet. */
+	private lastTokenUsageMsg(): Message | undefined {
 		const messages = this.activeConversation?.messages ?? [];
-		let last: Message | undefined;
 		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].tokenUsage) { last = messages[i]; break; }
+			if (messages[i].tokenUsage) return messages[i];
 		}
+		return undefined;
+	}
+
+	private updateSendBtnLabel(): void {
+		// The token estimate now lives in a mono label left of Send (not the
+		// button label). The button reads just "Senden" / "Stopp".
+		this.sendBtn.setText(t("sendBtn"));
+		this.sendBtn.title = "";
+		const last = this.lastTokenUsageMsg();
 		if (last?.tokenUsage) {
 			// Estimate total input tokens for the NEXT send (#28):
 			//   previous inputTokens  = full context as of the last call
@@ -2689,11 +3386,45 @@ export class PythiaSidebarView extends ItemView {
 			const fmt = estimate >= 1000
 				? `~${(estimate / 1000).toFixed(1)}k`
 				: `~${estimate}`;
-			this.sendBtn.setText(`${t("sendBtn")} · ↑${fmt}`);
-			this.sendBtn.title = t("sendBtnEstTitle", { n: fmt });
+			this.sendEstimateEl.setText(t("nextSendEstimate", { n: fmt }));
+			this.sendEstimateEl.style.display = "";
 		} else {
-			this.sendBtn.setText(t("sendBtn"));
-			this.sendBtn.title = "";
+			this.sendEstimateEl.setText("");
+			this.sendEstimateEl.style.display = "none";
+		}
+		this.updateContextBar();
+	}
+
+	/** Context-budget bar under the header: fill = (last-known context size) /
+	 *  (model context window). Turns warning-colored and surfaces a header
+	 *  percent chip at >=80%. Hidden until a turn has produced token usage. */
+	private updateContextBar(): void {
+		if (!this.ctxBarEl) return;
+		const conv = this.activeConversation;
+		const last = this.lastTokenUsageMsg();
+		if (!conv || !last?.tokenUsage) {
+			this.ctxBarEl.style.display = "none";
+			this.ctxChipEl.style.display = "none";
+			return;
+		}
+		const used = last.tokenUsage.inputTokens + last.tokenUsage.outputTokens;
+		const windowSize = getContextWindow(conv.model);
+		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
+		const pct = Math.round(frac * 100);
+		const warn = frac >= 0.8;
+		this.ctxBarEl.style.display = "";
+		this.ctxBarFillEl.style.width = `${(frac * 100).toFixed(1)}%`;
+		this.ctxBarEl.toggleClass("warn", warn);
+		this.ctxBarEl.setAttr("title", t("ctxBarTooltip", {
+			used: used.toLocaleString(),
+			total: windowSize.toLocaleString(),
+			pct: String(pct),
+		}));
+		if (warn) {
+			this.ctxChipEl.setText(`${pct}%`);
+			this.ctxChipEl.style.display = "";
+		} else {
+			this.ctxChipEl.style.display = "none";
 		}
 	}
 

@@ -164,9 +164,14 @@ export function decorateCodeBlocks(
 			return `\`\`\`${lang}\n${raw}\n\`\`\``;
 		};
 
-		setIcon(frame.createEl("span", { cls: "p-code-type-icon" }), "code-2");
+		// Frameless header row: code-2 icon + language name (left), copy (right).
+		// The header sits above the <pre>, which carries only top/bottom hairlines.
+		const head = createEl("div", { cls: "p-code-head" });
+		frame.insertBefore(head, pre);
+		setIcon(head.createEl("span", { cls: "p-code-type-icon" }), "code-2");
+		head.createEl("span", { cls: "p-code-lang", text: lang || "code" });
 
-		const actions = frame.createEl("div", { cls: "p-code-actions" });
+		const actions = head.createEl("div", { cls: "p-code-actions" });
 		const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
 		setIcon(copyBtn, "copy");
 		copyBtn.addEventListener("click", async (e) => {

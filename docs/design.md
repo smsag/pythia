@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-24 — specificity fixes (ADR-065): plugin marks are now scoped `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1) so Obsidian core/theme `mark` rules stop overriding the fork accent back to yellow; the global reset now covers `button/input/textarea` with `background-color: transparent` so Obsidian desktop's grey form-field background no longer paints plugin controls (buttons opt back into a fill at 0,2,0, e.g. `.p-send:not(.stop)`). **Rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core (0,1,1) — a bare element+class tie loses because themes/core load after the plugin.***
+*Last updated: 2026-08-24 — "Pythia Final" redesign phase 1 (ADR-066/067): **frameless** code blocks and selection toolbar (hairlines + a mono header row replace the grey `--background-secondary` box; the toolbar is a masked horizontal carousel on `--background-primary`), and **per-message turn micro-labels** (`.p-turn-label`, mono 9px/0.08em `--text-faint`) — `DU · HH:MM` above user bubbles, `PYTHIA · MODEL · HH:MM` above AI messages, backed by a new optional `Message.model`. New micro type size: **9px** for mono micro-labels (turn labels, code language, section labels). This supersedes the old "no label per AI message" / "no turn dividers" rules.*
+
+*Previously, 2026-08-24 — specificity fixes (ADR-065): plugin marks are now scoped `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1) so Obsidian core/theme `mark` rules stop overriding the fork accent back to yellow; the global reset now covers `button/input/textarea` with `background-color: transparent` so Obsidian desktop's grey form-field background no longer paints plugin controls (buttons opt back into a fill at 0,2,0, e.g. `.p-send:not(.stop)`). **Rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core (0,1,1) — a bare element+class tie loses because themes/core load after the plugin.***
 
 *Previously, 2026-08-24 — the fork-origin snippet (`mark.p-fork-origin`) now uses the same highlighter mechanism as favorites: a translucent `color-mix(var(--color-accent) 40%, transparent)` (mirroring favorites' `--text-highlight-bg` alpha) instead of a 32% tint, with the readable `--text-highlight-bg` as the no-`color-mix` fallback (never a solid accent fill). Forks and favorites now read as the same kind of highlighter, differing only by hue (accent vs. yellow). See ADR-064.*
 
@@ -133,15 +135,17 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 ```
 - Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to switch conversations
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
-- Model badge: monospace, 10px, `var(--text-faint)`, clickable to change model
+- Model badge: monospace, 10px, `var(--text-faint)`, clickable to open the **model popover** (`.p-model-pop`, F7/ADR-074): provider groups (ANTHROPIC/OPENAI/MISTRAL), rows of model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` → full settings modal. Selecting applies provider+model immediately. The chip shows an accent inset border (`.p-model.open`) while open.
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
 - Trash/Plus: standard header actions
+- **Context-budget bar** (`.p-ctx-bar`, ADR-069): 3px track (`--background-modifier-border`) directly under the header row; `.p-ctx-bar-fill` width = context usage / model window (`--color-accent`, → `--text-warning` under `.warn` at ≥80%). Click scrolls to top. A header `.p-ctx-chip` (mono 9px, warning-tinted) shows the percentage only at ≥80%.
+- **Send estimate** (`.p-send-estimate`): mono next-send token estimate ("nächste ~Xk") sits left of the Send button; the Send button label is just `Senden`/`Stopp`.
 
 **Rename mode** replaces the title + pencil with `.p-rename-input` (inline `<input>`, flex: 1, accent border, 20px height) and `.p-rename-llm-btn` (sparkle, accent colour). Enter/blur confirms and saves; Escape cancels. The LLM sparkle generates a name immediately from the first user+assistant message pair and exits rename mode on success.
 
 ### Reference / fork / favorites rows
 
-Pills: `var(--color-accent)` border + text, 10px mono, `border-radius: 10px`
+Note references render as **wikilinks** (`.p-wikilink`, ADR-068): faint `[[`/`]]` brackets (`--text-faint`), accent clickable name (`.md` stripped), optional mono `~tokens` estimate (`--text-faint`, 9px), faint `×` remove (`--text-error` on hover). The add affordance is a `+ Notiz` text link (`.pythia-pill-add`, faint → accent on hover). The bordered `.p-pill` chip is retired.
 
 ### Summary cards ("Speisekarten")
 
@@ -152,6 +156,14 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 - **Auto-collapse on scroll-out:** an `IntersectionObserver` (root = `.p-chat`) collapses an expanded card once it leaves the viewport.
 
 **Generation is button-only:** long-pressing the **Send** button opens a small popover (`.p-send-menu`) stacked **directly above the button** (the Send button is wrapped in a relatively-positioned `.p-send-wrap`; the menu opens upward, right-aligned, dismissed on outside click) with **Summarize Conversation** and **Summarize Favorites** (the latter greyed with no favorites); choosing one generates or regenerates that summary with current context and reveals its card. A native Obsidian `Menu` is deliberately **not** used — on mobile it renders as a bottom sheet rather than at the button. There is no sparkle/refresh icon and no auto-generation on close or note-injection.
+
+### Context inspector (`.p-inspector`, F2/F3)
+
+Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` directly under the summary cards; `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
+
+### In-panel history view (`.p-history`, F10)
+
+A full-panel overlay (`position:absolute; inset:0`) opened from the header `history` button: its own header (`arrow-left` back · `Gespräche` · `+`), a search field (shared `.p-switcher-search` styles), and a date-grouped list (`.p-history-group` HEUTE/GESTERN/DIESE WOCHE/"Month YYYY"). Rows show a title + mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line; forks indent under their source with a `git-branch` icon; the active conversation is accent-tinted with an `aktiv` tag; hover reveals a `✕` delete. Escape or Back closes. Additive to the quick switcher (F9) and the command-palette modal.
 
 ### Chat scroll area
 
@@ -171,9 +183,13 @@ Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks
 
 LLM-quoted text: `border-left: 3px solid var(--background-modifier-border)` (neutral divider token — **not** `--color-accent`, which is reserved for interactive/active elements), `padding-left: var(--s3)`, `color: var(--text-muted)`, `font-style: normal` (overrides Obsidian's default italic — this app never uses italics). No background/box on the wrapper itself, consistent with "AI message: plain text, no container." Content nested inside (e.g. a fenced code block) still gets its own `.p-code-frame` box, unaffected by the blockquote's own styling.
 
-### Code block frame (`.p-code-frame`)
+### Turn micro-label (`.p-turn-label`)
 
-Background `var(--background-secondary)`, `border: 1px solid var(--background-modifier-border)`, `border-radius: 6px` — the same background+border+radius formula as the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`), not a bespoke code-specific token. `font-family: var(--font-monospace)` set explicitly. A persistent `.p-code-type-icon` (Lucide `code-2`, `--text-faint`, top-left, always visible — not a hover-reveal like the copy button) labels the block as code; the frame's top padding is widened to keep it clear of the first line of code.
+Mono, **9px**, `letter-spacing: 0.08em`, `--text-faint`, as the first child of every message row. User turns read `DU · HH:MM` (right-aligned, since `.p-msg-user` is `align-items: flex-end`); AI turns read `PYTHIA · <MODEL> · HH:MM` (left-aligned). The model comes from `Message.model` (recorded at generation time) and falls back to the conversation's current model for legacy messages. Time via the pure `formatClockTime()` helper (24h, locale-independent).
+
+### Code block frame (`.p-code-frame`) — frameless (ADR-066)
+
+No background fill, border, or radius. Structure comes from **top/bottom hairlines** (`--background-modifier-border`) plus a header row `.p-code-head`: a `.p-code-type-icon` (Lucide `code-2`, `--text-faint`), the language name `.p-code-lang` (mono 9px `--text-faint`), and — right-aligned — the copy button in `.p-code-actions`. `font-family: var(--font-monospace)` set explicitly on the `<pre>`, which carries only horizontal scroll + drag-to-pan (no box, no reserved top padding). Copy stays hover-reveal on desktop and always-visible under `@media (hover: none)`. Outline cards (summaries, context inspector) remain the only components that keep the filled-box formula.
 
 ### Code block copy button
 
@@ -186,6 +202,10 @@ Selector: `[class*='block-language-']` — catches all renderer plugins. Contain
 JS (`fixDiagramSvgSize`) stamps explicit pixel dimensions on the SVG from `viewBox`, HTML attributes, or inline `style.width`. A MutationObserver catches attribute/style mutations; a ResizeObserver fallback catches Mermaid v10 and Vega which resize via layout rather than mutations.
 
 Copy button `.p-diag-copy`: `position: absolute; top: 6px; right: 6px; z-index: 2`. Opacity 0, reveals on container hover. On touch: always visible. Stays pinned in the top-right corner while the user pans — does not scroll with the SVG.
+
+### Citations & sources (`.p-cite`, `.p-sources`, F2/F11)
+
+Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `⟦cite:web:<domain>⟧` markers (instructed only when notes are attached / research is on); `services/citations.ts` parses them into a numbered, deduped `Message.sources`. `paintCitations()` re-paints markers into `.p-cite` superscript chips (mono 9px accent on `color-mix(accent 10%)`) after every render; `renderSourcesRow()` adds a sources row under the message — a single `QUELLEN` row of `[[wikilinks]]`, or split `WEB` (accent `domain ↗`) + `VAULT` rows when any web source is present. Chips/links open the note or `https://<domain>`. `stripCitationMarkers()` keeps raw markers out of saved notes.
 
 ### Token line (below each AI message)
 
@@ -205,13 +225,25 @@ Any text selection inside a message can be favorited via the **Favorite** button
 
 Trigger button: 24×24 px, `--color-accent`, monospace, bottom-right of the message area. Popover 200 px wide, opens upward. Closes on outside click (listener tracked as `navigatorOutsideCleanup`, removed on view close and conversation switch).
 
-Three collapsible sections — **Forks** (collapsed by default), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. The Favorites section **label** links to the favorites summary card (`.p-nav-group-name.p-nav-link`) when a favorites summary exists — clicking it closes the popover and scrolls to + expands that card; with no favorites summary the label is greyed and non-clickable (`.p-nav-disabled`). Legacy message-level favorites list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
+Three collapsible sections — **Forks** (collapsed by default; rendered as a **branch tree**, F5/ADR-073: a `.p-nav-tree-source` root row with a `Quelle` tag, `.p-nav-tree-children` indented under a 1px left rule, each `.p-nav-tree-item` a `.p-nav-dot` status dot + name + `aktiv` tag/message count; the current conversation's row is accent-tinted `.active`), **Favorites**, **Chapters** — each with a ▸/▾ chevron, item count badge, and italic empty-state message. **Favorites** lists each highlight by the first words of its text; clicking scrolls to the start of the highlighted span; a hover-revealed `.p-nav-del` (✕) removes it. The Favorites section **label** links to the favorites summary card (`.p-nav-group-name.p-nav-link`) when a favorites summary exists — clicking it closes the popover and scrolls to + expands that card; with no favorites summary the label is greyed and non-clickable (`.p-nav-disabled`). Legacy message-level favorites list the same way but jump to the message top. On open, the popover auto-scrolls to the **Chapters** section so it is immediately visible regardless of how many Forks or Favorites sit above it.
 
 ### Input area
 
 Textarea: min 3 lines desktop / 2 lines mobile, max 72–150 px. IME guard: `e.isComposing` prevents CJK candidate confirmation from sending.
 
 **Collapsed state:** a toolbar toggle button collapses the whole input area — the textarea, the reference row (attached-note pills), and the Send button all hide, reclaiming vertical space for the chat scroll area. The toolbar itself (`.p-toolbar`/`.p-toolbar-left`) stays visible in both states — it *is* the minimized row, so every action icon (attach/save/sparkle/optimize/template) stays reachable and in the same order whether expanded or collapsed. Clicking any of those action icons while collapsed expands the input area and performs that icon's action in the same click; the toggle button itself only expands/collapses, no side effect. The toggle icon swaps direction on each toggle — `arrow-down` when expanded, `arrow-up` when collapsed — rather than reusing one icon for both. Instant `display` swap on a `collapsed` class, mirroring the summary panel's toggle pattern; no animation. State is ephemeral (not persisted to `data.json`) and survives conversation switches for the session; the reference row's own visibility (shown only when there are attached notes) composes with the collapse state rather than being overridden by it.
+
+### Empty / welcome state (`.p-welcome`, F6)
+
+Empty conversations render a centered welcome via `renderWelcome()`: an accent `sparkles` icon (22px), a 13px/600 heading (`emptyHeading`), and three mono keycap hints (`.p-welcome-hint` with `.p-keycap` chips): `#` attach note, `⌘P` commands, `⇧↵` newline. Used for a new conversation and after the last exchange is deleted. The distinct *no-active-conversation* fallback keeps the plain `.pythia-empty` hint.
+
+### Effort segmented control (`.p-effort-seg`, F8)
+
+The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` (accent fill, `--text-on-accent`). The leading **Standard** segment means "no override" (the semantic the old dropdown's empty option carried). When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
+
+### Quick switcher (`.p-switcher`, F9)
+
+Header title click opens an anchored `.p-switcher` (fixed under the header, shadowed, kept under `.pythia-view`): a search row, then result rows (title with matched-substring highlight + mono `Model · N Nachrichten · date` sub-line) with forks indented under their source (`git-branch` icon, `Zweig · N Nachrichten`), a hover `✕` delete, keyboard nav (↑/↓/↵/Esc), and a footer key-hint. Additive — the command palette still opens the centered fuzzy `ConversationSuggestModal`.
 
 ### Conversation settings modal (temperature)
 
@@ -222,8 +254,9 @@ Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic t
 ## What not to build
 
 - No Favorites row in the header — merged into `#` navigator
-- No avatar or label per AI message
-- No turn divider lines
+- ~~No avatar or label per AI message~~ → superseded: every turn now carries a mono micro-label (`.p-turn-label`, ADR-067)
+- No turn *divider lines* (the mono turn label replaces them — still no horizontal rules between turns)
+- No avatar images or role icons per message — the label is text only
 - No sparkle in the toolbar — the header sparkle handles both generation and panel toggle
 - No card shadows on summary or reference rows
 - No framework mount (no React, Svelte, shadow DOM)
