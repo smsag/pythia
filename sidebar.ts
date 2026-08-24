@@ -105,6 +105,8 @@ export class PythiaSidebarView extends ItemView {
 	private modelPopoverCleanup: (() => void) | null = null;
 	// Anchored quick switcher (F9) teardown.
 	private quickSwitcherCleanup: (() => void) | null = null;
+	// In-panel history view (F10) teardown.
+	private historyCleanup: (() => void) | null = null;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -236,6 +238,7 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorController?.close();
 		this.modelPopoverCleanup?.();
 		this.quickSwitcherCleanup?.();
+		this.historyCleanup?.();
 
 		if (this.onSelectionChange) {
 			document.removeEventListener("selectionchange", this.onSelectionChange);
@@ -341,6 +344,7 @@ export class PythiaSidebarView extends ItemView {
 	private buildUI(): void {
 		this.modelPopoverCleanup?.();
 		this.quickSwitcherCleanup?.();
+		this.historyCleanup?.();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
 		this.cachedLineHeight = null; // inputEl is about to be recreated below
@@ -458,6 +462,13 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.copyLinkBtn, "link");
 		this.copyLinkBtn.style.display = "none";
 		this.copyLinkBtn.addEventListener("click", () => this.onCopyConversationLink());
+
+		const historyBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("historyTooltip") },
+		});
+		setIcon(historyBtn, "history");
+		historyBtn.addEventListener("click", () => this.openHistoryView());
 
 		const deleteConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -2412,6 +2423,130 @@ export class PythiaSidebarView extends ItemView {
 			document.addEventListener("mousedown", onOutside, true);
 			this.quickSwitcherCleanup = closeSw;
 			input.focus();
+		}, 0);
+	}
+
+	/** Uppercase mono date-group label for the history view (HEUTE / GESTERN /
+	 *  DIESE WOCHE / "August 2026"). */
+	private historyBucket(iso: string | undefined): string {
+		if (!iso) return "—";
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "—";
+		const now = new Date();
+		const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+		const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+		if (dayDiff <= 0) return t("histToday");
+		if (dayDiff === 1) return t("histYesterday");
+		if (dayDiff < 7) return t("histThisWeek");
+		return d.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase();
+	}
+
+	/** In-panel history view (F10): a full-panel overlay listing conversations
+	 *  grouped by date, forks indented under their source with fork/favorite
+	 *  counts, the active conversation highlighted. */
+	private openHistoryView(): void {
+		if (this.historyCleanup) { this.historyCleanup(); return; } // toggle
+		const container = this.containerEl.children[1] as HTMLElement;
+		const overlay = container.createDiv({ cls: "p-history" });
+
+		const close = () => {
+			overlay.remove();
+			document.removeEventListener("keydown", onKey, true);
+			this.historyCleanup = null;
+		};
+		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+		const openConv = (conv: Conversation) => { close(); void this.setActiveConversation(conv); };
+
+		// ── Header ───────────────────────────────────────────────────
+		const head = overlay.createDiv({ cls: "p-history-head" });
+		const backBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("backTooltip") } });
+		setIcon(backBtn, "arrow-left");
+		backBtn.addEventListener("click", () => close());
+		head.createDiv({ cls: "p-history-title", text: t("histTitle") });
+		const newBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("newConvTooltip") } });
+		setIcon(newBtn, "plus");
+		newBtn.addEventListener("click", () => { close(); void this.plugin.cmdNewConversation(); });
+
+		// ── Search ───────────────────────────────────────────────────
+		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
+		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
+		const input = searchRow.createEl("input", {
+			cls: "p-switcher-input",
+			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
+		});
+
+		const listEl = overlay.createDiv({ cls: "p-history-list" });
+
+		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
+			const sub = createDiv({ cls: "p-history-sub" });
+			if (isFork) {
+				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+				return sub;
+			}
+			sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+			const forkCount = this.plugin.conversations.filter((c) => c.forkedFromId === conv.id).length;
+			if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
+			const favCount = conv.favorites?.length ?? 0;
+			if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
+			return sub;
+		};
+
+		const addRow = (conv: Conversation, isFork: boolean, q: string): boolean => {
+			if (q && !conv.name.toLowerCase().includes(q)) return false;
+			const row = listEl.createDiv({ cls: isFork ? "p-history-row fork" : "p-history-row" });
+			if (conv.id === this.activeConversation?.id) row.addClass("active");
+			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const main = row.createDiv({ cls: "p-history-main" });
+			main.createDiv({ cls: "p-history-row-title", text: conv.name });
+			main.appendChild(rowSub(conv, isFork));
+			if (conv.id === this.activeConversation?.id) {
+				row.createSpan({ cls: "p-nav-tag", text: t("navActiveTag") });
+			} else {
+				const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+				del.addEventListener("click", (e) => {
+					e.stopPropagation();
+					this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+				});
+			}
+			row.addEventListener("click", () => openConv(conv));
+			return true;
+		};
+
+		const buildList = (query: string) => {
+			listEl.empty();
+			const q = query.toLowerCase().trim();
+			const all = this.plugin.conversations;
+			const byId = new Map(all.map((c) => [c.id, c]));
+			const sources = all
+				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
+				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+			let currentBucket = "";
+			for (const src of sources) {
+				const forks = all
+					.filter((c) => c.forkedFromId === src.id)
+					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+				// Skip the whole group if nothing matches the query.
+				if (q && !src.name.toLowerCase().includes(q) && !forks.some((f) => f.name.toLowerCase().includes(q))) {
+					continue;
+				}
+				const bucket = this.historyBucket(src.updatedAt);
+				if (bucket !== currentBucket) {
+					currentBucket = bucket;
+					listEl.createDiv({ cls: "p-history-group", text: bucket });
+				}
+				addRow(src, false, ""); // source always shown when its group is shown
+				for (const f of forks) addRow(f, true, q);
+			}
+			if (!listEl.hasChildNodes()) {
+				listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
+			}
+		};
+
+		input.addEventListener("input", () => buildList(input.value));
+		buildList("");
+		setTimeout(() => {
+			document.addEventListener("keydown", onKey, true);
+			this.historyCleanup = close;
 		}, 0);
 	}
 

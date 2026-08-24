@@ -161,6 +161,10 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 
 Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` directly under the summary cards; `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
 
+### In-panel history view (`.p-history`, F10)
+
+A full-panel overlay (`position:absolute; inset:0`) opened from the header `history` button: its own header (`arrow-left` back · `Gespräche` · `+`), a search field (shared `.p-switcher-search` styles), and a date-grouped list (`.p-history-group` HEUTE/GESTERN/DIESE WOCHE/"Month YYYY"). Rows show a title + mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line; forks indent under their source with a `git-branch` icon; the active conversation is accent-tinted with an `aktiv` tag; hover reveals a `✕` delete. Escape or Back closes. Additive to the quick switcher (F9) and the command-palette modal.
+
 ### Chat scroll area
 
 `.p-chat`: `flex: 1; overflow-y: auto; overflow-x: clip`. Messages gap `var(--s3)`. Conversation view scrolls to **top** on every conversation switch; new messages sent during a session scroll to the bottom as usual.

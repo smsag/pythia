@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F9): ADR-075 (header title opens an anchored quick switcher — search, fork-indented rows, keyboard nav, hover-delete — additive to the command-palette fuzzy modal).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F9): ADR-075 (header title opens an anchored quick switcher — search, fork-indented rows, keyboard nav, hover-delete — additive to the command-palette fuzzy modal).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F7): ADR-074 (the model chip opens an anchored quick-pick popover — provider groups, context-window labels, Reasoning tags, active check, and a footer to the full settings modal — instead of jumping straight to the modal).*
 
@@ -1066,3 +1068,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** replacing the fuzzy modal (the plan explicitly keeps it as a separate surface); a full fuzzy-scoring match in the panel (a plain substring highlight is enough for the anchored quick-pick; the modal covers fuzzy search); appending to `document.body` (loses `.pythia-view` scoping).
 
 **Consequence:** Fast, in-context switching with fork structure visible, without giving up the palette modal. Store-only reads; no data-model change. Date sub-lines use a small `formatConvDate` helper (today/yesterday/short date), reused by the in-panel history view.
+
+### ADR-076 — In-panel history view (F10)
+
+**Status:** Active (additive — the quick switcher and palette modal remain)
+
+**Context:** The Final design adds a full-panel conversation browser: a header (`‹ back · Gespräche · search · +`), date groups (HEUTE/GESTERN/DIESE WOCHE/older), rows with a mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line, forks indented under their source, the active conversation tinted, and hover-delete. It is the third switching surface alongside the anchored quick switcher (F9) and the command-palette modal.
+
+**Decision:** A `history` header button opens `openHistoryView()`, which renders a `.p-history` overlay (`position: absolute; inset: 0`) over the panel — its own header (back/title/new), a search field, and a date-grouped list. Sources are listed by recency; `historyBucket()` labels each group; because the list is sorted, group headers emit on change. Forks are indented under their source with `git-branch`; source sub-lines show fork (`⑂`) and favorite (`★`) counts. Rows open a conversation (reusing `setActiveConversation`) or delete via the shared `deleteConversationWithConfirm()`. Escape or Back closes; torn down on view close/rebuild. Reuses `formatConvDate`/`abbreviateModel` and the switcher's search-row styles.
+
+**Alternatives rejected:** a full `buildUI` view-mode swap (far more invasive — an overlay gives the same full-panel takeover without threading a mode through every render path); replacing the quick switcher or palette modal (the plan keeps all three surfaces); paginating/virtualizing the list (unnecessary at expected conversation counts — revisit if it grows).
+
+**Consequence:** A browsable, grouped history with branch structure and per-conversation signal, without disturbing the chat render path. Store-only reads; no data-model change. A dedicated `history` header button is the entry point (a future `⋯` overflow menu could host it instead).
