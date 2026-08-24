@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-064 (fork-origin highlight now uses the favorites highlighter mechanism — translucent `color-mix(var(--color-accent) 40%)` mirroring `--text-highlight-bg`, with a readable fallback instead of a solid accent fill).*
+*Last updated: 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
+
+*Previously, 2026-08-24 — ADR-064 (fork-origin highlight now uses the favorites highlighter mechanism — translucent `color-mix(var(--color-accent) 40%)` mirroring `--text-highlight-bg`, with a readable fallback instead of a solid accent fill).*
 
 *Previously, 2026-08-24 — ADR-063 (max-tokens warning surfaced at the Send button when the effective max-tokens looks too low for the selected reasoning model — the truncation sharp edge of mid-conversation model switching, made visible before send; click opens settings).*
 
@@ -903,3 +905,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** accent underline / no fill (loses the shared "highlighter" language with favorites — the chosen consistency goal); keeping the 32% raw tint with a solid-accent fallback (the readability bug); defining a new accent-highlight CSS token (Obsidian has none, and `color-mix` on `--color-accent` expresses it without inventing a token).
 
 **Consequence:** Consistent highlighter treatment across favorites and forks, and no unreadable fallback. CSS-only; no data-model, i18n, or logic change.
+
+### ADR-065 — Scope view CSS above Obsidian's core selectors (specificity fixes)
+
+**Status:** Active
+
+**Context:** Two long-standing visual bugs turned out to share one root cause — Obsidian's own stylesheet out-ranking Pythia's by CSS specificity:
+1. The fork-origin highlight (ADR-064) kept rendering yellow instead of accent. `mark.p-fork-origin` (specificity 0,1,1) only *ties* Obsidian core / theme `.markdown-rendered mark` (0,1,1), which loads after the plugin and so won, pinning the background to `--text-highlight-bg`. Favorites masked the bug because they use that same token — the tie was invisible until forks asked for a *different* color.
+2. On **desktop only**, every plugin button and input rendered with a grey background. Obsidian desktop `app.css` styles `button:not(.clickable-icon)`, `input`, and `textarea` with a grey `--interactive-normal` / form-field background at (0,1,1); the plugin's component rules (`.p-tool-btn`, `.p-send`, … via `all: unset`) sit at (0,1,0) and lose. Mobile Obsidian doesn't set that background, so it never appeared there. (The codebase already half-knew this — `.p-send:not(.stop)` carried a comment about needing 0,2,0 to beat the reset's border.)
+
+**Decision:** Make Pythia's controlling rules out-specify Obsidian's rather than tie it.
+- Scope the mark rules under the view root: `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1), beating any `mark` rule at (0,1,1).
+- Extend the global reset to `button, input, textarea` under `.pythia-view` and add `background-color: transparent` (0,1,1, loaded after core → wins the tie); buttons that want a fill opt back in at (0,2,0) — `.p-send:not(.stop)` now restores the accent fill alongside its border.
+
+**Alternatives rejected:** `!important` (blunt, hard to override later, and unnecessary once specificity is correct); per-component `.pythia-view` prefixes on every button (far more churn than fixing the shared reset + the one solid-fill button); leaving the marks unscoped and only tweaking color values (the values were never the problem — they were being overridden wholesale).
+
+**Consequence:** Fork highlights show the accent color; plugin controls are transparent on desktop except where they intentionally opt into a fill. CSS-only. General rule going forward: **view chrome must be scoped under `.pythia-view` (and marks as `.pythia-view mark.…`) so it out-ranks Obsidian core (0,1,1); a bare element+class tie is not enough because themes and core load after the plugin.**

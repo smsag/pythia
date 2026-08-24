@@ -874,4 +874,12 @@ Closes the fork↔source loop so users don't lose track of side-explorations.
 **Files:** `sidebar.ts`, `styles.css`, `locales/en.ts`, `locales/de.ts` — **Resolved**
 
 - **Symptom:** after switching a conversation onto a reasoning model, replies could come back truncated or empty when a small per-conversation `maxTokens` was set — the reasoning budget is spent before visible output, and the model-appropriate default only applies when `maxTokens` is unset.
-- **Fix (ADR-062):** a warning icon (`.p-send-hint`) appears beside the Send button when the model is a reasoning model and the effective max-tokens is below `DEFAULT_MAX_TOKENS_REASONING`; tooltip explains the risk, click opens the settings modal. Refreshed via `updateSendHint()` from `updateModelBadge()`. UI-only + one i18n key.
+- **Fix (ADR-063):** a warning icon (`.p-send-hint`) appears beside the Send button when the model is a reasoning model and the effective max-tokens is below `DEFAULT_MAX_TOKENS_REASONING`; tooltip explains the risk, click opens the settings modal. Refreshed via `updateSendHint()` from `updateModelBadge()`. UI-only + one i18n key.
+
+### #110 — Obsidian core CSS overrode plugin marks (yellow forks) and controls (grey buttons)
+
+**Files:** `styles.css` — **Resolved**
+
+- **Symptom:** (a) the fork-origin highlight rendered yellow no matter what color we set; (b) on desktop only, every plugin button and input had a grey background.
+- **Root cause (shared):** Obsidian's own selectors out-specify the plugin's. `mark.p-fork-origin` (0,1,1) only tied `.markdown-rendered mark` (0,1,1), which loads later and won (favorites masked it — same `--text-highlight-bg` token). Desktop `app.css` styles `button:not(.clickable-icon)` / `input` / `textarea` grey at (0,1,1), beating the plugin's (0,1,0) `all: unset` component rules; mobile lacks that rule.
+- **Fix (ADR-065):** scope the mark rules as `.pythia-view mark.…` (0,2,1); extend the reset to `button/input/textarea` with `background-color: transparent` (0,1,1, loaded after core), and restore the send button's accent fill at (0,2,0). CSS-only. Documented the general rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core.

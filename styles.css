@@ -16,17 +16,28 @@
   color: var(--text-normal);
 }
 
-/* Strip native browser/WebKit button chrome for every button inside the plugin.
+/* Strip native browser/WebKit chrome for every control inside the plugin.
    Prevents iOS from adding a grey border/background and macOS Electron from
    rendering a faint 1px grey outline on transparent-bordered buttons.
    border/box-shadow/outline must be set explicitly — appearance:none alone
-   is not enough on macOS Electron / some Obsidian themes. */
-.pythia-view button {
+   is not enough on macOS Electron / some Obsidian themes.
+   background:transparent is essential on DESKTOP: Obsidian's app.css styles
+   `button:not(.clickable-icon)`, `input` and `textarea` with a grey
+   --interactive-normal / form-field background at specificity (0,1,1). Our
+   component rules (`.p-tool-btn`, `.p-send`, … via `all: unset`) sit at (0,1,0)
+   and lose, so every control rendered grey. This reset is (0,1,1) and loads
+   after core, so it wins the tie; buttons that WANT a fill (`.p-send`,
+   `.p-tool-btn.is-active`, hover states) opt back in at (0,2,0). Mobile
+   Obsidian doesn't set that background, which is why it only bit on desktop. */
+.pythia-view button,
+.pythia-view input,
+.pythia-view textarea {
   -webkit-appearance: none;
   appearance: none;
   border: none;
   box-shadow: none;
   outline: none;
+  background-color: transparent;
   -webkit-tap-highlight-color: transparent;
 }
 .pythia-view button:focus-visible {
@@ -761,8 +772,11 @@
 
 /* ── Favorite highlights ─────────────────────────────────────── */
 /* Persistent mark applied to favorited text spans. Uses Obsidian's own
-   highlight background so it reads natively in every theme. */
-mark.p-highlight {
+   highlight background so it reads natively in every theme.
+   Scoped under .pythia-view (specificity 0,2,1) so it beats Obsidian core /
+   theme `.markdown-rendered mark` rules (0,1,1) that otherwise override the
+   background — the same override that pins fork marks to yellow below. */
+.pythia-view mark.p-highlight {
   background: var(--text-highlight-bg);
   color: inherit;
   border-radius: 2px;
@@ -783,8 +797,12 @@ mark.p-highlight.p-highlight-flash {
    Same highlighter mechanism as favorites: favorites paint --text-highlight-bg
    (a ~40% translucent highlight); forks mirror that translucency in the accent
    hue, so both read as highlighter marks and differ only by color. The fallback
-   is the readable highlight token — never a solid, unreadable accent fill. */
-mark.p-fork-origin {
+   is the readable highlight token — never a solid, unreadable accent fill.
+   Scoped under .pythia-view (specificity 0,2,1) so the accent actually wins:
+   an unscoped `mark.p-fork-origin` (0,1,1) merely ties Obsidian core / theme
+   `.markdown-rendered mark` (0,1,1), which loads after the plugin and so kept
+   overriding the fork mark back to the yellow highlight token. */
+.pythia-view mark.p-fork-origin {
   background: var(--text-highlight-bg);                                     /* readable fallback */
   background: color-mix(in srgb, var(--color-accent) 40%, transparent);     /* accent highlighter */
   color: inherit;
@@ -1245,8 +1263,11 @@ body.is-mobile .p-textarea {
   white-space: nowrap;
   box-sizing: border-box;
 }
-/* Border only in send state; specificity 0,2,0 beats the global border:none at 0,1,1 */
+/* Border + fill only in send state; specificity 0,2,0 beats the global
+   border:none AND background-color:transparent reset at 0,1,1 (the base
+   .p-send at 0,1,0 loses to that reset, so the accent fill is restored here). */
 .p-send:not(.stop) {
+  background: var(--color-accent);
   border: 1px solid var(--color-accent);                                      /* fallback: Chromium < 111 */
   border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);      /* preferred: darkened */
 }
