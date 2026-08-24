@@ -5,6 +5,7 @@ import { selectRelevantChunks } from "./noteChunking";
 import {
 	SYSTEM_PROMPT_TAG,
 	PREVIOUS_SUMMARY_TAG,
+	PRIOR_SUMMARY_INSTRUCTION,
 	ATTACHED_NOTE_TAG,
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
@@ -30,7 +31,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 	const priorSummary = conversation.summaryText ?? conversation.forkedFromSummary;
 	if (priorSummary) {
 		parts.push(
-			`<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
+			`${PRIOR_SUMMARY_INSTRUCTION}\n\n<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
 		);
 	}
 

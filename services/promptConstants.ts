@@ -53,6 +53,19 @@ export const DEFAULT_SYSTEM_PROMPT =
 	"- Use the full response length available when the topic warrants it — do not truncate prematurely\n\n" +
 	"When the user's question is simple or conversational, match their tone — don't over-elaborate on a quick question.";
 
+/** Framing instruction that precedes the previous-conversation-summary block.
+ *  Without it the model treats the summary as ignorable background; a forked or
+ *  resumed conversation then loses the topic/scope of the discussion it
+ *  continues (e.g. a fork of a "technological revolutions" chat answering "the
+ *  revolutions of Germany" in the generic sense). This tells the model the
+ *  summary is the governing context for the user's questions. */
+export const PRIOR_SUMMARY_INSTRUCTION =
+	"The block below summarizes the earlier conversation that this one continues from. " +
+	"Treat it as the governing context for the user's questions: unless the user clearly " +
+	"changes the subject, interpret and answer their requests within the topic, scope, and " +
+	"framing established there. For example, if that conversation was about a specific domain, " +
+	"keep your answers within that domain even when the user's phrasing alone would be broader.";
+
 /** Grounding instruction prepended to the system prompt when notes are attached.
  *  Drives synthesis rather than mere quoting. */
 export const GROUNDING_INSTRUCTION =

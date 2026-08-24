@@ -849,3 +849,12 @@ Closes the fork↔source loop so users don't lose track of side-explorations.
 - Items: "Summarize conversation" (always; disabled when the fork has no messages) and "Summarize favorites" (offered only when the fork carries favorites — hidden, not disabled).
 - `buildForkAnchor(anchor, fork, preferType?)` re-renders showing the summary type just generated; otherwise favorites-preferred (ADR-058 precedence).
 - Standalone "Summarize fork" button removed (single generate/regenerate control); `summarizeForkBtn` i18n key removed. 341 tests still pass.
+
+### #107 — Previous-conversation summary ignored by the model
+
+**Files:** `services/promptConstants.ts`, `services/ContextBuilder.ts`, `tests/ContextBuilder.test.ts` — **Resolved**
+
+- **Symptom:** a fork of a topic-scoped conversation (e.g. "technological revolutions") answered follow-ups in the generic sense ("all revolutions of Germany" → cultural/political), ignoring the source context.
+- **Root cause:** the `<previous_conversation_summary>` block was injected with no instruction (attached notes get `GROUNDING_INSTRUCTION`; the summary got nothing), so the model treated it as background. The summary *was* reaching the model — a framing gap, not a plumbing gap.
+- **Fix:** added `PRIOR_SUMMARY_INSTRUCTION`, prepended to the block in `buildSystemPrompt`; the model now treats the summary as governing context (stay within its topic/scope unless the user changes subject). Applies to both forks and resume-summary conversations.
+- Tests: framing instruction present with a summary / absent without one; exact-join assertion updated. 343 total pass.

@@ -20,6 +20,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "../services/ContextBuilder";
+import { PRIOR_SUMMARY_INSTRUCTION } from "../services/promptConstants";
 import type { Conversation } from "../models/types";
 
 class MockVault {
@@ -94,10 +95,25 @@ describe("buildSystemPrompt", () => {
 		expect(withNotes).toMatch(/Synthesize/);
 	});
 
+	it("precedes the summary block with a framing instruction so the model treats it as governing context", () => {
+		const withSummary = buildSystemPrompt(baseConv({ summaryText: "We discussed X." }));
+		expect(withSummary).toMatch(/governing context/);
+		// The instruction comes before the block it frames.
+		expect(withSummary.indexOf("governing context"))
+			.toBeLessThan(withSummary.indexOf("<previous_conversation_summary>"));
+	});
+
+	it("adds the summary framing instruction only when a summary is present", () => {
+		const withoutSummary = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
+		expect(withoutSummary).not.toMatch(/governing context/);
+	});
+
 	it("joins multiple parts with a blank line", () => {
 		const result = buildSystemPrompt(baseConv({ systemPrompt: "Hi", summaryText: "Summary" }));
 		expect(result).toBe(
-			"<system_prompt>\nHi\n</system_prompt>\n\n<previous_conversation_summary>\nSummary\n</previous_conversation_summary>"
+			"<system_prompt>\nHi\n</system_prompt>\n\n" +
+			PRIOR_SUMMARY_INSTRUCTION +
+			"\n\n<previous_conversation_summary>\nSummary\n</previous_conversation_summary>"
 		);
 	});
 });

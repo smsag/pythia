@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
+*Last updated: 2026-08-24 — ADR-060 (frame the previous-conversation summary as governing context: `PRIOR_SUMMARY_INSTRUCTION` now precedes the `<previous_conversation_summary>` block so forks/resumed conversations stay within the topic and scope of the conversation they continue).*
+
+*Previously, 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
 
 *Previously, 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
 
@@ -825,3 +827,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** keeping the standalone button (couldn't reach favorites or regeneration); a native Obsidian `Menu` (renders as a mobile bottom sheet — the same reason ADR-057 chose a custom popover for the Send menu); disabling rather than hiding the favorites item on a fork with no favorites (the request asked for it to be offered only when favorites exist).
 
 **Consequence:** The anchor is a full generate/regenerate surface consistent with the Send menu. Removed i18n: `summarizeForkBtn`. Reused: `menuSummarizeConversation`, `menuSummarizeFavorites`, `openForkBtn`, `generatingSummary`, `summaryFailed`.
+
+### ADR-060 — Frame the previous-conversation summary as governing context
+
+**Status:** Active
+
+**Context:** A fork (and a "summary" resume-mode conversation) carries the source conversation's summary in the system prompt, wrapped as `<previous_conversation_summary>`. But the block was injected with **no instruction** — unlike attached notes, which get `GROUNDING_INSTRUCTION`. The model therefore treated the summary as ignorable background: a fork of a "technological revolutions" conversation, asked "show me all revolutions of Germany", answered in the generic sense (cultural, political, …) instead of staying within the technological framing the summary established. The summary was reaching the model (plumbing verified, unit-tested); it simply wasn't being *used* as context.
+
+**Decision:** Add `PRIOR_SUMMARY_INSTRUCTION` (in `promptConstants.ts`) and prepend it to the summary block in `buildSystemPrompt`. It tells the model the summary is the *governing context* for the user's questions — interpret and answer within the topic, scope, and framing established there unless the user clearly changes the subject, keeping domain-specific questions within that domain even when the phrasing alone would be broader. Applies whenever a prior summary is present, so both forks (`forkedFromSummary`) and resume-summary conversations (`summaryText`) benefit.
+
+**Alternatives rejected:** restating the framing inside each user message (fragile, pollutes history, not cached); relying on the tag name alone (the whole bug — a name is not an instruction); making it fork-only (resume-summary continuations have the same continuity need).
+
+**Consequence:** Forked/resumed conversations stay on-topic with the conversation they continue. No data-model or i18n change; the instruction is prompt-only. Purely additive to the system prompt (~60 words) and inside Anthropic's cached prefix.
