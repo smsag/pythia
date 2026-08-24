@@ -32,6 +32,7 @@ export interface Conversation {
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	researchMode?: boolean;           // when true, expose the web_search tool + inject recency context
 }
 
 export interface TokenUsage {
@@ -75,6 +76,7 @@ export interface PythiaTemplate {
 	resumeMode?: "full" | "summary" | "hybrid";
 	outputFolder?: string;    // "." = same folder as the active note at creation time
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	researchMode?: boolean;   // preset the web_search research toggle for new conversations
 	autoPrompt?: string;      // message auto-sent when the conversation opens
 	systemPrompt: string;
 }

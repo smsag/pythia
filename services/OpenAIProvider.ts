@@ -174,7 +174,7 @@ export class OpenAIProvider extends BaseProvider {
 		}
 
 		this.openaiTools = onToolCall
-			? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode).map((def) => ({
+			? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode, conversation.researchMode ?? false).map((def) => ({
 					type: "function" as const,
 					function: {
 						name: def.name,

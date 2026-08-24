@@ -1,12 +1,16 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-061 (content-first summary generation prompts: conversation- and favorites-summary prompts now produce standalone recaps for inline display — banned "This conversation…"-style meta openers, direct fact-phrasing in favorites bullets, and an omittable Action-items section).*
+*Last updated: 2026-08-24 — ADR-062 (client-executed `web_search` "research mode": a Pythia-run Tavily search exposed as a tool through the existing agentic loop, a per-conversation toolbar toggle, and a `<recent_context>` date/grounding block — recency for every provider without a provider-native search tool).*
+
+*Previously, 2026-08-24 — ADR-061 (content-first summary generation prompts: conversation- and favorites-summary prompts now produce standalone recaps for inline display — banned "This conversation…"-style meta openers, direct fact-phrasing in favorites bullets, and an omittable Action-items section).*
 
 *Previously, 2026-08-24 — ADR-060 (frame the previous-conversation summary as governing context: `PRIOR_SUMMARY_INSTRUCTION` now precedes the `<previous_conversation_summary>` block so forks/resumed conversations stay within the topic and scope of the conversation they continue).*
 
 *Previously, 2026-08-24 — ADR-059 (fork anchor summaries generated via a long-press Open-fork menu — "Summarize conversation" always, "Summarize favorites" only when the fork carries favorites; anchor shows the type just generated; standalone "Summarize fork" button removed).*
 
 *Previously, 2026-08-23 — ADR-058 (fork "branch-back": forked snippets are accent-highlighted in the source and expand an inline anchor with the fork's own summary + open/return links; fork carries the source summary as `forkedFromSummary` context, decoupled from its own `summaryText`).*
+
+*Previously, 2026-08-23 — ADR-057 (summaries reworked into top-of-conversation "Speisekarte" cards, generated only via a long-press Send menu; removed the pinned summary panel, sparkle/refresh icons, favorites modal, auto-save-on-close and note-injection summaries).*
 
 *Previously, 2026-08-23 — ADR-056 (highlight-favorite interaction fixes: tap-to-unfavorite with a relabeled toolbar button, surgical single-highlight removal, single-tap navigator jump, reordered selection toolbar).*
 
@@ -855,3 +859,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** two separate summaries (one for display, one for context) — doubles generation cost and storage for a difference the content-first wording already removes; post-processing to strip meta openers (brittle string surgery vs. fixing the prompt); keeping the mandatory Action-items header (emitted empty sections in the card/anchor).
 
 **Consequence:** Summaries read as standalone recaps in the cards and fork anchor while remaining good context (paired with ADR-060). Prompt-only — no data model, no i18n, no stored-summary migration; existing summaries are unchanged until regenerated.
+
+### ADR-062 — Client-executed web search ("research mode") over provider-native search
+
+**Status:** Active
+
+**Context:** Every model Pythia supports answers only from frozen training data, with no path to anything after its cutoff — unlike the "research modes" shipped by major providers. Pythia already grounds answers in vault notes but had no live-recency path. Two options existed: enable each provider's own server-side web-search tool (Anthropic `web_search`, OpenAI/Mistral built-ins), or run the search ourselves and feed results back through the existing tool loop.
+
+**Decision:** Run the search client-side (in the plugin) and expose it as a normal tool. A single `web_search` `ToolDefinition` in `ToolHandler.getToolDefinitions` flows into all three providers automatically (each already maps the shared `ToolDefinition[]` into its own SDK shape), and `ToolHandler.execute` routes `web_search` to a new `services/WebSearchService.ts` that queries **Tavily** via Obsidian's `requestUrl`. The result string is returned through the same `onToolCall → string` contract the note-writing tools use, so `BaseProvider`'s agentic loop feeds it back for a follow-up turn with zero loop changes. A per-conversation `researchMode` flag gates the tool (independent of `writeMode`, since search is read-only and must work even when `writeMode` is `"none"`); it is toggled from a `globe` button in the input toolbar and defaults from the `webSearchDefault` setting. When on, `ContextBuilder.buildSystemPrompt` injects a `<recent_context>` block with the current date and an instruction to prefer `web_search` for time-sensitive questions and cite source URLs.
+
+**Alternatives rejected:**
+- *Provider-native search tools* — three separate integrations with divergent shapes, per-provider result/citation formats, and no vault-side control over the backend. The client tool is one implementation behind the existing tool interface.
+- *`fetch` instead of `requestUrl`* — most search APIs (Tavily included) do not send CORS headers to a renderer origin; `requestUrl` runs in the Electron main process and bypasses that. The trade-off — a request in flight cannot be aborted — is acceptable for a ~1–3 s search.
+- *Always injecting the date block* — gated on `researchMode` instead, so plain conversations are unchanged (and the exact-equality prompt tests stay valid); the guidance is only meaningful when the tool is available.
+- *Caching fetched sources into the vault* — deferred; this pass is search + recency only.
+
+**Consequence:** Live recency for all three providers from one tool definition and one execution branch. `WebSearchService` never throws — a missing key, HTTP error, or network failure returns an `"Error: …"` string the model reads and recovers from, matching the note-tool convention. New settings: `searchSecretName` (Tavily key via Obsidian SecretStorage), `webSearchDefault`, `webSearchMaxResults` (caps results, bounding a research turn's token cost). `Conversation`/`PythiaTemplate` gained `researchMode`; templates can preset it via `research_mode` frontmatter. i18n: added `webSearchSection`, `searchKeyName`/`Desc`, `webSearchDefaultName`/`Desc`, `webSearchMaxResultsName`/`Desc`, `researchToggleTooltip`, `research{Enabled,Disabled,NoKey}Notice`, `searchingLabel`, `searchedLabel`, `searchFailedLabel`.

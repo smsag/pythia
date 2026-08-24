@@ -116,6 +116,18 @@ describe("buildSystemPrompt", () => {
 			"\n\n<previous_conversation_summary>\nSummary\n</previous_conversation_summary>"
 		);
 	});
+
+	it("adds a recent_context block only when research mode is on", () => {
+		const off = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
+		expect(off).not.toContain("<recent_context>");
+
+		const on = buildSystemPrompt(baseConv({ systemPrompt: "Hi", researchMode: true }));
+		expect(on).toContain("<recent_context>");
+		expect(on).toContain("Current date:");
+		expect(on).toMatch(/web_search/);
+		// A real ISO date (YYYY-MM-DD) is embedded.
+		expect(on).toMatch(/Current date: \d{4}-\d{2}-\d{2}\./);
+	});
 });
 
 // ── buildAttachedNotesContent ─────────────────────────────────────────────────

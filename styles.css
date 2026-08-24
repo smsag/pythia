@@ -1210,6 +1210,14 @@ body.is-mobile .p-textarea {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
+.p-tool-btn.is-active {
+  color: var(--text-on-accent);
+  background: var(--color-accent);
+}
+.p-tool-btn.is-active:hover {
+  color: var(--text-on-accent);
+  background: var(--color-accent);
+}
 .p-tool-btn svg {
   width: 12px;
   height: 12px;

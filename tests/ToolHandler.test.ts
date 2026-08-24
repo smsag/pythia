@@ -7,6 +7,7 @@ vi.mock("../services/NoteWriter", () => ({ NoteWriter: class {} }));
 
 import { getToolDefinitions, ToolHandler } from "../services/ToolHandler";
 import type { NoteWriter } from "../services/NoteWriter";
+import type { WebSearchService } from "../services/WebSearchService";
 import type { ToolCall } from "../models/types";
 
 // ── Minimal mock writer ───────────────────────────────────────────────────────
@@ -157,5 +158,77 @@ describe("ToolHandler — unknown tool", () => {
 	it("returns an error for an unrecognised tool name", async () => {
 		const result = await makeHandler().execute(call("delete_note", { path: "Notes/x.md", content: "" }));
 		expect(result).toMatch(/unknown tool.*delete_note/i);
+	});
+});
+
+// ── web_search gating ─────────────────────────────────────────────────────────
+
+describe("getToolDefinitions — web_search research gating", () => {
+	it("does not include web_search when research is disabled (default)", () => {
+		const names = getToolDefinitions("Scratch", "all").map((d) => d.name);
+		expect(names).not.toContain("web_search");
+	});
+
+	it("appends web_search when research is enabled, for every write mode", () => {
+		for (const mode of ["none", "create", "update", "rewrite", "all"] as const) {
+			const names = getToolDefinitions("Scratch", mode, true).map((d) => d.name);
+			expect(names).toContain("web_search");
+		}
+	});
+
+	it("exposes web_search even when writeMode is 'none'", () => {
+		const defs = getToolDefinitions("Scratch", "none", true);
+		expect(defs.map((d) => d.name)).toEqual(["web_search"]);
+		expect((defs[0].inputSchema as { required: string[] }).required).toContain("query");
+	});
+});
+
+describe("ToolHandler.allowedToolNames — research", () => {
+	it("omits web_search unless research is enabled", () => {
+		expect(ToolHandler.allowedToolNames("all").has("web_search")).toBe(false);
+		expect(ToolHandler.allowedToolNames("all", true).has("web_search")).toBe(true);
+		expect(ToolHandler.allowedToolNames("none", true).has("web_search")).toBe(true);
+	});
+});
+
+// ── ToolHandler — web_search execution ────────────────────────────────────────
+
+const makeSearch = (result = "web results"): WebSearchService =>
+	({ search: vi.fn().mockResolvedValue(result) } as unknown as WebSearchService);
+
+describe("ToolHandler — web_search", () => {
+	it("routes to the search service and returns its string result", async () => {
+		const search = makeSearch("Summary: X");
+		const handler = new ToolHandler(makeWriter(), search);
+		const result = await handler.execute(
+			call("web_search", { query: "latest news" }),
+			new Set(["web_search"])
+		);
+		expect(search.search).toHaveBeenCalledWith("latest news");
+		expect(result).toBe("Summary: X");
+	});
+
+	it("rejects a missing/empty query before calling the service", async () => {
+		const search = makeSearch();
+		const handler = new ToolHandler(makeWriter(), search);
+		const result = await handler.execute(call("web_search", { query: "  " }), new Set(["web_search"]));
+		expect(result).toMatch(/query.*non-empty/i);
+		expect(search.search).not.toHaveBeenCalled();
+	});
+
+	it("returns an error when no search service is wired", async () => {
+		const result = await makeHandler().execute(
+			call("web_search", { query: "q" }),
+			new Set(["web_search"])
+		);
+		expect(result).toMatch(/web search is not available/i);
+	});
+
+	it("is blocked when web_search is not in the allowed set", async () => {
+		const search = makeSearch();
+		const handler = new ToolHandler(makeWriter(), search);
+		const result = await handler.execute(call("web_search", { query: "q" }), new Set(["create_note"]));
+		expect(result).toMatch(/not allowed/i);
+		expect(search.search).not.toHaveBeenCalled();
 	});
 });

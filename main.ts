@@ -17,6 +17,7 @@ import { ConversationStore } from "./services/ConversationStore";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
 import { ToolHandler } from "./services/ToolHandler";
+import { WebSearchService } from "./services/WebSearchService";
 import { PromptOptimizerService } from "./services/PromptOptimizerService";
 import {
 	applySettingsMigrations,
@@ -35,11 +36,13 @@ export default class PythiaPlugin extends Plugin {
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
 	plaintextMistralKey = "";
+	plaintextSearchKey = "";
 
 	llmRouter!: LLMRouter;
 	conversationStore!: ConversationStore;
 	templateLoader!: TemplateLoader;
 	noteWriter!: NoteWriter;
+	webSearchService!: WebSearchService;
 	toolHandler!: ToolHandler;
 	promptOptimizerService!: PromptOptimizerService;
 
@@ -53,7 +56,8 @@ export default class PythiaPlugin extends Plugin {
 		this.conversationStore = new ConversationStore(this);
 		this.templateLoader = new TemplateLoader(this.app, this.settings);
 		this.noteWriter = new NoteWriter(this.app, this.settings);
-		this.toolHandler = new ToolHandler(this.noteWriter);
+		this.webSearchService = new WebSearchService(this.settings, this.plaintextSearchKey);
+		this.toolHandler = new ToolHandler(this.noteWriter, this.webSearchService);
 		this.promptOptimizerService = new PromptOptimizerService(this.app, this, this.settings, this.llmRouter);
 
 		this.registerView(
@@ -315,6 +319,8 @@ export default class PythiaPlugin extends Plugin {
 		this.llmRouter?.updateApiKey("mistral", this.plaintextMistralKey);
 		this.templateLoader?.updateSettings(this.settings);
 		this.noteWriter?.updateSettings(this.settings);
+		this.webSearchService?.updateSettings(this.settings);
+		this.webSearchService?.updateApiKey(this.plaintextSearchKey);
 		this.promptOptimizerService?.updateSettings(this.settings);
 		const leaves = this.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
 		for (const leaf of leaves) {
@@ -390,6 +396,8 @@ export default class PythiaPlugin extends Plugin {
 			(await this.app.secretStorage.getSecret(this.settings.openaiSecretName)) ?? "";
 		this.plaintextMistralKey =
 			(await this.app.secretStorage.getSecret(this.settings.mistralSecretName)) ?? "";
+		this.plaintextSearchKey =
+			(await this.app.secretStorage.getSecret(this.settings.searchSecretName)) ?? "";
 
 		if (needsSave) {
 			await this.saveData({ settings: this.settings, conversations: this.conversations });
@@ -420,6 +428,14 @@ export default class PythiaPlugin extends Plugin {
 		this.llmRouter?.updateApiKey("mistral", this.plaintextMistralKey);
 	}
 
+	/** Update the Tavily web-search API key reference and refresh the in-memory key from SecretStorage. */
+	async setSearchKey(secretName: string): Promise<void> {
+		this.settings.searchSecretName = secretName;
+		await this.persistData();
+		this.plaintextSearchKey = (await this.app.secretStorage.getSecret(secretName)) ?? "";
+		this.webSearchService?.updateApiKey(this.plaintextSearchKey);
+	}
+
 	/** Exhaustive switch (not a two-way ternary) so a fourth provider fails to
 	 *  compile here instead of silently checking the wrong provider's key. */
 	hasApiKeyFor(provider: Provider): boolean {
@@ -442,6 +458,7 @@ export default class PythiaPlugin extends Plugin {
 		this.llmRouter?.updateSettings(this.settings);
 		this.templateLoader?.updateSettings(this.settings);
 		this.noteWriter?.updateSettings(this.settings);
+		this.webSearchService?.updateSettings(this.settings);
 		this.promptOptimizerService?.updateSettings(this.settings);
 	}
 
@@ -613,6 +630,7 @@ export default class PythiaPlugin extends Plugin {
 			maxTokens: opts.maxTokens,
 			outputFolder: opts.outputFolder,
 			writeMode: opts.writeMode,
+			researchMode: this.settings.webSearchDefault,
 			messages: [],
 		};
 		this.conversations.push(conv);
@@ -638,6 +656,7 @@ export default class PythiaPlugin extends Plugin {
 		});
 		if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 		if (tpl.writeMode) conv.writeMode = tpl.writeMode;
+		if (tpl.researchMode !== undefined) conv.researchMode = tpl.researchMode;
 		if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 		if (tpl.effort !== undefined) conv.effort = tpl.effort;
 		await this.conversationStore.save(conv);

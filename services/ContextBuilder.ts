@@ -9,6 +9,7 @@ import {
 	ATTACHED_NOTE_TAG,
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
+	RECENT_CONTEXT_TAG,
 	MAX_PDF_FILE_SIZE_BYTES,
 	DEFAULT_SYSTEM_PROMPT,
 	GROUNDING_INSTRUCTION,
@@ -25,6 +26,22 @@ export function buildSystemPrompt(conversation: Conversation): string {
 	parts.push(
 		`<${SYSTEM_PROMPT_TAG}>\n${promptText}\n</${SYSTEM_PROMPT_TAG}>`
 	);
+
+	// Recency grounding — only when research mode is on, i.e. when the
+	// web_search tool is available. Injected here (not in promptConstants,
+	// which holds only literal contracts) because the date is computed at
+	// build time. Gating on researchMode also keeps the block out of the
+	// default prompt so plain conversations are unchanged.
+	if (conversation.researchMode) {
+		const today = new Date().toISOString().slice(0, 10);
+		parts.push(
+			`<${RECENT_CONTEXT_TAG}>\n` +
+				`Current date: ${today}.\n` +
+				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
+				`When a question is time-sensitive or you are not confident a fact is current, use the web_search tool and cite the source URLs in your answer rather than relying on memory.\n` +
+				`</${RECENT_CONTEXT_TAG}>`
+		);
+	}
 
 	// A fork carries its source's summary as context in `forkedFromSummary`; a
 	// conversation's own `summaryText` (once it has one) takes precedence.
