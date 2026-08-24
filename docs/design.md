@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-24 — specificity fixes (ADR-065): plugin marks are now scoped `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1) so Obsidian core/theme `mark` rules stop overriding the fork accent back to yellow; the global reset now covers `button/input/textarea` with `background-color: transparent` so Obsidian desktop's grey form-field background no longer paints plugin controls (buttons opt back into a fill at 0,2,0, e.g. `.p-send:not(.stop)`). **Rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core (0,1,1) — a bare element+class tie loses because themes/core load after the plugin.***
+*Last updated: 2026-08-24 — "Pythia Final" redesign phase 1 (ADR-066/067): **frameless** code blocks and selection toolbar (hairlines + a mono header row replace the grey `--background-secondary` box; the toolbar is a masked horizontal carousel on `--background-primary`), and **per-message turn micro-labels** (`.p-turn-label`, mono 9px/0.08em `--text-faint`) — `DU · HH:MM` above user bubbles, `PYTHIA · MODEL · HH:MM` above AI messages, backed by a new optional `Message.model`. New micro type size: **9px** for mono micro-labels (turn labels, code language, section labels). This supersedes the old "no label per AI message" / "no turn dividers" rules.*
+
+*Previously, 2026-08-24 — specificity fixes (ADR-065): plugin marks are now scoped `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1) so Obsidian core/theme `mark` rules stop overriding the fork accent back to yellow; the global reset now covers `button/input/textarea` with `background-color: transparent` so Obsidian desktop's grey form-field background no longer paints plugin controls (buttons opt back into a fill at 0,2,0, e.g. `.p-send:not(.stop)`). **Rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core (0,1,1) — a bare element+class tie loses because themes/core load after the plugin.***
 
 *Previously, 2026-08-24 — the fork-origin snippet (`mark.p-fork-origin`) now uses the same highlighter mechanism as favorites: a translucent `color-mix(var(--color-accent) 40%, transparent)` (mirroring favorites' `--text-highlight-bg` alpha) instead of a 32% tint, with the readable `--text-highlight-bg` as the no-`color-mix` fallback (never a solid accent fill). Forks and favorites now read as the same kind of highlighter, differing only by hue (accent vs. yellow). See ADR-064.*
 
@@ -171,9 +173,13 @@ Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks
 
 LLM-quoted text: `border-left: 3px solid var(--background-modifier-border)` (neutral divider token — **not** `--color-accent`, which is reserved for interactive/active elements), `padding-left: var(--s3)`, `color: var(--text-muted)`, `font-style: normal` (overrides Obsidian's default italic — this app never uses italics). No background/box on the wrapper itself, consistent with "AI message: plain text, no container." Content nested inside (e.g. a fenced code block) still gets its own `.p-code-frame` box, unaffected by the blockquote's own styling.
 
-### Code block frame (`.p-code-frame`)
+### Turn micro-label (`.p-turn-label`)
 
-Background `var(--background-secondary)`, `border: 1px solid var(--background-modifier-border)`, `border-radius: 6px` — the same background+border+radius formula as the app's other "framed content box" components (`.pythia-tool-call`, `.p-msg-optimize-result`), not a bespoke code-specific token. `font-family: var(--font-monospace)` set explicitly. A persistent `.p-code-type-icon` (Lucide `code-2`, `--text-faint`, top-left, always visible — not a hover-reveal like the copy button) labels the block as code; the frame's top padding is widened to keep it clear of the first line of code.
+Mono, **9px**, `letter-spacing: 0.08em`, `--text-faint`, as the first child of every message row. User turns read `DU · HH:MM` (right-aligned, since `.p-msg-user` is `align-items: flex-end`); AI turns read `PYTHIA · <MODEL> · HH:MM` (left-aligned). The model comes from `Message.model` (recorded at generation time) and falls back to the conversation's current model for legacy messages. Time via the pure `formatClockTime()` helper (24h, locale-independent).
+
+### Code block frame (`.p-code-frame`) — frameless (ADR-066)
+
+No background fill, border, or radius. Structure comes from **top/bottom hairlines** (`--background-modifier-border`) plus a header row `.p-code-head`: a `.p-code-type-icon` (Lucide `code-2`, `--text-faint`), the language name `.p-code-lang` (mono 9px `--text-faint`), and — right-aligned — the copy button in `.p-code-actions`. `font-family: var(--font-monospace)` set explicitly on the `<pre>`, which carries only horizontal scroll + drag-to-pan (no box, no reserved top padding). Copy stays hover-reveal on desktop and always-visible under `@media (hover: none)`. Outline cards (summaries, context inspector) remain the only components that keep the filled-box formula.
 
 ### Code block copy button
 
@@ -222,8 +228,9 @@ Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic t
 ## What not to build
 
 - No Favorites row in the header — merged into `#` navigator
-- No avatar or label per AI message
-- No turn divider lines
+- ~~No avatar or label per AI message~~ → superseded: every turn now carries a mono micro-label (`.p-turn-label`, ADR-067)
+- No turn *divider lines* (the mono turn label replaces them — still no horizontal rules between turns)
+- No avatar images or role icons per message — the label is text only
 - No sparkle in the toolbar — the header sparkle handles both generation and panel toggle
 - No card shadows on summary or reference rows
 - No framework mount (no React, Svelte, shadow DOM)

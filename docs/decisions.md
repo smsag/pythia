@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
+*Last updated: 2026-08-24 — "Pythia Final" redesign, phase 1: ADR-066 (frameless code blocks + selection toolbar — hairlines and a mono header replace the grey `--background-secondary` box) and ADR-067 (per-message turn micro-labels `DU · HH:MM` / `PYTHIA · MODEL · HH:MM`, backed by a new optional `Message.model`).*
+
+*Previously, 2026-08-24 — ADR-065 (scope view CSS above Obsidian core: `.pythia-view mark.…` (0,2,1) so the fork accent stops being overridden to yellow, and a `background-color: transparent` reset on `button/input/textarea` (0,1,1) so plugin controls aren't painted grey by Obsidian desktop's form-field background).*
 
 *Previously, 2026-08-24 — ADR-064 (fork-origin highlight now uses the favorites highlighter mechanism — translucent `color-mix(var(--color-accent) 40%)` mirroring `--text-highlight-bg`, with a readable fallback instead of a solid accent fill).*
 
@@ -921,3 +923,29 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** `!important` (blunt, hard to override later, and unnecessary once specificity is correct); per-component `.pythia-view` prefixes on every button (far more churn than fixing the shared reset + the one solid-fill button); leaving the marks unscoped and only tweaking color values (the values were never the problem — they were being overridden wholesale).
 
 **Consequence:** Fork highlights show the accent color; plugin controls are transparent on desktop except where they intentionally opt into a fill. CSS-only. General rule going forward: **view chrome must be scoped under `.pythia-view` (and marks as `.pythia-view mark.…`) so it out-ranks Obsidian core (0,1,1); a bare element+class tie is not enough because themes and core load after the plugin.**
+
+### ADR-066 — Frameless components (code blocks, selection toolbar, fork anchors)
+
+**Status:** Active (reverses ADR-046's framed-box treatment for these components)
+
+**Context:** The "Pythia Final" design consolidates on a frameless visual language: structure comes from hairlines (`--background-modifier-border`), 2px accent left-rules, and mono micro-labels rather than filled grey boxes. ADR-046 had unified code blocks, tool-call chips and the optimizer result on the `--background-secondary` "framed box" formula. The Final design keeps that formula **only** for outline cards (summaries + the context inspector) and removes the grey fill from code blocks, the selection toolbar, and fork anchors.
+
+**Decision:** Make code blocks and the selection toolbar frameless.
+- **Code block:** `.p-code-frame` drops the `--background-secondary` fill, border and radius; it now carries only top/bottom hairlines and a header row (`.p-code-head`: `code-2` icon + language name `.p-code-lang` at mono 9px + hover/touch copy button). The `<pre>` loses its box and reserved top padding. Copy stays hover-reveal on desktop, always-visible under `@media (hover: none)`.
+- **Selection toolbar:** `.pythia-sel-toolbar` swaps the grey band for the panel background (`--background-primary`) with a top hairline only, and gains a right-edge `mask-image` fade as the horizontal-carousel affordance.
+
+**Alternatives rejected:** keeping the framed boxes (contradicts the Final language); a bespoke code-block token (the point is *removing* the fill, not renaming it); a JS-measured overflow fade for the toolbar (pure-CSS mask is simpler and the fade doubles as a permanent "scrolls sideways" hint).
+
+**Consequence:** Calmer, typography-driven code and toolbar surfaces. Mostly CSS; the code-block decorator gains a header row and a language label. Outline cards remain the only filled component family.
+
+### ADR-067 — Per-message turn micro-labels
+
+**Status:** Active (reverses the earlier "no avatar or label per AI message" / "no turn dividers" rules)
+
+**Context:** The Final design labels every turn: `DU · 14:31` right-aligned above user bubbles and `PYTHIA · SONNET 4.6 · 14:32` above AI messages (mono 9px, letter-spacing 0.08em, `--text-faint`). This supersedes the earlier decision to keep messages label-less. The model shown must reflect the model that actually produced a given message, which can differ from the conversation's current model after a switch.
+
+**Decision:** Render a `.p-turn-label` as the first child of every message row via `renderTurnLabel()`. Add an optional `Message.model` recorded at generation time; the AI label reads `msg.model` and falls back to `Conversation.model` for legacy messages that predate the field. Time is formatted by a pure `formatClockTime()` (locale-independent 24h `HH:MM`, unit-tested). New i18n keys `turnUser` / `turnAI`.
+
+**Alternatives rejected:** deriving the model label from the conversation only (mislabels historical turns after a model switch); storing a formatted time string on the message (redundant with the ISO `timestamp`, and not reflowable); per-turn avatars (heavier than the design's mono micro-label).
+
+**Consequence:** Every turn is attributable at a glance. One additive, backfill-safe schema field (`Message.model`); no migration. Turn labels also appear on the streaming row (using the conversation's current model) so the live turn is labelled before it is persisted.

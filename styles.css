@@ -453,10 +453,21 @@
 }
 
 /* ── User message bubble (v3) ───────────────────────────────── */
+/* Turn micro-label above every message (ADR-067): mono 9px, wide tracking,
+   faint. Right-aligned over user bubbles, left-aligned over AI messages. */
+.p-turn-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
 .p-msg-user {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 3px;
 }
 
 .p-bubble {
@@ -583,17 +594,34 @@
    Background/border/radius match the app's other "framed content box"
    components (.pythia-tool-call, .p-msg-optimize-result) — same token
    formula, same visual family. */
+/* Frameless code block (ADR-066): no background fill or radius. Structure comes
+   from top/bottom hairlines plus a header row (icon + language name + copy). */
 .p-code-frame {
   position: relative;
-  margin: var(--s1) 0;
+  margin: var(--s2) 0;
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.p-code-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: var(--s1);
+}
+.p-code-lang {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .p-code-frame > pre {
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  /* Extra top padding reserves a clear strip for the always-visible
-     .p-code-type-icon so it never overlaps the first line of code. */
-  padding: 22px 10px 8px;
+  padding: 0;
   overflow-x: auto;
   font-size: 0.88em;
   font-family: var(--font-monospace);
@@ -660,11 +688,8 @@
 /* Copy button: pinned to the top-right of the frame so it stays fixed
    while the pre scrolls horizontally underneath. */
 .p-code-actions {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 2;
   display: flex;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -707,10 +732,8 @@
    permanent label, not an interactive affordance — no hover/opacity
    treatment, no button semantics. */
 .p-code-type-icon {
-  position: absolute;
-  top: 4px;
-  left: 4px;
   display: flex;
+  flex-shrink: 0;
   color: var(--text-faint);
 }
 .p-code-type-icon svg {
@@ -927,18 +950,23 @@ mark.p-fork-origin.p-highlight-flash {
 .p-del-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 
 /* ── Selection toolbar ─────────────────────────────────────── */
+/* Frameless selection toolbar (ADR-066): no grey band — panel background with a
+   top hairline only. Overflows horizontally as a carousel; the right-edge mask
+   is the "more actions" affordance. */
 .pythia-sel-toolbar {
   flex-shrink: 0;
   display: flex;
   gap: 2px;
   padding: var(--s1) var(--s2);
-  background: var(--background-secondary);
+  background: var(--background-primary);
   border-top: 1px solid var(--background-modifier-border);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
   animation: sel-slide-in 0.12s ease;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .pythia-sel-toolbar::-webkit-scrollbar { display: none; }
 
@@ -950,8 +978,8 @@ mark.p-fork-origin.p-highlight-flash {
 .pythia-sel-btn {
   all: unset;
   cursor: pointer;
-  font-size: 0.78em;
-  padding: 5px 10px;
+  font-size: 10.5px;
+  padding: 5px 7px;
   border-radius: 4px;
   color: var(--text-muted);
   white-space: nowrap;

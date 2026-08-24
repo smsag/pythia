@@ -53,12 +53,16 @@ const de: Strings = {
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",
 
+	// ── Turn labels ───────────────────────────────────────────────────────────
+	turnUser: "DU",
+	turnAI:   "PYTHIA",
+
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",
-	inboxBtn: "Im Posteingang speichern",
+	inboxBtn: "In Posteingang kopieren",
 	forkBtn:  "Verzweigen",
-	favoriteBtn: "Favorit",
+	favoriteBtn: "Favorisieren",
 	unfavoriteBtn: "Entfernen",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────

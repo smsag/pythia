@@ -9,7 +9,7 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -1211,6 +1211,25 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
+	/** Turn micro-label above every message: "DU · 14:31" for user turns,
+	 *  "PYTHIA · SONNET 4.6 · 14:32" for assistant turns. The model is taken from
+	 *  the message (recorded at generation time) and falls back to the
+	 *  conversation's current model for legacy messages that predate the field. */
+	private renderTurnLabel(row: HTMLElement, msg: Message): void {
+		const time = formatClockTime(msg.timestamp);
+		const parts: string[] = [];
+		if (msg.role === "user") {
+			parts.push(t("turnUser"));
+			if (time) parts.push(time);
+		} else {
+			parts.push(t("turnAI"));
+			const model = msg.model ?? this.activeConversation?.model;
+			if (model) parts.push(abbreviateModel(model).toUpperCase());
+			if (time) parts.push(time);
+		}
+		row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
+	}
+
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		// ── User message ────────────────────────────────────────────
 		if (msg.role === "user") {
@@ -1218,6 +1237,7 @@ export class PythiaSidebarView extends ItemView {
 				cls: "p-msg-user",
 				attr: { "data-msg-id": msg.id },
 			});
+			this.renderTurnLabel(row, msg);
 			const bubble = row.createDiv({ cls: "p-bubble" });
 			const isLong = msg.content.length > 280;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
@@ -1250,6 +1270,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
+		this.renderTurnLabel(row, msg);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), aiBody, "", this);
@@ -1275,6 +1296,10 @@ export class PythiaSidebarView extends ItemView {
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
+		this.renderTurnLabel(row, {
+			id: "", role: "assistant", content: "",
+			timestamp: new Date().toISOString(), model: this.activeConversation?.model,
+		});
 		const aiBody = row.createDiv({ cls: "p-ai-body pythia-streaming" });
 		const textNode = document.createTextNode("");
 		aiBody.appendChild(textNode);
@@ -2334,6 +2359,7 @@ export class PythiaSidebarView extends ItemView {
 					role: "assistant",
 					content: fullText,
 					timestamp: new Date().toISOString(),
+					model: conv.model,
 					tokenUsage,
 				};
 				conv.messages.push(assistantMsg);

@@ -52,6 +52,8 @@ const en = {
 	searchFailedLabel: "Web search failed",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
+	turnUser:    "YOU",
+	turnAI:      "PYTHIA",
 	copyBtn:     "Copy",
 	insertBtn:   "Insert into note",
 	inboxBtn:    "Save to inbox",

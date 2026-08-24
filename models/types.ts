@@ -48,6 +48,7 @@ export interface Message {
 	role: "user" | "assistant";
 	content: string;
 	timestamp: string;        // ISO 8601
+	model?: string;           // model ID that generated this assistant message (for the turn label)
 	attachedNotes?: string[]; // notes attached to this specific message
 	tokenUsage?: TokenUsage;  // token counts for assistant messages
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
