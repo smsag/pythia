@@ -126,6 +126,7 @@ export class InlineSuggest {
 	private render(): void {
 		if (!this.dropdown) return;
 		this.dropdown.empty();
+		let activeRow: HTMLElement | null = null;
 		for (let i = 0; i < this.items.length; i++) {
 			const item = this.items[i];
 			const isFolder = item instanceof TFolder;
@@ -134,6 +135,7 @@ export class InlineSuggest {
 					? "pythia-suggest-item pythia-suggest-item--active"
 					: "pythia-suggest-item",
 			});
+			if (i === this.activeIdx) activeRow = row;
 			const iconEl = row.createSpan({ cls: "pythia-suggest-icon" });
 			setIcon(iconEl, isFolder ? "folder" : "file");
 			row.createSpan({ cls: "pythia-suggest-name", text: isFolder ? item.name : (item as TFile).basename });
@@ -146,6 +148,18 @@ export class InlineSuggest {
 				this.activeIdx = i;
 				this.commit();
 			});
+		}
+		// The dropdown is a fixed-height scroll container (max-height + overflow-y),
+		// so with more matches than fit, arrow-key navigation must scroll the active
+		// row back into view — otherwise the selection moves out of sight. Adjust the
+		// dropdown's own scrollTop directly (rather than scrollIntoView, which would
+		// hunt for the wrong scroll ancestor and could nudge the whole panel).
+		if (activeRow) {
+			const box = this.dropdown;
+			const top = activeRow.offsetTop;
+			const bottom = top + activeRow.offsetHeight;
+			if (top < box.scrollTop) box.scrollTop = top;
+			else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
 		}
 	}
 
