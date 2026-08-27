@@ -55,6 +55,19 @@ export const DEFAULT_SYSTEM_PROMPT =
 	"- Use the full response length available when the topic warrants it — do not truncate prematurely\n\n" +
 	"When the user's question is simple or conversational, match their tone — don't over-elaborate on a quick question.";
 
+/** Always appended to the chat system prompt. Suppresses the boilerplate closing
+ *  solicitation the assistant tends to add — "Would you like me to save this as a
+ *  note?", "…or shall I continue with the next section?" — which the "integrated
+ *  into your knowledge base" framing plus the presence of the note-writing tools
+ *  reliably provokes on every turn. Scoped so it does not gag a genuine
+ *  clarifying question the model needs answered to do the current task. */
+export const NO_SOLICITATION_INSTRUCTION =
+	"End your reply when the substantive answer is complete. Do not append a closing " +
+	"offer to save, export, or format the answer as a note or file, and do not tack on a " +
+	"\"shall I continue?\" style question proposing a next section — the user has their own " +
+	"controls for saving and will ask when they want you to continue. A genuine clarifying " +
+	"question you need answered to address the current request is fine; a routine sign-off offer is not.";
+
 /** Framing instruction that precedes the previous-conversation-summary block.
  *  Without it the model treats the summary as ignorable background; a forked or
  *  resumed conversation then loses the topic/scope of the discussion it

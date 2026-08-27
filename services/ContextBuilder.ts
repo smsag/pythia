@@ -16,6 +16,7 @@ import {
 	DEFAULT_SYSTEM_PROMPT,
 	GROUNDING_INSTRUCTION,
 	WEB_CITATION_INSTRUCTION,
+	NO_SOLICITATION_INSTRUCTION,
 } from "./promptConstants";
 
 /**
@@ -29,6 +30,11 @@ export function buildSystemPrompt(conversation: Conversation): string {
 	parts.push(
 		`<${SYSTEM_PROMPT_TAG}>\n${promptText}\n</${SYSTEM_PROMPT_TAG}>`
 	);
+
+	// Always suppress the assistant's boilerplate closing offer to save-as-note /
+	// continue (independent of the user's own system prompt, since the behavior is
+	// driven by the KB framing + note tools, not the prompt text).
+	parts.push(NO_SOLICITATION_INSTRUCTION);
 
 	// Recency grounding — only when research mode is on, i.e. when the
 	// web_search tool is available. Injected here (not in promptConstants,
