@@ -60,4 +60,41 @@ describe("looksTimeSensitive", () => {
 	it("handles empty input", () => {
 		expect(looksTimeSensitive("", YEAR)).toBe(false);
 	});
+
+	// ── German ─────────────────────────────────────────────────────────────────
+	it("fires on German recency/fact cues (fixed forms)", () => {
+		for (const q of [
+			"Wetter heute in Berlin",
+			"Nachrichten über die Wahl",
+			"der Preis von Bitcoin",
+			"aktueller Wechselkurs Euro Dollar",
+			"neueste Schlagzeilen",
+		]) {
+			expect(looksTimeSensitive(q, YEAR), q).toBe(true);
+		}
+	});
+
+	it("fires on declined German stems", () => {
+		for (const q of [
+			"was ist das neueste iPhone",           // neuest…
+			"wer ist der aktuelle Bundeskanzler",   // aktuell…
+			"wann wurde das veröffentlicht",        // veröffentlich…
+			"die jüngsten Ergebnisse",              // jüngst… + ergebnisse
+			"wurde die App aktualisiert",           // aktualisier…
+			"wann erscheint die neue Version",      // erschein… + version
+		]) {
+			expect(looksTimeSensitive(q, YEAR), q).toBe(true);
+		}
+	});
+
+	it("does not fire on timeless German questions", () => {
+		for (const q of [
+			"erkläre Rekursion",
+			"schreibe ein Gedicht über das Meer",
+			"wie funktioniert eine for-Schleife",
+			"fasse diese Notiz zusammen",
+		]) {
+			expect(looksTimeSensitive(q, YEAR), q).toBe(false);
+		}
+	});
 });

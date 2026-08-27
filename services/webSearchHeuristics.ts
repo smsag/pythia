@@ -14,7 +14,9 @@
 
 // Whole-word recency/uncertainty cues. Matched case-insensitively on word
 // boundaries so "nowhere" doesn't match "now" and "newser" doesn't match "news".
+// Multi-word entries (with a space) are matched as plain substrings.
 const CUE_WORDS: string[] = [
+	// ── English ──────────────────────────────────────────────────────────────
 	// explicit recency
 	"latest", "current", "currently", "recent", "recently", "now", "today",
 	"tonight", "yesterday", "nowadays", "up-to-date", "up to date", "so far",
@@ -28,6 +30,36 @@ const CUE_WORDS: string[] = [
 	"schedule", "deadline", "version", "changelog",
 	// present-status questions
 	"who is the", "who's the", "still alive", "who won", "election",
+
+	// ── German (Deutsch) ─────────────────────────────────────────────────────
+	// Non-declining / fixed forms; declining stems live in STEM_CUES below.
+	"heute", "gestern", "jetzt", "nun", "heutzutage",
+	"nachrichten", "neuigkeiten", "schlagzeile", "schlagzeilen", "eilmeldung",
+	"wetter", "markt", "kosten",
+	"preis", "preise", "preisen",
+	"kurs", "kurse", "kursen", "aktienkurs", "aktienkurse", "wechselkurs", "zinssatz",
+	"aktie", "aktien",
+	"vorhersage", "prognose", "ergebnis", "ergebnisse", "tabellenstand",
+	"fahrplan", "zeitplan", "frist", "wahl", "wahlen",
+	// present-status / recency phrases (substring)
+	"dieses jahr", "in diesem jahr", "diesen monat", "diese woche", "heute abend",
+	"wer ist der", "wer ist die", "wer hat gewonnen", "noch am leben",
+];
+
+// German stems whose surface form declines (aktuell → aktuelle/aktuellste,
+// veröffentlicht → veröffentlichung). Matched as `\b<stem>` (word-start boundary,
+// any suffix) so every inflection counts; boundaries keep them from matching
+// mid-compound (e.g. "\bwahl" would still need the stem to start a word).
+const STEM_CUES: string[] = [
+	"aktuell",     // aktuell, aktuelle, aktuellste, aktuellsten
+	"neuest", "neust", // neueste, neuesten, neuste
+	"derzeit",     // derzeit, derzeitig, derzeitige
+	"momentan",
+	"kürzlich", "neulich", "jüngst",
+	"veröffentlich", // veröffentlicht, veröffentlichung, veröffentlichte
+	"angekündig",  // angekündigt, angekündigte
+	"aktualisier", // aktualisiert, aktualisierung
+	"erschien", "erschein", // erschienen, erscheint, erscheinen
 ];
 
 // Time-sensitive when the text names a year at or beyond this one. Anchored to a
@@ -52,6 +84,11 @@ export function looksTimeSensitive(text: string, currentYear: number): boolean {
 		} else if (new RegExp(`\\b${cue}\\b`).test(lower)) {
 			return true;
 		}
+	}
+
+	// Declining German stems: word-start boundary, any suffix.
+	for (const stem of STEM_CUES) {
+		if (new RegExp(`\\b${stem}`).test(lower)) return true;
 	}
 
 	let m: RegExpExecArray | null;
