@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
+*Last updated: 2026-08-27 — ADR-080 (the fork anchor's meta line shows the summary's generation date after the model, matching whichever summary is displayed; model + date hidden until a summary exists).*
+
+*Previously, 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
 
@@ -1128,3 +1130,17 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** seeding the selection as a fake first user message (pollutes the visible transcript and the message history sent on every turn); merging it into the summary text (conflates two distinct things — the source's own summary vs. this branch's anchor — the same conflation ADR-058 untangled).
 
 **Consequence:** A fork's first question now resolves its back-references against the exact passage, so branching from a specific point stays on that point instead of drifting to the generic topic. Covered by three `ContextBuilder` unit tests (excerpt block present + framed; summary-before-excerpt ordering; absent when no selection).
+
+### ADR-080 — Fork anchor meta line shows the summary's generation date
+
+**Status:** Active (extends ADR-058 / ADR-059)
+
+**Context:** The inline branch-back fork anchor (ADR-058) closes with a `.p-fork-anchor-meta` line that read `N Nachrichten · Model · Öffnen →`. The model ID there was low-value — the same abbreviated model already shows in the quick switcher and history sub-lines — while the one fact the anchor's summary could not convey was *how current* it is. The top-of-conversation summary cards already surface this (`formatSummaryTimestamp(updatedAt)` in the card header, ADR-054), but the fork anchor — which renders the very same `summaryText` / `favoritesSummary.text` — did not, so a reader at the origin snippet had no way to tell a fresh synthesis from a stale one.
+
+**Decision:** The meta line now appends the summary's generation date after the model: `N Nachrichten · Model · <date · time> · Öffnen →`, reusing `formatSummaryTimestamp` for parity with the summary cards. The anchor prefers the favorites synthesis over the conversation summary (ADR-059 precedence), so `buildForkAnchor` tracks which one it displays (`summaryKind`) and shows the matching timestamp (`favoritesSummary.updatedAt` vs `summaryUpdatedAt`). Model and date are emitted **only when a summary exists**; an un-summarized fork collapses to `N Nachrichten · Öffnen →`. No data-model, settings, or locale change — both timestamps were already stored.
+
+**Confirmed invariant:** the anchor and the top-of-conversation summary bar read the same fields on the same `Conversation` object, so regenerating a summary from either surface (the anchor's long-press menu or a card's refresh button) updates both; the date reflects that shared state.
+
+**Alternatives rejected:** replacing the model outright (loses the at-a-glance provider cue when several forks branch from one source); a relative "vor 3 Tagen" format (diverges from the absolute `formatSummaryTimestamp` the cards already use).
+
+**Consequence:** A reader scanning origin snippets can tell how fresh each branch's summary is without opening the fork, and the anchor stays visually consistent with the summary cards. Pure presentation change in `buildForkAnchor`; no test surface added.

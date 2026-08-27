@@ -1825,9 +1825,13 @@ export class PythiaSidebarView extends ItemView {
 		const favText = fork.favoritesSummary?.text?.trim();
 		const convText = fork.summaryText?.trim();
 		let summary: string | undefined;
-		if (preferType === "conversation") summary = convText || favText;
-		else if (preferType === "favorites") summary = favText || convText;
-		else summary = favText || convText;
+		// Track which summary is displayed so the meta line can show its generation
+		// date (favorites is preferred unless "conversation" is forced).
+		let summaryKind: "conversation" | "favorites" | undefined;
+		const pickConv = () => { summary = convText; summaryKind = "conversation"; };
+		const pickFav = () => { summary = favText; summaryKind = "favorites"; };
+		if (preferType === "conversation") { if (convText) pickConv(); else if (favText) pickFav(); }
+		else { if (favText) pickFav(); else if (convText) pickConv(); }
 
 		// Header: branch icon + ABZWEIGUNG micro-label (F1).
 		const head = anchor.createDiv({ cls: "p-fork-anchor-head" });
@@ -1844,12 +1848,24 @@ export class PythiaSidebarView extends ItemView {
 				.catch((e) => console.error("[Pythia] fork summary render:", e));
 		}
 
-		// Meta line: "N Nachrichten · Model · Öffnen →". The Öffnen link
-		// short-presses to open the fork, long-presses for the summary menu.
+		// Meta line: "N Nachrichten · Model · <generated date> · Öffnen →". Model and
+		// date are shown only when a summary exists; the date reflects whichever
+		// summary is displayed. The Öffnen link short-presses to open the fork,
+		// long-presses for the summary menu.
 		const meta = anchor.createDiv({ cls: "p-fork-anchor-meta" });
+		const summaryTs = summaryKind === "favorites"
+			? fork.favoritesSummary?.updatedAt
+			: summaryKind === "conversation"
+				? fork.summaryUpdatedAt
+				: undefined;
+		const metaParts = [t("msgCount", { n: String(fork.messages.length) })];
+		if (summaryTs) {
+			metaParts.push(abbreviateModel(fork.model));
+			metaParts.push(formatSummaryTimestamp(summaryTs));
+		}
 		meta.createSpan({
 			cls: "p-fork-anchor-metatext",
-			text: `${t("msgCount", { n: String(fork.messages.length) })} · ${abbreviateModel(fork.model)} · `,
+			text: `${metaParts.join(" · ")} · `,
 		});
 		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
 		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
