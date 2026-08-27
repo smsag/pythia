@@ -266,7 +266,7 @@ REFERENZ  [ pill: filename ✕ ]
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input
-- Opens upward as popover, width 200px
+- Opens upward as popover, width 260px, max-height 384px
 - Two sections: **Starred** (bookmarked messages) → divider → **All prompts** (every user message)
 - Closes on outside click or item tap
 - No separate Favorites row anywhere — fully consolidated here
