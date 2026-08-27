@@ -544,6 +544,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--s2);
+  /* Set the summary "Speisekarte" apart from the conversation below it: the chat's
+     own flex gap (--s3, 12px) reads as too tight a seam between this menu zone and
+     the first message bubble (more noticeable on forks, where the cards sit under
+     the fork banner). --s4 on top of the gap gives a clear ~28px section break.
+     Only applies when cards are present — the container is display:none when empty. */
+  margin-bottom: var(--s4);
 }
 
 .p-summary-card {

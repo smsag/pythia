@@ -3267,15 +3267,24 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Favorite and Fork apply to assistant content only. Hide them when the
-		// selection sits in a user prompt bubble (`.p-msg-user`) — Copy / Insert /
-		// Inbox remain available for the user's own text.
-		const anchorEl = range.commonAncestorContainer instanceof Element
-			? range.commonAncestorContainer
-			: range.commonAncestorContainer.parentElement;
-		const inUserBubble = !!anchorEl?.closest(".p-msg-user");
-		this.favBtn.style.display = inUserBubble ? "none" : "";
-		this.forkBtn.style.display = inUserBubble ? "none" : "";
+		// Favorite and Fork apply to assistant content only, and only to a span that
+		// lives entirely inside ONE assistant message — the same constraint
+		// onFavoriteSelection / onForkConversation enforce. Resolve the owning
+		// assistant message from each selection endpoint (anchor + focus) rather than
+		// the range's commonAncestorContainer: when a drag overshoots a bubble's text
+		// the common ancestor bubbles up to `.p-chat`, whose `.closest(".p-msg-user")`
+		// is null, which previously re-showed both buttons over a user prompt. Show
+		// them only when both endpoints resolve to the same `.p-msg-ai`; hide otherwise
+		// (selection in a user bubble, or crossing a message boundary). Copy / Insert /
+		// Inbox stay available for any selection.
+		const ownerAiMsg = (node: Node | null | undefined): Element | null => {
+			const el = node instanceof Element ? node : node?.parentElement;
+			return el?.closest(".p-msg-ai") ?? null;
+		};
+		const startAi = ownerAiMsg(sel.anchorNode);
+		const inSingleAssistant = startAi !== null && startAi === ownerAiMsg(sel.focusNode);
+		this.favBtn.style.display = inSingleAssistant ? "" : "none";
+		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
 
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
