@@ -293,6 +293,17 @@
 }
 .p-switcher-row:hover .p-switcher-del { opacity: 1; }
 .p-switcher-del:hover { color: var(--text-error, var(--color-red)); }
+.p-switcher-rename {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  margin-right: 6px;
+  transition: opacity 0.08s, color 0.12s;
+}
+.p-switcher-row:hover .p-switcher-rename { opacity: 1; }
+.p-switcher-rename:hover { color: var(--text-normal); }
 .p-switcher-footer {
   padding: 5px 12px;
   border-top: 1px solid var(--background-modifier-border);

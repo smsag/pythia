@@ -2561,6 +2561,23 @@ export class PythiaSidebarView extends ItemView {
 				if (favCount) subEl.createSpan({ cls: "p-switcher-fav-count", text: ` ★ ${favCount}` });
 			}
 
+			// Rename affordance (the header pencil is easy to miss): opens an input to
+			// rename THIS conversation. Discoverable via the title dropdown users
+			// already open, and works for any conversation, not just the active one.
+			const rename = row.createSpan({ cls: "p-switcher-rename", text: "✎", attr: { title: t("renameConvTooltip") } });
+			rename.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				closeSw(); // rename happens in its own modal; close the popover first
+				new InputModal(this.app, t("renameConvTooltip"), t("renameConvPlaceholder"), conv.name, (value) => {
+					const newName = value.trim();
+					if (!newName || newName === conv.name) return;
+					conv.name = newName;
+					void this.plugin.conversationStore.save(conv);
+					void this.plugin.renameConversationFile(conv);
+					if (this.activeConversation?.id === conv.id) this.renderHeader();
+				}).open();
+			});
+
 			const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
 			del.addEventListener("mousedown", (e) => {
 				e.preventDefault(); e.stopPropagation();
