@@ -14,6 +14,7 @@ import { buildSystemPrompt } from "./services/ContextBuilder";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
+import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -3209,7 +3210,7 @@ export class PythiaSidebarView extends ItemView {
 					this.attachLastBubbleLongPress();
 				}
 
-				if (conv.messages.length === 2 && /\d{4}-\d{2}-\d{2}$/.test(conv.name)) {
+				if (shouldGenerateTitle(conv)) {
 					const convId = conv.id;
 					this.plugin.llmRouter
 						.generateConversationTitle(userMsg.content, fullText, conv.provider)
@@ -3225,7 +3226,7 @@ export class PythiaSidebarView extends ItemView {
 						.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
 				}
 
-				if (!userMsg.chapterName) {
+				if (shouldGenerateChapterName(userMsg)) {
 					const convId = conv.id;
 					const msgId  = userMsg.id;
 					this.plugin.llmRouter

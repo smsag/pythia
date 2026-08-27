@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-27 — senior-engineer bug audit: `sendMessage` persists the user turn up front and discards partial replies on error/empty (ADR-087); `evictConversations` keeps survivors in insertion order so "most recent = last element" holds (ADR-088); web-search citations dedupe by domain and a shared `WEB_CITATION_INSTRUCTION` (`services/promptConstants.ts`) unifies the three web-citation instruction sites (ADR-089); `LLMRouter` utility calls route through a `byProvider()` legacy-provider fallback; persistent `sidebar.ts` view-chrome listeners moved to `registerDomEvent`.*
+*Last updated: 2026-08-27 — structural-decomposition roadmap PR0 (ADR-097): a file-size ratchet guard (`scripts/check-file-size.mjs`, wired into CI ahead of the build — 600-line default, grandfathered ceilings for `sidebar.ts`/`main.ts`) and a first tested seam of the `sendMessage` extraction (`services/sendPolicy.ts` — `shouldGenerateTitle`/`shouldGenerateChapterName` — with `tests/sendPolicy.test.ts`). Roadmap #119–#122 in engineering-review.md.*
+
+*Previously, 2026-08-27 — senior-engineer bug audit: `sendMessage` persists the user turn up front and discards partial replies on error/empty (ADR-087); `evictConversations` keeps survivors in insertion order so "most recent = last element" holds (ADR-088); web-search citations dedupe by domain and a shared `WEB_CITATION_INSTRUCTION` (`services/promptConstants.ts`) unifies the three web-citation instruction sites (ADR-089); `LLMRouter` utility calls route through a `byProvider()` legacy-provider fallback; persistent `sidebar.ts` view-chrome listeners moved to `registerDomEvent`.*
 
 *Previously, 2026-08-27 — favorites and fork origins are painted as custom elements (`<pythia-favorite>` / `<pythia-fork>`) instead of `<mark>` so the fork's accent tint isn't overridden by theme `mark` rules; `paintRange` (`ui/HighlightPainter.ts`) gained a `tagName` param and all queries are class-based (ADR-086).*
 
@@ -76,6 +78,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
 | `services/persistence.ts` | 135 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`, and returns survivors in their original insertion order so "most recent = last element" holds — ADR-088) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
+| `services/sendPolicy.ts` | 30 | Pure post-turn trigger predicates lifted from `sidebar.ts`'s `sendMessage` (`shouldGenerateTitle`, `shouldGenerateChapterName`) — a tested seam ahead of the `SendController` extraction (ADR-097) |
 | `services/color.ts` | 50 | Pure accent-contrast helpers: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent` — pick the higher-contrast on-accent token for the user's accent (consumed by `sidebar.ts`'s `applyAccentContrast`, ADR-082) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
 | `models/knownModels.ts` | 120 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`) and `contextWindow`; all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, `getContextWindow()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
@@ -88,10 +91,11 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |
-| `tests/` | — | Vitest unit tests (300 tests across 18 files, ~2 s) |
+| `tests/` | — | Vitest unit tests (417 tests across 24 files, ~1 s) |
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
-| `.github/workflows/ci.yml` | — | CI: lint → build → test on push/PR |
+| `scripts/check-file-size.mjs` | — | File-size ratchet guard (ADR-097): 600-line default for every `.ts`, grandfathered ceilings for `sidebar.ts`/`main.ts` that may only be lowered; run via `npm run check:filesize` |
+| `.github/workflows/ci.yml` | — | CI: lint → file-size budget → build → test on push/PR |
 
 ---
 
@@ -481,7 +485,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 ## Infrastructure
 
-- **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
+- **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → file-size budget (`npm run check:filesize`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`, typed linting (`projectService: true`). `no-console: warn`, `no-explicit-any: off`, `no-floating-promises: error` (with `ignoreVoid: true`). 0 errors, ~8 intentional warnings.
 - **Testing:** Vitest, 300 unit tests across 18 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.
 - **Branch protection:** CI must pass before merge. Force-pushes blocked. Merged branches auto-deleted.
