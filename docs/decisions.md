@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
+*Last updated: 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
+
+*Previously, 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
 
 *Previously, 2026-08-27 — ADR-084 (on a fork, the fork banner renders above the summary cards — order: context inspector → fork banner → summary cards → messages).*
 
@@ -1217,4 +1219,17 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Decision:** `handleSelectionChange` now detects whether the selection's `commonAncestorContainer` is within a `.p-msg-user` row and, if so, hides `favBtn` and `forkBtn` (the fork button is now held on `this.forkBtn` for that toggle); Copy / Insert / Inbox stay visible for the user's own text. Defense in depth: `onFavoriteSelection` and `onForkConversation` also early-return when the resolved message row has class `p-msg-user`, so the actions are impossible even if a button is reached another way. Assistant messages (`.p-msg-ai`) are unaffected.
 
 **Consequence:** Favorite and Fork are assistant-content-only, both in what the toolbar offers and in what the handlers permit — matching their meaning (a saved highlight / a branch excerpt from the model's output). No data-model or locale change; existing favorites on user bubbles (if any were created before this) remain tappable to unfavorite. Verified via build/lint/tests; no new unit test (DOM-selection behavior in the view class has no harness).
+
+
+### ADR-086 — Favorites and fork origins use custom elements, not `<mark>`
+
+**Status:** Active (supersedes the accent-on-`<mark>` mechanism of ADR-064 / ADR-065)
+
+**Context:** Favorites and fork origins were both painted as `<mark>` elements (`ui/HighlightPainter.ts`, shared `paintRange`), differing only by class (`p-highlight` yellow vs `p-fork-origin` accent). The fork was meant to render in the accent color, but kept showing yellow. Root cause: `<mark>` is styled by Obsidian core and community themes (`.markdown-rendered mark`, `--text-highlight-bg`), and those stylesheets load **after** the plugin's. ADR-064/065 tried to win the cascade by scoping `.pythia-view mark.p-fork-origin` (0,2,1) to beat the (0,1,1) core rule — but that only defeats that one selector; any theme that styles `mark` more specifically or with `!important` reverted the fork to yellow, and on engines without `color-mix` the accent declaration was dropped to the yellow fallback anyway. The accent *value* was never the problem — painting onto `<mark>` was.
+
+**Decision:** Wrap favorites in a **`<pythia-favorite>`** custom element and fork origins in **`<pythia-fork>`** (hyphenated, spec-valid custom-element names) instead of `<mark>`. `paintRange` gained a `tagName` parameter (default `pythia-favorite`; forks pass `pythia-fork`). A custom element has **no** theme rules targeting it, so `.pythia-view pythia-fork { background: color-mix(in srgb, var(--color-accent) 25%, transparent) }` applies with no specificity contest and no scoping tricks; `--text-highlight-bg` remains the no-`color-mix` fallback. Favorites keep `--text-highlight-bg` (yellow). Element classes (`p-highlight` / `p-fork-origin`) and data attributes (`data-fav-id` / `data-fork-id`) are retained for JS identification and the flash state; all querySelectors are now class-based (`.p-highlight` / `.p-fork-origin`), element-agnostic. Both switched (not just forks) for a symmetric, element-targeted styling model, per the maintainer's call.
+
+**Trade-offs:** custom elements carry no `<mark>` "highlighted reference" ARIA semantics — a minor accessibility loss accepted for the reliable styling. Bare names like `<fork>` were rejected in favor of hyphenated `pythia-*` (bare names are "unknown elements," not spec-valid custom elements, and risk a future standard tag). Injected only into the live DOM after render (never into stored markdown), so Obsidian's sanitizer is not involved and re-render repaints cleanly.
+
+**Consequence:** Forks reliably render as an accent-tinted highlighter, visually distinct from yellow favorites, in every theme and Obsidian build — no cascade fight. `HighlightPainter` tests assert both wrapper tag names. Any future highlight kind should follow the same custom-element pattern rather than styling `<mark>`.
 

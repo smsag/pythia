@@ -89,12 +89,13 @@ describe("HighlightPainter", () => {
 	});
 
 	describe("paintRange", () => {
-		it("wraps a single-node selection in a tagged mark", () => {
+		it("wraps a single-node selection in a tagged pythia-favorite element", () => {
 			const body = makeBody("<p>the quick brown fox</p>");
 			const range = findRange(body, "quick")!;
 			paintRange(range, "fav-1");
-			const mark = body.querySelector("mark.p-highlight");
+			const mark = body.querySelector(".p-highlight");
 			expect(mark).not.toBeNull();
+			expect(mark!.tagName.toLowerCase()).toBe("pythia-favorite");
 			expect(mark!.getAttribute("data-fav-id")).toBe("fav-1");
 			expect(mark!.textContent).toBe("quick");
 		});
@@ -103,7 +104,7 @@ describe("HighlightPainter", () => {
 			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
 			const range = findRange(body, "brave world")!;
 			paintRange(range, "fav-2");
-			const marks = body.querySelectorAll('mark.p-highlight[data-fav-id="fav-2"]');
+			const marks = body.querySelectorAll('.p-highlight[data-fav-id="fav-2"]');
 			expect(marks.length).toBeGreaterThanOrEqual(2);
 			const joined = Array.from(marks).map((m) => m.textContent).join("");
 			expect(joined).toBe("brave world");
@@ -114,9 +115,9 @@ describe("HighlightPainter", () => {
 		it("removes marks and restores text", () => {
 			const body = makeBody("<p>the quick brown fox</p>");
 			paintRange(findRange(body, "quick")!, "fav-1");
-			expect(body.querySelector("mark.p-highlight")).not.toBeNull();
+			expect(body.querySelector(".p-highlight")).not.toBeNull();
 			clearHighlights(body);
-			expect(body.querySelector("mark.p-highlight")).toBeNull();
+			expect(body.querySelector(".p-highlight")).toBeNull();
 			expect(body.textContent).toBe("the quick brown fox");
 		});
 	});
@@ -129,15 +130,15 @@ describe("HighlightPainter", () => {
 				{ id: "b", text: "gamma delta", occurrenceIndex: 0 },
 			]);
 			expect(missing).toEqual([]);
-			expect(body.querySelector('mark[data-fav-id="a"]')).not.toBeNull();
-			expect(body.querySelector('mark[data-fav-id="b"]')).not.toBeNull();
+			expect(body.querySelector('[data-fav-id="a"]')).not.toBeNull();
+			expect(body.querySelector('[data-fav-id="b"]')).not.toBeNull();
 		});
 
 		it("skips legacy favorites with no text", () => {
 			const body = makeBody("<p>alpha beta</p>");
 			const missing = repaintBody(body, [{ id: "legacy" }]);
 			expect(missing).toEqual([]);
-			expect(body.querySelector("mark.p-highlight")).toBeNull();
+			expect(body.querySelector(".p-highlight")).toBeNull();
 		});
 
 		it("reports favorites whose text can no longer be found", () => {
@@ -153,7 +154,7 @@ describe("HighlightPainter", () => {
 			const favs = [{ id: "a", text: "beta", occurrenceIndex: 0 }];
 			repaintBody(body, favs);
 			repaintBody(body, favs);
-			expect(body.querySelectorAll("mark.p-highlight").length).toBe(1);
+			expect(body.querySelectorAll(".p-highlight").length).toBe(1);
 			expect(body.textContent).toBe("alpha beta gamma");
 		});
 	});
@@ -166,17 +167,17 @@ describe("HighlightPainter", () => {
 				{ id: "b", text: "gamma delta", occurrenceIndex: 0 },
 			]);
 			removeHighlightById(body, "a");
-			expect(body.querySelector('mark[data-fav-id="a"]')).toBeNull();
-			expect(body.querySelector('mark[data-fav-id="b"]')).not.toBeNull();
+			expect(body.querySelector('[data-fav-id="a"]')).toBeNull();
+			expect(body.querySelector('[data-fav-id="b"]')).not.toBeNull();
 			expect(body.textContent).toBe("alpha beta gamma delta");
 		});
 
 		it("removes all fragments of a boundary-crossing highlight", () => {
 			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
 			paintRange(findRange(body, "brave world")!, "x");
-			expect(body.querySelectorAll('mark[data-fav-id="x"]').length).toBeGreaterThanOrEqual(2);
+			expect(body.querySelectorAll('[data-fav-id="x"]').length).toBeGreaterThanOrEqual(2);
 			removeHighlightById(body, "x");
-			expect(body.querySelector("mark.p-highlight")).toBeNull();
+			expect(body.querySelector(".p-highlight")).toBeNull();
 			expect(body.textContent).toBe("hello brave world");
 		});
 
@@ -184,7 +185,7 @@ describe("HighlightPainter", () => {
 			const body = makeBody("<p>alpha beta</p>");
 			repaintBody(body, [{ id: "a", text: "alpha", occurrenceIndex: 0 }]);
 			removeHighlightById(body, "nope");
-			expect(body.querySelector('mark[data-fav-id="a"]')).not.toBeNull();
+			expect(body.querySelector('[data-fav-id="a"]')).not.toBeNull();
 		});
 	});
 
@@ -215,10 +216,10 @@ describe("HighlightPainter", () => {
 		it("wraps in the given class and data attribute", () => {
 			const body = makeBody("<p>alpha beta gamma</p>");
 			paintRange(findRange(body, "beta")!, "f1", "p-fork-origin", "data-fork-id");
-			const mark = body.querySelector("mark.p-fork-origin");
+			const mark = body.querySelector(".p-fork-origin");
 			expect(mark).not.toBeNull();
 			expect(mark!.getAttribute("data-fork-id")).toBe("f1");
-			expect(body.querySelector("mark.p-highlight")).toBeNull();
+			expect(body.querySelector(".p-highlight")).toBeNull();
 		});
 	});
 
@@ -227,18 +228,23 @@ describe("HighlightPainter", () => {
 			const body = makeBody("<p>alpha beta gamma delta</p>");
 			repaintBody(body, [{ id: "fav", text: "alpha", occurrenceIndex: 0 }]);
 			repaintForkOrigins(body, [{ id: "fork1", text: "gamma delta", occurrenceIndex: 0 }]);
-			expect(body.querySelector('mark.p-highlight[data-fav-id="fav"]')).not.toBeNull();
-			expect(body.querySelector('mark.p-fork-origin[data-fork-id="fork1"]')).not.toBeNull();
+			const fav = body.querySelector('.p-highlight[data-fav-id="fav"]');
+			const fork = body.querySelector('.p-fork-origin[data-fork-id="fork1"]');
+			expect(fav).not.toBeNull();
+			expect(fork).not.toBeNull();
+			// Distinct custom elements → the theme's <mark> rules can't touch either.
+			expect(fav!.tagName.toLowerCase()).toBe("pythia-favorite");
+			expect(fork!.tagName.toLowerCase()).toBe("pythia-fork");
 			expect(body.textContent).toBe("alpha beta gamma delta");
 		});
 
 		it("clears prior fork marks and skips text that is absent", () => {
 			const body = makeBody("<p>alpha beta</p>");
 			repaintForkOrigins(body, [{ id: "f1", text: "beta", occurrenceIndex: 0 }]);
-			expect(body.querySelectorAll("mark.p-fork-origin").length).toBe(1);
+			expect(body.querySelectorAll(".p-fork-origin").length).toBe(1);
 			repaintForkOrigins(body, [{ id: "f2", text: "missing", occurrenceIndex: 0 }]);
-			expect(body.querySelector('mark[data-fork-id="f1"]')).toBeNull();
-			expect(body.querySelector("mark.p-fork-origin")).toBeNull();
+			expect(body.querySelector('[data-fork-id="f1"]')).toBeNull();
+			expect(body.querySelector(".p-fork-origin")).toBeNull();
 		});
 	});
 

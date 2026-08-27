@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-27 — new pure module `services/color.ts` (`parseRgb`/`relativeLuminance`/`contrastRatio`/`betterOnAccent`) backs `sidebar.ts`'s `applyAccentContrast()`, which sets the runtime `--p-on-accent` label color for solid accent fills and re-runs on Obsidian's `css-change`. `sidebar.ts` also gained day-anchored turn labels (`isFirstMessageOfDay`/`formatTurnDate`) and a summary-generation date on the fork anchor meta line. See ADR-080, ADR-081, ADR-082.*
+*Last updated: 2026-08-27 — favorites and fork origins are painted as custom elements (`<pythia-favorite>` / `<pythia-fork>`) instead of `<mark>` so the fork's accent tint isn't overridden by theme `mark` rules; `paintRange` (`ui/HighlightPainter.ts`) gained a `tagName` param and all queries are class-based (ADR-086).*
+
+*Previously, 2026-08-27 — new pure module `services/color.ts` (`parseRgb`/`relativeLuminance`/`contrastRatio`/`betterOnAccent`) backs `sidebar.ts`'s `applyAccentContrast()`, which sets the runtime `--p-on-accent` label color for solid accent fills and re-runs on Obsidian's `css-change`. `sidebar.ts` also gained day-anchored turn labels (`isFirstMessageOfDay`/`formatTurnDate`) and a summary-generation date on the fork anchor meta line. See ADR-080, ADR-081, ADR-082.*
 
 *Previously, 2026-08-24 — a fork now injects the exact branched-from passage into the model context as a `<forked_from_excerpt>` anchor (after the source summary), so its opening question stays tied to the specific point rather than drifting to the generic topic (`ContextBuilder`, `FORKED_EXCERPT_INSTRUCTION`/`FORKED_EXCERPT_TAG`). See ADR-079.*
 
@@ -80,7 +82,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
 | `ui/InlineSuggest.ts` | 173 | `#` note-path autocomplete in textarea (md + pdf); relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
 | `ui/CodeBlockDecorator.ts` | 220 | Code block decoration extracted from sidebar: `decorateCodeBlocks`, `stampSvgSize` (was `fixDiagramSvgSize`), `wrapInScrollFrame`, `attachDragToPan` |
-| `ui/HighlightPainter.ts` | — | Favorite-highlight DOM helpers: `findRange` (re-find stored text across text nodes), `computeOccurrenceIndex`, `paintRange` (wrap a range in `mark.p-highlight`, splitting across element boundaries), `clearHighlights`, `removeHighlightById` (surgical single-favorite unwrap), `rangeForHighlight` (Range spanning a favorite's mark fragments), `repaintBody`, `flashHighlight` |
+| `ui/HighlightPainter.ts` | — | Favorite/fork highlight DOM helpers: `findRange` (re-find stored text across text nodes), `computeOccurrenceIndex`, `paintRange` (wrap a range in a `<pythia-favorite>`/`<pythia-fork>` custom element via the `tagName` param — not `<mark>`, ADR-086 — splitting across element boundaries), `clearHighlights`, `removeHighlightById` (surgical single-favorite unwrap), `rangeForHighlight`/`rangeForForkOrigin`, `repaintBody`/`repaintForkOrigins`, `flashHighlight` |
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | ~300 each | i18n strings (English / German) |

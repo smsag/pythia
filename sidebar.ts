@@ -1253,7 +1253,7 @@ export class PythiaSidebarView extends ItemView {
 				await this.setActiveConversation(source);
 				// Prefer landing on the fork-origin anchor (scrolls + expands it);
 				// fall back to the branch message if the snippet can't be located.
-				const mark = this.messagesEl.querySelector(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+				const mark = this.messagesEl.querySelector(`.p-fork-origin[data-fork-id="${forkId}"]`);
 				if (mark) {
 					this.revealForkOrigin(forkId);
 				} else if (conv.forkedFromMessageId) {
@@ -1840,7 +1840,7 @@ export class PythiaSidebarView extends ItemView {
 		const target = e.target instanceof Element ? e.target : null;
 
 		// Fork origin wins over favorites.
-		const forkMark = target?.closest("mark.p-fork-origin");
+		const forkMark = target?.closest(".p-fork-origin");
 		const forkId = forkMark?.getAttribute("data-fork-id");
 		if (forkId) {
 			this.toggleForkAnchor(forkId, forkMark as HTMLElement);
@@ -1848,7 +1848,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		this.tappedFavId = null;
-		const mark = target?.closest("mark.p-highlight");
+		const mark = target?.closest(".p-highlight");
 		const favId = mark?.getAttribute("data-fav-id");
 		if (!favId) return;
 
@@ -1880,7 +1880,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// Insert the anchor immediately after the snippet's last mark fragment.
 		const row = markEl.closest("[data-msg-id]");
-		const marks = row?.querySelectorAll<HTMLElement>(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+		const marks = row?.querySelectorAll<HTMLElement>(`.p-fork-origin[data-fork-id="${forkId}"]`);
 		const lastMark = marks && marks.length ? marks[marks.length - 1] : markEl;
 
 		const anchor = createDiv({ cls: "p-fork-anchor", attr: { "data-fork-id": forkId } });
@@ -2072,7 +2072,7 @@ export class PythiaSidebarView extends ItemView {
 	/** From a fork's banner: scroll to its origin snippet in the source and expand its anchor. */
 	revealForkOrigin(forkId: string): void {
 		const mark = this.messagesEl.querySelector<HTMLElement>(
-			`mark.p-fork-origin[data-fork-id="${forkId}"]`
+			`.p-fork-origin[data-fork-id="${forkId}"]`
 		);
 		if (!mark) return;
 		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
@@ -2208,7 +2208,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// 1) Painted mark — the common case.
 		const mark = row.querySelector<HTMLElement>(
-			`mark.p-highlight[data-fav-id="${fav.id}"]`
+			`.p-highlight[data-fav-id="${fav.id}"]`
 		);
 		if (mark) {
 			scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
