@@ -10,7 +10,6 @@ import {
 } from "obsidian";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, formatSummaryTimestamp, debugLog } from "./services/messageUtils";
-import { buildSystemPrompt } from "./services/ContextBuilder";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
@@ -23,6 +22,7 @@ import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController } from "./ui/HistoryController";
 import { SummaryController } from "./ui/SummaryController";
+import { ContextInspectorController } from "./ui/ContextInspectorController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import {
 	findRange,
@@ -43,7 +43,7 @@ import { buildStreamErrorMessage } from "./services/apiError";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { abbreviateModel, isReasoningModel, isMistralReasoningModel, getContextWindow, MODEL_CATALOG } from "./models/knownModels";
+import { abbreviateModel, isReasoningModel, isMistralReasoningModel, MODEL_CATALOG } from "./models/knownModels";
 import type { ModelInfo } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
@@ -127,9 +127,11 @@ export class PythiaSidebarView extends ItemView {
 	// cards, their auto-collapse observer, and the generate/reveal/save flows.
 	private summaryCardsEl: HTMLElement | null = null;
 	private summaryController!: SummaryController;
-	// Context inspector card (F2/F3) — lives just under the summary cards.
+	// Context inspector card (F2/F3) — lives just under the summary cards. The
+	// container is created here (for DOM position); the ContextInspectorController
+	// (ADR-103) owns the card, the budget bar/chip logic, and the open state.
 	private inspectorEl: HTMLElement | null = null;
-	private inspectorOpen = false; // preserved across rebuilds within a session
+	private contextInspector!: ContextInspectorController;
 	private sendLongPressCleanup: (() => void) | null = null;
 	private suppressNextSendClick = false;
 	private sendMenuWrap!: HTMLElement;
@@ -356,7 +358,7 @@ export class PythiaSidebarView extends ItemView {
 		// width = context usage / model window; turns warning-colored at >=80%.
 		this.ctxBarEl = container.createDiv({ cls: "p-ctx-bar" });
 		this.ctxBarFillEl = this.ctxBarEl.createDiv({ cls: "p-ctx-bar-fill" });
-		this.registerDomEvent(this.ctxBarEl, "click", () => this.revealContextInspector());
+		this.registerDomEvent(this.ctxBarEl, "click", () => this.contextInspector.reveal());
 		this.ctxBarEl.style.display = "none";
 
 		this.buildChatArea(container);
@@ -412,6 +414,23 @@ export class PythiaSidebarView extends ItemView {
 		});
 		// The container div was created in buildChatArea (for DOM position); populate it now.
 		this.summaryController.renderSummaryCards();
+
+		// Construct-once so `inspectorOpen` survives a buildUI rebuild; DOM handles
+		// are read through getters, so a long-lived controller sees current elements.
+		this.contextInspector ??= new ContextInspectorController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getWrapEl: () => this.inspectorEl,
+			getBarEl: () => this.ctxBarEl,
+			getBarFillEl: () => this.ctxBarFillEl,
+			getChipEl: () => this.ctxChipEl,
+			getLastTokenUsageMsg: () => this.lastTokenUsageMsg(),
+			scrollToTop: () => this.scrollToTop(),
+			refreshReferencePills: () => this.renderReferencePills(),
+			onSummarize: () => void this.summaryController.generateConversationSummary(),
+		});
+		// The inspector container was created in buildChatArea; populate it now.
+		this.contextInspector.refresh();
 	}
 
 	private buildHeader(container: HTMLElement): void {
@@ -493,7 +512,7 @@ export class PythiaSidebarView extends ItemView {
 		// lands there in a later phase).
 		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
 		this.ctxChipEl.style.display = "none";
-		this.registerDomEvent(this.ctxChipEl, "click", () => this.revealContextInspector());
+		this.registerDomEvent(this.ctxChipEl, "click", () => this.contextInspector.reveal());
 
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
@@ -908,154 +927,6 @@ export class PythiaSidebarView extends ItemView {
 		addHint("⇧↵", t("emptyHintNewline"));
 	}
 
-	/** Short token label like "~4.3k" / "~640". */
-	private fmtTok(n: number): string {
-		return n >= 1000 ? `~${(n / 1000).toFixed(1)}k` : `~${n}`;
-	}
-
-	/** Scroll to the top and expand the context inspector — the click target of
-	 *  the budget bar / percent chip (F3). */
-	private revealContextInspector(): void {
-		this.scrollToTop();
-		this.inspectorOpen = true;
-		if (this.inspectorEl) {
-			this.fillContextInspector();
-			this.inspectorEl.querySelector(".p-inspector")?.scrollIntoView({ block: "nearest" });
-		}
-	}
-
-	/** Build/refresh the context inspector card (F2/F3) inside `inspectorEl`.
-	 *  Normal mode lists context notes as wikilinks + a system-prompt estimate;
-	 *  when the context window is ≥80% full it switches to a budget breakdown
-	 *  with per-source mini-bars and a "Zusammenfassen" action. */
-	private fillContextInspector(): void {
-		const wrap = this.inspectorEl;
-		if (!wrap) return;
-		wrap.empty();
-		const conv = this.activeConversation;
-		if (!conv) { wrap.style.display = "none"; return; }
-
-		const notes = conv.contextNotes ?? [];
-		const noteTok = notes.map((p) => {
-			const f = this.app.vault.getAbstractFileByPath(p);
-			const tokens = f instanceof TFile ? Math.round(f.stat.size / 4) : 0;
-			return { path: p, tokens };
-		});
-		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv, this.plugin.settings.customInstructions));
-		const last = this.lastTokenUsageMsg();
-		const windowSize = getContextWindow(conv.model);
-		const used = last?.tokenUsage
-			? last.tokenUsage.inputTokens + last.tokenUsage.outputTokens
-			: noteTotal + sysTokens;
-		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
-		const budgetTight = frac >= 0.8;
-
-		// Nothing worth a card: no context notes and plenty of budget.
-		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
-		wrap.style.display = "";
-
-		const card = wrap.createDiv({ cls: "p-inspector" });
-		if (budgetTight) card.addClass("warn");
-
-		// ── Header (toggles the body) ────────────────────────────────
-		const header = card.createDiv({ cls: "p-inspector-header" });
-		setIcon(header.createSpan({ cls: "p-inspector-icon" }), "file-text");
-		const shortK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
-		const titleText = budgetTight
-			? `${t("ctxLabel")} · ${shortK(used)} / ${shortK(windowSize)}`
-			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
-		header.createSpan({ cls: "p-inspector-title", text: titleText });
-		if (budgetTight) {
-			header.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
-		}
-		const chevron = header.createSpan({ cls: "p-inspector-chevron", text: this.inspectorOpen ? "▾" : "▸" });
-		header.addEventListener("click", () => {
-			this.inspectorOpen = !this.inspectorOpen;
-			card.toggleClass("open", this.inspectorOpen);
-			chevron.setText(this.inspectorOpen ? "▾" : "▸");
-		});
-		card.toggleClass("open", this.inspectorOpen);
-
-		// ── Body ─────────────────────────────────────────────────────
-		const body = card.createDiv({ cls: "p-inspector-body" });
-
-		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
-			const bar = row.createDiv({ cls: "p-ins-bar" });
-			const fill = bar.createDiv({ cls: "p-ins-bar-fill" });
-			fill.style.width = `${Math.min(100, fraction * 100).toFixed(1)}%`;
-			if (warn) fill.addClass("warn");
-		};
-		const wikilinkRow = (parent: HTMLElement, path: string): HTMLElement => {
-			const row = parent.createDiv({ cls: "p-inspector-row" });
-			const ref = row.createSpan({ cls: "p-wikilink" });
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
-			const name = ref.createEl("span", {
-				cls: "p-wikilink-name",
-				text: (path.split("/").pop() ?? path).replace(/\.md$/, ""),
-				attr: { title: path },
-			});
-			name.addEventListener("click", async () => {
-				const f = this.app.vault.getAbstractFileByPath(path);
-				if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
-				else new Notice(t("fileNotFound", { path }));
-			});
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
-			return row;
-		};
-
-		if (budgetTight) {
-			// Conversation history row
-			const histTokens = Math.max(0, used - noteTotal - sysTokens);
-			const histRow = body.createDiv({ cls: "p-inspector-row" });
-			histRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxHistoryRow", { count: String(conv.messages.length) }) });
-			miniBar(histRow, windowSize > 0 ? histTokens / windowSize : 0, true);
-			histRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(histTokens) });
-
-			for (const n of noteTok) {
-				const row = wikilinkRow(body, n.path);
-				miniBar(row, windowSize > 0 ? n.tokens / windowSize : 0);
-				row.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(n.tokens) });
-			}
-
-			const sysRow = body.createDiv({ cls: "p-inspector-row" });
-			sysRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxSystemPrompt") });
-			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
-			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
-
-			// Warning + Zusammenfassen
-			const warnRow = body.createDiv({ cls: "p-inspector-warn" });
-			setIcon(warnRow.createSpan({ cls: "p-inspector-warn-icon" }), "alert-triangle");
-			const savings = Math.round(histTokens * 0.85);
-			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
-			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
-			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.summaryController.generateConversationSummary(); });
-		} else {
-			for (const n of noteTok) {
-				const row = wikilinkRow(body, n.path);
-				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
-				const x = row.createEl("button", { cls: "p-wikilink-x", text: "×" });
-				x.addEventListener("click", async () => {
-					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
-					await this.plugin.conversationStore.save(conv);
-					this.renderReferencePills();
-				});
-			}
-			const footer = body.createDiv({ cls: "p-inspector-footer" });
-			const addLink = footer.createSpan({ cls: "p-inspector-add", text: t("ctxAddNote") });
-			addLink.addEventListener("click", () => {
-				new NoteSuggestModal(this.app, (file) => {
-					if (!conv.contextNotes.includes(file.path)) {
-						conv.contextNotes.push(file.path);
-						void this.plugin.conversationStore.save(conv);
-						this.renderReferencePills();
-					}
-				}).open();
-			});
-			footer.createSpan({ cls: "p-inspector-sys", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
-		}
-	}
-
 	private renderHeader(): void {
 		if (!this.activeConversation) {
 			// Empty state: only history, the name, and "+" are shown (ADR-098).
@@ -1181,7 +1052,7 @@ export class PythiaSidebarView extends ItemView {
 		this.referenceRowHasEntries = entries.length > 0;
 		this.updateReferenceRowVisibility();
 		// Keep the context inspector in sync with note add/remove.
-		if (this.inspectorEl) this.fillContextInspector();
+		this.contextInspector.refresh();
 		if (entries.length === 0) return;
 
 		for (const entry of entries) {
@@ -1281,7 +1152,7 @@ export class PythiaSidebarView extends ItemView {
 				// New turn(s) changed the context size — refresh the inspector so
 				// its budget figure / near-full warning stay current without a
 				// full rebuild.
-				if (this.inspectorEl) this.fillContextInspector();
+				this.contextInspector.refresh();
 				if (scrollTo === "top") {
 					this.scrollToTop();
 				} else {
@@ -1301,8 +1172,8 @@ export class PythiaSidebarView extends ItemView {
 		this.lastRenderedMsgId = null;
 
 		// Context inspector is the very first thing in the conversation view.
+		// Populated by the ContextInspectorController once it is constructed at the end of buildUI.
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
-		this.fillContextInspector();
 
 		// The fork banner ("branched from…") comes next: on a fork it's the primary
 		// orientation cue, so it sits above the summary cards and next to the first
@@ -2165,7 +2036,7 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.setText(abbreviateModel(model));
 		this.modelBadgeEl.style.display = "";
 		this.updateSendHint();
-		this.updateContextBar();
+		this.contextInspector.updateContextBar();
 	}
 
 	/** Show a warning beside Send when the effective max-tokens is low enough that
@@ -2346,7 +2217,7 @@ export class PythiaSidebarView extends ItemView {
 		conv.model = m.id;
 		await this.plugin.conversationStore.save(conv);
 		this.updateModelBadge();
-		if (this.inspectorEl) this.fillContextInspector();
+		this.contextInspector.refresh();
 	}
 
 	private onModelBadgeClick(): void {
@@ -2357,7 +2228,7 @@ export class PythiaSidebarView extends ItemView {
 			async (conv) => {
 				await this.plugin.conversationStore.save(conv);
 				this.updateModelBadge();
-				if (this.inspectorEl) this.fillContextInspector();
+				this.contextInspector.refresh();
 			},
 			this.plugin.settings.temperature,
 			this.plugin.settings.effort,
@@ -3166,40 +3037,7 @@ export class PythiaSidebarView extends ItemView {
 			this.sendEstimateEl.setText("");
 			this.sendEstimateEl.style.display = "none";
 		}
-		this.updateContextBar();
-	}
-
-	/** Context-budget bar under the header: fill = (last-known context size) /
-	 *  (model context window). Turns warning-colored and surfaces a header
-	 *  percent chip at >=80%. Hidden until a turn has produced token usage. */
-	private updateContextBar(): void {
-		if (!this.ctxBarEl) return;
-		const conv = this.activeConversation;
-		const last = this.lastTokenUsageMsg();
-		if (!conv || !last?.tokenUsage) {
-			this.ctxBarEl.style.display = "none";
-			this.ctxChipEl.style.display = "none";
-			return;
-		}
-		const used = last.tokenUsage.inputTokens + last.tokenUsage.outputTokens;
-		const windowSize = getContextWindow(conv.model);
-		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
-		const pct = Math.round(frac * 100);
-		const warn = frac >= 0.8;
-		this.ctxBarEl.style.display = "";
-		this.ctxBarFillEl.style.width = `${(frac * 100).toFixed(1)}%`;
-		this.ctxBarEl.toggleClass("warn", warn);
-		this.ctxBarEl.setAttr("title", t("ctxBarTooltip", {
-			used: used.toLocaleString(),
-			total: windowSize.toLocaleString(),
-			pct: String(pct),
-		}));
-		if (warn) {
-			this.ctxChipEl.setText(`${pct}%`);
-			this.ctxChipEl.style.display = "";
-		} else {
-			this.ctxChipEl.style.display = "none";
-		}
+		this.contextInspector.updateContextBar();
 	}
 
 	private setStreamingState(streaming: boolean): void {
