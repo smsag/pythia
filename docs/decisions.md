@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-087 (an errored or empty send now persists the user turn up front and discards partial replies), ADR-088 (conversation eviction preserves survivors' insertion order so "most recent = last element" holds), ADR-089 (web-search citations reconciled by domain and inline web citing re-enabled via a shared `WEB_CITATION_INSTRUCTION`; revises ADR-077's "stop instructing web citations").*
+*Last updated: 2026-08-27 — ADR-090 (favorite/fork highlights adopt smsag.de's "highlighter marker" style — asymmetric corners, diagonal gradient ink sweep, theme-adaptive text-shadow; colors unchanged, always visible).*
+
+*Previously, 2026-08-27 — ADR-087 (an errored or empty send now persists the user turn up front and discards partial replies), ADR-088 (conversation eviction preserves survivors' insertion order so "most recent = last element" holds), ADR-089 (web-search citations reconciled by domain and inline web citing re-enabled via a shared `WEB_CITATION_INSTRUCTION`; revises ADR-077's "stop instructing web citations").*
 
 *Previously, 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
 
@@ -1273,4 +1275,20 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** deterministic-only, i.e. keep forbidding inline web citation and strip any `⟦cite:web:…⟧` markers (simpler, but discards a citation the model volunteered and leaves web answers without inline chips); upgrading the kept source's `ref` to Tavily's full article URL (would break the `${kind}:${ref}` marker→source key used by `eachCitationSegment`, dropping the chip). Put to the maintainer; "reconcile by domain, allow inline" was chosen.
 
 **Consequence:** Research answers can carry inline web chips like note citations, web sources never double-list, and the model receives one coherent citation instruction. `stripForeignCitations` (ADR-077) still removes `【…†…】` native-format noise; deterministic Tavily capture is unchanged.
+
+### ADR-090 — Favorite/fork highlights use smsag.de's "highlighter marker" style
+
+**Status:** Active (restyles the highlight surface of ADR-086; the custom-element mechanism of ADR-086 is unchanged)
+
+**Context:** Favorites (`<pythia-favorite>`) and fork origins (`<pythia-fork>`) rendered as flat solid blocks — `background: var(--text-highlight-bg)` (yellow) and `color-mix(var(--color-accent) 25%, transparent)` respectively, with `border-radius: 2px`. The maintainer wanted them to read like the "highlighter" hover effect on the smsag.de homepage links, keeping each highlight's existing color. That site's `a:hover` rule is the classic marker effect: `border-radius: 1em 0 1em 0` (asymmetric, hand-drawn corners), a diagonal `linear-gradient(-100deg, …)` sweep of a pale ink at varying alpha, and `text-shadow: 1px 1px 1px #fff` for legibility over the ink.
+
+**Decision:** Port the *shape* of that effect to both highlight elements while preserving their colors and making it Obsidian-theme-safe.
+- **Marker sweep, own color.** Each element's `background` becomes `linear-gradient(-100deg, …)` built from its own token — `--text-highlight-bg` for favorites, `--color-accent` for forks — via `color-mix`. The gradient's peak stop is the full token value (favorite) or ≈30% accent (fork, matching the prior 25% tint), so the color is unchanged; lighter stops (12–45%) build the uneven sweep. A plain `background: <solid>` line precedes the gradient as the no-`color-mix` fallback.
+- **Asymmetric corners.** `border-radius: 1em 0 1em 0`, with `box-decoration-break: clone` so the ink and corners stay clean across line wraps.
+- **Theme-adaptive text-shadow.** `text-shadow: 1px 1px 1px var(--background-primary)` — a white halo in light themes (as on smsag.de), a dark halo in dark themes — instead of a hardcoded `#fff` that would look wrong on Obsidian dark themes.
+- **Always visible, not hover-gated.** The marker is the resting appearance (not a `:hover` reveal): favorited/forked spans must stay findable in the transcript, which is the whole point of the feature.
+
+**Alternatives rejected:** reveal-on-hover only (most literal copy of the site, but favorites/forks would be invisible at rest — only reachable via the navigator); recoloring favorites to smsag.de's blue (collides with the accent-blue fork highlight — the two would be indistinguishable); a hardcoded white text-shadow (breaks on dark themes). The hover-behavior and text-shadow questions were put to the maintainer; "always visible" + "adapt per theme" were chosen.
+
+**Consequence:** Both highlights read as a hand-drawn highlighter marker in either theme, colors untouched, with no new elements or JS — a pure `styles.css` change to the two existing rules. The `p-highlight-flash` navigator-jump pulse is unchanged (it briefly fills solid, then settles back to the marker gradient).
 
