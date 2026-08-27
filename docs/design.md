@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — the fork banner's "branched from" link is now a `<span>` (not an `<a>`), matching the extension's standard clickable-link pattern (`--color-accent`, underline only on hover) and dropping the stray Obsidian-core anchor underline (ADR-083).*
+*Last updated: 2026-08-27 — on a fork, the fork banner ("branched from…") now renders above the summary cards instead of below them: conversation-view order is context inspector → fork banner → summary cards → messages (ADR-084).*
+
+*Previously, 2026-08-27 — the fork banner's "branched from" link is now a `<span>` (not an `<a>`), matching the extension's standard clickable-link pattern (`--color-accent`, underline only on hover) and dropping the stray Obsidian-core anchor underline (ADR-083).*
 
 *Previously, 2026-08-27 — solid accent-filled labels (Send button, active tool/effort pills) now use a plugin-computed `--p-on-accent` that auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, fixing unreadable labels on pale/mid accents (ADR-082).*
 
@@ -166,7 +168,7 @@ The inline branch-back anchor (expands when a `mark.p-fork-origin` snippet is ta
 
 ### Summary cards ("Speisekarten")
 
-Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container prepended to the **top of the message list** (`.p-chat`), so they scroll with the conversation. A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
+Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container near the **top of the message list** (`.p-chat`), so they scroll with the conversation. The conversation-view vertical order is: context inspector → **fork banner** (on a fork) → summary cards → messages (ADR-084 — the fork's "branched from" orientation sits above the summaries and next to the first message). A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
 
 - **Header** (`.p-summary-card-header`): `setIcon` glyph (`align-left` for conversation, `star` for favorites) + title (`conversationSummaryTitle` / `favoritesSummaryTitle`) + a ▸/▾ chevron. Click toggles expand/collapse.
 - **Collapsed by default.** Body (`.p-summary-card-body`) reveals on `.open`; the rendered markdown (`.p-summary-card-md`, shares `.p-ai-body` typography, `max-height: 40vh` internal scroll) plus a footer with the timestamp and **Copy** / **Save-to-note** actions. Saved notes (`NoteWriter.saveSummaryNote` / `saveFavoritesSummaryNote`) carry frontmatter `type: "LLM Note"` and a clickable `source:` deep link (`obsidian://pythia?…&cmd=resume&id=…`) that reopens Pythia with the conversation active — no `tags: [pythia]`.

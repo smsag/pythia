@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-083 (the fork banner's "branched from" link is a `<span>`, not an `<a>`, matching the standard clickable-link pattern and dropping Obsidian core's anchor underline).*
+*Last updated: 2026-08-27 — ADR-084 (on a fork, the fork banner renders above the summary cards — order: context inspector → fork banner → summary cards → messages).*
+
+*Previously, 2026-08-27 — ADR-083 (the fork banner's "branched from" link is a `<span>`, not an `<a>`, matching the standard clickable-link pattern and dropping Obsidian core's anchor underline).*
 
 *Previously, 2026-08-27 — ADR-082 (on-accent label text auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, computed at runtime into `--p-on-accent`).*
 
@@ -1192,3 +1194,14 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** scoping `.pythia-view a.pythia-fork-source-link` to out-specify core (works, but keeps a one-off `<a>` link that diverges from every other clickable link in the panel — the span *is* the house pattern); keeping `<a>` with `text-decoration: none !important` (fights the cascade with `!important`, which the codebase avoids).
 
 **Consequence:** The link matches the rest of the UI — no stray underline at rest, underline on hover, accent color from the standard token. Establishes the rule (noted in design.md) that in-panel links are spans, never `<a>` elements. The one other `createEl("a")` (a tool-call chip file link in `onToolCall`) is out of scope here and can follow if it shows the same artifact.
+
+### ADR-084 — Fork banner renders above the summary cards
+
+**Status:** Active
+
+**Context:** On a forked conversation's first paint, `renderMessages` laid out the top of the scroll as: context inspector → summary cards ("Speisekarten") → fork banner ("Verzweigt von…") → messages. But the fork banner is the primary *orientation* cue for a fork — it says where this branch came from and links back to the source — while the summary cards are secondary reference. Placing the banner below the summaries pushed it away from the first message and buried the "where am I" signal under content.
+
+**Decision:** Reorder the full-rebuild block in `renderMessages` so the fork banner (`renderForkBannerEl`, rendered only when `conv.forkedFromId` is set) comes directly after the context inspector and before the `.p-summary-cards` container. New vertical order: context inspector → fork banner → summary cards → messages. Both the banner and the summary container are direct children of `messagesEl` appended in call order; no CSS sibling/adjacency selectors reference either, and `summaryCardsEl` is still assigned before `renderSummaryCards()` reads it, so the move is purely positional.
+
+**Consequence:** A fork opens with its provenance banner adjacent to the first message and above the summaries, matching how the branch is meant to be read. Non-forks are unaffected (no banner). Pure ordering change; no data-model, CSS, or test change.
+

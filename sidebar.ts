@@ -1429,11 +1429,14 @@ export class PythiaSidebarView extends ItemView {
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
 		this.fillContextInspector();
 
-		// Summary "Speisekarte" cards sit directly under the context inspector.
+		// The fork banner ("branched from…") comes next: on a fork it's the primary
+		// orientation cue, so it sits above the summary cards and next to the first
+		// message (ADR-084).
+		if (conv.forkedFromId) this.renderForkBannerEl();
+
+		// Summary "Speisekarte" cards sit below the fork info.
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
 		this.renderSummaryCards();
-
-		if (conv.forkedFromId) this.renderForkBannerEl();
 
 		if (msgs.length === 0) {
 			this.renderWelcome(this.messagesEl);
