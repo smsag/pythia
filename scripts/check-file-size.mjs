@@ -19,7 +19,7 @@ const DEFAULT_MAX = 600;
 // DOWN as ADR-097 extractions land; delete an entry once the file drops under
 // DEFAULT_MAX on its own.
 const CEILINGS = {
-	"sidebar.ts": 3057,
+	"sidebar.ts": 2773,
 	"main.ts": 951,
 };
 
