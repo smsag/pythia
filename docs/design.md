@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — the optimizer output is now the **bare rewritten prompt** (ADR-094): a shared `OUTPUT_ONLY_INSTRUCTION` forbids conversational wrapper and a pure `cleanOptimizedOutput()` strips residual preamble / code fences / `---` rules, so "Sure! Here's…" no longer lands in the input box.*
+*Last updated: 2026-08-27 — fork branch-back fix (ADR-096): the fork selection is now trimmed at storage and search, so the source-side accent fork-origin mark (`<pythia-fork>` / `.p-fork-origin`) re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span, which had silently broken when a fork selection carried edge whitespace / a block-boundary newline.*
+
+*Previously, 2026-08-27 — the optimizer output is now the **bare rewritten prompt** (ADR-094): a shared `OUTPUT_ONLY_INSTRUCTION` forbids conversational wrapper and a pure `cleanOptimizedOutput()` strips residual preamble / code fences / `---` rules, so "Sure! Here's…" no longer lands in the input box.*
 
 *Previously, 2026-08-27 — the prompt optimizer now rewrites the input textarea **in place** (ADR-093) instead of showing preview/result bubbles with Use-this/Discard/Retry: it optimizes the current input with the settings framework and replaces it via `execCommand("insertText")` so ⌘Z / iOS shake-to-undo revert; the Send button doubles as the "Optimizing…" indicator. Removed the `.p-msg-optimize-*` / `.p-optimize-*` CSS and four now-dead i18n keys.*
 

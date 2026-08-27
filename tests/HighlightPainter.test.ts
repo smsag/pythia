@@ -44,6 +44,19 @@ describe("HighlightPainter", () => {
 			expect(findRange(body, "missing")).toBeNull();
 		});
 
+		it("does not find a selection carrying block-boundary / content-edge whitespace (why fork selections must be trimmed — ADR-096)", () => {
+			// `Selection.toString()` can include a block-boundary newline or edge
+			// whitespace that the concatenated text-node data never contains, so an
+			// untrimmed selection is unfindable — the fork-origin mark never paints.
+			const body = makeBody("<p>the quick brown fox</p>");
+			expect(findRange(body, "brown fox\n")).toBeNull(); // trailing newline (block end)
+			expect(findRange(body, "brown fox ")).toBeNull();  // trailing space at content end
+			expect(findRange(body, " the quick")).toBeNull();  // leading space at content start
+			// Trimmed, each resolves — the fix trims the stored selection at search time.
+			expect(findRange(body, "brown fox\n".trim())).not.toBeNull();
+			expect(findRange(body, " the quick".trim())).not.toBeNull();
+		});
+
 		it("selects the requested occurrence when text repeats", () => {
 			const body = makeBody("<p>foo bar foo bar foo</p>");
 			const first = findRange(body, "foo", 0);
@@ -245,6 +258,17 @@ describe("HighlightPainter", () => {
 			repaintForkOrigins(body, [{ id: "f2", text: "missing", occurrenceIndex: 0 }]);
 			expect(body.querySelector('[data-fork-id="f1"]')).toBeNull();
 			expect(body.querySelector(".p-fork-origin")).toBeNull();
+		});
+
+		it("falls back to the first occurrence when the stored index is out of range (ADR-096)", () => {
+			// "SSIH" appears twice; a fork recorded occurrenceIndex 5 (stale/out of range).
+			// Without the fallback findRange returns null and NOTHING paints; with it the
+			// mark still appears on the first occurrence so the branch-back is visible.
+			const body = makeBody("<p>SSIH merged with SSIH in 1983</p>");
+			repaintForkOrigins(body, [{ id: "fork1", text: "SSIH", occurrenceIndex: 5 }]);
+			const marks = body.querySelectorAll('.p-fork-origin[data-fork-id="fork1"]');
+			expect(marks.length).toBeGreaterThan(0);
+			expect(marks[0].textContent).toBe("SSIH");
 		});
 	});
 

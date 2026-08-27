@@ -179,7 +179,14 @@ export function repaintForkOrigins(
 	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${FORK_ORIGIN_CLASS}`));
 	for (const fork of forks) {
 		if (!fork.text) continue;
-		const range = findRange(body, fork.text, fork.occurrenceIndex ?? 0);
+		// Fall back to the first occurrence when the stored occurrence index doesn't
+		// resolve (ADR-096): a fork of a short word that repeats in the message (e.g.
+		// "SSIH") records a non-zero index, and if that index is stale/out-of-range at
+		// paint time findRange returns null and the mark silently never paints — which
+		// also kills the tap-to-open anchor and the "Forked from" scroll-to-span. A
+		// visible mark on the first occurrence is far better than none.
+		const range =
+			findRange(body, fork.text, fork.occurrenceIndex ?? 0) ?? findRange(body, fork.text, 0);
 		if (range) paintRange(range, fork.id, FORK_ORIGIN_CLASS, "data-fork-id", FORK_TAG);
 	}
 }

@@ -9,7 +9,7 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, debugLog } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
@@ -1813,8 +1813,21 @@ export class PythiaSidebarView extends ItemView {
 		if (!convId) return;
 		const forks = this.plugin.conversationStore.getAll()
 			.filter((c) => c.forkedFromId === convId && c.forkedFromMessageId === messageId && c.forkedFromSelection)
-			.map((c) => ({ id: c.id, text: c.forkedFromSelection!, occurrenceIndex: c.forkedFromOccurrenceIndex }));
+			// Trim the stored selection when searching so forks saved before ADR-096
+			// (with an untrimmed selection that findRange can't locate) still paint.
+			.map((c) => ({ id: c.id, text: c.forkedFromSelection!.trim(), occurrenceIndex: c.forkedFromOccurrenceIndex }));
 		repaintForkOrigins(body, forks);
+		// Diagnostic (debugMode only): shows each fork's stored text/index and whether
+		// its origin mark actually landed — so a still-broken branch-back is traceable
+		// without guessing (ADR-096).
+		if (forks.length > 0) {
+			debugLog(this.plugin.settings, "repaintForkOrigins", { messageId, forks: forks.map((f) => ({
+				id: f.id,
+				text: f.text,
+				occurrenceIndex: f.occurrenceIndex,
+				painted: !!body.querySelector(`.p-fork-origin[data-fork-id="${f.id}"]`),
+			})) });
+		}
 	}
 
 	/**
@@ -3332,7 +3345,11 @@ export class PythiaSidebarView extends ItemView {
 
 	private onForkConversation(): void {
 		const sel  = window.getSelection();
-		const text = sel?.toString() ?? "";
+		// Trim like onFavoriteSelection: `sel.toString()` can carry leading/trailing
+		// whitespace or a block-boundary newline that the concatenated text-node data
+		// (what findRange searches) never contains, so an untrimmed selection makes the
+		// source-side fork-origin mark impossible to re-find and paint (ADR-096).
+		const text = (sel?.toString() ?? "").trim();
 		const conv = this.activeConversation;
 		if (!conv) return;
 

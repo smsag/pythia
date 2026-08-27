@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-094 (optimizer output must be the bare prompt: a shared `OUTPUT_ONLY_INSTRUCTION` appended to the request forbids preamble/sign-off/rules, and a pure `cleanOptimizedOutput()` strips residual fences/preamble/rules — fixes "Sure! Here's…" wrapper text landing in the input box).*
+*Last updated: 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
+
+*Previously, 2026-08-27 — ADR-094 (optimizer output must be the bare prompt: a shared `OUTPUT_ONLY_INSTRUCTION` appended to the request forbids preamble/sign-off/rules, and a pure `cleanOptimizedOutput()` strips residual fences/preamble/rules — fixes "Sure! Here's…" wrapper text landing in the input box).*
 
 *Previously, 2026-08-27 — ADR-093 (prompt optimizer rewrites the input textarea in place — optimize with the settings framework, replace via `execCommand("insertText")` so ⌘Z / iOS shake revert — instead of an in-conversation preview/confirm/retry flow; no auto-send).*
 
@@ -1359,3 +1361,20 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 
 **Consequence:** The optimizer returns a clean, ready-to-send prompt regardless of the user's template or how chatty the model is; residual fences/rules/preamble are stripped as a fallback. If a small model still leaks a trailing sentence despite the instruction, that's the remaining gap — addressable with more scrubbing if it recurs.
 
+*(ADR-095 is the selection-toolbar assistant-scope hardening — `resolveSingleAssistantMessage()` — which lives on a separate branch; see that branch's decisions.md.)*
+
+### ADR-096 — Fork selection is trimmed so the source-side fork-origin mark can be re-found
+
+**Status:** Active
+
+**Context:** A user reported that after forking a passage, the **source** conversation no longer showed the blue fork-origin highlight, the tap-to-open inline fork summary anchor, or scrolled to the branched span from the "Forked from" link — while the fork itself was created fine. All three depend on one thing: `repaintForkOrigins` re-finding the branched text in the source message (via `findRange`, `full.indexOf(text)` over the concatenated text-node data) and painting a `<pythia-fork>` mark; the "Forked from" link and the anchor both key off that painted `.p-fork-origin[data-fork-id]`. Root cause: `onFavoriteSelection` stores `sel.toString().trim()` but `onForkConversation` stored the **untrimmed** `sel.toString()`. `Selection.toString()` can carry a block-boundary newline or content-edge whitespace that the concatenated data never contains, so `indexOf` returns −1 and the mark never paints. Favorites (trimmed) worked; forks didn't. The bug is latent (present in 2.0.4 too — `ui/HighlightPainter.ts` is byte-identical between 2.0.4 and 2.0.7), which is why a single-word fork worked but a phrase with edge whitespace did not.
+
+**Decision:** Two robustness fixes, since a fork's origin mark must survive imperfect stored data:
+1. **Trim the selection** at both ends of its lifecycle: `onForkConversation` stores `sel.toString().trim()` (matching favorites), and `repaintForkOrigins` trims `forkedFromSelection` when searching — so forks **already saved** untrimmed paint on the next render (no migration).
+2. **Occurrence-index fallback:** `repaintForkOrigins` (`ui/HighlightPainter.ts`) now falls back to the **first** occurrence when the stored `occurrenceIndex` doesn't resolve — `findRange(text, occ) ?? findRange(text, 0)`. This is the case that actually explains the reported single-word failure: a fork of a short word that **repeats** in the message (e.g. "SSIH") records a non-zero index; favorites in the same conversation were unique phrases (index 0), so they painted while the fork silently didn't. A visible mark on the first occurrence beats none (it restores the blue highlight, the tap-to-open anchor, and the "Forked from" scroll-to-span); the fallback only triggers when the exact index fails, so a valid index is unaffected.
+
+A `debugMode`-gated diagnostic in `sidebar.ts`'s `repaintForkOrigins` logs each fork's stored text/index and whether its mark actually landed, so a still-broken branch-back is traceable without guessing. Regression tests in `tests/HighlightPainter.test.ts` cover both the edge-whitespace and out-of-range-index cases.
+
+**Alternatives rejected:** a one-time data migration to rewrite stored selections (unnecessary — trimming/fallback at search time fixes old forks for free); making `findRange` whitespace-**insensitive** by normalizing whitespace runs on both sides (fixes multi-block selections too, but changes matching semantics for favorites and risks over-matching — deferred unless multi-block forks prove to need it); repainting fork origins *after* `paintCitations` to align the DOM state (favorites paint before citations and work, so citation timing isn't the differentiator — not pursued).
+
+**Consequence:** Forking a repeated short word (or a whitespace-padded selection) now paints the accent fork-origin mark in the source, restoring the tap-to-open anchor and the "Forked from" scroll-to-span. If the fallback lands on the wrong occurrence of a repeated word, the mark is at least visible on that word. **Known limitations (traceable via the debug log):** a selection spanning *multiple* blocks carries interior newlines that trimming can't remove; and if the stored selection genuinely isn't present in the rendered text (e.g. it captured an adjacent citation chip's number), even the fallback can't find it — both would need the deferred whitespace-normalizing `findRange` or repainting after citations.
