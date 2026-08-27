@@ -1,187 +1,111 @@
-import { App, Component, MarkdownRenderer, Notice } from "obsidian";
+import { Notice } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 
 export interface OptimizationDeps {
-	app: App;
-	/** The parent Component — passed to MarkdownRenderer for proper lifecycle tracking. */
-	component: Component;
 	plugin: PythiaPlugin;
-	messagesEl: HTMLElement;
 	inputEl: HTMLTextAreaElement;
 	sendBtn: HTMLButtonElement;
-	/** Optional: the old input-toolbar optimize button. The feature now lives in the
-	 *  Send long-press menu, so there may be no dedicated button to reflect the
-	 *  in-progress "active" state onto — the in-message indicator + disabled Send
-	 *  are the primary feedback. Guarded everywhere it's used. */
-	optimizeBtnEl?: HTMLButtonElement;
 	getConversation(): Conversation | null;
 	isStreaming(): boolean;
-	scrollToBottom(): void;
 	autoResizeTextarea(): void;
-	sendMessage(): Promise<void>;
-	/** Bound to the parent Component so Obsidian tracks listener cleanup. */
-	registerDomEvent<K extends keyof HTMLElementEventMap>(
-		el: HTMLElement,
-		event: K,
-		cb: (e: HTMLElementEventMap[K]) => unknown
-	): void;
+	/** Restores the Send button's normal label after the busy state clears. */
+	updateSendBtnLabel(): void;
 }
 
-type OptState = {
-	originalText: string;
-	previewEl: HTMLElement;
-	indicatorEl: HTMLElement | null;
-	resultEl: HTMLElement | null;
-	actionRowEl: HTMLElement | null;
-};
-
+/**
+ * In-place prompt optimizer (ADR-093).
+ *
+ * Flow: read the prompt input → ask the LLM to rewrite it with the framework
+ * configured in settings → replace the textarea content in place. No preview
+ * bubbles or confirm/discard/retry UI — the user either keeps it (click Send) or
+ * reverts (⌘Z on desktop, shake-to-undo on iOS; see replaceInput). Re-running the
+ * optimizer just optimizes whatever the input currently holds, so "another
+ * version" is simply running it again.
+ */
 export class OptimizationController {
-	private state: OptState | null = null;
-	/** Incremented on every start()/retry()/cancel() so a stale in-flight
-	 *  optimizeText() call (from a cancelled or superseded session) can tell
-	 *  it's no longer current and must not overwrite a newer session's DOM. */
+	private active = false;
+	/** Bumped by cancel() so a stale in-flight optimizeText() (from a view teardown
+	 *  or conversation switch) knows not to touch the input when it resolves. */
 	private generation = 0;
 
 	constructor(private readonly d: OptimizationDeps) {}
 
 	get isActive(): boolean {
-		return this.state !== null;
-	}
-
-	setOptimizingState(active: boolean): void {
-		this.d.sendBtn.disabled = active;
-		this.d.inputEl.disabled = active;
-		if (this.d.optimizeBtnEl) {
-			this.d.optimizeBtnEl.disabled = active;
-			this.d.optimizeBtnEl.toggleClass("active", active);
-		}
+		return this.active;
 	}
 
 	async start(): Promise<void> {
-		if (this.state || this.d.isStreaming()) return;
+		if (this.active || this.d.isStreaming()) return;
 		const conv = this.d.getConversation();
 		if (!conv) return;
 		const text = this.d.inputEl.value.trim();
 		if (!text) return;
-
 		if (!this.d.plugin.settings.promptOptimizerTemplateId) {
 			new Notice(t("optimizeNoTemplate"));
 			return;
 		}
 
-		const previewEl = this.d.messagesEl.createDiv({ cls: "p-msg-user p-msg-optimize-preview" });
-		const bubble = previewEl.createDiv({ cls: "p-bubble" });
-		await MarkdownRenderer.render(this.d.app, text, bubble, "", this.d.component);
-
 		const framework = this.d.plugin.settings.defaultPromptFramework;
-		const indicatorEl = this.d.messagesEl.createDiv({ cls: "p-optimize-indicator" });
-		indicatorEl.setText(
-			framework !== "none"
-				? t("optimizingIndicatorFramework", { framework })
-				: t("optimizingIndicator")
-		);
-
-		this.state = { originalText: text, previewEl, indicatorEl, resultEl: null, actionRowEl: null };
-		this.setOptimizingState(true);
-		this.d.scrollToBottom();
-
 		const myGen = ++this.generation;
+		this.setBusy(true);
 		try {
 			const result = await this.d.plugin.promptOptimizerService.optimizeText(
-				text, framework, conv.provider, conv.model
+				text, framework, conv.provider, conv.model,
 			);
-			if (myGen !== this.generation) return; // superseded by a newer session
-			await this.showResult(result, myGen);
+			if (myGen !== this.generation) return; // superseded (view torn down / conversation switched)
+			// Clear the busy state BEFORE replacing: execCommand needs the textarea
+			// enabled and focusable.
+			this.setBusy(false);
+			const optimized = result?.trim();
+			if (optimized) this.replaceInput(optimized);
 		} catch (err) {
 			if (myGen !== this.generation) return;
+			this.setBusy(false);
 			new Notice(t("optimizeFailed", { error: String(err) }));
-			this.cancel();
 		}
 	}
 
-	async showResult(optimizedText: string, myGen: number): Promise<void> {
-		if (!this.state || myGen !== this.generation) return;
-
-		this.state.indicatorEl?.remove();
-		this.state.indicatorEl = null;
-		this.d.optimizeBtnEl?.removeClass("active");
-
-		const resultEl = this.d.messagesEl.createDiv({ cls: "p-msg-optimize-result" });
-		await MarkdownRenderer.render(this.d.app, optimizedText, resultEl, "", this.d.component);
-		this.state.resultEl = resultEl;
-
-		const actionRowEl = this.d.messagesEl.createDiv({ cls: "p-optimize-actions" });
-		const confirmBtn = actionRowEl.createEl("button", { cls: "p-opt-confirm", text: t("useThisBtn") });
-		const discardBtn = actionRowEl.createEl("button", { cls: "p-opt-discard", text: t("discardBtn") });
-		const retryBtn   = actionRowEl.createEl("button", { cls: "p-opt-retry",   text: t("anotherVersionBtn") });
-		this.state.actionRowEl = actionRowEl;
-
-		this.d.registerDomEvent(confirmBtn, "click", () => this.confirm(optimizedText));
-		this.d.registerDomEvent(discardBtn, "click", () => this.cancel());
-		this.d.registerDomEvent(retryBtn,   "click", () => void this.retry());
-
-		this.d.scrollToBottom();
-	}
-
-	confirm(optimizedText: string): void {
-		if (!this.state) return;
-		this.state.previewEl.remove();
-		this.state.resultEl?.remove();
-		this.state.actionRowEl?.remove();
-		this.state = null;
-		this.setOptimizingState(false);
-		this.d.inputEl.value = optimizedText;
-		this.d.autoResizeTextarea();
-		void this.d.sendMessage();
-	}
-
+	/** Discard any in-flight optimization (view teardown / conversation switch). The
+	 *  input is left as-is — a resolving stale call will no-op via the generation guard. */
 	cancel(): void {
 		this.generation++;
-		if (!this.state) return;
-		const original = this.state.originalText;
-		this.state.previewEl.remove();
-		this.state.indicatorEl?.remove();
-		this.state.resultEl?.remove();
-		this.state.actionRowEl?.remove();
-		this.state = null;
-		this.setOptimizingState(false);
-		this.d.inputEl.value = original;
-		this.d.autoResizeTextarea();
+		if (this.active) this.setBusy(false);
 	}
 
-	async retry(): Promise<void> {
-		if (!this.state) return;
-		this.state.resultEl?.remove();
-		this.state.resultEl = null;
-		this.state.actionRowEl?.remove();
-		this.state.actionRowEl = null;
-
-		const framework = this.d.plugin.settings.defaultPromptFramework;
-		const indicatorEl = this.d.messagesEl.createDiv({ cls: "p-optimize-indicator" });
-		indicatorEl.setText(
-			framework !== "none"
-				? t("optimizingIndicatorFramework", { framework })
-				: t("optimizingIndicator")
-		);
-		this.state.indicatorEl = indicatorEl;
-		this.setOptimizingState(true);
-		this.d.scrollToBottom();
-
-		const conv = this.d.getConversation();
-		if (!conv) { this.cancel(); return; }
-		const myGen = ++this.generation;
-		try {
-			const result = await this.d.plugin.promptOptimizerService.optimizeText(
-				this.state.originalText, framework, conv.provider, conv.model
-			);
-			if (myGen !== this.generation) return; // superseded by a newer session
-			await this.showResult(result, myGen);
-		} catch (err) {
-			if (myGen !== this.generation) return;
-			new Notice(t("optimizeFailed", { error: String(err) }));
-			this.cancel();
+	private setBusy(busy: boolean): void {
+		this.active = busy;
+		this.d.inputEl.disabled = busy;
+		this.d.sendBtn.disabled = busy;
+		if (busy) {
+			// Inline progress cue: the Send button doubles as the optimizing indicator
+			// (mirrors how it shows "Stopp" while streaming).
+			this.d.sendBtn.setText(t("optimizingIndicator"));
+		} else {
+			this.d.updateSendBtnLabel();
 		}
+	}
+
+	/**
+	 * Replace the whole textarea with `text` via `execCommand("insertText")` (after
+	 * selecting all) rather than assigning `inputEl.value`. Only the former enters
+	 * the textarea's native undo stack, so ⌘Z (desktop) and iOS shake-to-undo revert
+	 * to the original. Falls back to a direct assignment (no native undo — e.g.
+	 * Android, or if execCommand is unavailable). Leaves focus in the textarea so the
+	 * undo is immediately available and the user can send right away.
+	 */
+	private replaceInput(text: string): void {
+		const el = this.d.inputEl;
+		el.focus();
+		el.setSelectionRange(0, el.value.length);
+		let inserted = false;
+		try {
+			inserted = document.execCommand("insertText", false, text);
+		} catch {
+			inserted = false;
+		}
+		if (!inserted) el.value = text; // fallback: works everywhere, but no native undo
+		this.d.autoResizeTextarea();
 	}
 }

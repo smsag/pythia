@@ -382,18 +382,13 @@ export class PythiaSidebarView extends ItemView {
 		this.buildInputArea(container);
 
 		this.optimizationController = new OptimizationController({
-			app: this.app,
-			component: this,
 			plugin: this.plugin,
-			messagesEl: this.messagesEl,
 			inputEl: this.inputEl,
 			sendBtn: this.sendBtn,
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
-			scrollToBottom: () => this.scrollToBottom(),
 			autoResizeTextarea: () => this.autoResizeTextarea(),
-			sendMessage: () => this.sendMessage(),
-			registerDomEvent: (el, event, cb) => this.registerDomEvent(el, event, cb),
+			updateSendBtnLabel: () => this.updateSendBtnLabel(),
 		});
 
 		this.navigatorController = new NavigatorController({
