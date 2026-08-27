@@ -153,6 +153,18 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("webSearchAutoArmName"))
+			.setDesc(t("webSearchAutoArmDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.webSearchAutoArm)
+					.onChange(async (value) => {
+						this.plugin.settings.webSearchAutoArm = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName(t("webSearchMaxResultsName"))
 			.setDesc(t("webSearchMaxResultsDesc"))
 			.addText((text) =>
@@ -365,6 +377,21 @@ export class PythiaSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName(t("customInstructionsName"))
+			.setDesc(t("customInstructionsDesc"))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder(t("customInstructionsPlaceholder"))
+					.setValue(this.plugin.settings.customInstructions)
+					.onChange(async (value) => {
+						this.plugin.settings.customInstructions = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+				text.inputEl.addClass("pythia-settings-textarea");
+			});
 
 		new Setting(containerEl)
 			.setName(t("debugModeName"))

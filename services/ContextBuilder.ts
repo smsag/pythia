@@ -16,19 +16,34 @@ import {
 	DEFAULT_SYSTEM_PROMPT,
 	GROUNDING_INSTRUCTION,
 	WEB_CITATION_INSTRUCTION,
+	NO_SOLICITATION_INSTRUCTION,
+	CUSTOM_INSTRUCTIONS_TAG,
 } from "./promptConstants";
 
 /**
  * Builds the system prompt from a conversation's system prompt text and
- * optional summary.
+ * optional summary. `customInstructions` (from settings) are appended as
+ * standing user guidance after the conversation's own system prompt.
  */
-export function buildSystemPrompt(conversation: Conversation): string {
+export function buildSystemPrompt(conversation: Conversation, customInstructions = ""): string {
 	const parts: string[] = [];
 
 	const promptText = conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 	parts.push(
 		`<${SYSTEM_PROMPT_TAG}>\n${promptText}\n</${SYSTEM_PROMPT_TAG}>`
 	);
+
+	// User's global standing instructions, if any — treated as authoritative
+	// preferences layered on top of the system prompt.
+	const custom = customInstructions.trim();
+	if (custom) {
+		parts.push(`<${CUSTOM_INSTRUCTIONS_TAG}>\n${custom}\n</${CUSTOM_INSTRUCTIONS_TAG}>`);
+	}
+
+	// Always suppress the assistant's boilerplate closing offer to save-as-note /
+	// continue (independent of the user's own system prompt, since the behavior is
+	// driven by the KB framing + note tools, not the prompt text).
+	parts.push(NO_SOLICITATION_INSTRUCTION);
 
 	// Recency grounding — only when research mode is on, i.e. when the
 	// web_search tool is available. Injected here (not in promptConstants,
@@ -41,7 +56,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 			`<${RECENT_CONTEXT_TAG}>\n` +
 				`Current date: ${today}.\n` +
 				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
-				`When a question is time-sensitive or you are not confident a fact is current, use the web_search tool rather than relying on memory. ` +
+				`Default to the web_search tool whenever a question is time-sensitive or you are not fully confident a fact is still current: search first, then answer from the results rather than from memory. ` +
 				`Base your answer on the results. ${WEB_CITATION_INSTRUCTION}\n` +
 				`</${RECENT_CONTEXT_TAG}>`
 		);

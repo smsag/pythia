@@ -54,6 +54,26 @@
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 34px;
+  position: relative; /* anchors the absolutely-positioned template label */
+}
+
+/* Template caption ("Template: X"): absolutely positioned so it is out of the
+   header flex row and can never displace the trailing "+" button (which must sit
+   at the same right edge in both the main and history-overlay headers). */
+.pythia-template-label {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  transform: translateX(-50%);
+  max-width: 60%;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* ── Context-budget bar (ADR-069) ───────────────────────────────
@@ -140,7 +160,9 @@
   display: flex;
   align-items: center;
   gap: var(--s1);
-  padding: var(--s2) var(--s2) var(--s2) var(--s2);
+  /* Match .p-header exactly so the trailing "+" sits at an identical position in
+     both views — no visible jump when the history overlay opens/closes. */
+  padding: var(--s2) var(--s2) var(--s2) var(--s3);
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 34px;
@@ -293,6 +315,17 @@
 }
 .p-switcher-row:hover .p-switcher-del { opacity: 1; }
 .p-switcher-del:hover { color: var(--text-error, var(--color-red)); }
+.p-switcher-rename {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  margin-right: 6px;
+  transition: opacity 0.08s, color 0.12s;
+}
+.p-switcher-row:hover .p-switcher-rename { opacity: 1; }
+.p-switcher-rename:hover { color: var(--text-normal); }
 .p-switcher-footer {
   padding: 5px 12px;
   border-top: 1px solid var(--background-modifier-border);
@@ -326,19 +359,39 @@
 }
 .pythia-view .p-model-pop-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 5px 12px;
   font-size: var(--font-small);
   color: var(--text-muted);
   cursor: pointer;
 }
+.p-model-pop-line { display: flex; align-items: center; gap: 8px; }
 .p-model-pop-row:hover { background: var(--background-modifier-hover); }
 .p-model-pop-row.active {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--text-normal);
   font-weight: 600;
 }
+/* "Good for" example tasks: smaller, muted, revealed on hover (desktop) or when
+   the row is armed by a first tap (touch). The touch confirm hint appears only
+   in the armed state. */
+.p-model-pop-good,
+.p-model-pop-taphint {
+  display: none;
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: normal;
+}
+.p-model-pop-good { color: var(--text-faint); font-weight: 400; }
+.p-model-pop-taphint { color: var(--color-accent); font-family: var(--font-monospace); }
+@media (hover: hover) {
+  .p-model-pop-row:hover .p-model-pop-good { display: block; }
+}
+.p-model-pop-row.armed { background: var(--background-modifier-hover); }
+.p-model-pop-row.armed .p-model-pop-good,
+.p-model-pop-row.armed .p-model-pop-taphint { display: block; }
 .p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-model-pop-rtag {
   font-family: var(--font-monospace);
@@ -980,6 +1033,12 @@
 }
 .p-ai-body { color: var(--text-normal); }
 .p-summary-card-md { color: var(--text-muted); }
+/* Collapse the leading block's top margin so an answer that opens with a heading
+   (common) sits directly under the turn-label meta line instead of leaving a big
+   gap from the heading's default margin-block-start. The .p-msg-ai flex gap still
+   provides a small, consistent separation. */
+.p-ai-body > :first-child,
+.p-summary-card-md > :first-child { margin-top: 0; }
 .p-ai-body strong,
 .p-summary-card-md strong { font-weight: 600; }
 .p-ai-body p,
@@ -1536,8 +1595,8 @@
   position: absolute;
   bottom: 32px;
   right: var(--s3);
-  width: 200px;
-  max-height: 240px;
+  width: 260px;      /* 200px × 1.3 */
+  max-height: 384px; /* 240px × 1.6 */
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--background-primary);
@@ -1794,6 +1853,15 @@ body.is-mobile .p-textarea {
   flex: 1;
 }
 
+/* Custom-instructions textarea in the settings tab: full width, monospace. */
+.pythia-settings-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 12px);
+}
+
 .p-tool-btn {
   all: unset;
   cursor: pointer;
@@ -1818,6 +1886,16 @@ body.is-mobile .p-textarea {
 .p-tool-btn.is-active:hover {
   color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
+}
+/* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
+   allowed for this send, without the persistent .is-active toggled state. */
+.p-tool-btn.is-auto-armed {
+  animation: p-auto-arm-pulse 0.8s ease-in-out 2;
+  color: var(--color-accent);
+}
+@keyframes p-auto-arm-pulse {
+  0%, 100% { color: var(--text-faint); }
+  50%      { color: var(--color-accent); }
 }
 .p-tool-btn svg {
   width: 12px;
@@ -2170,6 +2248,24 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Back / attach-all rows inside a drilled-into folder — muted vs. real entries. */
+.pythia-suggest-nav .pythia-suggest-name { color: var(--text-muted); font-weight: 400; }
+.pythia-suggest-nav .pythia-suggest-icon { color: var(--text-faint); }
+
+/* Trailing › drill affordance on folder rows: opens the folder (row body still
+   attaches the whole folder). margin-left:auto pins it to the right edge. */
+.pythia-suggest-drill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  padding: 0 2px;
+}
+.pythia-suggest-drill:hover { color: var(--text-normal); }
+.pythia-suggest-item--active .pythia-suggest-drill { color: var(--text-muted); }
+.pythia-suggest-drill svg { width: 14px; height: 14px; pointer-events: none; }
 
 .pythia-suggest-icon {
   display: flex;

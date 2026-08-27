@@ -162,13 +162,16 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 ### Header
 ```
-[ Conversation title ▾ ][ ✎ pencil ][ model badge ][ 🔗 link ][ 🗑 trash ][ + plus ]
+[ ⌫ history ][ Conversation title ▾ ……grows…… ][ ✎ pencil ][ 🔗 link ][ 🗑 trash ][ model badge ][ + plus ]
 ```
-- Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to switch conversations
+Order left→right (ADR-098): **history · name (grows) · rename · link · delete · [ctx chip] · model · new**. The name's `.p-title-group` is the only `flex: 1` region, so it absorbs all free space and the action cluster + **"+" stay pinned to the right edge**; the "+" is always the header's last flex child so its x never shifts as other controls show/hide. Empty state (no active conversation) shows only **history · name · +** (rename/link/delete `display:none`, model badge hidden by `updateModelBadge`).
+- History ⌫ (`history` icon, far left): opens the in-panel "all conversations" overlay (`.p-history`). Its `.p-history-head` uses the **same padding as `.p-header`** so the overlay's "+" lands at the identical position — no jump on open/close.
+- Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to open the quick switcher
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
-- Model badge: monospace, 10px, `var(--text-faint)`, clickable to open the **model popover** (`.p-model-pop`, F7/ADR-074): provider groups (ANTHROPIC/OPENAI/MISTRAL), rows of model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` → full settings modal. Selecting applies provider+model immediately. The chip shows an accent inset border (`.p-model.open`) while open.
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
+- Model badge: monospace, 10px, `var(--text-faint)`, clickable to open the **model popover** (`.p-model-pop`, F7/ADR-074): provider groups (ANTHROPIC/OPENAI/MISTRAL), rows of model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` → full settings modal. Selecting applies provider+model immediately. The chip shows an accent inset border (`.p-model.open`) while open. Each row also carries a **"good for" example line** (`.p-model-pop-good`, 9px `--text-faint`, ADR-102) — hidden by default, revealed on `:hover` on desktop (gated `@media (hover: hover)`) and by a first tap on touch, which *arms* the row (`.armed`) and shows a `.p-model-pop-taphint` ("Tap again to select") accent hint; a second tap confirms. Row markup is a `.p-model-pop-line` (name/tag/ctx/check) plus the good/hint lines, so the row is a flex **column**. Strings come from `models/modelGuidance.ts` (en/de, keyed by model id).
 - Trash/Plus: standard header actions
+- Template caption (`.pythia-template-label`): `position: absolute`, centered on the header's bottom edge, mono 9px `--text-faint` — deliberately **out of the flex row** so it never displaces the "+".
 - **Context-budget bar** (`.p-ctx-bar`, ADR-069): 3px track (`--background-modifier-border`) directly under the header row; `.p-ctx-bar-fill` width = context usage / model window (`--color-accent`, → `--text-warning` under `.warn` at ≥80%). Click scrolls to top. A header `.p-ctx-chip` (mono 9px, warning-tinted) shows the percentage only at ≥80%.
 - **Send estimate** (`.p-send-estimate`): mono next-send token estimate ("nächste ~Xk") sits left of the Send button; the Send button label is just `Senden`/`Stopp`.
 
@@ -214,7 +217,7 @@ Messages longer than **280 characters** render collapsed to ~3 lines with a fade
 
 ### AI message
 
-Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay.
+Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay. The first rendered block has its top margin collapsed (`.p-ai-body > :first-child { margin-top: 0 }`) so an answer that opens with a heading sits directly under the turn label instead of leaving a large gap from the heading's default `margin-block-start`; the `.p-msg-ai` flex `gap` still gives a small, consistent separation. Same rule applies to `.p-summary-card-md`.
 
 ### Blockquote
 

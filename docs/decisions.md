@@ -1,6 +1,18 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
+*Last updated: 2026-08-27 — ADR-102 (model picker shows a plain-language "good for" example line per model — hover-revealed on desktop, first-tap-reveals / second-tap-confirms on touch — to help users choose without capability jargon; curated for every catalog model in `models/modelGuidance.ts`, localized en/de).*
+
+*Previously, 2026-08-27 — ADR-101 (a global free-text `customInstructions` setting is appended to every chat system prompt inside a `<custom_instructions>` block, after the conversation's own system prompt — the ChatGPT-style "custom instructions" slice; app-contract instructions stay hard-coded, and the no-solicitation guard stays always-on per ADR-100).*
+
+*Previously, 2026-08-27 — ADR-100 (a `NO_SOLICITATION_INSTRUCTION` is always appended to the chat system prompt, suppressing the assistant's boilerplate closing offer to "save this as a note" / "shall I continue with the next section?" — while still permitting a genuine clarifying question).*
+
+*Previously, 2026-08-27 — ADR-099 (web search auto-arms for a single send when the outgoing message reads as time-sensitive and the research toggle is off — a per-turn armed clone offers `web_search` without persisting `researchMode`; the globe pulses to show it fired; trigger wording in the tool description and recency nudge strengthened to a search-first default; `webSearchAutoArm` setting, default on).*
+
+*Previously, 2026-08-27 — ADR-098 (header icon order reworked left→right to history · name · rename · link · delete · model · new; the name group absorbs the flex space so the "+" is always the last child and never shifts, the template caption is pulled out of the flex row into an absolute label, and the history-overlay header frame is matched to the main header so "+" holds the same position across both views).*
+
+*Previously, 2026-08-27 — ADR-097 (`#`-mention note picker drills into folders in place — ArrowRight / swipe-left / a trailing › opens a folder to browse its contents, ArrowLeft / swipe-right / a back row steps up; Enter/tap on a folder still attaches the whole folder, so the addition is non-breaking).*
+
+*Previously, 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
 
 *Previously, 2026-08-27 — ADR-094 (optimizer output must be the bare prompt: a shared `OUTPUT_ONLY_INSTRUCTION` appended to the request forbids preamble/sign-off/rules, and a pure `cleanOptimizedOutput()` strips residual fences/preamble/rules — fixes "Sure! Here's…" wrapper text landing in the input box).*
 
@@ -1378,3 +1390,92 @@ A `debugMode`-gated diagnostic in `sidebar.ts`'s `repaintForkOrigins` logs each 
 **Alternatives rejected:** a one-time data migration to rewrite stored selections (unnecessary — trimming/fallback at search time fixes old forks for free); making `findRange` whitespace-**insensitive** by normalizing whitespace runs on both sides (fixes multi-block selections too, but changes matching semantics for favorites and risks over-matching — deferred unless multi-block forks prove to need it); repainting fork origins *after* `paintCitations` to align the DOM state (favorites paint before citations and work, so citation timing isn't the differentiator — not pursued).
 
 **Consequence:** Forking a repeated short word (or a whitespace-padded selection) now paints the accent fork-origin mark in the source, restoring the tap-to-open anchor and the "Forked from" scroll-to-span. If the fallback lands on the wrong occurrence of a repeated word, the mark is at least visible on that word. **Known limitations (traceable via the debug log):** a selection spanning *multiple* blocks carries interior newlines that trimming can't remove; and if the stored selection genuinely isn't present in the rendered text (e.g. it captured an adjacent citation chip's number), even the fallback can't find it — both would need the deferred whitespace-normalizing `findRange` or repainting after citations.
+
+### ADR-097 — `#`-mention picker drills into folders in place (Option A)
+
+**Status:** Active
+
+**Context:** Typing `#` in the prompt input opens `ui/InlineSuggest.ts`, a flat dropdown of matching folders (max 3) and notes (filled to 8). A folder match could only be *attached wholesale* (`getFilesInFolder` — the whole recursive subtree) on Enter/tap; there was no way to look inside a folder and pick individual files. The request was to let the user open a matched folder — via ArrowRight on desktop, a swipe on mobile — and browse its files.
+
+**Decision:** Add an in-place drill-down (Option A of three considered — the others were an inline accordion and Miller/two-pane columns). The picker keeps a `folderStack`; empty = the flat global search, and descending pushes a folder whose contents (subfolders + `.md`/`.pdf` files, filtered by the still-typed fragment) replace the list, prefixed by a **back** row and an explicit **"Attach all (N)"** row. Interaction model, chosen to keep ArrowRight and swipe the *same* gesture while staying non-breaking:
+- **ArrowRight / swipe-left / trailing › chevron** = drill into the highlighted folder.
+- **ArrowLeft / swipe-right / the back row** = step up one level (ArrowLeft at the top level is *not* consumed, so it still moves the textarea caret).
+- **Enter / tap on a folder** = attach the whole folder, exactly as before — drilling is purely additive.
+On each drill or back step the typed fragment is cleared (`clearFragment` leaves the bare `#`), because the fragment that matched the folder name would match nothing inside it; further typing then filters within the level. Drilling lands the selection on the first content row (past back/attach-all). The single-column design needs no extra width — important in a narrow Obsidian sidebar — and the swipe handlers (horizontal-dominant, ≥40px) mirror the arrow keys so mobile has parity. Three i18n keys added to both locales (`inlineAttachAll`, `inlineDrillTooltip`, `inlineBackTooltip`).
+
+**Alternatives rejected:** inline accordion expansion (collides with the 8-item cap, eats horizontal room with indentation, and horizontal swipe reads as "move sideways" not "unfold" — weak mobile story); Miller/two-pane columns (wants width the sidebar rarely has; heaviest for a lightweight autocomplete).
+
+**Consequence:** Folders are browsable without leaving the input. Mouse-only users get the › chevron and back row (no keyboard/swipe needed); keyboard and touch users get symmetric drill/back gestures. Not unit-tested — the behavior is DOM/layout- and vault-mock-heavy (the scroll-into-view even depends on `offsetTop`/`clientHeight`, which the DOM stub reports as 0); the entry-building split into pure `buildGlobalEntries`/`buildFolderEntries` keeps it reviewable. **Known limitation:** deep subtrees are browsed one level at a time; the per-level content cap is ~20 rows (scrollable), and folders with more are filtered by typing rather than paged.
+
+### ADR-098 — Header icon order and a right edge the "+" never leaves
+
+**Status:** Active
+
+**Context:** The header packed the conversation name (flex-grow) first, then `[model][link][history][delete][+]`. Two problems: the requested order differs, and the "+" new-conversation button visibly *jumped* between the main view and the "all conversations" history overlay. Root cause of the jump: the undocumented, unstyled `.pythia-template-label` div was created as the header's **last** flex child, so whenever a conversation had a template it rendered "Template: X" *after* the "+", shoving the button leftward — while the history overlay (a separate `.p-history-head`) had no such label, so its "+" sat at the true right edge. The two overlay/main frames also had different left padding (`--s2` vs `--s3`).
+
+**Decision:** Reorder the header left→right to **history · name (grows) · rename · link · delete · [ctx chip] · model · new**, per the maintainer's spec (chosen layout: name absorbs the flex space, so the action cluster and the "+" stay pinned to the right — the rename pencil now lives in that right cluster, not glued to the name). To make the "+" position invariant:
+1. The **"+" is always the last flex child.** The name's `.p-title-group` (`flex: 1`) absorbs all free space, so showing/hiding any other control (model, link, delete, ctx chip) shrinks the name area, never moves the "+".
+2. The **template caption is removed from the flex row** — `.pythia-template-label` is now `position: absolute` (centered along the header's bottom edge), so it can never displace the "+".
+3. The **history-overlay header frame matches the main header** exactly (same `padding: s2 s2 s2 s3`), so toggling the overlay leaves the "+" at an identical x.
+Empty state (no active conversation) keeps only **history · name · +** — rename/link/delete are `display:none` and the model badge was already hidden by `updateModelBadge`; `deleteConvBtn` became a stored field so `renderHeader` can gate it too.
+
+**Alternatives rejected:** pencil glued to the name on the left (maintainer chose the conventional title-left / actions-right cluster instead); giving the history overlay the full icon set (most of it is irrelevant to a list view — kept minimal `[← back][title][+]`, only the frame aligned); leaving the template label in-flow but reordered (any in-flow position still displaces a neighbor when it toggles — absolute is the only stable fix).
+
+**Consequence:** The "+" holds one position across empty/active states and across the main/history views. The rename pencil moved from inside the title group to the right cluster. Not unit-tested (pure DOM/CSS layout); verified by reading the flex model — the single `flex:1` name group is the only grow region, and the "+" is terminal in both headers. **Known limitation:** the absolute template caption is centered on the header's bottom edge and truncates at 60% width; a very long template name shows only its head.
+
+### ADR-099 — Web search auto-arms on time-sensitive sends
+
+**Status:** Active
+
+**Context:** The Tavily `web_search` tool was offered to the model *only* when the per-conversation research globe was toggled on (`conversation.researchMode`, default off), gated identically in three places — the tool list ([ToolHandler.getToolDefinitions](../services/ToolHandler.ts)), each provider's request, and the recency nudge in [ContextBuilder.buildSystemPrompt](../services/ContextBuilder.ts). So with the globe off the model had *no* search tool and answered from memory with no signal it could have searched. The maintainer's report — "when I'd expect it, it doesn't fire" — is exactly this: a question needing current info sent in a conversation whose globe was never lit. The plumbing was otherwise sound (`tool_choice` auto, 25 tool rounds, `WebSearchService` never throws).
+
+**Decision:** Auto-arm `web_search` for a **single send** when the research toggle is off, the outgoing message reads as time-sensitive, and a Tavily key is set — chosen over "always available, model decides" and "just make the toggle eager" (maintainer picked auto-arm). Mechanism:
+- A pure, unit-tested heuristic `looksTimeSensitive(text, currentYear)` ([services/webSearchHeuristics.ts](../services/webSearchHeuristics.ts)) matches whole-word recency/uncertainty cues (latest, current, now, news, price, version, "who is the", …) and any year ≥ the current one. Conservative by design: a false positive costs only an unused tool in the request, while the failure we're fixing is false *negatives*.
+- At send time `sendMessage` computes `autoArmedSearch` and passes an **armed shallow clone** `{ ...conv, researchMode: true }` to `streamMessage` for that turn only. The provider reads `conversation` read-only and the assistant reply is appended by sidebar's own callbacks over the *original* `conv`, so nothing armed is ever persisted — the globe stays off after the turn. The same effective flag feeds the two `allowedToolNames` gates so an armed search is actually permitted to execute.
+- The globe **pulses** (`.is-auto-armed`, a 2× accent keyframe) so the auto-arm is visible without flipping the persistent toggle.
+- Trigger wording strengthened in *all* modes (not just auto-arm): the tool description and the recency nudge now say to search *before* answering whenever a fact can change or can't be verified, and to prefer a needless search over a confidently outdated answer.
+- New setting `webSearchAutoArm` (default **on**; `Object.assign` merge backfills it for existing users), so a user who doesn't want unprompted Tavily calls can disable it while keeping the manual globe.
+
+**Alternatives rejected:** "always available when a key is set" (removes the failure entirely but hits Tavily on the model's judgment in every conversation — more credit exposure than the maintainer wanted); mutating `conv.researchMode` transiently instead of cloning (a debounced/`onComplete` save mid-send would persist it — `saveData` serializes the whole object, so a transient field leaks); a heuristic that also parses relative dates/NER (heavier, and the cue+year set already covers the reported cases).
+
+**Consequence:** Search now fires on time-sensitive questions without the user remembering the globe, while the persistent toggle still forces eager+grounded research when they want it, and both are opt-outable. **Known limitations:** the heuristic is English/German-cue and keyword-based, so an oblique time-sensitive question with no cue word and no year still won't auto-arm (the manual globe remains the fallback); and auto-arm only *offers* the tool — the model can still decline to call it.
+
+### ADR-100 — Suppress the assistant's closing save-as-note / continue offer
+
+**Status:** Active
+
+**Context:** With capable models (e.g. Opus), long answers — a book summary was the reported case — reliably ended with a boilerplate solicitation: *"Would you like me to save this as a structured note in your vault, or continue with the next section?"* Every turn. The `DEFAULT_SYSTEM_PROMPT` never asks for this; it is emergent, driven by the "integrated into the user's personal knowledge base" framing plus the visible note-writing tools (`create_note`/…), which the model reads as an invitation to offer saving. It also appears under a *custom* system prompt, so patching the default text alone wouldn't fix it.
+
+**Decision:** Add a `NO_SOLICITATION_INSTRUCTION` constant and always append it as its own part in `ContextBuilder.buildSystemPrompt`, after the (default or custom) system-prompt block. It tells the model to stop when the substantive answer is complete and not to tack on an offer to save/export/format-as-note or a "shall I continue?" proposal — while explicitly exempting a genuine clarifying question the model needs answered to do the current task, so real disambiguation isn't gagged. Applied unconditionally rather than behind a setting because `buildSystemPrompt(conversation)` takes only the conversation (no settings handle), the behavior is near-universally unwanted, and the guard is scoped narrowly; a per-conversation or global opt-out can be threaded later if a user wants the offers back. Only the chat path is affected — summary/title/optimizer generations use their own prompts, not `buildSystemPrompt`.
+
+**Alternatives rejected:** editing `DEFAULT_SYSTEM_PROMPT` only (misses custom-prompt conversations, where the behavior also shows); removing the KB-framing / hiding the note tools (they're wanted — the goal is to stop the *unsolicited offer*, not the capability); a settings toggle (rejected for now — needs a `buildSystemPrompt` signature change to reach settings, and the default everyone wants is "suppressed").
+
+**Consequence:** Replies end at the answer. The exact-output `buildSystemPrompt` tests were updated to expect the always-present guard (it now sits between the system-prompt block and any summary/excerpt parts), plus a test asserting the guard is present. **Known limitation:** it's a prompt-level nudge, not a hard filter — a model may still occasionally close with an offer; and it's unconditional, so a user who *wants* the save prompt has no toggle yet.
+
+### ADR-102 — "Good for" model guidance in the picker (hover on desktop, two-tap on touch)
+
+**Status:** Active
+
+**Context:** Users struggle to choose a model; the popover showed only name, context window, and a "Reasoning" tag — insider signals. Of three options considered (see backlog #119 for the deferred task-first picker), the curated per-model "good for" example line was chosen as lowest-risk. The maintainer further ruled out capability jargon: "deep reasoning / fast / slow" is meaningless to most users, so the descriptor style is **recognizable example tasks** ("Long chapters, in-depth comparisons" / "Quick facts, short rewrites") a user matches their own intent against.
+
+**Decision:** Add a plain-language example line under every model row. Constraints from the maintainer:
+- **Smaller text**, and **revealed on demand** — desktop shows it on `:hover` (gated `@media (hover: hover)`), so the list stays scannable; the row grows to a second line only while hovered.
+- **Touch two-tap:** on a coarse pointer (`matchMedia("(hover: none), (pointer: coarse)")`), the first tap *arms* the row (reveals the example + a "Tap again to select" hint) without selecting; a second tap on the same row confirms. Tapping a different row moves the armed state. Desktop keeps first-click-selects.
+- **Every model** in `MODEL_CATALOG` has an entry — enforced by `tests/modelGuidance.test.ts` (present, non-empty, en + de, no stale ids).
+The strings live in `models/modelGuidance.ts` as a per-id `{ en, de }` map, **not** in the `t()` table: the natural lookup is by model id (dynamic), which the dead-key i18n test can't see, so a dedicated map localizes it via a new `getLang()` helper without tripping that check. Row markup split into a `.p-model-pop-line` (name/tag/ctx/check) plus `.p-model-pop-good` / `.p-model-pop-taphint`; the row became a flex column.
+
+**Alternatives rejected:** capability descriptors (deep reasoning/fast — the jargon the maintainer rejected); human-persona or everyday-scale metaphors (memorable but risk reading as condescending in a knowledge tool, and metaphor emoji would break the "no emoji icons" design rule); always-visible examples (clutters the list — the maintainer wanted hover/tap reveal); routing the strings through `t()` with dynamic keys (breaks the dead-key test).
+
+**Consequence:** A lost user hovers (or taps) a model and reads what it's for in their own words, in their UI language. **Known limitations:** the examples are curated prose that must be kept sensible as the catalog changes (the test only enforces presence, not accuracy); the desktop hover-reveal grows the row, a small reflow within the scrollable popover; and the two-tap touch flow adds one tap on mobile (mitigated by the explicit "Tap again to select" hint).
+
+### ADR-101 — Global custom instructions (settings-driven, appended to the system prompt)
+
+**Status:** Active
+
+**Context:** Users wanted to add their own standing guidance (tone, formatting, always-avoid rules) without editing each conversation's system prompt, and to see the plugin's built-in behavior guidance rather than have it be invisible. A full editable-rule registry was considered (see the design discussion) but carries the heavy costs — per-rule migration reconciliation, snapshot-vs-live semantics, three-layer precedence, and the risk of users breaking app-contract instructions (the `⟦cite:…⟧` markers and tool descriptions the app parses). The chosen slice is the cheap 80%: one global free-text field, ChatGPT-style.
+
+**Decision:** Add a `customInstructions: string` setting (default `""`; `Object.assign` merge backfills existing users). `buildSystemPrompt(conversation, customInstructions = "")` appends it, when non-empty, inside a `<custom_instructions>` block placed **after** the conversation's own system prompt and **before** the no-solicitation guard and any summary/excerpt/recency parts — so it reads as user guidance layered on the persona. Threaded from settings at the two call sites (`BaseProvider.resolveUserContent` for the real send, `sidebar` for the context-inspector token estimate, so the estimate stays accurate). App-contract instructions (grounding/web citation markers, tool descriptions, `<recent_context>`) remain hard-coded and are deliberately **not** surfaced as editable — only free-form style/behavior guidance is user-owned. The no-solicitation guard stays always-on (ADR-100), not converted to a toggle.
+
+**Alternatives rejected:** an editable rule *registry* with per-rule toggles and per-conversation/template scope (deferred — that's where migration, snapshot semantics, and layering all concentrate; revisit on demand); surfacing the built-in contract instructions as editable defaults (they're plumbing the app parses — editing them silently breaks citations/source lists); per-conversation rather than global (global is the simpler default; the per-conversation `systemPrompt` field already exists for conversation-specific needs).
+
+**Consequence:** Users get always-on custom guidance in one box, kept in a labeled `<custom_instructions>` block. **Trade-offs to keep in mind:** the text is added to every request (tokens on every turn, counted by the context-budget estimate) and changes the cached system-prompt prefix (editing it invalidates Anthropic prompt-cache hits until the next warm-up); and it's *live*, not snapshotted — an edit applies to all conversations, old and new, on their next turn.

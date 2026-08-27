@@ -16,6 +16,15 @@ function getLocale(): Strings {
 	return locale;
 }
 
+/** Active UI language as a 2-letter code, for content localized outside the
+ *  `t()` string table (e.g. per-model guidance keyed by model id). */
+export function getLang(): "en" | "de" {
+	const code = ((window as unknown as { moment?: { locale?: () => string } })
+		.moment?.locale?.() ?? "en")
+		.split("-")[0];
+	return code === "de" ? "de" : "en";
+}
+
 export function t(key: keyof Strings, vars?: Record<string, string | number>): string {
 	let str: string = getLocale()[key];
 	if (vars) {

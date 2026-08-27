@@ -7,8 +7,8 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 	name: "web_search",
 	description:
 		`Search the live web for current information. ` +
-		`Use this whenever the question concerns recent events, or facts that may have changed since your training cutoff, or anything you are not confident is up to date — prices, versions, people's current roles, news, dates, statistics. ` +
-		`Prefer searching over guessing when recency matters. ` +
+		`Call this BEFORE answering whenever the question touches anything that can change over time, or that you cannot verify from your training data or the provided context — recent events, news, prices, releases, versions, standings, statistics, dates, or a person's current role or status. ` +
+		`When you are not fully confident your knowledge is current, search rather than answering from memory: a needless search is far cheaper than a confidently outdated answer. You may search more than once to refine the query. ` +
 		`Results come back with source URLs; cite them inline with the ⟦cite:web:<domain>⟧ marker where you use them, and do not add a separate sources list — the app lists the sources automatically.`,
 	inputSchema: {
 		type: "object",
