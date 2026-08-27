@@ -217,7 +217,7 @@ Messages longer than **280 characters** render collapsed to ~3 lines with a fade
 
 ### AI message
 
-Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay.
+Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay. The first rendered block has its top margin collapsed (`.p-ai-body > :first-child { margin-top: 0 }`) so an answer that opens with a heading sits directly under the turn label instead of leaving a large gap from the heading's default `margin-block-start`; the `.p-msg-ai` flex `gap` still gives a small, consistent separation. Same rule applies to `.p-summary-card-md`.
 
 ### Blockquote
 

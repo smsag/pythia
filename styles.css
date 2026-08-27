@@ -1013,6 +1013,12 @@
 }
 .p-ai-body { color: var(--text-normal); }
 .p-summary-card-md { color: var(--text-muted); }
+/* Collapse the leading block's top margin so an answer that opens with a heading
+   (common) sits directly under the turn-label meta line instead of leaving a big
+   gap from the heading's default margin-block-start. The .p-msg-ai flex gap still
+   provides a small, consistent separation. */
+.p-ai-body > :first-child,
+.p-summary-card-md > :first-child { margin-top: 0; }
 .p-ai-body strong,
 .p-summary-card-md strong { font-weight: 600; }
 .p-ai-body p,
