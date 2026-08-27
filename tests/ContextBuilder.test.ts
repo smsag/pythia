@@ -20,7 +20,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "../services/ContextBuilder";
-import { PRIOR_SUMMARY_INSTRUCTION } from "../services/promptConstants";
+import { PRIOR_SUMMARY_INSTRUCTION, NO_SOLICITATION_INSTRUCTION } from "../services/promptConstants";
 import type { Conversation } from "../models/types";
 
 class MockVault {
@@ -69,7 +69,25 @@ describe("buildSystemPrompt", () => {
 
 	it("wraps the system prompt in a system_prompt tag", () => {
 		const result = buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." }));
-		expect(result).toBe("<system_prompt>\nBe helpful.\n</system_prompt>");
+		expect(result).toContain("<system_prompt>\nBe helpful.\n</system_prompt>");
+	});
+
+	it("always appends the no-solicitation guard (suppresses save-as-note/continue offers)", () => {
+		const result = buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." }));
+		expect(result).toContain("Do not append a closing");
+		expect(result).toContain("save, export, or format the answer as a note");
+	});
+
+	it("appends custom instructions in a custom_instructions tag when provided", () => {
+		const result = buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." }), "Always answer in British English.");
+		expect(result).toContain("<custom_instructions>\nAlways answer in British English.\n</custom_instructions>");
+		// After the system prompt, before the no-solicitation guard.
+		expect(result.indexOf("<system_prompt>")).toBeLessThan(result.indexOf("<custom_instructions>"));
+	});
+
+	it("omits the custom_instructions tag when empty or whitespace", () => {
+		expect(buildSystemPrompt(baseConv(), "")).not.toContain("custom_instructions");
+		expect(buildSystemPrompt(baseConv(), "   \n  ")).not.toContain("custom_instructions");
 	});
 
 	it("wraps the summary in a previous_conversation_summary tag", () => {
@@ -137,6 +155,8 @@ describe("buildSystemPrompt", () => {
 		const result = buildSystemPrompt(baseConv({ systemPrompt: "Hi", summaryText: "Summary" }));
 		expect(result).toBe(
 			"<system_prompt>\nHi\n</system_prompt>\n\n" +
+			NO_SOLICITATION_INSTRUCTION +
+			"\n\n" +
 			PRIOR_SUMMARY_INSTRUCTION +
 			"\n\n<previous_conversation_summary>\nSummary\n</previous_conversation_summary>"
 		);

@@ -15,7 +15,9 @@ import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
-import { t } from "./i18n";
+import { looksTimeSensitive } from "./services/webSearchHeuristics";
+import { t, getLang } from "./i18n";
+import { goodForModel } from "./models/modelGuidance";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
@@ -97,6 +99,7 @@ export class PythiaSidebarView extends ItemView {
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
+	private deleteConvBtn!: HTMLButtonElement;
 	private copyLinkBtn!: HTMLButtonElement;
 	// Context-budget bar under the header + the >=80% warning percent chip.
 	private ctxBarEl!: HTMLElement;
@@ -408,6 +411,21 @@ export class PythiaSidebarView extends ItemView {
 	private buildHeader(container: HTMLElement): void {
 		const header = container.createDiv({ cls: "p-header" });
 
+		// Header order, left → right (ADR-098): history · name (grows) · rename ·
+		// link · delete · [ctx chip] · model · new. The name group takes the flex
+		// space so the action cluster stays pinned to the right edge, and the "+"
+		// new-conversation button is always the last child so its position never
+		// shifts as other controls show/hide.
+
+		// ── Far left: conversation history ─────────────────────────────────────
+		const historyBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("historyTooltip") },
+		});
+		setIcon(historyBtn, "history");
+		this.registerDomEvent(historyBtn, "click", () => this.openHistoryView());
+
+		// ── Conversation name (grows; hosts the inline rename input) ───────────
 		const titleGroup = header.createDiv({ cls: "p-title-group" });
 
 		this.convNameEl = titleGroup.createEl("button", {
@@ -439,13 +457,30 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
 
-		this.renameBtn = titleGroup.createEl("button", {
+		// ── Right cluster: rename · link · delete · [ctx] · model · new ────────
+		this.renameBtn = header.createEl("button", {
 			cls: "p-hdr-btn p-rename-btn",
 			attr: { title: t("renameConvTooltip") },
 		});
 		setIcon(this.renameBtn, "pencil");
 		this.renameBtn.style.display = "none";
 		this.registerDomEvent(this.renameBtn, "click", () => this.enterRenameMode());
+
+		this.copyLinkBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("copyConvLinkTooltip") },
+		});
+		setIcon(this.copyLinkBtn, "link");
+		this.copyLinkBtn.style.display = "none";
+		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
+
+		this.deleteConvBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("deleteConvTooltip") },
+		});
+		setIcon(this.deleteConvBtn, "trash");
+		this.deleteConvBtn.style.display = "none";
+		this.registerDomEvent(this.deleteConvBtn, "click", () => this.handleDeleteConversation());
 
 		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
 		// Clicking it scrolls to the top of the conversation (context inspector
@@ -462,28 +497,7 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.style.display = "none";
 		this.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
 
-		this.copyLinkBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("copyConvLinkTooltip") },
-		});
-		setIcon(this.copyLinkBtn, "link");
-		this.copyLinkBtn.style.display = "none";
-		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
-
-		const historyBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("historyTooltip") },
-		});
-		setIcon(historyBtn, "history");
-		this.registerDomEvent(historyBtn, "click", () => this.openHistoryView());
-
-		const deleteConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("deleteConvTooltip") },
-		});
-		setIcon(deleteConvBtn, "trash");
-		this.registerDomEvent(deleteConvBtn, "click", () => this.handleDeleteConversation());
-
+		// ── Far right: new conversation (always the last child) ────────────────
 		const newConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("newConvTooltip") },
@@ -491,6 +505,8 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(newConvBtn, "plus");
 		this.registerDomEvent(newConvBtn, "click", () => this.plugin.cmdNewConversation());
 
+		// Template label is absolutely positioned (see styles.css), so it does not
+		// participate in the header flex row and never displaces the "+" button.
 		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
 		this.templateLabelEl.style.display = "none";
 	}
@@ -920,7 +936,7 @@ export class PythiaSidebarView extends ItemView {
 			return { path: p, tokens };
 		});
 		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv));
+		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv, this.plugin.settings.customInstructions));
 		const last = this.lastTokenUsageMsg();
 		const windowSize = getContextWindow(conv.model);
 		const used = last?.tokenUsage
@@ -1036,14 +1052,18 @@ export class PythiaSidebarView extends ItemView {
 
 	private renderHeader(): void {
 		if (!this.activeConversation) {
+			// Empty state: only history, the name, and "+" are shown (ADR-098).
 			this.convNameEl.setText(t("noConversation"));
 			this.templateLabelEl.setText("");
+			this.templateLabelEl.style.display = "none";
 			this.copyLinkBtn.style.display = "none";
 			this.renameBtn.style.display = "none";
+			this.deleteConvBtn.style.display = "none";
 			return;
 		}
 		this.copyLinkBtn.style.display = "";
 		this.renameBtn.style.display = "";
+		this.deleteConvBtn.style.display = "";
 		this.convNameEl.setText(this.activeConversation.name + " ▾");
 		if (this.activeConversation.templateId) {
 			const tplName =
@@ -2065,10 +2085,19 @@ export class PythiaSidebarView extends ItemView {
 		if (fork.messages.length === 0) { new Notice(t("noMessagesToSummarize")); return; }
 		const notice = new Notice(t("generatingSummary"), 0);
 		try {
-			const text = await this.plugin.llmRouter.generateSummary(fork);
-			if (text) {
-				fork.summaryText = text;
+			// Use generateSummaryWithTitle (not generateSummary) so summarizing a fork
+			// from its source-side anchor also RETITLES the fork — matching the in-fork
+			// path (generateConversationSummary). Without this, a fork summarized from
+			// the origin keeps its generic "Fork of X" name while one summarized from
+			// inside gets a real title.
+			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(fork);
+			if (summary) {
+				fork.summaryText = summary;
 				fork.summaryUpdatedAt = new Date().toISOString();
+				if (title) {
+					fork.name = title;
+					void this.plugin.renameConversationFile(fork);
+				}
 				await this.plugin.conversationStore.save(fork);
 				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
 			}
@@ -2304,6 +2333,14 @@ export class PythiaSidebarView extends ItemView {
 		this.researchBtnEl.setAttr("aria-pressed", String(on));
 	}
 
+	/** Briefly pulse the research globe to show web search was auto-armed for this
+	 *  send (ADR-099) without flipping the persistent per-conversation toggle. */
+	private flashResearchAutoArm(): void {
+		if (!this.researchBtnEl) return;
+		this.researchBtnEl.addClass("is-auto-armed");
+		window.setTimeout(() => this.researchBtnEl?.removeClass("is-auto-armed"), 1600);
+	}
+
 	/** Toggle web search for the active conversation. Warns (but still toggles)
 	 *  when no Tavily key is configured so the intent is remembered for when one
 	 *  is added. Persists so the choice survives reloads and device sync. */
@@ -2367,6 +2404,13 @@ export class PythiaSidebarView extends ItemView {
 			this.modelPopoverCleanup = null;
 		};
 
+		// Touch (no hover): first tap on a row reveals its "good for" examples and
+		// arms it; a second tap on the same row confirms. Desktop reveals on hover
+		// and selects on the first click (armId stays null).
+		const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+		const lang = getLang();
+		let armedId: string | null = null;
+
 		const providers: { key: typeof conv.provider; label: string }[] = [
 			{ key: "anthropic", label: "ANTHROPIC" },
 			{ key: "openai", label: "OPENAI" },
@@ -2380,14 +2424,28 @@ export class PythiaSidebarView extends ItemView {
 				const active = m.id === conv.model && m.provider === conv.provider;
 				const row = pop.createDiv({ cls: "p-model-pop-row" });
 				if (active) row.addClass("active");
-				row.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
+				// Top line: name · reasoning tag · context window · active check.
+				const line = row.createDiv({ cls: "p-model-pop-line" });
+				line.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
 				if (m.isReasoning || m.isMistralReasoning) {
-					row.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
+					line.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
 				}
-				row.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
-				if (active) setIcon(row.createSpan({ cls: "p-model-pop-check" }), "check");
+				line.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
+				if (active) setIcon(line.createSpan({ cls: "p-model-pop-check" }), "check");
+				// "Good for" examples (smaller, hover- or tap-revealed) + touch confirm hint.
+				const good = goodForModel(m.id, lang);
+				if (good) row.createSpan({ cls: "p-model-pop-good", text: good });
+				row.createSpan({ cls: "p-model-pop-taphint", text: t("tapAgainToSelect") });
 				row.addEventListener("mousedown", (e) => {
 					e.preventDefault(); e.stopPropagation();
+					if (coarse && armedId !== m.id) {
+						// First tap: reveal the explainer and wait for a confirming tap.
+						armedId = m.id;
+						pop.querySelectorAll(".p-model-pop-row.armed")
+							.forEach((r) => r.classList.remove("armed"));
+						row.addClass("armed");
+						return;
+					}
 					void this.applyModelChoice(m);
 					closePop();
 				});
@@ -2552,6 +2610,23 @@ export class PythiaSidebarView extends ItemView {
 				const favCount = conv.favorites?.length ?? 0;
 				if (favCount) subEl.createSpan({ cls: "p-switcher-fav-count", text: ` ★ ${favCount}` });
 			}
+
+			// Rename affordance (the header pencil is easy to miss): opens an input to
+			// rename THIS conversation. Discoverable via the title dropdown users
+			// already open, and works for any conversation, not just the active one.
+			const rename = row.createSpan({ cls: "p-switcher-rename", text: "✎", attr: { title: t("renameConvTooltip") } });
+			rename.addEventListener("mousedown", (e) => {
+				e.preventDefault(); e.stopPropagation();
+				closeSw(); // rename happens in its own modal; close the popover first
+				new InputModal(this.app, t("renameConvTooltip"), t("renameConvPlaceholder"), conv.name, (value) => {
+					const newName = value.trim();
+					if (!newName || newName === conv.name) return;
+					conv.name = newName;
+					void this.plugin.conversationStore.save(conv);
+					void this.plugin.renameConversationFile(conv);
+					if (this.activeConversation?.id === conv.id) this.renderHeader();
+				}).open();
+			});
 
 			const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
 			del.addEventListener("mousedown", (e) => {
@@ -2748,6 +2823,7 @@ export class PythiaSidebarView extends ItemView {
 			if (newName && newName !== this.activeConversation.name) {
 				this.activeConversation.name = newName;
 				void this.plugin.conversationStore.save(this.activeConversation);
+				void this.plugin.renameConversationFile(this.activeConversation);
 				this.convNameEl.setText(newName + " ▾");
 			}
 		}
@@ -3034,6 +3110,18 @@ export class PythiaSidebarView extends ItemView {
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
 
+		// Auto-arm web search for THIS send when the message reads as time-sensitive
+		// and research mode isn't already on (ADR-099). We offer the tool for this
+		// turn only — never flipping or persisting conv.researchMode — so search can
+		// fire when the user expects it without their having to toggle the globe.
+		const autoArmedSearch =
+			!conv.researchMode &&
+			this.plugin.settings.webSearchAutoArm &&
+			this.plugin.webSearchService.hasApiKey() &&
+			looksTimeSensitive(text, new Date().getFullYear());
+		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
+		if (autoArmedSearch) this.flashResearchAutoArm();
+
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				// web_search is read-only — run it directly with a live status chip,
 				// no write-confirmation prompt (that would make research unusable).
@@ -3049,7 +3137,7 @@ export class PythiaSidebarView extends ItemView {
 
 					const allowedSearch = ToolHandler.allowedToolNames(
 						conv.writeMode ?? "all",
-						conv.researchMode ?? false
+						researchActive
 					);
 					const searchResult = await this.plugin.toolHandler.execute(call, allowedSearch);
 
@@ -3135,7 +3223,7 @@ export class PythiaSidebarView extends ItemView {
 					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
 				}
 
-				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", conv.researchMode ?? false);
+				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
 				const result = await this.plugin.toolHandler.execute(call, allowed);
 
 				if (result.startsWith("Error")) {
@@ -3162,7 +3250,11 @@ export class PythiaSidebarView extends ItemView {
 		};
 
 		await this.plugin.llmRouter.streamMessage(
-			conv,
+			// Pass an armed shallow clone for an auto-armed send so web_search is
+			// offered this turn. The clone shares conv.messages (read-only in the
+			// provider) and is never persisted — sidebar's own callbacks below save
+			// the original `conv`, so the toggle stays off after the turn.
+			autoArmedSearch ? { ...conv, researchMode: true } : conv,
 			text,
 			attachedNotes,
 			appendToken,

@@ -220,7 +220,7 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
 		}
 
-		const systemPrompt = buildSystemPrompt(conversation) + attachedContent;
+		const systemPrompt = buildSystemPrompt(conversation, this.settings.customInstructions) + attachedContent;
 
 		return {
 			userContent: newMessage,

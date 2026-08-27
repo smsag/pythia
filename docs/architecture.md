@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-27 — structural-decomposition roadmap PR0 (ADR-097): a file-size ratchet guard (`scripts/check-file-size.mjs`, wired into CI ahead of the build — 600-line default, grandfathered ceilings for `sidebar.ts`/`main.ts`) and a first tested seam of the `sendMessage` extraction (`services/sendPolicy.ts` — `shouldGenerateTitle`/`shouldGenerateChapterName` — with `tests/sendPolicy.test.ts`). Roadmap #119–#122 in engineering-review.md.*
+*Last updated: 2026-08-27 — structural-decomposition roadmap PR0 (ADR-103): a file-size ratchet guard (`scripts/check-file-size.mjs`, wired into CI ahead of the build — 600-line default, grandfathered ceilings for `sidebar.ts`/`main.ts`) and a first tested seam of the `sendMessage` extraction (`services/sendPolicy.ts` — `shouldGenerateTitle`/`shouldGenerateChapterName` — with `tests/sendPolicy.test.ts`). Roadmap #120–#123 in engineering-review.md.*
 
 *Previously, 2026-08-27 — senior-engineer bug audit: `sendMessage` persists the user turn up front and discards partial replies on error/empty (ADR-087); `evictConversations` keeps survivors in insertion order so "most recent = last element" holds (ADR-088); web-search citations dedupe by domain and a shared `WEB_CITATION_INSTRUCTION` (`services/promptConstants.ts`) unifies the three web-citation instruction sites (ADR-089); `LLMRouter` utility calls route through a `byProvider()` legacy-provider fallback; persistent `sidebar.ts` view-chrome listeners moved to `registerDomEvent`.*
 
@@ -65,11 +65,12 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/BaseProvider.ts` | 314 | Abstract base: shared fields, lifecycle, concrete `assistantLabel` (default "Assistant") + `resolveModel` (delegates to `resolveDefaultModelForProvider` via `providerType`), `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
 | `services/ToolHandler.ts` | 165 | Tool definitions (`create_note`/`rewrite_note`/`prepend_note` + read-only `web_search`) + `ToolHandler` class (injected NoteWriter + optional WebSearchService); `researchEnabled` gates `web_search` independently of `writeMode` |
 | `services/WebSearchService.ts` | 145 | Client-executed web search for research mode: queries Tavily via Obsidian `requestUrl`, formats results with source URLs, never throws (returns an "Error:" string on failure) |
+| `services/webSearchHeuristics.ts` | 64 | Pure `looksTimeSensitive(text, currentYear)` — whole-word recency cues + year ≥ now; auto-arms `web_search` for a send when the research globe is off (ADR-099) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
 | `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 147 | Builds system prompt (grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
+| `services/ContextBuilder.ts` | 147 | Builds system prompt (always-on no-solicitation guard + optional global `<custom_instructions>` from settings + grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
 | `services/promptConstants.ts` | 66 | Shared literal constants: XML-ish prompt tags (incl. `RECENT_CONTEXT_TAG`), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |
 | `services/noteChunking.ts` | 95 | Heading-based chunking with paragraph-level fallback + relevance-filtered excerpting (always includes first chunk) for notes over 12K chars |
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking and `#` suggestion ranking |
@@ -78,14 +79,15 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
 | `services/persistence.ts` | 135 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`, and returns survivors in their original insertion order so "most recent = last element" holds — ADR-088) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
-| `services/sendPolicy.ts` | 30 | Pure post-turn trigger predicates lifted from `sidebar.ts`'s `sendMessage` (`shouldGenerateTitle`, `shouldGenerateChapterName`) — a tested seam ahead of the `SendController` extraction (ADR-097) |
+| `services/sendPolicy.ts` | 30 | Pure post-turn trigger predicates lifted from `sidebar.ts`'s `sendMessage` (`shouldGenerateTitle`, `shouldGenerateChapterName`) — a tested seam ahead of the `SendController` extraction (ADR-103) |
 | `services/color.ts` | 50 | Pure accent-contrast helpers: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent` — pick the higher-contrast on-accent token for the user's accent (consumed by `sidebar.ts`'s `applyAccentContrast`, ADR-082) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
 | `models/knownModels.ts` | 120 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`) and `contextWindow`; all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, `getContextWindow()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
+| `models/modelGuidance.ts` | 50 | `MODEL_GOOD_FOR` — plain-language "good for" example line per model id (`{ en, de }`), shown in the picker (ADR-102); `goodForModel(id, lang)`; every catalog model must have an entry (test-enforced) |
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
-| `ui/InlineSuggest.ts` | 173 | `#` note-path autocomplete in textarea (md + pdf); relevance-ranked via `noteRelevance`, query tokenized once per keystroke |
+| `ui/InlineSuggest.ts` | 368 | `#` note-path autocomplete in textarea (md + pdf); relevance-ranked via `noteRelevance`, query tokenized once per keystroke; folders drill in place (ArrowRight / swipe-left / › → browse; ArrowLeft / swipe-right / back row → up; Enter still attaches whole folder) — ADR-097 |
 | `ui/CodeBlockDecorator.ts` | 220 | Code block decoration extracted from sidebar: `decorateCodeBlocks`, `stampSvgSize` (was `fixDiagramSvgSize`), `wrapInScrollFrame`, `attachDragToPan` |
 | `ui/HighlightPainter.ts` | — | Favorite/fork highlight DOM helpers: `findRange` (re-find stored text across text nodes), `computeOccurrenceIndex`, `paintRange` (wrap a range in a `<pythia-favorite>`/`<pythia-fork>` custom element via the `tagName` param — not `<mark>`, ADR-086 — splitting across element boundaries), `clearHighlights`, `removeHighlightById` (surgical single-favorite unwrap), `rangeForHighlight`/`rangeForForkOrigin`, `repaintBody`/`repaintForkOrigins`, `flashHighlight` |
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
@@ -94,7 +96,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `tests/` | — | Vitest unit tests (417 tests across 24 files, ~1 s) |
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
-| `scripts/check-file-size.mjs` | — | File-size ratchet guard (ADR-097): 600-line default for every `.ts`, grandfathered ceilings for `sidebar.ts`/`main.ts` that may only be lowered; run via `npm run check:filesize` |
+| `scripts/check-file-size.mjs` | — | File-size ratchet guard (ADR-103): 600-line default for every `.ts`, grandfathered ceilings for `sidebar.ts`/`main.ts` that may only be lowered; run via `npm run check:filesize` |
 | `.github/workflows/ci.yml` | — | CI: lint → file-size budget → build → test on push/PR |
 
 ---
@@ -285,6 +287,8 @@ LLM requests tool_use / tool_calls during streamMessage
 ### Tool call (web search / research mode)
 
 Gated on `conversation.researchMode` (toolbar `globe` toggle, default from `webSearchDefault`). When on, each provider's `prepareStream` includes `web_search` in its tools via `getToolDefinitions(folder, writeMode, researchMode)`, and `ContextBuilder.buildSystemPrompt` prepends a `<recent_context>` block (current date + "prefer web_search for time-sensitive questions, cite URLs").
+
+**Auto-arm (ADR-099):** when the globe is *off*, `sendMessage` runs `looksTimeSensitive(text, currentYear)` (`services/webSearchHeuristics.ts` — whole-word recency cues + a year ≥ now) and, if it matches and a Tavily key is set (`webSearchAutoArm` on), passes an armed shallow clone `{ ...conv, researchMode: true }` to `streamMessage` for that single turn — so `web_search` is offered and the `<recent_context>` block injected without ever persisting `researchMode` (the original `conv` is what sidebar's callbacks save). The globe pulses (`.is-auto-armed`) to show it fired. The same effective flag feeds the two `allowedToolNames` gates.
 
 ```
 LLM requests web_search during streamMessage

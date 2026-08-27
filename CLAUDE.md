@@ -221,8 +221,9 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ### Header
 ```
-[ Title ][ model badge ][ trash ][ plus ]
+[ history ][ Title ▾ (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
 ```
+Order left→right (ADR-098): history · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. See `docs/design.md` for the full spec.
 - Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1
 - Model badge: `--font-monospace`, 10px, `--text-faint`
 - Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
@@ -265,7 +266,7 @@ REFERENZ  [ pill: filename ✕ ]
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input
-- Opens upward as popover, width 200px
+- Opens upward as popover, width 260px, max-height 384px
 - Two sections: **Starred** (bookmarked messages) → divider → **All prompts** (every user message)
 - Closes on outside click or item tap
 - No separate Favorites row anywhere — fully consolidated here

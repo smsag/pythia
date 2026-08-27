@@ -45,8 +45,14 @@ export interface PythiaSettings {
 	effort?: EffortLevel;
 	/** Warn when attached notes exceed this many estimated tokens. 0 = no limit. */
 	maxAttachedNotesTokens: number;
+	/** Free-text standing instructions appended to every chat system prompt (after
+	 *  the conversation's own system prompt). Empty = none. */
+	customInstructions: string;
 	/** Default state of the per-conversation web-search "research" toggle for new conversations. */
 	webSearchDefault: boolean;
+	/** Auto-arm web search for a single send when the message looks time-sensitive,
+	 *  even with the research toggle off (ADR-099). Requires a Tavily key. */
+	webSearchAutoArm: boolean;
 	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
 	webSearchMaxResults: number;
 }
@@ -75,6 +81,8 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	temperature: 0.7,
 	effort: "high",
 	maxAttachedNotesTokens: 8000,
+	customInstructions: "",
 	webSearchDefault: false,
+	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
 };

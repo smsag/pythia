@@ -3,6 +3,7 @@ const en = {
 	noConversation:         "No conversation",
 	changeModelTooltip:     "Change provider / model",
 	reasoningTag:           "Reasoning",
+	tapAgainToSelect:       "Tap again to select",
 	openConvSettings:       "Conversation settings…",
 	sendMaxTokensHint:      "Max tokens ({{max}}) may be too low for {{model}} — a reasoning model spends part of that budget on hidden reasoning, so the reply can be truncated. Recommended: at least {{recommended}}. Click to adjust.",
 	deleteConvTooltip:      "Delete conversation",
@@ -241,6 +242,8 @@ const en = {
 	searchKeyDesc:           "Select a secret from Obsidian's secret storage. Enables the web_search tool so models can look up current information. Keys are never written to data.json.",
 	webSearchDefaultName:    "Enable web search by default",
 	webSearchDefaultDesc:    "Turn on research mode automatically for new conversations. You can still toggle it per conversation from the input toolbar.",
+	webSearchAutoArmName:    "Auto-search on time-sensitive questions",
+	webSearchAutoArmDesc:    "When research mode is off, automatically allow a web search for a single message if it looks time-sensitive (latest, current, prices, news, a recent year…). Requires a Tavily key. The globe pulses when this fires.",
 	webSearchMaxResultsName: "Web search results per query",
 	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5).",
 	defaultProviderName:     "Default provider",
@@ -267,6 +270,9 @@ const en = {
 	outputLanguageAuto:      "Auto (follow conversation)",
 	outputLanguageEnglish:   "English",
 	outputLanguageGerman:    "German",
+	customInstructionsName:  "Custom instructions",
+	customInstructionsDesc:  "Standing instructions added to every conversation, on top of its system prompt — e.g. tone, formatting, or things to always avoid. Applies to all conversations; leave blank for none.",
+	customInstructionsPlaceholder: "e.g. Answer concisely. Prefer bullet points. Always respond in British English.",
 	maxTokensName:           "Default max tokens",
 	maxTokensDesc:           "Maximum tokens the model may generate per reply. Reasoning models (o-series) spend tokens from this same budget on internal reasoning before writing anything visible — too low a value risks a truncated or empty reply. Leave blank to use the model-aware default.",
 	temperatureName:         "Default temperature",
@@ -380,6 +386,11 @@ const en = {
 	// ── Input area ──────────────────────────────────────────────────────────────
 	minimizeInputTooltip: "Minimize input",
 	expandInputTooltip:   "Expand input",
+
+	// ── #-mention note picker ─────────────────────────────────────────────────
+	inlineAttachAll:    "Attach all ({{count}})",
+	inlineDrillTooltip: "Open folder",
+	inlineBackTooltip:  "Back",
 };
 
 export type Strings = typeof en;
