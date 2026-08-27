@@ -2182,6 +2182,24 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   text-overflow: ellipsis;
 }
 
+/* Back / attach-all rows inside a drilled-into folder — muted vs. real entries. */
+.pythia-suggest-nav .pythia-suggest-name { color: var(--text-muted); font-weight: 400; }
+.pythia-suggest-nav .pythia-suggest-icon { color: var(--text-faint); }
+
+/* Trailing › drill affordance on folder rows: opens the folder (row body still
+   attaches the whole folder). margin-left:auto pins it to the right edge. */
+.pythia-suggest-drill {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  padding: 0 2px;
+}
+.pythia-suggest-drill:hover { color: var(--text-normal); }
+.pythia-suggest-item--active .pythia-suggest-drill { color: var(--text-muted); }
+.pythia-suggest-drill svg { width: 14px; height: 14px; pointer-events: none; }
+
 .pythia-suggest-icon {
   display: flex;
   align-items: center;

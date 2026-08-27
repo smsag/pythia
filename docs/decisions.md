@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
+*Last updated: 2026-08-27 — ADR-097 (`#`-mention note picker drills into folders in place — ArrowRight / swipe-left / a trailing › opens a folder to browse its contents, ArrowLeft / swipe-right / a back row steps up; Enter/tap on a folder still attaches the whole folder, so the addition is non-breaking).*
+
+*Previously, 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
 
 *Previously, 2026-08-27 — ADR-094 (optimizer output must be the bare prompt: a shared `OUTPUT_ONLY_INSTRUCTION` appended to the request forbids preamble/sign-off/rules, and a pure `cleanOptimizedOutput()` strips residual fences/preamble/rules — fixes "Sure! Here's…" wrapper text landing in the input box).*
 
@@ -1378,3 +1380,19 @@ A `debugMode`-gated diagnostic in `sidebar.ts`'s `repaintForkOrigins` logs each 
 **Alternatives rejected:** a one-time data migration to rewrite stored selections (unnecessary — trimming/fallback at search time fixes old forks for free); making `findRange` whitespace-**insensitive** by normalizing whitespace runs on both sides (fixes multi-block selections too, but changes matching semantics for favorites and risks over-matching — deferred unless multi-block forks prove to need it); repainting fork origins *after* `paintCitations` to align the DOM state (favorites paint before citations and work, so citation timing isn't the differentiator — not pursued).
 
 **Consequence:** Forking a repeated short word (or a whitespace-padded selection) now paints the accent fork-origin mark in the source, restoring the tap-to-open anchor and the "Forked from" scroll-to-span. If the fallback lands on the wrong occurrence of a repeated word, the mark is at least visible on that word. **Known limitations (traceable via the debug log):** a selection spanning *multiple* blocks carries interior newlines that trimming can't remove; and if the stored selection genuinely isn't present in the rendered text (e.g. it captured an adjacent citation chip's number), even the fallback can't find it — both would need the deferred whitespace-normalizing `findRange` or repainting after citations.
+
+### ADR-097 — `#`-mention picker drills into folders in place (Option A)
+
+**Status:** Active
+
+**Context:** Typing `#` in the prompt input opens `ui/InlineSuggest.ts`, a flat dropdown of matching folders (max 3) and notes (filled to 8). A folder match could only be *attached wholesale* (`getFilesInFolder` — the whole recursive subtree) on Enter/tap; there was no way to look inside a folder and pick individual files. The request was to let the user open a matched folder — via ArrowRight on desktop, a swipe on mobile — and browse its files.
+
+**Decision:** Add an in-place drill-down (Option A of three considered — the others were an inline accordion and Miller/two-pane columns). The picker keeps a `folderStack`; empty = the flat global search, and descending pushes a folder whose contents (subfolders + `.md`/`.pdf` files, filtered by the still-typed fragment) replace the list, prefixed by a **back** row and an explicit **"Attach all (N)"** row. Interaction model, chosen to keep ArrowRight and swipe the *same* gesture while staying non-breaking:
+- **ArrowRight / swipe-left / trailing › chevron** = drill into the highlighted folder.
+- **ArrowLeft / swipe-right / the back row** = step up one level (ArrowLeft at the top level is *not* consumed, so it still moves the textarea caret).
+- **Enter / tap on a folder** = attach the whole folder, exactly as before — drilling is purely additive.
+On each drill or back step the typed fragment is cleared (`clearFragment` leaves the bare `#`), because the fragment that matched the folder name would match nothing inside it; further typing then filters within the level. Drilling lands the selection on the first content row (past back/attach-all). The single-column design needs no extra width — important in a narrow Obsidian sidebar — and the swipe handlers (horizontal-dominant, ≥40px) mirror the arrow keys so mobile has parity. Three i18n keys added to both locales (`inlineAttachAll`, `inlineDrillTooltip`, `inlineBackTooltip`).
+
+**Alternatives rejected:** inline accordion expansion (collides with the 8-item cap, eats horizontal room with indentation, and horizontal swipe reads as "move sideways" not "unfold" — weak mobile story); Miller/two-pane columns (wants width the sidebar rarely has; heaviest for a lightweight autocomplete).
+
+**Consequence:** Folders are browsable without leaving the input. Mouse-only users get the › chevron and back row (no keyboard/swipe needed); keyboard and touch users get symmetric drill/back gestures. Not unit-tested — the behavior is DOM/layout- and vault-mock-heavy (the scroll-into-view even depends on `offsetTop`/`clientHeight`, which the DOM stub reports as 0); the entry-building split into pure `buildGlobalEntries`/`buildFolderEntries` keeps it reviewable. **Known limitation:** deep subtrees are browsed one level at a time; the per-level content cap is ~20 rows (scrollable), and folders with more are filtered by typing rather than paged.

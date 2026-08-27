@@ -394,6 +394,11 @@ const de: Strings = {
 	// ── Input area ──────────────────────────────────────────────────────────────
 	minimizeInputTooltip: "Eingabe minimieren",
 	expandInputTooltip:   "Eingabe erweitern",
+
+	// ── #-mention note picker ─────────────────────────────────────────────────
+	inlineAttachAll:    "Alle anhängen ({{count}})",
+	inlineDrillTooltip: "Ordner öffnen",
+	inlineBackTooltip:  "Zurück",
 };
 
 export default de;

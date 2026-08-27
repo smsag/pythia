@@ -380,6 +380,11 @@ const en = {
 	// ── Input area ──────────────────────────────────────────────────────────────
 	minimizeInputTooltip: "Minimize input",
 	expandInputTooltip:   "Expand input",
+
+	// ── #-mention note picker ─────────────────────────────────────────────────
+	inlineAttachAll:    "Attach all ({{count}})",
+	inlineDrillTooltip: "Open folder",
+	inlineBackTooltip:  "Back",
 };
 
 export type Strings = typeof en;
