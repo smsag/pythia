@@ -1,7 +1,7 @@
 {
   "id": "pythia",
   "name": "Pythia",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "minAppVersion": "1.4.0",
   "description": "AI conversations as first-class vault objects — templates, context injection, streaming chat, and PKM storage.",
   "author": "Steffen Seitz",
