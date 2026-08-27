@@ -26,6 +26,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check file-size budget
+        run: npm run check:filesize
+
       - name: Type-check & build
         run: npm run build
 
