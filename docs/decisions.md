@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-091 (prompt optimization moves from an input-toolbar wand icon to a third "Optimize prompt" item in the Send long-press menu; greyed when input is empty or no optimizer template is set).*
+*Last updated: 2026-08-27 — ADR-092 (on-accent label color keeps a theme token only when it clears WCAG AA on the user's accent, else forces pure black/white; fixes the unreadable "Senden" label ADR-082 missed. Extracted to the tested `readableOnAccent()`).*
+
+*Previously, 2026-08-27 — ADR-091 (prompt optimization moves from an input-toolbar wand icon to a third "Optimize prompt" item in the Send long-press menu; greyed when input is empty or no optimizer template is set).*
 
 *Previously, 2026-08-27 — ADR-090 (favorite/fork highlights adopt smsag.de's "highlighter marker" style — asymmetric corners, diagonal gradient ink sweep, theme-adaptive text-shadow; colors unchanged, always visible).*
 
@@ -1309,4 +1311,16 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** disabling only on empty input while leaving the missing-template case to a click-time Notice (more discoverable, but the maintainer preferred never offering a dead action); keeping a toolbar button *and* the menu entry (defeats the declutter goal); a native Obsidian `Menu` (renders as a mobile bottom sheet, not anchored to Send — already rejected by ADR-057).
 
 **Consequence:** The input toolbar drops one icon; prompt optimization, conversation summary, and favorites summary now live together in the Send long-press menu. No behavior change to the optimizer flow itself.
+
+### ADR-092 — On-accent label falls back to pure black/white when theme tokens fail AA
+
+**Status:** Active (fixes a gap in ADR-082)
+
+**Context:** ADR-082 made accent-filled labels (Send button, active tool/effort pills) readable by computing `--p-on-accent` as whichever of the theme's two on-accent tokens (`--text-on-accent` / `--text-on-accent-inverted`) has the higher measured contrast on the user's accent. But that only ever chooses *between the two theme tokens* — when **both** read poorly on the accent (a pale/mid accent, or a theme whose "inverted" token is itself a low-contrast tint rather than black), the less-bad token is still unreadable. This is exactly what the user reported: the "Senden" label stayed low-contrast (dark purple on light purple) despite ADR-082.
+
+**Decision:** Extract the choice into a pure, unit-tested `readableOnAccent(accent, tokens, aa = 4.5)` in `services/color.ts`, and add a **pure black/white fallback**. It keeps the highest-contrast theme token *only when it clears WCAG AA (4.5)* on the accent — so a theme that deliberately tints a still-readable label is respected — and otherwise sets `--p-on-accent` to pure `#ffffff` or `#000000`, whichever contrasts more, which is guaranteed readable on any accent. `applyAccentContrast()` now just resolves the accent + theme tokens via its probe span and delegates. The older `betterOnAccent()` (which could only pick between the two tokens) is removed. `--p-on-accent` still stores the CSS var string when a theme token wins, so the label tracks a later theme edit to that token.
+
+**Alternatives rejected:** always force pure black/white regardless of the theme token (simplest and always readable, but discards a theme's intentional on-accent tint even when it reads fine — e.g. a conventional white label on a saturated accent that clears AA); lowering the AA threshold below 4.5 (would preserve more conventional white-on-accent labels but risks leaving borderline cases unreadable — 4.5 is the correct bar for the small 10px Send label, and the threshold is a parameter if it needs tuning).
+
+**Consequence:** On-accent labels are readable on every accent and theme, not just the ones where one of the theme's two tokens happened to work. The decision is covered by `tests/color.test.ts` (including the both-tokens-poor case). No CSS or markup change — the same `color: var(--p-on-accent, …)` wiring from ADR-082 stands.
 

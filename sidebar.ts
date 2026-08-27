@@ -11,7 +11,7 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
-import { parseRgb, betterOnAccent } from "./services/color";
+import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
@@ -1506,14 +1506,19 @@ export class PythiaSidebarView extends ItemView {
 	 *  Obsidian's `--text-on-accent` is static (white in the default theme) and
 	 *  never adapts to a customized `--color-accent`, so a pale/mid accent leaves
 	 *  accent-filled labels (Send button, active toolbar/effort pills) low-contrast.
-	 *  We resolve the accent and both theme on-accent tokens to rgb via a probe
-	 *  span, then set `--p-on-accent` to whichever token has the higher measured
-	 *  contrast. Falls back to `--text-on-accent` (via the CSS var default) if any
-	 *  color can't be resolved. Re-run on css-change. */
+	 *
+	 *  We resolve the accent (and the theme's two on-accent tokens) to rgb via a
+	 *  probe span. The theme token is kept ONLY when it clears WCAG AA on this
+	 *  accent — respecting a theme that deliberately tints its on-accent label —
+	 *  otherwise `--p-on-accent` is forced to pure black or white (whichever
+	 *  contrasts more), which is guaranteed readable on ANY accent. This is the
+	 *  case the earlier "better of the two theme tokens" pick missed: when BOTH
+	 *  theme tokens read poorly on the accent, the less-bad one is still unreadable.
+	 *  Re-run on css-change. */
 	private applyAccentContrast(): void {
 		const root = this.containerEl.children[1] as HTMLElement | undefined;
 		if (!root) return;
-		const resolve = (expr: string): [number, number, number] | null => {
+		const resolve = (expr: string): Rgb | null => {
 			const probe = root.createSpan();
 			probe.style.color = expr;
 			probe.style.display = "none";
@@ -1522,17 +1527,22 @@ export class PythiaSidebarView extends ItemView {
 			return rgb;
 		};
 		const accent = resolve("var(--color-accent)");
-		const onAccent = resolve("var(--text-on-accent, #fff)");
-		const inverted = resolve("var(--text-on-accent-inverted, #000)");
-		if (!accent || !onAccent || !inverted) {
+		if (!accent) {
 			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
 			return;
 		}
-		const choice = betterOnAccent(accent, onAccent, inverted);
-		root.style.setProperty(
-			"--p-on-accent",
-			choice === "inverted" ? "var(--text-on-accent-inverted, #000)" : "var(--text-on-accent, #fff)",
-		);
+
+		// Offer the theme's own on-accent tokens (when defined and resolvable) as
+		// candidates; readableOnAccent uses the best one only if it clears AA, else
+		// forces pure black/white. Keeping the CSS var strings (not the resolved rgb)
+		// as the values means the label still tracks a later theme edit to that token.
+		const tokens: { value: string; rgb: Rgb }[] = [];
+		const onAccent = resolve("var(--text-on-accent, #fff)");
+		const inverted = resolve("var(--text-on-accent-inverted, #000)");
+		if (onAccent) tokens.push({ value: "var(--text-on-accent, #fff)", rgb: onAccent });
+		if (inverted) tokens.push({ value: "var(--text-on-accent-inverted, #000)", rgb: inverted });
+
+		root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
 	}
 
 	/** Append the input/output token counts inline to a turn label

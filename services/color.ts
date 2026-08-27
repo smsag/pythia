@@ -5,8 +5,9 @@
  * but the value is static — the theme fixes it (white in the default theme) and
  * never recomputes it from the user's chosen `--color-accent`. A pale or mid-tone
  * accent therefore renders on-accent labels (Send button, active toolbar/effort
- * pills) with poor contrast. These pure functions decide which of the two theme
- * tokens actually reads better on a given accent, using WCAG relative luminance.
+ * pills) with poor contrast. These pure functions pick a readable on-accent label
+ * color using WCAG relative luminance — preferring a theme token when it clears AA,
+ * else falling back to pure black/white (guaranteed readable on any accent).
  */
 
 export type Rgb = [number, number, number];
@@ -39,12 +40,25 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 }
 
 /**
- * Given the accent color and both on-accent theme tokens, return which one reads
- * better on the accent. "normal" → `--text-on-accent`, "inverted" →
- * `--text-on-accent-inverted`. Ties favor "normal" (the theme's intended default).
+ * Choose the CSS color value for an on-accent label that stays readable on
+ * `accent`. `tokens` are the theme's candidate on-accent colors (each a CSS value
+ * string plus its resolved rgb, e.g. `--text-on-accent` / `--text-on-accent-inverted`);
+ * the highest-contrast one is used **only** when it clears `aa` (WCAG AA, default
+ * 4.5). Otherwise — the case where every theme token reads poorly on this accent —
+ * it falls back to pure `"#ffffff"` or `"#000000"`, whichever contrasts more, which
+ * is guaranteed readable on ANY accent. Pass `tokens: []` to always use the
+ * black/white fallback.
  */
-export function betterOnAccent(accent: Rgb, onAccent: Rgb, onAccentInverted: Rgb): "normal" | "inverted" {
-	return contrastRatio(accent, onAccent) >= contrastRatio(accent, onAccentInverted)
-		? "normal"
-		: "inverted";
+export function readableOnAccent(
+	accent: Rgb,
+	tokens: { value: string; rgb: Rgb }[],
+	aa = 4.5,
+): string {
+	const best = tokens
+		.map((tkn) => ({ value: tkn.value, cr: contrastRatio(accent, tkn.rgb) }))
+		.sort((a, b) => b.cr - a.cr)[0];
+	if (best && best.cr >= aa) return best.value;
+	return contrastRatio(accent, [255, 255, 255]) >= contrastRatio(accent, [0, 0, 0])
+		? "#ffffff"
+		: "#000000";
 }

@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — prompt optimization moved from an input-toolbar wand icon to a third item ("Optimize prompt", `sparkles`) in the Send long-press menu, greyed when the input is empty or no optimizer template is configured (ADR-091). Removed the toolbar button, its `optimizeBtnTooltip` string, and the dead `.p-optimize-btn` pulse CSS.*
+*Last updated: 2026-08-27 — on-accent labels (Send button etc.) now guarantee readability: `--p-on-accent` keeps a theme on-accent token only when it clears WCAG AA on the user's accent, else forces pure black/white (ADR-092, extracted to the tested `readableOnAccent()` in `services/color.ts`). Fixes the still-unreadable "Senden" label on pale/mid accents where ADR-082's better-of-two-tokens pick was insufficient.*
+
+*Previously, 2026-08-27 — prompt optimization moved from an input-toolbar wand icon to a third item ("Optimize prompt", `sparkles`) in the Send long-press menu, greyed when the input is empty or no optimizer template is configured (ADR-091). Removed the toolbar button, its `optimizeBtnTooltip` string, and the dead `.p-optimize-btn` pulse CSS.*
 
 *Previously, 2026-08-27 — two UI fixes: the summary "Speisekarte" cards gain `margin-bottom: var(--s4)` (≈28px section break) so they no longer crowd the first message bubble; and the selection toolbar's Favorite/Fork buttons now show only when the whole selection sits inside one `.p-msg-ai` (endpoint check on `anchorNode`/`focusNode`), fixing a case where an overshooting drag re-showed them over a user prompt (ADR-085 refinement).*
 
@@ -65,7 +67,7 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 | `--text-muted` | Secondary text, blockquote text |
 | `--text-faint` | Labels, badges, token counts, inactive icons, code-block type icon |
 | `--text-on-accent` | Text on accent-coloured surfaces — fallback only; prefer `--p-on-accent` (see below) |
-| `--p-on-accent` | Plugin-computed on-accent label color for solid accent fills (Send button, active tool/effort pills); auto-picks the higher-contrast of `--text-on-accent` / `--text-on-accent-inverted` for the user's accent (ADR-082) |
+| `--p-on-accent` | Plugin-computed on-accent label color for solid accent fills (Send button, active tool/effort pills); keeps a theme on-accent token when it clears WCAG AA on the user's accent, else forces pure black/white (ADR-082, ADR-092) |
 | `--background-primary` | Panel background, input area |
 | `--background-secondary` | Summary bar background; framed content boxes (tool-call chip, optimizer result, code blocks, inline code) |
 | `--background-modifier-border` | All dividers and borders, including the blockquote left bar |
@@ -74,7 +76,7 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 
 For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a plain `var(--color-accent)` fallback on the preceding line for Chromium < 111.
 
-**On-accent text (ADR-082):** any element with a **solid `--color-accent` fill** must set its text `color: var(--p-on-accent, var(--text-on-accent))` — never bare `--text-on-accent`. Obsidian's `--text-on-accent` is static (white in the default theme) and doesn't adapt to a customized accent, so a pale/mid accent renders those labels low-contrast. `PythiaSidebarView.applyAccentContrast()` resolves the accent and both on-accent tokens to rgb (via a probe span) and sets `--p-on-accent` on `.pythia-view` to whichever token has the higher WCAG contrast; it re-runs on Obsidian's `css-change` event. Accent *tints* (e.g. the user bubble's 12% `color-mix` with `--text-normal`) are unaffected — this is only for solid fills.
+**On-accent text (ADR-082, ADR-092):** any element with a **solid `--color-accent` fill** must set its text `color: var(--p-on-accent, var(--text-on-accent))` — never bare `--text-on-accent`. Obsidian's `--text-on-accent` is static (white in the default theme) and doesn't adapt to a customized accent, so a pale/mid accent renders those labels low-contrast. `PythiaSidebarView.applyAccentContrast()` resolves the accent and the theme's on-accent tokens to rgb (via a probe span) and delegates to the pure `readableOnAccent()` (`services/color.ts`): it keeps the highest-contrast theme token **only when it clears WCAG AA (4.5)** on the accent — respecting a theme that deliberately tints its label — and otherwise forces pure black or white, whichever contrasts more. This closes the gap ADR-082 left: picking the *less bad* of two theme tokens still fails when **both** read poorly on the accent (the reported unreadable "Senden" label). It sets `--p-on-accent` on `.pythia-view` and re-runs on Obsidian's `css-change` event. Accent *tints* (e.g. the user bubble's 12% `color-mix` with `--text-normal`) are unaffected — this is only for solid fills.
 
 ### Spacing — 4 px grid, no arbitrary values
 
