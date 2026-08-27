@@ -3,6 +3,7 @@ const en = {
 	noConversation:         "No conversation",
 	changeModelTooltip:     "Change provider / model",
 	reasoningTag:           "Reasoning",
+	tapAgainToSelect:       "Tap again to select",
 	openConvSettings:       "Conversation settings…",
 	sendMaxTokensHint:      "Max tokens ({{max}}) may be too low for {{model}} — a reasoning model spends part of that budget on hidden reasoning, so the reply can be truncated. Recommended: at least {{recommended}}. Click to adjust.",
 	deleteConvTooltip:      "Delete conversation",

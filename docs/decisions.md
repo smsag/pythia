@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-101 (a global free-text `customInstructions` setting is appended to every chat system prompt inside a `<custom_instructions>` block, after the conversation's own system prompt — the ChatGPT-style "custom instructions" slice; app-contract instructions stay hard-coded, and the no-solicitation guard stays always-on per ADR-100).*
+*Last updated: 2026-08-27 — ADR-102 (model picker shows a plain-language "good for" example line per model — hover-revealed on desktop, first-tap-reveals / second-tap-confirms on touch — to help users choose without capability jargon; curated for every catalog model in `models/modelGuidance.ts`, localized en/de).*
+
+*Previously, 2026-08-27 — ADR-101 (a global free-text `customInstructions` setting is appended to every chat system prompt inside a `<custom_instructions>` block, after the conversation's own system prompt — the ChatGPT-style "custom instructions" slice; app-contract instructions stay hard-coded, and the no-solicitation guard stays always-on per ADR-100).*
 
 *Previously, 2026-08-27 — ADR-100 (a `NO_SOLICITATION_INSTRUCTION` is always appended to the chat system prompt, suppressing the assistant's boilerplate closing offer to "save this as a note" / "shall I continue with the next section?" — while still permitting a genuine clarifying question).*
 
@@ -1449,6 +1451,22 @@ Empty state (no active conversation) keeps only **history · name · +** — ren
 **Alternatives rejected:** editing `DEFAULT_SYSTEM_PROMPT` only (misses custom-prompt conversations, where the behavior also shows); removing the KB-framing / hiding the note tools (they're wanted — the goal is to stop the *unsolicited offer*, not the capability); a settings toggle (rejected for now — needs a `buildSystemPrompt` signature change to reach settings, and the default everyone wants is "suppressed").
 
 **Consequence:** Replies end at the answer. The exact-output `buildSystemPrompt` tests were updated to expect the always-present guard (it now sits between the system-prompt block and any summary/excerpt parts), plus a test asserting the guard is present. **Known limitation:** it's a prompt-level nudge, not a hard filter — a model may still occasionally close with an offer; and it's unconditional, so a user who *wants* the save prompt has no toggle yet.
+
+### ADR-102 — "Good for" model guidance in the picker (hover on desktop, two-tap on touch)
+
+**Status:** Active
+
+**Context:** Users struggle to choose a model; the popover showed only name, context window, and a "Reasoning" tag — insider signals. Of three options considered (see backlog #119 for the deferred task-first picker), the curated per-model "good for" example line was chosen as lowest-risk. The maintainer further ruled out capability jargon: "deep reasoning / fast / slow" is meaningless to most users, so the descriptor style is **recognizable example tasks** ("Long chapters, in-depth comparisons" / "Quick facts, short rewrites") a user matches their own intent against.
+
+**Decision:** Add a plain-language example line under every model row. Constraints from the maintainer:
+- **Smaller text**, and **revealed on demand** — desktop shows it on `:hover` (gated `@media (hover: hover)`), so the list stays scannable; the row grows to a second line only while hovered.
+- **Touch two-tap:** on a coarse pointer (`matchMedia("(hover: none), (pointer: coarse)")`), the first tap *arms* the row (reveals the example + a "Tap again to select" hint) without selecting; a second tap on the same row confirms. Tapping a different row moves the armed state. Desktop keeps first-click-selects.
+- **Every model** in `MODEL_CATALOG` has an entry — enforced by `tests/modelGuidance.test.ts` (present, non-empty, en + de, no stale ids).
+The strings live in `models/modelGuidance.ts` as a per-id `{ en, de }` map, **not** in the `t()` table: the natural lookup is by model id (dynamic), which the dead-key i18n test can't see, so a dedicated map localizes it via a new `getLang()` helper without tripping that check. Row markup split into a `.p-model-pop-line` (name/tag/ctx/check) plus `.p-model-pop-good` / `.p-model-pop-taphint`; the row became a flex column.
+
+**Alternatives rejected:** capability descriptors (deep reasoning/fast — the jargon the maintainer rejected); human-persona or everyday-scale metaphors (memorable but risk reading as condescending in a knowledge tool, and metaphor emoji would break the "no emoji icons" design rule); always-visible examples (clutters the list — the maintainer wanted hover/tap reveal); routing the strings through `t()` with dynamic keys (breaks the dead-key test).
+
+**Consequence:** A lost user hovers (or taps) a model and reads what it's for in their own words, in their UI language. **Known limitations:** the examples are curated prose that must be kept sensible as the catalog changes (the test only enforces presence, not accuracy); the desktop hover-reveal grows the row, a small reflow within the scrollable popover; and the two-tap touch flow adds one tap on mobile (mitigated by the explicit "Tap again to select" hint).
 
 ### ADR-101 — Global custom instructions (settings-driven, appended to the system prompt)
 

@@ -80,6 +80,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/color.ts` | 50 | Pure accent-contrast helpers: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent` — pick the higher-contrast on-accent token for the user's accent (consumed by `sidebar.ts`'s `applyAccentContrast`, ADR-082) |
 | `services/LLMProvider.ts` | 23 | Provider interface |
 | `models/knownModels.ts` | 120 | `MODEL_CATALOG: ModelInfo[]` — single unified array of all known models with per-model flags (`noTemperature`, `supportsEffort`, `isReasoning`, `isMistralReasoning`, `hidden`) and `contextWindow`; all derived exports (`KNOWN_MODELS`, `MODEL_ABBREVIATIONS`, `isReasoningModel()`, `supportsTemperature()`, `supportsEffort()`, `getContextWindow()`, etc.) computed from it; `resolveDefaultModelForProvider()` |
+| `models/modelGuidance.ts` | 50 | `MODEL_GOOD_FOR` — plain-language "good for" example line per model id (`{ en, de }`), shown in the picker (ADR-102); `goodForModel(id, lang)`; every catalog model must have an entry (test-enforced) |
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
 | `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |

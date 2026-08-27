@@ -5,6 +5,7 @@ const de: Strings = {
 	noConversation:         "Kein Gespräch",
 	changeModelTooltip:     "Anbieter / Modell wechseln",
 	reasoningTag:           "Reasoning",
+	tapAgainToSelect:       "Zum Auswählen erneut tippen",
 	openConvSettings:       "Gesprächseinstellungen…",
 	sendMaxTokensHint:      "Max. Tokens ({{max}}) könnten für {{model}} zu niedrig sein — ein Reasoning-Modell verbraucht einen Teil davon für verborgenes Nachdenken, sodass die Antwort abgeschnitten werden kann. Empfohlen: mindestens {{recommended}}. Zum Anpassen klicken.",
 	deleteConvTooltip:      "Gespräch löschen",

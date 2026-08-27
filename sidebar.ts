@@ -15,7 +15,8 @@ import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
-import { t } from "./i18n";
+import { t, getLang } from "./i18n";
+import { goodForModel } from "./models/modelGuidance";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
@@ -2402,6 +2403,13 @@ export class PythiaSidebarView extends ItemView {
 			this.modelPopoverCleanup = null;
 		};
 
+		// Touch (no hover): first tap on a row reveals its "good for" examples and
+		// arms it; a second tap on the same row confirms. Desktop reveals on hover
+		// and selects on the first click (armId stays null).
+		const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+		const lang = getLang();
+		let armedId: string | null = null;
+
 		const providers: { key: typeof conv.provider; label: string }[] = [
 			{ key: "anthropic", label: "ANTHROPIC" },
 			{ key: "openai", label: "OPENAI" },
@@ -2415,14 +2423,28 @@ export class PythiaSidebarView extends ItemView {
 				const active = m.id === conv.model && m.provider === conv.provider;
 				const row = pop.createDiv({ cls: "p-model-pop-row" });
 				if (active) row.addClass("active");
-				row.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
+				// Top line: name · reasoning tag · context window · active check.
+				const line = row.createDiv({ cls: "p-model-pop-line" });
+				line.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
 				if (m.isReasoning || m.isMistralReasoning) {
-					row.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
+					line.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
 				}
-				row.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
-				if (active) setIcon(row.createSpan({ cls: "p-model-pop-check" }), "check");
+				line.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
+				if (active) setIcon(line.createSpan({ cls: "p-model-pop-check" }), "check");
+				// "Good for" examples (smaller, hover- or tap-revealed) + touch confirm hint.
+				const good = goodForModel(m.id, lang);
+				if (good) row.createSpan({ cls: "p-model-pop-good", text: good });
+				row.createSpan({ cls: "p-model-pop-taphint", text: t("tapAgainToSelect") });
 				row.addEventListener("mousedown", (e) => {
 					e.preventDefault(); e.stopPropagation();
+					if (coarse && armedId !== m.id) {
+						// First tap: reveal the explainer and wait for a confirming tap.
+						armedId = m.id;
+						pop.querySelectorAll(".p-model-pop-row.armed")
+							.forEach((r) => r.classList.remove("armed"));
+						row.addClass("armed");
+						return;
+					}
 					void this.applyModelChoice(m);
 					closePop();
 				});

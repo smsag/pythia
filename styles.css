@@ -359,19 +359,39 @@
 }
 .pythia-view .p-model-pop-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 5px 12px;
   font-size: var(--font-small);
   color: var(--text-muted);
   cursor: pointer;
 }
+.p-model-pop-line { display: flex; align-items: center; gap: 8px; }
 .p-model-pop-row:hover { background: var(--background-modifier-hover); }
 .p-model-pop-row.active {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--text-normal);
   font-weight: 600;
 }
+/* "Good for" example tasks: smaller, muted, revealed on hover (desktop) or when
+   the row is armed by a first tap (touch). The touch confirm hint appears only
+   in the armed state. */
+.p-model-pop-good,
+.p-model-pop-taphint {
+  display: none;
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: normal;
+}
+.p-model-pop-good { color: var(--text-faint); font-weight: 400; }
+.p-model-pop-taphint { color: var(--color-accent); font-family: var(--font-monospace); }
+@media (hover: hover) {
+  .p-model-pop-row:hover .p-model-pop-good { display: block; }
+}
+.p-model-pop-row.armed { background: var(--background-modifier-hover); }
+.p-model-pop-row.armed .p-model-pop-good,
+.p-model-pop-row.armed .p-model-pop-taphint { display: block; }
 .p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-model-pop-rtag {
   font-family: var(--font-monospace);
