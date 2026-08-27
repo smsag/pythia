@@ -2064,10 +2064,19 @@ export class PythiaSidebarView extends ItemView {
 		if (fork.messages.length === 0) { new Notice(t("noMessagesToSummarize")); return; }
 		const notice = new Notice(t("generatingSummary"), 0);
 		try {
-			const text = await this.plugin.llmRouter.generateSummary(fork);
-			if (text) {
-				fork.summaryText = text;
+			// Use generateSummaryWithTitle (not generateSummary) so summarizing a fork
+			// from its source-side anchor also RETITLES the fork — matching the in-fork
+			// path (generateConversationSummary). Without this, a fork summarized from
+			// the origin keeps its generic "Fork of X" name while one summarized from
+			// inside gets a real title.
+			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(fork);
+			if (summary) {
+				fork.summaryText = summary;
 				fork.summaryUpdatedAt = new Date().toISOString();
+				if (title) {
+					fork.name = title;
+					void this.plugin.renameConversationFile(fork);
+				}
 				await this.plugin.conversationStore.save(fork);
 				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
 			}
