@@ -1,6 +1,14 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
+*Last updated: 2026-08-27 — ADR-092 (on-accent label color keeps a theme token only when it clears WCAG AA on the user's accent, else forces pure black/white; fixes the unreadable "Senden" label ADR-082 missed. Extracted to the tested `readableOnAccent()`).*
+
+*Previously, 2026-08-27 — ADR-091 (prompt optimization moves from an input-toolbar wand icon to a third "Optimize prompt" item in the Send long-press menu; greyed when input is empty or no optimizer template is set).*
+
+*Previously, 2026-08-27 — ADR-090 (favorite/fork highlights adopt smsag.de's "highlighter marker" style — asymmetric corners, diagonal gradient ink sweep, theme-adaptive text-shadow; colors unchanged, always visible).*
+
+*Previously, 2026-08-27 — ADR-087 (an errored or empty send now persists the user turn up front and discards partial replies), ADR-088 (conversation eviction preserves survivors' insertion order so "most recent = last element" holds), ADR-089 (web-search citations reconciled by domain and inline web citing re-enabled via a shared `WEB_CITATION_INSTRUCTION`; revises ADR-077's "stop instructing web citations").*
+
+*Previously, 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
 
 *Previously, 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
 
@@ -1232,4 +1240,87 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Trade-offs:** custom elements carry no `<mark>` "highlighted reference" ARIA semantics — a minor accessibility loss accepted for the reliable styling. Bare names like `<fork>` were rejected in favor of hyphenated `pythia-*` (bare names are "unknown elements," not spec-valid custom elements, and risk a future standard tag). Injected only into the live DOM after render (never into stored markdown), so Obsidian's sanitizer is not involved and re-render repaints cleanly.
 
 **Consequence:** Forks reliably render as an accent-tinted highlighter, visually distinct from yellow favorites, in every theme and Obsidian build — no cascade fight. `HighlightPainter` tests assert both wrapper tag names. Any future highlight kind should follow the same custom-element pattern rather than styling `<mark>`.
+
+### ADR-087 — An errored or empty send keeps the user turn and discards partial replies
+
+**Status:** Active
+
+**Context:** `sendMessage()` pushed the user's `Message` into `conv.messages` but persisted nothing until a reply *completed* — the only `conversationStore.save(conv)` was in the success branch of `onComplete`. Two failure paths fell through that gap: (1) on a mid-stream error the handler called `finalize(partial)` — rendering the partial reply into the DOM but never adding it to `conv.messages` nor saving, so the visible reply vanished on the next full re-render and the user's own message was unpersisted (lost on a clean close or an iCloud/Sync reload); (2) an empty response (`!fullText`) removed the streaming row and returned, again leaving the user turn unsaved. The partial that was rendered had never been sent to the model as a real turn, so keeping it also desynced the visible transcript from the history the model actually sees.
+
+**Decision:** Persist the user turn up front, and never keep a partial reply.
+- Immediately after `conv.messages.push(userMsg)`, call `await conversationStore.save(conv)` so the user's message survives regardless of what the response does.
+- On a stream **error**, drop the streaming row outright (no `finalize`), discarding any partial text. The user retries from a clean state. `createStreamingBubble`'s now-unused `getPartial()` was removed.
+- On an **empty** response, keep the (already-saved) user turn and just remove the empty streaming row.
+
+**Alternatives rejected:** persisting the partial reply as a real assistant message (it never reached the model, so it would mislead the next turn's context and imply a completed answer); keeping the partial visible but unsaved (the transcript would then differ from saved history and disappear on any rebuild); dropping the user message on empty/error (silently loses what the user typed). All three were put to the maintainer; "keep the user turn, discard the partial" was chosen.
+
+**Consequence:** A failed or empty send no longer loses the user's message, and the transcript always matches saved history. One extra debounced save per send (coalesced with the reply's save on success).
+
+### ADR-088 — Conversation eviction preserves insertion order of survivors
+
+**Status:** Active
+
+**Context:** `evictConversations()` returned the surviving conversations **re-sorted by `updatedAt` descending**, and `persistData()` assigns that back to `plugin.conversations`. The rest of the app treats the array as insertion-ordered — `onOpen()` and `handleDeleteConversation()` pick "the most recent" as `conversations[length - 1]` (the last-pushed). After any eviction (only once a vault exceeds `maxConversations`, default 200) the reorder silently made `[length - 1]` resolve to the **oldest** conversation, so the plugin would open / fall back to the wrong one, and the reordered array was then persisted to disk.
+
+**Decision:** Use `updatedAt` only to *select* which unprotected conversations survive (the newest `slots`), then return survivors filtered from the original array so their relative order is unchanged. Protected conversations (starred or active in any leaf) are still always kept. The misleading docstring ("Returns the evicted list…") was corrected — the function returns survivors, not evictees.
+
+**Consequence:** "Most recent = last array element" holds before and after an eviction. A regression test asserts survivor order and that `result.at(-1)` is the newest conversation.
+
+### ADR-089 — Web-search citations reconciled by domain; inline web citing re-enabled
+
+**Status:** Active (revises the "stop instructing web citations" decision of ADR-077; the deterministic-capture and foreign-marker-stripping parts of ADR-077 stand)
+
+**Context:** ADR-077 stopped instructing the model to cite web results (to avoid leaked markers and duplicate sources) and captured Tavily sources deterministically. Two rough edges remained: (1) the `web_search` **tool description still told the model to "cite them inline,"** directly contradicting the `<recent_context>` block and tool-result header that said *not* to — an instruction the model receives on every research turn; (2) when a model *did* emit `⟦cite:web:<domain>⟧`, `parseCitations` stored it with `ref = <domain>` while `appendWebSources` deduped Tavily results by **full URL**, so the same site could list twice.
+
+**Decision:** Make inline web citing a first-class, consistent path (the web analogue of ADR-072's note-citation rule), and dedupe by domain.
+- **One shared instruction.** New `WEB_CITATION_INSTRUCTION` in `promptConstants` tells the model to append `⟦cite:web:<domain>⟧` after a web-derived statement and *not* to add its own sources list. Both `ContextBuilder`'s `<recent_context>` block and `WebSearchService`'s tool-result header reference it, and the `web_search` tool description is reworded to match — the three sites can no longer contradict.
+- **Dedupe by domain.** `appendWebSources` now compares by normalized domain (new exported `webDomain()` helper) instead of full URL, so a model's bare-domain marker and Tavily's full-URL result for the same site collapse to one source. The first occurrence wins, which keeps the inline `⟦cite:web:…⟧` chip mapping intact.
+
+**Alternatives rejected:** deterministic-only, i.e. keep forbidding inline web citation and strip any `⟦cite:web:…⟧` markers (simpler, but discards a citation the model volunteered and leaves web answers without inline chips); upgrading the kept source's `ref` to Tavily's full article URL (would break the `${kind}:${ref}` marker→source key used by `eachCitationSegment`, dropping the chip). Put to the maintainer; "reconcile by domain, allow inline" was chosen.
+
+**Consequence:** Research answers can carry inline web chips like note citations, web sources never double-list, and the model receives one coherent citation instruction. `stripForeignCitations` (ADR-077) still removes `【…†…】` native-format noise; deterministic Tavily capture is unchanged.
+
+### ADR-090 — Favorite/fork highlights use smsag.de's "highlighter marker" style
+
+**Status:** Active (restyles the highlight surface of ADR-086; the custom-element mechanism of ADR-086 is unchanged)
+
+**Context:** Favorites (`<pythia-favorite>`) and fork origins (`<pythia-fork>`) rendered as flat solid blocks — `background: var(--text-highlight-bg)` (yellow) and `color-mix(var(--color-accent) 25%, transparent)` respectively, with `border-radius: 2px`. The maintainer wanted them to read like the "highlighter" hover effect on the smsag.de homepage links, keeping each highlight's existing color. That site's `a:hover` rule is the classic marker effect: `border-radius: 1em 0 1em 0` (asymmetric, hand-drawn corners), a diagonal `linear-gradient(-100deg, …)` sweep of a pale ink at varying alpha, and `text-shadow: 1px 1px 1px #fff` for legibility over the ink.
+
+**Decision:** Port the *shape* of that effect to both highlight elements while preserving their colors and making it Obsidian-theme-safe.
+- **Marker sweep, own color.** Each element's `background` becomes `linear-gradient(-100deg, …)` built from its own token — `--text-highlight-bg` for favorites, `--color-accent` for forks — via `color-mix`. The gradient's peak stop is the full token value (favorite) or ≈30% accent (fork, matching the prior 25% tint), so the color is unchanged; lighter stops (12–45%) build the uneven sweep. A plain `background: <solid>` line precedes the gradient as the no-`color-mix` fallback.
+- **Asymmetric corners.** `border-radius: 1em 0 1em 0`, with `box-decoration-break: clone` so the ink and corners stay clean across line wraps.
+- **Theme-adaptive text-shadow.** `text-shadow: 1px 1px 1px var(--background-primary)` — a white halo in light themes (as on smsag.de), a dark halo in dark themes — instead of a hardcoded `#fff` that would look wrong on Obsidian dark themes.
+- **Always visible, not hover-gated.** The marker is the resting appearance (not a `:hover` reveal): favorited/forked spans must stay findable in the transcript, which is the whole point of the feature.
+
+**Alternatives rejected:** reveal-on-hover only (most literal copy of the site, but favorites/forks would be invisible at rest — only reachable via the navigator); recoloring favorites to smsag.de's blue (collides with the accent-blue fork highlight — the two would be indistinguishable); a hardcoded white text-shadow (breaks on dark themes). The hover-behavior and text-shadow questions were put to the maintainer; "always visible" + "adapt per theme" were chosen.
+
+**Consequence:** Both highlights read as a hand-drawn highlighter marker in either theme, colors untouched, with no new elements or JS — a pure `styles.css` change to the two existing rules. The `p-highlight-flash` navigator-jump pulse is unchanged (it briefly fills solid, then settles back to the marker gradient).
+
+### ADR-091 — Prompt optimization moves from a toolbar icon to the Send long-press menu
+
+**Status:** Active (extends ADR-057's Send long-press menu)
+
+**Context:** The inline prompt optimizer was launched from a dedicated wand icon in the input toolbar (`.p-optimize-btn`, one of attach/save/optimize/apply-template/research). The maintainer wanted the toolbar icon removed and the feature folded into the long-press menu on the **Send** button, alongside the two summary actions (ADR-057) — a third entry — to declutter the toolbar and group the "do something with my draft/conversation" actions in one place.
+
+**Decision:** Remove the toolbar button and add a third `.p-send-menu` item.
+- **Menu item.** `openSummaryMenu` gains an **Optimize prompt** entry (`sparkles` icon via `setIcon`, matching the menu's icon convention), after Summarize conversation / Summarize favorites. Its action runs the existing `OptimizationController.start()` (via `ensureInputExpanded()`), unchanged.
+- **Disabled state.** Greyed (`.p-send-menu-item-disabled`) when the input is empty **or** no optimizer template (`settings.promptOptimizerTemplateId`) is configured — the maintainer chose the stricter of the offered conditions so the item never launches into an immediate no-op. (The other menu items likewise grey on "nothing to act on".)
+- **Icon** is `sparkles` — already used in the empty-state welcome, so it renders in every Obsidian/Lucide version (chosen over `wand-sparkles`/`wand`).
+- **Controller decoupling.** `OptimizationController`'s `optimizeBtnEl` dependency became optional and every use is guarded: there is no longer a toolbar button to reflect the in-progress "active" glow onto, so the in-message `.p-optimize-indicator` plus the disabled Send button are the sole progress feedback. Dead artifacts removed: the `optimizeBtnTooltip` i18n string and the `.p-optimize-btn` / `pythia-wand-pulse` CSS.
+
+**Alternatives rejected:** disabling only on empty input while leaving the missing-template case to a click-time Notice (more discoverable, but the maintainer preferred never offering a dead action); keeping a toolbar button *and* the menu entry (defeats the declutter goal); a native Obsidian `Menu` (renders as a mobile bottom sheet, not anchored to Send — already rejected by ADR-057).
+
+**Consequence:** The input toolbar drops one icon; prompt optimization, conversation summary, and favorites summary now live together in the Send long-press menu. No behavior change to the optimizer flow itself.
+
+### ADR-092 — On-accent label falls back to pure black/white when theme tokens fail AA
+
+**Status:** Active (fixes a gap in ADR-082)
+
+**Context:** ADR-082 made accent-filled labels (Send button, active tool/effort pills) readable by computing `--p-on-accent` as whichever of the theme's two on-accent tokens (`--text-on-accent` / `--text-on-accent-inverted`) has the higher measured contrast on the user's accent. But that only ever chooses *between the two theme tokens* — when **both** read poorly on the accent (a pale/mid accent, or a theme whose "inverted" token is itself a low-contrast tint rather than black), the less-bad token is still unreadable. This is exactly what the user reported: the "Senden" label stayed low-contrast (dark purple on light purple) despite ADR-082.
+
+**Decision:** Extract the choice into a pure, unit-tested `readableOnAccent(accent, tokens, aa = 4.5)` in `services/color.ts`, and add a **pure black/white fallback**. It keeps the highest-contrast theme token *only when it clears WCAG AA (4.5)* on the accent — so a theme that deliberately tints a still-readable label is respected — and otherwise sets `--p-on-accent` to pure `#ffffff` or `#000000`, whichever contrasts more, which is guaranteed readable on any accent. `applyAccentContrast()` now just resolves the accent + theme tokens via its probe span and delegates. The older `betterOnAccent()` (which could only pick between the two tokens) is removed. `--p-on-accent` still stores the CSS var string when a theme token wins, so the label tracks a later theme edit to that token.
+
+**Alternatives rejected:** always force pure black/white regardless of the theme token (simplest and always readable, but discards a theme's intentional on-accent tint even when it reads fine — e.g. a conventional white label on a saturated accent that clears AA); lowering the AA threshold below 4.5 (would preserve more conventional white-on-accent labels but risks leaving borderline cases unreadable — 4.5 is the correct bar for the small 10px Send label, and the threshold is a parameter if it needs tuning).
+
+**Consequence:** On-accent labels are readable on every accent and theme, not just the ones where one of the theme's two tokens happened to work. The decision is covered by `tests/color.test.ts` (including the both-tokens-poor case). No CSS or markup change — the same `color: var(--p-on-accent, …)` wiring from ADR-082 stands.
 

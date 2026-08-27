@@ -104,4 +104,20 @@ describe("appendWebSources", () => {
 		// full URL retained in ref for opening
 		expect(out[1].ref).toBe("https://www.ecb.europa.eu/x");
 	});
+
+	it("dedupes a Tavily result against a model-emitted marker for the same domain", () => {
+		// Model cited ⟦cite:web:example.com⟧ (ref = bare domain); Tavily returns a
+		// full URL on the same domain. They must collapse to ONE source (dedup by
+		// domain), and the model's domain source is kept so its inline chip still
+		// maps. A different-domain Tavily result is still appended.
+		const base = parseCitations("Fact⟦cite:web:example.com⟧.");
+		const out = appendWebSources(base, [
+			{ title: "same", url: "https://example.com/article" },
+			{ title: "other", url: "https://other.org/x" },
+		]);
+		expect(out.map((s) => [s.n, s.kind, s.ref])).toEqual([
+			[1, "web", "example.com"],
+			[2, "web", "https://other.org/x"],
+		]);
+	});
 });

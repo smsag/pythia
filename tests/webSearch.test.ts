@@ -59,7 +59,9 @@ describe("WebSearchService — result formatting", () => {
 		expect(result).toContain("Summary: Paris is the capital of France.");
 		expect(result).toContain("https://example.com/fr");
 		expect(result).toContain("https://example.com/paris");
-		expect(result).toContain("Pythia lists the sources for the user automatically");
+		// Web-citation directive is present (shared WEB_CITATION_INSTRUCTION).
+		expect(result).toContain("⟦cite:web:<domain>⟧");
+		expect(result).toContain("lists the web sources for the user automatically");
 		expect(result).not.toMatch(/^Error:/);
 	});
 

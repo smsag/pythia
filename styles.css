@@ -544,6 +544,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--s2);
+  /* Set the summary "Speisekarte" apart from the conversation below it: the chat's
+     own flex gap (--s3, 12px) reads as too tight a seam between this menu zone and
+     the first message bubble (more noticeable on forks, where the cards sit under
+     the fork banner). --s4 on top of the gap gives a clear ~28px section break.
+     Only applies when cards are present — the container is display:none when empty. */
+  margin-bottom: var(--s4);
 }
 
 .p-summary-card {
@@ -1260,12 +1266,26 @@
    styles win with no specificity contest and no scoping tricks. Both default to
    inline (unknown elements are inline); .pythia-view scope kept for consistency. */
 
-/* Favorite — Obsidian's own highlight background, native in every theme. */
+/* Favorite — smsag.de-style highlighter marker (ADR-090): a diagonal, uneven ink
+   sweep with asymmetric "hand-drawn" corners, ported from the site's a:hover rule.
+   The color is unchanged — the gradient's peak stop is the full --text-highlight-bg,
+   lighter stops build the sweep. The plain `background` line is the no-color-mix
+   fallback (kept as a separate declaration so an unsupported gradient falls back to
+   the original solid). text-shadow uses --background-primary so it's a white halo in
+   light themes (as on smsag.de) and a dark halo in dark themes. box-decoration-break
+   keeps the ink and corners clean across line wraps. */
 .pythia-view pythia-favorite {
-  background: var(--text-highlight-bg);
   color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
+  border-radius: 1em 0 1em 0;
+  padding: 0 2px;
+  text-shadow: 1px 1px 1px var(--background-primary);
+  background: var(--text-highlight-bg);                                     /* solid fallback */
+  background: linear-gradient(-100deg,
+    color-mix(in srgb, var(--text-highlight-bg) 30%, transparent),
+    var(--text-highlight-bg) 100%,
+    color-mix(in srgb, var(--text-highlight-bg) 45%, transparent));         /* marker sweep */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .pythia-view pythia-favorite.p-highlight-flash {
   animation: pythia-hl-flash 1.2s ease-out;
@@ -1281,12 +1301,16 @@
    fork's summary anchor. The readable highlight token is a fallback for engines
    without color-mix. */
 .pythia-view pythia-fork {
-  background: var(--text-highlight-bg);                                     /* readable fallback */
-  background: color-mix(in srgb, var(--color-accent) 25%, transparent);     /* accent highlighter */
   color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
+  border-radius: 1em 0 1em 0;
+  padding: 0 2px;
   cursor: pointer;
+  text-shadow: 1px 1px 1px var(--background-primary);
+  background: var(--text-highlight-bg);                                     /* readable fallback */
+  background: linear-gradient(-100deg,
+    color-mix(in srgb, var(--color-accent) 12%, transparent),
+    color-mix(in srgb, var(--color-accent) 30%, transparent) 100%,
+    color-mix(in srgb, var(--color-accent) 18%, transparent));             /* accent marker sweep */
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -2162,15 +2186,8 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 }
 
 /* ── Inline prompt optimizer ──────────────────────────────────────────────── */
-
-/* Wand button pulse animation while optimizing */
-@keyframes pythia-wand-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
-}
-.p-optimize-btn.active svg {
-  animation: pythia-wand-pulse 1s ease-in-out infinite;
-}
+/* The optimizer is launched from the Send long-press menu (a "sparkles" item),
+   not a toolbar wand button — so the old .p-optimize-btn pulse animation is gone. */
 
 /* Preview bubble — original input, muted / ghost style */
 .p-msg-optimize-preview {

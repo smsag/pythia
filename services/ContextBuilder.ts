@@ -15,6 +15,7 @@ import {
 	MAX_PDF_FILE_SIZE_BYTES,
 	DEFAULT_SYSTEM_PROMPT,
 	GROUNDING_INSTRUCTION,
+	WEB_CITATION_INSTRUCTION,
 } from "./promptConstants";
 
 /**
@@ -41,7 +42,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 				`Current date: ${today}.\n` +
 				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
 				`When a question is time-sensitive or you are not confident a fact is current, use the web_search tool rather than relying on memory. ` +
-				`Base your answer on the results; do not add your own inline source markers or a sources list — Pythia lists the web sources for you automatically.\n` +
+				`Base your answer on the results. ${WEB_CITATION_INSTRUCTION}\n` +
 				`</${RECENT_CONTEXT_TAG}>`
 		);
 	}

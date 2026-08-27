@@ -11,7 +11,7 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
-import { parseRgb, betterOnAccent } from "./services/color";
+import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
@@ -163,7 +163,6 @@ export class PythiaSidebarView extends ItemView {
 	private renameInputEl!: HTMLInputElement;
 	private renameLLMBtn!: HTMLButtonElement;
 
-	private optimizeBtnEl!: HTMLButtonElement;
 	private researchBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
@@ -253,9 +252,8 @@ export class PythiaSidebarView extends ItemView {
 		this.quickSwitcherCleanup?.();
 		this.historyCleanup?.();
 
-		if (this.onSelectionChange) {
-			document.removeEventListener("selectionchange", this.onSelectionChange);
-		}
+		// The selectionchange listener is registered via registerDomEvent and is
+		// cleaned up automatically on view unload — no manual removal needed.
 		if (window.visualViewport && this.onViewportResize) {
 			window.visualViewport.removeEventListener("resize", this.onViewportResize);
 			window.visualViewport.removeEventListener("scroll", this.onViewportResize);
@@ -372,7 +370,7 @@ export class PythiaSidebarView extends ItemView {
 		// width = context usage / model window; turns warning-colored at >=80%.
 		this.ctxBarEl = container.createDiv({ cls: "p-ctx-bar" });
 		this.ctxBarFillEl = this.ctxBarEl.createDiv({ cls: "p-ctx-bar-fill" });
-		this.ctxBarEl.addEventListener("click", () => this.revealContextInspector());
+		this.registerDomEvent(this.ctxBarEl, "click", () => this.revealContextInspector());
 		this.ctxBarEl.style.display = "none";
 
 		this.buildChatArea(container);
@@ -390,7 +388,6 @@ export class PythiaSidebarView extends ItemView {
 			messagesEl: this.messagesEl,
 			inputEl: this.inputEl,
 			sendBtn: this.sendBtn,
-			optimizeBtnEl: this.optimizeBtnEl,
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
 			scrollToBottom: () => this.scrollToBottom(),
@@ -421,7 +418,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-title",
 			text: t("noConversation"),
 		});
-		this.convNameEl.addEventListener("click", () => this.onConvNameClick());
+		this.registerDomEvent(this.convNameEl, "click", () => this.onConvNameClick());
 
 		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
 		this.renameWrapEl.style.display = "none";
@@ -431,7 +428,7 @@ export class PythiaSidebarView extends ItemView {
 			attr: { title: t("renameLLMTooltip") },
 		});
 		setIcon(this.renameLLMBtn, "refresh-cw");
-		this.renameLLMBtn.addEventListener("mousedown", (e) => {
+		this.registerDomEvent(this.renameLLMBtn, "mousedown", (e) => {
 			e.preventDefault();
 			void this.onRenameLLM();
 		});
@@ -452,14 +449,14 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.renameBtn, "pencil");
 		this.renameBtn.style.display = "none";
-		this.renameBtn.addEventListener("click", () => this.enterRenameMode());
+		this.registerDomEvent(this.renameBtn, "click", () => this.enterRenameMode());
 
 		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
 		// Clicking it scrolls to the top of the conversation (context inspector
 		// lands there in a later phase).
 		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
 		this.ctxChipEl.style.display = "none";
-		this.ctxChipEl.addEventListener("click", () => this.revealContextInspector());
+		this.registerDomEvent(this.ctxChipEl, "click", () => this.revealContextInspector());
 
 		this.modelBadgeEl = header.createEl("button", {
 			cls: "p-model",
@@ -467,7 +464,7 @@ export class PythiaSidebarView extends ItemView {
 			attr: { title: t("changeModelTooltip") },
 		});
 		this.modelBadgeEl.style.display = "none";
-		this.modelBadgeEl.addEventListener("click", () => this.openModelPopover());
+		this.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
 
 		this.copyLinkBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -475,28 +472,28 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.copyLinkBtn, "link");
 		this.copyLinkBtn.style.display = "none";
-		this.copyLinkBtn.addEventListener("click", () => this.onCopyConversationLink());
+		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
 
 		const historyBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("historyTooltip") },
 		});
 		setIcon(historyBtn, "history");
-		historyBtn.addEventListener("click", () => this.openHistoryView());
+		this.registerDomEvent(historyBtn, "click", () => this.openHistoryView());
 
 		const deleteConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("deleteConvTooltip") },
 		});
 		setIcon(deleteConvBtn, "trash");
-		deleteConvBtn.addEventListener("click", () => this.handleDeleteConversation());
+		this.registerDomEvent(deleteConvBtn, "click", () => this.handleDeleteConversation());
 
 		const newConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("newConvTooltip") },
 		});
 		setIcon(newConvBtn, "plus");
-		newConvBtn.addEventListener("click", () => this.plugin.cmdNewConversation());
+		this.registerDomEvent(newConvBtn, "click", () => this.plugin.cmdNewConversation());
 
 		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
 		this.templateLabelEl.style.display = "none";
@@ -506,7 +503,7 @@ export class PythiaSidebarView extends ItemView {
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
-		this.messagesEl.addEventListener("scroll", () => {
+		this.registerDomEvent(this.messagesEl, "scroll", () => {
 			if (this.isScrolling) return;
 			const el = this.messagesEl;
 			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -517,7 +514,7 @@ export class PythiaSidebarView extends ItemView {
 
 		let savedSelRange: Range | null = null;
 		let selTouchStartX = 0;
-		this.selectionToolbar.addEventListener("touchstart", (e: TouchEvent) => {
+		this.registerDomEvent(this.selectionToolbar, "touchstart", (e: TouchEvent) => {
 			const sel = window.getSelection();
 			savedSelRange = (sel && sel.rangeCount > 0)
 				? sel.getRangeAt(0).cloneRange()
@@ -543,40 +540,40 @@ export class PythiaSidebarView extends ItemView {
 			text: t("copyBtn"),
 			attr: { title: t("copyBtn") },
 		});
-		copyBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onCopySelection(); });
-		copyBtn.addEventListener("touchend", makeSelTouch(() => this.onCopySelection()));
+		this.registerDomEvent(copyBtn, "mousedown", (e) => { e.preventDefault(); this.onCopySelection(); });
+		this.registerDomEvent(copyBtn, "touchend", makeSelTouch(() => this.onCopySelection()));
 
 		this.favBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("favoriteBtn"),
 			attr: { title: t("favoriteBtn") },
 		});
-		this.favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
-		this.favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
+		this.registerDomEvent(this.favBtn, "mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
+		this.registerDomEvent(this.favBtn, "touchend", makeSelTouch(() => void this.onFavoriteSelection()));
 
 		this.forkBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("forkBtn"),
 			attr: { title: t("forkBtn") },
 		});
-		this.forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
-		this.forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
+		this.registerDomEvent(this.forkBtn, "mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
+		this.registerDomEvent(this.forkBtn, "touchend", makeSelTouch(() => this.onForkConversation()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("insertBtn"),
 			attr: { title: t("insertBtn") },
 		});
-		insertBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onInsertIntoNote(); });
-		insertBtn.addEventListener("touchend", makeSelTouch(() => this.onInsertIntoNote()));
+		this.registerDomEvent(insertBtn, "mousedown", (e) => { e.preventDefault(); this.onInsertIntoNote(); });
+		this.registerDomEvent(insertBtn, "touchend", makeSelTouch(() => this.onInsertIntoNote()));
 
 		const inboxBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("inboxBtn"),
 			attr: { title: t("inboxBtn") },
 		});
-		inboxBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onSaveToInbox(); });
-		inboxBtn.addEventListener("touchend", makeSelTouch(() => this.onSaveToInbox()));
+		this.registerDomEvent(inboxBtn, "mousedown", (e) => { e.preventDefault(); void this.onSaveToInbox(); });
+		this.registerDomEvent(inboxBtn, "touchend", makeSelTouch(() => this.onSaveToInbox()));
 
 		{
 			let selDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -588,7 +585,7 @@ export class PythiaSidebarView extends ItemView {
 				}, 150);
 			};
 		}
-		document.addEventListener("selectionchange", this.onSelectionChange);
+		this.registerDomEvent(document, "selectionchange", this.onSelectionChange);
 		this.registerDomEvent(this.messagesEl, "mouseup", () =>
 			setTimeout(() => this.handleSelectionChange(), 10)
 		);
@@ -608,7 +605,7 @@ export class PythiaSidebarView extends ItemView {
 			text: "#",
 			attr: { title: t("showChaptersTooltip") },
 		});
-		this.indexTriggerEl.addEventListener("click", (e) => {
+		this.registerDomEvent(this.indexTriggerEl, "click", (e) => {
 			e.stopPropagation();
 			this.navigatorController.toggle();
 		});
@@ -639,7 +636,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 			}
 		);
-		this.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+		this.registerDomEvent(this.inputEl, "keydown", (e: KeyboardEvent) => {
 			if (this.inlineSuggest.handleKeydown(e)) return;
 			if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 				e.preventDefault();
@@ -648,7 +645,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		{
 			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
-			this.inputEl.addEventListener("input", () => {
+			this.registerDomEvent(this.inputEl, "input", () => {
 				this.autoResizeTextarea();
 				this.inlineSuggest.handleInput();
 				if (tokenDebounce !== null) clearTimeout(tokenDebounce);
@@ -659,10 +656,10 @@ export class PythiaSidebarView extends ItemView {
 			});
 		}
 
-		this.inputEl.addEventListener("focus", () => {
+		this.registerDomEvent(this.inputEl, "focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
-		this.inputEl.addEventListener("blur", () => {
+		this.registerDomEvent(this.inputEl, "blur", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
 
@@ -701,26 +698,8 @@ export class PythiaSidebarView extends ItemView {
 			void this.onSaveResponse();
 		});
 
-		this.optimizeBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn p-optimize-btn",
-			attr: { title: t("optimizeBtnTooltip") },
-		});
-		const optimizeSvg = this.optimizeBtnEl.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		optimizeSvg.createSvg("path", {
-			attr: { d: "m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.21 1.21 0 0 0 0-1.72z" },
-		});
-		optimizeSvg.createSvg("path", { attr: { d: "M14 7l3 3" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M5 6v4" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M19 14v4" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M10 2v2" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
-		this.registerDomEvent(this.optimizeBtnEl, "click", () => {
-			this.ensureInputExpanded();
-			void this.optimizationController.start();
-		});
+		// Prompt optimization now lives as a third entry in the Send long-press menu
+		// (openSummaryMenu) rather than a toolbar icon.
 
 		const applyTemplateBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -763,7 +742,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-send",
 			text: t("sendBtn"),
 		});
-		this.sendBtn.addEventListener("click", () => {
+		this.registerDomEvent(this.sendBtn, "click", () => {
 			// A long-press that opened the summary menu also fires a click — swallow it.
 			if (this.suppressNextSendClick) {
 				this.suppressNextSendClick = false;
@@ -852,6 +831,14 @@ export class PythiaSidebarView extends ItemView {
 			() => void this.generateConversationSummary());
 		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
 			() => void this.summarizeFavorites());
+		// Prompt optimization (moved here from the input toolbar). Disabled when there
+		// is nothing typed to optimize or no optimizer template is configured.
+		const optimizeDisabled =
+			this.inputEl.value.trim().length === 0 || !this.plugin.settings.promptOptimizerTemplateId;
+		addItem(t("menuOptimizePrompt"), "sparkles", optimizeDisabled, () => {
+			this.ensureInputExpanded();
+			void this.optimizationController.start();
+		});
 
 		// Outside-click / outside-touch dismissal (deferred so this gesture doesn't self-close).
 		const onOutside = (e: Event) => {
@@ -1519,14 +1506,19 @@ export class PythiaSidebarView extends ItemView {
 	 *  Obsidian's `--text-on-accent` is static (white in the default theme) and
 	 *  never adapts to a customized `--color-accent`, so a pale/mid accent leaves
 	 *  accent-filled labels (Send button, active toolbar/effort pills) low-contrast.
-	 *  We resolve the accent and both theme on-accent tokens to rgb via a probe
-	 *  span, then set `--p-on-accent` to whichever token has the higher measured
-	 *  contrast. Falls back to `--text-on-accent` (via the CSS var default) if any
-	 *  color can't be resolved. Re-run on css-change. */
+	 *
+	 *  We resolve the accent (and the theme's two on-accent tokens) to rgb via a
+	 *  probe span. The theme token is kept ONLY when it clears WCAG AA on this
+	 *  accent — respecting a theme that deliberately tints its on-accent label —
+	 *  otherwise `--p-on-accent` is forced to pure black or white (whichever
+	 *  contrasts more), which is guaranteed readable on ANY accent. This is the
+	 *  case the earlier "better of the two theme tokens" pick missed: when BOTH
+	 *  theme tokens read poorly on the accent, the less-bad one is still unreadable.
+	 *  Re-run on css-change. */
 	private applyAccentContrast(): void {
 		const root = this.containerEl.children[1] as HTMLElement | undefined;
 		if (!root) return;
-		const resolve = (expr: string): [number, number, number] | null => {
+		const resolve = (expr: string): Rgb | null => {
 			const probe = root.createSpan();
 			probe.style.color = expr;
 			probe.style.display = "none";
@@ -1535,17 +1527,22 @@ export class PythiaSidebarView extends ItemView {
 			return rgb;
 		};
 		const accent = resolve("var(--color-accent)");
-		const onAccent = resolve("var(--text-on-accent, #fff)");
-		const inverted = resolve("var(--text-on-accent-inverted, #000)");
-		if (!accent || !onAccent || !inverted) {
+		if (!accent) {
 			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
 			return;
 		}
-		const choice = betterOnAccent(accent, onAccent, inverted);
-		root.style.setProperty(
-			"--p-on-accent",
-			choice === "inverted" ? "var(--text-on-accent-inverted, #000)" : "var(--text-on-accent, #fff)",
-		);
+
+		// Offer the theme's own on-accent tokens (when defined and resolvable) as
+		// candidates; readableOnAccent uses the best one only if it clears AA, else
+		// forces pure black/white. Keeping the CSS var strings (not the resolved rgb)
+		// as the values means the label still tracks a later theme edit to that token.
+		const tokens: { value: string; rgb: Rgb }[] = [];
+		const onAccent = resolve("var(--text-on-accent, #fff)");
+		const inverted = resolve("var(--text-on-accent-inverted, #000)");
+		if (onAccent) tokens.push({ value: "var(--text-on-accent, #fff)", rgb: onAccent });
+		if (inverted) tokens.push({ value: "var(--text-on-accent-inverted, #000)", rgb: inverted });
+
+		root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
 	}
 
 	/** Append the input/output token counts inline to a turn label
@@ -1700,7 +1697,6 @@ export class PythiaSidebarView extends ItemView {
 	private createStreamingBubble(): {
 		appendToken: (text: string) => void;
 		finalize: (fullText: string) => Promise<void>;
-		getPartial: () => string;
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
@@ -1718,7 +1714,6 @@ export class PythiaSidebarView extends ItemView {
 				textNode.textContent = (textNode.textContent ?? "") + text;
 				this.scrollToBottom();
 			},
-			getPartial: () => textNode.textContent ?? "",
 			finalize: async (fullText: string) => {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
@@ -2922,9 +2917,11 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		const savedCount = conv.lastSavedMessageCount ?? 0;
-		const slice = conv.messages.slice(savedCount);
-		if (slice.length === 0) {
+		// Preliminary check to decide whether to even open the dialog. The slice
+		// actually written is recomputed inside the callback below, so messages
+		// that stream in while the dialog is open aren't missed (and the save
+		// boundary isn't advanced past them).
+		if (conv.messages.length <= (conv.lastSavedMessageCount ?? 0)) {
 			new Notice(t("nothingNewToSave"));
 			return;
 		}
@@ -2952,10 +2949,20 @@ export class PythiaSidebarView extends ItemView {
 				const path = filePath.endsWith(".md")
 					? filePath
 					: filePath + ".md";
+				// Recompute the slice and boundary now (not when the dialog opened) so a
+				// reply that streamed in while the dialog was open is included, and the
+				// saved-count reflects exactly what was written.
+				const savedCount = conv.lastSavedMessageCount ?? 0;
+				const boundary = conv.messages.length;
+				const slice = conv.messages.slice(savedCount);
+				if (slice.length === 0) {
+					new Notice(t("nothingNewToSave"));
+					return;
+				}
 				try {
 					await this.plugin.noteWriter.appendConversationSlice(slice, path, conv.id);
 					conv.savedNotePath = path;
-					conv.lastSavedMessageCount = conv.messages.length;
+					conv.lastSavedMessageCount = boundary;
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
 					new Notice(t("savedToPath", { path }));
@@ -2999,13 +3006,17 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
+		// Persist the user turn immediately so it survives an errored or empty
+		// response — previously nothing saved the conversation until a reply
+		// completed, so a failed send silently dropped the user's own message.
+		await this.plugin.conversationStore.save(conv);
 		this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 		await this.appendMessageBubble(userMsg);
 		this.lastRenderedMsgId = userMsg.id;
 
 		const attachedNotes = [...(conv.contextNotes ?? [])];
 
-		const { appendToken, finalize, getPartial, row: streamingRow } = this.createStreamingBubble();
+		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
 
 		const onToolCall = async (call: ToolCall): Promise<string> => {
@@ -3222,14 +3233,12 @@ export class PythiaSidebarView extends ItemView {
 
 				new Notice(buildStreamErrorMessage(error, conv.model ?? ""));
 
-				// Never leave the streaming bubble stuck mid-render — finalize whatever
-				// partial text arrived, or drop the empty row.
-				const partial = getPartial();
-				if (partial && this.activeConversation?.id === conv.id) {
-					void finalize(partial);
-				} else {
-					streamingRow.remove();
-				}
+				// Discard any partial reply and drop the streaming row. The user's
+				// message is already persisted (saved above), so they can retry from a
+				// clean state; keeping a partial that never became a real turn would
+				// desync the visible transcript from the saved history on the next
+				// re-render.
+				streamingRow.remove();
 
 				this.setStreamingState(false);
 			},
@@ -3256,15 +3265,24 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		// Favorite and Fork apply to assistant content only. Hide them when the
-		// selection sits in a user prompt bubble (`.p-msg-user`) — Copy / Insert /
-		// Inbox remain available for the user's own text.
-		const anchorEl = range.commonAncestorContainer instanceof Element
-			? range.commonAncestorContainer
-			: range.commonAncestorContainer.parentElement;
-		const inUserBubble = !!anchorEl?.closest(".p-msg-user");
-		this.favBtn.style.display = inUserBubble ? "none" : "";
-		this.forkBtn.style.display = inUserBubble ? "none" : "";
+		// Favorite and Fork apply to assistant content only, and only to a span that
+		// lives entirely inside ONE assistant message — the same constraint
+		// onFavoriteSelection / onForkConversation enforce. Resolve the owning
+		// assistant message from each selection endpoint (anchor + focus) rather than
+		// the range's commonAncestorContainer: when a drag overshoots a bubble's text
+		// the common ancestor bubbles up to `.p-chat`, whose `.closest(".p-msg-user")`
+		// is null, which previously re-showed both buttons over a user prompt. Show
+		// them only when both endpoints resolve to the same `.p-msg-ai`; hide otherwise
+		// (selection in a user bubble, or crossing a message boundary). Copy / Insert /
+		// Inbox stay available for any selection.
+		const ownerAiMsg = (node: Node | null | undefined): Element | null => {
+			const el = node instanceof Element ? node : node?.parentElement;
+			return el?.closest(".p-msg-ai") ?? null;
+		};
+		const startAi = ownerAiMsg(sel.anchorNode);
+		const inSingleAssistant = startAi !== null && startAi === ownerAiMsg(sel.focusNode);
+		this.favBtn.style.display = inSingleAssistant ? "" : "none";
+		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
 
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);

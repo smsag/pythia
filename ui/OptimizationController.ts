@@ -11,7 +11,11 @@ export interface OptimizationDeps {
 	messagesEl: HTMLElement;
 	inputEl: HTMLTextAreaElement;
 	sendBtn: HTMLButtonElement;
-	optimizeBtnEl: HTMLButtonElement;
+	/** Optional: the old input-toolbar optimize button. The feature now lives in the
+	 *  Send long-press menu, so there may be no dedicated button to reflect the
+	 *  in-progress "active" state onto — the in-message indicator + disabled Send
+	 *  are the primary feedback. Guarded everywhere it's used. */
+	optimizeBtnEl?: HTMLButtonElement;
 	getConversation(): Conversation | null;
 	isStreaming(): boolean;
 	scrollToBottom(): void;
@@ -47,11 +51,12 @@ export class OptimizationController {
 	}
 
 	setOptimizingState(active: boolean): void {
-		this.d.optimizeBtnEl.disabled = active;
 		this.d.sendBtn.disabled = active;
 		this.d.inputEl.disabled = active;
-		if (active) this.d.optimizeBtnEl.addClass("active");
-		else this.d.optimizeBtnEl.removeClass("active");
+		if (this.d.optimizeBtnEl) {
+			this.d.optimizeBtnEl.disabled = active;
+			this.d.optimizeBtnEl.toggleClass("active", active);
+		}
 	}
 
 	async start(): Promise<void> {
@@ -101,7 +106,7 @@ export class OptimizationController {
 
 		this.state.indicatorEl?.remove();
 		this.state.indicatorEl = null;
-		this.d.optimizeBtnEl.removeClass("active");
+		this.d.optimizeBtnEl?.removeClass("active");
 
 		const resultEl = this.d.messagesEl.createDiv({ cls: "p-msg-optimize-result" });
 		await MarkdownRenderer.render(this.d.app, optimizedText, resultEl, "", this.d.component);

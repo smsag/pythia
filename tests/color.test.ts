@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseRgb, relativeLuminance, contrastRatio, betterOnAccent, type Rgb } from "../services/color";
+import { parseRgb, relativeLuminance, contrastRatio, readableOnAccent, type Rgb } from "../services/color";
 
 const WHITE: Rgb = [255, 255, 255];
 const BLACK: Rgb = [0, 0, 0];
@@ -42,30 +42,45 @@ describe("contrastRatio", () => {
 	});
 });
 
-describe("betterOnAccent", () => {
+describe("readableOnAccent", () => {
 	// Standard theme tokens: --text-on-accent = white, --text-on-accent-inverted = black.
-	it("keeps white (normal) on a dark accent", () => {
-		expect(betterOnAccent([40, 30, 90], WHITE, BLACK)).toBe("normal");
+	const std: { value: string; rgb: Rgb }[] = [
+		{ value: "var(--text-on-accent, #fff)", rgb: WHITE },
+		{ value: "var(--text-on-accent-inverted, #000)", rgb: BLACK },
+	];
+
+	it("keeps the white token on a dark accent", () => {
+		expect(readableOnAccent([40, 30, 90], std)).toBe("var(--text-on-accent, #fff)");
 	});
-	it("flips to black (inverted) on a light accent", () => {
-		expect(betterOnAccent([230, 210, 120], WHITE, BLACK)).toBe("inverted");
+	it("flips to the black token on a light accent", () => {
+		expect(readableOnAccent([230, 210, 120], std)).toBe("var(--text-on-accent-inverted, #000)");
 	});
-	it("flips to black on the reported mid-tone purple (screenshot case)", () => {
-		// The 'Senden' accent read as a mid purple where static white was too faint.
-		expect(betterOnAccent([124, 108, 214], WHITE, BLACK)).toBe("inverted");
+	it("keeps a non-white theme token when it still clears AA (theme intent preserved)", () => {
+		// Dark accent, theme uses a near-white on-accent that passes AA → keep it.
+		const tokens: { value: string; rgb: Rgb }[] = [{ value: "var(--text-on-accent)", rgb: [245, 245, 245] }];
+		expect(readableOnAccent([30, 24, 70], tokens)).toBe("var(--text-on-accent)");
 	});
-	it("respects non-black/white theme tokens by measured contrast", () => {
-		// Theme where the 'inverted' token is a dark navy rather than pure black:
-		// on a pale accent the navy still wins.
-		const paleAccent: Rgb = [220, 225, 240];
-		const onAccent: Rgb = [245, 245, 245]; // near-white
-		const inverted: Rgb = [20, 24, 48]; // dark navy
-		expect(betterOnAccent(paleAccent, onAccent, inverted)).toBe("inverted");
+	it("forces pure black/white when BOTH theme tokens read poorly (the reported bug)", () => {
+		// Pale purple accent where the theme's on-accent (near-white) AND its
+		// 'inverted' (a mid purple) both fail AA — the exact case the old
+		// pick-the-less-bad-token logic left unreadable. Must fall back to pure.
+		const paleAccent: Rgb = [200, 190, 230];
+		const tokens: { value: string; rgb: Rgb }[] = [
+			{ value: "onAccent", rgb: [245, 245, 245] },
+			{ value: "inverted", rgb: [150, 120, 180] },
+		];
+		expect(readableOnAccent(paleAccent, tokens)).toBe("#000000");
 	});
-	it("favors normal on an exact tie", () => {
-		// Symmetric mid-grey accent: white and black yield equal contrast → normal.
-		const midGrey = relativeLuminance([118, 118, 118]);
-		void midGrey;
-		expect(betterOnAccent([118, 118, 118], WHITE, BLACK)).toMatch(/normal|inverted/);
+	it("uses the pure black/white fallback when no theme tokens are given", () => {
+		expect(readableOnAccent([230, 210, 120], [])).toBe("#000000"); // light accent → black
+		expect(readableOnAccent([40, 30, 90], [])).toBe("#ffffff"); // dark accent → white
+	});
+	it("respects a custom AA threshold", () => {
+		// Mid purple where white ≈ 4.23 (< 4.5): default AA rejects the white token
+		// and the fallback picks black; a relaxed threshold keeps the white token.
+		const midPurple: Rgb = [124, 108, 214];
+		const whiteOnly: { value: string; rgb: Rgb }[] = [{ value: "white-token", rgb: WHITE }];
+		expect(readableOnAccent(midPurple, whiteOnly)).toBe("#000000");
+		expect(readableOnAccent(midPurple, whiteOnly, 4)).toBe("white-token");
 	});
 });

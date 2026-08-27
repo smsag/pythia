@@ -18,7 +18,15 @@ export class LLMRouter {
 
 	private get(conversation: Conversation): LLMProvider {
 		// Legacy conversations without a provider field default to anthropic
-		return this.providers[conversation.provider ?? "anthropic"];
+		return this.byProvider(conversation.provider);
+	}
+
+	/** Resolve a provider instance, defaulting a missing/legacy provider to
+	 *  anthropic. Legacy conversations predate the `provider` field, so a raw
+	 *  `this.providers[undefined]` would be undefined and throw at the call site
+	 *  (the failure was previously only swallowed by callers' catch blocks). */
+	private byProvider(provider: Provider | undefined): LLMProvider {
+		return this.providers[provider ?? "anthropic"];
 	}
 
 	updateSettings(settings: PythiaSettings): void {
@@ -66,18 +74,18 @@ export class LLMRouter {
 	}
 
 	generateChapterName(content: string, provider: Provider): Promise<string> {
-		return this.providers[provider].generateChapterName(content);
+		return this.byProvider(provider).generateChapterName(content);
 	}
 
 	generateConversationTitle(userMessage: string, assistantMessage: string, provider: Provider): Promise<string> {
-		return this.providers[provider].generateConversationTitle(userMessage, assistantMessage);
+		return this.byProvider(provider).generateConversationTitle(userMessage, assistantMessage);
 	}
 
 	summarizeNotes(content: string, provider: Provider): Promise<string> {
-		return this.providers[provider].summarizeNotes(content);
+		return this.byProvider(provider).summarizeNotes(content);
 	}
 
 	optimizePrompt(systemPrompt: string, userMessage: string, provider: Provider, model?: string): Promise<string> {
-		return this.providers[provider].optimizePrompt(systemPrompt, userMessage, model);
+		return this.byProvider(provider).optimizePrompt(systemPrompt, userMessage, model);
 	}
 }
