@@ -310,7 +310,16 @@ export default class PythiaPlugin extends Plugin {
 		this.llmRouter?.abort();
 	}
 
-	async reloadFromDisk(): Promise<void> {
+	/**
+	 * Reload settings + conversations from data.json and refresh open views.
+	 *
+	 * `notify` controls the "reload complete" toast. It defaults to true for the
+	 * user-initiated manual reload (the command hub), but the automatic,
+	 * watchDataJson-triggered reload passes false — see the call site there for
+	 * why (an iCloud/Obsidian-Sync vault fires this constantly and would otherwise
+	 * spam a notification on every background sync).
+	 */
+	async reloadFromDisk({ notify = true }: { notify?: boolean } = {}): Promise<void> {
 		this.conversationStore?.cancelPendingPersist();
 		await this.loadPluginData();
 		this.llmRouter?.updateSettings(this.settings);
@@ -333,7 +342,7 @@ export default class PythiaPlugin extends Plugin {
 				view.renderEmptyState();
 			}
 		}
-		new Notice(t("reloadComplete"));
+		if (notify) new Notice(t("reloadComplete"));
 	}
 
 	private async loadPluginData(): Promise<void> {
@@ -523,7 +532,17 @@ export default class PythiaPlugin extends Plugin {
 				// we didn't write it ourselves within the last 3 seconds.
 				if (stat.mtime > lastKnownMtime && Date.now() - lastOwnWrite > 3000) {
 					lastKnownMtime = stat.mtime;
-					await this.reloadFromDisk();
+					// Silent reload (notify: false). WORKAROUND for iCloud / Obsidian
+					// Sync vaults: those services rewrite data.json in the background
+					// very frequently (delivering another device's changes, or just
+					// touching the file), and each rewrite bumps mtime and trips this
+					// watcher. If reloadFromDisk showed its "reload complete" toast every
+					// time, the user would be spammed with notifications on a loop for a
+					// sync they never asked about. So the automatic, watcher-driven reload
+					// stays quiet; only the user-initiated manual reload (command hub)
+					// surfaces the confirmation toast. The reload itself still happens —
+					// conversations stay fresh — it just doesn't announce itself.
+					await this.reloadFromDisk({ notify: false });
 				} else {
 					// Keep mtime in sync even if we wrote it ourselves.
 					lastKnownMtime = Math.max(lastKnownMtime, stat.mtime);
