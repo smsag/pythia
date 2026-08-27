@@ -15,6 +15,15 @@ const HIGHLIGHT_CLASS = "p-highlight";
 const FORK_ORIGIN_CLASS = "p-fork-origin";
 const FLASH_CLASS = "p-highlight-flash";
 
+// Favorites and fork origins are wrapped in dedicated custom elements rather than
+// <mark>. <mark> is styled by Obsidian core and community themes (`.markdown-rendered
+// mark`), which loads after the plugin and kept overriding the fork accent back to
+// the yellow highlight token. A custom element carries no theme rules, so the
+// plugin's own styling wins with no specificity contest. Hyphenated names are
+// spec-valid custom-element names. (ADR-086)
+const FAVORITE_TAG = "pythia-favorite";
+const FORK_TAG = "pythia-fork";
+
 interface TextPos {
 	node: Text;
 	/** Offset of this text node's first character within the concatenated body text. */
@@ -110,8 +119,9 @@ export function computeOccurrenceIndex(root: HTMLElement, range: Range): number 
 }
 
 /**
- * Wrap the given range in <mark> element(s) tagged with `favId`. Splits across
- * text-node boundaries so boundary-crossing selections are handled. Mutates the
+ * Wrap the given range in highlight element(s) tagged with `id`. Splits across
+ * text-node boundaries so boundary-crossing selections are handled. `tagName` is
+ * the wrapper element (a custom element — see FAVORITE_TAG / FORK_TAG). Mutates the
  * DOM in place. Safe to call repeatedly only on freshly rendered bodies (see
  * repaint, which clears prior marks first).
  */
@@ -120,6 +130,7 @@ export function paintRange(
 	id: string,
 	className: string = HIGHLIGHT_CLASS,
 	dataAttr = "data-fav-id",
+	tagName: string = FAVORITE_TAG,
 ): void {
 	// Gather the text nodes the range touches before mutating (surrounding nodes
 	// changes the tree, so snapshot first).
@@ -143,7 +154,7 @@ export function paintRange(
 		const sub = document.createRange();
 		sub.setStart(textNode, from);
 		sub.setEnd(textNode, to);
-		const mark = document.createElement("mark");
+		const mark = document.createElement(tagName);
 		mark.className = className;
 		mark.setAttribute(dataAttr, id);
 		try {
@@ -158,25 +169,25 @@ export function paintRange(
 // ── Fork-origin marks (accent) ──────────────────────────────────────────────
 // A source conversation paints the snippet each fork branched from, in the accent
 // color, so the fork's summary can be surfaced at its origin. Same find/paint
-// machinery as favorites, a different class + data attribute (`data-fork-id`).
+// machinery as favorites, wrapped in the FORK_TAG element with a `data-fork-id`.
 
 /** Repaint fork-origin marks for one message body from the given fork descriptors. */
 export function repaintForkOrigins(
 	body: HTMLElement,
 	forks: { id: string; text: string; occurrenceIndex?: number }[],
 ): void {
-	unwrapMarks(body.querySelectorAll<HTMLElement>(`mark.${FORK_ORIGIN_CLASS}`));
+	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${FORK_ORIGIN_CLASS}`));
 	for (const fork of forks) {
 		if (!fork.text) continue;
 		const range = findRange(body, fork.text, fork.occurrenceIndex ?? 0);
-		if (range) paintRange(range, fork.id, FORK_ORIGIN_CLASS, "data-fork-id");
+		if (range) paintRange(range, fork.id, FORK_ORIGIN_CLASS, "data-fork-id", FORK_TAG);
 	}
 }
 
 /** Range spanning all fork-origin mark fragments for `forkId`, or null if absent. */
 export function rangeForForkOrigin(root: HTMLElement, forkId: string): Range | null {
 	const marks = root.querySelectorAll<HTMLElement>(
-		`mark.${FORK_ORIGIN_CLASS}[data-fork-id="${forkId}"]`
+		`.${FORK_ORIGIN_CLASS}[data-fork-id="${forkId}"]`
 	);
 	if (marks.length === 0) return null;
 	const range = document.createRange();
@@ -185,7 +196,7 @@ export function rangeForForkOrigin(root: HTMLElement, forkId: string): Range | n
 	return range;
 }
 
-/** Unwrap a set of <mark> elements, restoring their text nodes into the DOM. */
+/** Unwrap a set of highlight elements, restoring their text nodes into the DOM. */
 function unwrapMarks(marks: NodeListOf<HTMLElement> | HTMLElement[]): void {
 	marks.forEach((mark) => {
 		const parent = mark.parentNode;
@@ -196,9 +207,9 @@ function unwrapMarks(marks: NodeListOf<HTMLElement> | HTMLElement[]): void {
 	});
 }
 
-/** Remove every highlight <mark> under `root`, restoring the original text nodes. */
+/** Remove every favorite highlight under `root`, restoring the original text nodes. */
 export function clearHighlights(root: HTMLElement): void {
-	unwrapMarks(root.querySelectorAll<HTMLElement>(`mark.${HIGHLIGHT_CLASS}`));
+	unwrapMarks(root.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}`));
 }
 
 /**
@@ -208,7 +219,7 @@ export function clearHighlights(root: HTMLElement): void {
  */
 export function removeHighlightById(root: HTMLElement, favId: string): void {
 	unwrapMarks(
-		root.querySelectorAll<HTMLElement>(`mark.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`)
+		root.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`)
 	);
 }
 
@@ -219,7 +230,7 @@ export function removeHighlightById(root: HTMLElement, favId: string): void {
  */
 export function rangeForHighlight(root: HTMLElement, favId: string): Range | null {
 	const marks = root.querySelectorAll<HTMLElement>(
-		`mark.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`
+		`.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`
 	);
 	if (marks.length === 0) return null;
 	const range = document.createRange();
@@ -253,7 +264,7 @@ export function repaintBody(
 
 /** Briefly flash a highlight to draw the eye after a navigator jump. */
 export function flashHighlight(favId: string, root: ParentNode): void {
-	const mark = root.querySelector<HTMLElement>(`mark.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`);
+	const mark = root.querySelector<HTMLElement>(`.${HIGHLIGHT_CLASS}[data-fav-id="${favId}"]`);
 	if (!mark) return;
 	mark.addClass(FLASH_CLASS);
 	setTimeout(() => mark.removeClass(FLASH_CLASS), 1200);

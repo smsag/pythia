@@ -1,6 +1,20 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-24 — "Pythia Final" redesign phase 1 (ADR-066/067): **frameless** code blocks and selection toolbar (hairlines + a mono header row replace the grey `--background-secondary` box; the toolbar is a masked horizontal carousel on `--background-primary`), and **per-message turn micro-labels** (`.p-turn-label`, mono 9px/0.08em `--text-faint`) — `DU · HH:MM` above user bubbles, `PYTHIA · MODEL · HH:MM` above AI messages, backed by a new optional `Message.model`. New micro type size: **9px** for mono micro-labels (turn labels, code language, section labels). This supersedes the old "no label per AI message" / "no turn dividers" rules.*
+*Last updated: 2026-08-27 — favorites and fork origins are now wrapped in dedicated custom elements (`<pythia-favorite>` / `<pythia-fork>`) instead of `<mark>`, so the fork's accent tint no longer loses to Obsidian's theme `mark` rules: forks read as an accent highlighter, favorites stay yellow (ADR-086, supersedes ADR-064/065).*
+
+*Previously, 2026-08-27 — the selection toolbar hides **Favorite** and **Branch (Fork)** when the selection is inside a user prompt bubble; both apply to assistant content only (Copy / Insert / Inbox remain), enforced in the handlers too (ADR-085).*
+
+*Previously, 2026-08-27 — on a fork, the fork banner ("branched from…") now renders above the summary cards instead of below them: conversation-view order is context inspector → fork banner → summary cards → messages (ADR-084).*
+
+*Previously, 2026-08-27 — the fork banner's "branched from" link is now a `<span>` (not an `<a>`), matching the extension's standard clickable-link pattern (`--color-accent`, underline only on hover) and dropping the stray Obsidian-core anchor underline (ADR-083).*
+
+*Previously, 2026-08-27 — solid accent-filled labels (Send button, active tool/effort pills) now use a plugin-computed `--p-on-accent` that auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, fixing unreadable labels on pale/mid accents (ADR-082).*
+
+*Previously, 2026-08-27 — turn labels now anchor the day: the first user turn of each new calendar day (and the first message of the conversation) shows an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only (ADR-081).*
+
+*Previously, 2026-08-27 — the fork anchor's meta line now shows the summary's generation date after the model (`N Nachrichten · Model · <date> · Öffnen →`), matching whichever summary is displayed; model + date are hidden until a summary exists (ADR-080).*
+
+*Previously, 2026-08-24 — "Pythia Final" redesign phase 1 (ADR-066/067): **frameless** code blocks and selection toolbar (hairlines + a mono header row replace the grey `--background-secondary` box; the toolbar is a masked horizontal carousel on `--background-primary`), and **per-message turn micro-labels** (`.p-turn-label`, mono 9px/0.08em `--text-faint`) — `DU · HH:MM` above user bubbles, `PYTHIA · MODEL · HH:MM` above AI messages, backed by a new optional `Message.model`. New micro type size: **9px** for mono micro-labels (turn labels, code language, section labels). This supersedes the old "no label per AI message" / "no turn dividers" rules.*
 
 *Previously, 2026-08-24 — specificity fixes (ADR-065): plugin marks are now scoped `.pythia-view mark.p-highlight` / `.pythia-view mark.p-fork-origin` (0,2,1) so Obsidian core/theme `mark` rules stop overriding the fork accent back to yellow; the global reset now covers `button/input/textarea` with `background-color: transparent` so Obsidian desktop's grey form-field background no longer paints plugin controls (buttons opt back into a fill at 0,2,0, e.g. `.p-send:not(.stop)`). **Rule: view chrome must be scoped under `.pythia-view` to out-rank Obsidian core (0,1,1) — a bare element+class tie loses because themes/core load after the plugin.***
 
@@ -44,7 +58,8 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 | `--text-normal` | Primary readable text, AI response body |
 | `--text-muted` | Secondary text, blockquote text |
 | `--text-faint` | Labels, badges, token counts, inactive icons, code-block type icon |
-| `--text-on-accent` | Text on accent-coloured surfaces (user bubble) |
+| `--text-on-accent` | Text on accent-coloured surfaces — fallback only; prefer `--p-on-accent` (see below) |
+| `--p-on-accent` | Plugin-computed on-accent label color for solid accent fills (Send button, active tool/effort pills); auto-picks the higher-contrast of `--text-on-accent` / `--text-on-accent-inverted` for the user's accent (ADR-082) |
 | `--background-primary` | Panel background, input area |
 | `--background-secondary` | Summary bar background; framed content boxes (tool-call chip, optimizer result, code blocks, inline code) |
 | `--background-modifier-border` | All dividers and borders, including the blockquote left bar |
@@ -52,6 +67,8 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 | `--color-green` | Tool-call "done" link text (a persistent semantic state — not used for momentary click feedback like copy-confirmation) |
 
 For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a plain `var(--color-accent)` fallback on the preceding line for Chromium < 111.
+
+**On-accent text (ADR-082):** any element with a **solid `--color-accent` fill** must set its text `color: var(--p-on-accent, var(--text-on-accent))` — never bare `--text-on-accent`. Obsidian's `--text-on-accent` is static (white in the default theme) and doesn't adapt to a customized accent, so a pale/mid accent renders those labels low-contrast. `PythiaSidebarView.applyAccentContrast()` resolves the accent and both on-accent tokens to rgb (via a probe span) and sets `--p-on-accent` on `.pythia-view` to whichever token has the higher WCAG contrast; it re-runs on Obsidian's `css-change` event. Accent *tints* (e.g. the user bubble's 12% `color-mix` with `--text-normal`) are unaffected — this is only for solid fills.
 
 ### Spacing — 4 px grid, no arbitrary values
 
@@ -147,13 +164,15 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 Note references render as **wikilinks** (`.p-wikilink`, ADR-068): faint `[[`/`]]` brackets (`--text-faint`), accent clickable name (`.md` stripped), optional mono `~tokens` estimate (`--text-faint`, 9px), faint `×` remove (`--text-error` on hover). The add affordance is a `+ Notiz` text link (`.pythia-pill-add`, faint → accent on hover). The bordered `.p-pill` chip is retired.
 
+**Standard clickable-link pattern (ADR-083):** in-panel links are a **`<span>`** (built with `createSpan`) styled `color: var(--color-accent); cursor: pointer;` with underline **only on `:hover`** — e.g. `.p-source-web`, `.p-wikilink-name`, `.pythia-fork-source-link` (the fork banner's "branched from" link). Never use an `<a>` element for these: Obsidian core underlines anchors at a specificity that out-ranks a plugin `text-decoration: none`, so an `<a>` shows a permanent underline the design doesn't want. Spans have no default underline, so the rest state is clean without a scoping workaround.
+
 ### Fork anchor (`.p-fork-anchor`, frameless, F1)
 
-The inline branch-back anchor (expands when a `mark.p-fork-origin` snippet is tapped) is **frameless** (ADR-066): a 2px `--color-accent` left-rule, 12px left padding, **no fill or radius**. Structure, top to bottom: `.p-fork-anchor-head` (`git-branch` icon in accent + `ABZWEIGUNG` mono 9px/600 label), `.p-fork-anchor-title` (11.5px/600 `--text-normal` = fork name), one or more `.p-fork-anchor-body` summary paragraphs (11px/1.55 `--text-muted`, **not clamped**), and a `.p-fork-anchor-meta` line `N Nachrichten · Model · Öffnen →` (the accent `.p-fork-anchor-open` short-presses to open the fork, long-presses for the summary-generate menu). Previously this was a grey `--background-secondary` box with only the summary + an open button.
+The inline branch-back anchor (expands when a `mark.p-fork-origin` snippet is tapped) is **frameless** (ADR-066): a 2px `--color-accent` left-rule, 12px left padding, **no fill or radius**. Structure, top to bottom: `.p-fork-anchor-head` (`git-branch` icon in accent + `ABZWEIGUNG` mono 9px/600 label), `.p-fork-anchor-title` (11.5px/600 `--text-normal` = fork name), one or more `.p-fork-anchor-body` summary paragraphs (11px/1.55 `--text-muted`, **not clamped**), and a `.p-fork-anchor-meta` line `N Nachrichten · Model · <generated date> · Öffnen →` — the model and the summary's generation date (`formatSummaryTimestamp`, matching whichever summary is displayed; ADR-080) appear only when a summary exists, so an un-summarized fork reads `N Nachrichten · Öffnen →` (the accent `.p-fork-anchor-open` short-presses to open the fork, long-presses for the summary-generate menu). Previously this was a grey `--background-secondary` box with only the summary + an open button.
 
 ### Summary cards ("Speisekarten")
 
-Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container prepended to the **top of the message list** (`.p-chat`), so they scroll with the conversation. A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
+Both summaries — conversation and favorites — are surfaced as collapsible cards (`.p-summary-card`) inside a `.p-summary-cards` container near the **top of the message list** (`.p-chat`), so they scroll with the conversation. The conversation-view vertical order is: context inspector → **fork banner** (on a fork) → summary cards → messages (ADR-084 — the fork's "branched from" orientation sits above the summaries and next to the first message). A card exists only when its summary exists (`summaryText` / `favoritesSummary.text`); none otherwise.
 
 - **Header** (`.p-summary-card-header`): `setIcon` glyph (`align-left` for conversation, `star` for favorites) + title (`conversationSummaryTitle` / `favoritesSummaryTitle`) + a ▸/▾ chevron. Click toggles expand/collapse.
 - **Collapsed by default.** Body (`.p-summary-card-body`) reveals on `.open`; the rendered markdown (`.p-summary-card-md`, shares `.p-ai-body` typography, `max-height: 40vh` internal scroll) plus a footer with the timestamp and **Copy** / **Save-to-note** actions. Saved notes (`NoteWriter.saveSummaryNote` / `saveFavoritesSummaryNote`) carry frontmatter `type: "LLM Note"` and a clickable `source:` deep link (`obsidian://pythia?…&cmd=resume&id=…`) that reopens Pythia with the conversation active — no `tags: [pythia]`.
@@ -191,6 +210,8 @@ LLM-quoted text: `border-left: 3px solid var(--background-modifier-border)` (neu
 
 Mono, **9px**, `letter-spacing: 0.08em`, `--text-faint`, as the first child of every message row. User turns read `DU · HH:MM` (right-aligned, since `.p-msg-user` is `align-items: flex-end`); AI turns read `PYTHIA · <MODEL> · HH:MM` (left-aligned). The model comes from `Message.model` (recorded at generation time) and falls back to the conversation's current model for legacy messages. Time via the pure `formatClockTime()` helper (24h, locale-independent).
 
+**Day anchor (ADR-081):** the first user turn of each new calendar day — and the very first message of the conversation — inserts an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only. `isFirstMessageOfDay(msg)` compares a message's local day to the previous message's (any role); `formatTurnDate()` renders `day numeric · short month · numeric year` via `toLocaleDateString`. Deliberately **absolute** (not `formatConvDate`'s relative "Heute/Gestern"), so labels stay correct when a conversation is reopened later. User turns only.
+
 ### Code block frame (`.p-code-frame`) — frameless (ADR-066)
 
 No background fill, border, or radius. Structure comes from **top/bottom hairlines** (`--background-modifier-border`) plus a header row `.p-code-head`: a `.p-code-type-icon` (Lucide `code-2`, `--text-faint`), the language name `.p-code-lang` (mono 9px `--text-faint`), and — right-aligned — the copy button in `.p-code-actions`. `font-family: var(--font-monospace)` set explicitly on the `<pre>`, which carries only horizontal scroll + drag-to-pan (no box, no reserved top padding). Copy stays hover-reveal on desktop and always-visible under `@media (hover: none)`. The `<pre>` (and its `code`) **must explicitly set `background: var(--background-primary); border: none`, scoped under `.pythia-view`** (0,2,1) — otherwise Obsidian core's default grey `pre` fill/border wins the tie and the block looks boxed again (ADR-065). Outline cards (summaries, context inspector) remain the only components that keep the filled-box formula.
@@ -215,9 +236,11 @@ Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `
 
 Input/output token counts render **inline in the AI turn micro-label**, not as a separate footer: `PYTHIA · MODEL · HH:MM · ↑7.028 ↓125` (appended by `appendTokensToTurnLabel`, only when the message carries `tokenUsage`). No per-message star button (favoriting moved to text selection — see below). Send button shows **estimated next-send cost**: `lastInputTokens + lastOutputTokens + round(draft.length/4)`. Updates live as user types.
 
-### Favorite highlights (`mark.p-highlight`)
+### Favorite & fork highlights (`<pythia-favorite>` / `<pythia-fork>`)
 
-Any text selection inside a message can be favorited via the **Favorite** button in the selection toolbar. Toolbar order (left → right): **Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox**. The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render).
+Any text selection **inside an assistant message** can be favorited via the **Favorite** button in the selection toolbar. Toolbar order (left → right): **Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox**. **Favorite and Branch (Fork) apply to assistant content only** (ADR-085): when the selection sits in a user prompt bubble (`.p-msg-user`), `handleSelectionChange` hides both buttons — Copy / Insert / Inbox stay available for the user's own text; the `onFavoriteSelection` / `onForkConversation` handlers also guard on `.p-msg-user`, so it's not possible even if a button leaks through.
+
+**Highlight elements (ADR-086):** favorited text is wrapped in a **`<pythia-favorite class="p-highlight">`** custom element (`background: var(--text-highlight-bg)` — yellow, native to the theme); a fork-origin snippet is wrapped in **`<pythia-fork class="p-fork-origin">`** (`background: color-mix(in srgb, var(--color-accent) 25%, transparent)` — an accent-tinted highlighter, with `--text-highlight-bg` as the no-`color-mix` fallback). Custom elements (not `<mark>`) are used deliberately: `<mark>` is styled by Obsidian core / theme `.markdown-rendered mark` rules that load after the plugin and kept forcing the fork mark back to yellow; a custom element carries no theme rules, so `.pythia-view pythia-fork` wins with no specificity contest. This supersedes the accent-on-`<mark>` mechanism of ADR-064/065. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts` (shared `paintRange(range, id, className, dataAttr, tagName)`), which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render). JS queries are class-based (`.p-highlight` / `.p-fork-origin`), element-agnostic.
 
 **Unfavorite:** *tapping* a highlight (no drag) selects its whole span (`rangeForHighlight`) and opens the toolbar with the Favorite button relabeled **Unfavorite**; pressing it removes exactly that highlight (`removeHighlightById` — surgical, never touches other highlights). A *dragged* selection always creates a new favorite, even overlapping an existing highlight — dragging never removes one. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
 

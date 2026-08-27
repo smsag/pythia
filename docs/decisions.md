@@ -1,6 +1,20 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
+*Last updated: 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
+
+*Previously, 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
+
+*Previously, 2026-08-27 — ADR-084 (on a fork, the fork banner renders above the summary cards — order: context inspector → fork banner → summary cards → messages).*
+
+*Previously, 2026-08-27 — ADR-083 (the fork banner's "branched from" link is a `<span>`, not an `<a>`, matching the standard clickable-link pattern and dropping Obsidian core's anchor underline).*
+
+*Previously, 2026-08-27 — ADR-082 (on-accent label text auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, computed at runtime into `--p-on-accent`).*
+
+*Previously, 2026-08-27 — ADR-081 (turn labels anchor the day — the first user turn of each new calendar day, and the first message of a conversation, carry an absolute date; same-day turns stay time-only).*
+
+*Previously, 2026-08-27 — ADR-080 (the fork anchor's meta line shows the summary's generation date after the model, matching whichever summary is displayed; model + date hidden until a summary exists).*
+
+*Previously, 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign, phase 7 (F10): ADR-076 (in-panel history view — a full-panel overlay with date groups, fork/favorite counts, forks indented under their source, active row tinted, opened from a new `history` header button).*
 
@@ -1128,3 +1142,94 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** seeding the selection as a fake first user message (pollutes the visible transcript and the message history sent on every turn); merging it into the summary text (conflates two distinct things — the source's own summary vs. this branch's anchor — the same conflation ADR-058 untangled).
 
 **Consequence:** A fork's first question now resolves its back-references against the exact passage, so branching from a specific point stays on that point instead of drifting to the generic topic. Covered by three `ContextBuilder` unit tests (excerpt block present + framed; summary-before-excerpt ordering; absent when no selection).
+
+### ADR-080 — Fork anchor meta line shows the summary's generation date
+
+**Status:** Active (extends ADR-058 / ADR-059)
+
+**Context:** The inline branch-back fork anchor (ADR-058) closes with a `.p-fork-anchor-meta` line that read `N Nachrichten · Model · Öffnen →`. The model ID there was low-value — the same abbreviated model already shows in the quick switcher and history sub-lines — while the one fact the anchor's summary could not convey was *how current* it is. The top-of-conversation summary cards already surface this (`formatSummaryTimestamp(updatedAt)` in the card header, ADR-054), but the fork anchor — which renders the very same `summaryText` / `favoritesSummary.text` — did not, so a reader at the origin snippet had no way to tell a fresh synthesis from a stale one.
+
+**Decision:** The meta line now appends the summary's generation date after the model: `N Nachrichten · Model · <date · time> · Öffnen →`, reusing `formatSummaryTimestamp` for parity with the summary cards. The anchor prefers the favorites synthesis over the conversation summary (ADR-059 precedence), so `buildForkAnchor` tracks which one it displays (`summaryKind`) and shows the matching timestamp (`favoritesSummary.updatedAt` vs `summaryUpdatedAt`). Model and date are emitted **only when a summary exists**; an un-summarized fork collapses to `N Nachrichten · Öffnen →`. No data-model, settings, or locale change — both timestamps were already stored.
+
+**Confirmed invariant:** the anchor and the top-of-conversation summary bar read the same fields on the same `Conversation` object, so regenerating a summary from either surface (the anchor's long-press menu or a card's refresh button) updates both; the date reflects that shared state.
+
+**Alternatives rejected:** replacing the model outright (loses the at-a-glance provider cue when several forks branch from one source); a relative "vor 3 Tagen" format (diverges from the absolute `formatSummaryTimestamp` the cards already use).
+
+**Consequence:** A reader scanning origin snippets can tell how fresh each branch's summary is without opening the fork, and the anchor stays visually consistent with the summary cards. Pure presentation change in `buildForkAnchor`; no test surface added.
+
+### ADR-081 — Turn labels anchor the day on the first user turn of each new day
+
+**Status:** Active (extends ADR-067)
+
+**Context:** ADR-067 gave every message a mono micro-label carrying the time (`DU · HH:MM`, `PYTHIA · MODEL · HH:MM`). Time-only is ambiguous the moment a conversation spans more than one day or is reopened later — a bare `10:28` says nothing about *which* day. The date was always available (`Message.timestamp` is full ISO 8601); it just wasn't surfaced anywhere in the transcript.
+
+**Decision:** The first user turn of each new calendar day inserts an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only. The very first message of a conversation also gets the date (no prior message — it anchors the start). `isFirstMessageOfDay(msg)` locates the message in `activeConversation.messages` and compares its local day to the previous message's (any role), so it holds in both the full-rebuild and incremental-append render paths without threading a "prev" argument. `formatTurnDate()` renders `day numeric · short month · numeric year` via `toLocaleDateString`.
+
+**Scope:** user turns only. In normal use the user always initiates, so a day's first message is a user turn; an assistant-first day (not reachable through the compose flow) would not be tagged, which is acceptable for a day *anchor*.
+
+**Alternatives rejected:** a full-width date separator row between turns (heavier DOM + a new locale string; the inline label reads as part of the turn a user already scans); reusing `formatConvDate`'s relative "Heute/Gestern" (relative labels drift — "Heute" becomes wrong the next day, defeating the point of a stable date; absolute with year stays correct on reopen).
+
+**Consequence:** A transcript scanned top-to-bottom now shows exactly where each day begins, with no clutter on same-day turns. Pure presentation change in `renderTurnLabel` + two private helpers; no data-model, settings, locale, or test surface added.
+
+### ADR-082 — On-accent label text adapts to the user's accent luminance
+
+**Status:** Active
+
+**Context:** Solid `--color-accent` fills (the Send button, active `.p-tool-btn.is-active`, active `.p-effort-seg-btn.active`) drew their label with `color: var(--text-on-accent)`. Obsidian ships `--text-on-accent` (and `--text-on-accent-inverted`) but the value is **static** — the theme fixes it (white in the default theme) and never recomputes it from the user's chosen `--color-accent`. A pale or mid-tone accent (reported: a mid purple on the "Senden" button) therefore rendered those labels at poor contrast, near-illegible. Obsidian never decides *which* of the two on-accent tokens to use; that decision was missing.
+
+**Decision:** Add `PythiaSidebarView.applyAccentContrast()`. It resolves `--color-accent`, `--text-on-accent`, and `--text-on-accent-inverted` to concrete rgb by setting each on a hidden probe `<span>` and reading `getComputedStyle(probe).color` (the browser normalizes hex/`hsl()`/named forms to `rgb()`), then sets `--p-on-accent` on the `.pythia-view` root to whichever token has the higher **WCAG contrast ratio** against the accent (pure functions in `services/color.ts`: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent`). The three CSS rules now read `color: var(--p-on-accent, var(--text-on-accent))`, so the theme token still applies until (and if) JS sets the variable — no flash, safe fallback. It runs in `buildUI()` and re-runs on Obsidian's `css-change` workspace event, so switching accent/theme in Appearance settings updates the labels live without reopening the view.
+
+**Why Obsidian's own tokens (not pure #fff/#000):** keeps the fix theme-native — a theme that styles `--text-on-accent-inverted` as, say, a dark navy is honored. Because the choice is made by *measured* contrast (not an assumption that the tokens are pure black/white), it stays correct even if a theme customizes or swaps them; if a token is undefined the probe falls back to `#fff`/`#000` in the `var()` default.
+
+**Scope:** solid accent fills only. Accent *tints* — the user bubble (`color-mix(--color-accent 12%, --background-primary)` with `--text-normal`), highlighter marks, hover washes — already pair with readable text and are untouched.
+
+**Alternatives rejected:** hardcoding pure black/white (guarantees contrast but bypasses theme on-accent styling — the point of choosing Option A was to stay native); a CSS-only solution (CSS cannot branch on a custom property's luminance); parsing the raw `--color-accent` token string (fragile across hex/hsl/named/var-reference forms — the probe sidesteps all of it).
+
+**Consequence:** On-accent labels stay legible across any user accent and update live on theme changes. New pure module `services/color.ts` with 13 unit tests (parse, luminance, contrast, and the token-choice decision incl. the reported mid-purple case and non-black/white theme tokens). Any future solid-accent surface must use `var(--p-on-accent, var(--text-on-accent))`, not bare `--text-on-accent` (noted in design.md).
+
+### ADR-083 — Fork banner "branched from" link uses the standard span link pattern
+
+**Status:** Active
+
+**Context:** The fork banner's "branched from" link (`.pythia-fork-source-link`, `renderForkBannerEl`) was the extension's lone remaining clickable link built as an `<a>` element. Its rule already set `text-decoration: none`, but the link still rendered permanently underlined: Obsidian core styles anchors (`a`) at a specificity that out-ranks a bare `.pythia-fork-source-link` (0,1,0) plugin rule, so the underline came back at rest. It also used `--interactive-accent` rather than the design system's mandated `--color-accent`.
+
+**Decision:** Build the link with `createSpan` instead of `createEl("a")`, and style it exactly like the extension's other in-panel links (`.p-source-web`, `.p-wikilink-name`): `color: var(--color-accent); cursor: pointer;` with underline only on `:hover`. A `<span>` carries no default underline, so the rest state is clean without scoping the selector under `.pythia-view` to beat core. The click handler is unchanged.
+
+**Alternatives rejected:** scoping `.pythia-view a.pythia-fork-source-link` to out-specify core (works, but keeps a one-off `<a>` link that diverges from every other clickable link in the panel — the span *is* the house pattern); keeping `<a>` with `text-decoration: none !important` (fights the cascade with `!important`, which the codebase avoids).
+
+**Consequence:** The link matches the rest of the UI — no stray underline at rest, underline on hover, accent color from the standard token. Establishes the rule (noted in design.md) that in-panel links are spans, never `<a>` elements. The one other `createEl("a")` (a tool-call chip file link in `onToolCall`) is out of scope here and can follow if it shows the same artifact.
+
+### ADR-084 — Fork banner renders above the summary cards
+
+**Status:** Active
+
+**Context:** On a forked conversation's first paint, `renderMessages` laid out the top of the scroll as: context inspector → summary cards ("Speisekarten") → fork banner ("Verzweigt von…") → messages. But the fork banner is the primary *orientation* cue for a fork — it says where this branch came from and links back to the source — while the summary cards are secondary reference. Placing the banner below the summaries pushed it away from the first message and buried the "where am I" signal under content.
+
+**Decision:** Reorder the full-rebuild block in `renderMessages` so the fork banner (`renderForkBannerEl`, rendered only when `conv.forkedFromId` is set) comes directly after the context inspector and before the `.p-summary-cards` container. New vertical order: context inspector → fork banner → summary cards → messages. Both the banner and the summary container are direct children of `messagesEl` appended in call order; no CSS sibling/adjacency selectors reference either, and `summaryCardsEl` is still assigned before `renderSummaryCards()` reads it, so the move is purely positional.
+
+**Consequence:** A fork opens with its provenance banner adjacent to the first message and above the summaries, matching how the branch is meant to be read. Non-forks are unaffected (no banner). Pure ordering change; no data-model, CSS, or test change.
+
+
+### ADR-085 — Favorite and Fork are assistant-only in the selection toolbar
+
+**Status:** Active
+
+**Context:** The selection toolbar (Copy · Favorite/Unfavorite · Branch/Fork · Insert · Inbox) appeared for any text selection inside `messagesEl`, including a **user prompt bubble** (`.p-msg-user`). Both Favorite (`onFavoriteSelection`) and Fork (`onForkConversation`) resolve their target by `data-msg-id` and fall back to `.p-bubble` as the body — the user row carries a `data-msg-id`, so favoriting or forking from one's *own* prompt was in fact possible, not blocked. Neither makes sense: a favorite highlights a passage of the model's answer worth keeping; a fork branches from a point in the model's reasoning (its selection becomes the `<forked_from_excerpt>` anchor for the branch). Anchoring either to the user's own prompt is meaningless.
+
+**Decision:** `handleSelectionChange` now detects whether the selection's `commonAncestorContainer` is within a `.p-msg-user` row and, if so, hides `favBtn` and `forkBtn` (the fork button is now held on `this.forkBtn` for that toggle); Copy / Insert / Inbox stay visible for the user's own text. Defense in depth: `onFavoriteSelection` and `onForkConversation` also early-return when the resolved message row has class `p-msg-user`, so the actions are impossible even if a button is reached another way. Assistant messages (`.p-msg-ai`) are unaffected.
+
+**Consequence:** Favorite and Fork are assistant-content-only, both in what the toolbar offers and in what the handlers permit — matching their meaning (a saved highlight / a branch excerpt from the model's output). No data-model or locale change; existing favorites on user bubbles (if any were created before this) remain tappable to unfavorite. Verified via build/lint/tests; no new unit test (DOM-selection behavior in the view class has no harness).
+
+
+### ADR-086 — Favorites and fork origins use custom elements, not `<mark>`
+
+**Status:** Active (supersedes the accent-on-`<mark>` mechanism of ADR-064 / ADR-065)
+
+**Context:** Favorites and fork origins were both painted as `<mark>` elements (`ui/HighlightPainter.ts`, shared `paintRange`), differing only by class (`p-highlight` yellow vs `p-fork-origin` accent). The fork was meant to render in the accent color, but kept showing yellow. Root cause: `<mark>` is styled by Obsidian core and community themes (`.markdown-rendered mark`, `--text-highlight-bg`), and those stylesheets load **after** the plugin's. ADR-064/065 tried to win the cascade by scoping `.pythia-view mark.p-fork-origin` (0,2,1) to beat the (0,1,1) core rule — but that only defeats that one selector; any theme that styles `mark` more specifically or with `!important` reverted the fork to yellow, and on engines without `color-mix` the accent declaration was dropped to the yellow fallback anyway. The accent *value* was never the problem — painting onto `<mark>` was.
+
+**Decision:** Wrap favorites in a **`<pythia-favorite>`** custom element and fork origins in **`<pythia-fork>`** (hyphenated, spec-valid custom-element names) instead of `<mark>`. `paintRange` gained a `tagName` parameter (default `pythia-favorite`; forks pass `pythia-fork`). A custom element has **no** theme rules targeting it, so `.pythia-view pythia-fork { background: color-mix(in srgb, var(--color-accent) 25%, transparent) }` applies with no specificity contest and no scoping tricks; `--text-highlight-bg` remains the no-`color-mix` fallback. Favorites keep `--text-highlight-bg` (yellow). Element classes (`p-highlight` / `p-fork-origin`) and data attributes (`data-fav-id` / `data-fork-id`) are retained for JS identification and the flash state; all querySelectors are now class-based (`.p-highlight` / `.p-fork-origin`), element-agnostic. Both switched (not just forks) for a symmetric, element-targeted styling model, per the maintainer's call.
+
+**Trade-offs:** custom elements carry no `<mark>` "highlighted reference" ARIA semantics — a minor accessibility loss accepted for the reliable styling. Bare names like `<fork>` were rejected in favor of hyphenated `pythia-*` (bare names are "unknown elements," not spec-valid custom elements, and risk a future standard tag). Injected only into the live DOM after render (never into stored markdown), so Obsidian's sanitizer is not involved and re-render repaints cleanly.
+
+**Consequence:** Forks reliably render as an accent-tinted highlighter, visually distinct from yellow favorites, in every theme and Obsidian build — no cascade fight. `HighlightPainter` tests assert both wrapper tag names. Any future highlight kind should follow the same custom-element pattern rather than styling `<mark>`.
+

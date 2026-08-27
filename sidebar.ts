@@ -11,6 +11,7 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
+import { parseRgb, betterOnAccent } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
@@ -122,6 +123,7 @@ export class PythiaSidebarView extends ItemView {
 	private sendBtn!: HTMLButtonElement;
 	private selectionToolbar!: HTMLElement;
 	private favBtn!: HTMLButtonElement;
+	private forkBtn!: HTMLButtonElement;
 	/** When set, the current selection came from tapping this favorite's highlight,
 	 *  so the toolbar's favorite button acts as "Unfavorite" targeting this id. */
 	private tappedFavId: string | null = null;
@@ -201,6 +203,12 @@ export class PythiaSidebarView extends ItemView {
 				requestAnimationFrame(() => this.adjustForKeyboard());
 			});
 		}
+
+		// Recompute the on-accent label color when the user changes their accent
+		// or theme in Appearance settings (Obsidian fires css-change) — no reopen.
+		this.registerEvent(
+			this.app.workspace.on("css-change", () => this.applyAccentContrast())
+		);
 
 		// Track the most-recently-active MarkdownView so insert-into-note
 		// works even after focus has shifted to this sidebar.
@@ -356,6 +364,7 @@ export class PythiaSidebarView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
+		this.applyAccentContrast();
 
 		this.buildHeader(container);
 
@@ -545,13 +554,13 @@ export class PythiaSidebarView extends ItemView {
 		this.favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
 		this.favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
 
-		const forkBtn = this.selectionToolbar.createEl("button", {
+		this.forkBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("forkBtn"),
 			attr: { title: t("forkBtn") },
 		});
-		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
-		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
+		this.forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
+		this.forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -1232,7 +1241,10 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
 		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
 		if (source) {
-			const link = label.createEl("a", {
+			// A span (not an <a>) — matches the extension's standard clickable-link
+			// pattern (.p-source-web / .p-wikilink-name) and avoids Obsidian core's
+			// anchor underline, which out-specifies a plugin text-decoration rule.
+			const link = label.createSpan({
 				cls: "pythia-fork-source-link",
 				text: source.name,
 			});
@@ -1241,7 +1253,7 @@ export class PythiaSidebarView extends ItemView {
 				await this.setActiveConversation(source);
 				// Prefer landing on the fork-origin anchor (scrolls + expands it);
 				// fall back to the branch message if the snippet can't be located.
-				const mark = this.messagesEl.querySelector(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+				const mark = this.messagesEl.querySelector(`.p-fork-origin[data-fork-id="${forkId}"]`);
 				if (mark) {
 					this.revealForkOrigin(forkId);
 				} else if (conv.forkedFromMessageId) {
@@ -1418,11 +1430,14 @@ export class PythiaSidebarView extends ItemView {
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
 		this.fillContextInspector();
 
-		// Summary "Speisekarte" cards sit directly under the context inspector.
+		// The fork banner ("branched from…") comes next: on a fork it's the primary
+		// orientation cue, so it sits above the summary cards and next to the first
+		// message (ADR-084).
+		if (conv.forkedFromId) this.renderForkBannerEl();
+
+		// Summary "Speisekarte" cards sit below the fork info.
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
 		this.renderSummaryCards();
-
-		if (conv.forkedFromId) this.renderForkBannerEl();
 
 		if (msgs.length === 0) {
 			this.renderWelcome(this.messagesEl);
@@ -1450,6 +1465,13 @@ export class PythiaSidebarView extends ItemView {
 		const parts: string[] = [];
 		if (msg.role === "user") {
 			parts.push(t("turnUser"));
+			// Anchor the day: the first user turn of each new day (and the very first
+			// message of the conversation) carries an absolute date, so time-only
+			// labels stay unambiguous across multi-day conversations.
+			if (this.isFirstMessageOfDay(msg)) {
+				const date = this.formatTurnDate(msg.timestamp);
+				if (date) parts.push(date);
+			}
 			if (time) parts.push(time);
 		} else {
 			parts.push(t("turnAI"));
@@ -1461,6 +1483,69 @@ export class PythiaSidebarView extends ItemView {
 		if (msg.role === "assistant" && msg.tokenUsage) {
 			this.appendTokensToTurnLabel(label, msg.tokenUsage);
 		}
+	}
+
+	/** True when `msg` starts a new calendar day relative to the message before it
+	 *  (any role) — or is the first message of the conversation. Computed from the
+	 *  message array so it holds in both the full-rebuild and incremental-append
+	 *  render paths. */
+	private isFirstMessageOfDay(msg: Message): boolean {
+		const msgs = this.activeConversation?.messages;
+		if (!msgs) return false;
+		const idx = msgs.findIndex((m) => m.id === msg.id);
+		if (idx <= 0) return true; // first message (or not found) → anchor the date
+		const dayKey = (iso: string): string | null => {
+			const d = new Date(iso);
+			return Number.isNaN(d.getTime())
+				? null
+				: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+		};
+		const cur = dayKey(msg.timestamp);
+		const prev = dayKey(msgs[idx - 1].timestamp);
+		if (cur === null || prev === null) return false; // no reliable date → no marker
+		return cur !== prev;
+	}
+
+	/** Absolute date for a turn label (`27 Aug 2026`, localized). Deliberately not
+	 *  the relative "Heute/Gestern" of `formatConvDate` — the label must stay
+	 *  correct when the conversation is reopened later. */
+	private formatTurnDate(iso: string): string {
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "";
+		return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	}
+
+	/** Pick the on-accent label color that reads best on the user's accent.
+	 *  Obsidian's `--text-on-accent` is static (white in the default theme) and
+	 *  never adapts to a customized `--color-accent`, so a pale/mid accent leaves
+	 *  accent-filled labels (Send button, active toolbar/effort pills) low-contrast.
+	 *  We resolve the accent and both theme on-accent tokens to rgb via a probe
+	 *  span, then set `--p-on-accent` to whichever token has the higher measured
+	 *  contrast. Falls back to `--text-on-accent` (via the CSS var default) if any
+	 *  color can't be resolved. Re-run on css-change. */
+	private applyAccentContrast(): void {
+		const root = this.containerEl.children[1] as HTMLElement | undefined;
+		if (!root) return;
+		const resolve = (expr: string): [number, number, number] | null => {
+			const probe = root.createSpan();
+			probe.style.color = expr;
+			probe.style.display = "none";
+			const rgb = parseRgb(getComputedStyle(probe).color);
+			probe.remove();
+			return rgb;
+		};
+		const accent = resolve("var(--color-accent)");
+		const onAccent = resolve("var(--text-on-accent, #fff)");
+		const inverted = resolve("var(--text-on-accent-inverted, #000)");
+		if (!accent || !onAccent || !inverted) {
+			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
+			return;
+		}
+		const choice = betterOnAccent(accent, onAccent, inverted);
+		root.style.setProperty(
+			"--p-on-accent",
+			choice === "inverted" ? "var(--text-on-accent-inverted, #000)" : "var(--text-on-accent, #fff)",
+		);
 	}
 
 	/** Append the input/output token counts inline to a turn label
@@ -1755,7 +1840,7 @@ export class PythiaSidebarView extends ItemView {
 		const target = e.target instanceof Element ? e.target : null;
 
 		// Fork origin wins over favorites.
-		const forkMark = target?.closest("mark.p-fork-origin");
+		const forkMark = target?.closest(".p-fork-origin");
 		const forkId = forkMark?.getAttribute("data-fork-id");
 		if (forkId) {
 			this.toggleForkAnchor(forkId, forkMark as HTMLElement);
@@ -1763,7 +1848,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		this.tappedFavId = null;
-		const mark = target?.closest("mark.p-highlight");
+		const mark = target?.closest(".p-highlight");
 		const favId = mark?.getAttribute("data-fav-id");
 		if (!favId) return;
 
@@ -1795,7 +1880,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// Insert the anchor immediately after the snippet's last mark fragment.
 		const row = markEl.closest("[data-msg-id]");
-		const marks = row?.querySelectorAll<HTMLElement>(`mark.p-fork-origin[data-fork-id="${forkId}"]`);
+		const marks = row?.querySelectorAll<HTMLElement>(`.p-fork-origin[data-fork-id="${forkId}"]`);
 		const lastMark = marks && marks.length ? marks[marks.length - 1] : markEl;
 
 		const anchor = createDiv({ cls: "p-fork-anchor", attr: { "data-fork-id": forkId } });
@@ -1825,9 +1910,13 @@ export class PythiaSidebarView extends ItemView {
 		const favText = fork.favoritesSummary?.text?.trim();
 		const convText = fork.summaryText?.trim();
 		let summary: string | undefined;
-		if (preferType === "conversation") summary = convText || favText;
-		else if (preferType === "favorites") summary = favText || convText;
-		else summary = favText || convText;
+		// Track which summary is displayed so the meta line can show its generation
+		// date (favorites is preferred unless "conversation" is forced).
+		let summaryKind: "conversation" | "favorites" | undefined;
+		const pickConv = () => { summary = convText; summaryKind = "conversation"; };
+		const pickFav = () => { summary = favText; summaryKind = "favorites"; };
+		if (preferType === "conversation") { if (convText) pickConv(); else if (favText) pickFav(); }
+		else { if (favText) pickFav(); else if (convText) pickConv(); }
 
 		// Header: branch icon + ABZWEIGUNG micro-label (F1).
 		const head = anchor.createDiv({ cls: "p-fork-anchor-head" });
@@ -1844,12 +1933,24 @@ export class PythiaSidebarView extends ItemView {
 				.catch((e) => console.error("[Pythia] fork summary render:", e));
 		}
 
-		// Meta line: "N Nachrichten · Model · Öffnen →". The Öffnen link
-		// short-presses to open the fork, long-presses for the summary menu.
+		// Meta line: "N Nachrichten · Model · <generated date> · Öffnen →". Model and
+		// date are shown only when a summary exists; the date reflects whichever
+		// summary is displayed. The Öffnen link short-presses to open the fork,
+		// long-presses for the summary menu.
 		const meta = anchor.createDiv({ cls: "p-fork-anchor-meta" });
+		const summaryTs = summaryKind === "favorites"
+			? fork.favoritesSummary?.updatedAt
+			: summaryKind === "conversation"
+				? fork.summaryUpdatedAt
+				: undefined;
+		const metaParts = [t("msgCount", { n: String(fork.messages.length) })];
+		if (summaryTs) {
+			metaParts.push(abbreviateModel(fork.model));
+			metaParts.push(formatSummaryTimestamp(summaryTs));
+		}
 		meta.createSpan({
 			cls: "p-fork-anchor-metatext",
-			text: `${t("msgCount", { n: String(fork.messages.length) })} · ${abbreviateModel(fork.model)} · `,
+			text: `${metaParts.join(" · ")} · `,
 		});
 		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
 		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
@@ -1971,7 +2072,7 @@ export class PythiaSidebarView extends ItemView {
 	/** From a fork's banner: scroll to its origin snippet in the source and expand its anchor. */
 	revealForkOrigin(forkId: string): void {
 		const mark = this.messagesEl.querySelector<HTMLElement>(
-			`mark.p-fork-origin[data-fork-id="${forkId}"]`
+			`.p-fork-origin[data-fork-id="${forkId}"]`
 		);
 		if (!mark) return;
 		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
@@ -2019,6 +2120,14 @@ export class PythiaSidebarView extends ItemView {
 		}
 		const messageId = startMsg.getAttribute("data-msg-id");
 		if (!messageId) return;
+
+		// Favorites apply to assistant content only. The toolbar already hides the
+		// button over a user bubble; guard here too so it's never possible.
+		if (startMsg.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
 
 		// Compute the occurrence index within the message body so re-find later
 		// paints the same span when the text appears more than once.
@@ -2099,7 +2208,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// 1) Painted mark — the common case.
 		const mark = row.querySelector<HTMLElement>(
-			`mark.p-highlight[data-fav-id="${fav.id}"]`
+			`.p-highlight[data-fav-id="${fav.id}"]`
 		);
 		if (mark) {
 			scrollToOffsetTop(mark.offsetTop - this.messagesEl.offsetTop);
@@ -3147,6 +3256,16 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
+		// Favorite and Fork apply to assistant content only. Hide them when the
+		// selection sits in a user prompt bubble (`.p-msg-user`) — Copy / Insert /
+		// Inbox remain available for the user's own text.
+		const anchorEl = range.commonAncestorContainer instanceof Element
+			? range.commonAncestorContainer
+			: range.commonAncestorContainer.parentElement;
+		const inUserBubble = !!anchorEl?.closest(".p-msg-user");
+		this.favBtn.style.display = inUserBubble ? "none" : "";
+		this.forkBtn.style.display = inUserBubble ? "none" : "";
+
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
 		this.selectionToolbar.style.display = "flex";
@@ -3203,6 +3322,15 @@ export class PythiaSidebarView extends ItemView {
 		const anchor = sel?.anchorNode;
 		const msgEl  = (anchor instanceof Element ? anchor : anchor?.parentElement)
 			?.closest("[data-msg-id]");
+
+		// Forking branches from assistant content only. The toolbar hides the fork
+		// button over a user bubble; guard here too so it's never possible.
+		if (msgEl?.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
+
 		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
 
 		// Record which occurrence of the snippet this is, so the source can re-find

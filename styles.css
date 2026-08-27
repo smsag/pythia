@@ -509,9 +509,8 @@
   gap: 3px;
 }
 .pythia-fork-source-link {
-  color: var(--interactive-accent);
+  color: var(--color-accent);
   cursor: pointer;
-  text-decoration: none;
 }
 .pythia-fork-source-link:hover {
   text-decoration: underline;
@@ -1253,18 +1252,22 @@
 }
 
 /* ── Favorite highlights ─────────────────────────────────────── */
-/* Persistent mark applied to favorited text spans. Uses Obsidian's own
-   highlight background so it reads natively in every theme.
-   Scoped under .pythia-view (specificity 0,2,1) so it beats Obsidian core /
-   theme `.markdown-rendered mark` rules (0,1,1) that otherwise override the
-   background — the same override that pins fork marks to yellow below. */
-.pythia-view mark.p-highlight {
+/* Favorites and fork origins are wrapped in dedicated custom elements
+   (<pythia-favorite>, <pythia-fork>) rather than <mark> — ADR-086. <mark> is
+   styled by Obsidian core / theme `.markdown-rendered mark` rules that load
+   after the plugin, which kept overriding a fork's accent background back to the
+   yellow highlight token. A custom element carries no theme rules, so these
+   styles win with no specificity contest and no scoping tricks. Both default to
+   inline (unknown elements are inline); .pythia-view scope kept for consistency. */
+
+/* Favorite — Obsidian's own highlight background, native in every theme. */
+.pythia-view pythia-favorite {
   background: var(--text-highlight-bg);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
 }
-mark.p-highlight.p-highlight-flash {
+.pythia-view pythia-favorite.p-highlight-flash {
   animation: pythia-hl-flash 1.2s ease-out;
 }
 @keyframes pythia-hl-flash {
@@ -1273,20 +1276,13 @@ mark.p-highlight.p-highlight-flash {
 }
 
 /* ── Fork-origin marks + inline anchor ───────────────────────── */
-/* Snippet in the source that spawned a fork — accent-tinted, distinct from
-   favorite highlights; tapping it reveals the fork's summary anchor. */
-/* Forks use the accent color; favorites stay yellow (mark.p-highlight above).
-   Same highlighter mechanism as favorites: favorites paint --text-highlight-bg
-   (a ~40% translucent highlight); forks mirror that translucency in the accent
-   hue, so both read as highlighter marks and differ only by color. The fallback
-   is the readable highlight token — never a solid, unreadable accent fill.
-   Scoped under .pythia-view (specificity 0,2,1) so the accent actually wins:
-   an unscoped `mark.p-fork-origin` (0,1,1) merely ties Obsidian core / theme
-   `.markdown-rendered mark` (0,1,1), which loads after the plugin and so kept
-   overriding the fork mark back to the yellow highlight token. */
-.pythia-view mark.p-fork-origin {
+/* Snippet in the source that spawned a fork — accent-tinted, so it reads as a
+   different-colored highlighter from yellow favorites; tapping it reveals the
+   fork's summary anchor. The readable highlight token is a fallback for engines
+   without color-mix. */
+.pythia-view pythia-fork {
   background: var(--text-highlight-bg);                                     /* readable fallback */
-  background: color-mix(in srgb, var(--color-accent) 40%, transparent);     /* accent highlighter */
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);     /* accent highlighter */
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -1294,7 +1290,7 @@ mark.p-highlight.p-highlight-flash {
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
-mark.p-fork-origin.p-highlight-flash {
+.pythia-view pythia-fork.p-highlight-flash {
   animation: pythia-hl-flash 1.2s ease-out;
 }
 
@@ -1793,11 +1789,11 @@ body.is-mobile .p-textarea {
   color: var(--text-normal);
 }
 .p-tool-btn.is-active {
-  color: var(--text-on-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 .p-tool-btn.is-active:hover {
-  color: var(--text-on-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 .p-tool-btn svg {
@@ -1817,7 +1813,7 @@ body.is-mobile .p-textarea {
   letter-spacing: 0.03em;
   padding: 3px 10px;
   background: var(--color-accent);
-  color: var(--text-on-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
   border-radius: 3px;
   transition: opacity 0.12s;
   white-space: nowrap;
@@ -1980,7 +1976,7 @@ body.is-mobile .p-textarea {
 .p-effort-seg-btn:hover { background: var(--background-modifier-hover); }
 .p-effort-seg-btn.active {
   background: var(--color-accent);
-  color: var(--text-on-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
 }
 .p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 
