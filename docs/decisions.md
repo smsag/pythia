@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-093 (prompt optimizer rewrites the input textarea in place — optimize with the settings framework, replace via `execCommand("insertText")` so ⌘Z / iOS shake revert — instead of an in-conversation preview/confirm/retry flow; no auto-send).*
+*Last updated: 2026-08-27 — ADR-094 (optimizer output must be the bare prompt: a shared `OUTPUT_ONLY_INSTRUCTION` appended to the request forbids preamble/sign-off/rules, and a pure `cleanOptimizedOutput()` strips residual fences/preamble/rules — fixes "Sure! Here's…" wrapper text landing in the input box).*
+
+*Previously, 2026-08-27 — ADR-093 (prompt optimizer rewrites the input textarea in place — optimize with the settings framework, replace via `execCommand("insertText")` so ⌘Z / iOS shake revert — instead of an in-conversation preview/confirm/retry flow; no auto-send).*
 
 *Previously, 2026-08-27 — ADR-092 (on-accent label color keeps a theme token only when it clears WCAG AA on the user's accent, else forces pure black/white; fixes the unreadable "Senden" label ADR-082 missed. Extracted to the tested `readableOnAccent()`).*
 
@@ -1341,4 +1343,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** keeping the in-conversation preview (the reported problem — it reads as a chat turn and coupled optimize-to-send); a transient in-input Undo chip in addition to native undo (offered; the maintainer chose native-undo-only, accepting the Android gap); a custom (non-native) undo so ⌘Z is unnecessary (would not integrate with ⌘Z / shake, which the maintainer explicitly wanted).
 
 **Consequence:** Optimizing a prompt is now a quiet, in-place rewrite the user reviews in the input box and sends (or undoes) themselves — no transcript clutter, no forced send. Android users lack an easy revert (documented). The Send button briefly widens to fit the "Optimizing…" label.
+
+### ADR-094 — Optimizer output must be the bare prompt (output-only instruction + deterministic cleanup)
+
+**Status:** Active (follows ADR-093)
+
+**Context:** With ADR-093 the optimizer result is dropped straight into the input box, so it must be *only* the rewritten prompt. But the optimizer sends the template body (plus the framework instruction) as the user message with an **empty system prompt** — nothing told the model to suppress conversational wrapper. A chatty model (e.g. gpt-4o-mini) returned the CO-STAR rewrite wrapped in `Sure! Here's how you can restructure your prompt…:`, surrounding `---` rules, and a closing `With this structure in place, your prompt is now well-defined…` — all of which then landed in the input box.
+
+**Decision:** Constrain the output at the source and clean up deterministically.
+- **Output-only instruction.** A shared `OUTPUT_ONLY_INSTRUCTION` is appended to the optimizer's user message (both the inline `optimizeText` and the `run()` command path). It's appended to the **user message, not sent as a system role** — the optimizer utility path (`callUtility`) would push a system message even to OpenAI reasoning models, which reject one, so the user-message slot is the compatible place. It forbids preamble, sign-off, explanation, opener phrases ("Sure"/"Here's"/…), quotes, code fences, and horizontal rules.
+- **Deterministic safety net.** A pure `cleanOptimizedOutput()` post-processes the result: unwrap a surrounding code fence, drop a single leading conversational preamble line (opener word + trailing colon — an optimized prompt never opens that way, so it can't remove real content), and strip leading/trailing standalone horizontal rules. Trailing prose is left to the instruction (deterministic trailing-sentence removal is too prone to eating real content).
+- Both live in a new **obsidian-free `services/promptOptimizerText.ts`** so the cleanup is unit-tested directly (`tests/promptOptimizer.test.ts`), matching the repo's pure-module-plus-tests pattern.
+
+**Alternatives rejected:** sending the instruction as a **system prompt** (breaks on reasoning models via `callUtility`); aggressively scrubbing trailing sentences with a regex (high false-positive risk on legitimate final instructions); editing the example optimizer templates only (the user's own template is arbitrary and can't be relied on — the constraint must come from code).
+
+**Consequence:** The optimizer returns a clean, ready-to-send prompt regardless of the user's template or how chatty the model is; residual fences/rules/preamble are stripped as a fallback. If a small model still leaks a trailing sentence despite the instruction, that's the remaining gap — addressable with more scrubbing if it recurs.
 

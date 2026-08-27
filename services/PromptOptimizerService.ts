@@ -4,6 +4,7 @@ import type { PythiaSettings } from "../settings";
 import type { LLMRouter } from "./LLMRouter";
 import type { Provider } from "../models/types";
 import { PromptInputModal } from "../suggest/PromptInputModal";
+import { OUTPUT_ONLY_INSTRUCTION, cleanOptimizedOutput } from "./promptOptimizerText";
 import { t } from "../i18n";
 
 const FRAMEWORK_INSTRUCTIONS: Record<string, string> = {
@@ -95,8 +96,9 @@ export class PromptOptimizerService {
 			const instruction = FRAMEWORK_INSTRUCTIONS[framework];
 			if (instruction) userMessage += "\n\n" + instruction;
 		}
+		userMessage += "\n\n" + OUTPUT_ONLY_INSTRUCTION;
 
-		return this.llmRouter.optimizePrompt("", userMessage, provider, model);
+		return cleanOptimizedOutput(await this.llmRouter.optimizePrompt("", userMessage, provider, model));
 	}
 
 	async run(): Promise<void> {
@@ -139,6 +141,7 @@ export class PromptOptimizerService {
 		}
 
 		if (!userMessage) return;
+		userMessage += "\n\n" + OUTPUT_ONLY_INSTRUCTION;
 
 		// Step 3 — call LLM
 		// The template body (already rendered above) is the full user message.
@@ -154,12 +157,12 @@ export class PromptOptimizerService {
 						? this.settings.defaultMistralModel
 						: this.settings.defaultAnthropicModel
 			);
-			optimizedPrompt = await this.llmRouter.optimizePrompt(
+			optimizedPrompt = cleanOptimizedOutput(await this.llmRouter.optimizePrompt(
 				"",
 				userMessage,
 				provider,
 				model
-			);
+			));
 		} catch (err) {
 			new Notice(t("promptOptimizerFailed", { error: String(err) }));
 			return;
