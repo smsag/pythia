@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-081 (turn labels anchor the day — the first user turn of each new calendar day, and the first message of a conversation, carry an absolute date; same-day turns stay time-only).*
+*Last updated: 2026-08-27 — ADR-082 (on-accent label text auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, computed at runtime into `--p-on-accent`).*
+
+*Previously, 2026-08-27 — ADR-081 (turn labels anchor the day — the first user turn of each new calendar day, and the first message of a conversation, carry an absolute date; same-day turns stay time-only).*
 
 *Previously, 2026-08-27 — ADR-080 (the fork anchor's meta line shows the summary's generation date after the model, matching whichever summary is displayed; model + date hidden until a summary exists).*
 
@@ -1160,3 +1162,19 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** a full-width date separator row between turns (heavier DOM + a new locale string; the inline label reads as part of the turn a user already scans); reusing `formatConvDate`'s relative "Heute/Gestern" (relative labels drift — "Heute" becomes wrong the next day, defeating the point of a stable date; absolute with year stays correct on reopen).
 
 **Consequence:** A transcript scanned top-to-bottom now shows exactly where each day begins, with no clutter on same-day turns. Pure presentation change in `renderTurnLabel` + two private helpers; no data-model, settings, locale, or test surface added.
+
+### ADR-082 — On-accent label text adapts to the user's accent luminance
+
+**Status:** Active
+
+**Context:** Solid `--color-accent` fills (the Send button, active `.p-tool-btn.is-active`, active `.p-effort-seg-btn.active`) drew their label with `color: var(--text-on-accent)`. Obsidian ships `--text-on-accent` (and `--text-on-accent-inverted`) but the value is **static** — the theme fixes it (white in the default theme) and never recomputes it from the user's chosen `--color-accent`. A pale or mid-tone accent (reported: a mid purple on the "Senden" button) therefore rendered those labels at poor contrast, near-illegible. Obsidian never decides *which* of the two on-accent tokens to use; that decision was missing.
+
+**Decision:** Add `PythiaSidebarView.applyAccentContrast()`. It resolves `--color-accent`, `--text-on-accent`, and `--text-on-accent-inverted` to concrete rgb by setting each on a hidden probe `<span>` and reading `getComputedStyle(probe).color` (the browser normalizes hex/`hsl()`/named forms to `rgb()`), then sets `--p-on-accent` on the `.pythia-view` root to whichever token has the higher **WCAG contrast ratio** against the accent (pure functions in `services/color.ts`: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent`). The three CSS rules now read `color: var(--p-on-accent, var(--text-on-accent))`, so the theme token still applies until (and if) JS sets the variable — no flash, safe fallback. It runs in `buildUI()` and re-runs on Obsidian's `css-change` workspace event, so switching accent/theme in Appearance settings updates the labels live without reopening the view.
+
+**Why Obsidian's own tokens (not pure #fff/#000):** keeps the fix theme-native — a theme that styles `--text-on-accent-inverted` as, say, a dark navy is honored. Because the choice is made by *measured* contrast (not an assumption that the tokens are pure black/white), it stays correct even if a theme customizes or swaps them; if a token is undefined the probe falls back to `#fff`/`#000` in the `var()` default.
+
+**Scope:** solid accent fills only. Accent *tints* — the user bubble (`color-mix(--color-accent 12%, --background-primary)` with `--text-normal`), highlighter marks, hover washes — already pair with readable text and are untouched.
+
+**Alternatives rejected:** hardcoding pure black/white (guarantees contrast but bypasses theme on-accent styling — the point of choosing Option A was to stay native); a CSS-only solution (CSS cannot branch on a custom property's luminance); parsing the raw `--color-accent` token string (fragile across hex/hsl/named/var-reference forms — the probe sidesteps all of it).
+
+**Consequence:** On-accent labels stay legible across any user accent and update live on theme changes. New pure module `services/color.ts` with 13 unit tests (parse, luminance, contrast, and the token-choice decision incl. the reported mid-purple case and non-black/white theme tokens). Any future solid-accent surface must use `var(--p-on-accent, var(--text-on-accent))`, not bare `--text-on-accent` (noted in design.md).

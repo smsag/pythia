@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — turn labels now anchor the day: the first user turn of each new calendar day (and the first message of the conversation) shows an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only (ADR-081).*
+*Last updated: 2026-08-27 — solid accent-filled labels (Send button, active tool/effort pills) now use a plugin-computed `--p-on-accent` that auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, fixing unreadable labels on pale/mid accents (ADR-082).*
+
+*Previously, 2026-08-27 — turn labels now anchor the day: the first user turn of each new calendar day (and the first message of the conversation) shows an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only (ADR-081).*
 
 *Previously, 2026-08-27 — the fork anchor's meta line now shows the summary's generation date after the model (`N Nachrichten · Model · <date> · Öffnen →`), matching whichever summary is displayed; model + date are hidden until a summary exists (ADR-080).*
 
@@ -48,7 +50,8 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 | `--text-normal` | Primary readable text, AI response body |
 | `--text-muted` | Secondary text, blockquote text |
 | `--text-faint` | Labels, badges, token counts, inactive icons, code-block type icon |
-| `--text-on-accent` | Text on accent-coloured surfaces (user bubble) |
+| `--text-on-accent` | Text on accent-coloured surfaces — fallback only; prefer `--p-on-accent` (see below) |
+| `--p-on-accent` | Plugin-computed on-accent label color for solid accent fills (Send button, active tool/effort pills); auto-picks the higher-contrast of `--text-on-accent` / `--text-on-accent-inverted` for the user's accent (ADR-082) |
 | `--background-primary` | Panel background, input area |
 | `--background-secondary` | Summary bar background; framed content boxes (tool-call chip, optimizer result, code blocks, inline code) |
 | `--background-modifier-border` | All dividers and borders, including the blockquote left bar |
@@ -56,6 +59,8 @@ Pythia lives inside the Obsidian sidebar. Every surface must feel like a native 
 | `--color-green` | Tool-call "done" link text (a persistent semantic state — not used for momentary click feedback like copy-confirmation) |
 
 For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a plain `var(--color-accent)` fallback on the preceding line for Chromium < 111.
+
+**On-accent text (ADR-082):** any element with a **solid `--color-accent` fill** must set its text `color: var(--p-on-accent, var(--text-on-accent))` — never bare `--text-on-accent`. Obsidian's `--text-on-accent` is static (white in the default theme) and doesn't adapt to a customized accent, so a pale/mid accent renders those labels low-contrast. `PythiaSidebarView.applyAccentContrast()` resolves the accent and both on-accent tokens to rgb (via a probe span) and sets `--p-on-accent` on `.pythia-view` to whichever token has the higher WCAG contrast; it re-runs on Obsidian's `css-change` event. Accent *tints* (e.g. the user bubble's 12% `color-mix` with `--text-normal`) are unaffected — this is only for solid fills.
 
 ### Spacing — 4 px grid, no arbitrary values
 

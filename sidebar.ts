@@ -11,6 +11,7 @@ import {
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
+import { parseRgb, betterOnAccent } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { t } from "./i18n";
@@ -202,6 +203,12 @@ export class PythiaSidebarView extends ItemView {
 			});
 		}
 
+		// Recompute the on-accent label color when the user changes their accent
+		// or theme in Appearance settings (Obsidian fires css-change) — no reopen.
+		this.registerEvent(
+			this.app.workspace.on("css-change", () => this.applyAccentContrast())
+		);
+
 		// Track the most-recently-active MarkdownView so insert-into-note
 		// works even after focus has shifted to this sidebar.
 		this.registerEvent(
@@ -356,6 +363,7 @@ export class PythiaSidebarView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
+		this.applyAccentContrast();
 
 		this.buildHeader(container);
 
@@ -1498,6 +1506,39 @@ export class PythiaSidebarView extends ItemView {
 		const d = new Date(iso);
 		if (Number.isNaN(d.getTime())) return "";
 		return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	}
+
+	/** Pick the on-accent label color that reads best on the user's accent.
+	 *  Obsidian's `--text-on-accent` is static (white in the default theme) and
+	 *  never adapts to a customized `--color-accent`, so a pale/mid accent leaves
+	 *  accent-filled labels (Send button, active toolbar/effort pills) low-contrast.
+	 *  We resolve the accent and both theme on-accent tokens to rgb via a probe
+	 *  span, then set `--p-on-accent` to whichever token has the higher measured
+	 *  contrast. Falls back to `--text-on-accent` (via the CSS var default) if any
+	 *  color can't be resolved. Re-run on css-change. */
+	private applyAccentContrast(): void {
+		const root = this.containerEl.children[1] as HTMLElement | undefined;
+		if (!root) return;
+		const resolve = (expr: string): [number, number, number] | null => {
+			const probe = root.createSpan();
+			probe.style.color = expr;
+			probe.style.display = "none";
+			const rgb = parseRgb(getComputedStyle(probe).color);
+			probe.remove();
+			return rgb;
+		};
+		const accent = resolve("var(--color-accent)");
+		const onAccent = resolve("var(--text-on-accent, #fff)");
+		const inverted = resolve("var(--text-on-accent-inverted, #000)");
+		if (!accent || !onAccent || !inverted) {
+			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
+			return;
+		}
+		const choice = betterOnAccent(accent, onAccent, inverted);
+		root.style.setProperty(
+			"--p-on-accent",
+			choice === "inverted" ? "var(--text-on-accent-inverted, #000)" : "var(--text-on-accent, #fff)",
+		);
 	}
 
 	/** Append the input/output token counts inline to a turn label
