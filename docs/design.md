@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — on a fork, the fork banner ("branched from…") now renders above the summary cards instead of below them: conversation-view order is context inspector → fork banner → summary cards → messages (ADR-084).*
+*Last updated: 2026-08-27 — the selection toolbar hides **Favorite** and **Branch (Fork)** when the selection is inside a user prompt bubble; both apply to assistant content only (Copy / Insert / Inbox remain), enforced in the handlers too (ADR-085).*
+
+*Previously, 2026-08-27 — on a fork, the fork banner ("branched from…") now renders above the summary cards instead of below them: conversation-view order is context inspector → fork banner → summary cards → messages (ADR-084).*
 
 *Previously, 2026-08-27 — the fork banner's "branched from" link is now a `<span>` (not an `<a>`), matching the extension's standard clickable-link pattern (`--color-accent`, underline only on hover) and dropping the stray Obsidian-core anchor underline (ADR-083).*
 
@@ -234,7 +236,7 @@ Input/output token counts render **inline in the AI turn micro-label**, not as a
 
 ### Favorite highlights (`mark.p-highlight`)
 
-Any text selection inside a message can be favorited via the **Favorite** button in the selection toolbar. Toolbar order (left → right): **Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox**. The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render).
+Any text selection **inside an assistant message** can be favorited via the **Favorite** button in the selection toolbar. Toolbar order (left → right): **Copy · Favorite/Unfavorite · Branch (Fork) · Insert into note · Save to inbox**. **Favorite and Branch (Fork) apply to assistant content only** (ADR-085): when the selection sits in a user prompt bubble (`.p-msg-user`), `handleSelectionChange` hides both buttons — Copy / Insert / Inbox stay available for the user's own text; the `onFavoriteSelection` / `onForkConversation` handlers also guard on `.p-msg-user`, so it's not possible even if a button leaks through. The favorited span is wrapped in `mark.p-highlight` (`background: var(--text-highlight-bg)`, `border-radius: 2px`) and stays visibly highlighted. Highlights are re-painted after every markdown render by `ui/HighlightPainter.ts`, which re-finds the stored text among the body's text nodes (offsets are not stored — the DOM is re-created on each render).
 
 **Unfavorite:** *tapping* a highlight (no drag) selects its whole span (`rangeForHighlight`) and opens the toolbar with the Favorite button relabeled **Unfavorite**; pressing it removes exactly that highlight (`removeHighlightById` — surgical, never touches other highlights). A *dragged* selection always creates a new favorite, even overlapping an existing highlight — dragging never removes one. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
 

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-084 (on a fork, the fork banner renders above the summary cards — order: context inspector → fork banner → summary cards → messages).*
+*Last updated: 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
+
+*Previously, 2026-08-27 — ADR-084 (on a fork, the fork banner renders above the summary cards — order: context inspector → fork banner → summary cards → messages).*
 
 *Previously, 2026-08-27 — ADR-083 (the fork banner's "branched from" link is a `<span>`, not an `<a>`, matching the standard clickable-link pattern and dropping Obsidian core's anchor underline).*
 
@@ -1204,4 +1206,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Decision:** Reorder the full-rebuild block in `renderMessages` so the fork banner (`renderForkBannerEl`, rendered only when `conv.forkedFromId` is set) comes directly after the context inspector and before the `.p-summary-cards` container. New vertical order: context inspector → fork banner → summary cards → messages. Both the banner and the summary container are direct children of `messagesEl` appended in call order; no CSS sibling/adjacency selectors reference either, and `summaryCardsEl` is still assigned before `renderSummaryCards()` reads it, so the move is purely positional.
 
 **Consequence:** A fork opens with its provenance banner adjacent to the first message and above the summaries, matching how the branch is meant to be read. Non-forks are unaffected (no banner). Pure ordering change; no data-model, CSS, or test change.
+
+
+### ADR-085 — Favorite and Fork are assistant-only in the selection toolbar
+
+**Status:** Active
+
+**Context:** The selection toolbar (Copy · Favorite/Unfavorite · Branch/Fork · Insert · Inbox) appeared for any text selection inside `messagesEl`, including a **user prompt bubble** (`.p-msg-user`). Both Favorite (`onFavoriteSelection`) and Fork (`onForkConversation`) resolve their target by `data-msg-id` and fall back to `.p-bubble` as the body — the user row carries a `data-msg-id`, so favoriting or forking from one's *own* prompt was in fact possible, not blocked. Neither makes sense: a favorite highlights a passage of the model's answer worth keeping; a fork branches from a point in the model's reasoning (its selection becomes the `<forked_from_excerpt>` anchor for the branch). Anchoring either to the user's own prompt is meaningless.
+
+**Decision:** `handleSelectionChange` now detects whether the selection's `commonAncestorContainer` is within a `.p-msg-user` row and, if so, hides `favBtn` and `forkBtn` (the fork button is now held on `this.forkBtn` for that toggle); Copy / Insert / Inbox stay visible for the user's own text. Defense in depth: `onFavoriteSelection` and `onForkConversation` also early-return when the resolved message row has class `p-msg-user`, so the actions are impossible even if a button is reached another way. Assistant messages (`.p-msg-ai`) are unaffected.
+
+**Consequence:** Favorite and Fork are assistant-content-only, both in what the toolbar offers and in what the handlers permit — matching their meaning (a saved highlight / a branch excerpt from the model's output). No data-model or locale change; existing favorites on user bubbles (if any were created before this) remain tappable to unfavorite. Verified via build/lint/tests; no new unit test (DOM-selection behavior in the view class has no harness).
 

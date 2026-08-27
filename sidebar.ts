@@ -123,6 +123,7 @@ export class PythiaSidebarView extends ItemView {
 	private sendBtn!: HTMLButtonElement;
 	private selectionToolbar!: HTMLElement;
 	private favBtn!: HTMLButtonElement;
+	private forkBtn!: HTMLButtonElement;
 	/** When set, the current selection came from tapping this favorite's highlight,
 	 *  so the toolbar's favorite button acts as "Unfavorite" targeting this id. */
 	private tappedFavId: string | null = null;
@@ -553,13 +554,13 @@ export class PythiaSidebarView extends ItemView {
 		this.favBtn.addEventListener("mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
 		this.favBtn.addEventListener("touchend", makeSelTouch(() => void this.onFavoriteSelection()));
 
-		const forkBtn = this.selectionToolbar.createEl("button", {
+		this.forkBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("forkBtn"),
 			attr: { title: t("forkBtn") },
 		});
-		forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
-		forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
+		this.forkBtn.addEventListener("mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
+		this.forkBtn.addEventListener("touchend", makeSelTouch(() => this.onForkConversation()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -2120,6 +2121,14 @@ export class PythiaSidebarView extends ItemView {
 		const messageId = startMsg.getAttribute("data-msg-id");
 		if (!messageId) return;
 
+		// Favorites apply to assistant content only. The toolbar already hides the
+		// button over a user bubble; guard here too so it's never possible.
+		if (startMsg.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
+
 		// Compute the occurrence index within the message body so re-find later
 		// paints the same span when the text appears more than once.
 		const body = startMsg.querySelector<HTMLElement>(".p-ai-body, .p-bubble")
@@ -3247,6 +3256,16 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
+		// Favorite and Fork apply to assistant content only. Hide them when the
+		// selection sits in a user prompt bubble (`.p-msg-user`) — Copy / Insert /
+		// Inbox remain available for the user's own text.
+		const anchorEl = range.commonAncestorContainer instanceof Element
+			? range.commonAncestorContainer
+			: range.commonAncestorContainer.parentElement;
+		const inUserBubble = !!anchorEl?.closest(".p-msg-user");
+		this.favBtn.style.display = inUserBubble ? "none" : "";
+		this.forkBtn.style.display = inUserBubble ? "none" : "";
+
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
 		this.selectionToolbar.style.display = "flex";
@@ -3303,6 +3322,15 @@ export class PythiaSidebarView extends ItemView {
 		const anchor = sel?.anchorNode;
 		const msgEl  = (anchor instanceof Element ? anchor : anchor?.parentElement)
 			?.closest("[data-msg-id]");
+
+		// Forking branches from assistant content only. The toolbar hides the fork
+		// button over a user bubble; guard here too so it's never possible.
+		if (msgEl?.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
+
 		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
 
 		// Record which occurrence of the snippet this is, so the source can re-find
