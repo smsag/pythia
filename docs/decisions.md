@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-092 (on-accent label color keeps a theme token only when it clears WCAG AA on the user's accent, else forces pure black/white; fixes the unreadable "Senden" label ADR-082 missed. Extracted to the tested `readableOnAccent()`).*
+*Last updated: 2026-08-27 — ADR-093 (prompt optimizer rewrites the input textarea in place — optimize with the settings framework, replace via `execCommand("insertText")` so ⌘Z / iOS shake revert — instead of an in-conversation preview/confirm/retry flow; no auto-send).*
+
+*Previously, 2026-08-27 — ADR-092 (on-accent label color keeps a theme token only when it clears WCAG AA on the user's accent, else forces pure black/white; fixes the unreadable "Senden" label ADR-082 missed. Extracted to the tested `readableOnAccent()`).*
 
 *Previously, 2026-08-27 — ADR-091 (prompt optimization moves from an input-toolbar wand icon to a third "Optimize prompt" item in the Send long-press menu; greyed when input is empty or no optimizer template is set).*
 
@@ -1323,4 +1325,20 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** always force pure black/white regardless of the theme token (simplest and always readable, but discards a theme's intentional on-accent tint even when it reads fine — e.g. a conventional white label on a saturated accent that clears AA); lowering the AA threshold below 4.5 (would preserve more conventional white-on-accent labels but risks leaving borderline cases unreadable — 4.5 is the correct bar for the small 10px Send label, and the threshold is a parameter if it needs tuning).
 
 **Consequence:** On-accent labels are readable on every accent and theme, not just the ones where one of the theme's two tokens happened to work. The decision is covered by `tests/color.test.ts` (including the both-tokens-poor case). No CSS or markup change — the same `color: var(--p-on-accent, …)` wiring from ADR-082 stands.
+
+### ADR-093 — Prompt optimizer rewrites the input in place, not via an in-conversation preview
+
+**Status:** Active (replaces the preview/confirm flow that shipped with the inline optimizer; the Send-menu entry point from ADR-091 stands)
+
+**Context:** The optimizer rendered the flow *inside the conversation*: a ghost preview bubble of the original prompt, an "Optimizing…" indicator, then the optimized text as a result box with three buttons — **Use this** (which also *sent* the message), **Discard** (restore original), **Another version** (regenerate). That put a transient, message-shaped UI into the transcript for something that only ever targets the input box, coupled optimization to sending, and needed `MarkdownRenderer` + several `.p-msg-optimize-*` / `.p-optimize-*` rules.
+
+**Decision:** Make it a direct, in-place edit of the prompt textarea. `OptimizationController.start()` now: reads the input, optimizes it with the settings framework (`defaultPromptFramework`), and **replaces the textarea content in place** — no preview/result/action UI, and it does **not** auto-send. The user then either presses Send or reverts.
+- **Undo via the native stack.** The replacement uses `document.execCommand("insertText")` (select-all, then insert) rather than assigning `inputEl.value`, because only the former enters the textarea's native undo history — so **⌘Z** (desktop) and **iOS shake-to-undo** restore the original. A direct-assignment fallback covers engines where `execCommand` is unavailable (no native undo there — notably Android, which has no system undo gesture; accepted as a known gap per the maintainer, who preferred no extra Undo affordance).
+- **Progress cue.** During the call the textarea and Send are disabled and the Send button shows the `optimizingIndicator` label (mirroring how it shows "Stopp" while streaming) — the in-conversation indicator is gone.
+- **"Another version" is just re-running** the optimizer from the Send menu on the current input; the dedicated retry button is removed.
+- The controller shed its `messagesEl` / `component` / `scrollToBottom` / `sendMessage` deps; removed CSS (`.p-msg-optimize-*`, `.p-optimize-*`) and four now-dead i18n keys (`useThisBtn`, `discardBtn`, `anotherVersionBtn`, `optimizingIndicatorFramework`).
+
+**Alternatives rejected:** keeping the in-conversation preview (the reported problem — it reads as a chat turn and coupled optimize-to-send); a transient in-input Undo chip in addition to native undo (offered; the maintainer chose native-undo-only, accepting the Android gap); a custom (non-native) undo so ⌘Z is unnecessary (would not integrate with ⌘Z / shake, which the maintainer explicitly wanted).
+
+**Consequence:** Optimizing a prompt is now a quiet, in-place rewrite the user reviews in the input box and sends (or undoes) themselves — no transcript clutter, no forced send. Android users lack an easy revert (documented). The Send button briefly widens to fit the "Optimizing…" label.
 
