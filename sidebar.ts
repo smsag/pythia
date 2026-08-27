@@ -96,6 +96,7 @@ export class PythiaSidebarView extends ItemView {
 	private convNameEl!: HTMLElement;
 	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
+	private deleteConvBtn!: HTMLButtonElement;
 	private copyLinkBtn!: HTMLButtonElement;
 	// Context-budget bar under the header + the >=80% warning percent chip.
 	private ctxBarEl!: HTMLElement;
@@ -407,6 +408,21 @@ export class PythiaSidebarView extends ItemView {
 	private buildHeader(container: HTMLElement): void {
 		const header = container.createDiv({ cls: "p-header" });
 
+		// Header order, left → right (ADR-098): history · name (grows) · rename ·
+		// link · delete · [ctx chip] · model · new. The name group takes the flex
+		// space so the action cluster stays pinned to the right edge, and the "+"
+		// new-conversation button is always the last child so its position never
+		// shifts as other controls show/hide.
+
+		// ── Far left: conversation history ─────────────────────────────────────
+		const historyBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("historyTooltip") },
+		});
+		setIcon(historyBtn, "history");
+		this.registerDomEvent(historyBtn, "click", () => this.openHistoryView());
+
+		// ── Conversation name (grows; hosts the inline rename input) ───────────
 		const titleGroup = header.createDiv({ cls: "p-title-group" });
 
 		this.convNameEl = titleGroup.createEl("button", {
@@ -438,13 +454,30 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
 
-		this.renameBtn = titleGroup.createEl("button", {
+		// ── Right cluster: rename · link · delete · [ctx] · model · new ────────
+		this.renameBtn = header.createEl("button", {
 			cls: "p-hdr-btn p-rename-btn",
 			attr: { title: t("renameConvTooltip") },
 		});
 		setIcon(this.renameBtn, "pencil");
 		this.renameBtn.style.display = "none";
 		this.registerDomEvent(this.renameBtn, "click", () => this.enterRenameMode());
+
+		this.copyLinkBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("copyConvLinkTooltip") },
+		});
+		setIcon(this.copyLinkBtn, "link");
+		this.copyLinkBtn.style.display = "none";
+		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
+
+		this.deleteConvBtn = header.createEl("button", {
+			cls: "p-hdr-btn",
+			attr: { title: t("deleteConvTooltip") },
+		});
+		setIcon(this.deleteConvBtn, "trash");
+		this.deleteConvBtn.style.display = "none";
+		this.registerDomEvent(this.deleteConvBtn, "click", () => this.handleDeleteConversation());
 
 		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
 		// Clicking it scrolls to the top of the conversation (context inspector
@@ -461,28 +494,7 @@ export class PythiaSidebarView extends ItemView {
 		this.modelBadgeEl.style.display = "none";
 		this.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
 
-		this.copyLinkBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("copyConvLinkTooltip") },
-		});
-		setIcon(this.copyLinkBtn, "link");
-		this.copyLinkBtn.style.display = "none";
-		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
-
-		const historyBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("historyTooltip") },
-		});
-		setIcon(historyBtn, "history");
-		this.registerDomEvent(historyBtn, "click", () => this.openHistoryView());
-
-		const deleteConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("deleteConvTooltip") },
-		});
-		setIcon(deleteConvBtn, "trash");
-		this.registerDomEvent(deleteConvBtn, "click", () => this.handleDeleteConversation());
-
+		// ── Far right: new conversation (always the last child) ────────────────
 		const newConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("newConvTooltip") },
@@ -490,6 +502,8 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(newConvBtn, "plus");
 		this.registerDomEvent(newConvBtn, "click", () => this.plugin.cmdNewConversation());
 
+		// Template label is absolutely positioned (see styles.css), so it does not
+		// participate in the header flex row and never displaces the "+" button.
 		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
 		this.templateLabelEl.style.display = "none";
 	}
@@ -1035,14 +1049,18 @@ export class PythiaSidebarView extends ItemView {
 
 	private renderHeader(): void {
 		if (!this.activeConversation) {
+			// Empty state: only history, the name, and "+" are shown (ADR-098).
 			this.convNameEl.setText(t("noConversation"));
 			this.templateLabelEl.setText("");
+			this.templateLabelEl.style.display = "none";
 			this.copyLinkBtn.style.display = "none";
 			this.renameBtn.style.display = "none";
+			this.deleteConvBtn.style.display = "none";
 			return;
 		}
 		this.copyLinkBtn.style.display = "";
 		this.renameBtn.style.display = "";
+		this.deleteConvBtn.style.display = "";
 		this.convNameEl.setText(this.activeConversation.name + " ▾");
 		if (this.activeConversation.templateId) {
 			const tplName =

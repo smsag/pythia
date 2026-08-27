@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-097 (`#`-mention note picker drills into folders in place — ArrowRight / swipe-left / a trailing › opens a folder to browse its contents, ArrowLeft / swipe-right / a back row steps up; Enter/tap on a folder still attaches the whole folder, so the addition is non-breaking).*
+*Last updated: 2026-08-27 — ADR-098 (header icon order reworked left→right to history · name · rename · link · delete · model · new; the name group absorbs the flex space so the "+" is always the last child and never shifts, the template caption is pulled out of the flex row into an absolute label, and the history-overlay header frame is matched to the main header so "+" holds the same position across both views).*
+
+*Previously, 2026-08-27 — ADR-097 (`#`-mention note picker drills into folders in place — ArrowRight / swipe-left / a trailing › opens a folder to browse its contents, ArrowLeft / swipe-right / a back row steps up; Enter/tap on a folder still attaches the whole folder, so the addition is non-breaking).*
 
 *Previously, 2026-08-27 — ADR-096 (fork selection is trimmed at storage and search, so the source-side fork-origin mark re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span; fixes a latent bug where a fork selection carrying edge whitespace/newlines was unfindable).*
 
@@ -1396,3 +1398,19 @@ On each drill or back step the typed fragment is cleared (`clearFragment` leaves
 **Alternatives rejected:** inline accordion expansion (collides with the 8-item cap, eats horizontal room with indentation, and horizontal swipe reads as "move sideways" not "unfold" — weak mobile story); Miller/two-pane columns (wants width the sidebar rarely has; heaviest for a lightweight autocomplete).
 
 **Consequence:** Folders are browsable without leaving the input. Mouse-only users get the › chevron and back row (no keyboard/swipe needed); keyboard and touch users get symmetric drill/back gestures. Not unit-tested — the behavior is DOM/layout- and vault-mock-heavy (the scroll-into-view even depends on `offsetTop`/`clientHeight`, which the DOM stub reports as 0); the entry-building split into pure `buildGlobalEntries`/`buildFolderEntries` keeps it reviewable. **Known limitation:** deep subtrees are browsed one level at a time; the per-level content cap is ~20 rows (scrollable), and folders with more are filtered by typing rather than paged.
+
+### ADR-098 — Header icon order and a right edge the "+" never leaves
+
+**Status:** Active
+
+**Context:** The header packed the conversation name (flex-grow) first, then `[model][link][history][delete][+]`. Two problems: the requested order differs, and the "+" new-conversation button visibly *jumped* between the main view and the "all conversations" history overlay. Root cause of the jump: the undocumented, unstyled `.pythia-template-label` div was created as the header's **last** flex child, so whenever a conversation had a template it rendered "Template: X" *after* the "+", shoving the button leftward — while the history overlay (a separate `.p-history-head`) had no such label, so its "+" sat at the true right edge. The two overlay/main frames also had different left padding (`--s2` vs `--s3`).
+
+**Decision:** Reorder the header left→right to **history · name (grows) · rename · link · delete · [ctx chip] · model · new**, per the maintainer's spec (chosen layout: name absorbs the flex space, so the action cluster and the "+" stay pinned to the right — the rename pencil now lives in that right cluster, not glued to the name). To make the "+" position invariant:
+1. The **"+" is always the last flex child.** The name's `.p-title-group` (`flex: 1`) absorbs all free space, so showing/hiding any other control (model, link, delete, ctx chip) shrinks the name area, never moves the "+".
+2. The **template caption is removed from the flex row** — `.pythia-template-label` is now `position: absolute` (centered along the header's bottom edge), so it can never displace the "+".
+3. The **history-overlay header frame matches the main header** exactly (same `padding: s2 s2 s2 s3`), so toggling the overlay leaves the "+" at an identical x.
+Empty state (no active conversation) keeps only **history · name · +** — rename/link/delete are `display:none` and the model badge was already hidden by `updateModelBadge`; `deleteConvBtn` became a stored field so `renderHeader` can gate it too.
+
+**Alternatives rejected:** pencil glued to the name on the left (maintainer chose the conventional title-left / actions-right cluster instead); giving the history overlay the full icon set (most of it is irrelevant to a list view — kept minimal `[← back][title][+]`, only the frame aligned); leaving the template label in-flow but reordered (any in-flow position still displaces a neighbor when it toggles — absolute is the only stable fix).
+
+**Consequence:** The "+" holds one position across empty/active states and across the main/history views. The rename pencil moved from inside the title group to the right cluster. Not unit-tested (pure DOM/CSS layout); verified by reading the flex model — the single `flex:1` name group is the only grow region, and the "+" is terminal in both headers. **Known limitation:** the absolute template caption is centered on the header's bottom edge and truncates at 60% width; a very long template name shows only its head.

@@ -54,6 +54,26 @@
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 34px;
+  position: relative; /* anchors the absolutely-positioned template label */
+}
+
+/* Template caption ("Template: X"): absolutely positioned so it is out of the
+   header flex row and can never displace the trailing "+" button (which must sit
+   at the same right edge in both the main and history-overlay headers). */
+.pythia-template-label {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  transform: translateX(-50%);
+  max-width: 60%;
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* ── Context-budget bar (ADR-069) ───────────────────────────────
@@ -140,7 +160,9 @@
   display: flex;
   align-items: center;
   gap: var(--s1);
-  padding: var(--s2) var(--s2) var(--s2) var(--s2);
+  /* Match .p-header exactly so the trailing "+" sits at an identical position in
+     both views — no visible jump when the history overlay opens/closes. */
+  padding: var(--s2) var(--s2) var(--s2) var(--s3);
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 34px;
