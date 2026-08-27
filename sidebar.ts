@@ -9,7 +9,7 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, debugLog } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, formatSummaryTimestamp, debugLog } from "./services/messageUtils";
 import { buildSystemPrompt } from "./services/ContextBuilder";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
@@ -22,6 +22,7 @@ import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController } from "./ui/HistoryController";
+import { SummaryController } from "./ui/SummaryController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import {
 	findRange,
@@ -48,12 +49,6 @@ import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
-function formatSummaryTimestamp(iso: string): string {
-	const d = new Date(iso);
-	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-	return `${date} · ${time}`;
-}
 
 
 export class PythiaSidebarView extends ItemView {
@@ -127,9 +122,11 @@ export class PythiaSidebarView extends ItemView {
 	// Long-press "generate summary" menu on a fork anchor's Open-fork button.
 	private forkMenuCleanup: (() => void) | null = null;
 	private suppressNextForkOpen = false;
-	// Summary "Speisekarte" cards at the top of the message list.
+	// Summary "Speisekarte" cards at the top of the message list. The container is
+	// created here (for DOM position); the SummaryController (ADR-103) owns the
+	// cards, their auto-collapse observer, and the generate/reveal/save flows.
 	private summaryCardsEl: HTMLElement | null = null;
-	private summaryCardObserver: IntersectionObserver | null = null;
+	private summaryController!: SummaryController;
 	// Context inspector card (F2/F3) — lives just under the summary cards.
 	private inspectorEl: HTMLElement | null = null;
 	private inspectorOpen = false; // preserved across rebuilds within a session
@@ -229,8 +226,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// Summaries are generated only via the Send-button menu — no auto-save on close.
 
-		this.summaryCardObserver?.disconnect();
-		this.summaryCardObserver = null;
+		this.summaryController?.dispose();
 		this.sendLongPressCleanup?.();
 		this.sendLongPressCleanup = null;
 		this.closeSummaryMenu();
@@ -390,7 +386,7 @@ export class PythiaSidebarView extends ItemView {
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			scrollToFavorite: (fav) => this.scrollToFavorite(fav),
 			removeFavorite: (favId) => this.removeFavorite(favId),
-			goToFavoritesSummary: () => this.goToFavoritesSummary(),
+			goToFavoritesSummary: () => this.summaryController.goToFavoritesSummary(),
 		});
 
 		this.historyController = new HistoryController({
@@ -402,6 +398,20 @@ export class PythiaSidebarView extends ItemView {
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			renderHeader: () => this.renderHeader(),
 		});
+
+		this.summaryController = new SummaryController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getCardsEl: () => this.summaryCardsEl,
+			getMessagesEl: () => this.messagesEl,
+			renderMarkdown: (md, el) => {
+				void MarkdownRenderer.render(this.app, md, el, "", this)
+					.catch((e) => console.error("[Pythia] summary card render:", e));
+			},
+			renderHeader: () => this.renderHeader(),
+		});
+		// The container div was created in buildChatArea (for DOM position); populate it now.
+		this.summaryController.renderSummaryCards();
 	}
 
 	private buildHeader(container: HTMLElement): void {
@@ -836,9 +846,9 @@ export class PythiaSidebarView extends ItemView {
 		};
 
 		addItem(t("menuSummarizeConversation"), "align-left", conv.messages.length === 0,
-			() => void this.generateConversationSummary());
+			() => void this.summaryController.generateConversationSummary());
 		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
-			() => void this.summarizeFavorites());
+			() => void this.summaryController.summarizeFavorites());
 		// Prompt optimization (moved here from the input toolbar). Disabled when there
 		// is nothing typed to optimize or no optimizer template is configured.
 		const optimizeDisabled =
@@ -1019,7 +1029,7 @@ export class PythiaSidebarView extends ItemView {
 			const savings = Math.round(histTokens * 0.85);
 			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
 			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
-			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.generateConversationSummary(); });
+			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); void this.summaryController.generateConversationSummary(); });
 		} else {
 			for (const n of noteTok) {
 				const row = wikilinkRow(body, n.path);
@@ -1073,141 +1083,6 @@ export class PythiaSidebarView extends ItemView {
 			this.templateLabelEl.setText("");
 			this.templateLabelEl.style.display = "none";
 		}
-	}
-
-	// ── Summary "Speisekarte" cards (top of the message list) ──────────────────
-
-	/** Rebuild the summary cards for the active conversation. Only renders a card
-	 *  for a summary that actually exists; cards are collapsed by default. */
-	private renderSummaryCards(): void {
-		if (!this.summaryCardsEl) return;
-		this.summaryCardsEl.empty();
-		this.summaryCardObserver?.disconnect();
-		this.summaryCardObserver = null;
-
-		const conv = this.activeConversation;
-		const cards: HTMLElement[] = [];
-		if (conv?.summaryText?.trim()) {
-			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt));
-		}
-		if (conv?.favoritesSummary?.text?.trim()) {
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt));
-		}
-		this.summaryCardsEl.style.display = cards.length ? "" : "none";
-
-		// Auto-collapse an expanded card once it scrolls out of the message viewport.
-		if (cards.length) {
-			this.summaryCardObserver = new IntersectionObserver(
-				(entries) => {
-					for (const entry of entries) {
-						const card = entry.target as HTMLElement;
-						if (!entry.isIntersecting && card.hasClass("open")) {
-							this.setSummaryCardOpen(card, false);
-						}
-					}
-				},
-				{ root: this.messagesEl, threshold: 0 }
-			);
-			for (const card of cards) this.summaryCardObserver.observe(card);
-		}
-	}
-
-	private buildSummaryCard(
-		kind: "conversation" | "favorites",
-		text: string,
-		updatedAt?: string
-	): HTMLElement {
-		const card = this.summaryCardsEl!.createDiv({
-			cls: "p-summary-card",
-			attr: { "data-kind": kind },
-		});
-		const header = card.createDiv({ cls: "p-summary-card-header" });
-		const icon = header.createSpan({ cls: "p-summary-card-icon" });
-		setIcon(icon, kind === "favorites" ? "star" : "align-left");
-		header.createSpan({
-			cls: "p-summary-card-title",
-			text: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
-		});
-		// Timestamp lives in the header now (right-aligned, faint).
-		if (updatedAt) {
-			header.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
-		}
-		// Regenerate icon — re-runs the summary matching this card's kind.
-		const regen = header.createEl("button", {
-			cls: "p-summary-card-regen",
-			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
-		});
-		setIcon(regen, "refresh-cw");
-		regen.addEventListener("click", (e) => {
-			e.stopPropagation();
-			if (kind === "favorites") void this.summarizeFavorites();
-			else void this.generateConversationSummary();
-		});
-		const chevron = header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
-		header.addEventListener("click", () =>
-			this.setSummaryCardOpen(card, !card.hasClass("open"))
-		);
-
-		const body = card.createDiv({ cls: "p-summary-card-body" });
-		const md = body.createDiv({ cls: "p-summary-card-md" });
-		void MarkdownRenderer.render(this.app, text, md, "", this)
-			.catch((e) => console.error("[Pythia] summary card render:", e));
-
-		const footer = body.createDiv({ cls: "p-summary-card-footer" });
-		const copyBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("copyBtn") });
-		copyBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			navigator.clipboard.writeText(text).then(
-				() => new Notice(t("copied")),
-				() => new Notice(t("copyFailed")),
-			);
-		});
-		const saveBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("saveToNoteBtn") });
-		saveBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			void this.onSaveSummaryToNote(kind, text);
-		});
-
-		void chevron; // chevron text is updated via setSummaryCardOpen
-		return card;
-	}
-
-	private setSummaryCardOpen(card: HTMLElement, open: boolean): void {
-		card.toggleClass("open", open);
-		const chevron = card.querySelector<HTMLElement>(".p-summary-card-chevron");
-		if (chevron) chevron.setText(open ? "▾" : "▸");
-	}
-
-	private async onSaveSummaryToNote(kind: "conversation" | "favorites", text: string): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		try {
-			const path = kind === "favorites"
-				? await this.plugin.noteWriter.saveFavoritesSummaryNote(conv, text)
-				: await this.plugin.noteWriter.saveSummaryNote(conv, text);
-			new Notice(t("savedToPath", { path }));
-		} catch (e) {
-			new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
-		}
-	}
-
-	/** Expand a summary card and scroll it to the top of the viewport. */
-	private revealSummaryCard(kind: "conversation" | "favorites"): void {
-		const card = this.summaryCardsEl?.querySelector<HTMLElement>(
-			`.p-summary-card[data-kind="${kind}"]`
-		);
-		if (!card) return;
-		this.setSummaryCardOpen(card, true);
-		// Instant scroll so the card is in view before the observer evaluates it
-		// (a smooth scroll would let the observer collapse it mid-flight).
-		const top = card.offsetTop - this.messagesEl.offsetTop;
-		this.messagesEl.scrollTo({ top: Math.max(0, top - 8) });
-	}
-
-	/** Nav: jump to and expand the favorites summary card. */
-	goToFavoritesSummary(): void {
-		if (!this.activeConversation?.favoritesSummary?.text?.trim()) return;
-		requestAnimationFrame(() => this.revealSummaryCard("favorites"));
 	}
 
 	private toggleInputArea(): void {
@@ -1434,9 +1309,9 @@ export class PythiaSidebarView extends ItemView {
 		// message (ADR-084).
 		if (conv.forkedFromId) this.renderForkBannerEl();
 
-		// Summary "Speisekarte" cards sit below the fork info.
+		// Summary "Speisekarte" cards sit below the fork info. Populated by the
+		// SummaryController once it's constructed at the end of buildUI.
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
-		this.renderSummaryCards();
 
 		if (msgs.length === 0) {
 			this.renderWelcome(this.messagesEl);
@@ -2074,7 +1949,7 @@ export class PythiaSidebarView extends ItemView {
 		type: "conversation" | "favorites",
 	): Promise<void> {
 		if (type === "favorites") {
-			const text = await this.runFavoritesSummary(fork);
+			const text = await this.summaryController.runFavoritesSummary(fork);
 			if (text && this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "favorites");
 			return;
 		}
@@ -2605,68 +2480,9 @@ export class PythiaSidebarView extends ItemView {
 		}).open();
 	}
 
-	/** Generate (or regenerate) the conversation summary, then reveal its card. */
-	private async generateConversationSummary(): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv || conv.messages.length === 0) {
-			new Notice(t("noMessagesToSummarize"));
-			return;
-		}
-		const notice = new Notice(t("generatingSummary"), 0);
-		try {
-			const { title, summary } = await this.plugin.llmRouter.generateSummaryWithTitle(conv);
-			if (summary) {
-				conv.summaryText = summary;
-				conv.summaryUpdatedAt = new Date().toISOString();
-				if (title) {
-					conv.name = title;
-					void this.plugin.renameConversationFile(conv);
-				}
-				await this.plugin.conversationStore.save(conv);
-				// Only touch UI if the user hasn't switched conversations meanwhile.
-				if (this.activeConversation?.id === conv.id) {
-					if (title) this.renderHeader();
-					this.renderSummaryCards();
-					this.revealSummaryCard("conversation");
-				}
-			}
-		} catch (e) {
-			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
-		} finally {
-			notice.hide();
-		}
-	}
-
-	/** Generate (or regenerate) the favorites synthesis, then reveal its card. */
-	async summarizeFavorites(): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv || (conv.favorites?.length ?? 0) === 0) {
-			new Notice(t("noFavoritesToSummarize"));
-			return;
-		}
-		const text = await this.runFavoritesSummary(conv);
-		if (text && this.activeConversation?.id === conv.id) {
-			this.renderSummaryCards();
-			this.revealSummaryCard("favorites");
-		}
-	}
-
-	/** Run the LLM favorites-summary call, persist the result, and return it. */
-	private async runFavoritesSummary(conv: Conversation): Promise<string> {
-		const notice = new Notice(t("generatingFavoritesSummary"), 0);
-		try {
-			const text = await this.plugin.llmRouter.generateFavoritesSummary(conv);
-			if (text) {
-				conv.favoritesSummary = { text, updatedAt: new Date().toISOString() };
-				await this.plugin.conversationStore.save(conv);
-			}
-			return text;
-		} catch (e) {
-			new Notice(t("favoritesSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
-			return "";
-		} finally {
-			notice.hide();
-		}
+	/** Facade for the `Pythia: Summarize favorites` command (main.ts). */
+	summarizeFavorites(): Promise<void> {
+		return this.summaryController.summarizeFavorites();
 	}
 
 	private async onSaveResponse(): Promise<void> {
