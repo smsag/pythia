@@ -1826,7 +1826,13 @@ export class PythiaSidebarView extends ItemView {
 	private onMessageClick(e: MouseEvent): void {
 		const sel = window.getSelection();
 		// Only react to a plain tap — a drag leaves a non-collapsed selection.
-		if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
+		// A fresh drag also invalidates any prior tapped-favorite context: e.g. the
+		// user taps a favorite (which selects its whole span and flips the toolbar
+		// button to "Unfavorite"), then drags a smaller sub-selection to fork or
+		// re-favorite. Clear tappedFavId so the toolbar acts on the NEW selection —
+		// otherwise the button stays "Unfavorite" and would remove the tapped favorite
+		// instead of favoriting the fresh selection.
+		if (sel && sel.rangeCount > 0 && !sel.isCollapsed) { this.tappedFavId = null; return; }
 		const target = e.target instanceof Element ? e.target : null;
 
 		// Fork origin wins over favorites.
