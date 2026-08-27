@@ -147,6 +147,15 @@ export function formatClockTime(iso: string | undefined): string {
 	return `${hh}:${mm}`;
 }
 
+/** Absolute "12 Aug 2026 · 14:30"-style stamp for summary cards and the fork
+ *  anchor meta line (localized). */
+export function formatSummaryTimestamp(iso: string): string {
+	const d = new Date(iso);
+	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	return `${date} · ${time}`;
+}
+
 /** Estimate token count from a text string. Uses a weighted heuristic: Latin
  *  characters average ~4 per token, but CJK/non-ASCII characters average ~1.5
  *  per token. Falls back to ÷4 for purely Latin text. */
