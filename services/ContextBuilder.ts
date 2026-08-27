@@ -41,7 +41,7 @@ export function buildSystemPrompt(conversation: Conversation): string {
 			`<${RECENT_CONTEXT_TAG}>\n` +
 				`Current date: ${today}.\n` +
 				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
-				`When a question is time-sensitive or you are not confident a fact is current, use the web_search tool rather than relying on memory. ` +
+				`Default to the web_search tool whenever a question is time-sensitive or you are not fully confident a fact is still current: search first, then answer from the results rather than from memory. ` +
 				`Base your answer on the results. ${WEB_CITATION_INSTRUCTION}\n` +
 				`</${RECENT_CONTEXT_TAG}>`
 		);

@@ -153,6 +153,18 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("webSearchAutoArmName"))
+			.setDesc(t("webSearchAutoArmDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.webSearchAutoArm)
+					.onChange(async (value) => {
+						this.plugin.settings.webSearchAutoArm = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName(t("webSearchMaxResultsName"))
 			.setDesc(t("webSearchMaxResultsDesc"))
 			.addText((text) =>

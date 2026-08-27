@@ -14,6 +14,7 @@ import { buildSystemPrompt } from "./services/ContextBuilder";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
+import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -2330,6 +2331,14 @@ export class PythiaSidebarView extends ItemView {
 		this.researchBtnEl.setAttr("aria-pressed", String(on));
 	}
 
+	/** Briefly pulse the research globe to show web search was auto-armed for this
+	 *  send (ADR-099) without flipping the persistent per-conversation toggle. */
+	private flashResearchAutoArm(): void {
+		if (!this.researchBtnEl) return;
+		this.researchBtnEl.addClass("is-auto-armed");
+		window.setTimeout(() => this.researchBtnEl?.removeClass("is-auto-armed"), 1600);
+	}
+
 	/** Toggle web search for the active conversation. Warns (but still toggles)
 	 *  when no Tavily key is configured so the intent is remembered for when one
 	 *  is added. Persists so the choice survives reloads and device sync. */
@@ -3078,6 +3087,18 @@ export class PythiaSidebarView extends ItemView {
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
 
+		// Auto-arm web search for THIS send when the message reads as time-sensitive
+		// and research mode isn't already on (ADR-099). We offer the tool for this
+		// turn only — never flipping or persisting conv.researchMode — so search can
+		// fire when the user expects it without their having to toggle the globe.
+		const autoArmedSearch =
+			!conv.researchMode &&
+			this.plugin.settings.webSearchAutoArm &&
+			this.plugin.webSearchService.hasApiKey() &&
+			looksTimeSensitive(text, new Date().getFullYear());
+		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
+		if (autoArmedSearch) this.flashResearchAutoArm();
+
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				// web_search is read-only — run it directly with a live status chip,
 				// no write-confirmation prompt (that would make research unusable).
@@ -3093,7 +3114,7 @@ export class PythiaSidebarView extends ItemView {
 
 					const allowedSearch = ToolHandler.allowedToolNames(
 						conv.writeMode ?? "all",
-						conv.researchMode ?? false
+						researchActive
 					);
 					const searchResult = await this.plugin.toolHandler.execute(call, allowedSearch);
 
@@ -3179,7 +3200,7 @@ export class PythiaSidebarView extends ItemView {
 					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
 				}
 
-				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", conv.researchMode ?? false);
+				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
 				const result = await this.plugin.toolHandler.execute(call, allowed);
 
 				if (result.startsWith("Error")) {
@@ -3206,7 +3227,11 @@ export class PythiaSidebarView extends ItemView {
 		};
 
 		await this.plugin.llmRouter.streamMessage(
-			conv,
+			// Pass an armed shallow clone for an auto-armed send so web_search is
+			// offered this turn. The clone shares conv.messages (read-only in the
+			// provider) and is never persisted — sidebar's own callbacks below save
+			// the original `conv`, so the toggle stays off after the turn.
+			autoArmedSearch ? { ...conv, researchMode: true } : conv,
 			text,
 			attachedNotes,
 			appendToken,

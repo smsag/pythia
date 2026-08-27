@@ -255,6 +255,8 @@ const de: Strings = {
 	searchKeyDesc:           "Wähle ein Secret aus Obsidians Secret-Storage. Aktiviert das web_search-Tool, damit Modelle aktuelle Informationen nachschlagen können. Schlüssel werden nie in data.json gespeichert.",
 	webSearchDefaultName:    "Websuche standardmäßig aktivieren",
 	webSearchDefaultDesc:    "Aktiviert den Recherchemodus automatisch für neue Gespräche. Du kannst ihn pro Gespräch über die Eingabeleiste umschalten.",
+	webSearchAutoArmName:    "Automatische Suche bei aktuellen Fragen",
+	webSearchAutoArmDesc:    "Wenn der Recherchemodus aus ist, wird für eine einzelne Nachricht automatisch eine Websuche erlaubt, sofern sie zeitkritisch wirkt (neueste, aktuell, Preise, Nachrichten, ein aktuelles Jahr …). Erfordert einen Tavily-Schlüssel. Der Globus pulsiert, wenn dies auslöst.",
 	webSearchMaxResultsName: "Websuchergebnisse pro Anfrage",
 	webSearchMaxResultsDesc: "Wie viele Ergebnisse pro Suche abgerufen werden. Weniger Ergebnisse verbrauchen weniger Tokens. Bei 0 wird der Standard (5) verwendet.",
 	defaultProviderName:     "Standardanbieter",

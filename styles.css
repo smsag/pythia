@@ -1852,6 +1852,16 @@ body.is-mobile .p-textarea {
   color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
+/* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
+   allowed for this send, without the persistent .is-active toggled state. */
+.p-tool-btn.is-auto-armed {
+  animation: p-auto-arm-pulse 0.8s ease-in-out 2;
+  color: var(--color-accent);
+}
+@keyframes p-auto-arm-pulse {
+  0%, 100% { color: var(--text-faint); }
+  50%      { color: var(--color-accent); }
+}
 .p-tool-btn svg {
   width: 12px;
   height: 12px;

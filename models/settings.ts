@@ -47,6 +47,9 @@ export interface PythiaSettings {
 	maxAttachedNotesTokens: number;
 	/** Default state of the per-conversation web-search "research" toggle for new conversations. */
 	webSearchDefault: boolean;
+	/** Auto-arm web search for a single send when the message looks time-sensitive,
+	 *  even with the research toggle off (ADR-099). Requires a Tavily key. */
+	webSearchAutoArm: boolean;
 	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
 	webSearchMaxResults: number;
 }
@@ -76,5 +79,6 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	effort: "high",
 	maxAttachedNotesTokens: 8000,
 	webSearchDefault: false,
+	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
 };

@@ -63,6 +63,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/BaseProvider.ts` | 314 | Abstract base: shared fields, lifecycle, concrete `assistantLabel` (default "Assistant") + `resolveModel` (delegates to `resolveDefaultModelForProvider` via `providerType`), `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
 | `services/ToolHandler.ts` | 165 | Tool definitions (`create_note`/`rewrite_note`/`prepend_note` + read-only `web_search`) + `ToolHandler` class (injected NoteWriter + optional WebSearchService); `researchEnabled` gates `web_search` independently of `writeMode` |
 | `services/WebSearchService.ts` | 145 | Client-executed web search for research mode: queries Tavily via Obsidian `requestUrl`, formats results with source URLs, never throws (returns an "Error:" string on failure) |
+| `services/webSearchHeuristics.ts` | 64 | Pure `looksTimeSensitive(text, currentYear)` — whole-word recency cues + year ≥ now; auto-arms `web_search` for a send when the research globe is off (ADR-099) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
 | `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
@@ -281,6 +282,8 @@ LLM requests tool_use / tool_calls during streamMessage
 ### Tool call (web search / research mode)
 
 Gated on `conversation.researchMode` (toolbar `globe` toggle, default from `webSearchDefault`). When on, each provider's `prepareStream` includes `web_search` in its tools via `getToolDefinitions(folder, writeMode, researchMode)`, and `ContextBuilder.buildSystemPrompt` prepends a `<recent_context>` block (current date + "prefer web_search for time-sensitive questions, cite URLs").
+
+**Auto-arm (ADR-099):** when the globe is *off*, `sendMessage` runs `looksTimeSensitive(text, currentYear)` (`services/webSearchHeuristics.ts` — whole-word recency cues + a year ≥ now) and, if it matches and a Tavily key is set (`webSearchAutoArm` on), passes an armed shallow clone `{ ...conv, researchMode: true }` to `streamMessage` for that single turn — so `web_search` is offered and the `<recent_context>` block injected without ever persisting `researchMode` (the original `conv` is what sidebar's callbacks save). The globe pulses (`.is-auto-armed`) to show it fired. The same effective flag feeds the two `allowedToolNames` gates.
 
 ```
 LLM requests web_search during streamMessage

@@ -241,6 +241,8 @@ const en = {
 	searchKeyDesc:           "Select a secret from Obsidian's secret storage. Enables the web_search tool so models can look up current information. Keys are never written to data.json.",
 	webSearchDefaultName:    "Enable web search by default",
 	webSearchDefaultDesc:    "Turn on research mode automatically for new conversations. You can still toggle it per conversation from the input toolbar.",
+	webSearchAutoArmName:    "Auto-search on time-sensitive questions",
+	webSearchAutoArmDesc:    "When research mode is off, automatically allow a web search for a single message if it looks time-sensitive (latest, current, prices, news, a recent year…). Requires a Tavily key. The globe pulses when this fires.",
 	webSearchMaxResultsName: "Web search results per query",
 	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5).",
 	defaultProviderName:     "Default provider",
