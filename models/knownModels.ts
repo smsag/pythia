@@ -62,6 +62,17 @@ export const MODEL_ABBREVIATIONS: Record<string, string> = Object.fromEntries(
 	MODEL_CATALOG.map((m) => [m.id, m.abbreviation]),
 );
 
+/** Short, readable label for a model id — a curated abbreviation when known,
+ *  else an auto-derived one for unknown/future ids (#13). */
+export function abbreviateModel(model: string): string {
+	if (MODEL_ABBREVIATIONS[model]) return MODEL_ABBREVIATIONS[model];
+	return model
+		.replace(/^claude-/, "")
+		.replace(/^gpt-/, "GPT-")
+		.replace(/-(\d)/g, " $1")
+		.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 const REASONING_SET = new Set(MODEL_CATALOG.filter((m) => m.isReasoning).map((m) => m.id));
 export { REASONING_SET as REASONING_MODELS };
 
