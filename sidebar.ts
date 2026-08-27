@@ -1450,6 +1450,13 @@ export class PythiaSidebarView extends ItemView {
 		const parts: string[] = [];
 		if (msg.role === "user") {
 			parts.push(t("turnUser"));
+			// Anchor the day: the first user turn of each new day (and the very first
+			// message of the conversation) carries an absolute date, so time-only
+			// labels stay unambiguous across multi-day conversations.
+			if (this.isFirstMessageOfDay(msg)) {
+				const date = this.formatTurnDate(msg.timestamp);
+				if (date) parts.push(date);
+			}
 			if (time) parts.push(time);
 		} else {
 			parts.push(t("turnAI"));
@@ -1461,6 +1468,36 @@ export class PythiaSidebarView extends ItemView {
 		if (msg.role === "assistant" && msg.tokenUsage) {
 			this.appendTokensToTurnLabel(label, msg.tokenUsage);
 		}
+	}
+
+	/** True when `msg` starts a new calendar day relative to the message before it
+	 *  (any role) — or is the first message of the conversation. Computed from the
+	 *  message array so it holds in both the full-rebuild and incremental-append
+	 *  render paths. */
+	private isFirstMessageOfDay(msg: Message): boolean {
+		const msgs = this.activeConversation?.messages;
+		if (!msgs) return false;
+		const idx = msgs.findIndex((m) => m.id === msg.id);
+		if (idx <= 0) return true; // first message (or not found) → anchor the date
+		const dayKey = (iso: string): string | null => {
+			const d = new Date(iso);
+			return Number.isNaN(d.getTime())
+				? null
+				: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+		};
+		const cur = dayKey(msg.timestamp);
+		const prev = dayKey(msgs[idx - 1].timestamp);
+		if (cur === null || prev === null) return false; // no reliable date → no marker
+		return cur !== prev;
+	}
+
+	/** Absolute date for a turn label (`27 Aug 2026`, localized). Deliberately not
+	 *  the relative "Heute/Gestern" of `formatConvDate` — the label must stay
+	 *  correct when the conversation is reopened later. */
+	private formatTurnDate(iso: string): string {
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return "";
+		return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 	}
 
 	/** Append the input/output token counts inline to a turn label

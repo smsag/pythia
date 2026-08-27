@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — the fork anchor's meta line now shows the summary's generation date after the model (`N Nachrichten · Model · <date> · Öffnen →`), matching whichever summary is displayed; model + date are hidden until a summary exists (ADR-080).*
+*Last updated: 2026-08-27 — turn labels now anchor the day: the first user turn of each new calendar day (and the first message of the conversation) shows an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only (ADR-081).*
+
+*Previously, 2026-08-27 — the fork anchor's meta line now shows the summary's generation date after the model (`N Nachrichten · Model · <date> · Öffnen →`), matching whichever summary is displayed; model + date are hidden until a summary exists (ADR-080).*
 
 *Previously, 2026-08-24 — "Pythia Final" redesign phase 1 (ADR-066/067): **frameless** code blocks and selection toolbar (hairlines + a mono header row replace the grey `--background-secondary` box; the toolbar is a masked horizontal carousel on `--background-primary`), and **per-message turn micro-labels** (`.p-turn-label`, mono 9px/0.08em `--text-faint`) — `DU · HH:MM` above user bubbles, `PYTHIA · MODEL · HH:MM` above AI messages, backed by a new optional `Message.model`. New micro type size: **9px** for mono micro-labels (turn labels, code language, section labels). This supersedes the old "no label per AI message" / "no turn dividers" rules.*
 
@@ -192,6 +194,8 @@ LLM-quoted text: `border-left: 3px solid var(--background-modifier-border)` (neu
 ### Turn micro-label (`.p-turn-label`)
 
 Mono, **9px**, `letter-spacing: 0.08em`, `--text-faint`, as the first child of every message row. User turns read `DU · HH:MM` (right-aligned, since `.p-msg-user` is `align-items: flex-end`); AI turns read `PYTHIA · <MODEL> · HH:MM` (left-aligned). The model comes from `Message.model` (recorded at generation time) and falls back to the conversation's current model for legacy messages. Time via the pure `formatClockTime()` helper (24h, locale-independent).
+
+**Day anchor (ADR-081):** the first user turn of each new calendar day — and the very first message of the conversation — inserts an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only. `isFirstMessageOfDay(msg)` compares a message's local day to the previous message's (any role); `formatTurnDate()` renders `day numeric · short month · numeric year` via `toLocaleDateString`. Deliberately **absolute** (not `formatConvDate`'s relative "Heute/Gestern"), so labels stay correct when a conversation is reopened later. User turns only.
 
 ### Code block frame (`.p-code-frame`) — frameless (ADR-066)
 

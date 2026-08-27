@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-080 (the fork anchor's meta line shows the summary's generation date after the model, matching whichever summary is displayed; model + date hidden until a summary exists).*
+*Last updated: 2026-08-27 — ADR-081 (turn labels anchor the day — the first user turn of each new calendar day, and the first message of a conversation, carry an absolute date; same-day turns stay time-only).*
+
+*Previously, 2026-08-27 — ADR-080 (the fork anchor's meta line shows the summary's generation date after the model, matching whichever summary is displayed; model + date hidden until a summary exists).*
 
 *Previously, 2026-08-24 — ADR-079 (a fork now injects the exact passage it was branched from as a `<forked_from_excerpt>` anchor alongside the source summary, so the branch's opening question stays tied to the specific point, not just the broad topic).*
 
@@ -1144,3 +1146,17 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** replacing the model outright (loses the at-a-glance provider cue when several forks branch from one source); a relative "vor 3 Tagen" format (diverges from the absolute `formatSummaryTimestamp` the cards already use).
 
 **Consequence:** A reader scanning origin snippets can tell how fresh each branch's summary is without opening the fork, and the anchor stays visually consistent with the summary cards. Pure presentation change in `buildForkAnchor`; no test surface added.
+
+### ADR-081 — Turn labels anchor the day on the first user turn of each new day
+
+**Status:** Active (extends ADR-067)
+
+**Context:** ADR-067 gave every message a mono micro-label carrying the time (`DU · HH:MM`, `PYTHIA · MODEL · HH:MM`). Time-only is ambiguous the moment a conversation spans more than one day or is reopened later — a bare `10:28` says nothing about *which* day. The date was always available (`Message.timestamp` is full ISO 8601); it just wasn't surfaced anywhere in the transcript.
+
+**Decision:** The first user turn of each new calendar day inserts an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only. The very first message of a conversation also gets the date (no prior message — it anchors the start). `isFirstMessageOfDay(msg)` locates the message in `activeConversation.messages` and compares its local day to the previous message's (any role), so it holds in both the full-rebuild and incremental-append render paths without threading a "prev" argument. `formatTurnDate()` renders `day numeric · short month · numeric year` via `toLocaleDateString`.
+
+**Scope:** user turns only. In normal use the user always initiates, so a day's first message is a user turn; an assistant-first day (not reachable through the compose flow) would not be tagged, which is acceptable for a day *anchor*.
+
+**Alternatives rejected:** a full-width date separator row between turns (heavier DOM + a new locale string; the inline label reads as part of the turn a user already scans); reusing `formatConvDate`'s relative "Heute/Gestern" (relative labels drift — "Heute" becomes wrong the next day, defeating the point of a stable date; absolute with year stays correct on reopen).
+
+**Consequence:** A transcript scanned top-to-bottom now shows exactly where each day begins, with no clutter on same-day turns. Pure presentation change in `renderTurnLabel` + two private helpers; no data-model, settings, locale, or test surface added.
