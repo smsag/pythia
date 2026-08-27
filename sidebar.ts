@@ -2773,6 +2773,7 @@ export class PythiaSidebarView extends ItemView {
 			if (newName && newName !== this.activeConversation.name) {
 				this.activeConversation.name = newName;
 				void this.plugin.conversationStore.save(this.activeConversation);
+				void this.plugin.renameConversationFile(this.activeConversation);
 				this.convNameEl.setText(newName + " ▾");
 			}
 		}
