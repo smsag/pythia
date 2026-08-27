@@ -91,6 +91,17 @@ export const GROUNDING_INSTRUCTION =
 	"- Go beyond surface-level summaries — analyze, compare, and draw conclusions from the material\n" +
 	"- If the notes don't contain sufficient information to answer fully, say so explicitly and explain what's missing";
 
+/** Web-search citation directive — the web analogue of GROUNDING_INSTRUCTION's
+ *  note-citation rule. Referenced by both ContextBuilder's `<recent_context>`
+ *  block and WebSearchService's tool-result formatting so the two can't drift
+ *  apart (and neither contradicts the web_search tool description). Inline
+ *  citing is allowed via the ⟦cite:web:<domain>⟧ marker; a separate model-authored
+ *  sources list is not, because Pythia renders the markers and lists the sources
+ *  itself. */
+export const WEB_CITATION_INSTRUCTION =
+	"When a statement draws on a web-search result, append a citation marker immediately after it, in this exact format: ⟦cite:web:<domain>⟧ (bare domain, no scheme, e.g. ⟦cite:web:example.com⟧). " +
+	"Do not number the markers yourself and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
+
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves
  *  headroom for the ~27MB encoded payload plus system prompt, history, and

@@ -109,7 +109,13 @@ function byUpdatedAtDesc(a: Conversation, b: Conversation): number {
  * Evict the oldest unprotected conversations when `conversations.length > cap`.
  * Starred conversations (any favorites) and every currently-active conversation
  * (one per open sidebar leaf, not just one) are always kept.
- * Returns the evicted list sorted by updatedAt descending.
+ *
+ * Survivors are returned in the SAME relative order as the input — the rest of
+ * the app (e.g. `onOpen`/`handleDeleteConversation` picking the most recent as
+ * `conversations[length - 1]`) treats the array as insertion-ordered, so
+ * re-sorting the survivors here would silently make "most recent" resolve to the
+ * oldest after an eviction. `updatedAt` is used only to choose WHICH plain
+ * conversations to keep, not to reorder the result.
  * When cap === 0 (unlimited) or length ≤ cap the input is returned unchanged.
  */
 export function evictConversations(
@@ -120,16 +126,15 @@ export function evictConversations(
 	if (cap <= 0 || conversations.length <= cap) return conversations;
 
 	const activeIdSet = new Set(activeIds);
-	const protected_ = conversations.filter(
-		(c) => (c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id)
-	);
-	const plain = conversations
-		.filter((c) => (c.favorites?.length ?? 0) === 0 && !activeIdSet.has(c.id))
-		.sort(byUpdatedAtDesc);
-	const slots = Math.max(0, cap - protected_.length);
+	const isProtected = (c: Conversation) =>
+		(c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id);
 
-	return [
-		...protected_,
-		...plain.slice(0, slots),
-	].sort(byUpdatedAtDesc);
+	// Choose which plain (unprotected) conversations survive: the newest `slots`
+	// by updatedAt. Selection is by date; the result order is not.
+	const plainNewestFirst = conversations.filter((c) => !isProtected(c)).sort(byUpdatedAtDesc);
+	const protectedCount = conversations.length - plainNewestFirst.length;
+	const slots = Math.max(0, cap - protectedCount);
+	const keptPlainIds = new Set(plainNewestFirst.slice(0, slots).map((c) => c.id));
+
+	return conversations.filter((c) => isProtected(c) || keptPlainIds.has(c.id));
 }

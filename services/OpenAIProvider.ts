@@ -235,7 +235,15 @@ export class OpenAIProvider extends BaseProvider {
 			// Accumulate streaming tool call fragments
 			if (delta?.tool_calls) {
 				for (const tc of delta.tool_calls) {
-					const idx = tc.index ?? 0;
+					// OpenAI always sends `index`; the fallback guards a provider/shim
+					// that omits it, so parallel calls don't all collapse into slot 0:
+					// a fresh `id` starts a new call, an argument-only fragment continues
+					// the current one.
+					const idx = typeof tc.index === "number"
+						? tc.index
+						: tc.id
+							? pendingCalls.length
+							: Math.max(0, pendingCalls.length - 1);
 					if (!pendingCalls[idx]) {
 						pendingCalls[idx] = { id: "", name: "", arguments: "" };
 					}

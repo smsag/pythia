@@ -9,7 +9,7 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 		`Search the live web for current information. ` +
 		`Use this whenever the question concerns recent events, or facts that may have changed since your training cutoff, or anything you are not confident is up to date — prices, versions, people's current roles, news, dates, statistics. ` +
 		`Prefer searching over guessing when recency matters. ` +
-		`Results come back with source URLs — cite them inline in your answer.`,
+		`Results come back with source URLs; cite them inline with the ⟦cite:web:<domain>⟧ marker where you use them, and do not add a separate sources list — the app lists the sources automatically.`,
 	inputSchema: {
 		type: "object",
 		properties: {

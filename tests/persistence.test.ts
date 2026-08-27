@@ -351,7 +351,9 @@ describe("evictConversations", () => {
 		expect(result.length).toBe(5);
 	});
 
-	it("returns result sorted by updatedAt descending", () => {
+	it("preserves the input order of survivors (does not re-sort by updatedAt)", () => {
+		// updatedAt: a=Jan, b=Mar, c=Dec, d=Jun. cap 3 → the oldest plain ("a")
+		// is evicted; b, c, d survive in their original relative order.
 		const convs = [
 			makeConv("a", "2026-01-01T00:00:00.000Z"),
 			makeConv("b", "2026-03-01T00:00:00.000Z"),
@@ -359,8 +361,20 @@ describe("evictConversations", () => {
 			makeConv("d", "2026-06-01T00:00:00.000Z"),
 		];
 		const result = evictConversations(convs, 3, []);
-		const dates = result.map((c) => c.updatedAt);
-		expect(dates).toEqual([...dates].sort((a, b) => b.localeCompare(a)));
+		expect(result.map((c) => c.id)).toEqual(["b", "c", "d"]);
+	});
+
+	it("keeps the most recent conversation reachable as the last array element", () => {
+		// Regression for the post-eviction reorder bug: onOpen / delete fall back to
+		// conversations[length - 1] as "most recent", which must stay the newest
+		// survivor by insertion order after an eviction.
+		const convs = [
+			makeConv("old",    "2026-01-01T00:00:00.000Z"),
+			makeConv("mid",    "2026-06-01T00:00:00.000Z"),
+			makeConv("newest", "2026-12-01T00:00:00.000Z"),
+		];
+		const result = evictConversations(convs, 2, []);
+		expect(result.at(-1)?.id).toBe("newest");
 	});
 
 	it("protects both the active conversation and starred conversations simultaneously", () => {

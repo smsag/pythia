@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-27 — favorites and fork origins are painted as custom elements (`<pythia-favorite>` / `<pythia-fork>`) instead of `<mark>` so the fork's accent tint isn't overridden by theme `mark` rules; `paintRange` (`ui/HighlightPainter.ts`) gained a `tagName` param and all queries are class-based (ADR-086).*
+*Last updated: 2026-08-27 — senior-engineer bug audit: `sendMessage` persists the user turn up front and discards partial replies on error/empty (ADR-087); `evictConversations` keeps survivors in insertion order so "most recent = last element" holds (ADR-088); web-search citations dedupe by domain and a shared `WEB_CITATION_INSTRUCTION` (`services/promptConstants.ts`) unifies the three web-citation instruction sites (ADR-089); `LLMRouter` utility calls route through a `byProvider()` legacy-provider fallback; persistent `sidebar.ts` view-chrome listeners moved to `registerDomEvent`.*
+
+*Previously, 2026-08-27 — favorites and fork origins are painted as custom elements (`<pythia-favorite>` / `<pythia-fork>`) instead of `<mark>` so the fork's accent tint isn't overridden by theme `mark` rules; `paintRange` (`ui/HighlightPainter.ts`) gained a `tagName` param and all queries are class-based (ADR-086).*
 
 *Previously, 2026-08-27 — new pure module `services/color.ts` (`parseRgb`/`relativeLuminance`/`contrastRatio`/`betterOnAccent`) backs `sidebar.ts`'s `applyAccentContrast()`, which sets the runtime `--p-on-accent` label color for solid accent fills and re-runs on Obsidian's `css-change`. `sidebar.ts` also gained day-anchored turn labels (`isFirstMessageOfDay`/`formatTurnDate`) and a summary-generation date on the fork anchor meta line. See ADR-080, ADR-081, ADR-082.*
 
@@ -72,7 +74,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
 | `services/ConversationStore.ts` | 76 | In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` set + `markDirty`/`clearDirty`) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
-| `services/persistence.ts` | 111 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`) |
+| `services/persistence.ts` | 135 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings`, `parseConversations`, `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`, and returns survivors in their original insertion order so "most recent = last element" holds — ADR-088) |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
 | `services/color.ts` | 50 | Pure accent-contrast helpers: `parseRgb`, `relativeLuminance`, `contrastRatio`, `betterOnAccent` — pick the higher-contrast on-accent token for the user's accent (consumed by `sidebar.ts`'s `applyAccentContrast`, ADR-082) |
 | `services/LLMProvider.ts` | 23 | Provider interface |

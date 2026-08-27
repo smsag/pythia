@@ -86,23 +86,41 @@ export function stripCitationMarkers(content: string): string {
 	return stripForeignCitations(out);
 }
 
+/** Normalize a web ref (a bare domain from a model marker, or a full URL from a
+ *  Tavily result) to a comparable bare domain. Falls back to the stripped input
+ *  when it can't be parsed as a URL. */
+export function webDomain(ref: string): string {
+	const s = (ref ?? "").trim();
+	try {
+		return new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`).hostname.replace(/^www\./, "");
+	} catch {
+		return s.replace(/^www\./, "");
+	}
+}
+
 /** Append web sources discovered deterministically from the web_search tool
  *  result (independent of the model's citation habits) to an existing source
- *  list, deduped by URL and numbered continuously after the existing entries.
- *  Each web source keeps its full URL in `ref` (for opening) and shows its bare
- *  domain as `title`. */
+ *  list, deduped by DOMAIN and numbered continuously after the existing entries.
+ *  Each appended web source keeps its full URL in `ref` (for opening) and shows
+ *  its bare domain as `title`.
+ *
+ *  Dedup is by domain, not full URL, so a model-emitted `⟦cite:web:example.com⟧`
+ *  (ref = bare domain) and a Tavily result for `https://example.com/article`
+ *  (ref = full URL) collapse to a single source instead of listing the same site
+ *  twice. The FIRST occurrence wins, which keeps any inline `⟦cite:web:…⟧` chip
+ *  mapping intact (see `eachCitationSegment`). */
 export function appendWebSources(
 	sources: CitationSource[],
 	web: { title?: string; url: string }[],
 ): CitationSource[] {
 	const out = sources.slice();
-	const seen = new Set(out.filter((s) => s.kind === "web").map((s) => s.ref));
+	const seen = new Set(out.filter((s) => s.kind === "web").map((s) => webDomain(s.ref)));
 	for (const w of web) {
 		const url = (w.url ?? "").trim();
-		if (!url || seen.has(url)) continue;
-		seen.add(url);
-		let domain = url;
-		try { domain = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep url as-is */ }
+		if (!url) continue;
+		const domain = webDomain(url);
+		if (seen.has(domain)) continue;
+		seen.add(domain);
 		out.push({ n: out.length + 1, kind: "web", ref: url, title: domain });
 	}
 	return out;

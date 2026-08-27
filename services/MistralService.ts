@@ -222,7 +222,14 @@ export class MistralService extends BaseProvider {
 			// Accumulate streaming tool call fragments
 			if (delta?.toolCalls) {
 				for (const tc of delta.toolCalls) {
-					const idx = tc.index ?? 0;
+					// Guard a stream that omits `index` so parallel tool calls don't
+					// all collapse into slot 0: a fresh `id` starts a new call, an
+					// argument-only fragment continues the current one.
+					const idx = typeof tc.index === "number"
+						? tc.index
+						: tc.id
+							? pendingCalls.length
+							: Math.max(0, pendingCalls.length - 1);
 					if (!pendingCalls[idx]) {
 						pendingCalls[idx] = { id: "", name: "", arguments: "" };
 					}

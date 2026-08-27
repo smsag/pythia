@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import type { PythiaSettings } from "../settings";
+import { WEB_CITATION_INSTRUCTION } from "./promptConstants";
 
 /** Tavily is a search API built for LLM/RAG use: one POST returns ranked,
  *  already-cleaned results plus an optional synthesized answer, so Pythia does
@@ -136,7 +137,7 @@ function formatResults(query: string, json: TavilyResponse, maxResults: number):
 	}
 
 	const parts: string[] = [
-		`Web search results for "${query}". Use these to answer. Do not add inline source markers or a sources list — Pythia lists the sources for the user automatically.`,
+		`Web search results for "${query}". Use these to answer. ${WEB_CITATION_INSTRUCTION}`,
 	];
 	if (answer) parts.push(`Summary: ${answer}`);
 

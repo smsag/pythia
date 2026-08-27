@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
+*Last updated: 2026-08-27 — ADR-087 (an errored or empty send now persists the user turn up front and discards partial replies), ADR-088 (conversation eviction preserves survivors' insertion order so "most recent = last element" holds), ADR-089 (web-search citations reconciled by domain and inline web citing re-enabled via a shared `WEB_CITATION_INSTRUCTION`; revises ADR-077's "stop instructing web citations").*
+
+*Previously, 2026-08-27 — ADR-086 (favorites and fork origins are wrapped in custom elements `<pythia-favorite>` / `<pythia-fork>` instead of `<mark>`, so a fork's accent tint is no longer overridden by theme `mark` rules; supersedes the accent-on-`<mark>` mechanism of ADR-064/065).*
 
 *Previously, 2026-08-27 — ADR-085 (Favorite and Branch/Fork are hidden in the selection toolbar over a user prompt bubble and guarded in their handlers — both apply to assistant content only).*
 
@@ -1232,4 +1234,43 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Trade-offs:** custom elements carry no `<mark>` "highlighted reference" ARIA semantics — a minor accessibility loss accepted for the reliable styling. Bare names like `<fork>` were rejected in favor of hyphenated `pythia-*` (bare names are "unknown elements," not spec-valid custom elements, and risk a future standard tag). Injected only into the live DOM after render (never into stored markdown), so Obsidian's sanitizer is not involved and re-render repaints cleanly.
 
 **Consequence:** Forks reliably render as an accent-tinted highlighter, visually distinct from yellow favorites, in every theme and Obsidian build — no cascade fight. `HighlightPainter` tests assert both wrapper tag names. Any future highlight kind should follow the same custom-element pattern rather than styling `<mark>`.
+
+### ADR-087 — An errored or empty send keeps the user turn and discards partial replies
+
+**Status:** Active
+
+**Context:** `sendMessage()` pushed the user's `Message` into `conv.messages` but persisted nothing until a reply *completed* — the only `conversationStore.save(conv)` was in the success branch of `onComplete`. Two failure paths fell through that gap: (1) on a mid-stream error the handler called `finalize(partial)` — rendering the partial reply into the DOM but never adding it to `conv.messages` nor saving, so the visible reply vanished on the next full re-render and the user's own message was unpersisted (lost on a clean close or an iCloud/Sync reload); (2) an empty response (`!fullText`) removed the streaming row and returned, again leaving the user turn unsaved. The partial that was rendered had never been sent to the model as a real turn, so keeping it also desynced the visible transcript from the history the model actually sees.
+
+**Decision:** Persist the user turn up front, and never keep a partial reply.
+- Immediately after `conv.messages.push(userMsg)`, call `await conversationStore.save(conv)` so the user's message survives regardless of what the response does.
+- On a stream **error**, drop the streaming row outright (no `finalize`), discarding any partial text. The user retries from a clean state. `createStreamingBubble`'s now-unused `getPartial()` was removed.
+- On an **empty** response, keep the (already-saved) user turn and just remove the empty streaming row.
+
+**Alternatives rejected:** persisting the partial reply as a real assistant message (it never reached the model, so it would mislead the next turn's context and imply a completed answer); keeping the partial visible but unsaved (the transcript would then differ from saved history and disappear on any rebuild); dropping the user message on empty/error (silently loses what the user typed). All three were put to the maintainer; "keep the user turn, discard the partial" was chosen.
+
+**Consequence:** A failed or empty send no longer loses the user's message, and the transcript always matches saved history. One extra debounced save per send (coalesced with the reply's save on success).
+
+### ADR-088 — Conversation eviction preserves insertion order of survivors
+
+**Status:** Active
+
+**Context:** `evictConversations()` returned the surviving conversations **re-sorted by `updatedAt` descending**, and `persistData()` assigns that back to `plugin.conversations`. The rest of the app treats the array as insertion-ordered — `onOpen()` and `handleDeleteConversation()` pick "the most recent" as `conversations[length - 1]` (the last-pushed). After any eviction (only once a vault exceeds `maxConversations`, default 200) the reorder silently made `[length - 1]` resolve to the **oldest** conversation, so the plugin would open / fall back to the wrong one, and the reordered array was then persisted to disk.
+
+**Decision:** Use `updatedAt` only to *select* which unprotected conversations survive (the newest `slots`), then return survivors filtered from the original array so their relative order is unchanged. Protected conversations (starred or active in any leaf) are still always kept. The misleading docstring ("Returns the evicted list…") was corrected — the function returns survivors, not evictees.
+
+**Consequence:** "Most recent = last array element" holds before and after an eviction. A regression test asserts survivor order and that `result.at(-1)` is the newest conversation.
+
+### ADR-089 — Web-search citations reconciled by domain; inline web citing re-enabled
+
+**Status:** Active (revises the "stop instructing web citations" decision of ADR-077; the deterministic-capture and foreign-marker-stripping parts of ADR-077 stand)
+
+**Context:** ADR-077 stopped instructing the model to cite web results (to avoid leaked markers and duplicate sources) and captured Tavily sources deterministically. Two rough edges remained: (1) the `web_search` **tool description still told the model to "cite them inline,"** directly contradicting the `<recent_context>` block and tool-result header that said *not* to — an instruction the model receives on every research turn; (2) when a model *did* emit `⟦cite:web:<domain>⟧`, `parseCitations` stored it with `ref = <domain>` while `appendWebSources` deduped Tavily results by **full URL**, so the same site could list twice.
+
+**Decision:** Make inline web citing a first-class, consistent path (the web analogue of ADR-072's note-citation rule), and dedupe by domain.
+- **One shared instruction.** New `WEB_CITATION_INSTRUCTION` in `promptConstants` tells the model to append `⟦cite:web:<domain>⟧` after a web-derived statement and *not* to add its own sources list. Both `ContextBuilder`'s `<recent_context>` block and `WebSearchService`'s tool-result header reference it, and the `web_search` tool description is reworded to match — the three sites can no longer contradict.
+- **Dedupe by domain.** `appendWebSources` now compares by normalized domain (new exported `webDomain()` helper) instead of full URL, so a model's bare-domain marker and Tavily's full-URL result for the same site collapse to one source. The first occurrence wins, which keeps the inline `⟦cite:web:…⟧` chip mapping intact.
+
+**Alternatives rejected:** deterministic-only, i.e. keep forbidding inline web citation and strip any `⟦cite:web:…⟧` markers (simpler, but discards a citation the model volunteered and leaves web answers without inline chips); upgrading the kept source's `ref` to Tavily's full article URL (would break the `${kind}:${ref}` marker→source key used by `eachCitationSegment`, dropping the chip). Put to the maintainer; "reconcile by domain, allow inline" was chosen.
+
+**Consequence:** Research answers can carry inline web chips like note citations, web sources never double-list, and the model receives one coherent citation instruction. `stripForeignCitations` (ADR-077) still removes `【…†…】` native-format noise; deterministic Tavily capture is unchanged.
 
