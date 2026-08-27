@@ -15,8 +15,7 @@ import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSo
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
-import { t, getLang } from "./i18n";
-import { goodForModel } from "./models/modelGuidance";
+import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
@@ -25,18 +24,17 @@ import { SummaryController } from "./ui/SummaryController";
 import { ContextInspectorController } from "./ui/ContextInspectorController";
 import { ForkController } from "./ui/ForkController";
 import { SelectionController } from "./ui/SelectionController";
+import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import type { Conversation, Message, MessageSource, ToolCall, TokenUsage } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
-import { ConversationSettingsModal } from "./suggest/ConversationSettingsModal";
 import { buildStreamErrorMessage } from "./services/apiError";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { abbreviateModel, isReasoningModel, isMistralReasoningModel, MODEL_CATALOG } from "./models/knownModels";
-import type { ModelInfo } from "./models/knownModels";
+import { abbreviateModel, isReasoningModel, isMistralReasoningModel } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
@@ -73,19 +71,13 @@ export class PythiaSidebarView extends ItemView {
 	 *  disconnected before new ones are armed on DOM rebuild (#20). */
 	private readonly diagObservers = new WeakMap<HTMLElement, { mo: MutationObserver; ro: ResizeObserver }>();
 
-	private convNameEl!: HTMLElement;
-	private templateLabelEl!: HTMLElement;
-	private modelBadgeEl!: HTMLButtonElement;
-	private deleteConvBtn!: HTMLButtonElement;
-	private copyLinkBtn!: HTMLButtonElement;
-	// Context-budget bar under the header + the >=80% warning percent chip.
+	// Header chrome: title, model badge/popover, inline rename, copy-link, ctx chip (ADR-103).
+	private headerController!: HeaderController;
+	// Context-budget bar under the header (the >=80% chip lives in HeaderController).
 	private ctxBarEl!: HTMLElement;
 	private ctxBarFillEl!: HTMLElement;
-	private ctxChipEl!: HTMLElement;
 	// Mono next-send token estimate shown left of the Send button.
 	private sendEstimateEl!: HTMLElement;
-	// Anchored model popover (F7) teardown.
-	private modelPopoverCleanup: (() => void) | null = null;
 	// Quick switcher (F9), history overlay (F10), and delete-with-confirm (ADR-103).
 	private historyController!: HistoryController;
 	// Web-search sources captured (deterministically) during the current send,
@@ -132,11 +124,6 @@ export class PythiaSidebarView extends ItemView {
 	private indexTriggerEl!: HTMLButtonElement;
 	private navigatorEl!: HTMLElement;
 	private onViewportResize: (() => void) | null = null;
-
-	private renameBtn!: HTMLButtonElement;
-	private renameWrapEl!: HTMLElement;
-	private renameInputEl!: HTMLInputElement;
-	private renameLLMBtn!: HTMLButtonElement;
 
 	private researchBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
@@ -222,7 +209,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
-		this.modelPopoverCleanup?.();
+		this.headerController?.close();
 		this.historyController?.close();
 
 		// The selectionchange listener is registered via registerDomEvent and is
@@ -247,7 +234,7 @@ export class PythiaSidebarView extends ItemView {
 			new Notice(t("cannotSwitchWhileStreaming"));
 			return;
 		}
-		this.exitRenameMode(false);                   // discard any in-progress rename
+		this.headerController?.exitRename(false);     // discard any in-progress rename
 		this.optimizationController?.cancel();
 		this.activeConversation = conversation;
 		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
@@ -255,8 +242,8 @@ export class PythiaSidebarView extends ItemView {
 		// to the bottom on open: anything calling scrollToBottom() during rendering
 		// would fire because autoScroll was still true.
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
-		this.renderHeader();
-		this.updateModelBadge();
+		this.headerController.renderHeader();
+		this.headerController.updateModelBadge();
 		this.updateResearchButton();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
@@ -326,7 +313,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private buildUI(): void {
-		this.modelPopoverCleanup?.();
+		this.headerController?.close();
 		this.historyController?.close();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
@@ -336,7 +323,21 @@ export class PythiaSidebarView extends ItemView {
 		container.addClass("pythia-view");
 		this.applyAccentContrast();
 
-		this.buildHeader(container);
+		this.headerController = new HeaderController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getContainer: () => this.containerEl.children[1] as HTMLElement,
+			registerDomEvent: (el, type, cb, opts) =>
+				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
+			openHistoryView: () => this.historyController.openHistoryView(),
+			openQuickSwitcher: () => this.historyController.openQuickSwitcher(),
+			handleDeleteConversation: () => void this.historyController.handleDeleteConversation(),
+			revealContextInspector: () => this.contextInspector.reveal(),
+			updateContextBar: () => this.contextInspector.updateContextBar(),
+			refreshContextInspector: () => this.contextInspector.refresh(),
+			updateSendHint: () => this.updateSendHint(),
+		});
+		this.headerController.mount(container);
 
 		// Context-budget bar: a 3px track directly under the header row. Fill
 		// width = context usage / model window; turns warning-colored at >=80%.
@@ -378,11 +379,11 @@ export class PythiaSidebarView extends ItemView {
 		this.historyController = new HistoryController({
 			plugin: this.plugin,
 			getContainer: () => this.containerEl.children[1] as HTMLElement,
-			getConvNameEl: () => this.convNameEl,
+			getConvNameEl: () => this.headerController.getConvNameEl(),
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
-			renderHeader: () => this.renderHeader(),
+			renderHeader: () => this.headerController.renderHeader(),
 		});
 
 		this.summaryController = new SummaryController({
@@ -394,7 +395,7 @@ export class PythiaSidebarView extends ItemView {
 				void MarkdownRenderer.render(this.app, md, el, "", this)
 					.catch((e) => console.error("[Pythia] summary card render:", e));
 			},
-			renderHeader: () => this.renderHeader(),
+			renderHeader: () => this.headerController.renderHeader(),
 		});
 		// The container div was created in buildChatArea (for DOM position); populate it now.
 		this.summaryController.renderSummaryCards();
@@ -407,7 +408,7 @@ export class PythiaSidebarView extends ItemView {
 			getWrapEl: () => this.inspectorEl,
 			getBarEl: () => this.ctxBarEl,
 			getBarFillEl: () => this.ctxBarFillEl,
-			getChipEl: () => this.ctxChipEl,
+			getChipEl: () => this.headerController.getChipEl(),
 			getLastTokenUsageMsg: () => this.lastTokenUsageMsg(),
 			scrollToTop: () => this.scrollToTop(),
 			refreshReferencePills: () => this.renderReferencePills(),
@@ -431,109 +432,6 @@ export class PythiaSidebarView extends ItemView {
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
-	}
-
-	private buildHeader(container: HTMLElement): void {
-		const header = container.createDiv({ cls: "p-header" });
-
-		// Header order, left → right (ADR-098): history · name (grows) · rename ·
-		// link · delete · [ctx chip] · model · new. The name group takes the flex
-		// space so the action cluster stays pinned to the right edge, and the "+"
-		// new-conversation button is always the last child so its position never
-		// shifts as other controls show/hide.
-
-		// ── Far left: conversation history ─────────────────────────────────────
-		const historyBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("historyTooltip") },
-		});
-		setIcon(historyBtn, "history");
-		this.registerDomEvent(historyBtn, "click", () => this.historyController.openHistoryView());
-
-		// ── Conversation name (grows; hosts the inline rename input) ───────────
-		const titleGroup = header.createDiv({ cls: "p-title-group" });
-
-		this.convNameEl = titleGroup.createEl("button", {
-			cls: "p-title",
-			text: t("noConversation"),
-		});
-		this.registerDomEvent(this.convNameEl, "click", () => this.historyController.openQuickSwitcher());
-
-		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
-		this.renameWrapEl.style.display = "none";
-
-		this.renameLLMBtn = this.renameWrapEl.createEl("button", {
-			cls: "p-hdr-btn p-rename-refresh",
-			attr: { title: t("renameLLMTooltip") },
-		});
-		setIcon(this.renameLLMBtn, "refresh-cw");
-		this.registerDomEvent(this.renameLLMBtn, "mousedown", (e) => {
-			e.preventDefault();
-			void this.onRenameLLM();
-		});
-
-		this.renameInputEl = this.renameWrapEl.createEl("input", {
-			cls: "p-rename-input",
-			attr: { type: "text", placeholder: t("renameConvPlaceholder") },
-		});
-		this.registerDomEvent(this.renameInputEl, "keydown", (e: KeyboardEvent) => {
-			if (e.key === "Enter") { e.preventDefault(); this.exitRenameMode(true); }
-			if (e.key === "Escape") { e.preventDefault(); this.exitRenameMode(false); }
-		});
-		this.registerDomEvent(this.renameInputEl, "blur", () => this.exitRenameMode(true));
-
-		// ── Right cluster: rename · link · delete · [ctx] · model · new ────────
-		this.renameBtn = header.createEl("button", {
-			cls: "p-hdr-btn p-rename-btn",
-			attr: { title: t("renameConvTooltip") },
-		});
-		setIcon(this.renameBtn, "pencil");
-		this.renameBtn.style.display = "none";
-		this.registerDomEvent(this.renameBtn, "click", () => this.enterRenameMode());
-
-		this.copyLinkBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("copyConvLinkTooltip") },
-		});
-		setIcon(this.copyLinkBtn, "link");
-		this.copyLinkBtn.style.display = "none";
-		this.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
-
-		this.deleteConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("deleteConvTooltip") },
-		});
-		setIcon(this.deleteConvBtn, "trash");
-		this.deleteConvBtn.style.display = "none";
-		this.registerDomEvent(this.deleteConvBtn, "click", () => this.historyController.handleDeleteConversation());
-
-		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
-		// Clicking it scrolls to the top of the conversation (context inspector
-		// lands there in a later phase).
-		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
-		this.ctxChipEl.style.display = "none";
-		this.registerDomEvent(this.ctxChipEl, "click", () => this.contextInspector.reveal());
-
-		this.modelBadgeEl = header.createEl("button", {
-			cls: "p-model",
-			text: "",
-			attr: { title: t("changeModelTooltip") },
-		});
-		this.modelBadgeEl.style.display = "none";
-		this.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
-
-		// ── Far right: new conversation (always the last child) ────────────────
-		const newConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("newConvTooltip") },
-		});
-		setIcon(newConvBtn, "plus");
-		this.registerDomEvent(newConvBtn, "click", () => this.plugin.cmdNewConversation());
-
-		// Template label is absolutely positioned (see styles.css), so it does not
-		// participate in the header flex row and never displaces the "+" button.
-		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
-		this.templateLabelEl.style.display = "none";
 	}
 
 	private buildChatArea(container: HTMLElement): void {
@@ -694,7 +592,7 @@ export class PythiaSidebarView extends ItemView {
 		this.sendHintEl = toolbar.createEl("button", { cls: "p-send-hint" });
 		setIcon(this.sendHintEl, "alert-triangle");
 		this.sendHintEl.style.display = "none";
-		this.registerDomEvent(this.sendHintEl, "click", () => this.onModelBadgeClick());
+		this.registerDomEvent(this.sendHintEl, "click", () => this.headerController.onModelBadgeClick());
 
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
@@ -848,35 +746,6 @@ export class PythiaSidebarView extends ItemView {
 		addHint("#", t("emptyHintAttach"));
 		addHint("⌘P", t("emptyHintCommands"));
 		addHint("⇧↵", t("emptyHintNewline"));
-	}
-
-	private renderHeader(): void {
-		if (!this.activeConversation) {
-			// Empty state: only history, the name, and "+" are shown (ADR-098).
-			this.convNameEl.setText(t("noConversation"));
-			this.templateLabelEl.setText("");
-			this.templateLabelEl.style.display = "none";
-			this.copyLinkBtn.style.display = "none";
-			this.renameBtn.style.display = "none";
-			this.deleteConvBtn.style.display = "none";
-			return;
-		}
-		this.copyLinkBtn.style.display = "";
-		this.renameBtn.style.display = "";
-		this.deleteConvBtn.style.display = "";
-		this.convNameEl.setText(this.activeConversation.name + " ▾");
-		if (this.activeConversation.templateId) {
-			const tplName =
-				this.activeConversation.templateId
-					.split("/")
-					.pop()
-					?.replace(/\.md$/, "") ?? "";
-			this.templateLabelEl.setText(t("templateLabel", { name: tplName }));
-			this.templateLabelEl.style.display = "";
-		} else {
-			this.templateLabelEl.setText("");
-			this.templateLabelEl.style.display = "none";
-		}
 	}
 
 	private toggleInputArea(): void {
@@ -1451,18 +1320,6 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	private updateModelBadge(): void {
-		if (!this.activeConversation) {
-			this.modelBadgeEl.style.display = "none";
-			return;
-		}
-		const model = this.activeConversation.model ?? "";
-		this.modelBadgeEl.setText(abbreviateModel(model));
-		this.modelBadgeEl.style.display = "";
-		this.updateSendHint();
-		this.contextInspector.updateContextBar();
-	}
-
 	/** Show a warning beside Send when the effective max-tokens is low enough that
 	 *  a reasoning model's hidden reasoning budget could truncate the reply — the
 	 *  main sharp edge of switching a conversation onto a reasoning model. */
@@ -1523,210 +1380,6 @@ export class PythiaSidebarView extends ItemView {
 		void this.plugin.conversationStore.save(conv);
 	}
 
-	/** Format a context window as "1M" / "200k" / "128k". */
-	private fmtWindow(n: number): string {
-		if (n >= 1_000_000) {
-			const m = n / 1_000_000;
-			return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
-		}
-		return `${Math.round(n / 1000)}k`;
-	}
-
-	/** Anchored model popover (F7): provider groups with context-window labels,
-	 *  Reasoning tags, an active check, and a footer that opens the full
-	 *  conversation-settings modal. Selecting a model applies it immediately. */
-	private openModelPopover(): void {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		if (this.modelPopoverCleanup) { this.modelPopoverCleanup(); return; } // toggle
-
-		const container = this.containerEl.children[1] as HTMLElement;
-		const pop = container.createDiv({ cls: "p-model-pop" });
-		// Absolute within the (position:relative) view root — robust against an
-		// Obsidian ancestor that turns position:fixed into a clipped containing
-		// block. Height is capped to the space below the chip with internal scroll.
-		const cRect = container.getBoundingClientRect();
-		const rect = this.modelBadgeEl.getBoundingClientRect();
-		const width = 226;
-		const top = rect.bottom - cRect.top + 4;
-		let left = rect.right - cRect.left - width;
-		left = Math.max(4, Math.min(left, cRect.width - width - 4));
-		pop.style.position = "absolute";
-		pop.style.top = `${top}px`;
-		pop.style.left = `${left}px`;
-		pop.style.width = `${width}px`;
-		pop.style.maxHeight = `${Math.max(120, cRect.height - top - 8)}px`;
-		this.modelBadgeEl.addClass("open");
-
-		const onOutside = (e: MouseEvent) => {
-			if (!pop.contains(e.target as Node) && e.target !== this.modelBadgeEl) closePop();
-		};
-		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closePop(); };
-		const closePop = () => {
-			pop.remove();
-			this.modelBadgeEl.removeClass("open");
-			document.removeEventListener("mousedown", onOutside, true);
-			document.removeEventListener("keydown", onKey, true);
-			this.modelPopoverCleanup = null;
-		};
-
-		// Touch (no hover): first tap on a row reveals its "good for" examples and
-		// arms it; a second tap on the same row confirms. Desktop reveals on hover
-		// and selects on the first click (armId stays null).
-		const coarse = window.matchMedia("(hover: none), (pointer: coarse)").matches;
-		const lang = getLang();
-		let armedId: string | null = null;
-
-		const providers: { key: typeof conv.provider; label: string }[] = [
-			{ key: "anthropic", label: "ANTHROPIC" },
-			{ key: "openai", label: "OPENAI" },
-			{ key: "mistral", label: "MISTRAL" },
-		];
-		for (const p of providers) {
-			const models = MODEL_CATALOG.filter((m) => m.provider === p.key && !m.hidden);
-			if (!models.length) continue;
-			pop.createDiv({ cls: "p-model-pop-group", text: p.label });
-			for (const m of models) {
-				const active = m.id === conv.model && m.provider === conv.provider;
-				const row = pop.createDiv({ cls: "p-model-pop-row" });
-				if (active) row.addClass("active");
-				// Top line: name · reasoning tag · context window · active check.
-				const line = row.createDiv({ cls: "p-model-pop-line" });
-				line.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
-				if (m.isReasoning || m.isMistralReasoning) {
-					line.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
-				}
-				line.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
-				if (active) setIcon(line.createSpan({ cls: "p-model-pop-check" }), "check");
-				// "Good for" examples (smaller, hover- or tap-revealed) + touch confirm hint.
-				const good = goodForModel(m.id, lang);
-				if (good) row.createSpan({ cls: "p-model-pop-good", text: good });
-				row.createSpan({ cls: "p-model-pop-taphint", text: t("tapAgainToSelect") });
-				row.addEventListener("mousedown", (e) => {
-					e.preventDefault(); e.stopPropagation();
-					if (coarse && armedId !== m.id) {
-						// First tap: reveal the explainer and wait for a confirming tap.
-						armedId = m.id;
-						pop.querySelectorAll(".p-model-pop-row.armed")
-							.forEach((r) => r.classList.remove("armed"));
-						row.addClass("armed");
-						return;
-					}
-					void this.applyModelChoice(m);
-					closePop();
-				});
-			}
-		}
-
-		const footer = pop.createDiv({ cls: "p-model-pop-footer" });
-		setIcon(footer.createSpan({ cls: "p-model-pop-footer-icon" }), "sliders");
-		footer.createSpan({ text: t("openConvSettings") });
-		footer.addEventListener("mousedown", (e) => {
-			e.preventDefault(); e.stopPropagation();
-			closePop();
-			this.onModelBadgeClick();
-		});
-
-		setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			document.addEventListener("keydown", onKey, true);
-			this.modelPopoverCleanup = closePop;
-		}, 0);
-	}
-
-	private async applyModelChoice(m: ModelInfo): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		conv.provider = m.provider;
-		conv.model = m.id;
-		await this.plugin.conversationStore.save(conv);
-		this.updateModelBadge();
-		this.contextInspector.refresh();
-	}
-
-	private onModelBadgeClick(): void {
-		if (!this.activeConversation) return;
-		new ConversationSettingsModal(
-			this.app,
-			this.activeConversation,
-			async (conv) => {
-				await this.plugin.conversationStore.save(conv);
-				this.updateModelBadge();
-				this.contextInspector.refresh();
-			},
-			this.plugin.settings.temperature,
-			this.plugin.settings.effort,
-			this.plugin.settings.maxTokens
-		).open();
-	}
-
-	private enterRenameMode(): void {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		this.convNameEl.style.display = "none";
-		this.renameBtn.style.display = "none";
-		this.renameWrapEl.style.display = "";
-		this.renameInputEl.value = conv.name;
-		requestAnimationFrame(() => {
-			this.renameInputEl.focus();
-			this.renameInputEl.select();
-		});
-	}
-
-	private exitRenameMode(confirm: boolean): void {
-		if (this.renameWrapEl.style.display === "none") return;
-		this.renameWrapEl.style.display = "none";
-		this.convNameEl.style.display = "";
-		this.renameBtn.style.display = this.activeConversation ? "" : "none";
-		if (confirm && this.activeConversation) {
-			const newName = this.renameInputEl.value.trim();
-			if (newName && newName !== this.activeConversation.name) {
-				this.activeConversation.name = newName;
-				void this.plugin.conversationStore.save(this.activeConversation);
-				void this.plugin.renameConversationFile(this.activeConversation);
-				this.convNameEl.setText(newName + " ▾");
-			}
-		}
-	}
-
-	private async onRenameLLM(): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv) return;
-
-		this.renameLLMBtn.disabled = true;
-		this.renameLLMBtn.addClass("p-rename-refresh-loading");
-
-		try {
-			const msgs = conv.messages;
-			const userMsg   = msgs.find(m => m.role === "user")?.content     ?? "";
-			const assistMsg = msgs.find(m => m.role === "assistant")?.content ?? "";
-			const title = await this.plugin.llmRouter.generateConversationTitle(
-				userMsg, assistMsg, conv.provider
-			);
-			// Fill the input with the generated name — user can still edit before confirming
-			this.renameInputEl.value = title;
-			this.renameInputEl.focus();
-			this.renameInputEl.select();
-		} catch {
-			new Notice(t("renameLLMFailed"));
-		} finally {
-			this.renameLLMBtn.disabled = false;
-			this.renameLLMBtn.removeClass("p-rename-refresh-loading");
-		}
-	}
-
-	/** Copy an obsidian://pythia deep-link for the current conversation to the clipboard. */
-	async onCopyConversationLink(): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		const link = `obsidian://pythia?cmd=resume&id=${encodeURIComponent(conv.id)}`;
-		await navigator.clipboard.writeText(link);
-		// Brief visual feedback on the button
-		setIcon(this.copyLinkBtn, "check");
-		setTimeout(() => setIcon(this.copyLinkBtn, "link"), 1500);
-		new Notice(t("convLinkCopied"));
-	}
-
 	private onAttachNote(): void {
 		const conv = this.activeConversation;
 		if (!conv) return;
@@ -1765,7 +1418,7 @@ export class PythiaSidebarView extends ItemView {
 			}
 
 			await this.plugin.conversationStore.save(conv);
-			this.updateModelBadge();
+			this.headerController.updateModelBadge();
 			this.renderReferencePills();
 			new Notice(t("appliedTemplate", { name: tpl.name }));
 
@@ -2091,7 +1744,7 @@ export class PythiaSidebarView extends ItemView {
 							c.name = title;
 							await this.plugin.conversationStore.save(c);
 							if (this.activeConversation?.id === convId) {
-								this.convNameEl.setText(c.name + " ▾");
+								this.headerController.setConvName(c.name);
 							}
 						})
 						.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
