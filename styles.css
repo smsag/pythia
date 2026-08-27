@@ -509,9 +509,8 @@
   gap: 3px;
 }
 .pythia-fork-source-link {
-  color: var(--interactive-accent);
+  color: var(--color-accent);
   cursor: pointer;
-  text-decoration: none;
 }
 .pythia-fork-source-link:hover {
   text-decoration: underline;

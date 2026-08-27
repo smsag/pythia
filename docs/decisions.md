@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-082 (on-accent label text auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, computed at runtime into `--p-on-accent`).*
+*Last updated: 2026-08-27 — ADR-083 (the fork banner's "branched from" link is a `<span>`, not an `<a>`, matching the standard clickable-link pattern and dropping Obsidian core's anchor underline).*
+
+*Previously, 2026-08-27 — ADR-082 (on-accent label text auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, computed at runtime into `--p-on-accent`).*
 
 *Previously, 2026-08-27 — ADR-081 (turn labels anchor the day — the first user turn of each new calendar day, and the first message of a conversation, carry an absolute date; same-day turns stay time-only).*
 
@@ -1178,3 +1180,15 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** hardcoding pure black/white (guarantees contrast but bypasses theme on-accent styling — the point of choosing Option A was to stay native); a CSS-only solution (CSS cannot branch on a custom property's luminance); parsing the raw `--color-accent` token string (fragile across hex/hsl/named/var-reference forms — the probe sidesteps all of it).
 
 **Consequence:** On-accent labels stay legible across any user accent and update live on theme changes. New pure module `services/color.ts` with 13 unit tests (parse, luminance, contrast, and the token-choice decision incl. the reported mid-purple case and non-black/white theme tokens). Any future solid-accent surface must use `var(--p-on-accent, var(--text-on-accent))`, not bare `--text-on-accent` (noted in design.md).
+
+### ADR-083 — Fork banner "branched from" link uses the standard span link pattern
+
+**Status:** Active
+
+**Context:** The fork banner's "branched from" link (`.pythia-fork-source-link`, `renderForkBannerEl`) was the extension's lone remaining clickable link built as an `<a>` element. Its rule already set `text-decoration: none`, but the link still rendered permanently underlined: Obsidian core styles anchors (`a`) at a specificity that out-ranks a bare `.pythia-fork-source-link` (0,1,0) plugin rule, so the underline came back at rest. It also used `--interactive-accent` rather than the design system's mandated `--color-accent`.
+
+**Decision:** Build the link with `createSpan` instead of `createEl("a")`, and style it exactly like the extension's other in-panel links (`.p-source-web`, `.p-wikilink-name`): `color: var(--color-accent); cursor: pointer;` with underline only on `:hover`. A `<span>` carries no default underline, so the rest state is clean without scoping the selector under `.pythia-view` to beat core. The click handler is unchanged.
+
+**Alternatives rejected:** scoping `.pythia-view a.pythia-fork-source-link` to out-specify core (works, but keeps a one-off `<a>` link that diverges from every other clickable link in the panel — the span *is* the house pattern); keeping `<a>` with `text-decoration: none !important` (fights the cascade with `!important`, which the codebase avoids).
+
+**Consequence:** The link matches the rest of the UI — no stray underline at rest, underline on hover, accent color from the standard token. Establishes the rule (noted in design.md) that in-panel links are spans, never `<a>` elements. The one other `createEl("a")` (a tool-call chip file link in `onToolCall`) is out of scope here and can follow if it shows the same artifact.

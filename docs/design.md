@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — solid accent-filled labels (Send button, active tool/effort pills) now use a plugin-computed `--p-on-accent` that auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, fixing unreadable labels on pale/mid accents (ADR-082).*
+*Last updated: 2026-08-27 — the fork banner's "branched from" link is now a `<span>` (not an `<a>`), matching the extension's standard clickable-link pattern (`--color-accent`, underline only on hover) and dropping the stray Obsidian-core anchor underline (ADR-083).*
+
+*Previously, 2026-08-27 — solid accent-filled labels (Send button, active tool/effort pills) now use a plugin-computed `--p-on-accent` that auto-picks the higher-contrast of Obsidian's `--text-on-accent` / `--text-on-accent-inverted` for the user's accent, fixing unreadable labels on pale/mid accents (ADR-082).*
 
 *Previously, 2026-08-27 — turn labels now anchor the day: the first user turn of each new calendar day (and the first message of the conversation) shows an absolute date between `DU` and the time (`DU · 27 Aug 2026 · HH:MM`); same-day turns stay time-only (ADR-081).*
 
@@ -155,6 +157,8 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 ### Reference / fork / favorites rows
 
 Note references render as **wikilinks** (`.p-wikilink`, ADR-068): faint `[[`/`]]` brackets (`--text-faint`), accent clickable name (`.md` stripped), optional mono `~tokens` estimate (`--text-faint`, 9px), faint `×` remove (`--text-error` on hover). The add affordance is a `+ Notiz` text link (`.pythia-pill-add`, faint → accent on hover). The bordered `.p-pill` chip is retired.
+
+**Standard clickable-link pattern (ADR-083):** in-panel links are a **`<span>`** (built with `createSpan`) styled `color: var(--color-accent); cursor: pointer;` with underline **only on `:hover`** — e.g. `.p-source-web`, `.p-wikilink-name`, `.pythia-fork-source-link` (the fork banner's "branched from" link). Never use an `<a>` element for these: Obsidian core underlines anchors at a specificity that out-ranks a plugin `text-decoration: none`, so an `<a>` shows a permanent underline the design doesn't want. Spans have no default underline, so the rest state is clean without a scoping workaround.
 
 ### Fork anchor (`.p-fork-anchor`, frameless, F1)
 

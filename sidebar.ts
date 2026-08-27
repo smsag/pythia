@@ -1240,7 +1240,10 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
 		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
 		if (source) {
-			const link = label.createEl("a", {
+			// A span (not an <a>) — matches the extension's standard clickable-link
+			// pattern (.p-source-web / .p-wikilink-name) and avoids Obsidian core's
+			// anchor underline, which out-specifies a plugin text-decoration rule.
+			const link = label.createSpan({
 				cls: "pythia-fork-source-link",
 				text: source.name,
 			});
