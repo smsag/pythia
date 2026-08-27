@@ -163,7 +163,6 @@ export class PythiaSidebarView extends ItemView {
 	private renameInputEl!: HTMLInputElement;
 	private renameLLMBtn!: HTMLButtonElement;
 
-	private optimizeBtnEl!: HTMLButtonElement;
 	private researchBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
@@ -389,7 +388,6 @@ export class PythiaSidebarView extends ItemView {
 			messagesEl: this.messagesEl,
 			inputEl: this.inputEl,
 			sendBtn: this.sendBtn,
-			optimizeBtnEl: this.optimizeBtnEl,
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
 			scrollToBottom: () => this.scrollToBottom(),
@@ -700,26 +698,8 @@ export class PythiaSidebarView extends ItemView {
 			void this.onSaveResponse();
 		});
 
-		this.optimizeBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn p-optimize-btn",
-			attr: { title: t("optimizeBtnTooltip") },
-		});
-		const optimizeSvg = this.optimizeBtnEl.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		optimizeSvg.createSvg("path", {
-			attr: { d: "m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.21 1.21 0 0 0 0-1.72z" },
-		});
-		optimizeSvg.createSvg("path", { attr: { d: "M14 7l3 3" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M5 6v4" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M19 14v4" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M10 2v2" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M7 8H3" } });
-		optimizeSvg.createSvg("path", { attr: { d: "M21 16h-4" } });
-		this.registerDomEvent(this.optimizeBtnEl, "click", () => {
-			this.ensureInputExpanded();
-			void this.optimizationController.start();
-		});
+		// Prompt optimization now lives as a third entry in the Send long-press menu
+		// (openSummaryMenu) rather than a toolbar icon.
 
 		const applyTemplateBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -851,6 +831,14 @@ export class PythiaSidebarView extends ItemView {
 			() => void this.generateConversationSummary());
 		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
 			() => void this.summarizeFavorites());
+		// Prompt optimization (moved here from the input toolbar). Disabled when there
+		// is nothing typed to optimize or no optimizer template is configured.
+		const optimizeDisabled =
+			this.inputEl.value.trim().length === 0 || !this.plugin.settings.promptOptimizerTemplateId;
+		addItem(t("menuOptimizePrompt"), "sparkles", optimizeDisabled, () => {
+			this.ensureInputExpanded();
+			void this.optimizationController.start();
+		});
 
 		// Outside-click / outside-touch dismissal (deferred so this gesture doesn't self-close).
 		const onOutside = (e: Event) => {

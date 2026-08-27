@@ -2186,15 +2186,8 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 }
 
 /* ── Inline prompt optimizer ──────────────────────────────────────────────── */
-
-/* Wand button pulse animation while optimizing */
-@keyframes pythia-wand-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
-}
-.p-optimize-btn.active svg {
-  animation: pythia-wand-pulse 1s ease-in-out infinite;
-}
+/* The optimizer is launched from the Send long-press menu (a "sparkles" item),
+   not a toolbar wand button — so the old .p-optimize-btn pulse animation is gone. */
 
 /* Preview bubble — original input, muted / ghost style */
 .p-msg-optimize-preview {

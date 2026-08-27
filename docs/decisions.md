@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-090 (favorite/fork highlights adopt smsag.de's "highlighter marker" style — asymmetric corners, diagonal gradient ink sweep, theme-adaptive text-shadow; colors unchanged, always visible).*
+*Last updated: 2026-08-27 — ADR-091 (prompt optimization moves from an input-toolbar wand icon to a third "Optimize prompt" item in the Send long-press menu; greyed when input is empty or no optimizer template is set).*
+
+*Previously, 2026-08-27 — ADR-090 (favorite/fork highlights adopt smsag.de's "highlighter marker" style — asymmetric corners, diagonal gradient ink sweep, theme-adaptive text-shadow; colors unchanged, always visible).*
 
 *Previously, 2026-08-27 — ADR-087 (an errored or empty send now persists the user turn up front and discards partial replies), ADR-088 (conversation eviction preserves survivors' insertion order so "most recent = last element" holds), ADR-089 (web-search citations reconciled by domain and inline web citing re-enabled via a shared `WEB_CITATION_INSTRUCTION`; revises ADR-077's "stop instructing web citations").*
 
@@ -1291,4 +1293,20 @@ ADR-030 previously reviewed this exact fallback and deliberately declined to add
 **Alternatives rejected:** reveal-on-hover only (most literal copy of the site, but favorites/forks would be invisible at rest — only reachable via the navigator); recoloring favorites to smsag.de's blue (collides with the accent-blue fork highlight — the two would be indistinguishable); a hardcoded white text-shadow (breaks on dark themes). The hover-behavior and text-shadow questions were put to the maintainer; "always visible" + "adapt per theme" were chosen.
 
 **Consequence:** Both highlights read as a hand-drawn highlighter marker in either theme, colors untouched, with no new elements or JS — a pure `styles.css` change to the two existing rules. The `p-highlight-flash` navigator-jump pulse is unchanged (it briefly fills solid, then settles back to the marker gradient).
+
+### ADR-091 — Prompt optimization moves from a toolbar icon to the Send long-press menu
+
+**Status:** Active (extends ADR-057's Send long-press menu)
+
+**Context:** The inline prompt optimizer was launched from a dedicated wand icon in the input toolbar (`.p-optimize-btn`, one of attach/save/optimize/apply-template/research). The maintainer wanted the toolbar icon removed and the feature folded into the long-press menu on the **Send** button, alongside the two summary actions (ADR-057) — a third entry — to declutter the toolbar and group the "do something with my draft/conversation" actions in one place.
+
+**Decision:** Remove the toolbar button and add a third `.p-send-menu` item.
+- **Menu item.** `openSummaryMenu` gains an **Optimize prompt** entry (`sparkles` icon via `setIcon`, matching the menu's icon convention), after Summarize conversation / Summarize favorites. Its action runs the existing `OptimizationController.start()` (via `ensureInputExpanded()`), unchanged.
+- **Disabled state.** Greyed (`.p-send-menu-item-disabled`) when the input is empty **or** no optimizer template (`settings.promptOptimizerTemplateId`) is configured — the maintainer chose the stricter of the offered conditions so the item never launches into an immediate no-op. (The other menu items likewise grey on "nothing to act on".)
+- **Icon** is `sparkles` — already used in the empty-state welcome, so it renders in every Obsidian/Lucide version (chosen over `wand-sparkles`/`wand`).
+- **Controller decoupling.** `OptimizationController`'s `optimizeBtnEl` dependency became optional and every use is guarded: there is no longer a toolbar button to reflect the in-progress "active" glow onto, so the in-message `.p-optimize-indicator` plus the disabled Send button are the sole progress feedback. Dead artifacts removed: the `optimizeBtnTooltip` i18n string and the `.p-optimize-btn` / `pythia-wand-pulse` CSS.
+
+**Alternatives rejected:** disabling only on empty input while leaving the missing-template case to a click-time Notice (more discoverable, but the maintainer preferred never offering a dead action); keeping a toolbar button *and* the menu entry (defeats the declutter goal); a native Obsidian `Menu` (renders as a mobile bottom sheet, not anchored to Send — already rejected by ADR-057).
+
+**Consequence:** The input toolbar drops one icon; prompt optimization, conversation summary, and favorites summary now live together in the Send long-press menu. No behavior change to the optimizer flow itself.
 
