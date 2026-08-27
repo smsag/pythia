@@ -78,6 +78,18 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("save, export, or format the answer as a note");
 	});
 
+	it("appends custom instructions in a custom_instructions tag when provided", () => {
+		const result = buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." }), "Always answer in British English.");
+		expect(result).toContain("<custom_instructions>\nAlways answer in British English.\n</custom_instructions>");
+		// After the system prompt, before the no-solicitation guard.
+		expect(result.indexOf("<system_prompt>")).toBeLessThan(result.indexOf("<custom_instructions>"));
+	});
+
+	it("omits the custom_instructions tag when empty or whitespace", () => {
+		expect(buildSystemPrompt(baseConv(), "")).not.toContain("custom_instructions");
+		expect(buildSystemPrompt(baseConv(), "   \n  ")).not.toContain("custom_instructions");
+	});
+
 	it("wraps the summary in a previous_conversation_summary tag", () => {
 		const result = buildSystemPrompt(baseConv({ summaryText: "We discussed X." }));
 		expect(result).toContain("<previous_conversation_summary>\nWe discussed X.\n</previous_conversation_summary>");

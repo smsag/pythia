@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-27 — ADR-100 (a `NO_SOLICITATION_INSTRUCTION` is always appended to the chat system prompt, suppressing the assistant's boilerplate closing offer to "save this as a note" / "shall I continue with the next section?" — while still permitting a genuine clarifying question).*
+*Last updated: 2026-08-27 — ADR-101 (a global free-text `customInstructions` setting is appended to every chat system prompt inside a `<custom_instructions>` block, after the conversation's own system prompt — the ChatGPT-style "custom instructions" slice; app-contract instructions stay hard-coded, and the no-solicitation guard stays always-on per ADR-100).*
+
+*Previously, 2026-08-27 — ADR-100 (a `NO_SOLICITATION_INSTRUCTION` is always appended to the chat system prompt, suppressing the assistant's boilerplate closing offer to "save this as a note" / "shall I continue with the next section?" — while still permitting a genuine clarifying question).*
 
 *Previously, 2026-08-27 — ADR-099 (web search auto-arms for a single send when the outgoing message reads as time-sensitive and the research toggle is off — a per-turn armed clone offers `web_search` without persisting `researchMode`; the globe pulses to show it fired; trigger wording in the tool description and recency nudge strengthened to a search-first default; `webSearchAutoArm` setting, default on).*
 
@@ -1447,3 +1449,15 @@ Empty state (no active conversation) keeps only **history · name · +** — ren
 **Alternatives rejected:** editing `DEFAULT_SYSTEM_PROMPT` only (misses custom-prompt conversations, where the behavior also shows); removing the KB-framing / hiding the note tools (they're wanted — the goal is to stop the *unsolicited offer*, not the capability); a settings toggle (rejected for now — needs a `buildSystemPrompt` signature change to reach settings, and the default everyone wants is "suppressed").
 
 **Consequence:** Replies end at the answer. The exact-output `buildSystemPrompt` tests were updated to expect the always-present guard (it now sits between the system-prompt block and any summary/excerpt parts), plus a test asserting the guard is present. **Known limitation:** it's a prompt-level nudge, not a hard filter — a model may still occasionally close with an offer; and it's unconditional, so a user who *wants* the save prompt has no toggle yet.
+
+### ADR-101 — Global custom instructions (settings-driven, appended to the system prompt)
+
+**Status:** Active
+
+**Context:** Users wanted to add their own standing guidance (tone, formatting, always-avoid rules) without editing each conversation's system prompt, and to see the plugin's built-in behavior guidance rather than have it be invisible. A full editable-rule registry was considered (see the design discussion) but carries the heavy costs — per-rule migration reconciliation, snapshot-vs-live semantics, three-layer precedence, and the risk of users breaking app-contract instructions (the `⟦cite:…⟧` markers and tool descriptions the app parses). The chosen slice is the cheap 80%: one global free-text field, ChatGPT-style.
+
+**Decision:** Add a `customInstructions: string` setting (default `""`; `Object.assign` merge backfills existing users). `buildSystemPrompt(conversation, customInstructions = "")` appends it, when non-empty, inside a `<custom_instructions>` block placed **after** the conversation's own system prompt and **before** the no-solicitation guard and any summary/excerpt/recency parts — so it reads as user guidance layered on the persona. Threaded from settings at the two call sites (`BaseProvider.resolveUserContent` for the real send, `sidebar` for the context-inspector token estimate, so the estimate stays accurate). App-contract instructions (grounding/web citation markers, tool descriptions, `<recent_context>`) remain hard-coded and are deliberately **not** surfaced as editable — only free-form style/behavior guidance is user-owned. The no-solicitation guard stays always-on (ADR-100), not converted to a toggle.
+
+**Alternatives rejected:** an editable rule *registry* with per-rule toggles and per-conversation/template scope (deferred — that's where migration, snapshot semantics, and layering all concentrate; revisit on demand); surfacing the built-in contract instructions as editable defaults (they're plumbing the app parses — editing them silently breaks citations/source lists); per-conversation rather than global (global is the simpler default; the per-conversation `systemPrompt` field already exists for conversation-specific needs).
+
+**Consequence:** Users get always-on custom guidance in one box, kept in a labeled `<custom_instructions>` block. **Trade-offs to keep in mind:** the text is added to every request (tokens on every turn, counted by the context-budget estimate) and changes the cached system-prompt prefix (editing it invalidates Anthropic prompt-cache hits until the next warm-up); and it's *live*, not snapshotted — an edit applies to all conversations, old and new, on their next turn.

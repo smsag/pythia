@@ -1827,6 +1827,15 @@ body.is-mobile .p-textarea {
   flex: 1;
 }
 
+/* Custom-instructions textarea in the settings tab: full width, monospace. */
+.pythia-settings-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 12px);
+}
+
 .p-tool-btn {
   all: unset;
   cursor: pointer;

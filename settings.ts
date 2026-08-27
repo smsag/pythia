@@ -379,6 +379,21 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("customInstructionsName"))
+			.setDesc(t("customInstructionsDesc"))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder(t("customInstructionsPlaceholder"))
+					.setValue(this.plugin.settings.customInstructions)
+					.onChange(async (value) => {
+						this.plugin.settings.customInstructions = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+				text.inputEl.addClass("pythia-settings-textarea");
+			});
+
+		new Setting(containerEl)
 			.setName(t("debugModeName"))
 			.setDesc(t("debugModeDesc"))
 			.addToggle((toggle) =>

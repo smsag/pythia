@@ -934,7 +934,7 @@ export class PythiaSidebarView extends ItemView {
 			return { path: p, tokens };
 		});
 		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv));
+		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv, this.plugin.settings.customInstructions));
 		const last = this.lastTokenUsageMsg();
 		const windowSize = getContextWindow(conv.model);
 		const used = last?.tokenUsage
