@@ -20,7 +20,7 @@ const DEFAULT_MAX = 600;
 // DEFAULT_MAX on its own.
 const CEILINGS = {
 	"sidebar.ts": 1992,
-	"main.ts": 951,
+	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 };
 
 const IGNORE_DIRS = new Set(["node_modules", "coverage", ".git", "scripts"]);
