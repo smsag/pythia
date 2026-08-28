@@ -215,6 +215,17 @@
 }
 .p-history-fork-count { color: var(--color-accent); }
 .p-history-fav-count { color: var(--color-yellow); }
+/* Match-snippet line shown under a result during content search (F9/F10). */
+.p-history-snippet,
+.p-switcher-snippet {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .p-history-row .p-switcher-del { opacity: 0; }
 .p-history-row:hover .p-switcher-del { opacity: 1; }
 
@@ -2177,6 +2188,24 @@ body.is-mobile .p-textarea {
 .pythia-conv-suggest-item {
   display: flex;
   align-items: center;
+}
+.pythia-conv-suggest-text {
+  flex: 1;
+  min-width: 0; /* allow the title/snippet to ellipsis instead of overflowing */
+}
+.pythia-conv-suggest-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pythia-conv-suggest-snippet {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
 }
 .pythia-conv-suggest-delete {
   all: unset;
