@@ -141,6 +141,7 @@ const de: Strings = {
 	noMessagesToSummarize:     "Keine Nachrichten zum Zusammenfassen.",
 	generatingSummary:         "Zusammenfassung wird erstellt…",
 	summaryFailed:             "Zusammenfassung fehlgeschlagen: {{error}}",
+	streamInterruptedPartialKept: "Antwort unterbrochen: {{error}} — die Teilantwort wurde behalten.",
 	noFavoritesToSummarize:    "Keine Favoriten zum Zusammenfassen. Markiere zuerst Text und favorisiere ihn.",
 	generatingFavoritesSummary:"Favoriten werden zusammengefasst…",
 	favoritesSummaryFailed:    "Favoriten-Zusammenfassung fehlgeschlagen: {{error}}",

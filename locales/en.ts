@@ -127,6 +127,7 @@ const en = {
 	noMessagesToSummarize:     "No messages to summarize.",
 	generatingSummary:         "Generating summary…",
 	summaryFailed:             "Summary failed: {{error}}",
+	streamInterruptedPartialKept: "Response interrupted: {{error}} — the partial reply was kept.",
 	noFavoritesToSummarize:    "No favorites to summarize. Highlight text and favorite it first.",
 	generatingFavoritesSummary:"Summarizing favorites…",
 	favoritesSummaryFailed:    "Favorites summary failed: {{error}}",

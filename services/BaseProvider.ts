@@ -229,20 +229,39 @@ export abstract class BaseProvider implements LLMProvider {
 		};
 	}
 
-	/** Routes a streamMessage failure to onComplete (clean cancellation) or
-	 *  onError (genuine failure), based on whether it's a user-initiated abort. */
+	/** Routes a streamMessage failure. A user-initiated abort, or any genuine
+	 *  error that arrives AFTER the model already streamed visible text, is
+	 *  treated as a (partial) completion — `onComplete` finalizes and saves what
+	 *  streamed — so a transient mid-stream failure never silently discards an
+	 *  answer the user watched appear; a genuine error surfaces a non-destructive
+	 *  Notice. Only an error with no streamed text yet routes to the destructive
+	 *  `onError` (which drops the empty placeholder). */
 	protected finishOrError(
 		error: unknown,
 		fullText: string,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void
 	): void {
-		const isAbort = error instanceof Error && ABORT_ERROR_NAMES.has(error.name);
+		const err = error instanceof Error ? error : new Error(String(error));
+		const isAbort = ABORT_ERROR_NAMES.has(err.name);
+
 		if (isAbort) {
+			// Clean user-initiated stop — keep whatever streamed as the final turn.
 			onComplete(fullText);
-		} else {
-			onError(error instanceof Error ? error : new Error(String(error)));
+			return;
 		}
+
+		if (fullText) {
+			// A genuine error, but the model already streamed a visible reply.
+			// Keep that partial as the assistant turn and tell the user it was cut
+			// short, rather than erasing an answer they already saw.
+			new Notice(t("streamInterruptedPartialKept", { error: err.message }), 8000);
+			onComplete(fullText);
+			return;
+		}
+
+		// Nothing streamed yet — surface the error and drop the empty placeholder.
+		onError(err);
 	}
 
 	// ── Shared utility methods ─────────────────────────────────────────────────
