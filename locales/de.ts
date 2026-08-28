@@ -32,7 +32,6 @@ const de: Strings = {
 	msgCountShort:             "{{n}} Nachr.",
 	branchLabel:               "Zweig",
 	historyTooltip:            "Gespräche durchsuchen",
-	histTitle:                 "Gespräche",
 	backTooltip:               "Zurück",
 	histToday:                 "HEUTE",
 	histYesterday:             "GESTERN",

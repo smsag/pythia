@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-28 — ADR-107: one conversation-search surface. The header far-left icon is now a **search loupe** that opens the `.p-history` panel with its search input focused and ↑/↓/Enter keyboard nav; the header **title is plain, non-interactive text** (click + `▾` removed). The anchored quick switcher (`.p-switcher` popover) was folded into the panel and deleted.*
+*Last updated: 2026-08-28 — ADR-108: search-panel polish. The panel is now **headerless** — the back button moved into the search row (left of the loupe) and the "+" was dropped; the row delete is a **trash-can** icon; the **accent tint marks the focused row** (hover or ↑/↓ selection) while the **active conversation** shows only a grey `.p-history-active` label (no accent background).*
+
+*Previously, 2026-08-28 — ADR-107: one conversation-search surface. The header far-left icon is now a **search loupe** that opens the `.p-history` panel with its search input focused and ↑/↓/Enter keyboard nav; the header **title is plain, non-interactive text** (click + `▾` removed). The anchored quick switcher (`.p-switcher` popover) was folded into the panel and deleted.*
 
 *Previously, 2026-08-27 — fork branch-back fix (ADR-096): the fork selection is now trimmed at storage and search, so the source-side accent fork-origin mark (`<pythia-fork>` / `.p-fork-origin`) re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span, which had silently broken when a fork selection carried edge whitespace / a block-boundary newline.*
 
@@ -167,7 +169,7 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 [ 🔍 search ][ Conversation title ……grows…… ][ ✎ pencil ][ 🔗 link ][ 🗑 trash ][ model badge ][ + plus ]
 ```
 Order left→right (ADR-098): **search · name (grows) · rename · link · delete · [ctx chip] · model · new**. The name's `.p-title-group` is the only `flex: 1` region, so it absorbs all free space and the action cluster + **"+" stay pinned to the right edge**; the "+" is always the header's last flex child so its x never shifts as other controls show/hide. Empty state (no active conversation) shows only **search · name · +** (rename/link/delete `display:none`, model badge hidden by `updateModelBadge`).
-- Search 🔍 (`search` loupe icon, far left, ADR-107): opens the in-panel conversation overlay (`.p-history`) with its search input focused. Its `.p-history-head` uses the **same padding as `.p-header`** so the overlay's "+" lands at the identical position — no jump on open/close.
+- Search 🔍 (`search` loupe icon, far left, ADR-107): opens the in-panel conversation overlay (`.p-history`) with its search input focused. The overlay is headerless (ADR-108) — its first row is the search field, with the back button on its left.
 - Title: 12px, `font-weight: 600`, truncated, flex: 1. **Plain, non-interactive text** (ADR-107) — no click, no `▾`; the old title-click quick switcher was folded into the search panel.
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
@@ -205,10 +207,11 @@ Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-insp
 
 ### Conversation search / history panel (`.p-history`)
 
-The single in-view conversation surface (ADR-107): a full-panel overlay (`position:absolute; inset:0`) opened from the header **loupe** with its **search input auto-focused**. Its own header (`arrow-left` back · `Gespräche` · `+`), a search field (`.p-switcher-search`), and the list.
+The single in-view conversation surface (ADR-107): a full-panel overlay (`position:absolute; inset:0`) opened from the header **loupe** with its **search input auto-focused**. There is **no separate header row** (ADR-108) — the first row is the search field (`.p-switcher-search`), which hosts the `arrow-left` **back button on its left**, then the loupe icon and the input. No "+" new-conversation button here (use the main header's "+").
 - **Empty box → browse:** a date-grouped list (`.p-history-group` HEUTE/GESTERN/DIESE WOCHE/"Month YYYY"); rows show a title + mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line; forks indent under their source with a `git-branch` icon.
 - **Query → search:** a flat, relevance-ranked list (TF-IDF, ADR-106) with a mono `.p-history-snippet` match line under each row.
-- **Keyboard:** ↑/↓ move a `.selected` row (hover-tinted), Enter opens it, Esc or Back closes. The active conversation is accent-tinted with an `aktiv` tag; hover/selection reveals a `✕` delete.
+- **Focus vs. active (ADR-108):** the **accent tint** now marks the *focused* row — hover **or** the ↑/↓ `.selected` row. The **active** conversation is no longer accent-tinted; it's shown only by a grey mono **`.p-history-active`** label (localized "aktiv"/"active"). Hover/selection reveals a **trash-can** delete icon (`.p-switcher-del`, `setIcon("trash")`).
+- **Keyboard:** ↑/↓ move the focused row, Enter opens it, Esc or Back closes.
 - The command-palette `ConversationSuggestModal` is the other entry point. The former quick switcher (title-click popover) was folded into this panel.
 
 ### Chat scroll area
