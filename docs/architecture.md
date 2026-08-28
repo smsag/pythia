@@ -1,6 +1,10 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-28 — 2.1.1: `BaseProvider.finishOrError` preserves a streamed reply on a post-stream error (keep the partial as the assistant turn + a non-destructive Notice, rather than discarding it) — fixes a pre-existing fragility where a transient Anthropic error erased an answer the user watched stream. New `tests/BaseProvider.test.ts`.*
+*Last updated: 2026-08-28 — #125: added view-render smoke tests (`tests/viewRender.test.ts`) that mount the real `PythiaSidebarView` + headless plugin against a stubbed `obsidian` (`tests/mocks/obsidian.ts` via a Vitest `resolve.alias`; happy-dom + polyfilled Obsidian DOM helpers) and assert each surface renders on open — closing the coverage gap that let the 2.1.2 regression (#124) ship. 443 tests. See ADR-105.*
+
+*Previously, 2026-08-28 — 2.1.2: fixed a decomposition regression (#124) — `renderMessages` stopped populating the summary cards + context inspector on conversation open/switch (the two populate calls were moved into `buildUI`, where they no-op before the containers exist). Restored to their post-create positions in `renderMessages`.*
+
+*Previously, 2026-08-28 — 2.1.1: `BaseProvider.finishOrError` preserves a streamed reply on a post-stream error (keep the partial as the assistant turn + a non-destructive Notice, rather than discarding it) — fixes a pre-existing fragility where a transient Anthropic error erased an answer the user watched stream. New `tests/BaseProvider.test.ts`.*
 
 *Previously, 2026-08-28 — decomposition roadmap complete (ADR-103/ADR-104). #122: added `appContainer.ts` composition root (`AppContainer.create()` async factory building every service in order after `loadPluginData`; plugin getters delegate so no call site changed) and inverted `ConversationStore` ownership (it owns `_conversations`; `plugin.conversations` is a `get`/`set` accessor). Plugin lifecycle not runtime-tested here; tsc/lint/build/434 tests green.*
 
