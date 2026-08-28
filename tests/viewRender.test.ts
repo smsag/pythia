@@ -61,6 +61,13 @@ function installObsidianDomHelpers(): void {
 	if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== "function") {
 		(globalThis as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 	}
+	// sendMessage() mints message ids with crypto.randomUUID().
+	const g = globalThis as unknown as { crypto?: { randomUUID?: () => string } };
+	if (!g.crypto) g.crypto = {};
+	if (typeof g.crypto.randomUUID !== "function") {
+		let n = 0;
+		g.crypto.randomUUID = () => `test-uuid-${++n}`;
+	}
 }
 installObsidianDomHelpers();
 
@@ -233,5 +240,205 @@ describe("view render — surfaces present on open (#124/#125)", () => {
 		await view.setActiveConversation(noSummary);
 		expect(pane().querySelector(".p-summary-card")).toBeNull();
 		expect(pane().querySelector(".p-bubble")).not.toBeNull();
+	});
+});
+
+// ── Send / stream path (Tier 1 — the sendMessage coordinator) ─────────────────
+//
+// sendMessage() is the sibling coordinator to renderMessages(): it appends the
+// user turn, opens a streaming bubble, and routes the provider result to one of
+// three outcomes — completed-with-text, completed-empty, or errored. That routing
+// is exactly what the 2.1.1 "answer streams then vanishes" bug lived in, and it
+// had no view-level coverage. These stub the provider seam
+// (`plugin.llmRouter.streamMessage`) and assert each outcome lands correctly.
+
+interface StreamMessageFake {
+	(conv: unknown, text: string, notes: string[],
+		appendToken: (t: string) => void,
+		onComplete: (fullText: string, usage?: { inputTokens: number; outputTokens: number }) => Promise<void> | void,
+		onError: (err: Error) => void,
+		onToolCall: unknown): Promise<void>;
+}
+
+function stubStream(plugin: InstanceType<typeof PythiaPlugin>, fake: StreamMessageFake): void {
+	const router = (plugin as unknown as { llmRouter: { streamMessage: StreamMessageFake } }).llmRouter;
+	router.streamMessage = fake;
+}
+
+function setInput(view: PythiaSidebarView, text: string): void {
+	(view as unknown as { inputEl: HTMLTextAreaElement }).inputEl.value = text;
+}
+
+const isStreaming = (view: PythiaSidebarView): boolean =>
+	(view as unknown as { isStreaming: boolean }).isStreaming;
+
+describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	async function openBlank(): Promise<{ view: PythiaSidebarView; pane: () => Element; conv: Conversation }> {
+		const conv = await seedConversation(plugin, { name: "Chat", messages: [], contextNotes: [] } as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		return { view, pane, conv };
+	}
+
+	it("completes: renders and persists the assistant reply", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, appendToken, onComplete) => {
+			appendToken("Hello ");
+			appendToken("world");
+			await onComplete("Hello world", { inputTokens: 3, outputTokens: 2 });
+		});
+
+		setInput(view, "hi there");
+		await view.sendMessage();
+
+		// Persisted: user turn + assistant turn on the conversation.
+		expect(conv.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+		expect(conv.messages[1].content).toBe("Hello world");
+		// Rendered: a finalized (non-streaming) AI body carrying the text.
+		const body = pane().querySelector(".p-ai-body:not(.pythia-streaming)");
+		expect(body?.textContent).toContain("Hello world");
+		// Streaming state released.
+		expect(isStreaming(view)).toBe(false);
+	});
+
+	it("completes empty: drops the streaming bubble, keeps only the user turn", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, _appendToken, onComplete) => {
+			await onComplete("", undefined);
+		});
+
+		setInput(view, "hi");
+		await view.sendMessage();
+
+		expect(conv.messages.map((m) => m.role)).toEqual(["user"]); // no assistant turn
+		expect(pane().querySelector(".p-msg-ai")).toBeNull();        // streaming row removed
+		expect(pane().querySelector(".p-bubble")).not.toBeNull();    // user bubble stays
+		expect(isStreaming(view)).toBe(false);
+	});
+
+	it("errors: drops the partial but keeps the user turn persisted (regression: failed send once lost it)", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, appendToken, _onComplete, onError) => {
+			appendToken("partial repl");   // a partial arrived…
+			onError(new Error("stream boom")); // …then the stream failed
+		});
+
+		setInput(view, "hi");
+		await view.sendMessage();
+
+		// The user's own message must survive a failed send (persisted before streaming).
+		expect(conv.messages.map((m) => m.role)).toEqual(["user"]);
+		expect(pane().querySelector(".p-msg-ai")).toBeNull();     // partial discarded
+		expect(pane().querySelector(".p-bubble")).not.toBeNull(); // user bubble stays
+		expect(isStreaming(view)).toBe(false);                    // not stuck streaming
+	});
+});
+
+// ── renderMessages sub-paths (Tier 2) ─────────────────────────────────────────
+//
+// renderMessages() has three modes; the open/switch tests above cover the full
+// rebuild. These cover the other two:
+//   • incremental append — a new turn on the SAME conversation appends only the
+//     new bubble(s) without tearing down the existing DOM (the hot path during a
+//     live conversation);
+//   • delete-last-exchange — removes the last turn(s) from model + DOM, and its
+//     full-rebuild fallback when the tracked tail message is gone.
+
+const rows = (pane: () => Element, sel: string): HTMLElement[] =>
+	Array.from(pane().querySelectorAll<HTMLElement>(sel));
+
+function deleteLastExchange(view: PythiaSidebarView, pane: () => Element): Promise<void> {
+	const userRows = rows(pane, ".p-msg-user");
+	const aiRows = rows(pane, ".p-msg-ai");
+	const lastUser = userRows[userRows.length - 1];
+	const lastAi = aiRows[aiRows.length - 1];
+	return (view as unknown as { confirmDeleteLastExchange(u: HTMLElement, a: HTMLElement): Promise<void> })
+		.confirmDeleteLastExchange(lastUser, lastAi);
+}
+
+describe("render paths — incremental append & delete (#125 Tier 2)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	it("incrementally appends a new turn without rebuilding existing bubbles", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Live",
+			messages: [userMsg("m1", "first"), aiMsg("m2", "reply")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		const originalUserRow = pane().querySelector<HTMLElement>(".p-msg-user");
+		expect(originalUserRow).not.toBeNull();
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
+
+		// A new turn arrives on the same conversation → append path.
+		conv.messages.push(userMsg("m3", "second"));
+		await view.setActiveConversation(conv);
+
+		// Incremental, not full rebuild: the original row is the SAME node, still
+		// mounted — a full rebuild (messagesEl.empty()) would have detached it.
+		expect(originalUserRow!.isConnected).toBe(true);
+		expect(pane().contains(originalUserRow)).toBe(true);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2); // new turn appended
+	});
+
+	it("delete-last-exchange removes the last turn from model and DOM", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Two exchanges",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1"), userMsg("u2", "q2"), aiMsg("a2", "r2")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2);
+
+		await deleteLastExchange(view, pane);
+
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1", "a1"]); // last pair spliced
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);            // DOM rows removed
+		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
+	});
+
+	it("delete-last-exchange shows the welcome state when the conversation empties", async () => {
+		await seedConversation(plugin, {
+			name: "Single exchange",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		await deleteLastExchange(view, pane);
+
+		expect(rows(pane, ".p-msg-user")).toHaveLength(0);
+		expect(pane().querySelector(".p-welcome")).not.toBeNull();
+	});
+
+	it("falls back to a full rebuild when the tracked tail message is gone (stale anchor)", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Stale anchor",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1"), userMsg("u2", "q2"), aiMsg("a2", "r2")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2);
+
+		// Remove the last exchange from the model WITHOUT going through
+		// confirmDeleteLastExchange, so lastRenderedMsgId still points at a2 (now
+		// absent). The next render can't find the anchor → full-rebuild fallback.
+		conv.messages.splice(2, 2);
+		await view.setActiveConversation(conv);
+
+		// Clean rebuild reflecting the current model — no stale u2/a2 rows leak.
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
+		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
+		expect(pane().querySelector('[data-msg-id="a2"]')).toBeNull();
 	});
 });
