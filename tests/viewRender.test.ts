@@ -203,4 +203,35 @@ describe("view render — surfaces present on open (#124/#125)", () => {
 
 		expect(pane().querySelector(".p-welcome")).not.toBeNull();
 	});
+
+	it("swaps rendered surfaces when switching conversations (no stale leak)", async () => {
+		// A has a summary → its summary card should show. B has none → no card.
+		const withSummary = await seedConversation(plugin, {
+			name: "Has summary",
+			messages: [userMsg("a1", "question A"), aiMsg("a2", "answer A")],
+			summaryText: "Summary of A.",
+			summaryUpdatedAt: now(),
+			favoritesSummary: { text: "Key point of A.", updatedAt: now() },
+		} as Partial<Conversation>);
+		// Seeded last → onOpen opens the no-summary conversation first.
+		const noSummary = await seedConversation(plugin, {
+			name: "No summary",
+			messages: [userMsg("b1", "question B"), aiMsg("b2", "answer B")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+
+		// Opened on the no-summary conversation: bubbles present, no summary card.
+		expect(pane().querySelector(".p-bubble")).not.toBeNull();
+		expect(pane().querySelector(".p-summary-card")).toBeNull();
+
+		// Switch to the summarised conversation → its card must appear (full rebuild).
+		await view.setActiveConversation(withSummary);
+		expect(pane().querySelector(".p-summary-card")).not.toBeNull();
+
+		// Switch back → the card must NOT leak from the previous render.
+		await view.setActiveConversation(noSummary);
+		expect(pane().querySelector(".p-summary-card")).toBeNull();
+		expect(pane().querySelector(".p-bubble")).not.toBeNull();
+	});
 });
