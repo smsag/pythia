@@ -1,4 +1,5 @@
 import type { Provider, EffortLevel } from "./types";
+import { type EmbeddingModelId, DEFAULT_EMBEDDING_MODEL_ID } from "./embeddingModels";
 
 export interface PythiaSettings {
 	/** Secret ID referencing the Anthropic API key in Obsidian SecretStorage. */
@@ -55,6 +56,8 @@ export interface PythiaSettings {
 	webSearchAutoArm: boolean;
 	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
 	webSearchMaxResults: number;
+	/** On-device embedding model for "related conversations" semantic search. */
+	embeddingModelId: EmbeddingModelId;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -85,4 +88,5 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchDefault: false,
 	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
+	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
 };
