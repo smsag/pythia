@@ -339,3 +339,106 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 		expect(isStreaming(view)).toBe(false);                    // not stuck streaming
 	});
 });
+
+// ── renderMessages sub-paths (Tier 2) ─────────────────────────────────────────
+//
+// renderMessages() has three modes; the open/switch tests above cover the full
+// rebuild. These cover the other two:
+//   • incremental append — a new turn on the SAME conversation appends only the
+//     new bubble(s) without tearing down the existing DOM (the hot path during a
+//     live conversation);
+//   • delete-last-exchange — removes the last turn(s) from model + DOM, and its
+//     full-rebuild fallback when the tracked tail message is gone.
+
+const rows = (pane: () => Element, sel: string): HTMLElement[] =>
+	Array.from(pane().querySelectorAll<HTMLElement>(sel));
+
+function deleteLastExchange(view: PythiaSidebarView, pane: () => Element): Promise<void> {
+	const userRows = rows(pane, ".p-msg-user");
+	const aiRows = rows(pane, ".p-msg-ai");
+	const lastUser = userRows[userRows.length - 1];
+	const lastAi = aiRows[aiRows.length - 1];
+	return (view as unknown as { confirmDeleteLastExchange(u: HTMLElement, a: HTMLElement): Promise<void> })
+		.confirmDeleteLastExchange(lastUser, lastAi);
+}
+
+describe("render paths — incremental append & delete (#125 Tier 2)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	it("incrementally appends a new turn without rebuilding existing bubbles", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Live",
+			messages: [userMsg("m1", "first"), aiMsg("m2", "reply")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		const originalUserRow = pane().querySelector<HTMLElement>(".p-msg-user");
+		expect(originalUserRow).not.toBeNull();
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
+
+		// A new turn arrives on the same conversation → append path.
+		conv.messages.push(userMsg("m3", "second"));
+		await view.setActiveConversation(conv);
+
+		// Incremental, not full rebuild: the original row is the SAME node, still
+		// mounted — a full rebuild (messagesEl.empty()) would have detached it.
+		expect(originalUserRow!.isConnected).toBe(true);
+		expect(pane().contains(originalUserRow)).toBe(true);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2); // new turn appended
+	});
+
+	it("delete-last-exchange removes the last turn from model and DOM", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Two exchanges",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1"), userMsg("u2", "q2"), aiMsg("a2", "r2")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2);
+
+		await deleteLastExchange(view, pane);
+
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1", "a1"]); // last pair spliced
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);            // DOM rows removed
+		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
+	});
+
+	it("delete-last-exchange shows the welcome state when the conversation empties", async () => {
+		await seedConversation(plugin, {
+			name: "Single exchange",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		await deleteLastExchange(view, pane);
+
+		expect(rows(pane, ".p-msg-user")).toHaveLength(0);
+		expect(pane().querySelector(".p-welcome")).not.toBeNull();
+	});
+
+	it("falls back to a full rebuild when the tracked tail message is gone (stale anchor)", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Stale anchor",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1"), userMsg("u2", "q2"), aiMsg("a2", "r2")],
+		} as Partial<Conversation>);
+
+		const { view, pane } = await mountView(plugin);
+		expect(rows(pane, ".p-msg-user")).toHaveLength(2);
+
+		// Remove the last exchange from the model WITHOUT going through
+		// confirmDeleteLastExchange, so lastRenderedMsgId still points at a2 (now
+		// absent). The next render can't find the anchor → full-rebuild fallback.
+		conv.messages.splice(2, 2);
+		await view.setActiveConversation(conv);
+
+		// Clean rebuild reflecting the current model — no stale u2/a2 rows leak.
+		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
+		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
+		expect(pane().querySelector('[data-msg-id="a2"]')).toBeNull();
+	});
+});
