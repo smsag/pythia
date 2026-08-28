@@ -5,6 +5,12 @@ import { t } from "../i18n";
 import { abbreviateModel } from "../models/knownModels";
 import { InputModal } from "../suggest/InputModal";
 import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
+import {
+	buildConversationHaystack,
+	rankConversations,
+	bestMatchSnippet,
+} from "../services/conversationSearch";
+import { tokenize } from "../services/noteRelevance";
 
 export interface HistoryDeps {
 	plugin: PythiaPlugin;
@@ -104,6 +110,17 @@ export class HistoryController {
 		let rows: { conv: Conversation; el: HTMLElement }[] = [];
 		let selectedIdx = 0;
 
+		// Searchable text per conversation, memoized for the life of the popover.
+		const haystackCache = new Map<string, string>();
+		const haystackFor = (conv: Conversation): string => {
+			let h = haystackCache.get(conv.id);
+			if (h === undefined) {
+				h = buildConversationHaystack(conv);
+				haystackCache.set(conv.id, h);
+			}
+			return h;
+		};
+
 		const closeSw = () => {
 			panel.remove();
 			document.removeEventListener("mousedown", onOutside, true);
@@ -119,8 +136,11 @@ export class HistoryController {
 			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
 		};
 
-		const addRow = (conv: Conversation, isFork: boolean, q: string) => {
-			if (q && !conv.name.toLowerCase().includes(q)) return;
+		const addRow = (conv: Conversation, isFork: boolean, q: string, snippetTokens?: string[]) => {
+			// In ranked search mode (snippetTokens given) relevance already decided
+			// inclusion, so skip the title-substring gate — it would drop content-only
+			// matches. Otherwise keep the plain title filter for the grouped listing.
+			if (q && !snippetTokens && !conv.name.toLowerCase().includes(q)) return;
 			const row = listEl.createDiv({ cls: isFork ? "p-switcher-row fork" : "p-switcher-row" });
 			const main = row.createDiv({ cls: "p-switcher-main" });
 			// Fork icon sits inline with the title text (not stacked above it).
@@ -147,6 +167,10 @@ export class HistoryController {
 				if (forkCount) subEl.createSpan({ cls: "p-switcher-fork-count", text: ` ⑂ ${forkCount}` });
 				const favCount = conv.favorites?.length ?? 0;
 				if (favCount) subEl.createSpan({ cls: "p-switcher-fav-count", text: ` ★ ${favCount}` });
+			}
+			if (snippetTokens) {
+				const snippet = bestMatchSnippet(snippetTokens, conv);
+				if (snippet) main.createDiv({ cls: "p-switcher-snippet", text: snippet });
 			}
 
 			// Rename affordance (the header pencil is easy to miss): opens an input to
@@ -184,6 +208,21 @@ export class HistoryController {
 			const q = query.toLowerCase().trim();
 			const all = this.d.plugin.conversations;
 			const byId = new Map(all.map((c) => [c.id, c]));
+
+			// Active query → flat, relevance-ranked (content match + snippet); empty
+			// box → the source/fork listing in recency order.
+			if (q) {
+				const queryTokens = tokenize(query);
+				const ranked = rankConversations(queryTokens, all, all.map(haystackFor));
+				for (const { conversation } of ranked) {
+					const isFork = !!conversation.forkedFromId && byId.has(conversation.forkedFromId);
+					addRow(conversation, isFork, q, queryTokens);
+				}
+				selectedIdx = 0;
+				paintSelection();
+				return;
+			}
+
 			const sources = all
 				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
 				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
@@ -265,6 +304,18 @@ export class HistoryController {
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
 
+		// Searchable text per conversation, built once and memoized for the life of
+		// the panel so each keystroke only re-scores, never re-concatenates messages.
+		const haystackCache = new Map<string, string>();
+		const haystackFor = (conv: Conversation): string => {
+			let h = haystackCache.get(conv.id);
+			if (h === undefined) {
+				h = buildConversationHaystack(conv);
+				haystackCache.set(conv.id, h);
+			}
+			return h;
+		};
+
 		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
@@ -300,11 +351,52 @@ export class HistoryController {
 			return true;
 		};
 
+		// Search-mode row: flat (no date bucket, no fork indent), with a snippet of
+		// the best-matching message line so the user sees why it surfaced. A fork
+		// still shows its branch icon.
+		const addSearchRow = (conv: Conversation, queryTokens: string[], isFork: boolean): void => {
+			const row = listEl.createDiv({ cls: "p-history-row" });
+			if (conv.id === this.d.getConversation()?.id) row.addClass("active");
+			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
+			const main = row.createDiv({ cls: "p-history-main" });
+			main.createDiv({ cls: "p-history-row-title", text: conv.name });
+			main.appendChild(rowSub(conv, isFork));
+			const snippet = bestMatchSnippet(queryTokens, conv);
+			if (snippet) main.createDiv({ cls: "p-history-snippet", text: snippet });
+			if (conv.id === this.d.getConversation()?.id) {
+				row.createSpan({ cls: "p-nav-tag", text: t("navActiveTag") });
+			} else {
+				const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+				del.addEventListener("click", (e) => {
+					e.stopPropagation();
+					this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+				});
+			}
+			row.addEventListener("click", () => openConv(conv));
+		};
+
 		const buildList = (query: string) => {
 			listEl.empty();
 			const q = query.toLowerCase().trim();
 			const all = this.d.plugin.conversations;
 			const byId = new Map(all.map((c) => [c.id, c]));
+
+			// Active query → flat list ranked by content relevance (TF-IDF over
+			// title + summary + messages), best match first, with match snippets.
+			// The date-grouped/fork-indented layout resumes when the box is empty.
+			if (q) {
+				const queryTokens = tokenize(query);
+				const ranked = rankConversations(queryTokens, all, all.map(haystackFor));
+				for (const { conversation } of ranked) {
+					const isFork = !!conversation.forkedFromId && byId.has(conversation.forkedFromId);
+					addSearchRow(conversation, queryTokens, isFork);
+				}
+				if (!listEl.hasChildNodes()) {
+					listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
+				}
+				return;
+			}
+
 			const sources = all
 				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
 				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
@@ -313,17 +405,13 @@ export class HistoryController {
 				const forks = all
 					.filter((c) => c.forkedFromId === src.id)
 					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-				// Skip the whole group if nothing matches the query.
-				if (q && !src.name.toLowerCase().includes(q) && !forks.some((f) => f.name.toLowerCase().includes(q))) {
-					continue;
-				}
 				const bucket = this.historyBucket(src.updatedAt);
 				if (bucket !== currentBucket) {
 					currentBucket = bucket;
 					listEl.createDiv({ cls: "p-history-group", text: bucket });
 				}
-				addRow(src, false, ""); // source always shown when its group is shown
-				for (const f of forks) addRow(f, true, q);
+				addRow(src, false, "");
+				for (const f of forks) addRow(f, true, "");
 			}
 			if (!listEl.hasChildNodes()) {
 				listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });

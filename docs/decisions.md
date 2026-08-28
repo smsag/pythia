@@ -1,8 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-28 — ADR-104 (`appContainer.ts` composition root — an async `AppContainer.create()` factory constructs every plugin service in dependency order after `loadPluginData`, and the plugin exposes each as a getter so `plugin.llmRouter` etc. keep working with no call-site changes; `ConversationStore` now OWNS the conversation list and `plugin.conversations` is a read/write accessor, ending the bidirectional coupling).*
+*Last updated: 2026-08-28 — ADR-106 (conversation search ranks by lexical TF-IDF over content — title + LLM summary + message bodies via the existing `services/noteRelevance.ts` scorer, new `services/conversationSearch.ts` + a `SuggestModal`-based picker with match snippets — chosen over on-device semantic embeddings after reading obsidian-similarity's source; the transformers.js/MiniLM design is documented as the Phase-2 seam).*
 
-*Previously, 2026-08-27 — ADR-103 (view/plugin decomposition adopts a standing controller-extraction pattern — `Deps`-interface + callbacks, one behaviour-preserving controller per PR — guarded by a file-size ratchet in CI; kicked off by PR0: the `scripts/check-file-size.mjs` guard plus a first tested seam of the `sendMessage` extraction in `services/sendPolicy.ts`).*
+*Previously, 2026-08-28 — ADR-104 (`appContainer.ts` composition root — an async `AppContainer.create()` factory constructs every plugin service in dependency order after `loadPluginData`, and the plugin exposes each as a getter so `plugin.llmRouter` etc. keep working with no call-site changes; `ConversationStore` now OWNS the conversation list and `plugin.conversations` is a read/write accessor, ending the bidirectional coupling).*
 
 *Previously, 2026-08-27 — ADR-102 (model picker shows a plain-language "good for" example line per model — hover-revealed on desktop, first-tap-reveals / second-tap-confirms on touch — to help users choose without capability jargon; curated for every catalog model in `models/modelGuidance.ts`, localized en/de).*
 
@@ -1533,3 +1533,28 @@ The per-PR roadmap is tracked as engineering-review #120–#123. **PR0 (this cha
 **Validation:** the suite was verified by *reintroducing* #124 (removing the two populate calls from `renderMessages`) and confirming the two regression tests fail while the other three stay green — a test that can't fail on the bug is worthless.
 
 **Alternatives rejected:** controller-level tests of `renderSummaryCards()`/`refresh()` in isolation (they'd pass — the controllers were never broken; only the view's call site was); a full Obsidian integration harness / snapshot tests (a brittle maintenance tar pit, far more than the bug class warrants); leaving it to manual smoke-testing (what let #124 ship). **Consequence:** the highest-value coverage gap from the engineering review is closed with a reusable fixture; add a scenario here whenever a new surface must render on open/switch.
+
+### ADR-106 — Conversation search: lexical TF-IDF over content, not semantic embeddings
+
+**Status:** Active
+
+**Context:** The conversation picker (`ConversationSuggestModal`) matched only `"${name}  [${date}]"` through Obsidian's `FuzzySuggestModal` — a user could find a past conversation by its *title* but not by anything discussed inside it. The motivating idea was to rank conversations by a *similarity score* so relevance, not an exact title match, surfaces the right one — modelled on [obsidian-similarity](https://github.com/jorammillenaar/obsidian-similarity), which does on-device semantic search.
+
+We read that plugin's source to ground the choice. It runs `@huggingface/transformers` (transformers.js — **not** TensorFlow.js) with Xenova ONNX MiniLM models (384-dim; `all-MiniLM-L6-v2` English default, `paraphrase-multilingual-MiniLM-L12-v2` for other languages), WebGPU-or-WASM, the model **downloaded from HuggingFace on first run** and cached (inference is local; the initial fetch is not). Around that: an iframe-isolated model host, document chunking, an Int8-quantized packed binary vector index (`embeddings-<modelId>.bin`), and hash-based (`contentHash`/`updatedAt`) incremental re-indexing. A capable but substantial subsystem (~dozen+ files).
+
+**Decision:** Ship **lexical TF-IDF** ranking, reusing the existing `services/noteRelevance.ts` scorer (already IDF-weighted per ADR-043 and already powering note chunking + `#` suggestions). New pure module `services/conversationSearch.ts`:
+1. **Weighted haystack per conversation** = title (repeated ×3 so a name hit outranks a passing body mention) + **LLM `summaryText`** + all message bodies.
+2. `rankConversations(queryTokens, …)` — empty query → recency order (unchanged default); non-empty → score-descending, zero-score conversations dropped.
+3. `bestMatchSnippet(...)` — the best-matching message line, shown muted under each result so the *why* is visible.
+
+Wired into all three conversation-search surfaces (they were each title-substring only):
+- **In-panel history view (F10)** and **anchored quick switcher (F9)** in `ui/HistoryController.ts` — the primary "Gespräche" surfaces with the "Suchen…" box. Empty query keeps the date-grouped, fork-indented listing; a non-empty query switches to a **flat, relevance-ranked list** (best match first) with a match snippet per row. Haystacks are memoized per open (`haystackFor`), so keystrokes only re-score. The quick switcher's `addRow` gained a `snippetTokens` param that skips the title-substring gate in ranked mode (else content-only matches would be dropped).
+- **Command-palette picker (`ConversationSuggestModal`)** — switched from `FuzzySuggestModal` to `SuggestModal` with a custom `getSuggestions` (mirrors `CommandHubModal`).
+
+`FavoritesSuggestModal` stays fuzzy (short labels, no content to search).
+
+**Why lexical wins here specifically:** (a) conversations are *long* — the concept is almost always present as a literal word somewhere, so lexical recall is far higher than in the short-note case embeddings were built for; (b) **folding in the LLM summary buys the cheap half of semantic recall for free** — the model's own paraphrasing ("automobile", "Fahrzeug") already sits in the summary, so a query word the messages never used can still match; (c) zero new deps, instant, offline, mobile-safe, private — none of the embeddings machinery, and no "download a model from a third-party host on first run" asterisk in a bilingual (DE/EN) vault where the multilingual model is the slower one.
+
+**Alternatives rejected:** *transformers.js embeddings now* (option analysed in full above — the large subsystem earns little over summary-augmented lexical for long documents; held as the documented Phase-2 seam if real usage shows cross-language recall gaps, e.g. English query against a German chat); *TensorFlow.js / Universal Sentence Encoder* (dated, English-first, ~25 MB model, flaky WebGL in the webview — transformers.js dominates it on every axis, which is why obsidian-similarity itself uses transformers.js); *keeping title-only fuzzy* (the actual gap).
+
+**Consequence:** conversation search now ranks by content relevance with a visible match snippet, at near-zero cost. **Watch-item:** if cross-language or true-synonym recall becomes a frequent miss, add a semantic layer using obsidian-similarity's proven design — iframe-isolated transformers.js, chunk-level max-pairwise cosine, Int8-quantized packed index, `contentHash` incremental — rather than reinventing it. Tests: `tests/conversationSearch.test.ts` (haystack title-weighting + summary-synonym recall, ranking/filtering, snippet extraction/truncation).
