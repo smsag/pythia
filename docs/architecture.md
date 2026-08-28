@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-28 — #125 Tier 1: extended `tests/viewRender.test.ts` to the `sendMessage` coordinator — stub the provider seam (`plugin.llmRouter.streamMessage`) and assert the three stream outcomes (completed-with-text, completed-empty, errored) render/persist/clean-up correctly, covering the path the 2.1.1 vanishing-answer bug lived in. Also added a conversation-switching case (surfaces swap on switch, no stale leak). 447 tests. See ADR-105.*
+*Last updated: 2026-08-28 — #125 Tier 2: `tests/viewRender.test.ts` now covers all three `renderMessages` modes — added incremental append (new turn appends without a full rebuild; the original bubble node survives) and delete-last-exchange (splice from model + DOM, welcome-on-empty, and the full-rebuild fallback when the tracked tail id is gone). 451 tests. See ADR-105.*
+
+*Previously, 2026-08-28 — #125 Tier 1: extended `tests/viewRender.test.ts` to the `sendMessage` coordinator — stub the provider seam (`plugin.llmRouter.streamMessage`) and assert the three stream outcomes (completed-with-text, completed-empty, errored) render/persist/clean-up correctly, covering the path the 2.1.1 vanishing-answer bug lived in. Also added a conversation-switching case (surfaces swap on switch, no stale leak). See ADR-105.*
 
 *Previously, 2026-08-28 — #125: added view-render smoke tests (`tests/viewRender.test.ts`) that mount the real `PythiaSidebarView` + headless plugin against a stubbed `obsidian` (`tests/mocks/obsidian.ts` via a Vitest `resolve.alias`; happy-dom + polyfilled Obsidian DOM helpers) and assert each surface renders on open — closing the coverage gap that let the 2.1.2 regression (#124) ship. See ADR-105.*
 
