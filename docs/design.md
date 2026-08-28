@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-28 — ADR-109 M3: "related conversations" in the `.p-history` panel — a hover-revealed (long-press on touch) **relate icon** (`.p-history-relate`, `git-compare`) opens a **"Related to X" chip** (`.p-history-chip`) above a semantically-ranked, min-score-filtered list; clearing the chip or typing exits.*
+*Last updated: 2026-08-28 — AI-message vertical rhythm: rendered-markdown **headings** are normalized (`.p-ai-body`/`.p-summary-card-md` `:is(h1…h6)` → `margin: var(--s4) 0 var(--s1)`, `line-height: 1.3`, chat-scaled sizes h1 1.25em / h2 1.12em / h3+ 1em) instead of inheriting Obsidian's jumpy document-scale defaults; lists + blockquotes share the paragraphs' 6px rhythm; `.p-msg-ai` gap → `var(--s2)`. Fixes the uneven heading-to-body spacing in chat answers.*
+
+*Previously, 2026-08-28 — ADR-109 M3: "related conversations" in the `.p-history` panel — a hover-revealed (long-press on touch) **relate icon** (`.p-history-relate`, `git-compare`) opens a **"Related to X" chip** (`.p-history-chip`) above a semantically-ranked, min-score-filtered list; clearing the chip or typing exits.*
 
 *Previously, 2026-08-28 — ADR-108: search-panel polish. The panel is now **headerless** — the back button moved into the search row (left of the loupe) and the "+" was dropped; the row delete is a **trash-can** icon; the **accent tint marks the focused row** (hover or ↑/↓ selection) while the **active conversation** shows only a grey `.p-history-active` label (no accent background).*
 
@@ -230,6 +232,11 @@ Messages longer than **280 characters** render collapsed to ~3 lines with a fade
 ### AI message
 
 Plain text, no background. Rendered via `MarkdownRenderer.render()`. Code blocks wrapped in `.p-code-frame` with `position: relative` for the copy button overlay. The first rendered block has its top margin collapsed (`.p-ai-body > :first-child { margin-top: 0 }`) so an answer that opens with a heading sits directly under the turn label instead of leaving a large gap from the heading's default `margin-block-start`; the `.p-msg-ai` flex `gap` still gives a small, consistent separation. Same rule applies to `.p-summary-card-md`.
+
+**Vertical rhythm (rendered markdown).** Obsidian's theme applies *document-scale* heading margins/sizes, which make the chat's vertical spacing jump (a big gap after a heading, tiny gaps between paragraphs). We normalize it so the answer reads on a steady beat:
+- **Headings** (`.p-ai-body :is(h1…h6)`, and the same for `.p-summary-card-md`): `margin: var(--s4) 0 var(--s1)` — **more space above** (a section break) than **below** (heading binds to its own text), `line-height: 1.3`, `font-weight: 600`. Sizes are scaled for the narrow column, not a document: **h1 1.25em · h2 1.12em · h3+ 1em** (h3 and deeper differentiate by weight/spacing, not size). The `:first-child { margin-top: 0 }` rule still wins for a leading heading (higher specificity), so it keeps hugging the turn label.
+- **Even block spacing.** Paragraphs, lists, and blockquotes all use a **6px** vertical rhythm (`p` `margin: 0 0 6px`; `ul/ol` and `blockquote` `margin: 6px 0`) so inter-block gaps are uniform (adjacent margins collapse to 6px).
+- **`.p-msg-ai` gap** is `var(--s2)` (8px) — label → body → token line — so each answer starts with a little room rather than glued to its meta line.
 
 ### Blockquote
 
