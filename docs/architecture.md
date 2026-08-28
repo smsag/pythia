@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-28 — decomposition roadmap complete (ADR-103/ADR-104). #122: added `appContainer.ts` composition root (`AppContainer.create()` async factory building every service in order after `loadPluginData`; plugin getters delegate so no call site changed) and inverted `ConversationStore` ownership (it owns `_conversations`; `plugin.conversations` is a `get`/`set` accessor). Plugin lifecycle not runtime-tested here; tsc/lint/build/434 tests green.*
+*Last updated: 2026-08-28 — 2.1.1: `BaseProvider.finishOrError` preserves a streamed reply on a post-stream error (keep the partial as the assistant turn + a non-destructive Notice, rather than discarding it) — fixes a pre-existing fragility where a transient Anthropic error erased an answer the user watched stream. New `tests/BaseProvider.test.ts`.*
+
+*Previously, 2026-08-28 — decomposition roadmap complete (ADR-103/ADR-104). #122: added `appContainer.ts` composition root (`AppContainer.create()` async factory building every service in order after `loadPluginData`; plugin getters delegate so no call site changed) and inverted `ConversationStore` ownership (it owns `_conversations`; `plugin.conversations` is a `get`/`set` accessor). Plugin lifecycle not runtime-tested here; tsc/lint/build/434 tests green.*
 
 *Previously, 2026-08-28 — decomposition #120 closed + #121 landed (ADR-103). #120 complete: the render/send loop (`renderMessages`/`sendMessage`) stays in the view as the "thin coordinator" core; `sidebar.ts` 3,735 → 1,992 (−47%) across PR1–PR6. #121: `main.ts` split into `services/{SecretStore,PluginDataStore,ConversationService,ViewManager}.ts` with thin plugin facades preserving the public API — `main.ts` 951 → 348 (under the 600 default). Not runtime-tested in Obsidian (smoke-test recommended); tsc/lint/build/434 tests green.*
 
