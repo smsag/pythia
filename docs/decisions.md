@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-28 — ADR-107 (one conversation-search surface: the quick switcher is folded into the history panel, which is now opened by a header loupe icon with its search input auto-focused and ↑/↓/Enter keyboard nav; the header title becomes plain, non-interactive text — its click and `▾` removed).*
+*Last updated: 2026-08-28 — ADR-108 (search-panel polish: headerless — back button moved into the search row, "+" dropped; trash-can row delete; the accent tint now marks the focused row (hover or ↑/↓ selection) while the active conversation shows only a grey label).*
+
+*Previously, 2026-08-28 — ADR-107 (one conversation-search surface: the quick switcher is folded into the history panel, which is now opened by a header loupe icon with its search input auto-focused and ↑/↓/Enter keyboard nav; the header title becomes plain, non-interactive text — its click and `▾` removed).*
 
 *Previously, 2026-08-28 — ADR-106 (conversation search ranks by lexical TF-IDF over content — title + LLM summary + message bodies via the existing `services/noteRelevance.ts` scorer, new `services/conversationSearch.ts` + a `SuggestModal`-based picker with match snippets — chosen over on-device semantic embeddings after reading obsidian-similarity's source; the transformers.js/MiniLM design is documented as the Phase-2 seam).*
 
@@ -1579,3 +1581,19 @@ Behaviour of the panel's search/browse itself is unchanged from ADR-106 (empty �
 **Rejected / deferred:** keeping the anchored popover as a lightweight second surface (the redundancy was the problem); porting the switcher's inline per-row rename into the panel (dropped — the header pencil renames the active conversation; renaming an arbitrary conversation from the list is a rare need, revisit if asked). The command-palette `ConversationSuggestModal` stays as the third, keyboard-command entry point.
 
 **Consequence:** one obvious way to find a conversation — a labelled loupe that opens a focused, keyboard-drivable search/browse panel. Fewer surfaces, one code path, less CSS. **Coverage:** four `tests/viewRender.test.ts` smoke tests exercise the DOM path — loupe click opens the panel with the search input focused, empty box browses (date groups) while a query switches to a flat ranked list with a snippet, ↑/↓ move the `.selected` row and Enter opens+closes, and the header title renders as an inert chevron-free `<div>`. (The fixture gained global `createDiv`/`createEl`/`createSpan`, which `HistoryController.rowSub` needs.)
+
+### ADR-108 — Search-panel polish: headerless, focus-accent, grey active label
+
+**Status:** Active
+
+**Context:** After ADR-107 the `.p-history` panel still carried its old chrome — a separate header row (`arrow-left` back · title · "+"), an `✕` glyph for row delete, and the accent tint on the *active* conversation (a holdover from when the panel was a passive browse list). With the panel now the primary search surface, that chrome is redundant: the title duplicates the loupe's intent, the "+" duplicates the main header's, and tinting the *active* row conflicts with the ↑/↓ focus cue (both wanted a highlight).
+
+**Decision:** Six small changes to `HistoryController.openHistoryView` + `styles.css`:
+1. **Remove the header row** (`.p-history-head`/`.p-history-title`, and the orphaned `histTitle` i18n key).
+2. **Move the back button into the search row**, to the left of the loupe.
+3. **Drop the "+"** — new-conversation stays on the main header.
+4. **Trash-can delete** — `setIcon(del, "trash")` replaces the `✕` glyph (`.p-switcher-del` now sizes an SVG).
+5. **Accent marks focus, not active** — `.p-history-row:hover`/`.selected` take the accent tint the active row used to have (hover **and** keyboard selection, per the user).
+6. **Active = grey label only** — the active conversation drops its accent background; it's indicated solely by a grey mono `.p-history-active` label (localized "aktiv"/"active", reusing `navActiveTag`). The `.p-nav-tag` class stays untouched (still used by the navigator).
+
+**Consequence:** the panel reads as a search box first; the accent unambiguously means "the row in focus" while "which one is open" is a quiet grey tag. No behavioral change to search/browse/keyboard nav — the ADR-107 smoke tests still pass.

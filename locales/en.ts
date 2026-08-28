@@ -28,7 +28,6 @@ const en = {
 	msgCountShort:             "{{n}} msgs",
 	branchLabel:               "Branch",
 	historyTooltip:            "Search conversations",
-	histTitle:                 "Conversations",
 	backTooltip:               "Back",
 	histToday:                 "TODAY",
 	histYesterday:             "YESTERDAY",

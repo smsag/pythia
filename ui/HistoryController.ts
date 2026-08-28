@@ -97,18 +97,11 @@ export class HistoryController {
 		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
 		const openConv = (conv: Conversation) => { close(); void this.d.setActiveConversation(conv); };
 
-		// ── Header ───────────────────────────────────────────────────
-		const head = overlay.createDiv({ cls: "p-history-head" });
-		const backBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("backTooltip") } });
+		// ── Search row (no separate header): back · loupe · input ────
+		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
+		const backBtn = searchRow.createEl("button", { cls: "p-hdr-btn", attr: { title: t("backTooltip") } });
 		setIcon(backBtn, "arrow-left");
 		backBtn.addEventListener("click", () => close());
-		head.createDiv({ cls: "p-history-title", text: t("histTitle") });
-		const newBtn = head.createEl("button", { cls: "p-hdr-btn", attr: { title: t("newConvTooltip") } });
-		setIcon(newBtn, "plus");
-		newBtn.addEventListener("click", () => { close(); void this.d.plugin.cmdNewConversation(); });
-
-		// ── Search ───────────────────────────────────────────────────
-		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
 		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
 		const input = searchRow.createEl("input", {
 			cls: "p-switcher-input",
@@ -166,9 +159,10 @@ export class HistoryController {
 				if (snippet) main.createDiv({ cls: "p-history-snippet", text: snippet });
 			}
 			if (conv.id === this.d.getConversation()?.id) {
-				row.createSpan({ cls: "p-nav-tag", text: t("navActiveTag") });
+				row.createSpan({ cls: "p-history-active", text: t("navActiveTag") });
 			} else {
-				const del = row.createSpan({ cls: "p-switcher-del", text: "✕", attr: { title: t("deleteConvTooltip") } });
+				const del = row.createSpan({ cls: "p-switcher-del", attr: { title: t("deleteConvTooltip") } });
+				setIcon(del, "trash");
 				del.addEventListener("click", (e) => {
 					e.stopPropagation();
 					this.deleteConversationWithConfirm(conv, () => buildList(input.value));
