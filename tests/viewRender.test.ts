@@ -628,4 +628,23 @@ describe("related conversations (ADR-109 M3)", () => {
 		input.dispatchEvent(new Event("input"));
 		expect(pane().querySelector(".p-history-chip")).toBeNull(); // typing cleared related mode
 	});
+
+	it("long-press offers both show-similar and delete on a non-active conversation", async () => {
+		await seedPair();
+		stubRelated(plugin, async () => []);
+		const { view, pane } = await mountView(plugin);
+		openPanel(view);
+		(globalThis as unknown as { __lastMenu?: unknown }).__lastMenu = undefined;
+
+		// A non-active row (delete is offered only for non-active conversations).
+		const nonActive = pane().querySelector<HTMLElement>(".p-history-row:not(.active)")!;
+		const ev = new Event("touchstart");
+		(ev as unknown as { touches: { clientX: number; clientY: number }[] }).touches = [{ clientX: 5, clientY: 5 }];
+		nonActive.dispatchEvent(ev);
+		await new Promise((r) => setTimeout(r, 560)); // past the 500 ms long-press threshold
+
+		const menu = (globalThis as unknown as { __lastMenu?: { items: { icon?: string }[] } }).__lastMenu;
+		expect(menu).toBeDefined();
+		expect(menu!.items.map((i) => i.icon)).toEqual(["git-compare", "trash"]); // show similar + delete
+	});
 });

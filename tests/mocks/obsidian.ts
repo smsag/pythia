@@ -78,7 +78,28 @@ export const MarkdownView = cls();
 export const TFile = cls();
 export const TFolder = cls();
 export const TAbstractFile = cls();
-export const Menu = cls();
+
+// Minimal Menu that records its items and exposes the last-shown menu on a global
+// so tests can inspect / invoke it (e.g. the history long-press context menu).
+interface MenuItemRec { title?: string; icon?: string; click?: () => void }
+export class Menu {
+	items: MenuItemRec[] = [];
+	addItem(cb: (item: unknown) => void): this {
+		const rec: MenuItemRec = {};
+		const api = {
+			setTitle(t: string) { rec.title = t; return api; },
+			setIcon(i: string) { rec.icon = i; return api; },
+			setSection() { return api; },
+			setDisabled() { return api; },
+			onClick(fn: () => void) { rec.click = fn; return api; },
+		};
+		cb(api);
+		this.items.push(rec);
+		return this;
+	}
+	showAtPosition(): this { (globalThis as unknown as { __lastMenu?: Menu }).__lastMenu = this; return this; }
+	showAtMouseEvent(): this { (globalThis as unknown as { __lastMenu?: Menu }).__lastMenu = this; return this; }
+}
 export const App = cls();
 export const Editor = cls();
 export const WorkspaceLeaf = cls();

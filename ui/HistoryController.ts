@@ -1,4 +1,4 @@
-import { Notice, setIcon } from "obsidian";
+import { Menu, Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
@@ -201,6 +201,23 @@ export class HistoryController {
 		/** Re-render whichever mode is active (used after a row delete). */
 		const refreshList = () => (related ? renderRelated() : buildList(input.value));
 
+		// Long-press menu (touch): the hover-only row actions aren't reachable without
+		// a pointer, so a long-press offers the same ones — show similar + delete
+		// (delete omitted for the active conversation, matching the desktop row).
+		const showRowMenu = (conv: Conversation, x: number, y: number) => {
+			const menu = new Menu();
+			let items = 0;
+			if (this.d.getRelated) {
+				menu.addItem((item) => item.setTitle(t("relatedTooltip")).setIcon("git-compare").onClick(() => void enterRelated(conv)));
+				items++;
+			}
+			if (conv.id !== this.d.getConversation()?.id) {
+				menu.addItem((item) => item.setTitle(t("deleteConvTooltip")).setIcon("trash").onClick(() => this.deleteConversationWithConfirm(conv, () => refreshList())));
+				items++;
+			}
+			if (items > 0) menu.showAtPosition({ x, y });
+		};
+
 		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
@@ -246,19 +263,22 @@ export class HistoryController {
 				});
 			}
 
-			// Long-press → related mode on touch; suppress the click that follows.
+			// Long-press on touch → the row's context menu (show similar + delete),
+			// since the hover icons aren't reachable without a pointer. The ensuing
+			// click is suppressed so the row doesn't also open.
 			let lpTimer: ReturnType<typeof setTimeout> | null = null;
 			let lpFired = false;
 			const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
-			if (this.d.getRelated) {
-				row.addEventListener("touchstart", () => {
-					lpFired = false;
-					lpTimer = setTimeout(() => { lpFired = true; void enterRelated(conv); }, 500);
-				}, { passive: true });
-				row.addEventListener("touchend", clearLp);
-				row.addEventListener("touchmove", clearLp);
-				row.addEventListener("touchcancel", clearLp);
-			}
+			row.addEventListener("touchstart", (e: TouchEvent) => {
+				const touch = e.touches[0];
+				const x = touch?.clientX ?? 0;
+				const y = touch?.clientY ?? 0;
+				lpFired = false;
+				lpTimer = setTimeout(() => { lpFired = true; showRowMenu(conv, x, y); }, 500);
+			}, { passive: true });
+			row.addEventListener("touchend", clearLp);
+			row.addEventListener("touchmove", clearLp);
+			row.addEventListener("touchcancel", clearLp);
 			row.addEventListener("click", () => { if (lpFired) { lpFired = false; return; } openConv(conv); });
 			rows.push({ conv, el: row });
 		};

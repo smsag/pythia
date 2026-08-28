@@ -25,7 +25,7 @@ const CEILINGS = {
 	"settings.ts": 607,
 	// View-render smoke-test file (ADR-105/109). TODO(ADR-097): extract a shared
 	// harness and split the per-feature describe blocks into their own files.
-	"tests/viewRender.test.ts": 631,
+	"tests/viewRender.test.ts": 652,
 };
 
 const IGNORE_DIRS = new Set(["node_modules", "coverage", ".git", "scripts", ".claude"]);
