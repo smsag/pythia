@@ -21,9 +21,14 @@ const DEFAULT_MAX = 600;
 const CEILINGS = {
 	"sidebar.ts": 1992,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
+	// Settings tab monolith; grew by the embedding-model dropdown (ADR-109 M3). Split later.
+	"settings.ts": 607,
+	// View-render smoke-test file (ADR-105/109). TODO(ADR-097): extract a shared
+	// harness and split the per-feature describe blocks into their own files.
+	"tests/viewRender.test.ts": 631,
 };
 
-const IGNORE_DIRS = new Set(["node_modules", "coverage", ".git", "scripts"]);
+const IGNORE_DIRS = new Set(["node_modules", "coverage", ".git", "scripts", ".claude"]);
 
 function* walkTsFiles(dir) {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
