@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-28 — ADR-108 (search-panel polish: headerless — back button moved into the search row, "+" dropped; trash-can row delete; the accent tint now marks the focused row (hover or ↑/↓ selection) while the active conversation shows only a grey label).*
+*Last updated: 2026-08-28 — ADR-109 M1 (foundation for "related conversations" via on-device semantic embeddings: pure, fully-tested `services/embedding/` core — vector math, chunking, Int8 binary index with incremental diff, max-pairwise ranking — behind an `EmbeddingProvider` interface, plus the model registry and `embeddingModelId` setting; runtime + UI land in M2/M3).*
+
+*Previously, 2026-08-28 — ADR-108 (search-panel polish: headerless — back button moved into the search row, "+" dropped; trash-can row delete; the accent tint now marks the focused row (hover or ↑/↓ selection) while the active conversation shows only a grey label).*
 
 *Previously, 2026-08-28 — ADR-107 (one conversation-search surface: the quick switcher is folded into the history panel, which is now opened by a header loupe icon with its search input auto-focused and ↑/↓/Enter keyboard nav; the header title becomes plain, non-interactive text — its click and `▾` removed).*
 
@@ -1597,3 +1599,21 @@ Behaviour of the panel's search/browse itself is unchanged from ADR-106 (empty �
 6. **Active = grey label only** — the active conversation drops its accent background; it's indicated solely by a grey mono `.p-history-active` label (localized "aktiv"/"active", reusing `navActiveTag`). The `.p-nav-tag` class stays untouched (still used by the navigator).
 
 **Consequence:** the panel reads as a search box first; the accent unambiguously means "the row in focus" while "which one is open" is a quiet grey tag. No behavioral change to search/browse/keyboard nav — the ADR-107 smoke tests still pass.
+
+### ADR-109 — Related conversations via on-device semantic embeddings
+
+**Status:** Active (M1 landed; M2/M3 to follow)
+
+**Context:** Lexical conversation search (ADR-106) matches shared words but misses conceptual relatives (crypto ↔ blockchain, "Auto" ↔ "car"). The user wants a **"related conversations"** affordance: hovering a conversation row (long-press on mobile) reveals a relate icon; clicking it re-sorts the panel to show **only sufficiently-similar** conversations, ranked by **semantic similarity** to that source. This is the Phase-2 seam ADR-106 documented — now chosen, with **local embeddings** (no API, no data egress) as the method.
+
+**Decision:** Port obsidian-similarity's proven engine, adapted to conversations, delivered in three milestones (one PR each) so the risky runtime lands after a fully-tested pure core:
+
+- **M1 (this ADR) — foundation, no runtime dependency.** A pure, fully-tested `services/embedding/` core: `vectorMath` (L2-normalize → Int8-quantize → cosine / **max-pairwise cosine**), `conversationText` (chunk a conversation: lead = title + summary, then message bodies packed to a char budget), `embeddingIndex` (`IndexedConversation`, FNV `conversationContentHash`, `diffIndex` for **incremental** add/drop, compact **Int8 binary** serialize/deserialize for a `.bin` in the plugin dir), and `relatedConversations.rankRelated` (max-pairwise cosine vs a source, min-score floor, source excluded). Everything sits behind an `EmbeddingProvider` interface and is tested with fabricated vectors. The `models/embeddingModels.ts` registry (Xenova MiniLM: **English** `all-MiniLM-L6-v2` and **Multilingual** `paraphrase-multilingual-MiniLM-L12-v2`, both 384-dim) and an `embeddingModelId` setting (default Multilingual, DE+EN) are added; `mergeSettings` back-fills it.
+- **M2 — runtime + UI.** The real `EmbeddingProvider` (transformers.js / onnxruntime-web), an index service that builds/persists/incrementally-updates the `.bin`, the relate icon (hover + long-press) + related-mode chip + related-sorted list in `HistoryController`, and the settings dropdown.
+- **M3 — polish.** First-run model-download progress, offline/empty handling, re-index on conversation change, graceful degradation when the model can't load.
+
+**Key design choices (M1):** *chunked + max-pairwise* (per the user — higher fidelity on long chats than one-vector-per-conversation); *Int8 quantization* (¼ the size of Float32, negligible ranking error); *content-hash incremental* (only changed conversations re-embed); *model as a user setting* (English/Multilingual). Similarity floor `DEFAULT_MIN_SCORE = 0.35` (tunable) — "only sufficiently-similar" per the user, so a weakly-related tail is hidden.
+
+**Honest caveat (carried into M2):** the model **downloads from HuggingFace on first use** (tens of MB) — local inference, but not zero-network at setup; the multilingual model is the slower one. transformers.js bundling in an Obsidian plugin is the main M2 risk.
+
+**Consequence:** the whole similarity/index/ranking substance is correct and tested before any heavyweight runtime is introduced; M2 can focus purely on the embedding runtime + UI against a stable, verified core.
