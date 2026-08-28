@@ -10,10 +10,28 @@ If you want to view the source, visit the plugin's GitHub repository.
 
 const prod = process.argv[2] === "production";
 
+// Build the embedding iframe as a SEPARATE browser bundle so @huggingface/
+// transformers (heavy, browser-only) never enters main.js. The result is inlined
+// into the main build via the `__IFRAME_CONTENTS_PLACEHOLDER__` define (ADR-109 M2).
+const iframeBuild = await esbuild.build({
+  entryPoints: ["services/embedding/host/frame/bootstrap.ts"],
+  bundle: true,
+  platform: "browser",
+  format: "esm",
+  target: "esnext",
+  write: false,
+  minify: prod,
+  logLevel: "info",
+});
+const iframeHtml = `<script type="module">\n${iframeBuild.outputFiles[0].text}\n</script>\n`;
+
 const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["main.ts"],
   bundle: true,
+  define: {
+    __IFRAME_CONTENTS_PLACEHOLDER__: JSON.stringify(iframeHtml),
+  },
   external: [
     "obsidian",
     "electron",
