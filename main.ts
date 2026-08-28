@@ -6,64 +6,56 @@ import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { AnthropicService } from "./services/AnthropicService";
-import { OpenAIProvider } from "./services/OpenAIProvider";
-import { MistralService } from "./services/MistralService";
-import { LLMRouter } from "./services/LLMRouter";
 import { ConversationStore } from "./services/ConversationStore";
-import { TemplateLoader } from "./services/TemplateLoader";
-import { NoteWriter } from "./services/NoteWriter";
-import { ToolHandler } from "./services/ToolHandler";
-import { WebSearchService } from "./services/WebSearchService";
-import { PromptOptimizerService } from "./services/PromptOptimizerService";
-import { SecretStore } from "./services/SecretStore";
-import { PluginDataStore } from "./services/PluginDataStore";
-import { ConversationService } from "./services/ConversationService";
-import { ViewManager } from "./services/ViewManager";
+import { AppContainer } from "./appContainer";
+import type { LLMRouter } from "./services/LLMRouter";
+import type { TemplateLoader } from "./services/TemplateLoader";
+import type { NoteWriter } from "./services/NoteWriter";
+import type { ToolHandler } from "./services/ToolHandler";
+import type { WebSearchService } from "./services/WebSearchService";
+import type { PromptOptimizerService } from "./services/PromptOptimizerService";
+import type { SecretStore } from "./services/SecretStore";
+import type { PluginDataStore } from "./services/PluginDataStore";
+import type { ConversationService } from "./services/ConversationService";
+import type { ViewManager } from "./services/ViewManager";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
-	conversations!: Conversation[];
 	/** Decrypted API keys held only in memory — never written to disk as plaintext. */
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
 	plaintextMistralKey = "";
 	plaintextSearchKey = "";
 
-	// Lifecycle/data/conversation/view services extracted from the plugin (ADR-103 / #121).
-	secretStore!: SecretStore;
-	pluginDataStore!: PluginDataStore;
-	conversationService!: ConversationService;
-	viewManager!: ViewManager;
-
-	llmRouter!: LLMRouter;
+	// The composition root (ADR-103 / #122) owns the services; the plugin exposes
+	// each as a getter so `plugin.llmRouter` etc. keep working with no call-site changes.
+	container!: AppContainer;
+	// ConversationStore is a direct field: it OWNS the conversation list and must
+	// exist before AppContainer.create() runs loadPluginData (which writes to it).
 	conversationStore!: ConversationStore;
-	templateLoader!: TemplateLoader;
-	noteWriter!: NoteWriter;
-	webSearchService!: WebSearchService;
-	toolHandler!: ToolHandler;
-	promptOptimizerService!: PromptOptimizerService;
+
+	/** The ConversationStore owns the list; this is a read/write accessor (ADR-103 / #122). */
+	get conversations(): Conversation[] { return this.conversationStore.getAll(); }
+	set conversations(v: Conversation[]) { this.conversationStore.setAll(v); }
+
+	get pluginDataStore(): PluginDataStore { return this.container?.pluginDataStore as PluginDataStore; }
+	get secretStore(): SecretStore { return this.container?.secretStore as SecretStore; }
+	get conversationService(): ConversationService { return this.container?.conversationService as ConversationService; }
+	get viewManager(): ViewManager { return this.container?.viewManager as ViewManager; }
+	get llmRouter(): LLMRouter { return this.container?.llmRouter as LLMRouter; }
+	get templateLoader(): TemplateLoader { return this.container?.templateLoader as TemplateLoader; }
+	get noteWriter(): NoteWriter { return this.container?.noteWriter as NoteWriter; }
+	get webSearchService(): WebSearchService { return this.container?.webSearchService as WebSearchService; }
+	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
+	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
 	async onload(): Promise<void> {
-		// PluginDataStore first: loadPluginData populates settings/conversations/keys
-		// that the provider services below read at construction.
-		this.pluginDataStore = new PluginDataStore(this);
-		await this.pluginDataStore.loadPluginData();
-
-		const anthropicSvc = new AnthropicService(this.app, this.settings, this.plaintextApiKey);
-		const openaiSvc = new OpenAIProvider(this.app, this.settings, this.plaintextOpenAIKey);
-		const mistralSvc = new MistralService(this.app, this.settings, this.plaintextMistralKey);
-		this.llmRouter = new LLMRouter(anthropicSvc, openaiSvc, mistralSvc);
+		// ConversationStore owns the conversation list and must exist before
+		// AppContainer.create() runs loadPluginData (which writes conversations
+		// through the plugin.conversations accessor → the store). The container
+		// then loads data and constructs every remaining service in order.
 		this.conversationStore = new ConversationStore(this);
-		this.templateLoader = new TemplateLoader(this.app, this.settings);
-		this.noteWriter = new NoteWriter(this.app, this.settings);
-		this.webSearchService = new WebSearchService(this.settings, this.plaintextSearchKey);
-		this.toolHandler = new ToolHandler(this.noteWriter, this.webSearchService);
-		this.promptOptimizerService = new PromptOptimizerService(this.app, this, this.settings, this.llmRouter);
-
-		this.secretStore = new SecretStore(this);
-		this.viewManager = new ViewManager(this);
-		this.conversationService = new ConversationService(this);
+		this.container = await AppContainer.create(this);
 
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
