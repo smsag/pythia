@@ -20,9 +20,8 @@ export interface HeaderDeps {
 	/** The view content pane (`containerEl.children[1]`) — the model popover mounts here. */
 	getContainer(): HTMLElement;
 	registerDomEvent: DomEventRegistrar;
-	// History surfaces (HistoryController).
+	// History surface (HistoryController).
 	openHistoryView(): void;
-	openQuickSwitcher(): void;
 	handleDeleteConversation(): void;
 	// Context inspector (ContextInspectorController).
 	revealContextInspector(): void;
@@ -37,9 +36,9 @@ export interface HeaderDeps {
  * engineering-review #120): the header row (history · name · rename · link ·
  * delete · [ctx chip] · model · new), the inline rename flow, the model badge +
  * anchored model popover, and the copy-deep-link action. `mount()` builds the
- * header; `renderHeader`/`updateModelBadge` refresh it; `getConvNameEl`/
- * `getChipEl` expose the two elements other controllers need. Behaviour is
- * identical to the inline methods it replaced.
+ * header; `renderHeader`/`updateModelBadge` refresh it; `getChipEl` exposes the
+ * context chip other controllers need. Behaviour is identical to the inline
+ * methods it replaced.
  */
 export class HeaderController {
 	private convNameEl!: HTMLElement;
@@ -56,8 +55,6 @@ export class HeaderController {
 
 	constructor(private readonly d: HeaderDeps) {}
 
-	/** The conversation-name button (HistoryController's outside-click ignores it). */
-	getConvNameEl(): HTMLElement { return this.convNameEl; }
 	/** The context-budget percent chip (ContextInspectorController drives it). */
 	getChipEl(): HTMLButtonElement { return this.ctxChipEl; }
 
@@ -75,22 +72,26 @@ export class HeaderController {
 		// new-conversation button is always the last child so its position never
 		// shifts as other controls show/hide.
 
-		// ── Far left: conversation history ─────────────────────────────────────
+		// ── Far left: conversation search ──────────────────────────────────────
+		// The loupe opens the full conversation panel (browse + content search) with
+		// its search input focused (ADR-107). It replaced the former history icon;
+		// the panel is now the single conversation-search surface.
 		const historyBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
 			attr: { title: t("historyTooltip") },
 		});
-		setIcon(historyBtn, "history");
+		setIcon(historyBtn, "search");
 		this.d.registerDomEvent(historyBtn, "click", () => this.d.openHistoryView());
 
 		// ── Conversation name (grows; hosts the inline rename input) ───────────
+		// Plain, non-interactive text (ADR-107): the title used to open the quick
+		// switcher on click; that surface was folded into the search panel above.
 		const titleGroup = header.createDiv({ cls: "p-title-group" });
 
-		this.convNameEl = titleGroup.createEl("button", {
+		this.convNameEl = titleGroup.createDiv({
 			cls: "p-title",
 			text: t("noConversation"),
 		});
-		this.d.registerDomEvent(this.convNameEl, "click", () => this.d.openQuickSwitcher());
 
 		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
 		this.renameWrapEl.style.display = "none";
@@ -184,7 +185,7 @@ export class HeaderController {
 		this.copyLinkBtn.style.display = "";
 		this.renameBtn.style.display = "";
 		this.deleteConvBtn.style.display = "";
-		this.convNameEl.setText(conv.name + " ▾");
+		this.convNameEl.setText(conv.name);
 		if (conv.templateId) {
 			const tplName =
 				conv.templateId
@@ -214,7 +215,7 @@ export class HeaderController {
 
 	/** Update just the title text (e.g. after an auto-generated title). */
 	setConvName(name: string): void {
-		this.convNameEl.setText(name + " ▾");
+		this.convNameEl.setText(name);
 	}
 
 	/** Format a context window as "1M" / "200k" / "128k". */
@@ -380,7 +381,7 @@ export class HeaderController {
 				conv.name = newName;
 				void this.d.plugin.conversationStore.save(conv);
 				void this.d.plugin.renameConversationFile(conv);
-				this.convNameEl.setText(newName + " ▾");
+				this.convNameEl.setText(newName);
 			}
 		}
 	}

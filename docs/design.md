@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-27 — fork branch-back fix (ADR-096): the fork selection is now trimmed at storage and search, so the source-side accent fork-origin mark (`<pythia-fork>` / `.p-fork-origin`) re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span, which had silently broken when a fork selection carried edge whitespace / a block-boundary newline.*
+*Last updated: 2026-08-28 — ADR-107: one conversation-search surface. The header far-left icon is now a **search loupe** that opens the `.p-history` panel with its search input focused and ↑/↓/Enter keyboard nav; the header **title is plain, non-interactive text** (click + `▾` removed). The anchored quick switcher (`.p-switcher` popover) was folded into the panel and deleted.*
+
+*Previously, 2026-08-27 — fork branch-back fix (ADR-096): the fork selection is now trimmed at storage and search, so the source-side accent fork-origin mark (`<pythia-fork>` / `.p-fork-origin`) re-finds and paints — restoring the blue highlight, the tap-to-open inline summary anchor, and the "Forked from" scroll-to-span, which had silently broken when a fork selection carried edge whitespace / a block-boundary newline.*
 
 *Previously, 2026-08-27 — the optimizer output is now the **bare rewritten prompt** (ADR-094): a shared `OUTPUT_ONLY_INSTRUCTION` forbids conversational wrapper and a pure `cleanOptimizedOutput()` strips residual preamble / code fences / `---` rules, so "Sure! Here's…" no longer lands in the input box.*
 
@@ -162,11 +164,11 @@ Copy buttons use `opacity: 0` + `:hover` reveal. On iOS/Android (no hover state)
 
 ### Header
 ```
-[ ⌫ history ][ Conversation title ▾ ……grows…… ][ ✎ pencil ][ 🔗 link ][ 🗑 trash ][ model badge ][ + plus ]
+[ 🔍 search ][ Conversation title ……grows…… ][ ✎ pencil ][ 🔗 link ][ 🗑 trash ][ model badge ][ + plus ]
 ```
-Order left→right (ADR-098): **history · name (grows) · rename · link · delete · [ctx chip] · model · new**. The name's `.p-title-group` is the only `flex: 1` region, so it absorbs all free space and the action cluster + **"+" stay pinned to the right edge**; the "+" is always the header's last flex child so its x never shifts as other controls show/hide. Empty state (no active conversation) shows only **history · name · +** (rename/link/delete `display:none`, model badge hidden by `updateModelBadge`).
-- History ⌫ (`history` icon, far left): opens the in-panel "all conversations" overlay (`.p-history`). Its `.p-history-head` uses the **same padding as `.p-header`** so the overlay's "+" lands at the identical position — no jump on open/close.
-- Title: 12px, `font-weight: 600`, truncated, flex: 1, clickable to open the quick switcher
+Order left→right (ADR-098): **search · name (grows) · rename · link · delete · [ctx chip] · model · new**. The name's `.p-title-group` is the only `flex: 1` region, so it absorbs all free space and the action cluster + **"+" stay pinned to the right edge**; the "+" is always the header's last flex child so its x never shifts as other controls show/hide. Empty state (no active conversation) shows only **search · name · +** (rename/link/delete `display:none`, model badge hidden by `updateModelBadge`).
+- Search 🔍 (`search` loupe icon, far left, ADR-107): opens the in-panel conversation overlay (`.p-history`) with its search input focused. Its `.p-history-head` uses the **same padding as `.p-header`** so the overlay's "+" lands at the identical position — no jump on open/close.
+- Title: 12px, `font-weight: 600`, truncated, flex: 1. **Plain, non-interactive text** (ADR-107) — no click, no `▾`; the old title-click quick switcher was folded into the search panel.
 - Pencil ✎ (`.p-rename-btn`): visible when a conversation is active; opens inline rename mode
 - Link 🔗: copies `obsidian://pythia?cmd=resume&id=…` to clipboard; check-mark feedback
 - Model badge: monospace, 10px, `var(--text-faint)`, clickable to open the **model popover** (`.p-model-pop`, F7/ADR-074): provider groups (ANTHROPIC/OPENAI/MISTRAL), rows of model name + right-aligned context window (1M/200k/128k), a `Reasoning` tag on reasoning models, an accent check on the active row, and a footer `Gesprächseinstellungen…` → full settings modal. Selecting applies provider+model immediately. The chip shows an accent inset border (`.p-model.open`) while open. Each row also carries a **"good for" example line** (`.p-model-pop-good`, 9px `--text-faint`, ADR-102) — hidden by default, revealed on `:hover` on desktop (gated `@media (hover: hover)`) and by a first tap on touch, which *arms* the row (`.armed`) and shows a `.p-model-pop-taphint` ("Tap again to select") accent hint; a second tap confirms. Row markup is a `.p-model-pop-line` (name/tag/ctx/check) plus the good/hint lines, so the row is a flex **column**. Strings come from `models/modelGuidance.ts` (en/de, keyed by model id).
@@ -201,9 +203,13 @@ Both summaries — conversation and favorites — are surfaced as collapsible ca
 
 Outline card (`--background-primary`, 1px border, radius 6) rendered in `.p-inspector-wrap` as the **first element of the conversation view** (above the summary cards); `fillContextInspector()` builds it and is re-called from `renderReferencePills()` on note add/remove. Shown only when there are context notes **or** usage ≥80%. Header: `file-text` icon + `Kontext · ~Xk` (or `Kontext · used / window` when tight) + a warning percent + ▸/▾ chevron (collapsed by default; open state persists in-session). **Normal body:** context notes as wikilink rows with `~tokens` + `×` remove, a `+ Notiz hinzufügen` link, and a `+ Systemprompt ~est` label. **Budget-breakdown body** (≥80%): a conversation-history row (message count), each note, and the system prompt — each with a 64px `.p-ins-bar` mini-bar + token value — then a warning row (`alert-triangle` + "Fast voll — …") with an outlined-accent `Zusammenfassen` button. Outline cards (summaries + this inspector) are the only components that keep a filled/bordered box.
 
-### In-panel history view (`.p-history`, F10)
+### Conversation search / history panel (`.p-history`)
 
-A full-panel overlay (`position:absolute; inset:0`) opened from the header `history` button: its own header (`arrow-left` back · `Gespräche` · `+`), a search field (shared `.p-switcher-search` styles), and a date-grouped list (`.p-history-group` HEUTE/GESTERN/DIESE WOCHE/"Month YYYY"). Rows show a title + mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line; forks indent under their source with a `git-branch` icon; the active conversation is accent-tinted with an `aktiv` tag; hover reveals a `✕` delete. Escape or Back closes. Additive to the quick switcher (F9) and the command-palette modal.
+The single in-view conversation surface (ADR-107): a full-panel overlay (`position:absolute; inset:0`) opened from the header **loupe** with its **search input auto-focused**. Its own header (`arrow-left` back · `Gespräche` · `+`), a search field (`.p-switcher-search`), and the list.
+- **Empty box → browse:** a date-grouped list (`.p-history-group` HEUTE/GESTERN/DIESE WOCHE/"Month YYYY"); rows show a title + mono `Model · N Nachr. · ⑂ forks · ★ favorites` sub-line; forks indent under their source with a `git-branch` icon.
+- **Query → search:** a flat, relevance-ranked list (TF-IDF, ADR-106) with a mono `.p-history-snippet` match line under each row.
+- **Keyboard:** ↑/↓ move a `.selected` row (hover-tinted), Enter opens it, Esc or Back closes. The active conversation is accent-tinted with an `aktiv` tag; hover/selection reveals a `✕` delete.
+- The command-palette `ConversationSuggestModal` is the other entry point. The former quick switcher (title-click popover) was folded into this panel.
 
 ### Chat scroll area
 
@@ -282,10 +288,6 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 ### Effort segmented control (`.p-effort-seg`, F8)
 
 The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` (accent fill, `--text-on-accent`). The leading **Standard** segment means "no override" (the semantic the old dropdown's empty option carried). When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
-
-### Quick switcher (`.p-switcher`, F9)
-
-Header title click opens an anchored `.p-switcher` (fixed under the header, shadowed, kept under `.pythia-view`): a search row, then result rows (title with matched-substring highlight + mono `Model · N Nachrichten · date` sub-line) with forks indented under their source (`git-branch` icon, `Zweig · N Nachrichten`), a hover `✕` delete, keyboard nav (↑/↓/↵/Esc), and a footer key-hint. Additive — the command palette still opens the centered fuzzy `ConversationSuggestModal`.
 
 ### Conversation settings modal (temperature)
 

@@ -28,13 +28,10 @@ const de: Strings = {
 
 	// ── Quick switcher / history ──────────────────────────────────────────────
 	switcherSearchPlaceholder: "Suchen…",
-	switcherHint:              "↑↓ Navigieren · ↵ Öffnen · esc Schließen",
 	msgCount:                  "{{n}} Nachrichten",
 	msgCountShort:             "{{n}} Nachr.",
 	branchLabel:               "Zweig",
-	dateToday:                 "heute",
-	dateYesterday:             "gestern",
-	historyTooltip:            "Gespräche",
+	historyTooltip:            "Gespräche durchsuchen",
 	histTitle:                 "Gespräche",
 	backTooltip:               "Zurück",
 	histToday:                 "HEUTE",
