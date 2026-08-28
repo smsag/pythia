@@ -18,6 +18,11 @@ import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
+import { IframeEmbeddingProvider } from "./services/embedding/host/iframeEmbeddingProvider";
+import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
+import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
+import { DEFAULT_MIN_SCORE, type RelatedResult } from "./services/embedding/relatedConversations";
+import type { EmbeddingModelId } from "./models/embeddingModels";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -48,6 +53,42 @@ export default class PythiaPlugin extends Plugin {
 	get webSearchService(): WebSearchService { return this.container?.webSearchService as WebSearchService; }
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
+
+	// Related conversations (ADR-109): the embedding index service is built lazily on
+	// first use, so the heavy model/iframe only loads when the feature is actually used.
+	private relatedService: ConversationIndexService | null = null;
+	private relatedProvider: IframeEmbeddingProvider | null = null;
+	private relatedModelId: EmbeddingModelId | null = null;
+
+	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109). */
+	async getRelatedConversations(sourceId: string): Promise<RelatedResult[]> {
+		return this.ensureRelatedService().getRelated(sourceId, this.conversations, {
+			minScore: DEFAULT_MIN_SCORE,
+		});
+	}
+
+	private ensureRelatedService(): ConversationIndexService {
+		const modelId = this.settings.embeddingModelId;
+		if (this.relatedService && this.relatedModelId === modelId) return this.relatedService;
+		// First use, or the model setting changed → tear down any prior provider/index.
+		this.relatedProvider?.unload();
+		new Notice(t("relatedFirstRun"));
+		this.relatedProvider = new IframeEmbeddingProvider(modelId);
+		this.relatedModelId = modelId;
+		this.relatedService = new ConversationIndexService(
+			this.relatedProvider,
+			new VaultIndexStore(this, modelId)
+		);
+		return this.relatedService;
+	}
+
+	/** Drop the embedding service so the next use rebuilds with the current model. */
+	invalidateRelatedService(): void {
+		this.relatedProvider?.unload();
+		this.relatedProvider = null;
+		this.relatedService = null;
+		this.relatedModelId = null;
+	}
 
 	async onload(): Promise<void> {
 		// ConversationStore owns the conversation list and must exist before
@@ -305,6 +346,7 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
+		this.relatedProvider?.unload();
 	}
 
 	// ── Facades delegating to the extracted services (ADR-103 / #121) ──────────

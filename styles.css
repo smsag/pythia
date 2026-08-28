@@ -181,6 +181,37 @@
   font-size: 9px;
   color: var(--text-faint);
 }
+/* Relate affordance (ADR-109): hover/selection-revealed icon → related mode. */
+.p-history-relate {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.08s, color 0.12s;
+}
+.p-history-relate svg { width: 14px; height: 14px; }
+.p-history-relate:hover { color: var(--color-accent); }
+.p-history-row:hover .p-history-relate,
+.p-history-row.selected .p-history-relate { opacity: 1; }
+/* "Related to …" chip shown above the list while in related mode. */
+.p-history-chip-wrap:empty { display: none; }
+.p-history-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s2) var(--s2) 0;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border-radius: 6px;
+  font-size: var(--font-smaller);
+  color: var(--text-normal);
+}
+.p-history-chip-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-history-chip-clear { display: flex; flex-shrink: 0; cursor: pointer; color: var(--text-muted); }
+.p-history-chip-clear svg { width: 13px; height: 13px; }
+.p-history-chip-clear:hover { color: var(--text-normal); }
 .p-history-row-title {
   font-size: var(--font-small);
   color: var(--text-normal);

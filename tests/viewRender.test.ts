@@ -550,3 +550,82 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(panelEl(pane)).toBeNull();
 	});
 });
+
+// ── Related conversations (ADR-109 M3) ────────────────────────────────────────
+//
+// The relate icon (hover/long-press) switches the panel into "related mode": a
+// "Related to X" chip and only the conversations getRelated() returned. The
+// embedding runtime is stubbed via plugin.getRelatedConversations so these tests
+// never touch the real model/iframe.
+
+const openPanel = (view: PythiaSidebarView): void =>
+	(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+const stubRelated = (plugin: InstanceType<typeof PythiaPlugin>, fn: (id: string) => Promise<{ id: string; score: number }[]>): void => {
+	(plugin as unknown as { getRelatedConversations: typeof fn }).getRelatedConversations = fn;
+};
+const rowTitles = (pane: () => Element): string[] =>
+	Array.from(pane().querySelectorAll<HTMLElement>(".p-history-row-title")).map((e) => e.textContent ?? "");
+
+describe("related conversations (ADR-109 M3)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	async function seedPair(): Promise<void> {
+		await seedConversation(plugin, { id: "src", name: "Source topic", messages: [userMsg("m1", "hello")] } as Partial<Conversation>);
+		await seedConversation(plugin, { id: "rel", name: "Related topic", messages: [userMsg("m2", "world")] } as Partial<Conversation>);
+	}
+
+	it("shows a relate icon on rows", async () => {
+		await seedPair();
+		const { view, pane } = await mountView(plugin);
+		openPanel(view);
+		expect(pane().querySelector(".p-history-relate")).not.toBeNull();
+	});
+
+	it("clicking relate opens related mode: a chip plus only the returned conversations", async () => {
+		await seedPair();
+		stubRelated(plugin, async () => [{ id: "rel", score: 0.9 }]);
+		const { view, pane } = await mountView(plugin);
+		openPanel(view);
+
+		pane().querySelector<HTMLElement>(".p-history-relate")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await tick(); await tick();
+
+		expect(pane().querySelector(".p-history-chip")).not.toBeNull(); // "Related to …" chip
+		expect(pane().querySelector(".p-history-group")).toBeNull();      // flat, no date buckets
+		expect(rowTitles(pane)).toEqual(["Related topic"]);              // only the related result
+	});
+
+	it("clearing the chip returns to the normal browse list", async () => {
+		await seedPair();
+		stubRelated(plugin, async () => [{ id: "rel", score: 0.9 }]);
+		const { view, pane } = await mountView(plugin);
+		openPanel(view);
+		pane().querySelector<HTMLElement>(".p-history-relate")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await tick(); await tick();
+
+		pane().querySelector<HTMLElement>(".p-history-chip-clear")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(pane().querySelector(".p-history-chip")).toBeNull();  // chip gone
+		expect(pane().querySelector(".p-history-group")).not.toBeNull(); // browse view restored
+		expect(rowTitles(pane).length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("typing exits related mode", async () => {
+		await seedPair();
+		stubRelated(plugin, async () => [{ id: "rel", score: 0.9 }]);
+		const { view, pane } = await mountView(plugin);
+		openPanel(view);
+		pane().querySelector<HTMLElement>(".p-history-relate")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await tick(); await tick();
+		expect(pane().querySelector(".p-history-chip")).not.toBeNull();
+
+		const input = panelInput(pane);
+		input.value = "source";
+		input.dispatchEvent(new Event("input"));
+		expect(pane().querySelector(".p-history-chip")).toBeNull(); // typing cleared related mode
+	});
+});

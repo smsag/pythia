@@ -19,6 +19,9 @@ export interface HistoryDeps {
 	isStreaming(): boolean;
 	setActiveConversation(conv: Conversation): Promise<void>;
 	renderHeader(): void;
+	/** Semantically related conversations for a source (ADR-109). When absent, the
+	 *  relate affordance is not shown. */
+	getRelated?(sourceId: string): Promise<{ id: string; score: number }[]>;
 }
 
 /**
@@ -108,6 +111,11 @@ export class HistoryController {
 			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
 		});
 
+		// Related-conversations mode (ADR-109): a source conversation's semantic
+		// neighbours, behind a dismissible chip. null = normal browse/search.
+		const chipEl = overlay.createDiv({ cls: "p-history-chip-wrap" });
+		let related: { sourceId: string; sourceName: string; results: { id: string; score: number }[]; loading: boolean } | null = null;
+
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
 
 		// Searchable text per conversation, built once and memoized for the life of
@@ -130,6 +138,68 @@ export class HistoryController {
 			rows.forEach((r, i) => r.el.toggleClass("selected", i === selectedIdx));
 			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
 		};
+
+		// ── Related mode (ADR-109) ────────────────────────────────────
+		const renderChip = () => {
+			chipEl.empty();
+			if (!related) return;
+			const chip = chipEl.createDiv({ cls: "p-history-chip" });
+			chip.createSpan({ cls: "p-history-chip-label", text: t("relatedChip", { name: related.sourceName }) });
+			const clear = chip.createSpan({ cls: "p-history-chip-clear", attr: { title: t("relatedClearTooltip") } });
+			setIcon(clear, "x");
+			clear.addEventListener("click", () => exitRelated());
+		};
+
+		const renderRelated = () => {
+			listEl.empty();
+			rows = [];
+			selectedIdx = 0;
+			renderChip();
+			if (!related) return;
+			if (related.loading) {
+				listEl.createDiv({ cls: "p-nav-empty", text: t("relatedLoading") });
+				return;
+			}
+			const byId = new Map(this.d.plugin.conversations.map((c) => [c.id, c]));
+			let shown = 0;
+			for (const r of related.results) {
+				const conv = byId.get(r.id);
+				if (!conv) continue; // deleted since the query ran
+				const isFork = !!conv.forkedFromId && byId.has(conv.forkedFromId);
+				makeRow(conv, isFork, false);
+				shown++;
+			}
+			if (shown === 0) listEl.createDiv({ cls: "p-nav-empty", text: t("relatedEmpty") });
+			paintSelection();
+		};
+
+		const enterRelated = async (conv: Conversation) => {
+			if (!this.d.getRelated) return;
+			related = { sourceId: conv.id, sourceName: conv.name, results: [], loading: true };
+			renderRelated();
+			try {
+				const results = await this.d.getRelated(conv.id);
+				if (related?.sourceId === conv.id) {
+					related.results = results;
+					related.loading = false;
+					renderRelated();
+				}
+			} catch (e) {
+				new Notice(t("relatedFailed", { error: e instanceof Error ? e.message : String(e) }));
+				related = null;
+				renderChip();
+				buildList(input.value);
+			}
+		};
+
+		const exitRelated = () => {
+			related = null;
+			renderChip();
+			buildList(input.value);
+		};
+
+		/** Re-render whichever mode is active (used after a row delete). */
+		const refreshList = () => (related ? renderRelated() : buildList(input.value));
 
 		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
@@ -158,6 +228,13 @@ export class HistoryController {
 				const snippet = bestMatchSnippet(snippetTokens, conv);
 				if (snippet) main.createDiv({ cls: "p-history-snippet", text: snippet });
 			}
+			// Relate affordance (ADR-109): a hover-revealed icon on desktop; a
+			// long-press on the row on touch devices. Both open related mode.
+			if (this.d.getRelated) {
+				const relate = row.createSpan({ cls: "p-history-relate", attr: { title: t("relatedTooltip") } });
+				setIcon(relate, "git-compare");
+				relate.addEventListener("click", (e) => { e.stopPropagation(); void enterRelated(conv); });
+			}
 			if (conv.id === this.d.getConversation()?.id) {
 				row.createSpan({ cls: "p-history-active", text: t("navActiveTag") });
 			} else {
@@ -165,10 +242,24 @@ export class HistoryController {
 				setIcon(del, "trash");
 				del.addEventListener("click", (e) => {
 					e.stopPropagation();
-					this.deleteConversationWithConfirm(conv, () => buildList(input.value));
+					this.deleteConversationWithConfirm(conv, () => refreshList());
 				});
 			}
-			row.addEventListener("click", () => openConv(conv));
+
+			// Long-press → related mode on touch; suppress the click that follows.
+			let lpTimer: ReturnType<typeof setTimeout> | null = null;
+			let lpFired = false;
+			const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+			if (this.d.getRelated) {
+				row.addEventListener("touchstart", () => {
+					lpFired = false;
+					lpTimer = setTimeout(() => { lpFired = true; void enterRelated(conv); }, 500);
+				}, { passive: true });
+				row.addEventListener("touchend", clearLp);
+				row.addEventListener("touchmove", clearLp);
+				row.addEventListener("touchcancel", clearLp);
+			}
+			row.addEventListener("click", () => { if (lpFired) { lpFired = false; return; } openConv(conv); });
 			rows.push({ conv, el: row });
 		};
 
@@ -219,7 +310,10 @@ export class HistoryController {
 			paintSelection();
 		};
 
-		input.addEventListener("input", () => buildList(input.value));
+		input.addEventListener("input", () => {
+			if (related) { related = null; renderChip(); } // typing exits related mode
+			buildList(input.value);
+		});
 		input.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (e.key === "ArrowDown") { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, rows.length - 1); paintSelection(); }
 			else if (e.key === "ArrowUp") { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); paintSelection(); }
