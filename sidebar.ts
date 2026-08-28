@@ -330,7 +330,6 @@ export class PythiaSidebarView extends ItemView {
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 			openHistoryView: () => this.historyController.openHistoryView(),
-			openQuickSwitcher: () => this.historyController.openQuickSwitcher(),
 			handleDeleteConversation: () => void this.historyController.handleDeleteConversation(),
 			revealContextInspector: () => this.contextInspector.reveal(),
 			updateContextBar: () => this.contextInspector.updateContextBar(),
@@ -379,7 +378,6 @@ export class PythiaSidebarView extends ItemView {
 		this.historyController = new HistoryController({
 			plugin: this.plugin,
 			getContainer: () => this.containerEl.children[1] as HTMLElement,
-			getConvNameEl: () => this.headerController.getConvNameEl(),
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
 			setActiveConversation: (conv) => this.setActiveConversation(conv),

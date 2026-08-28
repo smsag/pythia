@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-28 — ADR-106 (conversation search ranks by lexical TF-IDF over content — title + LLM summary + message bodies via the existing `services/noteRelevance.ts` scorer, new `services/conversationSearch.ts` + a `SuggestModal`-based picker with match snippets — chosen over on-device semantic embeddings after reading obsidian-similarity's source; the transformers.js/MiniLM design is documented as the Phase-2 seam).*
+*Last updated: 2026-08-28 — ADR-107 (one conversation-search surface: the quick switcher is folded into the history panel, which is now opened by a header loupe icon with its search input auto-focused and ↑/↓/Enter keyboard nav; the header title becomes plain, non-interactive text — its click and `▾` removed).*
+
+*Previously, 2026-08-28 — ADR-106 (conversation search ranks by lexical TF-IDF over content — title + LLM summary + message bodies via the existing `services/noteRelevance.ts` scorer, new `services/conversationSearch.ts` + a `SuggestModal`-based picker with match snippets — chosen over on-device semantic embeddings after reading obsidian-similarity's source; the transformers.js/MiniLM design is documented as the Phase-2 seam).*
 
 *Previously, 2026-08-28 — ADR-104 (`appContainer.ts` composition root — an async `AppContainer.create()` factory constructs every plugin service in dependency order after `loadPluginData`, and the plugin exposes each as a getter so `plugin.llmRouter` etc. keep working with no call-site changes; `ConversationStore` now OWNS the conversation list and `plugin.conversations` is a read/write accessor, ending the bidirectional coupling).*
 
@@ -1558,3 +1560,22 @@ Wired into all three conversation-search surfaces (they were each title-substrin
 **Alternatives rejected:** *transformers.js embeddings now* (option analysed in full above — the large subsystem earns little over summary-augmented lexical for long documents; held as the documented Phase-2 seam if real usage shows cross-language recall gaps, e.g. English query against a German chat); *TensorFlow.js / Universal Sentence Encoder* (dated, English-first, ~25 MB model, flaky WebGL in the webview — transformers.js dominates it on every axis, which is why obsidian-similarity itself uses transformers.js); *keeping title-only fuzzy* (the actual gap).
 
 **Consequence:** conversation search now ranks by content relevance with a visible match snippet, at near-zero cost. **Watch-item:** if cross-language or true-synonym recall becomes a frequent miss, add a semantic layer using obsidian-similarity's proven design — iframe-isolated transformers.js, chunk-level max-pairwise cosine, Int8-quantized packed index, `contentHash` incremental — rather than reinventing it. Tests: `tests/conversationSearch.test.ts` (haystack title-weighting + summary-synonym recall, ranking/filtering, snippet extraction/truncation).
+
+### ADR-107 — One conversation-search surface: fold the quick switcher into the history panel, opened by a header loupe
+
+**Status:** Active
+
+**Context:** After ADR-106, there were *three* conversation-search entry points: the header-title click opened an anchored **quick switcher** popover (`.p-switcher`), the far-left header icon opened the full **history panel** (`.p-history`), and the command palette opened a modal. The switcher and the panel did nearly the same thing (search + browse conversations) with two separate code paths and two visual treatments — redundant, and the title-click affordance (`Name ▾`) was an easy-to-miss, non-obvious way to reach search.
+
+**Decision:** Collapse the two in-view surfaces into one.
+1. **Header icon → loupe.** The far-left header button's icon changes from `history` to `search` (`HeaderController`), tooltip → "Search conversations" / "Gespräche durchsuchen". It still opens the same `.p-history` overlay.
+2. **Auto-focus search on open.** `openHistoryView` focuses the search input immediately, so the panel opens ready to type — it *is* the search surface now, not just a browse list.
+3. **Keyboard navigation added to the panel.** ↑/↓ move a `.selected` row, Enter opens it, Esc closes — recovering what the switcher had, so the auto-focused input is fully keyboard-drivable. Selection is a flat `rows[]` collected during render (group headers excluded), working in both browse and search modes.
+4. **Quick switcher removed.** `HistoryController.openQuickSwitcher`, the `.p-switcher` popover markup/CSS, the `HeaderDeps.openQuickSwitcher` wiring, and the now-orphaned `getConvNameEl`, `switcherHint`, and `dateToday`/`dateYesterday` i18n keys are all deleted. The `.p-switcher-search`/`-input`/`-del`/`-fork-icon` classes stay — the panel reuses them.
+5. **Title is now inert.** The header conversation title drops its click handler and the `▾` dropdown chevron and renders as plain, non-interactive text (`.p-title` loses `cursor:pointer`/hover). Clicking it does nothing.
+
+Behaviour of the panel's search/browse itself is unchanged from ADR-106 (empty → date-grouped/fork-indented; query → flat relevance-ranked with snippets).
+
+**Rejected / deferred:** keeping the anchored popover as a lightweight second surface (the redundancy was the problem); porting the switcher's inline per-row rename into the panel (dropped — the header pencil renames the active conversation; renaming an arbitrary conversation from the list is a rare need, revisit if asked). The command-palette `ConversationSuggestModal` stays as the third, keyboard-command entry point.
+
+**Consequence:** one obvious way to find a conversation — a labelled loupe that opens a focused, keyboard-drivable search/browse panel. Fewer surfaces, one code path, less CSS. **Coverage:** four `tests/viewRender.test.ts` smoke tests exercise the DOM path — loupe click opens the panel with the search input focused, empty box browses (date groups) while a query switches to a flat ranked list with a snippet, ↑/↓ move the `.selected` row and Enter opens+closes, and the header title renders as an inert chevron-free `<div>`. (The fixture gained global `createDiv`/`createEl`/`createSpan`, which `HistoryController.rowSub` needs.)

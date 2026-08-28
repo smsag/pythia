@@ -56,6 +56,13 @@ function installObsidianDomHelpers(): void {
 	p.setAttr = function (this: Element, k: string, v: string): void { this.setAttribute(k, v); };
 	p.setCssStyles = function (this: Element, s: Record<string, string>): void { Object.assign((this as HTMLElement).style, s || {}); };
 
+	// Obsidian also exposes createDiv/createEl/createSpan as GLOBALS that return a
+	// detached element (used e.g. by HistoryController.rowSub). happy-dom has none.
+	const G = globalThis as unknown as Record<string, unknown>;
+	G.createEl = (tag: string, o?: Opts): Element => { const e = document.createElement(tag); applyOpts(e, o); return e; };
+	G.createDiv = (o?: Opts): Element => (G.createEl as (t: string, o?: Opts) => Element)("div", o);
+	G.createSpan = (o?: Opts): Element => (G.createEl as (t: string, o?: Opts) => Element)("span", o);
+
 	// Globals the render path may touch under happy-dom.
 	(globalThis as unknown as { requestAnimationFrame: (f: () => void) => number }).requestAnimationFrame = (f: () => void) => { f(); return 0; };
 	if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== "function") {
@@ -440,5 +447,106 @@ describe("render paths — incremental append & delete (#125 Tier 2)", () => {
 		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
 		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
 		expect(pane().querySelector('[data-msg-id="a2"]')).toBeNull();
+	});
+});
+
+// ── Conversation search / history panel (ADR-107) ─────────────────────────────
+//
+// The panel folded in the former quick switcher: the header loupe opens it with
+// the search input focused; ↑/↓ move the selection and Enter opens it; an empty
+// box browses (date groups) while a query searches (flat TF-IDF list + snippets).
+// This is the DOM path ADR-107 introduced, which otherwise has no coverage.
+
+/** Far-left header button — created first, so it's the search loupe (HeaderController). */
+const loupeBtn = (pane: () => Element): HTMLElement =>
+	pane().querySelector<HTMLElement>(".p-header .p-hdr-btn")!;
+const panelEl = (pane: () => Element): HTMLElement | null =>
+	pane().querySelector<HTMLElement>(".p-history");
+const panelInput = (pane: () => Element): HTMLInputElement =>
+	pane().querySelector<HTMLInputElement>(".p-history .p-switcher-input")!;
+const historyRows = (pane: () => Element): HTMLElement[] =>
+	Array.from(pane().querySelectorAll<HTMLElement>(".p-history-row"));
+/** openHistoryView() focuses the input inside a 0 ms timeout — let it run. */
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+describe("conversation search panel (ADR-107)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	// Three independent conversations; the last seeded ("Quartz watches") is the one
+	// mountView auto-opens. "seiko" appears only in its message body, not any title.
+	async function seedThree(): Promise<void> {
+		await seedConversation(plugin, { name: "Kayak trip planning", messages: [userMsg("k1", "we rented a kayak on the lake")] } as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Tax filing", messages: [userMsg("t1", "quarterly filing deadlines")] } as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Quartz watches", messages: [userMsg("q1", "the seiko astron was the first quartz wristwatch")] } as Partial<Conversation>);
+	}
+
+	it("header shows the search loupe and an inert, chevron-free title", async () => {
+		await seedConversation(plugin, { name: "Solo", messages: [userMsg("m1", "hi")] } as Partial<Conversation>);
+		const { pane } = await mountView(plugin);
+
+		expect(loupeBtn(pane)).not.toBeNull();             // far-left search button present
+		const title = pane().querySelector<HTMLElement>(".p-title")!;
+		expect(title.tagName).toBe("DIV");                 // no longer a <button>
+		expect(title.textContent ?? "").not.toContain("▾"); // dropdown chevron removed
+	});
+
+	it("the loupe opens the panel with the search input focused", async () => {
+		await seedThree();
+		const { pane } = await mountView(plugin);
+
+		expect(panelEl(pane)).toBeNull();                  // closed initially
+		loupeBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(panelEl(pane)).not.toBeNull();              // opened by the click wiring
+		await tick();
+		expect(document.activeElement).toBe(panelInput(pane)); // search input focused
+	});
+
+	it("empty box browses (date groups); a query switches to a flat ranked list with a snippet", async () => {
+		await seedThree();
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+
+		// Empty query → the date-grouped browse listing, all conversations, no snippets.
+		expect(pane().querySelector(".p-history-group")).not.toBeNull();
+		expect(historyRows(pane)).toHaveLength(3);
+		expect(pane().querySelector(".p-history-snippet")).toBeNull();
+
+		// Query a word that lives only in one conversation's message body → flat list,
+		// that one result, with a snippet of the matching line (content search, not title).
+		const input = panelInput(pane);
+		input.value = "seiko";
+		input.dispatchEvent(new Event("input"));
+
+		expect(pane().querySelector(".p-history-group")).toBeNull(); // flat — no date buckets
+		expect(historyRows(pane)).toHaveLength(1);
+		expect(pane().querySelector(".p-history-snippet")?.textContent).toContain("seiko");
+	});
+
+	it("↑/↓ move the selection and Enter opens the selected conversation", async () => {
+		await seedThree();
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+		const input = panelInput(pane);
+
+		// First row selected by default.
+		expect(historyRows(pane)[0].classList.contains("selected")).toBe(true);
+
+		// ArrowDown → second row selected, first deselected.
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+		expect(historyRows(pane)[0].classList.contains("selected")).toBe(false);
+		expect(historyRows(pane)[1].classList.contains("selected")).toBe(true);
+
+		// ArrowUp → back to the first.
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+		expect(historyRows(pane)[0].classList.contains("selected")).toBe(true);
+
+		// Enter opens the selected conversation → the panel closes.
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+		expect(panelEl(pane)).toBeNull();
 	});
 });

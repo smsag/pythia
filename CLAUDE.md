@@ -221,10 +221,11 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ### Header
 ```
-[ history ][ Title ▾ (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
+[ search ][ Title (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
 ```
-Order left→right (ADR-098): history · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. See `docs/design.md` for the full spec.
-- Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1
+Order left→right (ADR-098): search · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. See `docs/design.md` for the full spec.
+- Search (far left, `search` loupe icon, ADR-107): opens the `.p-history` conversation panel with its search input focused. The single in-view conversation-search surface.
+- Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1. Plain, non-interactive text (ADR-107) — no click, no `▾`.
 - Model badge: `--font-monospace`, 10px, `--text-faint`
 - Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
 
