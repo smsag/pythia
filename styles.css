@@ -971,7 +971,7 @@
 .p-msg-ai {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
+  gap: var(--s2); /* label → body → token line: a touch more room so the answer starts cleanly */
   /* Extra breathing room between a user prompt and the AI answer below it,
      on top of the inter-turn gap. */
   margin-top: var(--s1);
@@ -999,6 +999,21 @@
    provides a small, consistent separation. */
 .p-ai-body > :first-child,
 .p-summary-card-md > :first-child { margin-top: 0; }
+/* Headings: Obsidian's document-scale theme defaults make the chat rhythm jump
+   (large, asymmetric margins + document-sized type). Normalize to a steady beat —
+   more space ABOVE a heading (section break) than below (bind it to its own text) —
+   and size for the narrow chat column. The :first-child rule above still wins for a
+   leading heading, so it keeps hugging the turn-label meta line. */
+.p-ai-body :is(h1, h2, h3, h4, h5, h6),
+.p-summary-card-md :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--s4) 0 var(--s1);
+  line-height: 1.3;
+  font-weight: 600;
+}
+.p-ai-body h1, .p-summary-card-md h1 { font-size: 1.25em; }
+.p-ai-body h2, .p-summary-card-md h2 { font-size: 1.12em; }
+.p-ai-body :is(h3, h4, h5, h6),
+.p-summary-card-md :is(h3, h4, h5, h6) { font-size: 1em; }
 .p-ai-body strong,
 .p-summary-card-md strong { font-weight: 600; }
 .p-ai-body p,
@@ -1013,7 +1028,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: var(--s1);
+  margin: 6px 0; /* match the paragraph rhythm so inter-block gaps are even */
 }
 .p-ai-body li,
 .p-summary-card-md li { font-size: var(--font-small); }
@@ -1036,7 +1051,7 @@
    (e.g. a fenced code block) still gets its own .p-code-frame box. */
 .p-ai-body blockquote,
 .p-summary-card-md blockquote {
-  margin: var(--s1) 0;
+  margin: 6px 0; /* even inter-block rhythm (matches paragraphs) */
   padding-left: var(--s3);
   border-left: 3px solid var(--background-modifier-border);
   font-style: normal;
