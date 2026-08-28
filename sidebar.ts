@@ -397,11 +397,10 @@ export class PythiaSidebarView extends ItemView {
 			},
 			renderHeader: () => this.headerController.renderHeader(),
 		});
-		// The container div was created in buildChatArea (for DOM position); populate it now.
-		this.summaryController.renderSummaryCards();
 
 		// Construct-once so `inspectorOpen` survives a buildUI rebuild; DOM handles
 		// are read through getters, so a long-lived controller sees current elements.
+		// (Both controllers are populated in renderMessages, once their containers exist.)
 		this.contextInspector ??= new ContextInspectorController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -414,8 +413,6 @@ export class PythiaSidebarView extends ItemView {
 			refreshReferencePills: () => this.renderReferencePills(),
 			onSummarize: () => void this.summaryController.generateConversationSummary(),
 		});
-		// The inspector container was created in buildChatArea; populate it now.
-		this.contextInspector.refresh();
 
 		this.forkController = new ForkController({
 			plugin: this.plugin,
@@ -916,18 +913,21 @@ export class PythiaSidebarView extends ItemView {
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
-		// Context inspector is the very first thing in the conversation view.
-		// Populated by the ContextInspectorController once it is constructed at the end of buildUI.
+		// Context inspector is the very first thing in the conversation view. Create
+		// it, then populate it — the container only exists after this rebuild, so the
+		// controller must be refreshed here (not in buildUI, which runs earlier).
 		this.inspectorEl = this.messagesEl.createDiv({ cls: "p-inspector-wrap" });
+		this.contextInspector.refresh();
 
 		// The fork banner ("branched from…") comes next: on a fork it's the primary
 		// orientation cue, so it sits above the summary cards and next to the first
 		// message (ADR-084).
 		if (conv.forkedFromId) this.forkController.renderForkBanner();
 
-		// Summary "Speisekarte" cards sit below the fork info. Populated by the
-		// SummaryController once it's constructed at the end of buildUI.
+		// Summary "Speisekarte" cards sit below the fork info. Create, then populate —
+		// same reason as the inspector above.
 		this.summaryCardsEl = this.messagesEl.createDiv({ cls: "p-summary-cards" });
+		this.summaryController.renderSummaryCards();
 
 		if (msgs.length === 0) {
 			this.renderWelcome(this.messagesEl);
