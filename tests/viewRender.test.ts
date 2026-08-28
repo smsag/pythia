@@ -61,6 +61,13 @@ function installObsidianDomHelpers(): void {
 	if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== "function") {
 		(globalThis as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 	}
+	// sendMessage() mints message ids with crypto.randomUUID().
+	const g = globalThis as unknown as { crypto?: { randomUUID?: () => string } };
+	if (!g.crypto) g.crypto = {};
+	if (typeof g.crypto.randomUUID !== "function") {
+		let n = 0;
+		g.crypto.randomUUID = () => `test-uuid-${++n}`;
+	}
 }
 installObsidianDomHelpers();
 
@@ -233,5 +240,102 @@ describe("view render — surfaces present on open (#124/#125)", () => {
 		await view.setActiveConversation(noSummary);
 		expect(pane().querySelector(".p-summary-card")).toBeNull();
 		expect(pane().querySelector(".p-bubble")).not.toBeNull();
+	});
+});
+
+// ── Send / stream path (Tier 1 — the sendMessage coordinator) ─────────────────
+//
+// sendMessage() is the sibling coordinator to renderMessages(): it appends the
+// user turn, opens a streaming bubble, and routes the provider result to one of
+// three outcomes — completed-with-text, completed-empty, or errored. That routing
+// is exactly what the 2.1.1 "answer streams then vanishes" bug lived in, and it
+// had no view-level coverage. These stub the provider seam
+// (`plugin.llmRouter.streamMessage`) and assert each outcome lands correctly.
+
+interface StreamMessageFake {
+	(conv: unknown, text: string, notes: string[],
+		appendToken: (t: string) => void,
+		onComplete: (fullText: string, usage?: { inputTokens: number; outputTokens: number }) => Promise<void> | void,
+		onError: (err: Error) => void,
+		onToolCall: unknown): Promise<void>;
+}
+
+function stubStream(plugin: InstanceType<typeof PythiaPlugin>, fake: StreamMessageFake): void {
+	const router = (plugin as unknown as { llmRouter: { streamMessage: StreamMessageFake } }).llmRouter;
+	router.streamMessage = fake;
+}
+
+function setInput(view: PythiaSidebarView, text: string): void {
+	(view as unknown as { inputEl: HTMLTextAreaElement }).inputEl.value = text;
+}
+
+const isStreaming = (view: PythiaSidebarView): boolean =>
+	(view as unknown as { isStreaming: boolean }).isStreaming;
+
+describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	async function openBlank(): Promise<{ view: PythiaSidebarView; pane: () => Element; conv: Conversation }> {
+		const conv = await seedConversation(plugin, { name: "Chat", messages: [], contextNotes: [] } as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		return { view, pane, conv };
+	}
+
+	it("completes: renders and persists the assistant reply", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, appendToken, onComplete) => {
+			appendToken("Hello ");
+			appendToken("world");
+			await onComplete("Hello world", { inputTokens: 3, outputTokens: 2 });
+		});
+
+		setInput(view, "hi there");
+		await view.sendMessage();
+
+		// Persisted: user turn + assistant turn on the conversation.
+		expect(conv.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+		expect(conv.messages[1].content).toBe("Hello world");
+		// Rendered: a finalized (non-streaming) AI body carrying the text.
+		const body = pane().querySelector(".p-ai-body:not(.pythia-streaming)");
+		expect(body?.textContent).toContain("Hello world");
+		// Streaming state released.
+		expect(isStreaming(view)).toBe(false);
+	});
+
+	it("completes empty: drops the streaming bubble, keeps only the user turn", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, _appendToken, onComplete) => {
+			await onComplete("", undefined);
+		});
+
+		setInput(view, "hi");
+		await view.sendMessage();
+
+		expect(conv.messages.map((m) => m.role)).toEqual(["user"]); // no assistant turn
+		expect(pane().querySelector(".p-msg-ai")).toBeNull();        // streaming row removed
+		expect(pane().querySelector(".p-bubble")).not.toBeNull();    // user bubble stays
+		expect(isStreaming(view)).toBe(false);
+	});
+
+	it("errors: drops the partial but keeps the user turn persisted (regression: failed send once lost it)", async () => {
+		const { view, pane, conv } = await openBlank();
+		stubStream(plugin, async (_c, _t, _n, appendToken, _onComplete, onError) => {
+			appendToken("partial repl");   // a partial arrived…
+			onError(new Error("stream boom")); // …then the stream failed
+		});
+
+		setInput(view, "hi");
+		await view.sendMessage();
+
+		// The user's own message must survive a failed send (persisted before streaming).
+		expect(conv.messages.map((m) => m.role)).toEqual(["user"]);
+		expect(pane().querySelector(".p-msg-ai")).toBeNull();     // partial discarded
+		expect(pane().querySelector(".p-bubble")).not.toBeNull(); // user bubble stays
+		expect(isStreaming(view)).toBe(false);                    // not stuck streaming
 	});
 });

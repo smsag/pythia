@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-28 — #125: added view-render smoke tests (`tests/viewRender.test.ts`) that mount the real `PythiaSidebarView` + headless plugin against a stubbed `obsidian` (`tests/mocks/obsidian.ts` via a Vitest `resolve.alias`; happy-dom + polyfilled Obsidian DOM helpers) and assert each surface renders on open — closing the coverage gap that let the 2.1.2 regression (#124) ship. 443 tests. See ADR-105.*
+*Last updated: 2026-08-28 — #125 Tier 1: extended `tests/viewRender.test.ts` to the `sendMessage` coordinator — stub the provider seam (`plugin.llmRouter.streamMessage`) and assert the three stream outcomes (completed-with-text, completed-empty, errored) render/persist/clean-up correctly, covering the path the 2.1.1 vanishing-answer bug lived in. Also added a conversation-switching case (surfaces swap on switch, no stale leak). 447 tests. See ADR-105.*
+
+*Previously, 2026-08-28 — #125: added view-render smoke tests (`tests/viewRender.test.ts`) that mount the real `PythiaSidebarView` + headless plugin against a stubbed `obsidian` (`tests/mocks/obsidian.ts` via a Vitest `resolve.alias`; happy-dom + polyfilled Obsidian DOM helpers) and assert each surface renders on open — closing the coverage gap that let the 2.1.2 regression (#124) ship. See ADR-105.*
 
 *Previously, 2026-08-28 — 2.1.2: fixed a decomposition regression (#124) — `renderMessages` stopped populating the summary cards + context inspector on conversation open/switch (the two populate calls were moved into `buildUI`, where they no-op before the containers exist). Restored to their post-create positions in `renderMessages`.*
 
