@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-08-28 — ADR-108: search-panel polish. The panel is now **headerless** — the back button moved into the search row (left of the loupe) and the "+" was dropped; the row delete is a **trash-can** icon; the **accent tint marks the focused row** (hover or ↑/↓ selection) while the **active conversation** shows only a grey `.p-history-active` label (no accent background).*
+*Last updated: 2026-08-28 — ADR-109 M3: "related conversations" in the `.p-history` panel — a hover-revealed (long-press on touch) **relate icon** (`.p-history-relate`, `git-compare`) opens a **"Related to X" chip** (`.p-history-chip`) above a semantically-ranked, min-score-filtered list; clearing the chip or typing exits.*
+
+*Previously, 2026-08-28 — ADR-108: search-panel polish. The panel is now **headerless** — the back button moved into the search row (left of the loupe) and the "+" was dropped; the row delete is a **trash-can** icon; the **accent tint marks the focused row** (hover or ↑/↓ selection) while the **active conversation** shows only a grey `.p-history-active` label (no accent background).*
 
 *Previously, 2026-08-28 — ADR-107: one conversation-search surface. The header far-left icon is now a **search loupe** that opens the `.p-history` panel with its search input focused and ↑/↓/Enter keyboard nav; the header **title is plain, non-interactive text** (click + `▾` removed). The anchored quick switcher (`.p-switcher` popover) was folded into the panel and deleted.*
 
@@ -212,6 +214,7 @@ The single in-view conversation surface (ADR-107): a full-panel overlay (`positi
 - **Query → search:** a flat, relevance-ranked list (TF-IDF, ADR-106) with a mono `.p-history-snippet` match line under each row.
 - **Focus vs. active (ADR-108):** the **accent tint** now marks the *focused* row — hover **or** the ↑/↓ `.selected` row. The **active** conversation is no longer accent-tinted; it's shown only by a grey mono **`.p-history-active`** label (localized "aktiv"/"active"). Hover/selection reveals a **trash-can** delete icon (`.p-switcher-del`, `setIcon("trash")`).
 - **Keyboard:** ↑/↓ move the focused row, Enter opens it, Esc or Back closes.
+- **Related mode (ADR-109):** each row has a **relate icon** (`.p-history-relate`, `git-compare`) revealed on hover; on touch a **long-press** on the row triggers it. It switches the panel to a **"Related to ‹name›" chip** (`.p-history-chip`, accent-tinted, with an `x` clear) above a list of only the semantically-related conversations (min-score-filtered, most-similar first). Clearing the chip or typing in the search box returns to browse/search.
 - The command-palette `ConversationSuggestModal` is the other entry point. The former quick switcher (title-click popover) was folded into this panel.
 
 ### Chat scroll area

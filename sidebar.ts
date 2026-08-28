@@ -382,6 +382,7 @@ export class PythiaSidebarView extends ItemView {
 			isStreaming: () => this.isStreaming,
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			renderHeader: () => this.headerController.renderHeader(),
+			getRelated: (id) => this.plugin.getRelatedConversations(id),
 		});
 
 		this.summaryController = new SummaryController({

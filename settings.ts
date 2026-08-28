@@ -3,6 +3,7 @@ import type PythiaPlugin from "./main";
 import type { Provider, EffortLevel } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
+import { EMBEDDING_MODELS, type EmbeddingModelId } from "./models/embeddingModels";
 import { t } from "./i18n";
 import {
 	KNOWN_MODELS,
@@ -377,6 +378,20 @@ export class PythiaSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName(t("embeddingModelName"))
+			.setDesc(t("embeddingModelDesc"))
+			.addDropdown((drop) => {
+				for (const m of Object.values(EMBEDDING_MODELS)) drop.addOption(m.id, m.label);
+				drop
+					.setValue(this.plugin.settings.embeddingModelId)
+					.onChange(async (value) => {
+						this.plugin.settings.embeddingModelId = value as EmbeddingModelId;
+						await this.plugin.saveSettings();
+						this.plugin.invalidateRelatedService();
+					});
+			});
 
 		new Setting(containerEl)
 			.setName(t("customInstructionsName"))
