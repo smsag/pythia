@@ -6,6 +6,11 @@ const DEBOUNCE_MS = 300;
 
 export class ConversationStore {
 	private plugin: PythiaPlugin;
+	/** The store OWNS the conversation list (ADR-103 / #122). `plugin.conversations`
+	 *  is a read/write accessor delegating here, so there is one owner and no
+	 *  bidirectional coupling. `getAll()` returns the live array (callers may push
+	 *  onto it); `setAll()` replaces it (used by loadPluginData / persist eviction). */
+	private _conversations: Conversation[] = [];
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
 	private dirtyIds = new Set<string>();
 
@@ -14,11 +19,16 @@ export class ConversationStore {
 	}
 
 	getAll(): Conversation[] {
-		return this.plugin.conversations;
+		return this._conversations;
+	}
+
+	/** Replace the whole list — the only writer of the array reference. */
+	setAll(conversations: Conversation[]): void {
+		this._conversations = conversations;
 	}
 
 	getById(id: string): Conversation | undefined {
-		return this.plugin.conversations.find((c) => c.id === id);
+		return this._conversations.find((c) => c.id === id);
 	}
 
 	/** Returns a snapshot of the current dirty IDs for race-safe clearing. */
@@ -39,19 +49,19 @@ export class ConversationStore {
 	}
 
 	async save(conversation: Conversation): Promise<void> {
-		const idx = this.plugin.conversations.findIndex((c) => c.id === conversation.id);
+		const idx = this._conversations.findIndex((c) => c.id === conversation.id);
 		if (idx < 0) {
 			debugLog(this.plugin.settings, "save() skipped — conversation no longer exists:", conversation.id);
 			return;
 		}
 		conversation.updatedAt = new Date().toISOString();
-		this.plugin.conversations[idx] = conversation;
+		this._conversations[idx] = conversation;
 		this.dirtyIds.add(conversation.id);
 		this.schedulePersist();
 	}
 
 	async delete(id: string): Promise<void> {
-		this.plugin.conversations = this.plugin.conversations.filter((c) => c.id !== id);
+		this._conversations = this._conversations.filter((c) => c.id !== id);
 		this.dirtyIds.delete(id);
 		this.cancelPersist();
 		await this.plugin.saveConversations();
