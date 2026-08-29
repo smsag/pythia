@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-08-28 — ADR-109 M3 (feature complete: "related conversations" wired end-to-end — a hover/long-press relate icon opens a "Related to X" chip + a semantically-ranked, min-score-filtered list; `main.ts` builds the embedding service lazily with a model-keyed `.bin` store; a settings dropdown picks the model. main.js grows to ~1.6 MB as the iframe bundle is now inlined; +4 relate-mode smoke tests. Live model inference still needs a real-Obsidian check).*
+*Last updated: 2026-08-29 — ADR-110 (post-release fixes: force the WASM embedding backend — WebGPU crashed/reloaded Obsidian; and make conversation search prefix-aware so partial/title text surfaces again, with a real title-rank boost).*
+
+*Previously, 2026-08-28 — ADR-109 M3 (feature complete: "related conversations" wired end-to-end — a hover/long-press relate icon opens a "Related to X" chip + a semantically-ranked, min-score-filtered list; `main.ts` builds the embedding service lazily with a model-keyed `.bin` store; a settings dropdown picks the model. main.js grows to ~1.6 MB as the iframe bundle is now inlined; +4 relate-mode smoke tests. Live model inference still needs a real-Obsidian check).*
 
 *Previously, 2026-08-28 — ADR-109 M2 (embedding runtime + orchestrator for "related conversations": `@huggingface/transformers` bundled into a separate browser "iframe" esbuild pass inlined via `__IFRAME_CONTENTS_PLACEHOLDER__` so `main.js` stays free of the ML runtime; `IframeEmbeddingProvider` runs the model in a hidden `about:srcdoc` iframe over postMessage; `ConversationIndexService` syncs/persists the Int8 index and answers `getRelated` — fake-provider unit tests. UI + plugin wiring land in M3).*
 
@@ -1633,3 +1635,17 @@ Behaviour of the panel's search/browse itself is unchanged from ADR-106 (empty �
 - **Icon:** `git-compare` (relate/compare), tooltip "Related conversations" / "Ähnliche Gespräche".
 
 **Still unverified here (inherent):** live model download + inference inside a real Obsidian window — needs a manual smoke test in the app; the code degrades gracefully (Notice on load/inference failure, exits related mode).
+
+### ADR-110 — Post-release fixes: force WASM for embeddings, prefix-aware conversation search
+
+**Status:** Active
+
+**Context:** Two bugs surfaced after 2.3.0 shipped.
+1. **"Show similar" reloaded the whole of Obsidian.** The embedding model (`model.ts`) auto-selected the **WebGPU** backend whenever `navigator.gpu` existed (`device: webgpu ? "webgpu" : "wasm"`, `dtype: "fp16"`). WebGPU compute in Obsidian's Electron renderer is unstable — requesting a WebGPU device crashes the GPU process, and Electron reloads the window. That's exactly the reported symptom (immediate full-app reload on invoking related mode).
+2. **Search missed text that was plainly visible.** Conversation search (ADR-106) matched **exact tokens only** (`scoreRelevanceTokensWeighted` → `set.has(token)`), so typing a *partial* word as-you-type ("bound") never surfaced "boundaries", and the pre-content-search era's substring/fuzzy title matching was gone. (Also latent: `TITLE_WEIGHT` repeated the title into the haystack, but the tokenizer dedupes, so the ×3 was a silent no-op — titles didn't actually rank higher.)
+
+**Decision:**
+1. **Always use the WASM backend** (`device: "wasm"`, `dtype: "q8"`) — portable and stable, if a bit slower. WebGPU is removed from the auto-path; revisit it behind an explicit opt-in only once verified safe in Electron.
+2. **Prefix-aware, IDF-weighted matching** in `rankConversations`: a query token matches a candidate token by **equality OR prefix**, so a partial word surfaces the conversation; ranking keeps smoothed IDF (rare words dominate) and now applies a real **×3 title boost** by matching against the conversation's *name* tokens directly (replacing the dead haystack repetition). `bestMatchSnippet` prefix-matches too. `conversationSearch.ts` no longer uses the shared `scoreRelevanceTokensWeighted` (note-relevance keeps it unchanged).
+
+**Consequence:** related mode no longer risks crashing Obsidian, and search behaves like search-as-you-type again (partial words + titles surface reliably). Tests: prefix match, title-over-body ranking, prefix snippet. **Note:** live model inference in a real Obsidian window still needs the manual smoke-test — the WASM switch is the most probable crash fix, not a runtime-verified one; if a reload persists, the next signal is the developer-console error at model load.

@@ -52,8 +52,11 @@ export class EmbeddingModel {
 	}
 
 	async #initialize(onProgress?: ModelLoadProgressCallback): Promise<void> {
-		const webgpu = (navigator as Navigator & { gpu?: unknown }).gpu != null;
-		this.#device = webgpu ? "webgpu" : "wasm";
+		// Always use the WASM backend. WebGPU compute is unstable in Obsidian's
+		// Electron renderer — requesting a WebGPU device could hard-crash the GPU
+		// process and reload the whole app. WASM is portable and stable (a bit
+		// slower). Revisit WebGPU behind an opt-in once it's verified safe here.
+		this.#device = "wasm";
 
 		if (!navigator.onLine && !(await isModelCached(this.config.repoId))) {
 			throw new Error(
@@ -63,8 +66,8 @@ export class EmbeddingModel {
 		}
 
 		this.#pipeline = await createPipeline("feature-extraction", this.config.repoId, {
-			device: this.#device,
-			dtype: webgpu ? "fp16" : "q8",
+			device: "wasm",
+			dtype: "q8",
 			progress_callback: onProgress
 				? (info: ProgressInfo) => {
 					if (info.status === "progress") {
