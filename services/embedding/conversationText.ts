@@ -13,7 +13,14 @@ import type { Conversation } from "../../models/types";
 export function conversationChunks(conv: Conversation, maxChars = 500): string[] {
 	const chunks: string[] = [];
 
-	const lead = [conv.name, conv.summaryText ?? ""]
+	// Defensive coercion: persistence only guarantees `messages` is an array — not
+	// that each element is an object or that `name`/`summaryText`/`content` are
+	// strings. This runs over the whole corpus on every index sync, so one
+	// malformed record (null element, undefined content, e.g. an interrupted
+	// stream) must not throw and take related-conversations down with it.
+	const asText = (v: unknown): string => (typeof v === "string" ? v : "");
+
+	const lead = [asText(conv.name), asText(conv.summaryText)]
 		.map((s) => s.trim())
 		.filter(Boolean)
 		.join(". ")
@@ -25,8 +32,9 @@ export function conversationChunks(conv: Conversation, maxChars = 500): string[]
 		if (buf.trim()) chunks.push(buf.trim());
 		buf = "";
 	};
-	for (const m of conv.messages) {
-		let text = m.content.trim();
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	for (const m of messages) {
+		let text = asText(m?.content).trim();
 		if (!text) continue;
 		// Hard-split a message that alone exceeds the budget.
 		while (text.length > maxChars) {
@@ -40,6 +48,6 @@ export function conversationChunks(conv: Conversation, maxChars = 500): string[]
 	flush();
 
 	// Guarantee at least one chunk so every conversation is embeddable/indexable.
-	if (chunks.length === 0) chunks.push((conv.name || "").trim() || conv.id);
+	if (chunks.length === 0) chunks.push(asText(conv.name).trim() || conv.id);
 	return chunks;
 }
