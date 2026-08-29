@@ -44,6 +44,22 @@ describe("conversationChunks", () => {
 		expect(conversationChunks(c).length).toBeGreaterThanOrEqual(1);
 	});
 
+	it("survives malformed records so one bad conversation can't break the index sync", () => {
+		// The index is rebuilt for the whole corpus on every sync; a throw here would
+		// reject getRelated() and blank out related-conversations for everyone. Guard
+		// against the shapes persistence doesn't validate: null message elements,
+		// non-string content, a non-array messages, and a non-string name.
+		const nullMsg = conv({ name: "SSIG", messages: [null as unknown as Message] });
+		const noContent = conv({ name: "SSIG", messages: [{ id: "x", role: "user", timestamp: "" } as unknown as Message] });
+		const noMessages = conv({ name: "SSIG", messages: undefined as unknown as Message[] });
+		const noName = conv({ name: undefined as unknown as string, messages: [msg("body")] });
+		for (const c of [nullMsg, noContent, noMessages, noName]) {
+			expect(() => conversationChunks(c)).not.toThrow();
+			expect(conversationChunks(c).length).toBeGreaterThanOrEqual(1); // still indexable
+		}
+		expect(conversationChunks(nullMsg)[0]).toContain("SSIG"); // lead chunk still built
+	});
+
 	it("is deterministic for identical content", () => {
 		const a = conv({ name: "same", messages: [msg("hello world")] });
 		const b = conv({ name: "same", messages: [msg("hello world")] });

@@ -1,5 +1,15 @@
-import type { Conversation } from "../models/types";
+import type { Conversation, Message } from "../models/types";
 import { tokenize } from "./noteRelevance";
+
+/** A message's textual content as a plain string, tolerating malformed records.
+ *  Persistence only guarantees `messages` is an array (parseConversations) — not
+ *  that each element is an object or that `content` is a string. An interrupted
+ *  stream or a legacy entry can leave a null element or a non-string `content`;
+ *  since the haystack is built for every conversation up front, a single such
+ *  record would otherwise throw and take the entire search down with it. */
+function messageText(m: Message | null | undefined): string {
+	return typeof m?.content === "string" ? m.content : "";
+}
 
 /**
  * The searchable text for one conversation: its title, its LLM-generated summary
@@ -7,13 +17,20 @@ import { tokenize } from "./noteRelevance";
  * "semantic" recall — the model's own paraphrasing ("automobile", "Fahrzeug")
  * already lives in the summary, so a lexical match can surface a conversation
  * whose messages never used the exact query word. Title matches are ranked higher
- * in rankConversations (not by repeating the title here — the scorer dedupes
- * tokens, so repetition would be a no-op). No embeddings, no vector store.
+ * in rankConversations (not by repeating the title here — the tokenizer dedupes,
+ * so repetition would be a no-op).
+ *
+ * Defensive by design: it runs over the whole corpus on every query, so it must
+ * never throw on a malformed conversation (missing name, absent/ragged messages,
+ * non-string content) — one bad record must not blank out all search results.
+ * No embeddings, no vector store, no persisted index.
  */
 export function buildConversationHaystack(conv: Conversation): string {
-	const summary = conv.summaryText ?? "";
-	const body = conv.messages.map((m) => m.content).join(" ");
-	return `${conv.name} ${summary} ${body}`;
+	const name = typeof conv.name === "string" ? conv.name : "";
+	const summary = typeof conv.summaryText === "string" ? conv.summaryText : "";
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	const body = messages.map(messageText).join(" ");
+	return `${name} ${summary} ${body}`;
 }
 
 export interface RankedConversation {
@@ -62,7 +79,9 @@ export function rankConversations(
 
 	const n = haystacks.length;
 	const docTokens = haystacks.map((h) => tokenize(h));
-	const nameTokens = conversations.map((c) => tokenize(c.name));
+	// Guard `c.name` — a malformed record may lack it, and tokenize() throws on
+	// a non-string (one bad conversation must not blank out all search).
+	const nameTokens = conversations.map((c) => tokenize(typeof c.name === "string" ? c.name : ""));
 
 	// Document frequency by prefix-aware match, for IDF weighting.
 	const df = new Map<string, number>();
@@ -102,8 +121,9 @@ export function bestMatchSnippet(
 
 	let bestLine = "";
 	let bestHits = 0;
-	for (const msg of conv.messages) {
-		for (const rawLine of msg.content.split("\n")) {
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	for (const msg of messages) {
+		for (const rawLine of messageText(msg).split("\n")) {
 			const line = rawLine.trim();
 			if (!line) continue;
 			const lineTokens = tokenize(line);

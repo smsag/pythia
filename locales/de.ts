@@ -308,7 +308,7 @@ const de: Strings = {
 	maxAttachedNotesTokensDesc: "Warnen, wenn angehängte Notizen diese geschätzte Token-Anzahl vor dem Senden überschreiten. Bei 0 deaktiviert.",
 	attachedNotesTokenWarning: "Die angehängten Notizen sind umfangreich (~{{tokens}} Token) — das kann den Platz für das eigentliche Gespräch verdrängen oder deine Frage überdecken.",
 	debugModeName:           "Debug-Modus",
-	debugModeDesc:           "API-Aufrufe und Payloads in der Entwicklerkonsole protokollieren.",
+	debugModeDesc:           "API-Aufrufe, Payloads und den Embedding-Pfad für verwandte Konversationen in der Entwicklerkonsole protokollieren.",
 	injectActiveNoteOnTemplateName: "Aktive Notiz bei Vorlagen einfügen",
 	injectActiveNoteOnTemplateDesc: "Beim Starten einer Konversation aus einer Vorlage wird die aktuell geöffnete Notiz automatisch als zusätzlicher Kontext hinzugefügt (z. B. die Stellenanzeige, das Brief oder der Artikel, an dem du arbeiten möchtest).",
 	chooseFolderBtn:         "Ordner wählen",

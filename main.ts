@@ -1,6 +1,7 @@
 import { Editor, Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
+import { debugLog } from "./services/messageUtils";
 import type { Conversation, Provider, PythiaTemplate } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
@@ -60,11 +61,39 @@ export default class PythiaPlugin extends Plugin {
 	private relatedProvider: IframeEmbeddingProvider | null = null;
 	private relatedModelId: EmbeddingModelId | null = null;
 
-	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109). */
+	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109).
+	 *
+	 *  In-app diagnostic (enable "Debug mode" in settings): traces the embedding
+	 *  path so a "shows nothing" report can be triaged from the developer console
+	 *  without a rebuild. Three outcomes are distinguishable in the log:
+	 *   • a "query failed" warning (always logged) → the model/iframe never produced
+	 *     vectors — inspect the attached error (offline, download failed, timeout);
+	 *   • "returned 0" with no error → the index built and ranking ran, but nothing
+	 *     cleared the minScore floor (raise the floor or the vault is too sparse);
+	 *   • "returned N" with per-id scores → the path works end to end. */
 	async getRelatedConversations(sourceId: string): Promise<RelatedResult[]> {
-		return this.ensureRelatedService().getRelated(sourceId, this.conversations, {
+		const startedAt = Date.now();
+		debugLog(this.settings, "related: query start", {
+			sourceId,
+			model: this.settings.embeddingModelId,
+			conversations: this.conversations.length,
 			minScore: DEFAULT_MIN_SCORE,
 		});
+		try {
+			const results = await this.ensureRelatedService().getRelated(sourceId, this.conversations, {
+				minScore: DEFAULT_MIN_SCORE,
+			});
+			debugLog(this.settings, `related: query ok (${Date.now() - startedAt}ms)`, {
+				returned: results.length,
+				top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
+			});
+			return results;
+		} catch (e) {
+			// Genuine failure — surface it unconditionally (not gated on debugMode) so a
+			// model-load/inference error is always in the console behind the UI Notice.
+			console.warn("[Pythia] related: query failed", e);
+			throw e;
+		}
 	}
 
 	private ensureRelatedService(): ConversationIndexService {
@@ -73,7 +102,18 @@ export default class PythiaPlugin extends Plugin {
 		// First use, or the model setting changed → tear down any prior provider/index.
 		this.relatedProvider?.unload();
 		new Notice(t("relatedFirstRun"));
-		this.relatedProvider = new IframeEmbeddingProvider(modelId);
+		debugLog(this.settings, "related: initializing embedding model", { modelId, priorModel: this.relatedModelId });
+		// The onProgress callback traces the model download/load (debug mode only) so a
+		// slow or stalled first run is visible in the console — the single hardest part
+		// to diagnose blind, since it happens inside the hidden iframe.
+		this.relatedProvider = new IframeEmbeddingProvider(modelId, (p) =>
+			debugLog(this.settings, "related: model load", {
+				file: p.file,
+				percent: Math.round(p.progress),
+				loaded: p.loaded,
+				total: p.total,
+			}),
+		);
 		this.relatedModelId = modelId;
 		this.relatedService = new ConversationIndexService(
 			this.relatedProvider,

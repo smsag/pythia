@@ -99,6 +99,40 @@ describe("rankConversations", () => {
 		expect(scoreOne("kay", c)).toBeGreaterThan(0);
 	});
 
+	it("survives malformed records so one bad conversation can't blank out search", () => {
+		// Persistence only guarantees `messages` is an array — not that each element
+		// is an object or that `content` is a string. An interrupted stream or a
+		// legacy entry can leave a null element or undefined content. Because the
+		// haystack is built for the whole corpus on every query, a throw here would
+		// take down search for ALL conversations (the "search returns nothing" bug).
+		const good = conv({ name: "SSIG rollout", summaryText: "notes on SSIG", messages: [msg("kickoff")] });
+		const nullMsg = conv({ name: "broken A", messages: [null as unknown as Message] });
+		const noContent = conv({ name: "broken B", messages: [{ id: "x", role: "user", timestamp: "" } as unknown as Message] });
+		const noMessages = conv({ name: "broken C", messages: undefined as unknown as Message[] });
+		const items = [nullMsg, good, noContent, noMessages];
+
+		const ranked = rankConversations(
+			tokenize("ssig"),
+			items,
+			items.map(buildConversationHaystack)
+		);
+		expect(ranked.map((r) => r.conversation.name)).toEqual(["SSIG rollout"]);
+		expect(() => bestMatchSnippet(tokenize("ssig"), nullMsg)).not.toThrow();
+		expect(() => bestMatchSnippet(tokenize("ssig"), noMessages)).not.toThrow();
+	});
+
+	it("ranks a German umlaut query to the right conversation without umlaut cross-matches", () => {
+		// Before Unicode tokenization, "Ernährung"/"Größe"/"Straße" all shed their
+		// umlaut and shared stray fragments (e.g. "e"), so a query cross-matched
+		// unrelated German titles. Now each word stays whole.
+		const hit = conv({ name: "Ernährung und Sport", messages: [msg("gesunde Ernährung im Alltag")] });
+		const miss = conv({ name: "Größe der Straße", messages: [msg("Verkehr und Bebauung")] });
+		const items = [hit, miss];
+		const ranked = rankConversations(tokenize("Ernährung"), items, items.map(buildConversationHaystack));
+		expect(ranked).toHaveLength(1);
+		expect(ranked[0].conversation.name).toBe("Ernährung und Sport");
+	});
+
 	it("returns nothing when no conversation matches", () => {
 		const items = [conv({ name: "alpha", messages: [msg("beta gamma")] })];
 		const ranked = rankConversations(
