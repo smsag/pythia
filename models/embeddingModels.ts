@@ -46,6 +46,12 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 export const DEFAULT_EMBEDDING_MODEL_ID: EmbeddingModelId =
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2";
 
+/** How strict the "related conversations" similarity floor is. A named preset so
+ *  the user never has to reason about raw cosine scores; mapped to a number in
+ *  `services/embedding/relatedConversations.ts`. */
+export type RelatedSimilarity = "strict" | "balanced" | "loose";
+export const DEFAULT_RELATED_SIMILARITY: RelatedSimilarity = "balanced";
+
 export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig {
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];
 }

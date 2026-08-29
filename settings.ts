@@ -3,7 +3,7 @@ import type PythiaPlugin from "./main";
 import type { Provider, EffortLevel } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
-import { EMBEDDING_MODELS, type EmbeddingModelId } from "./models/embeddingModels";
+import { EMBEDDING_MODELS, type EmbeddingModelId, type RelatedSimilarity } from "./models/embeddingModels";
 import { t } from "./i18n";
 import {
 	KNOWN_MODELS,
@@ -392,6 +392,21 @@ export class PythiaSettingTab extends PluginSettingTab {
 						this.plugin.invalidateRelatedService();
 					});
 			});
+
+		new Setting(containerEl)
+			.setName(t("relatedSimilarityName"))
+			.setDesc(t("relatedSimilarityDesc"))
+			.addDropdown((drop) =>
+				drop
+					.addOption("strict", t("relatedSimilarityStrict"))
+					.addOption("balanced", t("relatedSimilarityBalanced"))
+					.addOption("loose", t("relatedSimilarityLoose"))
+					.setValue(this.plugin.settings.relatedSimilarity)
+					.onChange(async (value) => {
+						this.plugin.settings.relatedSimilarity = value as RelatedSimilarity;
+						await this.plugin.saveSettings();
+					})
+			);
 
 		new Setting(containerEl)
 			.setName(t("customInstructionsName"))
