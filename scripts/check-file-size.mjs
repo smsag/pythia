@@ -21,8 +21,9 @@ const DEFAULT_MAX = 600;
 const CEILINGS = {
 	"sidebar.ts": 1992,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
-	// Settings tab monolith; grew by the embedding-model dropdown (ADR-109 M3). Split later.
-	"settings.ts": 607,
+	// Settings tab monolith; grows one setting at a time (embedding model, related-
+	// similarity preset, …). TODO: split into grouped sections. Split later.
+	"settings.ts": 622,
 	// View-render smoke-test file (ADR-105/109). TODO(ADR-097): extract a shared
 	// harness and split the per-feature describe blocks into their own files.
 	"tests/viewRender.test.ts": 652,
