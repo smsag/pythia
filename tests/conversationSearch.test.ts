@@ -35,11 +35,9 @@ function scoreOne(query: string, c: Conversation): number {
 }
 
 describe("buildConversationHaystack", () => {
-	it("weights the title above a single body mention", () => {
+	it("includes the conversation title", () => {
 		const c = conv({ name: "budget planning", messages: [msg("hello world")] });
-		const haystack = buildConversationHaystack(c);
-		const occurrences = haystack.split("budget").length - 1;
-		expect(occurrences).toBeGreaterThan(1);
+		expect(buildConversationHaystack(c)).toContain("budget planning");
 	});
 
 	it("includes message content", () => {
@@ -86,6 +84,21 @@ describe("rankConversations", () => {
 		expect(scoreOne("onboarding", c)).toBeGreaterThan(0);
 	});
 
+	it("ranks a title match above a body-only match", () => {
+		const titleHit = conv({ name: "budget review", messages: [msg("hello world")] });
+		const bodyHit = conv({ name: "misc", messages: [msg("the budget was tight")] });
+		const items = [bodyHit, titleHit];
+		const ranked = rankConversations(tokenize("budget"), items, items.map(buildConversationHaystack));
+		expect(ranked[0].conversation.name).toBe("budget review");
+	});
+
+	it("matches a partial word by prefix (search-as-you-type)", () => {
+		// The regression: typing part of a visible title showed nothing (exact-token only).
+		const c = conv({ name: "kayaking trip", messages: [msg("unrelated")] });
+		expect(scoreOne("kayak", c)).toBeGreaterThan(0); // prefixes "kayaking"
+		expect(scoreOne("kay", c)).toBeGreaterThan(0);
+	});
+
 	it("returns nothing when no conversation matches", () => {
 		const items = [conv({ name: "alpha", messages: [msg("beta gamma")] })];
 		const ranked = rankConversations(
@@ -104,6 +117,11 @@ describe("bestMatchSnippet", () => {
 			messages: [msg("first line about nothing\nthe kayak trip was great\nfinal line")],
 		});
 		expect(bestMatchSnippet(tokenize("kayak"), c)).toBe("the kayak trip was great");
+	});
+
+	it("matches a message line by prefix", () => {
+		const c = conv({ name: "x", messages: [msg("the kayaking was great")] });
+		expect(bestMatchSnippet(tokenize("kayak"), c)).toBe("the kayaking was great");
 	});
 
 	it("returns null when the hit is only in the title or summary", () => {

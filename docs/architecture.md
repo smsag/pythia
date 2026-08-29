@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-28 — ADR-109 (M3 follow-up): the mobile **long-press** on a conversation row now opens an Obsidian **context menu** with both hover-only actions — **Show similar** and **Delete** (previously it jumped straight into related mode, leaving delete unreachable on touch). +1 smoke test; the mock `Menu` records its items. Below: M3 as first landed.*
+*Last updated: 2026-08-29 — ADR-110 (post-release bug fixes): the embedding model now **forces the WASM backend** (`services/embedding/host/frame/model.ts`) — auto-selecting WebGPU was crashing/reloading Obsidian's Electron renderer; and conversation search (`services/conversationSearch.ts`) is now **prefix-aware** (partial words + titles surface as you type) with a real ×3 title-rank boost, no longer using the shared exact-token scorer.*
+
+*Previously, 2026-08-28 — ADR-109 (M3 follow-up): the mobile **long-press** on a conversation row now opens an Obsidian **context menu** with both hover-only actions — **Show similar** and **Delete** (previously it jumped straight into related mode, leaving delete unreachable on touch). +1 smoke test; the mock `Menu` records its items. Below: M3 as first landed.*
 
 *Previously, 2026-08-28 — ADR-109 (M3): "related conversations" is now wired end-to-end and user-facing. `HistoryController` gained a **relate icon** (hover-revealed on desktop, long-press on touch) + a **"Related to X" chip** + a related-sorted list (only sufficiently-similar); `main.ts` builds the embedding service lazily on first use (`getRelatedConversations`, memoized, torn down on model change / unload) with a `VaultIndexStore` (`.bin` in the plugin dir); a settings dropdown selects the model. `main.js` grows to ~1.6 MB (the ~850 KB iframe bundle is now inlined since the provider is imported). +4 relate-mode smoke tests (stubbing `getRelatedConversations`). Live model inference still needs a real-Obsidian check.*
 
