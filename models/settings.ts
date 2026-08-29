@@ -1,5 +1,10 @@
 import type { Provider, EffortLevel } from "./types";
-import { type EmbeddingModelId, DEFAULT_EMBEDDING_MODEL_ID } from "./embeddingModels";
+import {
+	type EmbeddingModelId,
+	DEFAULT_EMBEDDING_MODEL_ID,
+	type RelatedSimilarity,
+	DEFAULT_RELATED_SIMILARITY,
+} from "./embeddingModels";
 
 export interface PythiaSettings {
 	/** Secret ID referencing the Anthropic API key in Obsidian SecretStorage. */
@@ -58,6 +63,8 @@ export interface PythiaSettings {
 	webSearchMaxResults: number;
 	/** On-device embedding model for "related conversations" semantic search. */
 	embeddingModelId: EmbeddingModelId;
+	/** How strict the "related conversations" similarity floor is. */
+	relatedSimilarity: RelatedSimilarity;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -89,4 +96,5 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
 	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
+	relatedSimilarity: DEFAULT_RELATED_SIMILARITY,
 };

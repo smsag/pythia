@@ -1,8 +1,23 @@
 import { maxPairwiseCosine } from "./vectorMath";
 import type { IndexedConversation } from "./embeddingIndex";
+import type { RelatedSimilarity } from "../../models/embeddingModels";
 
-/** Default similarity floor for "sufficiently related" — tune in the UI layer. */
+/** Default similarity floor for "sufficiently related" (= the "balanced" preset). */
 export const DEFAULT_MIN_SCORE = 0.35;
+
+/** Cosine-similarity floor for each user-facing preset. Higher = fewer, closer
+ *  matches; lower = more, looser matches. Kept as named presets so users never
+ *  reason about raw cosine scores. */
+export const RELATED_MIN_SCORES: Record<RelatedSimilarity, number> = {
+	strict: 0.5,
+	balanced: DEFAULT_MIN_SCORE,
+	loose: 0.2,
+};
+
+/** Resolve a preset to its cosine floor (falls back to the balanced default). */
+export function relatedMinScore(preset: RelatedSimilarity): number {
+	return RELATED_MIN_SCORES[preset] ?? DEFAULT_MIN_SCORE;
+}
 
 export interface RelatedResult {
 	id: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rankRelated } from "../services/embedding/relatedConversations";
+import { rankRelated, relatedMinScore, RELATED_MIN_SCORES, DEFAULT_MIN_SCORE } from "../services/embedding/relatedConversations";
 import { quantize } from "../services/embedding/vectorMath";
 import type { IndexedConversation } from "../services/embedding/embeddingIndex";
 
@@ -49,5 +49,15 @@ describe("rankRelated", () => {
 		const multi = idx("source", f(1, 0), f(0, 1));
 		const out = rankRelated("source", [multi, far], { minScore: 0.35 });
 		expect(out.map((r) => r.id)).toEqual(["far"]);
+	});
+});
+
+describe("relatedMinScore", () => {
+	it("maps each preset to an ordered floor (strict > balanced > loose)", () => {
+		expect(relatedMinScore("strict")).toBeGreaterThan(relatedMinScore("balanced"));
+		expect(relatedMinScore("balanced")).toBeGreaterThan(relatedMinScore("loose"));
+		expect(relatedMinScore("balanced")).toBe(DEFAULT_MIN_SCORE);
+		expect(RELATED_MIN_SCORES.strict).toBeGreaterThan(0);
+		expect(RELATED_MIN_SCORES.loose).toBeGreaterThan(0);
 	});
 });

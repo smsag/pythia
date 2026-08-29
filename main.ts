@@ -22,7 +22,7 @@ import type { ViewManager } from "./services/ViewManager";
 import { IframeEmbeddingProvider } from "./services/embedding/host/iframeEmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
-import { DEFAULT_MIN_SCORE, type RelatedResult } from "./services/embedding/relatedConversations";
+import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
 
 export default class PythiaPlugin extends Plugin {
@@ -73,15 +73,17 @@ export default class PythiaPlugin extends Plugin {
 	 *   • "returned N" with per-id scores → the path works end to end. */
 	async getRelatedConversations(sourceId: string): Promise<RelatedResult[]> {
 		const startedAt = Date.now();
+		const minScore = relatedMinScore(this.settings.relatedSimilarity);
 		debugLog(this.settings, "related: query start", {
 			sourceId,
 			model: this.settings.embeddingModelId,
 			conversations: this.conversations.length,
-			minScore: DEFAULT_MIN_SCORE,
+			similarity: this.settings.relatedSimilarity,
+			minScore,
 		});
 		try {
 			const results = await this.ensureRelatedService().getRelated(sourceId, this.conversations, {
-				minScore: DEFAULT_MIN_SCORE,
+				minScore,
 			});
 			debugLog(this.settings, `related: query ok (${Date.now() - startedAt}ms)`, {
 				returned: results.length,

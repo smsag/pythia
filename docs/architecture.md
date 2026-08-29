@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-08-29 — ADR-110 (post-release bug fixes): the embedding model now **forces the WASM backend** (`services/embedding/host/frame/model.ts`) — auto-selecting WebGPU was crashing/reloading Obsidian's Electron renderer; and conversation search (`services/conversationSearch.ts`) is now **prefix-aware** (partial words + titles surface as you type) with a real ×3 title-rank boost, no longer using the shared exact-token scorer.*
+*Last updated: 2026-08-29 — related-conversations similarity is now a **settings preset** (`relatedSimilarity`: Strict / Balanced / Loose → cosine floor 0.5 / 0.35 / 0.2, via `relatedMinScore()` in `services/embedding/relatedConversations.ts`), read by `getRelatedConversations` instead of the hardcoded `DEFAULT_MIN_SCORE`. Dropdown added next to the embedding-model setting.*
+
+*Previously, 2026-08-29 — ADR-110 (post-release bug fixes): the embedding model now **forces the WASM backend** (`services/embedding/host/frame/model.ts`) — auto-selecting WebGPU was crashing/reloading Obsidian's Electron renderer; and conversation search (`services/conversationSearch.ts`) is now **prefix-aware** (partial words + titles surface as you type) with a real ×3 title-rank boost, no longer using the shared exact-token scorer.*
 
 *Previously, 2026-08-28 — ADR-109 (M3 follow-up): the mobile **long-press** on a conversation row now opens an Obsidian **context menu** with both hover-only actions — **Show similar** and **Delete** (previously it jumped straight into related mode, leaving delete unreachable on touch). +1 smoke test; the mock `Menu` records its items. Below: M3 as first landed.*
 
