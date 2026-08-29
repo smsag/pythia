@@ -3,6 +3,7 @@ import {
 	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
+	sanitizeMessages,
 	normalizeFavorites,
 	shouldRefuseLoad,
 	evictConversations,
@@ -200,6 +201,47 @@ describe("parseConversations", () => {
 		const { conversations, dropped } = parseConversations(raw);
 		expect(conversations).toHaveLength(2);
 		expect(dropped).toBe(3);
+	});
+});
+
+// ── sanitizeMessages (load-time message hardening) ─────────────────────────────
+
+describe("sanitizeMessages", () => {
+	const conv = (messages: unknown): Conversation =>
+		({ id: "c", name: "n", messages } as unknown as Conversation);
+
+	it("drops null and non-object message elements", () => {
+		const c = conv([null, "oops", 42, { id: "m", role: "user", content: "keep", timestamp: "" }]);
+		sanitizeMessages(c);
+		expect(c.messages).toHaveLength(1);
+		expect(c.messages[0].content).toBe("keep");
+	});
+
+	it("coerces a non-string content to a string, preserving message position", () => {
+		const c = conv([
+			{ id: "a", role: "user", content: undefined, timestamp: "" },
+			{ id: "b", role: "assistant", content: 123, timestamp: "" },
+			{ id: "c", role: "user", content: "real", timestamp: "" },
+		]);
+		sanitizeMessages(c);
+		expect(c.messages).toHaveLength(3); // count/position preserved (send-path relies on it)
+		expect(c.messages.map((m) => m.content)).toEqual(["", "123", "real"]);
+		expect(c.messages.every((m) => typeof m.content === "string")).toBe(true);
+	});
+
+	it("replaces a non-array messages with an empty array", () => {
+		const c = conv(undefined);
+		sanitizeMessages(c);
+		expect(c.messages).toEqual([]);
+	});
+
+	it("runs automatically via parseConversations so loaded data is always clean", () => {
+		const raw = [
+			{ id: "x", name: "SSIG", summaryText: "about SSIG", messages: [null, { id: "m", role: "user", content: undefined, timestamp: "" }] },
+		];
+		const { conversations } = parseConversations(raw);
+		expect(conversations[0].messages).toHaveLength(1);
+		expect(conversations[0].messages[0].content).toBe("");
 	});
 });
 
