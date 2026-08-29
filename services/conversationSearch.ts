@@ -1,10 +1,20 @@
-import type { Conversation } from "../models/types";
+import type { Conversation, Message } from "../models/types";
 import { scoreRelevanceTokensWeighted, tokenize } from "./noteRelevance";
 
 /** How many times the title is repeated into the haystack. A name hit should
  *  outrank a passing mention buried in message #40, so the title carries more
  *  weight than a single occurrence of body text. */
 const TITLE_WEIGHT = 3;
+
+/** A message's textual content as a plain string, tolerating malformed records.
+ *  Persistence only guarantees `messages` is an array (parseConversations) — not
+ *  that each element is an object or that `content` is a string. An interrupted
+ *  stream or a legacy entry can leave a null element or a non-string `content`;
+ *  since the haystack is built for every conversation up front, a single such
+ *  record would otherwise throw and take the entire search down with it. */
+function messageText(m: Message | null | undefined): string {
+	return typeof m?.content === "string" ? m.content : "";
+}
 
 /**
  * The searchable text for one conversation: its title (weighted by repetition),
@@ -13,11 +23,16 @@ const TITLE_WEIGHT = 3;
  * paraphrasing ("automobile", "Fahrzeug") already lives in the summary, so a
  * lexical match can surface a conversation whose messages never used the exact
  * query word. No embeddings, no vector store, no persisted index.
+ *
+ * Defensive by design: it runs over the whole corpus on every query, so it must
+ * never throw on a malformed conversation (missing name, absent/ragged messages,
+ * non-string content) — one bad record must not blank out all search results.
  */
 export function buildConversationHaystack(conv: Conversation): string {
-	const title = `${conv.name} `.repeat(TITLE_WEIGHT);
-	const summary = conv.summaryText ?? "";
-	const body = conv.messages.map((m) => m.content).join(" ");
+	const title = `${conv.name ?? ""} `.repeat(TITLE_WEIGHT);
+	const summary = typeof conv.summaryText === "string" ? conv.summaryText : "";
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	const body = messages.map(messageText).join(" ");
 	return `${title} ${summary} ${body}`;
 }
 
@@ -76,8 +91,9 @@ export function bestMatchSnippet(
 
 	let bestLine = "";
 	let bestHits = 0;
-	for (const msg of conv.messages) {
-		for (const rawLine of msg.content.split("\n")) {
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	for (const msg of messages) {
+		for (const rawLine of messageText(msg).split("\n")) {
 			const line = rawLine.trim();
 			if (!line) continue;
 			const lineTokens = new Set(tokenize(line));

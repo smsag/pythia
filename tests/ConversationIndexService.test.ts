@@ -91,6 +91,20 @@ describe("ConversationIndexService", () => {
 		expect(out[0].score).toBeGreaterThan(0.9);
 	});
 
+	it("still ranks related when a malformed conversation is in the set (the reported bug)", async () => {
+		// "Show related" returned nothing because doSync built embed chunks for the
+		// WHOLE set via conversationChunks, so one malformed conversation (null
+		// message element / non-string content) threw and rejected getRelated. This
+		// runs the REAL orchestration (sync → embed → rank) with such a record mixed in.
+		const p = new FakeProvider();
+		const svc = new ConversationIndexService(p, new MemStore());
+		const nullMsg = conv({ id: "bad1", name: "alpha broken", messages: [null as unknown as Message] });
+		const noContent = conv({ id: "bad2", name: "gamma", messages: [{ id: "x", role: "user", timestamp: "" } as unknown as Message] });
+		const out = await svc.getRelated("a1", [alpha1, alpha2, beta1, nullMsg, noContent], { minScore: 0.5 });
+		expect(out.map((r) => r.id)).toContain("a2"); // the genuine alpha↔alpha match still surfaces
+		expect(out).not.toHaveLength(0);
+	});
+
 	it("loads a persisted index without re-embedding", async () => {
 		const store = new MemStore();
 		const p1 = new FakeProvider();

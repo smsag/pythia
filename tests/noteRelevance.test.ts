@@ -16,6 +16,34 @@ describe("tokenize", () => {
 		expect(tokenize("")).toEqual([]);
 		expect(tokenize("!!! ---")).toEqual([]);
 	});
+
+	it("keeps umlaut/accented words whole instead of fragmenting them (German-first plugin)", () => {
+		// The old ASCII-only class split these on the umlaut ("Ernährung" -> ern,hrung),
+		// which cross-matched unrelated text on the stray pieces and broke IDF weights.
+		expect(tokenize("Ernährung")).toEqual(["ernährung"]);
+		expect(tokenize("Größe der Straße")).toEqual(["größe", "der", "straße"]);
+	});
+
+	it("tokenizes non-Latin scripts instead of yielding nothing", () => {
+		// Previously these produced [] → the empty-query branch listed EVERY
+		// conversation instead of searching. Whole-run tokens per script is correct.
+		expect(tokenize("日本語")).toEqual(["日本語"]);
+		expect(tokenize("Привет мир")).toEqual(["привет", "мир"]);
+	});
+
+	it("normalizes decomposed (NFD) umlauts so they match the precomposed form", () => {
+		// macOS stores filenames in NFD ("u" + combining diaeresis); an in-app
+		// precomposed "u\u0308ber" must still match a note titled the NFD way.
+		const nfd = "u\u0308ber"; // u + combining diaeresis (U+0308)
+		const nfc = "\u00FCber"; // precomposed u-umlaut (U+00FC)
+		expect(tokenize(nfd)).toEqual(tokenize(nfc));
+		expect(tokenize(nfd)).toEqual([nfc]);
+	});
+
+	it("leaves ASCII tokenization byte-identical (no regression)", () => {
+		expect(tokenize("Project Plan: Q3-Budget!")).toEqual(["project", "plan", "q3", "budget"]);
+		expect(tokenize("don't stop")).toEqual(["don", "t", "stop"]);
+	});
 });
 
 describe("scoreRelevanceWeighted", () => {
