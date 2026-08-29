@@ -1,6 +1,20 @@
-/** Lowercase alphanumeric tokens, deduped. Used for cheap keyword-overlap scoring. */
+/**
+ * Lowercase word tokens (Unicode letters + numbers), deduped. Used for cheap
+ * keyword-overlap scoring across conversation search, note relevance, inline
+ * suggest, and note chunking.
+ *
+ * Unicode-aware on purpose: the old `[a-z0-9]+` class dropped every non-ASCII
+ * character, which for this German-first, multilingual plugin (a) fragmented
+ * umlaut words — "Ernährung" split into "ern"/"hrung", cross-matching unrelated
+ * text on the stray pieces — and (b) reduced a non-Latin query (CJK, Cyrillic)
+ * to zero tokens, which the empty-query branch then treats as "list everything".
+ * `\p{L}\p{N}` keeps whole words intact for every script while leaving ASCII
+ * tokenization byte-identical. NFC-normalize first so a decomposed umlaut (how
+ * macOS stores filenames — "u"+combining-diaeresis) tokenizes the same as its
+ * precomposed form.
+ */
 export function tokenize(text: string): string[] {
-	return Array.from(new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []));
+	return Array.from(new Set(text.normalize("NFC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []));
 }
 
 /** Smoothed inverse-document-frequency: a token present in every haystack (df = n)

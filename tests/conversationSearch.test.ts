@@ -108,6 +108,18 @@ describe("rankConversations", () => {
 		expect(() => bestMatchSnippet(tokenize("ssig"), noMessages)).not.toThrow();
 	});
 
+	it("ranks a German umlaut query to the right conversation without umlaut cross-matches", () => {
+		// Before Unicode tokenization, "Ernährung"/"Größe"/"Straße" all shed their
+		// umlaut and shared stray fragments (e.g. "e"), so a query cross-matched
+		// unrelated German titles. Now each word stays whole.
+		const hit = conv({ name: "Ernährung und Sport", messages: [msg("gesunde Ernährung im Alltag")] });
+		const miss = conv({ name: "Größe der Straße", messages: [msg("Verkehr und Bebauung")] });
+		const items = [hit, miss];
+		const ranked = rankConversations(tokenize("Ernährung"), items, items.map(buildConversationHaystack));
+		expect(ranked).toHaveLength(1);
+		expect(ranked[0].conversation.name).toBe("Ernährung und Sport");
+	});
+
 	it("returns nothing when no conversation matches", () => {
 		const items = [conv({ name: "alpha", messages: [msg("beta gamma")] })];
 		const ranked = rankConversations(
