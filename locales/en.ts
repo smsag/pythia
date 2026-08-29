@@ -294,7 +294,7 @@ const en = {
 	maxAttachedNotesTokensDesc: "Warn when attached notes exceed this many estimated tokens before sending. Set to 0 to disable the warning.",
 	attachedNotesTokenWarning: "Attached notes are large (~{{tokens}} tokens) — this may push out room for the conversation itself or bury your question.",
 	debugModeName:           "Debug mode",
-	debugModeDesc:           "Log API calls and payloads to the developer console.",
+	debugModeDesc:           "Log API calls, payloads, and the related-conversations embedding path to the developer console.",
 	injectActiveNoteOnTemplateName: "Inject active note when using a template",
 	injectActiveNoteOnTemplateDesc: "When starting a conversation from a template, automatically include the currently open note as additional context (e.g. the job ad, brief, or article you want to work on).",
 	chooseFolderBtn:         "Choose folder",
