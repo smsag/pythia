@@ -31,6 +31,7 @@ import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { buildStreamErrorMessage } from "./services/apiError";
+import { describeErrorForLog } from "./services/redact";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
@@ -1835,7 +1836,9 @@ export class PythiaSidebarView extends ItemView {
 				}
 			},
 			(error) => {
-				console.error("[Pythia] stream error:", error);
+				// Log a compact, secret-scrubbed description rather than the raw SDK
+				// error object (avoids ever surfacing request metadata in the console).
+				console.error("[Pythia] stream error:", describeErrorForLog(error));
 
 				new Notice(buildStreamErrorMessage(error, conv.model ?? ""));
 
