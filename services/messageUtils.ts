@@ -6,15 +6,19 @@
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import type { PythiaSettings } from "../models/settings";
 import type { Conversation } from "../models/types";
+import { redactSecrets } from "./redact";
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 
 /** Verbose diagnostic trace, gated on the debugMode setting. Genuine errors should
- *  use console.warn/error directly instead — this is for opt-in noise only. */
+ *  use console.warn/error directly instead — this is for opt-in noise only.
+ *  String args are run through `redactSecrets` as a defense-in-depth net so a
+ *  key can never reach the console via a stray debug line (object args, which
+ *  the provider call-sites use, carry only metadata — never a key). */
 export function debugLog(settings: PythiaSettings, ...args: unknown[]): void {
 	if (settings.debugMode) {
 		// eslint-disable-next-line no-console
-		console.log("[Pythia]", ...args);
+		console.log("[Pythia]", ...args.map((a) => (typeof a === "string" ? redactSecrets(a) : a)));
 	}
 }
 

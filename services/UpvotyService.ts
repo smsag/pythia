@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import type { PythiaSettings } from "../settings";
+import { redactSecrets } from "./redact";
 
 /**
  * Client-executed access to a project's Upvoty feedback and roadmap for Pythia's
@@ -121,7 +122,7 @@ export class UpvotyService {
 			}
 			return text;
 		} catch (err) {
-			return `Error: Upvoty request failed: ${err instanceof Error ? err.message : String(err)}`;
+			return `Error: Upvoty request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}`;
 		}
 	}
 
@@ -230,7 +231,7 @@ export class UpvotyService {
 			};
 		}
 		if (res.status < 200 || res.status >= 300) {
-			const detail = typeof res.text === "string" ? res.text.slice(0, 200) : "";
+			const detail = typeof res.text === "string" ? redactSecrets(res.text.slice(0, 200)) : "";
 			return { errorText: `Error: Upvoty request failed (HTTP ${res.status}). ${detail}`.trim() };
 		}
 

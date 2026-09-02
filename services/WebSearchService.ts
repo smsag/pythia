@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import type { PythiaSettings } from "../settings";
 import { WEB_CITATION_INSTRUCTION } from "./promptConstants";
+import { redactSecrets } from "./redact";
 
 /** Tavily is a search API built for LLM/RAG use: one POST returns ranked,
  *  already-cleaned results plus an optional synthesized answer, so Pythia does
@@ -94,12 +95,12 @@ export class WebSearchService {
 				throw: false,
 			});
 			if (res.status < 200 || res.status >= 300) {
-				const detail = typeof res.text === "string" ? res.text.slice(0, 200) : "";
+				const detail = typeof res.text === "string" ? redactSecrets(res.text.slice(0, 200)) : "";
 				return `Error: web search failed (HTTP ${res.status}). ${detail}`.trim();
 			}
 			json = res.json as TavilyResponse;
 		} catch (err) {
-			return `Error: web search request failed: ${err instanceof Error ? err.message : String(err)}`;
+			return `Error: web search request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}`;
 		}
 
 		return formatResults(q, json, maxResults);
