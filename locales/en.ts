@@ -81,9 +81,6 @@ const en = {
 	searchingLabel:  "Searching the web: \"{{query}}\"",
 	searchedLabel:   "✓ Searched: \"{{query}}\"",
 	searchFailedLabel: "Web search failed",
-	upvotyFetchingLabel: "Fetching Upvoty feedback…",
-	upvotyFetchedLabel:  "✓ Fetched Upvoty feedback",
-	upvotyFailedLabel:   "Upvoty request failed",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	turnUser:    "YOU",
@@ -121,10 +118,6 @@ const en = {
 	researchEnabledNotice:  "Web search on for this conversation",
 	researchDisabledNotice: "Web search off for this conversation",
 	researchNoKeyNotice:    "Set a Tavily API key in Pythia settings to use web search.",
-	upvotyToggleTooltip:    "Upvoty feedback & roadmap",
-	upvotyEnabledNotice:    "Upvoty feedback on for this conversation",
-	upvotyDisabledNotice:   "Upvoty feedback off for this conversation",
-	upvotyNoKeyNotice:      "Set the Upvoty MCP server URL and API token in Pythia settings to use this.",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Copied",
@@ -265,13 +258,6 @@ const en = {
 	webSearchAutoArmDesc:    "When research mode is off, automatically allow a web search for a single message if it looks time-sensitive (latest, current, prices, news, a recent year…). Requires a Tavily key. The globe pulses when this fires.",
 	webSearchMaxResultsName: "Web search results per query",
 	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5).",
-	upvotySection:           "Upvoty",
-	upvotyServerUrlName:     "Upvoty MCP server URL",
-	upvotyServerUrlDesc:     "The remote MCP endpoint from your Upvoty account (Settings → integrations/MCP). Leave empty to disable the Upvoty tools.",
-	upvotyKeyName:           "Upvoty API token",
-	upvotyKeyDesc:           "Select a secret from Obsidian's secret storage. Use a read-only scoped token. Enables read-only feedback & roadmap tools so models can discuss feature requests. Keys are never written to data.json.",
-	upvotyDefaultName:       "Enable Upvoty by default",
-	upvotyDefaultDesc:       "Turn on Upvoty access automatically for new conversations. You can still toggle it per conversation from the input toolbar.",
 	defaultProviderName:     "Default provider",
 	defaultProviderDesc:     "Provider used when creating new conversations without a template.",
 	templatesFolderName:     "Templates folder",

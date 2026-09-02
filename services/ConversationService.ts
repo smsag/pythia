@@ -70,7 +70,6 @@ export class ConversationService {
 			outputFolder: opts.outputFolder,
 			writeMode: opts.writeMode,
 			researchMode: p.settings.webSearchDefault,
-			upvotyMode: p.settings.upvotyDefault,
 			messages: [],
 		};
 		p.conversations.push(conv);
@@ -97,7 +96,6 @@ export class ConversationService {
 		if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
 		if (tpl.writeMode) conv.writeMode = tpl.writeMode;
 		if (tpl.researchMode !== undefined) conv.researchMode = tpl.researchMode;
-		if (tpl.upvotyMode !== undefined) conv.upvotyMode = tpl.upvotyMode;
 		if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
 		if (tpl.effort !== undefined) conv.effort = tpl.effort;
 		await this.plugin.conversationStore.save(conv);

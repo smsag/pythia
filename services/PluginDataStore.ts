@@ -88,8 +88,6 @@ export class PluginDataStore {
 			(await p.app.secretStorage.getSecret(p.settings.mistralSecretName)) ?? "";
 		p.plaintextSearchKey =
 			(await p.app.secretStorage.getSecret(p.settings.searchSecretName)) ?? "";
-		p.plaintextUpvotyKey =
-			(await p.app.secretStorage.getSecret(p.settings.upvotySecretName)) ?? "";
 
 		if (needsSave) {
 			await p.saveData({ settings: p.settings, conversations: p.conversations });
@@ -103,7 +101,6 @@ export class PluginDataStore {
 		p.templateLoader?.updateSettings(p.settings);
 		p.noteWriter?.updateSettings(p.settings);
 		p.webSearchService?.updateSettings(p.settings);
-		p.upvotyService?.updateSettings(p.settings);
 		p.promptOptimizerService?.updateSettings(p.settings);
 	}
 
@@ -165,8 +162,6 @@ export class PluginDataStore {
 		p.noteWriter?.updateSettings(p.settings);
 		p.webSearchService?.updateSettings(p.settings);
 		p.webSearchService?.updateApiKey(p.plaintextSearchKey);
-		p.upvotyService?.updateSettings(p.settings);
-		p.upvotyService?.updateApiKey(p.plaintextUpvotyKey);
 		p.promptOptimizerService?.updateSettings(p.settings);
 		const leaves = p.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
 		for (const leaf of leaves) {
