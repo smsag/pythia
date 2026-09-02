@@ -2,8 +2,8 @@
  * Secret redaction for anything that might reach a log, an error dump, or a
  * tool result surfaced to the model.
  *
- * Pythia is a client-side Obsidian plugin: it calls the LLM / search / Upvoty
- * APIs directly, so provider keys necessarily travel in request headers (visible
+ * Pythia is a client-side Obsidian plugin: it calls the LLM / search APIs
+ * directly, so provider keys necessarily travel in request headers (visible
  * in DevTools' Network tab — an unavoidable property of a server-less plugin).
  * These helpers do NOT change that; they are defense-in-depth for the surfaces
  * we DO control — making sure a key never leaks into `console` output, a logged

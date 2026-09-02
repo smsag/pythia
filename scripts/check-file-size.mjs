@@ -19,11 +19,11 @@ const DEFAULT_MAX = 600;
 // DOWN as ADR-097 extractions land; delete an entry once the file drops under
 // DEFAULT_MAX on its own.
 const CEILINGS = {
-	"sidebar.ts": 2062,
+	"sidebar.ts": 1994,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// Settings tab monolith; grows one setting at a time (embedding model, related-
-	// similarity preset, Upvoty section, …). TODO: split into grouped sections. Split later.
-	"settings.ts": 660,
+	// similarity preset, …). TODO: split into grouped sections. Split later.
+	"settings.ts": 622,
 	// View-render smoke-test file (ADR-105/109). TODO(ADR-097): extract a shared
 	// harness and split the per-feature describe blocks into their own files.
 	"tests/viewRender.test.ts": 652,

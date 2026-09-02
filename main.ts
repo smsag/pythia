@@ -14,7 +14,6 @@ import type { TemplateLoader } from "./services/TemplateLoader";
 import type { NoteWriter } from "./services/NoteWriter";
 import type { ToolHandler } from "./services/ToolHandler";
 import type { WebSearchService } from "./services/WebSearchService";
-import type { UpvotyService } from "./services/UpvotyService";
 import type { PromptOptimizerService } from "./services/PromptOptimizerService";
 import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
@@ -33,7 +32,6 @@ export default class PythiaPlugin extends Plugin {
 	plaintextOpenAIKey = "";
 	plaintextMistralKey = "";
 	plaintextSearchKey = "";
-	plaintextUpvotyKey = "";
 
 	// The composition root (ADR-103 / #122) owns the services; the plugin exposes
 	// each as a getter so `plugin.llmRouter` etc. keep working with no call-site changes.
@@ -54,7 +52,6 @@ export default class PythiaPlugin extends Plugin {
 	get templateLoader(): TemplateLoader { return this.container?.templateLoader as TemplateLoader; }
 	get noteWriter(): NoteWriter { return this.container?.noteWriter as NoteWriter; }
 	get webSearchService(): WebSearchService { return this.container?.webSearchService as WebSearchService; }
-	get upvotyService(): UpvotyService { return this.container?.upvotyService as UpvotyService; }
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
@@ -402,7 +399,6 @@ export default class PythiaPlugin extends Plugin {
 	setOpenAIKey(secretName: string): Promise<void> { return this.secretStore.setOpenAIKey(secretName); }
 	setMistralKey(secretName: string): Promise<void> { return this.secretStore.setMistralKey(secretName); }
 	setSearchKey(secretName: string): Promise<void> { return this.secretStore.setSearchKey(secretName); }
-	setUpvotyKey(secretName: string): Promise<void> { return this.secretStore.setUpvotyKey(secretName); }
 	hasApiKeyFor(provider: Provider): boolean { return this.secretStore.hasApiKeyFor(provider); }
 
 	saveSettings(): Promise<void> { return this.pluginDataStore.saveSettings(); }

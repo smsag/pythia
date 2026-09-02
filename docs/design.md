@@ -1,6 +1,6 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-02 — Upvoty toggle (ADR-111): the input toolbar gains a `megaphone` icon button (`.p-tool-btn`, right after the research `globe`) that toggles read-only Upvoty feedback/roadmap access for the conversation — same active-state styling (`is-active`) and per-conversation persistence as the globe, but no auto-arm and no pulse. Its tool calls render the same non-confirming status chip as `web_search` ("Fetching Upvoty…" → "✓ Fetched Upvoty feedback" / "Upvoty request failed"). Settings adds an "Upvoty" section (server URL, API-token secret, enable-by-default toggle) after "Web search".*
+*Last updated: 2026-09-02 — Upvoty toggle removed (ADR-113): the `megaphone` input-toolbar button and the "Upvoty" settings section added in ADR-111 are gone (the integration was pulled — see decisions.md). The input toolbar returns to its prior set; the research `globe` is again the last read-only toggle.*
 
 *Previously, 2026-08-28 — AI-message vertical rhythm: rendered-markdown **headings** are normalized (`.p-ai-body`/`.p-summary-card-md` `:is(h1…h6)` → `margin: var(--s4) 0 var(--s1)`, `line-height: 1.3`, chat-scaled sizes h1 1.25em / h2 1.12em / h3+ 1em) instead of inheriting Obsidian's jumpy document-scale defaults; lists + blockquotes share the paragraphs' 6px rhythm; `.p-msg-ai` gap → `var(--s2)`. Fixes the uneven heading-to-body spacing in chat answers.*
 

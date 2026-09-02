@@ -44,14 +44,6 @@ export class SecretStore {
 		this.plugin.webSearchService?.updateApiKey(this.plugin.plaintextSearchKey);
 	}
 
-	/** Update the Upvoty API token reference and refresh the in-memory token from SecretStorage. */
-	async setUpvotyKey(secretName: string): Promise<void> {
-		this.plugin.settings.upvotySecretName = secretName;
-		await this.plugin.pluginDataStore.persist();
-		this.plugin.plaintextUpvotyKey = (await this.plugin.app.secretStorage.getSecret(secretName)) ?? "";
-		this.plugin.upvotyService?.updateApiKey(this.plugin.plaintextUpvotyKey);
-	}
-
 	/** Exhaustive switch (not a two-way ternary) so a fourth provider fails to
 	 *  compile here instead of silently checking the wrong provider's key. */
 	hasApiKeyFor(provider: Provider): boolean {
