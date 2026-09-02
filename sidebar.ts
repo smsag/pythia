@@ -4,10 +4,12 @@ import {
 	MarkdownRenderer,
 	MarkdownView,
 	Notice,
+	Platform,
 	setIcon,
 	TFile,
 	WorkspaceLeaf,
 } from "obsidian";
+import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
@@ -113,6 +115,9 @@ export class PythiaSidebarView extends ItemView {
 	private suppressNextSendClick = false;
 	private sendMenuWrap!: HTMLElement;
 	private sendMenuCleanup: (() => void) | null = null;
+	/** Bottom action sheet used on mobile in place of the desktop `.p-send-menu`
+	 *  popover (created lazily on first long-press). */
+	private actionSheet: ActionSheet | null = null;
 	// Warning shown beside Send when the effective max-tokens looks too low for
 	// the selected reasoning model (its reasoning budget can truncate the reply).
 	private sendHintEl!: HTMLButtonElement;
@@ -204,6 +209,7 @@ export class PythiaSidebarView extends ItemView {
 		this.sendLongPressCleanup?.();
 		this.sendLongPressCleanup = null;
 		this.closeSummaryMenu();
+		this.actionSheet?.close();
 
 		// Discard any pending optimization state.
 		this.optimizationController?.cancel();
@@ -656,44 +662,68 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	/** The long-press Send menu — a small popover stacked directly above the Send
-	 *  button. The only entry point for generating summaries. */
-	private openSummaryMenu(): void {
+	/** Actions offered by the Send long-press menu — shared by the mobile bottom
+	 *  sheet and the desktop popover so both stay in lockstep. */
+	private buildSummaryMenuItems(): ActionSheetItem[] {
 		const conv = this.activeConversation;
-		if (!conv) { new Notice(t("noActiveConvToSend")); return; }
-		if (this.sendMenuCleanup) { this.closeSummaryMenu(); return; } // toggle off
-
-		const menu = this.sendMenuWrap.createDiv({ cls: "p-send-menu" });
-
-		const addItem = (label: string, icon: string, disabled: boolean, action: () => void) => {
-			const item = menu.createDiv({
-				cls: `p-send-menu-item${disabled ? " p-send-menu-item-disabled" : ""}`,
-			});
-			const ic = item.createSpan({ cls: "p-send-menu-icon" });
-			setIcon(ic, icon);
-			item.createSpan({ cls: "p-send-menu-label", text: label });
-			if (disabled) return;
-			// mousedown (not click) so the selection/keyboard focus isn't disturbed.
-			item.addEventListener("mousedown", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				this.closeSummaryMenu();
-				action();
-			});
-		};
-
-		addItem(t("menuSummarizeConversation"), "align-left", conv.messages.length === 0,
-			() => void this.summaryController.generateConversationSummary());
-		addItem(t("menuSummarizeFavorites"), "star", (conv.favorites?.length ?? 0) === 0,
-			() => void this.summaryController.summarizeFavorites());
+		if (!conv) return [];
 		// Prompt optimization (moved here from the input toolbar). Disabled when there
 		// is nothing typed to optimize or no optimizer template is configured.
 		const optimizeDisabled =
 			this.inputEl.value.trim().length === 0 || !this.plugin.settings.promptOptimizerTemplateId;
-		addItem(t("menuOptimizePrompt"), "sparkles", optimizeDisabled, () => {
-			this.ensureInputExpanded();
-			void this.optimizationController.start();
-		});
+		return [
+			{
+				label: t("menuSummarizeConversation"), icon: "align-left",
+				disabled: conv.messages.length === 0,
+				onSelect: () => void this.summaryController.generateConversationSummary(),
+			},
+			{
+				label: t("menuSummarizeFavorites"), icon: "star",
+				disabled: (conv.favorites?.length ?? 0) === 0,
+				onSelect: () => void this.summaryController.summarizeFavorites(),
+			},
+			{
+				label: t("menuOptimizePrompt"), icon: "sparkles", disabled: optimizeDisabled,
+				onSelect: () => { this.ensureInputExpanded(); void this.optimizationController.start(); },
+			},
+		];
+	}
+
+	/** The Send long-press menu. On mobile it opens a bottom action sheet (a
+	 *  stacked popover is the wrong UX on touch); on desktop it keeps the small
+	 *  popover above the Send button. The only entry point for generating summaries. */
+	private openSummaryMenu(): void {
+		const conv = this.activeConversation;
+		if (!conv) { new Notice(t("noActiveConvToSend")); return; }
+
+		const items = this.buildSummaryMenuItems();
+
+		if (Platform.isMobile) {
+			this.actionSheet ??= new ActionSheet(this.containerEl.children[1] as HTMLElement);
+			if (this.actionSheet.isOpen) { this.actionSheet.close(); return; } // toggle off
+			this.actionSheet.open(items, { title: t("menuSummaryTitle") });
+			return;
+		}
+
+		if (this.sendMenuCleanup) { this.closeSummaryMenu(); return; } // toggle off
+
+		const menu = this.sendMenuWrap.createDiv({ cls: "p-send-menu" });
+		for (const item of items) {
+			const el = menu.createDiv({
+				cls: `p-send-menu-item${item.disabled ? " p-send-menu-item-disabled" : ""}`,
+			});
+			const ic = el.createSpan({ cls: "p-send-menu-icon" });
+			setIcon(ic, item.icon);
+			el.createSpan({ cls: "p-send-menu-label", text: item.label });
+			if (item.disabled) continue;
+			// mousedown (not click) so the selection/keyboard focus isn't disturbed.
+			el.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.closeSummaryMenu();
+				item.onSelect();
+			});
+		}
 
 		// Outside-click / outside-touch dismissal (deferred so this gesture doesn't self-close).
 		const onOutside = (e: Event) => {

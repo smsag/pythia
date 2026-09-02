@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-02 — Upvoty toggle removed (ADR-113): the `megaphone` input-toolbar button and the "Upvoty" settings section added in ADR-111 are gone (the integration was pulled — see decisions.md). The input toolbar returns to its prior set; the research `globe` is again the last read-only toggle.*
+*Last updated: 2026-09-02 — mobile bottom action sheet (ADR-114): on touch, the Send long-press opens a full-width **bottom sheet** (`.p-sheet` behind a `.p-sheet-scrim`) instead of the `.p-send-menu` popover — drag handle, swipe-down / scrim-tap / Escape to dismiss, 48px rows, `env(safe-area-inset-bottom)` padding, rounded top corners. Elevation is the scrim + a top border (no `box-shadow`, per the flat-panel rule). Desktop keeps the popover. New tokens: `.p-sheet*` in `styles.css`; built by `ui/ActionSheet.ts`.*
+
+*Previously, 2026-09-02 — Upvoty toggle removed (ADR-113): the `megaphone` input-toolbar button and the "Upvoty" settings section added in ADR-111 are gone (the integration was pulled — see decisions.md). The input toolbar returns to its prior set; the research `globe` is again the last read-only toggle.*
 
 *Previously, 2026-08-28 — AI-message vertical rhythm: rendered-markdown **headings** are normalized (`.p-ai-body`/`.p-summary-card-md` `:is(h1…h6)` → `margin: var(--s4) 0 var(--s1)`, `line-height: 1.3`, chat-scaled sizes h1 1.25em / h2 1.12em / h3+ 1em) instead of inheriting Obsidian's jumpy document-scale defaults; lists + blockquotes share the paragraphs' 6px rhythm; `.p-msg-ai` gap → `var(--s2)`. Fixes the uneven heading-to-body spacing in chat answers.*
 
