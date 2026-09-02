@@ -137,7 +137,7 @@ export class AnthropicService extends BaseProvider {
 		// Tool definitions are identical on every turn of a conversation — mark the
 		// last one as a cache breakpoint so the whole block is cached after turn 1.
 		this.anthropicTools = onToolCall
-			? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode, conversation.researchMode ?? false).map((def, i, arr) => ({
+			? getToolDefinitions(conversation.outputFolder ?? this.settings.scratchFolder, conversation.writeMode, conversation.researchMode ?? false, conversation.upvotyMode ?? false).map((def, i, arr) => ({
 					name: def.name,
 					description: def.description,
 					input_schema: def.inputSchema as Anthropic.Tool.InputSchema,

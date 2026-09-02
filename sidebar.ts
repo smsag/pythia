@@ -126,6 +126,7 @@ export class PythiaSidebarView extends ItemView {
 	private onViewportResize: (() => void) | null = null;
 
 	private researchBtnEl!: HTMLButtonElement;
+	private upvotyBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
@@ -245,6 +246,7 @@ export class PythiaSidebarView extends ItemView {
 		this.headerController.renderHeader();
 		this.headerController.updateModelBadge();
 		this.updateResearchButton();
+		this.updateUpvotyButton();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -572,6 +574,14 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.researchBtnEl, "globe");
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
 		this.updateResearchButton();
+
+		this.upvotyBtnEl = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("upvotyToggleTooltip") },
+		});
+		setIcon(this.upvotyBtnEl, "megaphone");
+		this.registerDomEvent(this.upvotyBtnEl, "click", () => this.toggleUpvotyMode());
+		this.updateUpvotyButton();
 
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -1379,6 +1389,31 @@ export class PythiaSidebarView extends ItemView {
 		void this.plugin.conversationStore.save(conv);
 	}
 
+	/** Reflect the active conversation's Upvoty state on the toolbar toggle.
+	 *  Mirrors updateResearchButton — called on build and on conversation switch. */
+	private updateUpvotyButton(): void {
+		if (!this.upvotyBtnEl) return;
+		const on = !!this.activeConversation?.upvotyMode;
+		this.upvotyBtnEl.toggleClass("is-active", on);
+		this.upvotyBtnEl.setAttr("aria-pressed", String(on));
+	}
+
+	/** Toggle Upvoty feedback/roadmap access for the active conversation. Warns
+	 *  (but still toggles) when Upvoty isn't configured so the intent is
+	 *  remembered for when it is. Persists so the choice survives reloads/sync. */
+	private toggleUpvotyMode(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		conv.upvotyMode = !conv.upvotyMode;
+		this.updateUpvotyButton();
+		if (conv.upvotyMode && !this.plugin.upvotyService.hasConfig()) {
+			new Notice(t("upvotyNoKeyNotice"));
+		} else {
+			new Notice(conv.upvotyMode ? t("upvotyEnabledNotice") : t("upvotyDisabledNotice"));
+		}
+		void this.plugin.conversationStore.save(conv);
+	}
+
 	private onAttachNote(): void {
 		const conv = this.activeConversation;
 		if (!conv) return;
@@ -1553,6 +1588,10 @@ export class PythiaSidebarView extends ItemView {
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
+		// Upvoty is a plain per-conversation toggle — no auto-arm — so the active
+		// flag is just the persisted conversation state.
+		const upvotyActive = conv.upvotyMode ?? false;
+
 		const onToolCall = async (call: ToolCall): Promise<string> => {
 				// web_search is read-only — run it directly with a live status chip,
 				// no write-confirmation prompt (that would make research unusable).
@@ -1568,7 +1607,8 @@ export class PythiaSidebarView extends ItemView {
 
 					const allowedSearch = ToolHandler.allowedToolNames(
 						conv.writeMode ?? "all",
-						researchActive
+						researchActive,
+						upvotyActive
 					);
 					const searchResult = await this.plugin.toolHandler.execute(call, allowedSearch);
 
@@ -1586,6 +1626,34 @@ export class PythiaSidebarView extends ItemView {
 						this.pendingWebSources.push(...parseWebSourcesFromResult(searchResult));
 					}
 					return searchResult;
+				}
+
+				// Upvoty tools are read-only reads — run directly with a live status
+				// chip, no write-confirmation prompt (that would make them unusable).
+				if (call.name.startsWith("upvoty_")) {
+					const chip = this.messagesEl.createDiv({ cls: "pythia-tool-call" });
+					chip.createSpan({
+						cls: "pythia-tool-call-label",
+						text: t("upvotyFetchingLabel"),
+					});
+					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+					const allowedUpvoty = ToolHandler.allowedToolNames(
+						conv.writeMode ?? "all",
+						researchActive,
+						upvotyActive
+					);
+					const result = await this.plugin.toolHandler.execute(call, allowedUpvoty);
+
+					chip.empty();
+					if (result.startsWith("Error")) {
+						chip.addClass("pythia-tool-call--error");
+						chip.createSpan({ cls: "pythia-tool-call-label", text: t("upvotyFailedLabel") });
+					} else {
+						chip.addClass("pythia-tool-call--done");
+						chip.createSpan({ cls: "pythia-tool-call-label", text: t("upvotyFetchedLabel") });
+					}
+					return result;
 				}
 
 				const rawPath =
@@ -1654,7 +1722,7 @@ export class PythiaSidebarView extends ItemView {
 					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
 				}
 
-				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
+				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive, upvotyActive);
 				const result = await this.plugin.toolHandler.execute(call, allowed);
 
 				if (result.startsWith("Error")) {

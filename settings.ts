@@ -181,6 +181,44 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
+		containerEl.createEl("h3", { text: t("upvotySection") });
+
+		new Setting(containerEl)
+			.setName(t("upvotyServerUrlName"))
+			.setDesc(t("upvotyServerUrlDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("https://…/mcp")
+					.setValue(this.plugin.settings.upvotyServerUrl)
+					.onChange(async (value) => {
+						this.plugin.settings.upvotyServerUrl = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("upvotyKeyName"))
+			.setDesc(t("upvotyKeyDesc"))
+			.addComponent((el) =>
+				new SecretComponent(this.app, el)
+					.setValue(this.plugin.settings.upvotySecretName)
+					.onChange(async (secretName) => {
+						await this.plugin.setUpvotyKey(secretName);
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t("upvotyDefaultName"))
+			.setDesc(t("upvotyDefaultDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.upvotyDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.upvotyDefault = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		containerEl.createEl("h3", { text: t("defaultsSection") });
 
 		new Setting(containerEl)
