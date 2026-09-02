@@ -165,6 +165,7 @@ const de: Strings = {
 	favoritesSummaryTitle:     "Favoriten-Zusammenfassung",
 	conversationSummaryTitle:  "Gesprächszusammenfassung",
 	saveToNoteBtn:             "In Notiz speichern",
+	menuSummaryTitle:          "Erzeugen",
 	menuSummarizeConversation: "Gespräch zusammenfassen",
 	menuSummarizeFavorites:    "Favoriten zusammenfassen",
 	menuOptimizePrompt:        "Prompt optimieren",

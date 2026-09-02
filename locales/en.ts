@@ -151,6 +151,7 @@ const en = {
 	favoritesSummaryTitle:     "Favorites summary",
 	conversationSummaryTitle:  "Conversation summary",
 	saveToNoteBtn:             "Save to note",
+	menuSummaryTitle:          "Generate",
 	menuSummarizeConversation: "Summarize conversation",
 	menuSummarizeFavorites:    "Summarize favorites",
 	menuOptimizePrompt:        "Optimize prompt",
