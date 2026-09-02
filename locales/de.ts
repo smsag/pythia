@@ -85,9 +85,6 @@ const de: Strings = {
 	searchingLabel:  "Websuche läuft: „{{query}}“",
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",
-	upvotyFetchingLabel: "Upvoty-Feedback wird geladen…",
-	upvotyFetchedLabel:  "✓ Upvoty-Feedback geladen",
-	upvotyFailedLabel:   "Upvoty-Anfrage fehlgeschlagen",
 
 	// ── Turn labels ───────────────────────────────────────────────────────────
 	turnUser: "DU",
@@ -135,10 +132,6 @@ const de: Strings = {
 	researchEnabledNotice:  "Websuche für dieses Gespräch aktiviert",
 	researchDisabledNotice: "Websuche für dieses Gespräch deaktiviert",
 	researchNoKeyNotice:    "Hinterlege einen Tavily-API-Schlüssel in den Pythia-Einstellungen, um die Websuche zu nutzen.",
-	upvotyToggleTooltip:    "Upvoty-Feedback & Roadmap",
-	upvotyEnabledNotice:    "Upvoty-Feedback für dieses Gespräch aktiviert",
-	upvotyDisabledNotice:   "Upvoty-Feedback für dieses Gespräch deaktiviert",
-	upvotyNoKeyNotice:      "Hinterlege die Upvoty-MCP-Server-URL und einen API-Token in den Pythia-Einstellungen, um dies zu nutzen.",
 
 	// ── Notices ───────────────────────────────────────────────────────────────
 	copied:                    "Kopiert",
@@ -278,13 +271,6 @@ const de: Strings = {
 	webSearchAutoArmDesc:    "Wenn der Recherchemodus aus ist, wird für eine einzelne Nachricht automatisch eine Websuche erlaubt, sofern sie zeitkritisch wirkt (neueste, aktuell, Preise, Nachrichten, ein aktuelles Jahr …). Erfordert einen Tavily-Schlüssel. Der Globus pulsiert, wenn dies auslöst.",
 	webSearchMaxResultsName: "Websuchergebnisse pro Anfrage",
 	webSearchMaxResultsDesc: "Wie viele Ergebnisse pro Suche abgerufen werden. Weniger Ergebnisse verbrauchen weniger Tokens. Bei 0 wird der Standard (5) verwendet.",
-	upvotySection:           "Upvoty",
-	upvotyServerUrlName:     "Upvoty-MCP-Server-URL",
-	upvotyServerUrlDesc:     "Der Remote-MCP-Endpunkt aus deinem Upvoty-Konto (Einstellungen → Integrationen/MCP). Leer lassen, um die Upvoty-Tools zu deaktivieren.",
-	upvotyKeyName:           "Upvoty-API-Token",
-	upvotyKeyDesc:           "Wähle ein Secret aus Obsidians Secret-Storage. Verwende einen schreibgeschützten (read-only) Token. Aktiviert schreibgeschützte Feedback- & Roadmap-Tools, damit Modelle Feature-Wünsche besprechen können. Schlüssel werden nie in data.json geschrieben.",
-	upvotyDefaultName:       "Upvoty standardmäßig aktivieren",
-	upvotyDefaultDesc:       "Upvoty-Zugriff für neue Gespräche automatisch aktivieren. Pro Gespräch weiterhin über die Eingabe-Toolbar umschaltbar.",
 	defaultProviderName:     "Standardanbieter",
 	defaultProviderDesc:     "Anbieter für neue Gespräche ohne Vorlage.",
 	templatesFolderName:     "Vorlagenordner",
