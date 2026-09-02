@@ -6,6 +6,7 @@ import { LLMRouter } from "./services/LLMRouter";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
 import { WebSearchService } from "./services/WebSearchService";
+import { UpvotyService } from "./services/UpvotyService";
 import { ToolHandler } from "./services/ToolHandler";
 import { PromptOptimizerService } from "./services/PromptOptimizerService";
 import { SecretStore } from "./services/SecretStore";
@@ -32,6 +33,7 @@ export class AppContainer {
 		readonly templateLoader: TemplateLoader,
 		readonly noteWriter: NoteWriter,
 		readonly webSearchService: WebSearchService,
+		readonly upvotyService: UpvotyService,
 		readonly toolHandler: ToolHandler,
 		readonly promptOptimizerService: PromptOptimizerService,
 		readonly secretStore: SecretStore,
@@ -53,7 +55,8 @@ export class AppContainer {
 		const templateLoader = new TemplateLoader(plugin.app, plugin.settings);
 		const noteWriter = new NoteWriter(plugin.app, plugin.settings);
 		const webSearchService = new WebSearchService(plugin.settings, plugin.plaintextSearchKey);
-		const toolHandler = new ToolHandler(noteWriter, webSearchService);
+		const upvotyService = new UpvotyService(plugin.settings, plugin.plaintextUpvotyKey);
+		const toolHandler = new ToolHandler(noteWriter, webSearchService, upvotyService);
 		const promptOptimizerService = new PromptOptimizerService(plugin.app, plugin, plugin.settings, llmRouter);
 		const secretStore = new SecretStore(plugin);
 		const conversationService = new ConversationService(plugin);
@@ -65,6 +68,7 @@ export class AppContainer {
 			templateLoader,
 			noteWriter,
 			webSearchService,
+			upvotyService,
 			toolHandler,
 			promptOptimizerService,
 			secretStore,

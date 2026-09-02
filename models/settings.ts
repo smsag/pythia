@@ -61,6 +61,13 @@ export interface PythiaSettings {
 	webSearchAutoArm: boolean;
 	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
 	webSearchMaxResults: number;
+	/** Base URL of the Upvoty remote MCP server (from the user's Upvoty account).
+	 *  Empty = Upvoty integration disabled. */
+	upvotyServerUrl: string;
+	/** Secret ID referencing the Upvoty (read-only) API token in Obsidian SecretStorage. */
+	upvotySecretName: string;
+	/** Default state of the per-conversation Upvoty toggle for new conversations. */
+	upvotyDefault: boolean;
 	/** On-device embedding model for "related conversations" semantic search. */
 	embeddingModelId: EmbeddingModelId;
 	/** How strict the "related conversations" similarity floor is. */
@@ -95,6 +102,9 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchDefault: false,
 	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
+	upvotyServerUrl: "",
+	upvotySecretName: "pythia-upvoty",
+	upvotyDefault: false,
 	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
 	relatedSimilarity: DEFAULT_RELATED_SIMILARITY,
 };
