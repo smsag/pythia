@@ -58,8 +58,20 @@ function escapeAttr(value: string): string {
  * optional summary. `customInstructions` (from settings) are appended as
  * standing user guidance after the conversation's own system prompt.
  */
-export function buildSystemPrompt(conversation: Conversation, customInstructions = ""): string {
+export function buildSystemPrompt(
+	conversation: Conversation,
+	customInstructions = "",
+	/** Whether note text is actually being inlined into this turn's system prompt.
+	 *  This can exceed `conversation.contextNotes` — e.g. vault-RAG auto-retrieved
+	 *  notes (ADR-116) are appended to the request but never stored on the
+	 *  conversation. The citation instruction and the untrusted-content injection
+	 *  guard must key off the content that is really present, not just the manual
+	 *  context list, or auto-retrieved notes would be injected uncited AND without
+	 *  the ADR-115 "treat as data" framing. */
+	opts: { hasAttachedNotes?: boolean } = {}
+): string {
 	const parts: string[] = [];
+	const hasAttachedNotes = opts.hasAttachedNotes === true;
 
 	const promptText = conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 	parts.push(
@@ -86,6 +98,7 @@ export function buildSystemPrompt(conversation: Conversation, customInstructions
 	const priorSummaryRaw = conversation.summaryText ?? conversation.forkedFromSummary;
 	const hasUntrustedContext =
 		conversation.contextNotes.length > 0 ||
+		hasAttachedNotes ||
 		conversation.researchMode === true ||
 		!!priorSummaryRaw ||
 		!!conversation.forkedFromSelection?.trim();
@@ -131,7 +144,7 @@ export function buildSystemPrompt(conversation: Conversation, customInstructions
 		);
 	}
 
-	if (conversation.contextNotes.length > 0) {
+	if (conversation.contextNotes.length > 0 || hasAttachedNotes) {
 		parts.push(GROUNDING_INSTRUCTION);
 	}
 

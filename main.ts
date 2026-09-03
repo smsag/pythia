@@ -64,6 +64,14 @@ export default class PythiaPlugin extends Plugin {
 	private embeddingModelId: EmbeddingModelId | null = null;
 	private relatedService: ConversationIndexService | null = null;
 	private vaultService: VaultIndexService | null = null;
+	/** Paths auto-retrieved on the last turn, per conversation id — read by the
+	 *  sidebar to show distinct "auto" reference pills for what vault RAG pulled in. */
+	private lastAutoContext = new Map<string, string[]>();
+
+	/** Vault paths auto-retrieved for `conversationId` on its most recent turn (ADR-116). */
+	getAutoContext(conversationId: string): string[] {
+		return this.lastAutoContext.get(conversationId) ?? [];
+	}
 
 	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109).
 	 *
@@ -151,13 +159,19 @@ export default class PythiaPlugin extends Plugin {
 
 	/**
 	 * Vault notes semantically relevant to `query`, for auto-RAG context (ADR-116).
-	 * Returns [] when the feature is off, the query is empty, or nothing clears the
-	 * similarity floor. The LLMRouter hook treats this as fail-open (a throw never
-	 * blocks the turn). Excludes already-attached `exclude` paths and Pythia's own
+	 * Returns [] when the feature is off for this conversation, the query is empty,
+	 * or nothing clears the similarity floor. The LLMRouter hook treats this as
+	 * fail-open (a throw never blocks the turn). Gating is per-conversation
+	 * (`conversation.vaultContext`), falling back to the global `vaultContextEnabled`
+	 * default. Excludes already-attached `exclude` paths and Pythia's own
 	 * conversations/scratch folders so saved chats aren't fed back as context.
 	 */
-	async getRelevantNotes(query: string, exclude: string[] = []): Promise<string[]> {
-		if (!this.settings.vaultContextEnabled) return [];
+	async getRelevantNotes(conversation: Conversation, query: string, exclude: string[] = []): Promise<string[]> {
+		const enabled = conversation.vaultContext ?? this.settings.vaultContextEnabled;
+		if (!enabled) {
+			this.lastAutoContext.delete(conversation.id); // clear stale pills when turned off
+			return [];
+		}
 		const q = query.trim();
 		if (!q) return [];
 
@@ -173,7 +187,10 @@ export default class PythiaPlugin extends Plugin {
 			if (excludeSet.has(file.path) || inSkipped(file.path)) continue;
 			notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
 		}
-		if (notes.length === 0) return [];
+		if (notes.length === 0) {
+			this.lastAutoContext.set(conversation.id, []);
+			return [];
+		}
 
 		const minScore = relatedMinScore(this.settings.vaultContextSimilarity);
 		const limit = this.settings.vaultContextMaxNotes > 0 ? this.settings.vaultContextMaxNotes : 5;
@@ -184,7 +201,9 @@ export default class PythiaPlugin extends Plugin {
 			returned: results.length,
 			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
 		});
-		return results.map((r) => r.id);
+		const paths = results.map((r) => r.id);
+		this.lastAutoContext.set(conversation.id, paths);
+		return paths;
 	}
 
 	/** Drop the embedding provider + both index services so the next use rebuilds
@@ -207,8 +226,8 @@ export default class PythiaPlugin extends Plugin {
 
 		// Vault-wide semantic RAG (ADR-116): let the router auto-retrieve relevant
 		// vault notes per turn. The hook owns its own gating (returns [] when off).
-		this.llmRouter.setVaultRetriever((_conv, query, exclude) =>
-			this.getRelevantNotes(query, exclude)
+		this.llmRouter.setVaultRetriever((conv, query, exclude) =>
+			this.getRelevantNotes(conv, query, exclude)
 		);
 
 		this.registerView(
@@ -302,7 +321,7 @@ export default class PythiaPlugin extends Plugin {
 			callback: async () => {
 				this.settings.vaultContextEnabled = !this.settings.vaultContextEnabled;
 				await this.saveSettings();
-				new Notice(this.settings.vaultContextEnabled ? t("vaultContextOn") : t("vaultContextOff"));
+				new Notice(this.settings.vaultContextEnabled ? t("vaultContextDefaultOn") : t("vaultContextDefaultOff"));
 			},
 		});
 

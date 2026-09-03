@@ -479,6 +479,14 @@
 }
 .p-wikilink-x:hover { color: var(--text-error, var(--color-red)); }
 
+/* Vault-RAG auto-retrieved pill (ADR-116): muted + italic, no × — read-only,
+   ephemeral per-turn context, visually set apart from persistent context notes. */
+.p-wikilink--auto .p-wikilink-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.p-wikilink--auto .p-wikilink-bracket { opacity: 0.6; }
+
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
   all: unset;

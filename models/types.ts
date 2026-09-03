@@ -33,6 +33,8 @@ export interface Conversation {
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
 	researchMode?: boolean;           // when true, expose the web_search tool + inject recency context
+	vaultContext?: boolean;           // when true, auto-retrieve relevant vault notes per turn (ADR-116);
+	                                  // undefined → fall back to the global vaultContextEnabled default
 }
 
 export interface TokenUsage {

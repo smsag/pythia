@@ -23,7 +23,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Inbox** — "Save to inbox" prepends the selection with a timestamp to a configurable inbox note
 - **AI note creation** — ask Pythia to create, update, or rewrite a vault note; a confirm chip appears before any write so you can approve or cancel, and a clickable link confirms the result
 - **`#` note picker** — type `#` in the chat input to fuzzy-search all vault notes and attach one inline, just like VS Code's `#` file picker
-- **Vault context (semantic RAG)** — toggle on to let Pythia automatically pull the most semantically relevant notes from your **whole vault** into every message, without hand-picking them. Uses the same on-device embedding model as "related conversations" (nothing leaves your machine), retrieves the closest notes to your question, and feeds them through the normal attached-note pipeline so they are excerpted, token-counted, and **cited** just like notes you attach yourself. Off by default; toggle from the Command Palette.
+- **Vault context (semantic RAG)** — toggle the **library icon** in the input toolbar to let Pythia automatically pull the most semantically relevant notes from your **whole vault** into every message, without hand-picking them. It's a per-conversation switch (like the web-search globe). Uses the same on-device embedding model as "related conversations" (nothing leaves your machine), and feeds retrieved notes through the normal attached-note pipeline so they are excerpted, token-counted, and **cited** just like notes you attach yourself; each turn's auto-pulled notes also show as distinct read-only pills in the reference row. Off by default (a Command Palette command sets the default for new conversations).
 - **Multi-provider** — supports Anthropic (Claude) and OpenAI models, switchable per conversation
 - **Context menus** — right-click any file in the Explorer to open a conversation about that note; right-click a folder to combine all its notes as context; right-click selected text in the editor to send it to Pythia
 - **Browse conversations** — open any past conversation directly from the Command Palette, no resume-mode step
@@ -43,7 +43,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
 | `Pythia: Browse conversations` | Fuzzy-search all conversations and open one directly |
 | `Pythia: Browse favorites` | Fuzzy-search all starred responses across every conversation and jump to one |
-| `Pythia: Toggle vault context (semantic RAG)` | Turn on/off auto-attaching the most relevant vault notes to each message |
+| `Pythia: Toggle vault context default (semantic RAG)` | Turn the vault-context **default** on/off for new conversations (per-conversation toggle lives on the input toolbar) |
 | `Pythia: Open sidebar` | Open / focus the chat sidebar |
 
 ### Context menus
@@ -163,11 +163,11 @@ The row hides itself automatically when there are no associated files.
 
 ## Vault context (semantic RAG)
 
-When **vault context** is on (`Pythia: Toggle vault context (semantic RAG)`), every message you send is first matched against a semantic index of your whole vault, and the most relevant notes are auto-attached to that turn — so Pythia can answer *from your knowledge base* without you hunting for the right notes.
+When **vault context** is on (the **library icon** in the input toolbar — a per-conversation toggle, like the web-search globe; the `Pythia: Toggle vault context default` command sets the default for new conversations), every message you send is first matched against a semantic index of your whole vault, and the most relevant notes are auto-attached to that turn — so Pythia can answer *from your knowledge base* without you hunting for the right notes.
 
 - **On-device & private** — embeddings are computed locally by the same model as "related conversations" (see Settings → embedding model). No note content is sent anywhere except to your chosen LLM provider as normal context.
 - **Incremental** — the index is built on first use and only re-embeds notes that changed, so subsequent turns are fast.
-- **Cited & bounded** — retrieved notes flow through the normal attached-note pipeline: long notes are excerpted to the most relevant sections, they count toward the attached-notes token warning, and they appear as numbered **citations** in the response, exactly like notes you attach by hand.
+- **Cited, visible & bounded** — retrieved notes flow through the normal attached-note pipeline: long notes are excerpted to the most relevant sections, they count toward the attached-notes token warning, and they appear as numbered **citations** in the response, exactly like notes you attach by hand. Each turn's auto-retrieved notes also surface as distinct read-only pills in the reference row, so you can see what was pulled in.
 - **Scoped** — Pythia's own `Conversations/` and `Scratch/` folders are excluded so saved chats aren't fed back in, and notes you already attached manually are never duplicated.
 
 Tuning (via `data.json` for now — a settings-tab UI is planned): `vaultContextMaxNotes` (how many notes per turn, default 5) and `vaultContextSimilarity` (`strict` / `balanced` / `loose`).
