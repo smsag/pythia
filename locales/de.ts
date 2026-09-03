@@ -165,6 +165,7 @@ const de: Strings = {
 	forkAnchorLabel:           "ABZWEIGUNG",
 	forkOpenShort:             "Öffnen →",
 	fileNotFound:              "Datei nicht gefunden: {{path}}",
+	invalidUrl:                "Link kann nicht geöffnet werden — keine gültige Web-URL: {{url}}",
 
 	// ── API error notices ─────────────────────────────────────────────────────
 	modelNotFound:  "Modell \"{{model}}\" nicht gefunden. Ändere es in den Einstellungen.",

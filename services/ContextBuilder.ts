@@ -18,7 +18,40 @@ import {
 	WEB_CITATION_INSTRUCTION,
 	NO_SOLICITATION_INSTRUCTION,
 	CUSTOM_INSTRUCTIONS_TAG,
+	UNTRUSTED_CONTENT_INSTRUCTION,
 } from "./promptConstants";
+
+/** Pythia's own structural wrapper tags. If any of these appears verbatim inside
+ *  untrusted content (a note body, a summary, a forked excerpt), the content could
+ *  close its wrapper early and inject a forged <system_prompt> or <attached_note>
+ *  block — a prompt-injection delimiter escape. */
+const CONTROL_TAGS = [
+	SYSTEM_PROMPT_TAG,
+	CUSTOM_INSTRUCTIONS_TAG,
+	ATTACHED_NOTE_TAG,
+	PREVIOUS_SUMMARY_TAG,
+	FORKED_EXCERPT_TAG,
+	RECENT_CONTEXT_TAG,
+];
+const CONTROL_TAG_RX = new RegExp(`</?\\s*(?:${CONTROL_TAGS.join("|")})\\b`, "gi");
+
+/** Defang Pythia's structural tags inside untrusted text so it cannot break out
+ *  of its delimited block. The opening `<` is swapped for a visually-similar
+ *  single-guillemet (‹, U+2039) that carries no markup meaning — the text stays
+ *  readable for the model while the tag no longer parses as a Pythia delimiter. */
+export function neutralizeControlTags(text: string): string {
+	return text.replace(CONTROL_TAG_RX, (m) => m.replace("<", "‹"));
+}
+
+/** Escape a value interpolated into a tag attribute so a crafted path cannot
+ *  break out of the quoted attribute and inject sibling attributes or tags. */
+function escapeAttr(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+}
 
 /**
  * Builds the system prompt from a conversation's system prompt text and
@@ -45,6 +78,21 @@ export function buildSystemPrompt(conversation: Conversation, customInstructions
 	// driven by the KB framing + note tools, not the prompt text).
 	parts.push(NO_SOLICITATION_INSTRUCTION);
 
+	// Prompt-injection guard — added whenever untrusted context (attached notes/
+	// PDFs, a prior summary, a forked excerpt, or web results in research mode)
+	// will accompany this request, so the model is told upfront to treat that
+	// content as data rather than commands. Placed high in the system prompt so
+	// it frames every context block that follows.
+	const priorSummaryRaw = conversation.summaryText ?? conversation.forkedFromSummary;
+	const hasUntrustedContext =
+		conversation.contextNotes.length > 0 ||
+		conversation.researchMode === true ||
+		!!priorSummaryRaw ||
+		!!conversation.forkedFromSelection?.trim();
+	if (hasUntrustedContext) {
+		parts.push(UNTRUSTED_CONTENT_INSTRUCTION);
+	}
+
 	// Recency grounding — only when research mode is on, i.e. when the
 	// web_search tool is available. Injected here (not in promptConstants,
 	// which holds only literal contracts) because the date is computed at
@@ -64,7 +112,9 @@ export function buildSystemPrompt(conversation: Conversation, customInstructions
 
 	// A fork carries its source's summary as context in `forkedFromSummary`; a
 	// conversation's own `summaryText` (once it has one) takes precedence.
-	const priorSummary = conversation.summaryText ?? conversation.forkedFromSummary;
+	// Neutralized so a summary can't forge or close a control block (both are
+	// model-generated, but the source material they summarize is untrusted).
+	const priorSummary = priorSummaryRaw ? neutralizeControlTags(priorSummaryRaw) : priorSummaryRaw;
 	if (priorSummary) {
 		parts.push(
 			`${PRIOR_SUMMARY_INSTRUCTION}\n\n<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
@@ -77,7 +127,7 @@ export function buildSystemPrompt(conversation: Conversation, customInstructions
 	const forkedExcerpt = conversation.forkedFromSelection?.trim();
 	if (forkedExcerpt) {
 		parts.push(
-			`${FORKED_EXCERPT_INSTRUCTION}\n\n<${FORKED_EXCERPT_TAG}>\n${forkedExcerpt}\n</${FORKED_EXCERPT_TAG}>`
+			`${FORKED_EXCERPT_INSTRUCTION}\n\n<${FORKED_EXCERPT_TAG}>\n${neutralizeControlTags(forkedExcerpt)}\n</${FORKED_EXCERPT_TAG}>`
 		);
 	}
 
@@ -103,12 +153,16 @@ export async function buildAttachedNotesContent(
 			if (!(file instanceof TFile)) return { notePath };
 			const raw = await app.vault.read(file);
 			const { text, isExcerpt } = selectRelevantChunks(raw, query);
+			// Note bodies are untrusted: defang any Pythia control tags so a note
+			// cannot close its <attached_note> wrapper early and inject a forged
+			// <system_prompt> block (prompt-injection delimiter escape).
+			const safeText = neutralizeControlTags(text);
 			const body = isExcerpt
-				? `(Showing only the most relevant sections of this note — it has been shortened.)\n\n${text}`
-				: text;
+				? `(Showing only the most relevant sections of this note — it has been shortened.)\n\n${safeText}`
+				: safeText;
 			return {
 				notePath,
-				part: `<${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR}="${notePath}"${isExcerpt ? ` ${ATTACHED_NOTE_EXCERPT_ATTR}="true"` : ""}>\n${body}\n</${ATTACHED_NOTE_TAG}>`,
+				part: `<${ATTACHED_NOTE_TAG} ${ATTACHED_NOTE_PATH_ATTR}="${escapeAttr(notePath)}"${isExcerpt ? ` ${ATTACHED_NOTE_EXCERPT_ATTR}="true"` : ""}>\n${body}\n</${ATTACHED_NOTE_TAG}>`,
 			};
 		})
 	);

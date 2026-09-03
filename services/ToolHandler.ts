@@ -121,7 +121,15 @@ export class ToolHandler {
 		private readonly webSearch?: WebSearchService
 	) {}
 
-	async execute(call: ToolCall, allowedTools?: Set<string>): Promise<string> {
+	/**
+	 * @param allowedTools  Tool names permitted this turn (write mode + research gate).
+	 * @param contextNotes  Vault paths explicitly attached to the conversation. When
+	 *   provided, rewrite_note/prepend_note may target ONLY these paths — the
+	 *   authoritative allow-list check, mirrored in the sidebar for UX. Without it a
+	 *   prompt-injected model could rewrite any note it names; with it, writes are
+	 *   confined to notes the user chose to share as context.
+	 */
+	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[]): Promise<string> {
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		if (allowedTools && !allowedTools.has(call.name)) {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
@@ -149,6 +157,20 @@ export class ToolHandler {
 		}
 		if (!path.endsWith(".md")) {
 			return "Error: path must end with .md";
+		}
+		// Reject path traversal at the boundary (NoteWriter also rejects it, but a
+		// clean tool-result error lets the model recover instead of surfacing a throw).
+		if (path.split(/[\\/]/).some((seg) => seg === "..")) {
+			return `Error: path "${path}" contains path traversal segments.`;
+		}
+		// Authoritative allow-list: rewrite/prepend may only touch notes the user
+		// explicitly attached as context. Defense-in-depth behind the sidebar guard.
+		if (
+			(call.name === "rewrite_note" || call.name === "prepend_note") &&
+			contextNotes &&
+			!contextNotes.includes(path)
+		) {
+			return `Error: path "${path}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
 		}
 
 		if (call.name === "create_note" || call.name === "rewrite_note") {

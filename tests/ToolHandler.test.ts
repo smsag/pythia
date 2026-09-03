@@ -152,6 +152,84 @@ describe("ToolHandler — prepend_note", () => {
 	});
 });
 
+// ── ToolHandler — path safety & context-note allow-list ───────────────────────
+
+describe("ToolHandler — path safety", () => {
+	it("rejects a path with traversal segments before writing", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("create_note", { path: "../../evil.md", content: "x" }),
+		);
+		expect(result).toMatch(/traversal/i);
+		expect(writer.writeNote).not.toHaveBeenCalled();
+	});
+
+	it("rejects a backslash traversal segment", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("rewrite_note", { path: "notes\\..\\secret.md", content: "x" }),
+		);
+		expect(result).toMatch(/traversal/i);
+		expect(writer.writeNote).not.toHaveBeenCalled();
+	});
+});
+
+describe("ToolHandler — context-note allow-list", () => {
+	const ctx = ["Notes/allowed.md"];
+
+	it("blocks rewrite_note targeting a note outside the context set", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("rewrite_note", { path: "Notes/other.md", content: "x" }),
+			undefined,
+			ctx,
+		);
+		expect(result).toMatch(/not in context notes/i);
+		expect(writer.writeNote).not.toHaveBeenCalled();
+	});
+
+	it("blocks prepend_note targeting a note outside the context set", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("prepend_note", { path: "Notes/other.md", content: "x" }),
+			undefined,
+			ctx,
+		);
+		expect(result).toMatch(/not in context notes/i);
+		expect(writer.prependWithSeparator).not.toHaveBeenCalled();
+	});
+
+	it("allows rewrite_note when the path is in the context set", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("rewrite_note", { path: "Notes/allowed.md", content: "x" }),
+			undefined,
+			ctx,
+		);
+		expect(result).toMatch(/Note written/);
+		expect(writer.writeNote).toHaveBeenCalledWith("x", "Notes/allowed.md");
+	});
+
+	it("does not constrain create_note to the context set", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("create_note", { path: "Notes/brand-new.md", content: "x" }),
+			undefined,
+			ctx,
+		);
+		expect(result).toMatch(/Note written/);
+		expect(writer.writeNote).toHaveBeenCalledWith("x", "Notes/brand-new.md");
+	});
+
+	it("does not enforce the allow-list when no context set is passed (back-compat)", async () => {
+		const writer = makeWriter();
+		const result = await new ToolHandler(writer).execute(
+			call("rewrite_note", { path: "Notes/anything.md", content: "x" }),
+		);
+		expect(result).toMatch(/Note written/);
+	});
+});
+
 // ── ToolHandler — unknown tool ────────────────────────────────────────────────
 
 describe("ToolHandler — unknown tool", () => {
