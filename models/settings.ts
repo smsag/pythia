@@ -65,6 +65,14 @@ export interface PythiaSettings {
 	embeddingModelId: EmbeddingModelId;
 	/** How strict the "related conversations" similarity floor is. */
 	relatedSimilarity: RelatedSimilarity;
+	/** When true, each chat turn auto-retrieves the most semantically-relevant vault
+	 *  notes and injects them as context (on-device semantic RAG). Reuses the same
+	 *  embedding engine as "related conversations". Off by default. */
+	vaultContextEnabled: boolean;
+	/** Maximum notes auto-retrieved per turn when vault context is on. */
+	vaultContextMaxNotes: number;
+	/** How strict the vault-context similarity floor is (reuses the related presets). */
+	vaultContextSimilarity: RelatedSimilarity;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -97,4 +105,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchMaxResults: 5,
 	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
 	relatedSimilarity: DEFAULT_RELATED_SIMILARITY,
+	vaultContextEnabled: false,
+	vaultContextMaxNotes: 5,
+	vaultContextSimilarity: DEFAULT_RELATED_SIMILARITY,
 };

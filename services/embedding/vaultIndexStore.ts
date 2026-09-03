@@ -3,20 +3,22 @@ import type { IndexStore } from "./ConversationIndexService";
 import type { EmbeddingModelId } from "../../models/embeddingModels";
 
 /**
- * Persists the conversation vector index as a binary file in the plugin directory,
- * keyed by model id (`related-embeddings-<modelId>.bin`) so switching models uses a
- * separate index rather than mixing incompatible vectors — the same scheme
- * obsidian-similarity uses.
+ * Persists a vector index as a binary file in the plugin directory, keyed by
+ * `<prefix>-<modelId>.bin` so switching models uses a separate index rather than
+ * mixing incompatible vectors — the same scheme obsidian-similarity uses. The
+ * `prefix` also separates independent indexes that share the format: the
+ * conversation "related" index (default `related-embeddings`) and the vault-RAG
+ * note index (`vault-embeddings`, ADR-116).
  */
 export class VaultIndexStore implements IndexStore {
 	private readonly dir: string;
 	private readonly path: string;
 
-	constructor(private readonly plugin: Plugin, modelId: EmbeddingModelId) {
+	constructor(private readonly plugin: Plugin, modelId: EmbeddingModelId, prefix = "related-embeddings") {
 		this.dir = normalizePath(
 			plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`
 		);
-		this.path = normalizePath(`${this.dir}/related-embeddings-${modelId}.bin`);
+		this.path = normalizePath(`${this.dir}/${prefix}-${modelId}.bin`);
 	}
 
 	async read(): Promise<ArrayBuffer | null> {

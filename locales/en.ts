@@ -176,6 +176,9 @@ const en = {
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
 	cmdSummarizeFavorites:             "Summarize favorites",
+	cmdToggleVaultContext:             "Toggle vault context (semantic RAG)",
+	vaultContextOn:                    "Vault context on — relevant notes are auto-added to each message.",
+	vaultContextOff:                   "Vault context off.",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
 

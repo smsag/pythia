@@ -190,6 +190,9 @@ const de: Strings = {
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
 	cmdSummarizeFavorites:             "Favoriten zusammenfassen",
+	cmdToggleVaultContext:             "Vault-Kontext umschalten (semantisches RAG)",
+	vaultContextOn:                    "Vault-Kontext an – relevante Notizen werden jeder Nachricht automatisch hinzugefügt.",
+	vaultContextOff:                   "Vault-Kontext aus.",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 
