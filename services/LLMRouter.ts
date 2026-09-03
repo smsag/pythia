@@ -8,12 +8,29 @@ import type { PythiaSettings } from "../settings";
 export class LLMRouter {
 	private providers: Record<Provider, LLMProvider>;
 
+	/** Optional vault-RAG hook (ADR-116). When set, it is consulted before each
+	 *  streamed turn to auto-retrieve relevant vault notes, which are merged into
+	 *  the attached-notes list. The hook owns its own gating (returns [] when the
+	 *  feature is off) so the router stays provider- and settings-agnostic. */
+	private vaultRetriever?: (
+		conversation: Conversation,
+		query: string,
+		exclude: string[]
+	) => Promise<string[]>;
+
 	constructor(
 		anthropic: AnthropicService,
 		openai: OpenAIProvider,
 		mistral: MistralService
 	) {
 		this.providers = { anthropic, openai, mistral };
+	}
+
+	/** Install (or clear) the vault-RAG retrieval hook. */
+	setVaultRetriever(
+		fn?: (conversation: Conversation, query: string, exclude: string[]) => Promise<string[]>
+	): void {
+		this.vaultRetriever = fn;
 	}
 
 	private get(conversation: Conversation): LLMProvider {
@@ -41,7 +58,7 @@ export class LLMRouter {
 		for (const p of Object.values(this.providers)) p.abort();
 	}
 
-	streamMessage(
+	async streamMessage(
 		conversation: Conversation,
 		newMessage: string,
 		attachedNotes: string[],
@@ -50,10 +67,24 @@ export class LLMRouter {
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
+		// Vault-RAG augmentation (ADR-116): fail-open — a retrieval error must never
+		// block the turn, so fall back to just the manually-attached notes.
+		let notes = attachedNotes;
+		if (this.vaultRetriever) {
+			try {
+				const extra = await this.vaultRetriever(conversation, newMessage, attachedNotes);
+				if (extra.length > 0) {
+					const seen = new Set(attachedNotes);
+					notes = [...attachedNotes, ...extra.filter((p) => !seen.has(p))];
+				}
+			} catch {
+				notes = attachedNotes;
+			}
+		}
 		return this.get(conversation).streamMessage(
 			conversation,
 			newMessage,
-			attachedNotes,
+			notes,
 			onToken,
 			onComplete,
 			onError,

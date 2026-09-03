@@ -21,6 +21,7 @@ import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
 import { IframeEmbeddingProvider } from "./services/embedding/host/iframeEmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
+import { VaultIndexService, type IndexableNote } from "./services/embedding/VaultIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
@@ -55,11 +56,22 @@ export default class PythiaPlugin extends Plugin {
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
-	// Related conversations (ADR-109): the embedding index service is built lazily on
-	// first use, so the heavy model/iframe only loads when the feature is actually used.
+	// On-device embeddings: "related conversations" (ADR-109) and vault-wide semantic
+	// RAG (ADR-116) share ONE lazily-built provider (the model/iframe is heavy), so
+	// the model loads once and both index services reuse it. Switching the embedding
+	// model tears everything down so the next use rebuilds against the new model.
+	private embeddingProvider: IframeEmbeddingProvider | null = null;
+	private embeddingModelId: EmbeddingModelId | null = null;
 	private relatedService: ConversationIndexService | null = null;
-	private relatedProvider: IframeEmbeddingProvider | null = null;
-	private relatedModelId: EmbeddingModelId | null = null;
+	private vaultService: VaultIndexService | null = null;
+	/** Paths auto-retrieved on the last turn, per conversation id — read by the
+	 *  sidebar to show distinct "auto" reference pills for what vault RAG pulled in. */
+	private lastAutoContext = new Map<string, string[]>();
+
+	/** Vault paths auto-retrieved for `conversationId` on its most recent turn (ADR-116). */
+	getAutoContext(conversationId: string): string[] {
+		return this.lastAutoContext.get(conversationId) ?? [];
+	}
 
 	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109).
 	 *
@@ -98,38 +110,110 @@ export default class PythiaPlugin extends Plugin {
 		}
 	}
 
-	private ensureRelatedService(): ConversationIndexService {
+	/** Build (or reuse) the shared embedding provider for the current model. On a
+	 *  model change, the old provider AND both index services are torn down so the
+	 *  next use rebuilds against the new model. The onProgress callback traces the
+	 *  model download/load (debug mode only) — the single hardest part to diagnose
+	 *  blind, since it happens inside the hidden iframe. */
+	private ensureEmbeddingProvider(): IframeEmbeddingProvider {
 		const modelId = this.settings.embeddingModelId;
-		if (this.relatedService && this.relatedModelId === modelId) return this.relatedService;
-		// First use, or the model setting changed → tear down any prior provider/index.
-		this.relatedProvider?.unload();
+		if (this.embeddingProvider && this.embeddingModelId === modelId) return this.embeddingProvider;
+		this.embeddingProvider?.unload();
+		this.relatedService = null;
+		this.vaultService = null;
 		new Notice(t("relatedFirstRun"));
-		debugLog(this.settings, "related: initializing embedding model", { modelId, priorModel: this.relatedModelId });
-		// The onProgress callback traces the model download/load (debug mode only) so a
-		// slow or stalled first run is visible in the console — the single hardest part
-		// to diagnose blind, since it happens inside the hidden iframe.
-		this.relatedProvider = new IframeEmbeddingProvider(modelId, (p) =>
-			debugLog(this.settings, "related: model load", {
+		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
+		this.embeddingProvider = new IframeEmbeddingProvider(modelId, (p) =>
+			debugLog(this.settings, "embedding: model load", {
 				file: p.file,
 				percent: Math.round(p.progress),
 				loaded: p.loaded,
 				total: p.total,
 			}),
 		);
-		this.relatedModelId = modelId;
-		this.relatedService = new ConversationIndexService(
-			this.relatedProvider,
-			new VaultIndexStore(this, modelId)
-		);
+		this.embeddingModelId = modelId;
+		return this.embeddingProvider;
+	}
+
+	private ensureRelatedService(): ConversationIndexService {
+		const provider = this.ensureEmbeddingProvider();
+		if (!this.relatedService) {
+			this.relatedService = new ConversationIndexService(
+				provider,
+				new VaultIndexStore(this, this.embeddingModelId!)
+			);
+		}
 		return this.relatedService;
 	}
 
-	/** Drop the embedding service so the next use rebuilds with the current model. */
+	private ensureVaultService(): VaultIndexService {
+		const provider = this.ensureEmbeddingProvider();
+		if (!this.vaultService) {
+			this.vaultService = new VaultIndexService(
+				provider,
+				new VaultIndexStore(this, this.embeddingModelId!, "vault-embeddings")
+			);
+		}
+		return this.vaultService;
+	}
+
+	/**
+	 * Vault notes semantically relevant to `query`, for auto-RAG context (ADR-116).
+	 * Returns [] when the feature is off for this conversation, the query is empty,
+	 * or nothing clears the similarity floor. The LLMRouter hook treats this as
+	 * fail-open (a throw never blocks the turn). Gating is per-conversation
+	 * (`conversation.vaultContext`), falling back to the global `vaultContextEnabled`
+	 * default. Excludes already-attached `exclude` paths and Pythia's own
+	 * conversations/scratch folders so saved chats aren't fed back as context.
+	 */
+	async getRelevantNotes(conversation: Conversation, query: string, exclude: string[] = []): Promise<string[]> {
+		const enabled = conversation.vaultContext ?? this.settings.vaultContextEnabled;
+		if (!enabled) {
+			this.lastAutoContext.delete(conversation.id); // clear stale pills when turned off
+			return [];
+		}
+		const q = query.trim();
+		if (!q) return [];
+
+		const excludeSet = new Set(exclude);
+		const skipFolders = [this.settings.conversationsFolder, this.settings.scratchFolder]
+			.map((f) => (f ?? "").replace(/\/+$/, ""))
+			.filter(Boolean);
+		const inSkipped = (path: string) =>
+			skipFolders.some((f) => path === f || path.startsWith(f + "/"));
+
+		const notes: IndexableNote[] = [];
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			if (excludeSet.has(file.path) || inSkipped(file.path)) continue;
+			notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
+		}
+		if (notes.length === 0) {
+			this.lastAutoContext.set(conversation.id, []);
+			return [];
+		}
+
+		const minScore = relatedMinScore(this.settings.vaultContextSimilarity);
+		const limit = this.settings.vaultContextMaxNotes > 0 ? this.settings.vaultContextMaxNotes : 5;
+		const startedAt = Date.now();
+		const results = await this.ensureVaultService().retrieve(q, notes, { minScore, limit });
+		debugLog(this.settings, `vault RAG: retrieved (${Date.now() - startedAt}ms)`, {
+			indexed: notes.length,
+			returned: results.length,
+			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
+		});
+		const paths = results.map((r) => r.id);
+		this.lastAutoContext.set(conversation.id, paths);
+		return paths;
+	}
+
+	/** Drop the embedding provider + both index services so the next use rebuilds
+	 *  with the current model. Called by the settings tab on a model change. */
 	invalidateRelatedService(): void {
-		this.relatedProvider?.unload();
-		this.relatedProvider = null;
+		this.embeddingProvider?.unload();
+		this.embeddingProvider = null;
+		this.embeddingModelId = null;
 		this.relatedService = null;
-		this.relatedModelId = null;
+		this.vaultService = null;
 	}
 
 	async onload(): Promise<void> {
@@ -139,6 +223,12 @@ export default class PythiaPlugin extends Plugin {
 		// then loads data and constructs every remaining service in order.
 		this.conversationStore = new ConversationStore(this);
 		this.container = await AppContainer.create(this);
+
+		// Vault-wide semantic RAG (ADR-116): let the router auto-retrieve relevant
+		// vault notes per turn. The hook owns its own gating (returns [] when off).
+		this.llmRouter.setVaultRetriever((conv, query, exclude) =>
+			this.getRelevantNotes(conv, query, exclude)
+		);
 
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
@@ -222,6 +312,17 @@ export default class PythiaPlugin extends Plugin {
 			name: t("cmdSummarizeFavorites"),
 			icon: "bot",
 			callback: () => this.conversationService.cmdSummarizeFavorites(),
+		});
+
+		this.addCommand({
+			id: "toggle-vault-context",
+			name: t("cmdToggleVaultContext"),
+			icon: "bot",
+			callback: async () => {
+				this.settings.vaultContextEnabled = !this.settings.vaultContextEnabled;
+				await this.saveSettings();
+				new Notice(this.settings.vaultContextEnabled ? t("vaultContextDefaultOn") : t("vaultContextDefaultOff"));
+			},
 		});
 
 		this.addCommand({
@@ -388,7 +489,7 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
-		this.relatedProvider?.unload();
+		this.embeddingProvider?.unload();
 	}
 
 	// ── Facades delegating to the extracted services (ADR-103 / #121) ──────────

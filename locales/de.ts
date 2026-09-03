@@ -190,6 +190,13 @@ const de: Strings = {
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
 	cmdSummarizeFavorites:             "Favoriten zusammenfassen",
+	cmdToggleVaultContext:             "Vault-Kontext-Standard umschalten (semantisches RAG)",
+	vaultContextOn:                    "Vault-Kontext an – relevante Notizen werden dieser Unterhaltung automatisch hinzugefügt.",
+	vaultContextOff:                   "Vault-Kontext für diese Unterhaltung aus.",
+	vaultContextDefaultOn:             "Vault-Kontext für neue Unterhaltungen standardmäßig an.",
+	vaultContextDefaultOff:            "Vault-Kontext für neue Unterhaltungen standardmäßig aus.",
+	vaultContextTooltip:               "Vault-Kontext: relevante Notizen automatisch hinzufügen (semantisches RAG)",
+	vaultContextAutoPill:              "in diesem Zug automatisch aus dem Vault geholt",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 

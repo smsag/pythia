@@ -205,6 +205,26 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("‹system_prompt>");
 	});
 
+	// ── hasAttachedNotes gating (vault-RAG auto-retrieved notes, ADR-116) ─────
+
+	it("fires the grounding + untrusted guards when notes are inlined but not in contextNotes", () => {
+		// Vault-RAG appends note content without adding paths to contextNotes; the
+		// citation instruction and the injection guard must still fire.
+		const result = buildSystemPrompt(baseConv({ systemPrompt: "Hi", contextNotes: [] }), "", {
+			hasAttachedNotes: true,
+		});
+		expect(result).toMatch(/Synthesize/); // GROUNDING_INSTRUCTION
+		expect(result).toContain(UNTRUSTED_CONTENT_INSTRUCTION);
+	});
+
+	it("does not fire them when no notes are inlined and there is no other context", () => {
+		const result = buildSystemPrompt(baseConv({ systemPrompt: "Hi", contextNotes: [] }), "", {
+			hasAttachedNotes: false,
+		});
+		expect(result).not.toMatch(/Synthesize/);
+		expect(result).not.toContain(UNTRUSTED_CONTENT_INSTRUCTION);
+	});
+
 	it("adds a recent_context block only when research mode is on", () => {
 		const off = buildSystemPrompt(baseConv({ systemPrompt: "Hi" }));
 		expect(off).not.toContain("<recent_context>");

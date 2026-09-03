@@ -14,7 +14,7 @@ import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
-import { safeHttpUrl } from "./services/urlSafety";
+import { openCitationSource, renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
@@ -133,6 +133,7 @@ export class PythiaSidebarView extends ItemView {
 	private onViewportResize: (() => void) | null = null;
 
 	private researchBtnEl!: HTMLButtonElement;
+	private vaultBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
@@ -253,6 +254,7 @@ export class PythiaSidebarView extends ItemView {
 		this.headerController.renderHeader();
 		this.headerController.updateModelBadge();
 		this.updateResearchButton();
+		this.updateVaultButton();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -581,6 +583,14 @@ export class PythiaSidebarView extends ItemView {
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
 		this.updateResearchButton();
 
+		this.vaultBtnEl = toolbarLeft.createEl("button", {
+			cls: "p-tool-btn",
+			attr: { title: t("vaultContextTooltip") },
+		});
+		setIcon(this.vaultBtnEl, "library");
+		this.registerDomEvent(this.vaultBtnEl, "click", () => this.toggleVaultContext());
+		this.updateVaultButton();
+
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
 			attr: { title: t("minimizeInputTooltip") },
@@ -808,7 +818,8 @@ export class PythiaSidebarView extends ItemView {
 
 		type RefEntry =
 			| { kind: "context"; path: string }
-			| { kind: "output"; path: string; clearField: () => void };
+			| { kind: "output"; path: string; clearField: () => void }
+			| { kind: "auto"; path: string };
 
 		const entries: RefEntry[] = [];
 
@@ -820,6 +831,13 @@ export class PythiaSidebarView extends ItemView {
 		}
 		if (conv.summaryNote) {
 			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
+		}
+		// Vault-RAG auto-retrieved notes for the last turn (ADR-116): shown as
+		// distinct, read-only pills so the user sees what was pulled in. Excludes
+		// paths already listed as manual context to avoid duplicates.
+		const manual = new Set(conv.contextNotes ?? []);
+		for (const path of this.plugin.getAutoContext(conv.id)) {
+			if (!manual.has(path)) entries.push({ kind: "auto", path });
 		}
 
 		this.referenceRowHasEntries = entries.length > 0;
@@ -836,8 +854,12 @@ export class PythiaSidebarView extends ItemView {
 
 			// Wikilink reference: [[ name ]] ~tokens ×
 			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
+			// Auto-retrieved pills are read-only and visually distinct (no × — they
+			// are ephemeral per-turn context, not persistent conversation context).
+			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
-			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: entry.path } });
+			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
+			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
 			label.addEventListener("click", async () => {
 				const f = this.app.vault.getAbstractFileByPath(entry.path);
 				if (f instanceof TFile) {
@@ -848,6 +870,7 @@ export class PythiaSidebarView extends ItemView {
 			});
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
+			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
 			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
 			if (entry.kind === "context") {
 				x.addEventListener("click", async () => {
@@ -1113,56 +1136,11 @@ export class PythiaSidebarView extends ItemView {
 					chip.className = "p-cite";
 					chip.textContent = String(src.n);
 					chip.title = src.title;
-					chip.addEventListener("click", (e) => { e.stopPropagation(); void this.onCitationClick(src); });
+					chip.addEventListener("click", (e) => { e.stopPropagation(); void openCitationSource(this.app, src); });
 					frag.appendChild(chip);
 				},
 			);
 			textNode.parentNode?.replaceChild(frag, textNode);
-		}
-	}
-
-	private async onCitationClick(src: MessageSource): Promise<void> {
-		if (src.kind === "web") {
-			const url = safeHttpUrl(src.ref); // http(s) only; noopener,noreferrer stops leakage
-			if (!url) { new Notice(t("invalidUrl", { url: src.ref })); return; }
-			window.open(url, "_blank", "noopener,noreferrer"); return;
-		}
-		const f = this.app.vault.getAbstractFileByPath(src.ref) ?? this.app.metadataCache.getFirstLinkpathDest(src.ref, "");
-		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
-		else new Notice(t("fileNotFound", { path: src.ref }));
-	}
-
-	/** Sources row under an assistant message. A single QUELLEN row when all
-	 *  sources are vault notes; split WEB / VAULT rows when any are web. */
-	private renderSourcesRow(row: HTMLElement, sources: MessageSource[]): void {
-		if (!sources.length) return;
-		const web = sources.filter((s) => s.kind === "web");
-		const vault = sources.filter((s) => s.kind === "vault");
-		const container = row.createDiv({ cls: "p-sources" });
-
-		const makeRow = (label: string, items: MessageSource[]) => {
-			const r = container.createDiv({ cls: "p-sources-row" });
-			r.createSpan({ cls: "p-sources-label", text: label });
-			for (const s of items) {
-				const item = r.createSpan({ cls: "p-source" });
-				item.createSpan({ cls: "p-source-num", text: String(s.n) });
-				if (s.kind === "web") {
-					const link = item.createSpan({ cls: "p-source-web", text: `${s.title} ↗` });
-					link.addEventListener("click", () => void this.onCitationClick(s));
-				} else {
-					item.createSpan({ cls: "p-wikilink-bracket", text: " [[" });
-					const name = item.createSpan({ cls: "p-wikilink-name", text: s.title });
-					name.addEventListener("click", () => void this.onCitationClick(s));
-					item.createSpan({ cls: "p-wikilink-bracket", text: "]]" });
-				}
-			}
-		};
-
-		if (web.length) {
-			makeRow(t("sourcesWeb"), web);
-			if (vault.length) makeRow(t("sourcesVault"), vault);
-		} else {
-			makeRow(t("sourcesLabel"), vault);
 		}
 	}
 
@@ -1220,7 +1198,7 @@ export class PythiaSidebarView extends ItemView {
 		// sources from content for messages saved before the field existed.
 		const sources = msg.sources ?? parseCitations(msg.content);
 		this.paintCitations(aiBody, sources);
-		this.renderSourcesRow(row, sources);
+		renderSourcesRow(this.app, row, sources);
 		// Token counts are shown inline in the turn label (renderTurnLabel),
 		// not a separate footer.
 
@@ -1258,7 +1236,7 @@ export class PythiaSidebarView extends ItemView {
 				decorateCodeBlocks(aiBody, this.diagObservers);
 				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				this.paintCitations(aiBody, sources);
-				this.renderSourcesRow(row, sources);
+				renderSourcesRow(this.app, row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
@@ -1407,6 +1385,26 @@ export class PythiaSidebarView extends ItemView {
 		} else {
 			new Notice(conv.researchMode ? t("researchEnabledNotice") : t("researchDisabledNotice"));
 		}
+		void this.plugin.conversationStore.save(conv);
+	}
+
+	/** Reflect the conversation's vault-context state on the toggle (falls back to
+	 *  the global `vaultContextEnabled` default; mirrors `getRelevantNotes`). */
+	private updateVaultButton(): void {
+		if (!this.vaultBtnEl) return;
+		const on = this.activeConversation?.vaultContext ?? this.plugin.settings.vaultContextEnabled;
+		this.vaultBtnEl.toggleClass("is-active", !!on);
+		this.vaultBtnEl.setAttr("aria-pressed", String(!!on));
+	}
+
+	/** Toggle vault-context (semantic RAG) for the active conversation; persists.
+	 *  The first send after enabling lazily builds the embedding index. */
+	private toggleVaultContext(): void {
+		const conv = this.activeConversation;
+		if (!conv) return;
+		conv.vaultContext = !(conv.vaultContext ?? this.plugin.settings.vaultContextEnabled);
+		this.updateVaultButton();
+		new Notice(conv.vaultContext ? t("vaultContextOn") : t("vaultContextOff"));
 		void this.plugin.conversationStore.save(conv);
 	}
 
@@ -1749,6 +1747,8 @@ export class PythiaSidebarView extends ItemView {
 				conv.messages.push(assistantMsg);
 				if (this.activeConversation?.id === conv.id) {
 					this.lastRenderedMsgId = assistantMsg.id;
+					// Surface any vault-RAG notes pulled in this turn as auto pills (ADR-116).
+					this.renderReferencePills();
 				}
 				const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
 				const lastRow = rows[rows.length - 1] as HTMLElement | null;

@@ -220,7 +220,14 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
 		}
 
-		const systemPrompt = buildSystemPrompt(conversation, this.settings.customInstructions) + attachedContent;
+		// Pass whether note text is actually being inlined (manual context notes OR
+		// vault-RAG auto-retrieved notes appended by the router) so the citation
+		// instruction and the ADR-115 untrusted-content guard fire for retrieved
+		// notes too, not only for notes stored on the conversation.
+		const systemPrompt =
+			buildSystemPrompt(conversation, this.settings.customInstructions, {
+				hasAttachedNotes: attachedContent.length > 0,
+			}) + attachedContent;
 
 		return {
 			userContent: newMessage,
