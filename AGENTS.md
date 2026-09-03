@@ -64,6 +64,19 @@ Specifically:
 
 Do not add internal refactors or bug fixes to the README.
 
+## Releasing
+
+Cut a release from `main` in this order:
+
+1. **Bump the version in all three files** (they must agree):
+   - `manifest.json` → `version`
+   - `package.json` → `version`
+   - `versions.json` → add `"X.Y.Z": "<minAppVersion>"` (copy the current `minAppVersion` from `manifest.json`)
+2. Commit on `main` as `Release X.Y.Z` (summarize changes since the last release in the body).
+3. **Publish via the Release workflow, not a tag push.** Trigger `.github/workflows/release.yml` with `workflow_dispatch` and input `version=X.Y.Z`. It builds and creates the GitHub release (tag `X.Y.Z`, no `v` prefix) with `main.js`, `manifest.json`, `styles.css` attached — the files Obsidian's plugin installer fetches.
+   - `release.yml` also fires on a pushed `[0-9]+.[0-9]+.[0-9]+` tag, **but agent git credentials are blocked from pushing tag refs (GitHub 403)** even when branch/`main` pushes succeed — so use `workflow_dispatch`. Dispatching on `main` tags the current `main` HEAD, so land the `Release X.Y.Z` commit first.
+4. Verify: `npm run build`, `npm run lint`, `npm run check:filesize`, `npm test` all green before step 2.
+
 ## Obsidian API Notes
 
 - `app.secretStorage.getSecret(id)` / `setSecret(id, value)` — synchronous, vault-scoped. Added in Obsidian 1.11.4.
