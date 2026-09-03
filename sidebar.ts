@@ -14,6 +14,7 @@ import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
+import { safeHttpUrl } from "./services/urlSafety";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
@@ -1122,12 +1123,11 @@ export class PythiaSidebarView extends ItemView {
 
 	private async onCitationClick(src: MessageSource): Promise<void> {
 		if (src.kind === "web") {
-			const url = /^https?:\/\//i.test(src.ref) ? src.ref : `https://${src.ref}`;
-			window.open(url, "_blank");
-			return;
+			const url = safeHttpUrl(src.ref); // http(s) only; noopener,noreferrer stops leakage
+			if (!url) { new Notice(t("invalidUrl", { url: src.ref })); return; }
+			window.open(url, "_blank", "noopener,noreferrer"); return;
 		}
-		const f = this.app.vault.getAbstractFileByPath(src.ref)
-			?? this.app.metadataCache.getFirstLinkpathDest(src.ref, "");
+		const f = this.app.vault.getAbstractFileByPath(src.ref) ?? this.app.metadataCache.getFirstLinkpathDest(src.ref, "");
 		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f);
 		else new Notice(t("fileNotFound", { path: src.ref }));
 	}
@@ -1686,7 +1686,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 
 				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
-				const result = await this.plugin.toolHandler.execute(call, allowed);
+				const result = await this.plugin.toolHandler.execute(call, allowed, conv.contextNotes);
 
 				if (result.startsWith("Error")) {
 					chipEl.addClass("pythia-tool-call--error");

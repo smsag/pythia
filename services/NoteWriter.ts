@@ -24,6 +24,16 @@ export class NoteWriter {
 			throw new Error(`Invalid file path: "${filePath}" contains path traversal segments.`);
 		}
 
+		// Never write into Obsidian's own config directory (".obsidian" by default,
+		// but user-configurable). A prompt-injected create_note could otherwise
+		// target plugin/app config or data files. The ".md"-only guard in
+		// ToolHandler already blocks writing executable plugin code, but blocking
+		// the config tree entirely is the clean least-privilege boundary.
+		const configDir = this.app.vault.configDir?.replace(/\\/g, "/").replace(/\/+$/, "");
+		if (configDir && (normalized === configDir || normalized.startsWith(configDir + "/"))) {
+			throw new Error(`Invalid file path: "${filePath}" targets the Obsidian config directory.`);
+		}
+
 		const dir = normalized.includes("/")
 			? normalized.substring(0, normalized.lastIndexOf("/"))
 			: "";

@@ -151,6 +151,7 @@ const en = {
 	forkAnchorLabel:           "BRANCH",
 	forkOpenShort:             "Open →",
 	fileNotFound:              "File not found: {{path}}",
+	invalidUrl:                "Can't open link — not a valid web URL: {{url}}",
 
 	// ── API error notices (sendMessage) ────────────────────────────────────────
 	modelNotFound:  "Model \"{{model}}\" not found. Open settings to change it.",

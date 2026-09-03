@@ -24,6 +24,7 @@ class MockVault {
 	private files = new Map<string, string>();
 	private folders = new Set<string>();
 	private _name = "TestVault";
+	configDir = ".obsidian";
 
 	getName(): string { return this._name; }
 	setName(n: string): void { this._name = n; }
@@ -96,6 +97,22 @@ describe("writeNote", () => {
 		await expect(writer.writeNote("x", "../../evil.md")).rejects.toThrow(
 			/path traversal/
 		);
+	});
+
+	it("throws when the target is inside the Obsidian config directory", async () => {
+		await expect(writer.writeNote("x", ".obsidian/plugins/pythia/data.md")).rejects.toThrow(
+			/config directory/
+		);
+		expect(vault.hasFile(".obsidian/plugins/pythia/data.md")).toBe(false);
+	});
+
+	it("throws when the target is the config directory itself", async () => {
+		await expect(writer.writeNote("x", ".obsidian")).rejects.toThrow(/config directory/);
+	});
+
+	it("does not treat a note whose name merely starts with the config-dir string as inside it", async () => {
+		const file = await writer.writeNote("ok", ".obsidian-notes.md");
+		expect(file.path).toBe(".obsidian-notes.md");
 	});
 
 	it("normalises backslashes to forward slashes", async () => {
