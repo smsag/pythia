@@ -1,9 +1,11 @@
 # Per-Conversation Store — Spec
 
 *Status: DRAFT / not implemented — needs sign-off (on-disk format change + migration).*
-*Last updated: 2026-09-04 (rev 2 — iCloud/sync safety: the split does NOT fix reload churn and adds
-per-file eviction / partial-sync risk; missing body ⇒ transient, never a delete; §8.1 rules are
-blocking). Companion to ADR-122 (batch index writes). Author: Pythia engineering.*
+*Last updated: 2026-09-04 (rev 3 — the `watchDataJson` reload is the Desktop→Mobile sync mechanism, a
+requirement to preserve, NOT churn to cut. The single `data.json` (one atomic sync unit) serves it
+well; the split endangers the hand-off (non-atomic multi-file sync + watcher polls only `data.json`)
+and must mitigate that before shipping on a synced vault. Also: missing body ⇒ transient not a
+delete; §8.1 rules blocking). Companion to ADR-122 (batch index writes). Author: Pythia engineering.*
 
 ---
 
@@ -20,15 +22,21 @@ making it the default.
 `data.json` — every conversation, every settings key — on each turn. Cost is O(all conversations),
 not O(changed). On a large history this is the dominant local write on the chat send path.
 
-**What this does NOT fix — read carefully.** The iCloud/Obsidian-Sync *reload churn* in
-`watchDataJson()` is a **separate problem** and this split does **not** solve it: the reload is
-driven by iCloud touching/rewriting the synced file, not by how large our own write is, and the
-manifest still lives in `data.json` and still moves on every change. Splitting also puts conversation
-data across N+1 independently-synced files, which adds cross-device eviction / partial-sync risk the
-single file doesn't have (§8.1). **If cutting iCloud reloads is the goal, ship the cheaper, safer
-lever first: a no-op-reload guard in the watcher (skip the refresh when the reloaded content is
-identical) — no format change, no migration.** This split is a write-amplification fix, not a sync
-fix; the two are decoupled and should be decided independently.
+**What this does NOT fix, and what it THREATENS — read carefully.** The `watchDataJson()` reload is
+**not churn to eliminate — it is a deliberate cross-device sync mechanism**: it is the reason a
+conversation started on Desktop shows up on Mobile (Obsidian, same iCloud/Obsidian-Sync vault).
+Desktop writes `data.json` → iCloud syncs one file → Mobile's mtime poller reloads → the conversation
+*and its messages* appear together. **That is a REQUIREMENT to preserve, and the single `data.json` is
+well-suited to it: one file is one atomic sync unit.**
+
+This split does not improve that path and actively endangers it. iCloud syncs files independently and
+non-atomically, so on the split store the manifest can reach Mobile before the bodies it references
+(conversation appears **empty** until its body syncs), and because the watcher only polls `data.json`,
+a body that lands later — without a manifest change — is **never picked up** until the next manifest
+touch. That is a direct regression on the Desktop→Mobile hand-off. Preserving cross-device
+availability therefore becomes a **blocking** design problem for any split (see §8.1), not a footnote.
+This split is at best a local write-amplification fix; on a synced vault its sync cost may outweigh
+the write win.
 
 **When to skip:** if a user keeps only a handful of small conversations (the common case), the
 current single-file write is already cheap. The flag lets those installs stay on the simple path;
@@ -231,34 +239,39 @@ whole thing is testable with a fake adapter, mirroring the current fake-store te
 
 ### 8.1 iCloud / Obsidian Sync — the dominant risk
 
-**This store lives inside the synced vault (`.obsidian/plugins/pythia/`).** That is exactly why the
-current `data.json` is reloaded so often (iCloud rewrites/touches it in the background; the mtime
-watcher trips). Splitting into many files interacts with sync in ways that must be designed for
-BEFORE implementation — otherwise the split trades a performance annoyance for a data-loss risk:
+**This store lives inside the synced vault (`.obsidian/plugins/pythia/`), and the `watchDataJson()`
+reload is load-bearing: it is how a conversation started on Desktop reaches Mobile.** Preserving that
+Desktop→Mobile hand-off is a hard requirement — the single `data.json` satisfies it because one file
+is one atomic sync unit (manifest + all bodies arrive together). Splitting into many files interacts
+with sync in ways that must be designed for BEFORE implementation — otherwise the split trades a local
+write win for a **cross-device availability regression** and/or a data-loss risk:
 
-- **The split does NOT reduce reload churn.** The manifest still lives in `data.json` and must move
-  on every conversation change, so the watcher fires just as often. The reload *cost* may drop (only
-  re-read changed bodies), but the *frequency* does not. **If reducing iCloud reloads is the actual
-  goal, the right lever is a smarter watcher (no-op-reload suppression: compare content/hash, not
-  just mtime, and skip the refresh when nothing changed) — orthogonal to this split, and shippable
-  without any format change or migration.** Recommend doing that first / independently.
+- **Cross-device hand-off can break (the headline risk).** iCloud syncs files independently and
+  non-atomically. The manifest (`data.json`) can reach Mobile before the bodies it names → the
+  conversation shows in the list but its messages are **missing until the body syncs**. Worse, the
+  watcher only polls `data.json`, so a body that arrives *later* (no manifest change) is **never
+  loaded** until the next manifest touch. Mitigation is mandatory: the watcher must ALSO observe the
+  `conversations/` folder (poll its mtime / a folder signal) and re-read any manifest entry whose
+  body is newly-present or newer; a per-entry content hash lets Mobile know a body is stale and must
+  re-read once it lands.
 - **Per-file cloud eviction must never look like a delete.** iCloud parks individual files cloud-only
   (a `.icloud` placeholder / empty read). The read path (§4.3) treats a missing body as
   *not-yet-synced* — keep in-memory state, keep the manifest entry — and only the manifest (never a
   body's absence) authorizes deletion. Getting this wrong = silent, permanent conversation loss.
-- **Non-atomic cross-device sync.** iCloud syncs files independently, not transactionally. A device
-  can receive the manifest before the bodies it references, or vice versa. Manifest-is-authority +
-  missing-body-is-transient (above) keep these windows non-destructive; a body arriving before its
-  manifest entry is a harmless orphan until the manifest catches up.
+- **Reload frequency is unchanged.** The manifest still lives in `data.json` and moves on every
+  conversation change, so the watcher fires as often as today (the reload is wanted, so this is fine
+  — just don't expect the split to change it). An optional, orthogonal nicety is a no-op-reload guard
+  (skip the refresh when the reloaded content is byte/hash-identical to memory); it is safe (a genuine
+  Desktop change still differs and still reloads) but solves no current problem and is not a priority.
 - **More sync units = more conflict surface.** N+1 files can each conflict/duplicate under Sync
   (`data.json (conflicted copy)` style). Smaller per-file diffs make each conflict smaller, but there
   are more of them. Net effect is unproven — measure in the telemetry bake (§9) before defaulting on.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
+| **Desktop→Mobile hand-off breaks** (manifest syncs before bodies; late body never loaded) | New conversation shows empty on Mobile, or its content never appears | Watcher observes `conversations/` folder too + re-reads newly-present/newer bodies; per-entry content hash flags stale bodies — MANDATORY for a synced vault |
 | **iCloud evicts a body to cloud-only** | Body read returns empty/placeholder | Missing body ⇒ keep state + keep manifest entry, never prune (§4.3); deletion only via manifest tombstone |
 | **Cross-device partial sync** (manifest vs bodies arrive out of order) | Transient inconsistency, risk of phantom delete | Manifest authoritative; missing body = not-yet-synced; orphan body ignored until manifest catches up |
-| **Split does not cut reload frequency** | iCloud pain persists after a big change | Ship the watcher no-op-reload suppression independently; don't sell the split as the fix for reloads |
 | **More files → more Sync conflicts** | `(conflicted copy)` duplicates | Smaller diffs per conflict; measure conflict rate in the bake before defaulting on |
 | **Watcher only polls `data.json`** | A body changed on another device without a manifest bump wouldn't trigger reload | Bump the manifest (`updatedAt`) on every body write, so `data.json` mtime always moves; or extend the poller to the `conversations/` folder mtime |
 | **Partial migration** (crash mid-write) | Mixed legacy + split state | All-or-nothing: legacy `data.json` only rewritten after all bodies land; idempotent retry on next load |
@@ -296,11 +309,12 @@ a support diagnostic can tell at a glance which store a user is on.
   vault (from "whole file" to "one body").
 - **Supporting (leading):** files written per persist (target: 1 + optional manifest); p95 persist
   serialize time; cold-start load time on a 1k-conversation vault.
-- **Supporting (lagging):** count of iCloud-eviction refusals (must NOT rise vs. the single-file
-  store — a rise means the split is causing phantom-delete risk); Sync `(conflicted copy)` rate on
-  bodies (must not spike); malformed-body warnings (~0 after migration); zero conversation-loss
-  reports. *Note: `watchDataJson` reload frequency is expected to be flat — it is not a metric this
-  split moves; that belongs to the separate watcher no-op-reload guard.*
+- **Supporting (lagging):** Desktop→Mobile hand-off latency + success (a conversation created on
+  Desktop appears WITH its messages on Mobile — must not regress vs. the single-file store); count of
+  iCloud-eviction refusals (must NOT rise — a rise means phantom-delete risk); Sync
+  `(conflicted copy)` rate on bodies (must not spike); malformed-body warnings (~0 after migration);
+  zero conversation-loss reports. *`watchDataJson` reload frequency is expected to be flat — the
+  reload is a wanted sync mechanism, not a cost this split targets.*
 - **Guardrail:** zero conversation-loss reports attributable to the migration; rollback exercised
   successfully in test.
 
@@ -308,13 +322,13 @@ a support diagnostic can tell at a glance which store a user is on.
 
 ## 11. Next steps
 
-0. **If the iCloud reload is the real pain, do this FIRST and independently:** add a no-op-reload
-   guard to `watchDataJson`/`reloadFromDisk` — skip the refresh when the reloaded settings +
-   conversations are byte/hash-identical to what's in memory. No format change, no migration, and it
-   directly targets the reload churn the split does not. Decide the split on its own (write-cost)
-   merits.
-1. Sign-off on the on-disk format (§4.1), the schema-version + `conversationStore` marker, **and the
-   §8.1 iCloud safety rules** (missing-body-is-transient, manifest-authoritative deletes) — these are
+0. **Decide whether to split at all on a synced vault.** The reload is the Desktop→Mobile sync
+   mechanism (a requirement, not churn); the single `data.json` serves it well. The split is a local
+   write-cost optimization that endangers that hand-off (§8.1) — so weigh the write win against the
+   cross-device cost first. On a synced vault the default answer may be "don't split."
+1. If splitting: sign-off on the on-disk format (§4.1), the schema-version + `conversationStore`
+   marker, **and the §8.1 iCloud/cross-device rules** — the folder-watching + body-re-read for the
+   Desktop→Mobile hand-off, missing-body-is-transient, and manifest-authoritative deletes are ALL
    blocking, not optional.
 2. Implement Epic A behind the `splitConversationStore` flag (default off).
 3. Add parity tests (eviction guard, own-write stamp, malformed tolerance, `maxConversations`), the
