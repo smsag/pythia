@@ -40,7 +40,9 @@ export interface IndexableNote {
 export class VaultIndexService {
 	private items: IndexedConversation[] = [];
 	private loaded = false;
-	private syncing: Promise<void> | null = null;
+	/** Serializes all mutations (sync / updateNote / removeNote / clear) so they
+	 *  never interleave — a targeted edit can't race a full build (ADR-121). */
+	private chain: Promise<unknown> = Promise.resolve();
 	private synced = false;
 
 	constructor(
@@ -49,13 +51,26 @@ export class VaultIndexService {
 		private readonly opts: { maxChars?: number } = {}
 	) {}
 
+	private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+		const run = this.chain.then(fn, fn); // run regardless of the prior op's outcome
+		this.chain = run.then(() => undefined, () => undefined); // keep the chain alive on error
+		return run;
+	}
+
+	/** Number of indexed notes (for status + cap checks). */
+	size(): number {
+		return this.items.length;
+	}
+
 	/** Wipe the index (in-memory + persisted) and mark it not-ready, so the next
 	 *  sync re-embeds every note from scratch. Backs the "reindex" action (ADR-119). */
-	async clear(): Promise<void> {
-		this.items = [];
-		this.synced = false;
-		this.loaded = true; // don't let a later load() repopulate from the old store
-		await this.store.write(serializeIndex([], this.provider.dim));
+	clear(): Promise<void> {
+		return this.enqueue(async () => {
+			this.items = [];
+			this.synced = false;
+			this.loaded = true; // don't let a later load() repopulate from the old store
+			await this.store.write(serializeIndex([], this.provider.dim));
+		});
 	}
 
 	/** True once at least one sync has completed — i.e. the model is loaded and the
@@ -82,16 +97,57 @@ export class VaultIndexService {
 		this.loaded = true;
 	}
 
-	/** Bring the index in line with `notes`; concurrent calls coalesce. `onProgress`
-	 *  (processed, total) fires as notes are handled so the UI can show a bar. */
-	async sync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
-		while (this.syncing) await this.syncing;
-		this.syncing = this.doSync(notes, onProgress);
+	/** Bring the index in line with `notes` (full build / manual reindex). Serialized
+	 *  behind the op chain. `onProgress` (processed, total) fires as notes are handled. */
+	sync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
+		return this.enqueue(() => this.doSync(notes, onProgress));
+	}
+
+	/**
+	 * Targeted incremental update of a SINGLE note (ADR-121) — re-embed it if its
+	 * content changed, add it if new, drop it if now empty/unreadable. No-ops unless
+	 * the index is already built (`isReady`); a not-yet-built index is handled by a
+	 * full `sync`. `cap` (when > 0) prevents ADDING a new note past the note cap.
+	 * This is what the vault watcher calls on an edit, so a single note change costs
+	 * one embed instead of rescanning the whole corpus.
+	 */
+	updateNote(note: IndexableNote, opts: { cap?: number } = {}): Promise<void> {
+		return this.enqueue(() => this.doUpdateNote(note, opts));
+	}
+
+	/** Targeted removal of a single note from the index (delete / moved out of scope). */
+	removeNote(path: string): Promise<void> {
+		return this.enqueue(() => this.dropInPlace(path));
+	}
+
+	private async doUpdateNote(note: IndexableNote, opts: { cap?: number }): Promise<void> {
+		await this.load();
+		if (!this.synced) return; // patch only a built index; a full build handles the rest
+		const maxChars = this.opts.maxChars ?? 500;
+		let chunks: string[];
 		try {
-			await this.syncing;
-		} finally {
-			this.syncing = null;
+			chunks = noteEmbedChunks(await note.load(), maxChars);
+		} catch {
+			return this.dropInPlace(note.path); // unreadable → drop
 		}
+		if (chunks.length === 0) return this.dropInPlace(note.path); // emptied → drop
+
+		const hash = conversationContentHash(chunks);
+		const idx = this.items.findIndex((i) => i.id === note.path);
+		if (idx >= 0 && this.items[idx].contentHash === hash) return; // unchanged
+		if (idx < 0 && opts.cap && opts.cap > 0 && this.items.length >= opts.cap) return; // cap new adds
+
+		const raw = await this.provider.embed(chunks);
+		const item = { id: note.path, contentHash: hash, chunks: raw.map(quantize) };
+		if (idx >= 0) this.items[idx] = item;
+		else this.items.push(item);
+		await this.store.write(serializeIndex(this.items, this.provider.dim));
+	}
+
+	private async dropInPlace(path: string): Promise<void> {
+		const before = this.items.length;
+		this.items = this.items.filter((i) => i.id !== path);
+		if (this.items.length !== before) await this.store.write(serializeIndex(this.items, this.provider.dim));
 	}
 
 	private async doSync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {

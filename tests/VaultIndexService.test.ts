@@ -163,6 +163,73 @@ describe("VaultIndexService", () => {
 		expect((await svc.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 
+	// ── Targeted incremental updates (event-driven watcher, ADR-121) ──────────
+
+	it("updateNote re-embeds only the changed note and leaves the rest", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]);
+		p.embedded = [];
+		await svc.updateNote(note("Notes/alpha.md", "alpha topics — revised"));
+		expect(p.embedded.every((t) => t.includes("alpha"))).toBe(true);
+		expect(p.embedded.length).toBeGreaterThan(0);
+		expect(svc.size()).toBe(2);
+	});
+
+	it("updateNote is a no-op when the content is unchanged", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]);
+		p.embedded = [];
+		await svc.updateNote(alpha); // same content
+		expect(p.embedded).toEqual([]);
+	});
+
+	it("updateNote adds a brand-new note", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha]);
+		await svc.updateNote(beta);
+		expect(svc.size()).toBe(2);
+		expect((await svc.query("beta", { minScore: 0.5 })).map((r) => r.id)).toEqual(["Notes/beta.md"]);
+	});
+
+	it("updateNote respects the cap for NEW notes but still updates existing ones", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]); // size 2
+		await svc.updateNote(gamma, { cap: 2 }); // new, at cap → skipped
+		expect(svc.size()).toBe(2);
+		await svc.updateNote(note("Notes/alpha.md", "alpha revised"), { cap: 2 }); // existing → allowed
+		expect(svc.size()).toBe(2);
+	});
+
+	it("updateNote drops a note that became empty", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]);
+		await svc.updateNote(note("Notes/alpha.md", "   "));
+		expect(svc.size()).toBe(1);
+		expect((await svc.query("alpha", { minScore: 0.5 })).find((r) => r.id === "Notes/alpha.md")).toBeUndefined();
+	});
+
+	it("updateNote no-ops until the index is built (isReady)", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.updateNote(alpha); // never synced → not ready
+		expect(p.embedded).toEqual([]);
+		expect(svc.size()).toBe(0);
+	});
+
+	it("removeNote drops a note from the index", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]);
+		await svc.removeNote("Notes/alpha.md");
+		expect(svc.size()).toBe(1);
+		expect((await svc.query("alpha", { minScore: 0.5 })).find((r) => r.id === "Notes/alpha.md")).toBeUndefined();
+	});
+
 	it("serves queries from a persisted index, embedding only the query", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]);

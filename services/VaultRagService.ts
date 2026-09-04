@@ -1,10 +1,10 @@
-import { App, Notice } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
-import { selectIndexPaths } from "./embedding/indexScope";
+import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { relatedMinScore } from "./embedding/relatedConversations";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
@@ -139,6 +139,35 @@ export class VaultRagService {
 				this.syncing = false;
 			}
 		})();
+	}
+
+	/**
+	 * Apply targeted, event-driven index updates for the notes that changed (ADR-121)
+	 * — one embed per edited note instead of rescanning the whole vault. No-op unless
+	 * the index is already built (an unbuilt index is handled by a full `refresh` on
+	 * the next turn). Notes edited out of scope are dropped; the note cap still bounds
+	 * new additions.
+	 */
+	async applyChanges(changed: TFile[], deleted: string[]): Promise<void> {
+		if (!this.isReady()) return;
+		const svc = this.ensure();
+		const settings = this.getSettings();
+		const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
+		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
+		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
+
+		for (const path of deleted) await svc.removeNote(path);
+		for (const file of changed) {
+			if (isPathInScope(file.path, include, skip)) {
+				await svc.updateNote(
+					{ path: file.path, load: () => this.app.vault.cachedRead(file) },
+					{ cap: settings.vaultContextMaxIndexedNotes },
+				);
+			} else {
+				await svc.removeNote(file.path); // edited into an out-of-scope / skip folder
+			}
+		}
+		this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
 	}
 
 	/** Full reindex: clear the index, then rebuild in the background. */

@@ -10,11 +10,14 @@ If you want to view the source, visit the plugin's GitHub repository.
 
 const prod = process.argv[2] === "production";
 
-// Build the embedding iframe as a SEPARATE browser bundle so @huggingface/
-// transformers (heavy, browser-only) never enters main.js. The result is inlined
-// into the main build via the `__IFRAME_CONTENTS_PLACEHOLDER__` define (ADR-109 M2).
-const iframeBuild = await esbuild.build({
-  entryPoints: ["services/embedding/host/frame/bootstrap.ts"],
+// Build the embedding backend as ONE SEPARATE browser bundle so @huggingface/
+// transformers (heavy, browser-only) never enters main.js. The SAME bundle runs
+// as both the Web Worker (off-thread) and the iframe fallback — it detects its
+// context at runtime (frame/entry.ts, ADR-121) — so the ML runtime is inlined
+// ONCE via the `__EMBEDDING_BUNDLE_PLACEHOLDER__` define (referenced once, in
+// embeddingBundle.ts), instead of twice.
+const embeddingBuild = await esbuild.build({
+  entryPoints: ["services/embedding/host/frame/entry.ts"],
   bundle: true,
   platform: "browser",
   format: "esm",
@@ -23,30 +26,14 @@ const iframeBuild = await esbuild.build({
   minify: prod,
   logLevel: "info",
 });
-const iframeHtml = `<script type="module">\n${iframeBuild.outputFiles[0].text}\n</script>\n`;
-
-// Build the embedding Web Worker as its own browser bundle (ADR-119) — same runtime
-// as the iframe but run on a background thread. Inlined as a plain-source string via
-// `__WORKER_CONTENTS_PLACEHOLDER__`; WorkerEmbeddingProvider wraps it in a Blob URL.
-const workerBuild = await esbuild.build({
-  entryPoints: ["services/embedding/host/frame/worker.ts"],
-  bundle: true,
-  platform: "browser",
-  format: "esm",
-  target: "esnext",
-  write: false,
-  minify: prod,
-  logLevel: "info",
-});
-const workerSource = workerBuild.outputFiles[0].text;
+const embeddingSource = embeddingBuild.outputFiles[0].text;
 
 const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["main.ts"],
   bundle: true,
   define: {
-    __IFRAME_CONTENTS_PLACEHOLDER__: JSON.stringify(iframeHtml),
-    __WORKER_CONTENTS_PLACEHOLDER__: JSON.stringify(workerSource),
+    __EMBEDDING_BUNDLE_PLACEHOLDER__: JSON.stringify(embeddingSource),
   },
   external: [
     "obsidian",

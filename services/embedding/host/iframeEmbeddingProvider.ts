@@ -1,9 +1,6 @@
 import type { EmbeddingProvider } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
-
-// `__IFRAME_CONTENTS_PLACEHOLDER__` (the bundled iframe bootstrap as a
-// <script type="module">…</script> string) is injected by esbuild `define` and
-// declared globally in globals.d.ts.
+import { getEmbeddingBundle } from "./embeddingBundle";
 
 export type ModelLoadProgress = { progress: number; file: string; loaded: number; total: number };
 
@@ -48,7 +45,10 @@ export class IframeEmbeddingProvider implements EmbeddingProvider {
 
 	private initialize(): Promise<void> {
 		const configJson = JSON.stringify(this.config).replace(/</g, "\\u003c");
-		const srcdoc = `<script>window.__EMBEDDING_MODEL_CONFIG__ = ${configJson};</script>\n${__IFRAME_CONTENTS_PLACEHOLDER__}`;
+		// Wrap the shared backend bundle in a module <script> at runtime; escape any
+		// "</script" so it can't terminate the srcdoc script early.
+		const moduleScript = `<script type="module">\n${getEmbeddingBundle().replace(/<\/script/gi, "<\\/script")}\n</script>`;
+		const srcdoc = `<script>window.__EMBEDDING_MODEL_CONFIG__ = ${configJson};</script>\n${moduleScript}\n`;
 
 		const iframe = document.createElement("iframe");
 		iframe.setAttribute("style", "display: none;");

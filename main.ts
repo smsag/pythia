@@ -292,20 +292,39 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => void this.reindexVault(),
 		});
 
-		// Watcher (ADR-119): keep the vault index fresh as notes change, debounced so
-		// a burst of edits triggers a single incremental resync (only changed notes
-		// re-embed). Runs only when the feature is the default OR the index has
-		// already been built for a per-conversation use — never eagerly otherwise —
-		// and `syncVaultIndex` no-ops while a sync is already in flight.
-		const scheduleReindex = debounce(() => {
-			if (this.settings.vaultContextEnabled || this.vaultRag.isReady()) {
-				this.vaultRag.refresh();
-			}
-		}, 5000);
-		this.registerEvent(this.app.vault.on("modify", () => scheduleReindex()));
-		this.registerEvent(this.app.vault.on("create", () => scheduleReindex()));
-		this.registerEvent(this.app.vault.on("delete", () => scheduleReindex()));
-		this.registerEvent(this.app.vault.on("rename", () => scheduleReindex()));
+		// Watcher (ADR-121): keep the vault index fresh with EVENT-DRIVEN, targeted
+		// updates — an edit re-embeds just that one note instead of rescanning the
+		// whole corpus. Changed/deleted paths are batched and flushed on a debounce
+		// so a burst of edits coalesces; `applyChanges` no-ops until the index is
+		// built (a full build happens on a turn), so this never eagerly loads the model.
+		const changedFiles = new Map<string, TFile>();
+		const deletedPaths = new Set<string>();
+		const flushChanges = debounce(() => {
+			const changed = [...changedFiles.values()];
+			const deleted = [...deletedPaths];
+			changedFiles.clear();
+			deletedPaths.clear();
+			if (changed.length || deleted.length) void this.vaultRag.applyChanges(changed, deleted);
+		}, 2000);
+		const markChanged = (file: TFile) => {
+			if (file.extension !== "md") return;
+			changedFiles.set(file.path, file);
+			deletedPaths.delete(file.path);
+			flushChanges();
+		};
+		this.registerEvent(this.app.vault.on("modify", (f) => { if (f instanceof TFile) markChanged(f); }));
+		this.registerEvent(this.app.vault.on("create", (f) => { if (f instanceof TFile) markChanged(f); }));
+		this.registerEvent(this.app.vault.on("delete", (f) => {
+			if (!(f instanceof TFile)) return;
+			deletedPaths.add(f.path);
+			changedFiles.delete(f.path);
+			flushChanges();
+		}));
+		this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
+			deletedPaths.add(oldPath);
+			if (f instanceof TFile) markChanged(f);
+			else flushChanges();
+		}));
 
 		this.addCommand({
 			id: "send-selection-to-pythia",

@@ -21,15 +21,18 @@ export interface IndexScopeResult {
 	capped: boolean;
 }
 
+/** True when `path` is inside an include folder (or none is configured) and
+ *  outside every skip folder. Folders are matched as path prefixes, so
+ *  "Insights" matches "Insights/x.md" but not "Insights-old/y.md". */
+export function isPathInScope(path: string, include: string[], skip: string[]): boolean {
+	const under = (p: string, f: string) => p === f || p.startsWith(f + "/");
+	return (include.length === 0 || include.some((f) => under(path, f))) && !skip.some((f) => under(path, f));
+}
+
 /** Select which vault paths to index: those inside an include folder (or all,
  *  when none is configured) and outside every skip folder, trimmed to `cap`. */
 export function selectIndexPaths(allPaths: string[], opts: IndexScopeOptions): IndexScopeResult {
-	const under = (p: string, f: string) => p === f || p.startsWith(f + "/");
-	const inScope = (p: string) =>
-		(opts.include.length === 0 || opts.include.some((f) => under(p, f))) &&
-		!opts.skip.some((f) => under(p, f));
-
-	const scoped = allPaths.filter(inScope);
+	const scoped = allPaths.filter((p) => isPathInScope(p, opts.include, opts.skip));
 	const capped = opts.cap > 0 && scoped.length > opts.cap;
 	return {
 		paths: capped ? scoped.slice(0, opts.cap) : scoped,

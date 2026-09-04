@@ -1,9 +1,7 @@
 import type { EmbeddingProvider } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import type { ModelLoadProgress } from "./iframeEmbeddingProvider";
-
-// `__WORKER_CONTENTS_PLACEHOLDER__` (the bundled worker source) is injected by
-// esbuild `define` and declared in globals.d.ts.
+import { getEmbeddingBundle } from "./embeddingBundle";
 
 const READY_TIMEOUT_MS = 300_000; // model can download tens of MB on first use
 const EMBED_TIMEOUT_MS = 120_000;
@@ -46,7 +44,7 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 	}
 
 	private initialize(): Promise<void> {
-		const blob = new Blob([__WORKER_CONTENTS_PLACEHOLDER__], { type: "text/javascript" });
+		const blob = new Blob([getEmbeddingBundle()], { type: "text/javascript" });
 		this.blobUrl = URL.createObjectURL(blob);
 		const worker = new Worker(this.blobUrl, { type: "module" });
 		this.worker = worker;
