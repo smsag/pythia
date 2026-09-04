@@ -191,6 +191,8 @@ const en = {
 	vaultIndexStatusReady:             "Ready — {{count}} notes indexed.",
 	vaultIndexStatusFailed:            "Indexing failed — see the developer console.",
 	vaultIndexCapped:                  "Vault is large: indexing {{indexed}} of {{total}} notes. Scope to folders in Settings, or raise the cap.",
+	vaultIndexMobileNotice:            "On mobile, Pythia doesn't build the vault index (it would run on the UI thread). Build it on desktop — it syncs over and mobile queries against it.",
+	vaultIndexMobileEmpty:             "No vault index yet — build it on desktop; it syncs to this device.",
 	cmdReindexVault:                   "Rebuild vault context index",
 	vaultContextSectionName:           "Vault context (semantic RAG)",
 	vaultContextEnabledName:           "Enable by default",

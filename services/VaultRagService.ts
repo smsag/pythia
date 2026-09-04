@@ -1,4 +1,4 @@
-import { App, Notice, TFile } from "obsidian";
+import { App, Notice, Platform, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
@@ -34,6 +34,8 @@ export class VaultRagService {
 	private status = "";
 	/** One-time "vault too large, capped" warning per session/model. */
 	private capWarned = false;
+	/** One-time "indexing runs on desktop" notice per session (mobile). */
+	private mobileNoticeShown = false;
 
 	constructor(
 		private readonly app: App,
@@ -42,6 +44,9 @@ export class VaultRagService {
 		private readonly getProvider: () => EmbeddingProvider,
 		/** Builds the vault-index persistence store for the current model. */
 		private readonly makeStore: () => IndexStore,
+		/** True when there is no off-thread embedding backend (Obsidian mobile blocks the
+		 *  Worker blob, so building would run on the UI thread). Injectable for tests. */
+		private readonly isMainThreadOnly: () => boolean = () => Platform.isMobile,
 	) {}
 
 	/** Drop the per-model index/service (on a model change). */
@@ -109,9 +114,13 @@ export class VaultRagService {
 		return paths;
 	}
 
-	/** Build/refresh the index in the background. Coalesced; failures logged only. */
+	/** Build/refresh the index in the background. Coalesced; failures logged only.
+	 *  On a main-thread-only backend (mobile) a full build would freeze the app, so
+	 *  we only HYDRATE the persisted index (built + synced from desktop) and query
+	 *  against it — never embedding vault notes here. */
 	refresh(): void {
 		if (this.syncing) return;
+		if (this.isMainThreadOnly()) { void this.hydrateOnly(); return; }
 		this.syncing = true;
 		void (async () => {
 			const startedAt = Date.now();
@@ -141,6 +150,25 @@ export class VaultRagService {
 		})();
 	}
 
+	/** Mobile / main-thread-only: make the persisted (desktop-built, synced) index
+	 *  queryable without embedding any notes, and tell the user once that building
+	 *  happens on desktop. Cheap and idempotent — safe to call each turn. */
+	private async hydrateOnly(): Promise<void> {
+		try {
+			await this.ensure().hydrateForQuery();
+			const svc = this.ensure();
+			this.status = svc.size() > 0
+				? t("vaultIndexStatusReady", { count: String(svc.size()) })
+				: t("vaultIndexMobileEmpty");
+			if (!this.mobileNoticeShown) {
+				this.mobileNoticeShown = true;
+				new Notice(t("vaultIndexMobileNotice"), 8000);
+			}
+		} catch (e) {
+			console.warn("[Pythia] vault RAG: hydrate failed", e);
+		}
+	}
+
 	/**
 	 * Apply targeted, event-driven index updates for the notes that changed (ADR-121)
 	 * — one embed per edited note instead of rescanning the whole vault. No-op unless
@@ -150,6 +178,10 @@ export class VaultRagService {
 	 */
 	async applyChanges(changed: TFile[], deleted: string[]): Promise<void> {
 		if (!this.isReady()) return;
+		// On mobile there is no off-thread backend, so re-embedding edited notes would
+		// run on the UI thread. Skip incremental updates; desktop keeps the synced
+		// index fresh and mobile queries against it.
+		if (this.isMainThreadOnly()) return;
 		const svc = this.ensure();
 		const settings = this.getSettings();
 		const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
@@ -172,6 +204,9 @@ export class VaultRagService {
 
 	/** Full reindex: clear the index, then rebuild in the background. */
 	async reindex(): Promise<void> {
+		// Building runs on the UI thread on mobile (no Worker) — refuse rather than
+		// freeze the app; the index is built on desktop and synced over.
+		if (this.isMainThreadOnly()) { new Notice(t("vaultIndexMobileNotice"), 8000); return; }
 		if (this.syncing) { new Notice(t("vaultIndexBusy")); return; }
 		try {
 			await this.ensure().clear();

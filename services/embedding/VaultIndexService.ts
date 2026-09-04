@@ -104,6 +104,23 @@ export class VaultIndexService {
 	}
 
 	/**
+	 * Hydrate the index from persisted storage and mark it queryable WITHOUT
+	 * embedding any notes. For environments that have no off-thread embedding
+	 * backend (Obsidian mobile: the Web Worker blob is blocked, so a full build
+	 * would run hundreds of inferences on the UI thread and freeze the app). A
+	 * `query` embeds only the query string — cheap even on the main thread — so
+	 * retrieval works against an index that was built and synced from desktop. If
+	 * nothing is persisted (or it's from a different model), the index stays empty
+	 * and queries return []. Never re-embeds a note.
+	 */
+	hydrateForQuery(): Promise<void> {
+		return this.enqueue(async () => {
+			await this.load();
+			this.synced = true; // queryable against whatever loaded (possibly empty)
+		});
+	}
+
+	/**
 	 * Targeted incremental update of a SINGLE note (ADR-121) — re-embed it if its
 	 * content changed, add it if new, drop it if now empty/unreadable. No-ops unless
 	 * the index is already built (`isReady`); a not-yet-built index is handled by a

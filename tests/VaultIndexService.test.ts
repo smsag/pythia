@@ -258,6 +258,32 @@ describe("VaultIndexService", () => {
 		expect((await svc.query("alpha", { minScore: 0.5 })).find((r) => r.id === "Notes/alpha.md")).toBeUndefined();
 	});
 
+	it("hydrateForQuery makes a persisted index queryable WITHOUT embedding any notes (mobile)", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]); // built on "desktop"
+
+		// "Mobile": hydrate only — never syncs notes.
+		const p2 = new FakeProvider();
+		const svc2 = new VaultIndexService(p2, store);
+		expect(svc2.isReady()).toBe(false);
+		await svc2.hydrateForQuery();
+		expect(svc2.isReady()).toBe(true);
+		expect(svc2.size()).toBe(2); // loaded from the synced index
+		const out = await svc2.query("alpha", { minScore: 0.5 });
+		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
+		expect(p2.embedded).toEqual(["alpha"]); // ONLY the query was embedded — no notes
+	});
+
+	it("hydrateForQuery on an empty store is ready but returns [] (no desktop index yet)", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.hydrateForQuery();
+		expect(svc.isReady()).toBe(true);
+		expect(svc.size()).toBe(0);
+		expect(await svc.query("alpha", { minScore: 0.5 })).toEqual([]);
+		expect(p.embedded).toEqual([]); // empty index short-circuits before embedding the query
+	});
+
 	it("serves queries from a persisted index, embedding only the query", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]);

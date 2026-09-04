@@ -205,6 +205,8 @@ const de: Strings = {
 	vaultIndexStatusReady:             "Bereit – {{count}} Notizen indexiert.",
 	vaultIndexStatusFailed:            "Indexierung fehlgeschlagen – siehe Entwicklerkonsole.",
 	vaultIndexCapped:                  "Großer Vault: {{indexed}} von {{total}} Notizen werden indexiert. Grenze in den Einstellungen auf Ordner ein oder erhöhe das Limit.",
+	vaultIndexMobileNotice:            "Auf Mobilgeräten erstellt Pythia den Vault-Index nicht (er liefe im UI-Thread). Erstelle ihn am Desktop – er wird synchronisiert und mobil dagegen abgefragt.",
+	vaultIndexMobileEmpty:             "Noch kein Vault-Index – erstelle ihn am Desktop; er wird auf dieses Gerät synchronisiert.",
 	cmdReindexVault:                   "Vault-Kontext-Index neu aufbauen",
 	vaultContextSectionName:           "Vault-Kontext (semantisches RAG)",
 	vaultContextEnabledName:           "Standardmäßig aktivieren",
