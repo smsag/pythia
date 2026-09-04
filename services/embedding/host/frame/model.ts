@@ -9,6 +9,18 @@ import type { EmbeddingModelConfig } from "../../../../models/embeddingModels";
 
 env.allowLocalModels = false;
 
+// Force SINGLE-THREADED WASM. onnxruntime-web defaults to multi-threaded WASM,
+// which spawns nested worker threads and uses SharedArrayBuffer — unstable in
+// Obsidian's Electron renderer, where it can hard-crash the process and reload
+// the whole app (the same class of instability that made us disable WebGPU; see
+// #initialize). It's a bit slower but stable, and it also keeps memory to a
+// single WASM heap. Applies to both the iframe and the Web Worker backend, since
+// both import this module. Optional-chained: the onnx backend is initialized at
+// transformers import time, so `env.backends.onnx.wasm` already exists here.
+if (env.backends?.onnx?.wasm) {
+	env.backends.onnx.wasm.numThreads = 1;
+}
+
 // transformers.js's `pipeline()` overloads produce a union type too large for TS
 // to represent (TS2590), so we cast to these minimal local signatures.
 type FeaturePipeline = (

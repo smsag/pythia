@@ -67,55 +67,99 @@ describe("VaultIndexService", () => {
 		expect(p.embedded.every((t) => t.includes("alpha"))).toBe(true);
 	});
 
-	it("retrieves the notes most relevant to a query, above the floor", async () => {
+	it("is not ready until a sync completes, then ready after (ADR-118)", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
-		const out = await svc.retrieve("tell me about alpha", [alpha, beta, gamma], { minScore: 0.5 });
+		expect(svc.isReady()).toBe(false);
+		await svc.sync([alpha, beta]);
+		expect(svc.isReady()).toBe(true);
+	});
+
+	it("query returns [] before any sync (index not ready), without embedding", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		const out = await svc.query("alpha", { minScore: 0.5 });
+		expect(out).toEqual([]);
+		expect(p.embedded).toEqual([]); // did not even embed the query
+	});
+
+	it("query ranks the indexed notes most relevant to the text, above the floor", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta, gamma]);
+		const out = await svc.query("tell me about alpha", { minScore: 0.5 });
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 		expect(out[0].score).toBeGreaterThan(0.9);
 	});
 
-	it("applies the limit", async () => {
+	it("query applies the limit AFTER dropping excluded paths", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
-		// Two alpha notes both match the query; limit to one.
 		const alpha2 = note("Notes/alpha2.md", "more alpha discussion");
-		const out = await svc.retrieve("alpha", [alpha, alpha2, beta], { minScore: 0.5, limit: 1 });
+		await svc.sync([alpha, alpha2, beta]);
+		// Both alpha notes match; exclude the first, limit 1 → still returns one (the other).
+		const out = await svc.query("alpha", { minScore: 0.5, limit: 1, exclude: ["Notes/alpha.md"] });
 		expect(out.length).toBe(1);
+		expect(out[0].id).toBe("Notes/alpha2.md");
 	});
 
-	it("drops a removed note from later retrievals", async () => {
+	it("query returns [] for empty text", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
-		await svc.retrieve("alpha", [alpha, beta], { minScore: 0.5 });
-		const out = await svc.retrieve("beta", [beta], { minScore: 0.5 });
+		await svc.sync([alpha, beta]);
+		expect(await svc.query("   ", { minScore: 0.5 })).toEqual([]);
+	});
+
+	it("drops a removed note from the index on the next sync", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		await svc.sync([alpha, beta]);
+		await svc.sync([beta]);
+		const out = await svc.query("alpha", { minScore: 0.5 });
 		expect(out.find((r) => r.id === "Notes/alpha.md")).toBeUndefined();
 	});
 
 	it("skips empty notes (no chunks to embed)", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
-		const out = await svc.retrieve("alpha", [alpha, note("Notes/empty.md", "   ")], { minScore: 0.5 });
+		await svc.sync([alpha, note("Notes/empty.md", "   ")]);
+		const out = await svc.query("alpha", { minScore: 0.5 });
 		expect(out.find((r) => r.id === "Notes/empty.md")).toBeUndefined();
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 
-	it("returns [] for an empty query without embedding", async () => {
+	it("reports progress as notes are embedded", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
-		const out = await svc.retrieve("   ", [alpha, beta], { minScore: 0.5 });
-		expect(out).toEqual([]);
+		const calls: Array<[number, number]> = [];
+		await svc.sync([alpha, beta, gamma], (done, total) => calls.push([done, total]));
+		expect(calls.length).toBe(3); // one per embedded note
+		expect(calls[calls.length - 1]).toEqual([3, 3]);
 	});
 
-	it("serves retrieval from a persisted index without re-embedding notes", async () => {
+	it("clear() wipes the index and marks it not-ready until the next sync (ADR-119)", async () => {
+		const p = new FakeProvider();
+		const store = new MemStore();
+		const svc = new VaultIndexService(p, store);
+		await svc.sync([alpha, beta]);
+		expect(svc.isReady()).toBe(true);
+		await svc.clear();
+		expect(svc.isReady()).toBe(false);
+		expect(await svc.query("alpha", { minScore: 0.5 })).toEqual([]); // empty index
+		// A fresh sync rebuilds and becomes queryable again.
+		await svc.sync([alpha, beta]);
+		expect((await svc.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toEqual(["Notes/alpha.md"]);
+	});
+
+	it("serves queries from a persisted index, embedding only the query", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]);
 
 		const p2 = new FakeProvider(); // fresh: embedded starts empty
 		const svc2 = new VaultIndexService(p2, store);
-		const out = await svc2.retrieve("alpha", [alpha, beta], { minScore: 0.5 });
-		// Only the query itself is embedded — the note vectors come from the store.
-		expect(p2.embedded).toEqual(["alpha"]);
+		await svc2.sync([alpha, beta]); // loads from store, no note re-embeds; marks ready
+		const out = await svc2.query("alpha", { minScore: 0.5 });
+		expect(p2.embedded).toEqual(["alpha"]); // only the query was embedded
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 });
