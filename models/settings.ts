@@ -73,6 +73,10 @@ export interface PythiaSettings {
 	vaultContextMaxNotes: number;
 	/** How strict the vault-context similarity floor is (reuses the related presets). */
 	vaultContextSimilarity: RelatedSimilarity;
+	/** Vault folders to index for vault context (semantic RAG). Empty = the whole
+	 *  vault (minus Pythia's own conversations/scratch folders). Scoping to a few
+	 *  folders keeps the on-device index small and fast on large vaults (ADR-119). */
+	vaultContextFolders: string[];
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -108,4 +112,5 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	vaultContextEnabled: false,
 	vaultContextMaxNotes: 5,
 	vaultContextSimilarity: DEFAULT_RELATED_SIMILARITY,
+	vaultContextFolders: [],
 };

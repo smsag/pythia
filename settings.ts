@@ -3,7 +3,7 @@ import type PythiaPlugin from "./main";
 import type { Provider, EffortLevel } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
-import { EMBEDDING_MODELS, type EmbeddingModelId, type RelatedSimilarity } from "./models/embeddingModels";
+import { renderEmbeddingSettings } from "./ui/embeddingSettings";
 import { t } from "./i18n";
 import {
 	KNOWN_MODELS,
@@ -379,34 +379,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
-			.setName(t("embeddingModelName"))
-			.setDesc(t("embeddingModelDesc"))
-			.addDropdown((drop) => {
-				for (const m of Object.values(EMBEDDING_MODELS)) drop.addOption(m.id, m.label);
-				drop
-					.setValue(this.plugin.settings.embeddingModelId)
-					.onChange(async (value) => {
-						this.plugin.settings.embeddingModelId = value as EmbeddingModelId;
-						await this.plugin.saveSettings();
-						this.plugin.invalidateRelatedService();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName(t("relatedSimilarityName"))
-			.setDesc(t("relatedSimilarityDesc"))
-			.addDropdown((drop) =>
-				drop
-					.addOption("strict", t("relatedSimilarityStrict"))
-					.addOption("balanced", t("relatedSimilarityBalanced"))
-					.addOption("loose", t("relatedSimilarityLoose"))
-					.setValue(this.plugin.settings.relatedSimilarity)
-					.onChange(async (value) => {
-						this.plugin.settings.relatedSimilarity = value as RelatedSimilarity;
-						await this.plugin.saveSettings();
-					})
-			);
+		renderEmbeddingSettings(containerEl, this.plugin);
 
 		new Setting(containerEl)
 			.setName(t("customInstructionsName"))

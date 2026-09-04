@@ -1,4 +1,4 @@
-import { Editor, Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
+import { debounce, Editor, Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -19,10 +19,11 @@ import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
-import { IframeEmbeddingProvider } from "./services/embedding/host/iframeEmbeddingProvider";
+import { createEmbeddingProvider } from "./services/embedding/host/embeddingProviderFactory";
+import type { EmbeddingProvider } from "./services/embedding/EmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
-import { VaultIndexService, type IndexableNote } from "./services/embedding/VaultIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
+import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
 
@@ -60,21 +61,16 @@ export default class PythiaPlugin extends Plugin {
 	// RAG (ADR-116) share ONE lazily-built provider (the model/iframe is heavy), so
 	// the model loads once and both index services reuse it. Switching the embedding
 	// model tears everything down so the next use rebuilds against the new model.
-	private embeddingProvider: IframeEmbeddingProvider | null = null;
+	private embeddingProvider: EmbeddingProvider | null = null;
 	private embeddingModelId: EmbeddingModelId | null = null;
 	private relatedService: ConversationIndexService | null = null;
-	private vaultService: VaultIndexService | null = null;
-	/** Paths auto-retrieved on the last turn, per conversation id — read by the
-	 *  sidebar to show distinct "auto" reference pills for what vault RAG pulled in. */
-	private lastAutoContext = new Map<string, string[]>();
-	/** Guards the background vault-index sync so only one runs at a time (ADR-118). */
-	private vaultSyncing = false;
-	/** One-time "index building" notice per model lifetime. */
-	private vaultIndexNoticeShown = false;
+	/** Vault-wide semantic RAG (ADR-116/118/119) — index lifecycle + retrieval,
+	 *  extracted to its own service; uses the shared embedding provider below. */
+	vaultRag!: VaultRagService;
 
-	/** Vault paths auto-retrieved for `conversationId` on its most recent turn (ADR-116). */
+	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
 	getAutoContext(conversationId: string): string[] {
-		return this.lastAutoContext.get(conversationId) ?? [];
+		return this.vaultRag.getAutoContext(conversationId);
 	}
 
 	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109).
@@ -119,15 +115,16 @@ export default class PythiaPlugin extends Plugin {
 	 *  next use rebuilds against the new model. The onProgress callback traces the
 	 *  model download/load (debug mode only) — the single hardest part to diagnose
 	 *  blind, since it happens inside the hidden iframe. */
-	private ensureEmbeddingProvider(): IframeEmbeddingProvider {
+	private ensureEmbeddingProvider(): EmbeddingProvider {
 		const modelId = this.settings.embeddingModelId;
 		if (this.embeddingProvider && this.embeddingModelId === modelId) return this.embeddingProvider;
 		this.embeddingProvider?.unload();
 		this.relatedService = null;
-		this.vaultService = null;
+		this.vaultRag?.reset();
 		new Notice(t("relatedFirstRun"));
 		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
-		this.embeddingProvider = new IframeEmbeddingProvider(modelId, (p) =>
+		// Worker (off the UI thread) with an automatic iframe fallback (ADR-119).
+		this.embeddingProvider = createEmbeddingProvider(modelId, (p) =>
 			debugLog(this.settings, "embedding: model load", {
 				file: p.file,
 				percent: Math.round(p.progress),
@@ -150,110 +147,25 @@ export default class PythiaPlugin extends Plugin {
 		return this.relatedService;
 	}
 
-	private ensureVaultService(): VaultIndexService {
-		const provider = this.ensureEmbeddingProvider();
-		if (!this.vaultService) {
-			this.vaultService = new VaultIndexService(
-				provider,
-				new VaultIndexStore(this, this.embeddingModelId!, "vault-embeddings")
-			);
-		}
-		return this.vaultService;
+	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background.
+	 *  Exposed for the settings "Rebuild index" button and the command. */
+	reindexVault(): Promise<void> {
+		return this.vaultRag.reindex();
 	}
 
-	/**
-	 * Vault notes semantically relevant to `query`, for auto-RAG context (ADR-116/118).
-	 *
-	 * NON-BLOCKING by design: the vault index is built/refreshed in the BACKGROUND
-	 * (see `syncVaultIndex`), and a turn only ever ranks against an already-ready
-	 * index — embedding just the query, never the whole vault. So a turn never
-	 * waits on the first-use model download or a large re-index: until the index is
-	 * ready this returns [] (RAG simply doesn't contribute yet) and the LLM reply
-	 * comes immediately. The LLMRouter hook also treats this as fail-open.
-	 *
-	 * Gating is per-conversation (`conversation.vaultContext`), falling back to the
-	 * global `vaultContextEnabled` default. Already-attached `exclude` paths are
-	 * dropped; Pythia's own conversations/scratch folders are never indexed.
-	 */
-	async getRelevantNotes(conversation: Conversation, query: string, exclude: string[] = []): Promise<string[]> {
-		const enabled = conversation.vaultContext ?? this.settings.vaultContextEnabled;
-		if (!enabled) {
-			this.lastAutoContext.delete(conversation.id); // clear stale pills when turned off
-			return [];
-		}
-		const q = query.trim();
-		if (!q) return [];
-
-		// Kick off (or refresh) the index in the background — never awaited here.
-		this.syncVaultIndex();
-
-		const svc = this.ensureVaultService();
-		if (!svc.isReady()) {
-			// Index still building (e.g. first-use model download) — skip RAG this
-			// turn so the reply is immediate; a later turn will use the ready index.
-			this.lastAutoContext.set(conversation.id, []);
-			return [];
-		}
-
-		const minScore = relatedMinScore(this.settings.vaultContextSimilarity);
-		const limit = this.settings.vaultContextMaxNotes > 0 ? this.settings.vaultContextMaxNotes : 5;
-		const startedAt = Date.now();
-		const results = await svc.query(q, { minScore, limit, exclude });
-		debugLog(this.settings, `vault RAG: query (${Date.now() - startedAt}ms)`, {
-			returned: results.length,
-			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
-		});
-		const paths = results.map((r) => r.id);
-		this.lastAutoContext.set(conversation.id, paths);
-		return paths;
+	/** Human-readable vault-index status for the settings tab. */
+	getVaultIndexStatus(): string {
+		return this.vaultRag.getStatus();
 	}
 
-	/**
-	 * Build/refresh the vault embedding index in the background (ADR-118). Coalesced
-	 * — a call while one is running is a no-op. Never throws to callers: a model-load
-	 * or embedding failure is logged and leaves the index simply not-ready, so RAG
-	 * stays silent rather than affecting any chat turn. This is the ONLY place the
-	 * whole vault is read/embedded; it is deliberately off the send path.
-	 */
-	private syncVaultIndex(): void {
-		if (this.vaultSyncing) return;
-		this.vaultSyncing = true;
-		if (!this.vaultIndexNoticeShown) {
-			this.vaultIndexNoticeShown = true;
-			new Notice(t("vaultIndexBuilding"));
-		}
-		void (async () => {
-			const startedAt = Date.now();
-			try {
-				const skipFolders = [this.settings.conversationsFolder, this.settings.scratchFolder]
-					.map((f) => (f ?? "").replace(/\/+$/, ""))
-					.filter(Boolean);
-				const inSkipped = (path: string) =>
-					skipFolders.some((f) => path === f || path.startsWith(f + "/"));
-				const notes: IndexableNote[] = [];
-				for (const file of this.app.vault.getMarkdownFiles()) {
-					if (inSkipped(file.path)) continue;
-					notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
-				}
-				await this.ensureVaultService().sync(notes);
-				debugLog(this.settings, `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length });
-			} catch (e) {
-				console.warn("[Pythia] vault RAG: index sync failed", e);
-			} finally {
-				this.vaultSyncing = false;
-			}
-		})();
-	}
-
-	/** Drop the embedding provider + both index services so the next use rebuilds
-	 *  with the current model. Called by the settings tab on a model change. */
+	/** Drop the embedding provider + index services so the next use rebuilds with
+	 *  the current model. Called by the settings tab on a model change. */
 	invalidateRelatedService(): void {
 		this.embeddingProvider?.unload();
 		this.embeddingProvider = null;
 		this.embeddingModelId = null;
 		this.relatedService = null;
-		this.vaultService = null;
-		this.vaultIndexNoticeShown = false; // re-notify when the new model's index (re)builds
+		this.vaultRag?.reset();
 	}
 
 	async onload(): Promise<void> {
@@ -264,10 +176,18 @@ export default class PythiaPlugin extends Plugin {
 		this.conversationStore = new ConversationStore(this);
 		this.container = await AppContainer.create(this);
 
-		// Vault-wide semantic RAG (ADR-116): let the router auto-retrieve relevant
-		// vault notes per turn. The hook owns its own gating (returns [] when off).
+		// Vault-wide semantic RAG (ADR-116/118/119): the service owns the index
+		// lifecycle + retrieval and shares the embedding provider (worker/iframe).
+		this.vaultRag = new VaultRagService(
+			this.app,
+			() => this.settings,
+			() => this.ensureEmbeddingProvider(),
+			() => new VaultIndexStore(this, this.embeddingModelId!, "vault-embeddings"),
+		);
+		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
+		// non-blocking — returns [] until the background index is ready).
 		this.llmRouter.setVaultRetriever((conv, query, exclude) =>
-			this.getRelevantNotes(conv, query, exclude)
+			this.vaultRag.getRelevantNotes(conv, query, exclude)
 		);
 
 		this.registerView(
@@ -364,6 +284,28 @@ export default class PythiaPlugin extends Plugin {
 				new Notice(this.settings.vaultContextEnabled ? t("vaultContextDefaultOn") : t("vaultContextDefaultOff"));
 			},
 		});
+
+		this.addCommand({
+			id: "reindex-vault-context",
+			name: t("cmdReindexVault"),
+			icon: "bot",
+			callback: () => void this.reindexVault(),
+		});
+
+		// Watcher (ADR-119): keep the vault index fresh as notes change, debounced so
+		// a burst of edits triggers a single incremental resync (only changed notes
+		// re-embed). Runs only when the feature is the default OR the index has
+		// already been built for a per-conversation use — never eagerly otherwise —
+		// and `syncVaultIndex` no-ops while a sync is already in flight.
+		const scheduleReindex = debounce(() => {
+			if (this.settings.vaultContextEnabled || this.vaultRag.isReady()) {
+				this.vaultRag.refresh();
+			}
+		}, 5000);
+		this.registerEvent(this.app.vault.on("modify", () => scheduleReindex()));
+		this.registerEvent(this.app.vault.on("create", () => scheduleReindex()));
+		this.registerEvent(this.app.vault.on("delete", () => scheduleReindex()));
+		this.registerEvent(this.app.vault.on("rename", () => scheduleReindex()));
 
 		this.addCommand({
 			id: "send-selection-to-pythia",

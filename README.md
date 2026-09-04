@@ -44,6 +44,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Browse conversations` | Fuzzy-search all conversations and open one directly |
 | `Pythia: Browse favorites` | Fuzzy-search all starred responses across every conversation and jump to one |
 | `Pythia: Toggle vault context default (semantic RAG)` | Turn the vault-context **default** on/off for new conversations (per-conversation toggle lives on the input toolbar) |
+| `Pythia: Rebuild vault context index` | Wipe and rebuild the semantic index in the background (e.g. after changing indexed folders) |
 | `Pythia: Open sidebar` | Open / focus the chat sidebar |
 
 ### Context menus
@@ -166,8 +167,9 @@ The row hides itself automatically when there are no associated files.
 When **vault context** is on (the **library icon** in the input toolbar — a per-conversation toggle, like the web-search globe; the `Pythia: Toggle vault context default` command sets the default for new conversations), every message you send is first matched against a semantic index of your whole vault, and the most relevant notes are auto-attached to that turn — so Pythia can answer *from your knowledge base* without you hunting for the right notes.
 
 - **On-device & private** — embeddings are computed locally by the same model as "related conversations" (see Settings → embedding model). No note content is sent anywhere except to your chosen LLM provider as normal context.
-- **Non-blocking** — the index is built and refreshed in the **background**, and a chat turn only ever ranks against the ready index (embedding just your question), so replies are never delayed by indexing. The first turn(s) right after you enable it won't use vault context yet — you'll see a one-time "building the vault index" notice, and once it's ready later turns pull in relevant notes automatically.
-- **Incremental** — only notes that changed are re-embedded, so refreshes are cheap.
+- **Off the UI thread & non-blocking** — embedding runs in a background Web Worker (with a fallback that stays responsive via cooperative throttling), and the index is built/refreshed in the background with a live progress notice. A chat turn only ranks against the ready index (embedding just your question), so replies are never delayed and Obsidian stays responsive while indexing. The first turn(s) right after enabling won't use vault context yet — later turns pull in relevant notes automatically.
+- **Scoped to the folders you choose** — set **Folders to index** in Settings (one path per line; empty = whole vault). Scoping keeps the on-device index small and fast on large vaults.
+- **Kept fresh** — a debounced watcher re-indexes changed notes automatically; only changed notes are re-embedded. Force a full rebuild any time with **Settings → Rebuild index** or the `Rebuild vault context index` command.
 - **Cited, visible & bounded** — retrieved notes flow through the normal attached-note pipeline: long notes are excerpted to the most relevant sections, they count toward the attached-notes token warning, and they appear as numbered **citations** in the response, exactly like notes you attach by hand. Each turn's auto-retrieved notes also surface as distinct read-only pills in the reference row, so you can see what was pulled in.
 - **Scoped** — Pythia's own `Conversations/` and `Scratch/` folders are excluded so saved chats aren't fed back in, and notes you already attached manually are never duplicated.
 

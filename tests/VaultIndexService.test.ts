@@ -128,6 +128,29 @@ describe("VaultIndexService", () => {
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 
+	it("reports progress as notes are embedded", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		const calls: Array<[number, number]> = [];
+		await svc.sync([alpha, beta, gamma], (done, total) => calls.push([done, total]));
+		expect(calls.length).toBe(3); // one per embedded note
+		expect(calls[calls.length - 1]).toEqual([3, 3]);
+	});
+
+	it("clear() wipes the index and marks it not-ready until the next sync (ADR-119)", async () => {
+		const p = new FakeProvider();
+		const store = new MemStore();
+		const svc = new VaultIndexService(p, store);
+		await svc.sync([alpha, beta]);
+		expect(svc.isReady()).toBe(true);
+		await svc.clear();
+		expect(svc.isReady()).toBe(false);
+		expect(await svc.query("alpha", { minScore: 0.5 })).toEqual([]); // empty index
+		// A fresh sync rebuilds and becomes queryable again.
+		await svc.sync([alpha, beta]);
+		expect((await svc.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toEqual(["Notes/alpha.md"]);
+	});
+
 	it("serves queries from a persisted index, embedding only the query", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]);

@@ -25,12 +25,28 @@ const iframeBuild = await esbuild.build({
 });
 const iframeHtml = `<script type="module">\n${iframeBuild.outputFiles[0].text}\n</script>\n`;
 
+// Build the embedding Web Worker as its own browser bundle (ADR-119) — same runtime
+// as the iframe but run on a background thread. Inlined as a plain-source string via
+// `__WORKER_CONTENTS_PLACEHOLDER__`; WorkerEmbeddingProvider wraps it in a Blob URL.
+const workerBuild = await esbuild.build({
+  entryPoints: ["services/embedding/host/frame/worker.ts"],
+  bundle: true,
+  platform: "browser",
+  format: "esm",
+  target: "esnext",
+  write: false,
+  minify: prod,
+  logLevel: "info",
+});
+const workerSource = workerBuild.outputFiles[0].text;
+
 const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["main.ts"],
   bundle: true,
   define: {
     __IFRAME_CONTENTS_PLACEHOLDER__: JSON.stringify(iframeHtml),
+    __WORKER_CONTENTS_PLACEHOLDER__: JSON.stringify(workerSource),
   },
   external: [
     "obsidian",

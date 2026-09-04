@@ -10,6 +10,9 @@ import {
 import { quantize } from "./vectorMath";
 import { noteEmbedChunks, rankByQuery, type RetrievedNote } from "./vaultRetrieval";
 
+/** Embeds between cooperative yields to the event loop during a large index build. */
+const YIELD_EVERY_EMBEDS = 8;
+
 /** A vault note to index: its path (the index id) and current markdown body. */
 export interface IndexableNote {
 	path: string;
@@ -40,6 +43,15 @@ export class VaultIndexService {
 		private readonly opts: { maxChars?: number } = {}
 	) {}
 
+	/** Wipe the index (in-memory + persisted) and mark it not-ready, so the next
+	 *  sync re-embeds every note from scratch. Backs the "reindex" action (ADR-119). */
+	async clear(): Promise<void> {
+		this.items = [];
+		this.synced = false;
+		this.loaded = true; // don't let a later load() repopulate from the old store
+		await this.store.write(serializeIndex([], this.provider.dim));
+	}
+
 	/** True once at least one sync has completed — i.e. the model is loaded and the
 	 *  index is populated, so `query` can run fast (only the query is embedded).
 	 *  Retrieval is gated on this so a turn never waits on the first-use model
@@ -64,10 +76,11 @@ export class VaultIndexService {
 		this.loaded = true;
 	}
 
-	/** Bring the index in line with `notes`; concurrent calls coalesce. */
-	async sync(notes: IndexableNote[]): Promise<void> {
+	/** Bring the index in line with `notes`; concurrent calls coalesce. `onProgress`
+	 *  (done, total) fires as notes are embedded so the UI can show a bar. */
+	async sync(notes: IndexableNote[], onProgress?: (done: number, total: number) => void): Promise<void> {
 		while (this.syncing) await this.syncing;
-		this.syncing = this.doSync(notes);
+		this.syncing = this.doSync(notes, onProgress);
 		try {
 			await this.syncing;
 		} finally {
@@ -75,7 +88,7 @@ export class VaultIndexService {
 		}
 	}
 
-	private async doSync(notes: IndexableNote[]): Promise<void> {
+	private async doSync(notes: IndexableNote[], onProgress?: (done: number, total: number) => void): Promise<void> {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
 		// Mark ready as soon as a sync completes (even a no-op one over an existing
@@ -100,10 +113,16 @@ export class VaultIndexService {
 		for (const id of toDrop) byId.delete(id);
 
 		const toEmbedSet = new Set(toEmbed);
+		let done = 0;
 		for (const d of embeddable) {
 			if (!toEmbedSet.has(d.id)) continue;
 			const raw = await this.provider.embed(d.chunks);
 			byId.set(d.id, { id: d.id, contentHash: d.contentHash, chunks: raw.map(quantize) });
+			onProgress?.(++done, toEmbed.length);
+			// Cooperative yield: even off the send path, embedding runs on the shared
+			// renderer thread, so periodically hand control back to the event loop so
+			// Obsidian stays responsive while a large (re)index runs (ADR-119).
+			if (done % YIELD_EVERY_EMBEDS === 0) await new Promise((r) => setTimeout(r, 0));
 		}
 
 		// Rebuild in desired (current-vault) order, dropping any strays.
