@@ -29,7 +29,12 @@ class MemStore implements IndexStore {
 	async write(b: ArrayBuffer): Promise<void> { this.buf = b; this.writes++; }
 }
 
-const note = (path: string, content: string): IndexableNote => ({ path, content });
+// Track loads so tests can assert content is read lazily, once per note per sync.
+const loads: string[] = [];
+const note = (path: string, content: string): IndexableNote => ({
+	path,
+	load: async () => { loads.push(path); return content; },
+});
 
 const alpha = note("Notes/alpha.md", "all about alpha topics");
 const beta = note("Notes/beta.md", "all about beta topics");
@@ -128,7 +133,14 @@ describe("VaultIndexService", () => {
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 
-	it("reports progress as notes are embedded", async () => {
+	it("reads note content lazily — once per note per sync (bounded memory, ADR-120)", async () => {
+		loads.length = 0;
+		const svc = new VaultIndexService(new FakeProvider(), new MemStore());
+		await svc.sync([alpha, beta, gamma]);
+		expect(loads).toEqual(["Notes/alpha.md", "Notes/beta.md", "Notes/gamma.md"]);
+	});
+
+	it("reports progress per processed note against the total", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());
 		const calls: Array<[number, number]> = [];

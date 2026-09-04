@@ -4,6 +4,7 @@ import type { PythiaSettings } from "../settings";
 import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
+import { selectIndexPaths } from "./embedding/indexScope";
 import { relatedMinScore } from "./embedding/relatedConversations";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
@@ -31,6 +32,8 @@ export class VaultRagService {
 	private lastAutoContext = new Map<string, string[]>();
 	private syncing = false;
 	private status = "";
+	/** One-time "vault too large, capped" warning per session/model. */
+	private capWarned = false;
 
 	constructor(
 		private readonly app: App,
@@ -45,6 +48,7 @@ export class VaultRagService {
 	reset(): void {
 		this.service = null;
 		this.status = "";
+		this.capWarned = false;
 	}
 
 	private ensure(): VaultIndexService {
@@ -113,14 +117,20 @@ export class VaultRagService {
 			const startedAt = Date.now();
 			const notice = new Notice(t("vaultIndexBuilding"), 0);
 			try {
-				const notes = await this.collectIndexableNotes();
+				const { notes, total, capped } = this.collectIndexableNotes();
+				// Warn ONCE per session when the vault is too large and got capped, so
+				// the user knows to scope to folders rather than silently missing notes.
+				if (capped && !this.capWarned) {
+					this.capWarned = true;
+					new Notice(t("vaultIndexCapped", { indexed: String(notes.length), total: String(total) }), 10000);
+				}
 				this.status = t("vaultIndexStatusIndexing", { done: "0", total: String(notes.length) });
-				await this.ensure().sync(notes, (done, total) => {
-					notice.setMessage(t("vaultIndexProgress", { done: String(done), total: String(total) }));
-					this.status = t("vaultIndexStatusIndexing", { done: String(done), total: String(total) });
+				await this.ensure().sync(notes, (done, tot) => {
+					notice.setMessage(t("vaultIndexProgress", { done: String(done), total: String(tot) }));
+					this.status = t("vaultIndexStatusIndexing", { done: String(done), total: String(tot) });
 				});
 				this.status = t("vaultIndexStatusReady", { count: String(notes.length) });
-				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length });
+				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped });
 			} catch (e) {
 				this.status = t("vaultIndexStatusFailed");
 				console.warn("[Pythia] vault RAG: index sync failed", e);
@@ -142,23 +152,27 @@ export class VaultRagService {
 		this.refresh();
 	}
 
-	/** Markdown notes in scope: the configured folders (empty = whole vault) minus
-	 *  Pythia's own conversations/scratch folders. */
-	private async collectIndexableNotes(): Promise<IndexableNote[]> {
+	/** Notes to index as LAZY refs (path + content loader): the configured folders
+	 *  (empty = whole vault) minus Pythia's own folders, trimmed to the note cap.
+	 *  Only paths are materialized here — content is read one note at a time during
+	 *  the streamed sync, so peak memory stays bounded on huge vaults (ADR-120). */
+	private collectIndexableNotes(): { notes: IndexableNote[]; total: number; capped: boolean } {
 		const settings = this.getSettings();
 		const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
 		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
 		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
-		const under = (path: string, f: string) => path === f || path.startsWith(f + "/");
-		const inScope = (path: string) =>
-			(include.length === 0 || include.some((f) => under(path, f))) &&
-			!skip.some((f) => under(path, f));
 
-		const notes: IndexableNote[] = [];
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			if (!inScope(file.path)) continue;
-			notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
-		}
-		return notes;
+		const files = this.app.vault.getMarkdownFiles();
+		const byPath = new Map(files.map((f) => [f.path, f]));
+		const { paths, total, capped } = selectIndexPaths([...byPath.keys()], {
+			include,
+			skip,
+			cap: settings.vaultContextMaxIndexedNotes,
+		});
+		const notes: IndexableNote[] = paths.map((path) => ({
+			path,
+			load: () => this.app.vault.cachedRead(byPath.get(path)!),
+		}));
+		return { notes, total, capped };
 	}
 }

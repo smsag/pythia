@@ -2,34 +2,40 @@ import type { EmbeddingProvider } from "./EmbeddingProvider";
 import type { IndexStore } from "./ConversationIndexService";
 import {
 	conversationContentHash,
-	diffIndex,
 	serializeIndex,
 	deserializeIndex,
 	type IndexedConversation,
 } from "./embeddingIndex";
-import { quantize } from "./vectorMath";
-import { noteEmbedChunks, rankByQuery, type RetrievedNote } from "./vaultRetrieval";
+import { quantize, cosine } from "./vectorMath";
+import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
 
-/** Embeds between cooperative yields to the event loop during a large index build. */
-const YIELD_EVERY_EMBEDS = 8;
+/** Notes processed between cooperative yields during a build (keeps the UI alive). */
+const YIELD_EVERY_NOTES = 8;
+/** Items scored between cooperative yields during a query rank (ADR-120). */
+const RANK_YIELD_EVERY = 2000;
 
-/** A vault note to index: its path (the index id) and current markdown body. */
+/** A vault note to index: its path (the index id) and a LAZY content loader.
+ *  Content is loaded one note at a time during sync and released immediately, so
+ *  peak memory is bounded regardless of vault size (ADR-120) — never the whole
+ *  vault's text at once. */
 export interface IndexableNote {
 	path: string;
-	content: string;
+	load: () => Promise<string>;
 }
 
 /**
  * Keeps a vector index of the vault's notes in sync and answers semantic
- * retrieval queries for vault-wide RAG (ADR-116). Structurally identical to
- * `ConversationIndexService` — only new or content-changed notes are re-embedded
- * (via `diffIndex`), removed notes are dropped, and the packed index is persisted
- * through the injected store. Both the embedding provider and the store are
- * interfaces, so the whole orchestration is unit-tested with fakes.
+ * retrieval queries for vault-wide RAG (ADR-116/118/119/120).
  *
- * The note index is stored under a separate key from the conversation index (see
- * VaultIndexStore's `prefix`) so the two never collide, even though they share the
- * same binary format and math.
+ * STREAMED build (ADR-120): notes are read + chunked + embedded ONE AT A TIME
+ * and their text released before the next, so a 30k-note vault does not hold
+ * ~all its content in memory at once. Only new / content-changed notes are
+ * re-embedded (per-note content-hash compare), removed notes drop out, and the
+ * packed index is persisted through the injected store.
+ *
+ * Both the embedding provider and the store are interfaces, so the whole
+ * orchestration is unit-tested with fakes. The note index is stored under a
+ * separate key from the conversation index (VaultIndexStore's `prefix`).
  */
 export class VaultIndexService {
 	private items: IndexedConversation[] = [];
@@ -77,8 +83,8 @@ export class VaultIndexService {
 	}
 
 	/** Bring the index in line with `notes`; concurrent calls coalesce. `onProgress`
-	 *  (done, total) fires as notes are embedded so the UI can show a bar. */
-	async sync(notes: IndexableNote[], onProgress?: (done: number, total: number) => void): Promise<void> {
+	 *  (processed, total) fires as notes are handled so the UI can show a bar. */
+	async sync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
 		while (this.syncing) await this.syncing;
 		this.syncing = this.doSync(notes, onProgress);
 		try {
@@ -88,57 +94,62 @@ export class VaultIndexService {
 		}
 	}
 
-	private async doSync(notes: IndexableNote[], onProgress?: (done: number, total: number) => void): Promise<void> {
+	private async doSync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
-		// Mark ready as soon as a sync completes (even a no-op one over an existing
-		// index), so retrieval can start using whatever is indexed.
-		const markReady = () => { this.synced = true; };
 
-		const desired = notes.map((n) => {
-			const chunks = noteEmbedChunks(n.content, maxChars);
-			return { id: n.path, contentHash: conversationContentHash(chunks), chunks };
-		});
-		// A note that yields no chunks (empty file) is skipped entirely — nothing to embed.
-		const embeddable = desired.filter((d) => d.chunks.length > 0);
+		// Reuse unchanged vectors by (path → item); rebuild the survivor list in
+		// note order. `kept` holds only Int8 vectors (the index we need anyway);
+		// note text and chunk strings are held only for the note being processed.
+		const existing = new Map(this.items.map((i) => [i.id, i]));
+		const kept: IndexedConversation[] = [];
+		const seen = new Set<string>();
+		const total = notes.length;
+		let embedded = 0;
+		let processed = 0;
 
-		const existing = new Map(this.items.map((i) => [i.id, i.contentHash]));
-		const { toEmbed, toDrop } = diffIndex(
-			existing,
-			embeddable.map((d) => ({ id: d.id, contentHash: d.contentHash }))
-		);
-		if (toEmbed.length === 0 && toDrop.length === 0) { markReady(); return; }
+		for (const note of notes) {
+			processed++;
+			let chunks: string[];
+			try {
+				chunks = noteEmbedChunks(await note.load(), maxChars);
+			} catch {
+				onProgress?.(processed, total);
+				continue; // unreadable note — skip (drops it from the index if it was there)
+			}
+			if (chunks.length === 0) { onProgress?.(processed, total); continue; } // empty note
 
-		const byId = new Map(this.items.map((i) => [i.id, i]));
-		for (const id of toDrop) byId.delete(id);
-
-		const toEmbedSet = new Set(toEmbed);
-		let done = 0;
-		for (const d of embeddable) {
-			if (!toEmbedSet.has(d.id)) continue;
-			const raw = await this.provider.embed(d.chunks);
-			byId.set(d.id, { id: d.id, contentHash: d.contentHash, chunks: raw.map(quantize) });
-			onProgress?.(++done, toEmbed.length);
-			// Cooperative yield: even off the send path, embedding runs on the shared
-			// renderer thread, so periodically hand control back to the event loop so
-			// Obsidian stays responsive while a large (re)index runs (ADR-119).
-			if (done % YIELD_EVERY_EMBEDS === 0) await new Promise((r) => setTimeout(r, 0));
+			const hash = conversationContentHash(chunks);
+			const prev = existing.get(note.path);
+			if (prev && prev.contentHash === hash) {
+				kept.push(prev); // unchanged — reuse vectors, no re-embed
+			} else {
+				const raw = await this.provider.embed(chunks);
+				kept.push({ id: note.path, contentHash: hash, chunks: raw.map(quantize) });
+				embedded++;
+			}
+			seen.add(note.path);
+			onProgress?.(processed, total);
+			// Cooperative yield: embedding (and the tight reuse loop) run on the shared
+			// renderer thread, so periodically hand control back so Obsidian stays alive.
+			if (processed % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
 		}
 
-		// Rebuild in desired (current-vault) order, dropping any strays.
-		this.items = embeddable
-			.map((d) => byId.get(d.id))
-			.filter((i): i is IndexedConversation => i !== undefined);
-		await this.store.write(serializeIndex(this.items, this.provider.dim));
-		markReady();
+		// Persist only when the index actually changed (an embed happened, or a note
+		// present before is gone) — avoids rewriting a large .bin on a no-op sync.
+		const dropped = [...existing.keys()].some((id) => !seen.has(id));
+		this.items = kept;
+		if (embedded > 0 || dropped) await this.store.write(serializeIndex(this.items, this.provider.dim));
+		this.synced = true;
 	}
 
 	/**
 	 * Rank the ALREADY-INDEXED notes against `query`, most-relevant first. Embeds
 	 * only the query (fast — the model is loaded once the index is ready), never
-	 * the vault, so it is safe to await inside a chat turn. Returns [] when the
-	 * index isn't ready yet (see `isReady`) or nothing clears the floor. Paths in
-	 * `exclude` (already-attached notes) are dropped before the limit is applied.
+	 * the vault, so it is safe to await inside a chat turn. Ranking scans the index
+	 * COOPERATIVELY (yielding every few thousand notes) so a large corpus never
+	 * blocks the UI thread in one burst (ADR-120). Returns [] when the index isn't
+	 * ready or nothing clears the floor; `exclude` paths are dropped before `limit`.
 	 */
 	async query(
 		text: string,
@@ -148,11 +159,24 @@ export class VaultIndexService {
 		if (!q || !this.synced || this.items.length === 0) return [];
 		const [raw] = await this.provider.embed([q]);
 		if (!raw) return [];
+		const queryVec = quantize(raw);
+		const minScore = opts.minScore ?? 0.35;
 		const excluded = new Set(opts.exclude ?? []);
-		// Rank unbounded, drop excluded, THEN apply the limit — so excluding an
-		// already-attached top hit doesn't shrink the returned set below `limit`.
-		const ranked = rankByQuery(quantize(raw), this.items, { minScore: opts.minScore })
-			.filter((r) => !excluded.has(r.id));
-		return typeof opts.limit === "number" ? ranked.slice(0, opts.limit) : ranked;
+
+		const scored: RetrievedNote[] = [];
+		let scanned = 0;
+		for (const item of this.items) {
+			if (item.chunks.length > 0 && !excluded.has(item.id)) {
+				let best = -Infinity;
+				for (const chunk of item.chunks) {
+					const s = cosine(chunk, queryVec);
+					if (s > best) best = s;
+				}
+				if (Number.isFinite(best) && best >= minScore) scored.push({ id: item.id, score: best });
+			}
+			if (++scanned % RANK_YIELD_EVERY === 0) await new Promise((r) => setTimeout(r, 0));
+		}
+		scored.sort((a, b) => b.score - a.score);
+		return typeof opts.limit === "number" ? scored.slice(0, opts.limit) : scored;
 	}
 }

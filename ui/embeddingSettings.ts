@@ -70,6 +70,20 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 				})
 		);
 
+	new Setting(containerEl)
+		.setName(t("vaultContextMaxNotesName"))
+		.setDesc(t("vaultContextMaxNotesDesc"))
+		.addText((txt) =>
+			txt
+				.setPlaceholder("5000")
+				.setValue(String(plugin.settings.vaultContextMaxIndexedNotes))
+				.onChange(async (value) => {
+					const n = Number.parseInt(value, 10);
+					plugin.settings.vaultContextMaxIndexedNotes = Number.isFinite(n) && n >= 0 ? n : 0;
+					await plugin.saveSettings();
+				})
+		);
+
 	// Rebuild action + a status line that reflects the current index state.
 	const status = new Setting(containerEl)
 		.setName(t("vaultContextReindexName"))

@@ -77,6 +77,11 @@ export interface PythiaSettings {
 	 *  vault (minus Pythia's own conversations/scratch folders). Scoping to a few
 	 *  folders keeps the on-device index small and fast on large vaults (ADR-119). */
 	vaultContextFolders: string[];
+	/** Hard cap on the number of notes indexed for vault context. 0 = unlimited.
+	 *  Protects large vaults from an over-large index / a very long first build;
+	 *  when exceeded, the first N in-scope notes are indexed and the user is warned
+	 *  to scope to folders (ADR-120). */
+	vaultContextMaxIndexedNotes: number;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -113,4 +118,5 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	vaultContextMaxNotes: 5,
 	vaultContextSimilarity: DEFAULT_RELATED_SIMILARITY,
 	vaultContextFolders: [],
+	vaultContextMaxIndexedNotes: 5000,
 };
