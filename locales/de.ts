@@ -197,6 +197,7 @@ const de: Strings = {
 	vaultContextDefaultOff:            "Vault-Kontext für neue Unterhaltungen standardmäßig aus.",
 	vaultContextTooltip:               "Vault-Kontext: relevante Notizen automatisch hinzufügen (semantisches RAG)",
 	vaultContextAutoPill:              "in diesem Zug automatisch aus dem Vault geholt",
+	vaultIndexBuilding:                "Vault-Index wird im Hintergrund erstellt – Antworten nutzen ihn, sobald er bereit ist.",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 

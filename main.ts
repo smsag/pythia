@@ -67,6 +67,10 @@ export default class PythiaPlugin extends Plugin {
 	/** Paths auto-retrieved on the last turn, per conversation id — read by the
 	 *  sidebar to show distinct "auto" reference pills for what vault RAG pulled in. */
 	private lastAutoContext = new Map<string, string[]>();
+	/** Guards the background vault-index sync so only one runs at a time (ADR-118). */
+	private vaultSyncing = false;
+	/** One-time "index building" notice per model lifetime. */
+	private vaultIndexNoticeShown = false;
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn (ADR-116). */
 	getAutoContext(conversationId: string): string[] {
@@ -158,13 +162,18 @@ export default class PythiaPlugin extends Plugin {
 	}
 
 	/**
-	 * Vault notes semantically relevant to `query`, for auto-RAG context (ADR-116).
-	 * Returns [] when the feature is off for this conversation, the query is empty,
-	 * or nothing clears the similarity floor. The LLMRouter hook treats this as
-	 * fail-open (a throw never blocks the turn). Gating is per-conversation
-	 * (`conversation.vaultContext`), falling back to the global `vaultContextEnabled`
-	 * default. Excludes already-attached `exclude` paths and Pythia's own
-	 * conversations/scratch folders so saved chats aren't fed back as context.
+	 * Vault notes semantically relevant to `query`, for auto-RAG context (ADR-116/118).
+	 *
+	 * NON-BLOCKING by design: the vault index is built/refreshed in the BACKGROUND
+	 * (see `syncVaultIndex`), and a turn only ever ranks against an already-ready
+	 * index — embedding just the query, never the whole vault. So a turn never
+	 * waits on the first-use model download or a large re-index: until the index is
+	 * ready this returns [] (RAG simply doesn't contribute yet) and the LLM reply
+	 * comes immediately. The LLMRouter hook also treats this as fail-open.
+	 *
+	 * Gating is per-conversation (`conversation.vaultContext`), falling back to the
+	 * global `vaultContextEnabled` default. Already-attached `exclude` paths are
+	 * dropped; Pythia's own conversations/scratch folders are never indexed.
 	 */
 	async getRelevantNotes(conversation: Conversation, query: string, exclude: string[] = []): Promise<string[]> {
 		const enabled = conversation.vaultContext ?? this.settings.vaultContextEnabled;
@@ -175,19 +184,13 @@ export default class PythiaPlugin extends Plugin {
 		const q = query.trim();
 		if (!q) return [];
 
-		const excludeSet = new Set(exclude);
-		const skipFolders = [this.settings.conversationsFolder, this.settings.scratchFolder]
-			.map((f) => (f ?? "").replace(/\/+$/, ""))
-			.filter(Boolean);
-		const inSkipped = (path: string) =>
-			skipFolders.some((f) => path === f || path.startsWith(f + "/"));
+		// Kick off (or refresh) the index in the background — never awaited here.
+		this.syncVaultIndex();
 
-		const notes: IndexableNote[] = [];
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			if (excludeSet.has(file.path) || inSkipped(file.path)) continue;
-			notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
-		}
-		if (notes.length === 0) {
+		const svc = this.ensureVaultService();
+		if (!svc.isReady()) {
+			// Index still building (e.g. first-use model download) — skip RAG this
+			// turn so the reply is immediate; a later turn will use the ready index.
 			this.lastAutoContext.set(conversation.id, []);
 			return [];
 		}
@@ -195,15 +198,51 @@ export default class PythiaPlugin extends Plugin {
 		const minScore = relatedMinScore(this.settings.vaultContextSimilarity);
 		const limit = this.settings.vaultContextMaxNotes > 0 ? this.settings.vaultContextMaxNotes : 5;
 		const startedAt = Date.now();
-		const results = await this.ensureVaultService().retrieve(q, notes, { minScore, limit });
-		debugLog(this.settings, `vault RAG: retrieved (${Date.now() - startedAt}ms)`, {
-			indexed: notes.length,
+		const results = await svc.query(q, { minScore, limit, exclude });
+		debugLog(this.settings, `vault RAG: query (${Date.now() - startedAt}ms)`, {
 			returned: results.length,
 			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
 		});
 		const paths = results.map((r) => r.id);
 		this.lastAutoContext.set(conversation.id, paths);
 		return paths;
+	}
+
+	/**
+	 * Build/refresh the vault embedding index in the background (ADR-118). Coalesced
+	 * — a call while one is running is a no-op. Never throws to callers: a model-load
+	 * or embedding failure is logged and leaves the index simply not-ready, so RAG
+	 * stays silent rather than affecting any chat turn. This is the ONLY place the
+	 * whole vault is read/embedded; it is deliberately off the send path.
+	 */
+	private syncVaultIndex(): void {
+		if (this.vaultSyncing) return;
+		this.vaultSyncing = true;
+		if (!this.vaultIndexNoticeShown) {
+			this.vaultIndexNoticeShown = true;
+			new Notice(t("vaultIndexBuilding"));
+		}
+		void (async () => {
+			const startedAt = Date.now();
+			try {
+				const skipFolders = [this.settings.conversationsFolder, this.settings.scratchFolder]
+					.map((f) => (f ?? "").replace(/\/+$/, ""))
+					.filter(Boolean);
+				const inSkipped = (path: string) =>
+					skipFolders.some((f) => path === f || path.startsWith(f + "/"));
+				const notes: IndexableNote[] = [];
+				for (const file of this.app.vault.getMarkdownFiles()) {
+					if (inSkipped(file.path)) continue;
+					notes.push({ path: file.path, content: await this.app.vault.cachedRead(file) });
+				}
+				await this.ensureVaultService().sync(notes);
+				debugLog(this.settings, `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length });
+			} catch (e) {
+				console.warn("[Pythia] vault RAG: index sync failed", e);
+			} finally {
+				this.vaultSyncing = false;
+			}
+		})();
 	}
 
 	/** Drop the embedding provider + both index services so the next use rebuilds
@@ -214,6 +253,7 @@ export default class PythiaPlugin extends Plugin {
 		this.embeddingModelId = null;
 		this.relatedService = null;
 		this.vaultService = null;
+		this.vaultIndexNoticeShown = false; // re-notify when the new model's index (re)builds
 	}
 
 	async onload(): Promise<void> {

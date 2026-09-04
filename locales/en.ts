@@ -183,6 +183,7 @@ const en = {
 	vaultContextDefaultOff:            "Vault context off by default for new conversations.",
 	vaultContextTooltip:               "Vault context: auto-add relevant notes (semantic RAG)",
 	vaultContextAutoPill:              "auto-retrieved from your vault this turn",
+	vaultIndexBuilding:                "Building the vault index in the background — answers will start using it once it's ready.",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
 
