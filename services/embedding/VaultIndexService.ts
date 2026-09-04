@@ -98,9 +98,16 @@ export class VaultIndexService {
 	}
 
 	/** Bring the index in line with `notes` (full build / manual reindex). Serialized
-	 *  behind the op chain. `onProgress` (processed, total) fires as notes are handled. */
-	sync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
-		return this.enqueue(() => this.doSync(notes, onProgress));
+	 *  behind the op chain. `onProgress` (processed, total) fires as notes are handled.
+	 *  `throttle` controls how hard the build yields the thread: on a UI-thread backend
+	 *  (no Worker) pass a fine cadence + a breather so a large build never freezes the
+	 *  app (ADR-125). Defaults keep the off-thread cadence. */
+	sync(
+		notes: IndexableNote[],
+		onProgress?: (processed: number, total: number) => void,
+		throttle: { yieldEveryNotes?: number; breatherMs?: number } = {},
+	): Promise<void> {
+		return this.enqueue(() => this.doSync(notes, onProgress, throttle));
 	}
 
 	/**
@@ -192,9 +199,15 @@ export class VaultIndexService {
 		return this.items.length !== before;
 	}
 
-	private async doSync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
+	private async doSync(
+		notes: IndexableNote[],
+		onProgress?: (processed: number, total: number) => void,
+		throttle: { yieldEveryNotes?: number; breatherMs?: number } = {},
+	): Promise<void> {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
+		const yieldEvery = Math.max(1, throttle.yieldEveryNotes ?? YIELD_EVERY_NOTES);
+		const breatherMs = Math.max(0, throttle.breatherMs ?? 0);
 
 		// Reuse unchanged vectors by (path → item); rebuild the survivor list in
 		// note order. `kept` holds only Int8 vectors (the index we need anyway);
@@ -228,9 +241,10 @@ export class VaultIndexService {
 			}
 			seen.add(note.path);
 			onProgress?.(processed, total);
-			// Cooperative yield: embedding (and the tight reuse loop) run on the shared
-			// renderer thread, so periodically hand control back so Obsidian stays alive.
-			if (processed % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
+			// Cooperative yield: on the UI-thread (iframe) backend, embedding runs on the
+			// renderer thread, so hand control back — finely, with a breather (ADR-125) —
+			// so a large build never freezes the app. Off-thread, the coarse default is fine.
+			if (processed % yieldEvery === 0) await new Promise((r) => setTimeout(r, breatherMs));
 		}
 
 		// Persist only when the index actually changed (an embed happened, or a note

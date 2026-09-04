@@ -77,6 +77,11 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		return vectors.map((v) => Float32Array.from(v));
 	}
 
+	/** A real Web Worker → inference runs off the UI thread. */
+	isOffThread(): boolean {
+		return true;
+	}
+
 	private request(payload: Record<string, unknown>, timeoutMs: number): Promise<number[][]> {
 		const worker = this.worker;
 		if (!worker) return Promise.reject(new Error("Embedding worker is not available"));

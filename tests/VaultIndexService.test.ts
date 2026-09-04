@@ -258,6 +258,15 @@ describe("VaultIndexService", () => {
 		expect((await svc.query("alpha", { minScore: 0.5 })).find((r) => r.id === "Notes/alpha.md")).toBeUndefined();
 	});
 
+	it("sync honours a fine throttle cadence and still indexes every note (ADR-125)", async () => {
+		const p = new FakeProvider();
+		const svc = new VaultIndexService(p, new MemStore());
+		// yieldEveryNotes:1 = yield after every note (the UI-thread build cadence).
+		await svc.sync([alpha, beta, gamma], undefined, { yieldEveryNotes: 1, breatherMs: 0 });
+		expect(svc.size()).toBe(3);
+		expect((await svc.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toEqual(["Notes/alpha.md"]);
+	});
+
 	it("hydrateForQuery makes a persisted index queryable WITHOUT embedding any notes (mobile)", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store).sync([alpha, beta]); // built on "desktop"

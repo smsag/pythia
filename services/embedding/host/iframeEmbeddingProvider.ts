@@ -84,6 +84,11 @@ export class IframeEmbeddingProvider implements EmbeddingProvider {
 		return vectors.map((v) => Float32Array.from(v));
 	}
 
+	/** Same-origin iframe → inference runs on the renderer UI thread, not off it. */
+	isOffThread(): boolean {
+		return false;
+	}
+
 	private request(payload: Record<string, unknown>, timeoutMs: number): Promise<number[][]> {
 		const win = this.iframe?.contentWindow;
 		if (!win) return Promise.reject(new Error("Embedding iframe is not available"));

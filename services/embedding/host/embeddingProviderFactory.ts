@@ -51,6 +51,14 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		return this.active!.embed(texts);
 	}
 
+	/** Reflects the backend that actually initialized: true only if the Worker
+	 *  engaged (off-thread), false once we fell back to the UI-thread iframe.
+	 *  Before `ready()` resolves the backend is unknown — report false so callers
+	 *  throttle rather than assume off-thread. */
+	isOffThread(): boolean {
+		return this.active?.isOffThread?.() ?? false;
+	}
+
 	unload(): void {
 		this.active?.unload();
 		this.active = null;
