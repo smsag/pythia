@@ -221,6 +221,34 @@ describe("VaultIndexService", () => {
 		expect(svc.size()).toBe(0);
 	});
 
+	it("applyBatch persists ONCE for many changes (ADR-122)", async () => {
+		const p = new FakeProvider();
+		const store = new MemStore();
+		const svc = new VaultIndexService(p, store);
+		await svc.sync([alpha, beta, gamma]); // writes: 1
+		const writesAfterSync = store.writes;
+		await svc.applyBatch(
+			{
+				updates: [note("Notes/alpha.md", "alpha revised"), note("Notes/delta.md", "brand new alpha-ish")],
+				removes: ["Notes/beta.md"],
+			},
+			{},
+		);
+		// One edit + one add + one remove → a SINGLE index write, not three.
+		expect(store.writes).toBe(writesAfterSync + 1);
+		expect(svc.size()).toBe(3); // alpha(updated) + gamma + delta; beta removed
+	});
+
+	it("applyBatch does not write when nothing actually changed", async () => {
+		const p = new FakeProvider();
+		const store = new MemStore();
+		const svc = new VaultIndexService(p, store);
+		await svc.sync([alpha, beta]);
+		const before = store.writes;
+		await svc.applyBatch({ updates: [alpha], removes: ["Notes/ghost.md"] }, {}); // unchanged + non-existent
+		expect(store.writes).toBe(before);
+	});
+
 	it("removeNote drops a note from the index", async () => {
 		const p = new FakeProvider();
 		const svc = new VaultIndexService(p, new MemStore());

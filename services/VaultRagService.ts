@@ -156,17 +156,17 @@ export class VaultRagService {
 		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
 		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
 
-		for (const path of deleted) await svc.removeNote(path);
+		const removes = [...deleted];
+		const updates: IndexableNote[] = [];
 		for (const file of changed) {
 			if (isPathInScope(file.path, include, skip)) {
-				await svc.updateNote(
-					{ path: file.path, load: () => this.app.vault.cachedRead(file) },
-					{ cap: settings.vaultContextMaxIndexedNotes },
-				);
+				updates.push({ path: file.path, load: () => this.app.vault.cachedRead(file) });
 			} else {
-				await svc.removeNote(file.path); // edited into an out-of-scope / skip folder
+				removes.push(file.path); // edited into an out-of-scope / skip folder
 			}
 		}
+		// One persist for the whole batch (ADR-122), not one per note.
+		await svc.applyBatch({ updates, removes }, { cap: settings.vaultContextMaxIndexedNotes });
 		this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
 	}
 

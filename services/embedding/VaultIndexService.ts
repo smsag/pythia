@@ -112,42 +112,67 @@ export class VaultIndexService {
 	 * one embed instead of rescanning the whole corpus.
 	 */
 	updateNote(note: IndexableNote, opts: { cap?: number } = {}): Promise<void> {
-		return this.enqueue(() => this.doUpdateNote(note, opts));
+		return this.applyBatch({ updates: [note], removes: [] }, opts);
 	}
 
 	/** Targeted removal of a single note from the index (delete / moved out of scope). */
 	removeNote(path: string): Promise<void> {
-		return this.enqueue(() => this.dropInPlace(path));
+		return this.applyBatch({ updates: [], removes: [path] }, {});
 	}
 
-	private async doUpdateNote(note: IndexableNote, opts: { cap?: number }): Promise<void> {
+	/**
+	 * Apply a BATCH of targeted changes with a SINGLE persist (ADR-122): removes,
+	 * then updates (re-embed changed, add new within `cap`, drop emptied/unreadable).
+	 * All mutations are made in memory and the index is serialized + written at most
+	 * ONCE — so the watcher flushing N edited notes costs one `.bin` write, not N.
+	 * No-ops until the index is built (`isReady`).
+	 */
+	applyBatch(changes: { updates: IndexableNote[]; removes: string[] }, opts: { cap?: number } = {}): Promise<void> {
+		return this.enqueue(() => this.doApplyBatch(changes, opts));
+	}
+
+	private async doApplyBatch(changes: { updates: IndexableNote[]; removes: string[] }, opts: { cap?: number }): Promise<void> {
 		await this.load();
 		if (!this.synced) return; // patch only a built index; a full build handles the rest
+		let dirty = false;
+		for (const path of changes.removes) dirty = this.removeInMemory(path) || dirty;
+		let n = 0;
+		for (const note of changes.updates) {
+			dirty = (await this.updateInMemory(note, opts.cap)) || dirty;
+			if (++n % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
+		}
+		if (dirty) await this.store.write(serializeIndex(this.items, this.provider.dim)); // one write for the batch
+	}
+
+	/** Re-embed / add / drop a single note IN MEMORY (no persist). Returns whether
+	 *  the index changed. Empty/unreadable content drops the note. */
+	private async updateInMemory(note: IndexableNote, cap?: number): Promise<boolean> {
 		const maxChars = this.opts.maxChars ?? 500;
 		let chunks: string[];
 		try {
 			chunks = noteEmbedChunks(await note.load(), maxChars);
 		} catch {
-			return this.dropInPlace(note.path); // unreadable → drop
+			return this.removeInMemory(note.path); // unreadable → drop
 		}
-		if (chunks.length === 0) return this.dropInPlace(note.path); // emptied → drop
+		if (chunks.length === 0) return this.removeInMemory(note.path); // emptied → drop
 
 		const hash = conversationContentHash(chunks);
 		const idx = this.items.findIndex((i) => i.id === note.path);
-		if (idx >= 0 && this.items[idx].contentHash === hash) return; // unchanged
-		if (idx < 0 && opts.cap && opts.cap > 0 && this.items.length >= opts.cap) return; // cap new adds
+		if (idx >= 0 && this.items[idx].contentHash === hash) return false; // unchanged
+		if (idx < 0 && cap && cap > 0 && this.items.length >= cap) return false; // cap new adds
 
 		const raw = await this.provider.embed(chunks);
 		const item = { id: note.path, contentHash: hash, chunks: raw.map(quantize) };
 		if (idx >= 0) this.items[idx] = item;
 		else this.items.push(item);
-		await this.store.write(serializeIndex(this.items, this.provider.dim));
+		return true;
 	}
 
-	private async dropInPlace(path: string): Promise<void> {
+	/** Drop a note from the in-memory index (no persist). Returns whether it changed. */
+	private removeInMemory(path: string): boolean {
 		const before = this.items.length;
 		this.items = this.items.filter((i) => i.id !== path);
-		if (this.items.length !== before) await this.store.write(serializeIndex(this.items, this.provider.dim));
+		return this.items.length !== before;
 	}
 
 	private async doSync(notes: IndexableNote[], onProgress?: (processed: number, total: number) => void): Promise<void> {
