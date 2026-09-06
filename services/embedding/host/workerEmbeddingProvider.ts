@@ -33,7 +33,13 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 
 	constructor(
 		private readonly modelId: EmbeddingModelId,
-		private readonly onProgress?: (p: ModelLoadProgress) => void
+		private readonly onProgress?: (p: ModelLoadProgress) => void,
+		/** Optional: resolve a same-origin, loadable URL for the worker script (e.g. a
+		 *  plugin resource path). When omitted, the worker loads from a `blob:` URL.
+		 *  Some environments (Obsidian mobile, and desktop builds on `capacitor://`)
+		 *  block `blob:` Workers — a resource-path URL is the blob-free alternative that
+		 *  keeps inference OFF the UI thread (ADR-126). */
+		private readonly spawnUrl?: () => Promise<string>
 	) {
 		this.dim = this.config.dim;
 	}
@@ -43,10 +49,16 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		return this.readyPromise;
 	}
 
-	private initialize(): Promise<void> {
-		const blob = new Blob([getEmbeddingBundle()], { type: "text/javascript" });
-		this.blobUrl = URL.createObjectURL(blob);
-		const worker = new Worker(this.blobUrl, { type: "module" });
+	private async initialize(): Promise<void> {
+		let url: string;
+		if (this.spawnUrl) {
+			url = await this.spawnUrl(); // blob-free (resource path)
+		} else {
+			const blob = new Blob([getEmbeddingBundle()], { type: "text/javascript" });
+			this.blobUrl = URL.createObjectURL(blob);
+			url = this.blobUrl;
+		}
+		const worker = new Worker(url, { type: "module" });
 		this.worker = worker;
 		worker.addEventListener("message", this.onMessage);
 		worker.addEventListener("error", this.onError);

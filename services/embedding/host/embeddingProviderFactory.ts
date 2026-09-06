@@ -21,7 +21,11 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 
 	constructor(
 		private readonly modelId: EmbeddingModelId,
-		private readonly onProgress?: (p: ModelLoadProgress) => void
+		private readonly onProgress?: (p: ModelLoadProgress) => void,
+		/** Optional: resolve a same-origin resource-path URL for the worker script, so
+		 *  a Worker can start where `blob:` Workers are blocked (ADR-126). When it
+		 *  yields a working Worker, inference stays OFF the UI thread. */
+		private readonly resourceWorkerUrl?: () => Promise<string>
 	) {
 		this.dim = embeddingModelConfig(modelId).dim;
 	}
@@ -32,15 +36,30 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	}
 
 	private async initialize(): Promise<void> {
-		const worker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
+		// 1. Blob-URL Worker (off-thread; works on most desktops).
+		const blobWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
 		try {
-			await worker.ready();
-			this.active = worker;
+			await blobWorker.ready();
+			this.active = blobWorker;
 			return;
 		} catch (err) {
-			worker.unload();
-			console.warn("[Pythia] embedding worker unavailable — falling back to iframe", err);
+			blobWorker.unload();
+			console.warn("[Pythia] embedding: blob worker unavailable", err);
 		}
+		// 2. Resource-path Worker (blob-free; still OFF the UI thread) — for environments
+		//    that block blob: Workers (Obsidian mobile, capacitor:// desktop builds).
+		if (this.resourceWorkerUrl) {
+			const resWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress, this.resourceWorkerUrl);
+			try {
+				await resWorker.ready();
+				this.active = resWorker;
+				return;
+			} catch (err) {
+				resWorker.unload();
+				console.warn("[Pythia] embedding: resource-path worker unavailable — falling back to iframe (UI thread)", err);
+			}
+		}
+		// 3. Same-origin iframe (LAST resort; runs on the UI thread — throttled by callers).
 		const iframe = new IframeEmbeddingProvider(this.modelId, this.onProgress);
 		await iframe.ready();
 		this.active = iframe;
@@ -66,10 +85,13 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	}
 }
 
-/** Build the embedding provider Pythia uses (worker with iframe fallback). */
+/** Build the embedding provider Pythia uses: blob Worker → resource-path Worker →
+ *  iframe. `resourceWorkerUrl` (if given) resolves a same-origin URL for the worker
+ *  script so a Worker can start where `blob:` is blocked (ADR-126). */
 export function createEmbeddingProvider(
 	modelId: EmbeddingModelId,
-	onProgress?: (p: ModelLoadProgress) => void
+	onProgress?: (p: ModelLoadProgress) => void,
+	resourceWorkerUrl?: () => Promise<string>
 ): EmbeddingProvider {
-	return new FallbackEmbeddingProvider(modelId, onProgress);
+	return new FallbackEmbeddingProvider(modelId, onProgress, resourceWorkerUrl);
 }

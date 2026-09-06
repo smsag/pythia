@@ -1,4 +1,4 @@
-import { debounce, Editor, Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
+import { debounce, Editor, Menu, Notice, normalizePath, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -20,6 +20,7 @@ import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
 import { createEmbeddingProvider } from "./services/embedding/host/embeddingProviderFactory";
+import { getEmbeddingBundle } from "./services/embedding/host/embeddingBundle";
 import type { EmbeddingProvider } from "./services/embedding/EmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
@@ -64,6 +65,9 @@ export default class PythiaPlugin extends Plugin {
 	private embeddingProvider: EmbeddingProvider | null = null;
 	private embeddingModelId: EmbeddingModelId | null = null;
 	private relatedService: ConversationIndexService | null = null;
+	/** Memoized resource-path URL for the embedding worker script (written once per
+	 *  plugin version). Lets the Worker start where `blob:` Workers are blocked (ADR-126). */
+	private embeddingWorkerUrlPromise: Promise<string> | null = null;
 	/** Vault-wide semantic RAG (ADR-116/118/119) — index lifecycle + retrieval,
 	 *  extracted to its own service; uses the shared embedding provider below. */
 	vaultRag!: VaultRagService;
@@ -123,17 +127,47 @@ export default class PythiaPlugin extends Plugin {
 		this.vaultRag?.reset();
 		new Notice(t("relatedFirstRun"));
 		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
-		// Worker (off the UI thread) with an automatic iframe fallback (ADR-119).
-		this.embeddingProvider = createEmbeddingProvider(modelId, (p) =>
-			debugLog(this.settings, "embedding: model load", {
-				file: p.file,
-				percent: Math.round(p.progress),
-				loaded: p.loaded,
-				total: p.total,
-			}),
+		// Worker (off the UI thread) with a blob→resource-path→iframe fallback chain
+		// (ADR-119/126). The resource-path URL lets the Worker start where blob: is blocked.
+		this.embeddingProvider = createEmbeddingProvider(
+			modelId,
+			(p) =>
+				debugLog(this.settings, "embedding: model load", {
+					file: p.file,
+					percent: Math.round(p.progress),
+					loaded: p.loaded,
+					total: p.total,
+				}),
+			() => this.embeddingWorkerUrl(),
 		);
 		this.embeddingModelId = modelId;
 		return this.embeddingProvider;
+	}
+
+	/** Write the embedding worker bundle to the plugin folder (once per version) and
+	 *  return a same-origin resource-path URL for it — the blob-free way to start a
+	 *  Worker where `blob:` URLs are blocked (Obsidian mobile, capacitor:// desktop
+	 *  builds). Memoized; best-effort cleanup of stale older-version worker files.
+	 *  The bundle is the same one inlined in main.js (getEmbeddingBundle). */
+	private embeddingWorkerUrl(): Promise<string> {
+		if (this.embeddingWorkerUrlPromise) return this.embeddingWorkerUrlPromise;
+		this.embeddingWorkerUrlPromise = (async () => {
+			const adapter = this.app.vault.adapter;
+			const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+			const path = normalizePath(`${dir}/embedding-worker-${this.manifest.version}.mjs`);
+			if (!(await adapter.exists(path))) {
+				await adapter.write(path, getEmbeddingBundle());
+				// Best-effort: drop stale worker bundles from older plugin versions.
+				try {
+					const listing = await adapter.list(dir);
+					for (const f of listing.files) {
+						if (/\/embedding-worker-.*\.mjs$/.test(f) && f !== path) await adapter.remove(f);
+					}
+				} catch { /* cleanup is best-effort */ }
+			}
+			return adapter.getResourcePath(path);
+		})();
+		return this.embeddingWorkerUrlPromise;
 	}
 
 	private ensureRelatedService(): ConversationIndexService {
