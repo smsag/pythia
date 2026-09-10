@@ -191,15 +191,36 @@ export class ForkController {
 			: summaryKind === "conversation"
 				? fork.summaryUpdatedAt
 				: undefined;
+		// Stale when the fork has newer activity than the summary being shown, so the
+		// origin preview flags that a fresher version can be generated. ISO 8601 strings
+		// sort chronologically, so a plain compare is enough.
+		const lastActivityTs = fork.messages.length
+			? fork.messages[fork.messages.length - 1].timestamp
+			: fork.updatedAt;
+		const stale = !!(summaryTs && lastActivityTs && lastActivityTs > summaryTs);
 		const metaParts = [t("msgCount", { n: String(fork.messages.length) })];
 		if (summaryTs) {
 			metaParts.push(abbreviateModel(fork.model));
 			metaParts.push(formatSummaryTimestamp(summaryTs));
+			if (stale) metaParts.push(t("forkSummaryStale"));
 		}
-		meta.createSpan({
-			cls: "p-fork-anchor-metatext",
-			text: `${metaParts.join(" · ")} · `,
+		meta.createSpan({ cls: "p-fork-anchor-metatext", text: `${metaParts.join(" · ")} · ` });
+
+		// Visible one-tap regenerate — always available (also generates the FIRST summary),
+		// so the origin preview can be brought to the fork's latest state without the
+		// long-press menu. When stale it's tinted with the accent to draw the eye. The
+		// long-press menu is kept for choosing conversation vs favorites.
+		const refresh = meta.createEl("button", {
+			cls: `p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
+			attr: { "aria-label": t("forkRefreshSummary"), title: t("forkRefreshSummary") },
 		});
+		setIcon(refresh, "rotate-cw");
+		refresh.addEventListener("click", (e) => {
+			e.stopPropagation();
+			void this.generateForkSummary(anchor, fork, summaryKind ?? "conversation");
+		});
+		meta.createSpan({ cls: "p-fork-anchor-metatext", text: " · " });
+
 		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
 		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {

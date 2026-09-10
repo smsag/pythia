@@ -163,6 +163,8 @@ const de: Strings = {
 	menuOptimizePrompt:        "Prompt optimieren",
 	forkAnchorLabel:           "ABZWEIGUNG",
 	forkOpenShort:             "Öffnen →",
+	forkRefreshSummary:        "Zusammenfassung neu erzeugen",
+	forkSummaryStale:          "veraltet",
 	fileNotFound:              "Datei nicht gefunden: {{path}}",
 	invalidUrl:                "Link kann nicht geöffnet werden — keine gültige Web-URL: {{url}}",
 

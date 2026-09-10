@@ -1455,6 +1455,18 @@
   font-size: 11px;
 }
 .p-fork-anchor-open:hover { text-decoration: underline; }
+/* Visible one-tap regenerate for the fork summary (ADR-128). Faint by default,
+   accent on hover; accent when the shown summary is stale to invite a refresh. */
+.p-fork-anchor-refresh {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--text-faint);
+}
+.p-fork-anchor-refresh svg { width: 11px; height: 11px; }
+.p-fork-anchor-refresh:hover { color: var(--color-accent); }
+.p-fork-anchor-refresh.is-stale { color: var(--color-accent); }
 /* Wrap so the long-press generate menu can stack directly above Open-fork. */
 .p-fork-open-wrap {
   position: relative;

@@ -150,6 +150,8 @@ const en = {
 	menuOptimizePrompt:        "Optimize prompt",
 	forkAnchorLabel:           "BRANCH",
 	forkOpenShort:             "Open →",
+	forkRefreshSummary:        "Regenerate summary",
+	forkSummaryStale:          "outdated",
 	fileNotFound:              "File not found: {{path}}",
 	invalidUrl:                "Can't open link — not a valid web URL: {{url}}",
 
