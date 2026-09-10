@@ -306,12 +306,18 @@
   max-height: 70vh;
   padding-bottom: var(--s1);
 }
+/* Provider header — sticky, so the group stays identifiable while scrolling a
+   catalog that is far taller than the popover. */
 .p-model-pop-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--background-primary);
   padding: 8px 12px 3px;
   font-family: var(--font-monospace);
-  font-size: 9px;
+  font-size: var(--font-smaller);
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .p-model-pop-group:not(:first-child) {
   border-top: 1px solid var(--background-modifier-border);
@@ -320,17 +326,26 @@
 .pythia-view .p-model-pop-row {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: stretch;
   gap: 2px;
-  padding: 5px 12px;
+  padding: 7px 12px;
+  /* Transparent rail keeps every row on the same text baseline as the active one. */
+  border-left: 2px solid transparent;
+  padding-left: 10px;
   font-size: var(--font-small);
-  color: var(--text-muted);
+  color: var(--text-normal);
   cursor: pointer;
+}
+/* Touch: rows meet the 44px minimum hit target. */
+@media (pointer: coarse) {
+  .pythia-view .p-model-pop-row { min-height: 44px; }
 }
 .p-model-pop-line { display: flex; align-items: center; gap: 8px; }
 .p-model-pop-row:hover { background: var(--background-modifier-hover); }
 .p-model-pop-row.active {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-left-color: var(--color-accent);
   color: var(--text-normal);
   font-weight: 600;
 }
@@ -340,7 +355,7 @@
 .p-model-pop-good,
 .p-model-pop-taphint {
   display: none;
-  font-size: 9px;
+  font-size: var(--font-smaller);
   line-height: 1.35;
   white-space: normal;
 }
@@ -352,18 +367,28 @@
 .p-model-pop-row.armed { background: var(--background-modifier-hover); }
 .p-model-pop-row.armed .p-model-pop-good,
 .p-model-pop-row.armed .p-model-pop-taphint { display: block; }
-.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+/* Reasoning marker — a neutral chip, not warning-orange: it is a capability
+   label, and orange is this UI's warning colour (see .p-send-hint). */
 .p-model-pop-rtag {
   font-family: var(--font-monospace);
-  font-size: 9px;
-  color: var(--text-warning, var(--color-orange));
+  font-size: var(--font-smaller);
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
+/* Context window — fixed right-aligned column so the values line up instead of
+   jittering with the name and the reasoning chip beside them. */
 .p-model-pop-ctx {
   font-family: var(--font-monospace);
-  font-size: 9px;
+  font-size: var(--font-smaller);
   color: var(--text-faint);
   flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
 }
 .p-model-pop-check { display: flex; color: var(--color-accent); flex-shrink: 0; }
 .p-model-pop-check svg { width: 12px; height: 12px; }

@@ -242,7 +242,9 @@ export class HeaderController {
 		// block. Height is capped to the space below the chip with internal scroll.
 		const cRect = container.getBoundingClientRect();
 		const rect = this.modelBadgeEl.getBoundingClientRect();
-		const width = 226;
+		// Widen with the panel (phones and wide sidebars): 226 px was cramped for
+		// "GPT-4.1 nano" + Reasoning chip + context column on a phone.
+		const width = Math.round(Math.min(300, Math.max(226, cRect.width - 24)));
 		const top = rect.bottom - cRect.top + 4;
 		let left = rect.right - cRect.left - width;
 		left = Math.max(4, Math.min(left, cRect.width - width - 4));
