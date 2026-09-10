@@ -1920,8 +1920,14 @@ body.is-mobile .p-textarea {
   opacity: 1;
 }
 
+/* Minimized input: hide everything that belongs to composing a message — the
+   textarea, Send, and the send-adjacent token estimate + max-tokens warning.
+   Only the toolbar icons (incl. the expand arrow) stay. */
 .p-input-area.collapsed .p-textarea,
-.p-input-area.collapsed .p-send {
+.p-input-area.collapsed .p-send-wrap,
+.p-input-area.collapsed .p-send,
+.p-input-area.collapsed .p-send-estimate,
+.p-input-area.collapsed .p-send-hint {
   display: none;
 }
 
