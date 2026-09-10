@@ -46,7 +46,7 @@ const en = {
 	histToday:                 "TODAY",
 	histYesterday:             "YESTERDAY",
 	histThisWeek:              "THIS WEEK",
-	navNoFavorites:  "No highlights yet",
+	navNoFavorites:  "No favorites yet",
 	navNoChapters:   "No chapters yet",
 
 	// ── Empty states ─────────────────────────────────────────────────────────

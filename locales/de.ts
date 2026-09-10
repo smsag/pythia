@@ -30,7 +30,7 @@ const de: Strings = {
 	switcherSearchPlaceholder: "Suchen…",
 	msgCount:                  "{{n}} Nachrichten",
 	msgCountShort:             "{{n}} Nachr.",
-	branchLabel:               "Zweig",
+	branchLabel:               "Abzweigung",
 	historyTooltip:            "Gespräche durchsuchen",
 	backTooltip:               "Zurück",
 	relatedTooltip:            "Ähnliche Gespräche",
@@ -50,7 +50,7 @@ const de: Strings = {
 	histToday:                 "HEUTE",
 	histYesterday:             "GESTERN",
 	histThisWeek:              "DIESE WOCHE",
-	navNoFavorites:  "Noch keine Markierungen",
+	navNoFavorites:  "Noch keine Favoriten",
 	navNoChapters:   "Noch keine Kapitel",
 
 	// ── Empty states ─────────────────────────────────────────────────────────
@@ -117,8 +117,7 @@ const de: Strings = {
 	inboxBtn: "In Posteingang kopieren",
 	forkBtn:  "Verzweigen",
 	favoriteBtn: "Favorisieren",
-	unfavoriteBtn: "Entfernen",
-
+	unfavoriteBtn: "Favorit entfernen",
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
@@ -369,7 +368,7 @@ const de: Strings = {
 	promptFrameworkLabel:             "Prompt-Framework",
 	promptFrameworkDesc:              "Strukturiertes Framework für die inline Prompt-Optimierung. CO-STAR (umfassend), RACE (einfach, weit verbreitet), RISEN (komplexe Aufgaben mit mehreren Schritten).",
 	promptFrameworkNone:              "Keines",
-	optimizingIndicator:              "Wird optimiert…",
+	optimizingIndicator:              "Optimiere…",
 	optimizeNoTemplate:               "Keine Optimierer-Vorlage konfiguriert. Wähle eine in Einstellungen → Pythia.",
 	optimizeFailed:                   "Optimierung fehlgeschlagen: {{error}}",
 	commandFailed:                    "Befehl fehlgeschlagen: {{error}}",
