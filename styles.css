@@ -2160,11 +2160,17 @@ body.is-mobile .p-textarea {
   white-space: nowrap;
   flex-shrink: 0;
 }
+.pythia-modal .p-param-readout.is-error { color: var(--text-error, var(--color-red)); }
 /* Unsupported parameter: `Setting.setDisabled` only marks the row, so dim and
    seal the control area itself. */
 .pythia-modal .p-param-off {
   opacity: 0.5;
   pointer-events: none;
+}
+/* Rejected input (max tokens): the field used to keep showing text that Save
+   would not store. (0,2,1) clears Obsidian core's input border. */
+.pythia-modal input.p-field-invalid {
+  border: 1px solid var(--text-error, var(--color-red));
 }
 
 /* ── Effort segmented control (F8) ──────────────────────────────── */

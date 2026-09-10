@@ -210,26 +210,65 @@ export class ConversationSettingsModal extends Modal {
 		// (conversation override, else global default, else the model-aware
 		// resolved default); unlike temperature's slider, this is a text field so
 		// it can also represent "no override" by being cleared.
-		let maxTokensValue: number | undefined =
-			this.conversation.maxTokens ?? this.defaultMaxTokens ?? resolveDefaultMaxTokens(selectedModel);
-		new Setting(contentEl)
+		// The default this field falls back to is model-aware, so it has to be read
+		// fresh whenever the model changes — not frozen at open.
+		const resolvedMaxTokens = (): number =>
+			this.defaultMaxTokens ?? resolveDefaultMaxTokens(selectedModel);
+		let maxTokensValue: number | undefined = this.conversation.maxTokens ?? resolvedMaxTokens();
+		let maxTokensIsDefault = this.conversation.maxTokens === undefined;
+		const maxTokensSetting = new Setting(contentEl)
 			.setName(t("convMaxTokensLabel"))
-			.setDesc(t("convMaxTokensDesc"))
-			.addText((text) =>
-				text
-					.setValue(maxTokensValue !== undefined ? String(maxTokensValue) : "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							maxTokensValue = undefined;
-							return;
-						}
-						const n = parseInt(trimmed, 10);
-						if (!isNaN(n) && n > 0) {
-							maxTokensValue = n;
-						}
-					})
+			.setDesc(t("convMaxTokensDesc"));
+		let maxTokensInput!: HTMLInputElement;
+		maxTokensSetting.addText((text) => {
+			maxTokensInput = text.inputEl;
+			// Numeric keypad on touch without the desktop spinner arrows; keeping
+			// type="text" also keeps invalid input visible so it can be flagged
+			// (a number input silently reports "" for it).
+			maxTokensInput.inputMode = "numeric";
+			maxTokensInput.setAttribute("pattern", "[0-9]*");
+			text
+				.setValue(maxTokensValue !== undefined ? String(maxTokensValue) : "")
+				.onChange((value) => {
+					const trimmed = value.trim();
+					if (trimmed === "") {
+						maxTokensValue = undefined;
+						maxTokensIsDefault = false;
+						paintMaxTokens(false);
+						return;
+					}
+					const n = parseInt(trimmed, 10);
+					const valid = !isNaN(n) && n > 0;
+					if (valid) {
+						maxTokensValue = n;
+						maxTokensIsDefault = false;
+					}
+					// Invalid text was silently ignored before: the field kept showing
+					// it while Save committed the last good value.
+					paintMaxTokens(!valid);
+				});
+			maxTokensInput.addEventListener("blur", () => {
+				// Leaving the field restores what Save will actually store, so the
+				// field can never disagree with the committed value.
+				maxTokensInput.value = maxTokensValue !== undefined ? String(maxTokensValue) : "";
+				paintMaxTokens(false);
+			});
+		});
+		const maxTokensReadout = maxTokensSetting.controlEl.createSpan({ cls: "p-param-readout" });
+		function paintMaxTokens(invalid: boolean): void {
+			maxTokensInput.toggleClass("p-field-invalid", invalid);
+			maxTokensReadout.toggleClass("is-error", invalid);
+			maxTokensInput.placeholder = String(resolvedMaxTokens());
+			const showsDefault = maxTokensValue === undefined || maxTokensIsDefault;
+			maxTokensReadout.setText(
+				invalid
+					? t("paramInvalidNumber")
+					: showsDefault
+						? t("paramValueDefault", { v: String(maxTokensValue ?? resolvedMaxTokens()) })
+						: ""
 			);
+		}
+		paintMaxTokens(false);
 
 		updateParamAvailability = (): void => {
 			let tempSupported: boolean;
@@ -260,6 +299,15 @@ export class ConversationSettingsModal extends Modal {
 			temperatureSlider?.setDisabled(!tempSupported);
 			temperatureSetting.controlEl.toggleClass("p-param-off", !tempSupported);
 			temperatureSetting.setDesc(tempSupported ? t("convTemperatureDesc") : `${t("convTemperatureDesc")} ${t("paramUnsupportedSuffix")}`);
+
+			// An untouched field still shows the model's default, so it has to follow
+			// the model: reasoning models resolve to a different max-output default,
+			// and the stale number would otherwise be pinned on Save.
+			if (maxTokensIsDefault) {
+				maxTokensValue = resolvedMaxTokens();
+				maxTokensInput.value = String(maxTokensValue);
+			}
+			paintMaxTokens(false);
 
 			effortSetting.setDisabled(!effortSupported);
 			effortSetting.setDesc(effortSupported ? t("convEffortDesc") : `${t("convEffortDesc")} ${t("paramUnsupportedSuffix")}`);
