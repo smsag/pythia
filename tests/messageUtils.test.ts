@@ -11,6 +11,7 @@ import {
 	arrayBufferToBase64,
 	buildFavoritesDigest,
 	formatClockTime,
+	lastTokenUsageMessage,
 } from "../services/messageUtils";
 import type { Conversation, Message, Favorite } from "../models/types";
 
@@ -413,5 +414,29 @@ describe("formatClockTime", () => {
 	it("returns empty string for undefined or unparseable input", () => {
 		expect(formatClockTime(undefined)).toBe("");
 		expect(formatClockTime("not-a-date")).toBe("");
+	});
+});
+
+// ── lastTokenUsageMessage ─────────────────────────────────────────────────────
+
+describe("lastTokenUsageMessage", () => {
+	const msg = (id: string, usage?: { inputTokens: number; outputTokens: number }) =>
+		({ id, tokenUsage: usage }) as unknown as Message;
+
+	it("returns the last message carrying usage, not the last message", () => {
+		const messages = [
+			msg("a", { inputTokens: 10, outputTokens: 20 }),
+			msg("b", { inputTokens: 30, outputTokens: 40 }),
+			msg("c"),
+		];
+		expect(lastTokenUsageMessage(messages)?.id).toBe("b");
+	});
+
+	it("returns undefined when no message carries usage", () => {
+		expect(lastTokenUsageMessage([msg("a"), msg("b")])).toBeUndefined();
+	});
+
+	it("returns undefined for an empty conversation", () => {
+		expect(lastTokenUsageMessage([])).toBeUndefined();
 	});
 });
