@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Modal, Setting } from "obsidian";
+import { App, DropdownComponent, Modal, Setting, SliderComponent } from "obsidian";
 import type { Conversation, Provider, EffortLevel } from "../models/types";
 import { t } from "../i18n";
 import {
@@ -125,18 +125,41 @@ export class ConversationSettingsModal extends Modal {
 		// Temperature override — defaults to the effective value (conversation override, else global default)
 		let temperatureValue =
 			this.conversation.temperature ?? this.defaultTemperature ?? 1.0;
+		// True until the user actually moves the slider, so the readout can say
+		// whether the number shown is this conversation's own value or the
+		// inherited default.
+		let temperatureIsDefault = this.conversation.temperature === undefined;
 		const temperatureSetting = new Setting(contentEl)
 			.setName(t("convTemperatureLabel"))
-			.setDesc(t("convTemperatureDesc"))
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 1, 0.05)
-					.setValue(temperatureValue)
-					.setDynamicTooltip()
-					.onChange((value) => {
-						temperatureValue = value;
-					})
-			);
+			.setDesc(t("convTemperatureDesc"));
+		let temperatureSlider: SliderComponent | null = null;
+		temperatureSetting.addSlider((slider) => {
+			temperatureSlider = slider;
+			slider
+				.setLimits(0, 1, 0.05)
+				.setValue(temperatureValue)
+				.setDynamicTooltip()
+				.onChange((value) => {
+					temperatureValue = value;
+					temperatureIsDefault = false;
+					paintTemperature();
+				});
+			// The dynamic tooltip only exists mid-drag — and on touch it sits under
+			// the finger — so the value is otherwise invisible. Mirror it into a
+			// permanent readout, updated from the raw `input` event so it tracks the
+			// drag on builds where `onChange` fires on release.
+			slider.sliderEl.addEventListener("input", () => {
+				temperatureValue = slider.getValue();
+				temperatureIsDefault = false;
+				paintTemperature();
+			});
+		});
+		const temperatureReadout = temperatureSetting.controlEl.createSpan({ cls: "p-param-readout" });
+		function paintTemperature(): void {
+			const v = temperatureValue.toFixed(2);
+			temperatureReadout.setText(temperatureIsDefault ? t("paramValueDefault", { v }) : v);
+		}
+		paintTemperature();
 
 		// Effort override — unlike temperature, defaults to "unset" (not the effective
 		// value): a dropdown can represent "no override", so opening/closing this modal
@@ -147,16 +170,34 @@ export class ConversationSettingsModal extends Modal {
 			.setDesc(t("convEffortDesc"));
 		// Segmented control (F8). Keeps a "Standard" segment for "no override"
 		// (the reason the old dropdown carried an empty option).
+		// The "no override" segment names the effort that will actually apply, so the
+		// control never leaves the user guessing: "Standard · Mittel" when a default
+		// exists, plain "Standard" when none is configured. (The long parenthetical
+		// `effortUnsetOption` label is a dropdown string — it stays in the settings
+		// tab, where a select can carry it, but it does not fit a 4-way segment.)
+		const levelLabel: Record<EffortLevel, string> = {
+			low: t("effortLevelLow"),
+			medium: t("effortLevelMedium"),
+			high: t("effortLevelHigh"),
+		};
+		const defaultSegLabel = this.defaultEffort
+			? t("effortSegmentDefaultWith", { v: levelLabel[this.defaultEffort] })
+			: t("effortSegmentDefault");
 		const effortOptions: { value: EffortLevel | ""; label: string }[] = [
-			{ value: "",       label: t("effortUnsetOption") },
-			{ value: "low",    label: t("effortLevelLow") },
-			{ value: "medium", label: t("effortLevelMedium") },
-			{ value: "high",   label: t("effortLevelHigh") },
+			{ value: "",       label: defaultSegLabel },
+			{ value: "low",    label: levelLabel.low },
+			{ value: "medium", label: levelLabel.medium },
+			{ value: "high",   label: levelLabel.high },
 		];
 		const effortSeg = effortSetting.controlEl.createDiv({ cls: "p-effort-seg" });
+		effortSeg.setAttribute("role", "group");
 		const effortBtns: HTMLButtonElement[] = [];
 		const paintEffort = () =>
-			effortBtns.forEach((b, i) => b.toggleClass("active", effortOptions[i].value === effortValue));
+			effortBtns.forEach((b, i) => {
+				const on = effortOptions[i].value === effortValue;
+				b.toggleClass("active", on);
+				b.setAttribute("aria-pressed", String(on));
+			});
 		for (const opt of effortOptions) {
 			const b = effortSeg.createEl("button", { cls: "p-effort-seg-btn", text: opt.label });
 			b.type = "button";
@@ -169,26 +210,65 @@ export class ConversationSettingsModal extends Modal {
 		// (conversation override, else global default, else the model-aware
 		// resolved default); unlike temperature's slider, this is a text field so
 		// it can also represent "no override" by being cleared.
-		let maxTokensValue: number | undefined =
-			this.conversation.maxTokens ?? this.defaultMaxTokens ?? resolveDefaultMaxTokens(selectedModel);
-		new Setting(contentEl)
+		// The default this field falls back to is model-aware, so it has to be read
+		// fresh whenever the model changes — not frozen at open.
+		const resolvedMaxTokens = (): number =>
+			this.defaultMaxTokens ?? resolveDefaultMaxTokens(selectedModel);
+		let maxTokensValue: number | undefined = this.conversation.maxTokens ?? resolvedMaxTokens();
+		let maxTokensIsDefault = this.conversation.maxTokens === undefined;
+		const maxTokensSetting = new Setting(contentEl)
 			.setName(t("convMaxTokensLabel"))
-			.setDesc(t("convMaxTokensDesc"))
-			.addText((text) =>
-				text
-					.setValue(maxTokensValue !== undefined ? String(maxTokensValue) : "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							maxTokensValue = undefined;
-							return;
-						}
-						const n = parseInt(trimmed, 10);
-						if (!isNaN(n) && n > 0) {
-							maxTokensValue = n;
-						}
-					})
+			.setDesc(t("convMaxTokensDesc"));
+		let maxTokensInput!: HTMLInputElement;
+		maxTokensSetting.addText((text) => {
+			maxTokensInput = text.inputEl;
+			// Numeric keypad on touch without the desktop spinner arrows; keeping
+			// type="text" also keeps invalid input visible so it can be flagged
+			// (a number input silently reports "" for it).
+			maxTokensInput.inputMode = "numeric";
+			maxTokensInput.setAttribute("pattern", "[0-9]*");
+			text
+				.setValue(maxTokensValue !== undefined ? String(maxTokensValue) : "")
+				.onChange((value) => {
+					const trimmed = value.trim();
+					if (trimmed === "") {
+						maxTokensValue = undefined;
+						maxTokensIsDefault = false;
+						paintMaxTokens(false);
+						return;
+					}
+					const n = parseInt(trimmed, 10);
+					const valid = !isNaN(n) && n > 0;
+					if (valid) {
+						maxTokensValue = n;
+						maxTokensIsDefault = false;
+					}
+					// Invalid text was silently ignored before: the field kept showing
+					// it while Save committed the last good value.
+					paintMaxTokens(!valid);
+				});
+			maxTokensInput.addEventListener("blur", () => {
+				// Leaving the field restores what Save will actually store, so the
+				// field can never disagree with the committed value.
+				maxTokensInput.value = maxTokensValue !== undefined ? String(maxTokensValue) : "";
+				paintMaxTokens(false);
+			});
+		});
+		const maxTokensReadout = maxTokensSetting.controlEl.createSpan({ cls: "p-param-readout" });
+		function paintMaxTokens(invalid: boolean): void {
+			maxTokensInput.toggleClass("p-field-invalid", invalid);
+			maxTokensReadout.toggleClass("is-error", invalid);
+			maxTokensInput.placeholder = String(resolvedMaxTokens());
+			const showsDefault = maxTokensValue === undefined || maxTokensIsDefault;
+			maxTokensReadout.setText(
+				invalid
+					? t("paramInvalidNumber")
+					: showsDefault
+						? t("paramValueDefault", { v: String(maxTokensValue ?? resolvedMaxTokens()) })
+						: ""
 			);
+		}
+		paintMaxTokens(false);
 
 		updateParamAvailability = (): void => {
 			let tempSupported: boolean;
@@ -212,8 +292,22 @@ export class ConversationSettingsModal extends Modal {
 				}
 			}
 
+			// `Setting.setDisabled` only marks the row — the control underneath stays
+			// draggable — so the slider is disabled directly and the whole control
+			// area is dimmed, the same treatment the effort segments get.
 			temperatureSetting.setDisabled(!tempSupported);
+			temperatureSlider?.setDisabled(!tempSupported);
+			temperatureSetting.controlEl.toggleClass("p-param-off", !tempSupported);
 			temperatureSetting.setDesc(tempSupported ? t("convTemperatureDesc") : `${t("convTemperatureDesc")} ${t("paramUnsupportedSuffix")}`);
+
+			// An untouched field still shows the model's default, so it has to follow
+			// the model: reasoning models resolve to a different max-output default,
+			// and the stale number would otherwise be pinned on Save.
+			if (maxTokensIsDefault) {
+				maxTokensValue = resolvedMaxTokens();
+				maxTokensInput.value = String(maxTokensValue);
+			}
+			paintMaxTokens(false);
 
 			effortSetting.setDisabled(!effortSupported);
 			effortSetting.setDesc(effortSupported ? t("convEffortDesc") : `${t("convEffortDesc")} ${t("paramUnsupportedSuffix")}`);

@@ -11,7 +11,7 @@ import {
 } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, lastTokenUsageMessage } from "./services/messageUtils";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { openCitationSource, renderSourcesRow } from "./ui/sourcesRow";
@@ -417,7 +417,7 @@ export class PythiaSidebarView extends ItemView {
 			getBarEl: () => this.ctxBarEl,
 			getBarFillEl: () => this.ctxBarFillEl,
 			getChipEl: () => this.headerController.getChipEl(),
-			getLastTokenUsageMsg: () => this.lastTokenUsageMsg(),
+			getLastTokenUsageMsg: () => lastTokenUsageMessage(this.activeConversation?.messages ?? []),
 			scrollToTop: () => this.scrollToTop(),
 			refreshReferencePills: () => this.renderReferencePills(),
 			onSummarize: () => void this.summaryController.generateConversationSummary(),
@@ -1971,22 +1971,12 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
-	/** Return the most recent message carrying token usage (the last completed
-	 *  assistant turn), or undefined if the conversation has none yet. */
-	private lastTokenUsageMsg(): Message | undefined {
-		const messages = this.activeConversation?.messages ?? [];
-		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].tokenUsage) return messages[i];
-		}
-		return undefined;
-	}
-
 	private updateSendBtnLabel(): void {
 		// The token estimate now lives in a mono label left of Send (not the
 		// button label). The button reads just "Senden" / "Stopp".
 		this.sendBtn.setText(t("sendBtn"));
 		this.sendBtn.title = "";
-		const last = this.lastTokenUsageMsg();
+		const last = lastTokenUsageMessage(this.activeConversation?.messages ?? []);
 		if (last?.tokenUsage) {
 			// Estimate total input tokens for the NEXT send (#28):
 			//   previous inputTokens  = full context as of the last call
@@ -2009,6 +1999,10 @@ export class PythiaSidebarView extends ItemView {
 
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
+		// Drives `.p-input-area.streaming`, which hides the next-send estimate: it
+		// describes a send that cannot happen mid-stream, and it costs the toolbar
+		// row ~60px exactly when the button label is at its widest.
+		this.inputAreaEl.toggleClass("streaming", streaming);
 		if (streaming) {
 			this.longPressCleanup?.();
 			this.longPressCleanup = null;

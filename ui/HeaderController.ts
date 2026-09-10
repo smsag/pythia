@@ -242,7 +242,9 @@ export class HeaderController {
 		// block. Height is capped to the space below the chip with internal scroll.
 		const cRect = container.getBoundingClientRect();
 		const rect = this.modelBadgeEl.getBoundingClientRect();
-		const width = 226;
+		// Widen with the panel (phones and wide sidebars): 226 px was cramped for
+		// "GPT-4.1 nano" + Reasoning chip + context column on a phone.
+		const width = Math.round(Math.min(300, Math.max(226, cRect.width - 24)));
 		const top = rect.bottom - cRect.top + 4;
 		let left = rect.right - cRect.left - width;
 		left = Math.max(4, Math.min(left, cRect.width - width - 4));
@@ -277,14 +279,25 @@ export class HeaderController {
 			{ key: "openai", label: "OPENAI" },
 			{ key: "mistral", label: "MISTRAL" },
 		];
+		// Selecting a model repaints the list instead of closing it: the popover is a
+		// panel, not a one-shot menu, so a model switch followed by a trip to
+		// conversation settings (its footer) no longer needs a reopen. Every row owns
+		// a check element from the start so the repaint only toggles visibility.
+		const rows: { m: ModelInfo; row: HTMLElement; check: HTMLElement }[] = [];
+		const paintActive = (): void => {
+			const current = this.d.getConversation();
+			for (const r of rows) {
+				const on = !!current && r.m.id === current.model && r.m.provider === current.provider;
+				r.row.toggleClass("active", on);
+				r.check.style.display = on ? "" : "none";
+			}
+		};
 		for (const p of providers) {
 			const models = MODEL_CATALOG.filter((m) => m.provider === p.key && !m.hidden);
 			if (!models.length) continue;
 			pop.createDiv({ cls: "p-model-pop-group", text: p.label });
 			for (const m of models) {
-				const active = m.id === conv.model && m.provider === conv.provider;
 				const row = pop.createDiv({ cls: "p-model-pop-row" });
-				if (active) row.addClass("active");
 				// Top line: name · reasoning tag · context window · active check.
 				const line = row.createDiv({ cls: "p-model-pop-line" });
 				line.createSpan({ cls: "p-model-pop-name", text: m.abbreviation });
@@ -292,7 +305,9 @@ export class HeaderController {
 					line.createSpan({ cls: "p-model-pop-rtag", text: t("reasoningTag") });
 				}
 				line.createSpan({ cls: "p-model-pop-ctx", text: this.fmtWindow(m.contextWindow) });
-				if (active) setIcon(line.createSpan({ cls: "p-model-pop-check" }), "check");
+				const check = line.createSpan({ cls: "p-model-pop-check" });
+				setIcon(check, "check");
+				rows.push({ m, row, check });
 				// "Good for" examples (smaller, hover- or tap-revealed) + touch confirm hint.
 				const good = goodForModel(m.id, lang);
 				if (good) row.createSpan({ cls: "p-model-pop-good", text: good });
@@ -307,11 +322,20 @@ export class HeaderController {
 						row.addClass("armed");
 						return;
 					}
+					// Confirmed: drop the armed state so the row stops showing the
+					// touch hint and a later tap re-arms rather than re-applying.
+					armedId = null;
+					pop.querySelectorAll(".p-model-pop-row.armed")
+						.forEach((r) => r.classList.remove("armed"));
+					// `applyModelChoice` sets the conversation's provider/model before
+					// its first await, so the repaint below already sees the new value;
+					// only the store write is deferred.
 					void this.applyModelChoice(m);
-					closePop();
+					paintActive();
 				});
 			}
 		}
+		paintActive();
 
 		const footer = pop.createDiv({ cls: "p-model-pop-footer" });
 		setIcon(footer.createSpan({ cls: "p-model-pop-footer-icon" }), "sliders");

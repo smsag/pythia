@@ -306,12 +306,18 @@
   max-height: 70vh;
   padding-bottom: var(--s1);
 }
+/* Provider header — sticky, so the group stays identifiable while scrolling a
+   catalog that is far taller than the popover. */
 .p-model-pop-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--background-primary);
   padding: 8px 12px 3px;
   font-family: var(--font-monospace);
-  font-size: 9px;
+  font-size: var(--font-smaller);
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .p-model-pop-group:not(:first-child) {
   border-top: 1px solid var(--background-modifier-border);
@@ -320,17 +326,26 @@
 .pythia-view .p-model-pop-row {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: stretch;
   gap: 2px;
-  padding: 5px 12px;
+  padding: 7px 12px;
+  /* Transparent rail keeps every row on the same text baseline as the active one. */
+  border-left: 2px solid transparent;
+  padding-left: 10px;
   font-size: var(--font-small);
-  color: var(--text-muted);
+  color: var(--text-normal);
   cursor: pointer;
+}
+/* Touch: rows meet the 44px minimum hit target. */
+@media (pointer: coarse) {
+  .pythia-view .p-model-pop-row { min-height: 44px; }
 }
 .p-model-pop-line { display: flex; align-items: center; gap: 8px; }
 .p-model-pop-row:hover { background: var(--background-modifier-hover); }
 .p-model-pop-row.active {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-left-color: var(--color-accent);
   color: var(--text-normal);
   font-weight: 600;
 }
@@ -340,7 +355,7 @@
 .p-model-pop-good,
 .p-model-pop-taphint {
   display: none;
-  font-size: 9px;
+  font-size: var(--font-smaller);
   line-height: 1.35;
   white-space: normal;
 }
@@ -352,18 +367,28 @@
 .p-model-pop-row.armed { background: var(--background-modifier-hover); }
 .p-model-pop-row.armed .p-model-pop-good,
 .p-model-pop-row.armed .p-model-pop-taphint { display: block; }
-.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-model-pop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+/* Reasoning marker — a neutral chip, not warning-orange: it is a capability
+   label, and orange is this UI's warning colour (see .p-send-hint). */
 .p-model-pop-rtag {
   font-family: var(--font-monospace);
-  font-size: 9px;
-  color: var(--text-warning, var(--color-orange));
+  font-size: var(--font-smaller);
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
+/* Context window — fixed right-aligned column so the values line up instead of
+   jittering with the name and the reasoning chip beside them. */
 .p-model-pop-ctx {
   font-family: var(--font-monospace);
-  font-size: 9px;
+  font-size: var(--font-smaller);
   color: var(--text-faint);
   flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
 }
 .p-model-pop-check { display: flex; color: var(--color-accent); flex-shrink: 0; }
 .p-model-pop-check svg { width: 12px; height: 12px; }
@@ -1834,6 +1859,10 @@ body.is-mobile .p-textarea {
   display: flex;
   gap: 2px;
   flex: 1;
+  /* Without this the icon group cannot shrink below its buttons, so a wide Send
+     label (locales vary: "Stopp" vs a longer stop label) pushes the row past the
+     input area's side padding and into the panel edge. */
+  min-width: 0;
 }
 
 /* Custom-instructions textarea in the settings tab: full width, monospace. */
@@ -1920,8 +1949,20 @@ body.is-mobile .p-textarea {
   opacity: 1;
 }
 
+/* Minimized input: hide everything that belongs to composing a message — the
+   textarea, Send, and the send-adjacent token estimate + max-tokens warning.
+   Only the toolbar icons (incl. the expand arrow) stay. */
+/* Streaming: the next-send estimate describes a send that cannot happen yet, and
+   it competes for the toolbar row with the widest state of the Send button. */
+.p-input-area.streaming .p-send-estimate {
+  display: none;
+}
+
 .p-input-area.collapsed .p-textarea,
-.p-input-area.collapsed .p-send {
+.p-input-area.collapsed .p-send-wrap,
+.p-input-area.collapsed .p-send,
+.p-input-area.collapsed .p-send-estimate,
+.p-input-area.collapsed .p-send-hint {
   display: none;
 }
 
@@ -1957,6 +1998,7 @@ body.is-mobile .p-textarea {
 .p-send-wrap {
   position: relative;
   display: inline-flex;
+  flex-shrink: 0;
 }
 
 .p-send-menu {
@@ -2118,28 +2160,76 @@ body.is-mobile .p-textarea {
   margin-top: 10px;
 }
 
+/* ── Parameter readout (conversation settings) ──────────────────── */
+/* Permanent value beside the temperature slider — Obsidian's dynamic tooltip
+   only appears mid-drag, and on touch it sits under the finger. */
+.pythia-modal .p-param-readout {
+  margin-left: var(--s2);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pythia-modal .p-param-readout.is-error { color: var(--text-error, var(--color-red)); }
+/* Unsupported parameter: `Setting.setDisabled` only marks the row, so dim and
+   seal the control area itself. */
+.pythia-modal .p-param-off {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Rejected input (max tokens): the field used to keep showing text that Save
+   would not store. (0,2,1) clears Obsidian core's input border. */
+.pythia-modal input.p-field-invalid {
+  border: 1px solid var(--text-error, var(--color-red));
+}
+
 /* ── Effort segmented control (F8) ──────────────────────────────── */
+/* Every rule is scoped to `.pythia-modal` on purpose. `all: unset` alone sits at
+   (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at
+   (0,1,1) — the same trap the `.pythia-view` reset documents at the top of this
+   file. Inside a modal there is no such reset, so the segments inherited core's
+   grey fill and the selected one was hard to tell from the rest. The extra class
+   puts the base at (0,2,0) and the selected state at (0,3,0). Selection is also
+   carried by weight, not colour alone. */
 .p-effort-seg {
   display: inline-flex;
+  max-width: 100%;
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
   overflow: hidden;
 }
-.p-effort-seg-btn {
+.pythia-modal .p-effort-seg-btn {
   all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-smaller);
   padding: 3px 10px;
+  background-color: transparent;
   color: var(--text-muted);
-  transition: background 0.1s, color 0.1s;
+  transition: background-color 0.1s, color 0.1s;
 }
-.p-effort-seg-btn:not(:last-child) {
+@media (pointer: coarse) {
+  .pythia-modal .p-effort-seg-btn { min-height: 36px; }
+}
+.pythia-modal .p-effort-seg-btn:not(:last-child) {
   border-right: 1px solid var(--background-modifier-border);
 }
-.p-effort-seg-btn:hover { background: var(--background-modifier-hover); }
-.p-effort-seg-btn.active {
-  background: var(--color-accent);
+.pythia-modal .p-effort-seg-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.pythia-modal .p-effort-seg-btn.active {
+  background-color: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  font-weight: 600;
+}
+.pythia-modal .p-effort-seg-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 .p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 

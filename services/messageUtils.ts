@@ -163,6 +163,18 @@ export function formatSummaryTimestamp(iso: string): string {
 /** Estimate token count from a text string. Uses a weighted heuristic: Latin
  *  characters average ~4 per token, but CJK/non-ASCII characters average ~1.5
  *  per token. Falls back to ÷4 for purely Latin text. */
+/** The most recent message carrying token usage (the last completed assistant
+ *  turn), or undefined when the conversation has none yet. Generic over the
+ *  message shape so it stays free of the view's `Message` import. */
+export function lastTokenUsageMessage<T extends { tokenUsage?: unknown }>(
+	messages: readonly T[]
+): T | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].tokenUsage) return messages[i];
+	}
+	return undefined;
+}
+
 export function estimateTokensFromText(text: string): number {
 	if (text.length === 0) return 0;
 	// eslint-disable-next-line no-control-regex
