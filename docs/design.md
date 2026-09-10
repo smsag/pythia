@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-10 — effort segmented control (conversation settings): selection was hard to read. Segment rules are now scoped to `.pythia-modal` so they outrank Obsidian core's `button:not(.clickable-icon)` fill, the active segment adds weight 600 and `aria-pressed` to the accent fill, and the leading segment reads `Standard · Mittel` (the effort that actually applies) instead of the dropdown-era `(nicht gesetzt – Modellstandard verwenden)`.*
+*Last updated: 2026-09-10 — temperature slider (conversation settings): a permanent mono readout (`.p-param-readout`) right of the slider states the value, tagged `· Standard` while the conversation has no override — the dynamic tooltip only existed mid-drag and hid under the finger on touch. An unsupported temperature (any reasoning model) now really is inert: the component is disabled and the control area carries `.p-param-off`, because `Setting.setDisabled` marks only the row.*
+
+*Previously, 2026-09-10 — effort segmented control (conversation settings): selection was hard to read. Segment rules are now scoped to `.pythia-modal` so they outrank Obsidian core's `button:not(.clickable-icon)` fill, the active segment adds weight 600 and `aria-pressed` to the accent fill, and the leading segment reads `Standard · Mittel` (the effort that actually applies) instead of the dropdown-era `(nicht gesetzt – Modellstandard verwenden)`.*
 
 *Previously, 2026-09-10 — model popover legibility pass: every 9px label moved onto the documented scale (`--font-smaller`), provider headers are `--text-muted` and **sticky** while the list scrolls, model names are `--text-normal` at weight 500, the `Reasoning` marker became a neutral chip (orange is reserved for warnings), the context window is a fixed right-aligned column, the active row gained a 2px accent left rail, rows are ≥44px on touch, and the popover widens with the panel (226 → up to 300px).*
 
@@ -314,7 +316,7 @@ The conversation-settings Effort control is a segmented control: **Standard · N
 
 ### Conversation settings modal (temperature)
 
-Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic tooltip), defaulting to the effective value (`conversation.temperature ?? settings.temperature ?? 1.0`). Follows the modal's existing draft-until-Save convention — dragging updates a local value; Save commits it alongside provider/model, Cancel discards it.
+Per-conversation temperature is a `SliderComponent` (0–1, step 0.05, dynamic tooltip), defaulting to the effective value (`conversation.temperature ?? settings.temperature ?? 1.0`). Follows the modal's existing draft-until-Save convention — dragging updates a local value; Save commits it alongside provider/model, Cancel discards it. A **permanent mono readout** (`.p-param-readout`, `--font-smaller`/`--text-muted`) sits right of the slider: Obsidian's dynamic tooltip only exists mid-drag and on touch hides under the finger, so it is the only always-visible statement of the value. It reads `0.70 · Standard` while the conversation has no override of its own and drops the tag to plain `0.70` the moment the slider moves; it is fed by the raw `input` event on `slider.sliderEl`, not only `onChange`, so it tracks the drag on builds where `onChange` fires on release. **Unsupported parameters:** `Setting.setDisabled` only marks the row — the control underneath stays draggable — so the slider is additionally disabled through the component and the control area carries `.p-param-off` (opacity 0.5, `pointer-events: none`), matching what the effort segments already did by hand. This matters on reasoning models, where temperature is unsupported precisely when effort is.
 
 ---
 

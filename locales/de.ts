@@ -338,6 +338,7 @@ const de: Strings = {
 	effortLevelHigh:         "Hoch",
 	effortSegmentDefault:    "Standard",
 	effortSegmentDefaultWith: "Standard · {{v}}",
+	paramValueDefault:       "{{v}} · Standard",
 	paramUnsupportedSuffix:  "(vom ausgewählten Modell nicht unterstützt)",
 	maxAttachedNotesTokensName: "Token-Warnung für angehängte Notizen",
 	maxAttachedNotesTokensDesc: "Warnen, wenn angehängte Notizen diese geschätzte Token-Anzahl vor dem Senden überschreiten. Bei 0 deaktiviert.",

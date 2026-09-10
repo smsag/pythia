@@ -2149,6 +2149,24 @@ body.is-mobile .p-textarea {
   margin-top: 10px;
 }
 
+/* ── Parameter readout (conversation settings) ──────────────────── */
+/* Permanent value beside the temperature slider — Obsidian's dynamic tooltip
+   only appears mid-drag, and on touch it sits under the finger. */
+.pythia-modal .p-param-readout {
+  margin-left: var(--s2);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Unsupported parameter: `Setting.setDisabled` only marks the row, so dim and
+   seal the control area itself. */
+.pythia-modal .p-param-off {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* ── Effort segmented control (F8) ──────────────────────────────── */
 /* Every rule is scoped to `.pythia-modal` on purpose. `all: unset` alone sits at
    (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at

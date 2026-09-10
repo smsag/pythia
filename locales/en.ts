@@ -324,6 +324,7 @@ const en = {
 	effortLevelHigh:         "High",
 	effortSegmentDefault:    "Default",
 	effortSegmentDefaultWith: "Default · {{v}}",
+	paramValueDefault:       "{{v}} · default",
 	paramUnsupportedSuffix:  "(not supported by the selected model)",
 	maxAttachedNotesTokensName: "Attached notes token warning",
 	maxAttachedNotesTokensDesc: "Warn when attached notes exceed this many estimated tokens before sending. Set to 0 to disable the warning.",

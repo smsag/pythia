@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Modal, Setting } from "obsidian";
+import { App, DropdownComponent, Modal, Setting, SliderComponent } from "obsidian";
 import type { Conversation, Provider, EffortLevel } from "../models/types";
 import { t } from "../i18n";
 import {
@@ -125,18 +125,41 @@ export class ConversationSettingsModal extends Modal {
 		// Temperature override — defaults to the effective value (conversation override, else global default)
 		let temperatureValue =
 			this.conversation.temperature ?? this.defaultTemperature ?? 1.0;
+		// True until the user actually moves the slider, so the readout can say
+		// whether the number shown is this conversation's own value or the
+		// inherited default.
+		let temperatureIsDefault = this.conversation.temperature === undefined;
 		const temperatureSetting = new Setting(contentEl)
 			.setName(t("convTemperatureLabel"))
-			.setDesc(t("convTemperatureDesc"))
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 1, 0.05)
-					.setValue(temperatureValue)
-					.setDynamicTooltip()
-					.onChange((value) => {
-						temperatureValue = value;
-					})
-			);
+			.setDesc(t("convTemperatureDesc"));
+		let temperatureSlider: SliderComponent | null = null;
+		temperatureSetting.addSlider((slider) => {
+			temperatureSlider = slider;
+			slider
+				.setLimits(0, 1, 0.05)
+				.setValue(temperatureValue)
+				.setDynamicTooltip()
+				.onChange((value) => {
+					temperatureValue = value;
+					temperatureIsDefault = false;
+					paintTemperature();
+				});
+			// The dynamic tooltip only exists mid-drag — and on touch it sits under
+			// the finger — so the value is otherwise invisible. Mirror it into a
+			// permanent readout, updated from the raw `input` event so it tracks the
+			// drag on builds where `onChange` fires on release.
+			slider.sliderEl.addEventListener("input", () => {
+				temperatureValue = slider.getValue();
+				temperatureIsDefault = false;
+				paintTemperature();
+			});
+		});
+		const temperatureReadout = temperatureSetting.controlEl.createSpan({ cls: "p-param-readout" });
+		function paintTemperature(): void {
+			const v = temperatureValue.toFixed(2);
+			temperatureReadout.setText(temperatureIsDefault ? t("paramValueDefault", { v }) : v);
+		}
+		paintTemperature();
 
 		// Effort override — unlike temperature, defaults to "unset" (not the effective
 		// value): a dropdown can represent "no override", so opening/closing this modal
@@ -230,7 +253,12 @@ export class ConversationSettingsModal extends Modal {
 				}
 			}
 
+			// `Setting.setDisabled` only marks the row — the control underneath stays
+			// draggable — so the slider is disabled directly and the whole control
+			// area is dimmed, the same treatment the effort segments get.
 			temperatureSetting.setDisabled(!tempSupported);
+			temperatureSlider?.setDisabled(!tempSupported);
+			temperatureSetting.controlEl.toggleClass("p-param-off", !tempSupported);
 			temperatureSetting.setDesc(tempSupported ? t("convTemperatureDesc") : `${t("convTemperatureDesc")} ${t("paramUnsupportedSuffix")}`);
 
 			effortSetting.setDisabled(!effortSupported);
