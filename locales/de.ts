@@ -117,7 +117,7 @@ const de: Strings = {
 	inboxBtn: "In Posteingang kopieren",
 	forkBtn:  "Verzweigen",
 	favoriteBtn: "Favorisieren",
-	unfavoriteBtn: "Favorit entfernen",
+	unfavoriteBtn: "Defavorisieren",
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
