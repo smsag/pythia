@@ -95,6 +95,7 @@ export class HistoryController {
 		const close = () => {
 			overlay.remove();
 			document.removeEventListener("keydown", onKey, true);
+			detachKeyboardInset();
 			this.historyCleanup = null;
 		};
 		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
@@ -117,6 +118,24 @@ export class HistoryController {
 		let related: { sourceId: string; sourceName: string; results: { id: string; score: number }[]; loading: boolean } | null = null;
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
+
+		// The panel opens with the search field focused, which raises the on-screen
+		// keyboard — and the keyboard OVERLAYS the webview rather than resizing it,
+		// so the overlay keeps its full height and its last rows sit underneath.
+		// `visualViewport` reports the part that is actually visible; pad the scroll
+		// area by whatever it covers so every conversation can be scrolled clear.
+		const vv = window.visualViewport;
+		const applyKeyboardInset = (): void => {
+			if (!vv || !overlay.isConnected) return;
+			const covered = overlay.getBoundingClientRect().bottom - (vv.offsetTop + vv.height);
+			listEl.style.paddingBottom = covered > 1 ? `${Math.round(covered) + 8}px` : "";
+		};
+		vv?.addEventListener("resize", applyKeyboardInset);
+		vv?.addEventListener("scroll", applyKeyboardInset);
+		const detachKeyboardInset = (): void => {
+			vv?.removeEventListener("resize", applyKeyboardInset);
+			vv?.removeEventListener("scroll", applyKeyboardInset);
+		};
 
 		// Searchable text per conversation, built once and memoized for the life of
 		// the panel so each keystroke only re-scores, never re-concatenates messages.
@@ -345,6 +364,9 @@ export class HistoryController {
 			document.addEventListener("keydown", onKey, true);
 			this.historyCleanup = close;
 			input.focus();
+			// The keyboard animates in; `visualViewport` fires resize when it lands,
+			// but measure once here too in case it is already up (re-open).
+			applyKeyboardInset();
 		}, 0);
 	}
 
