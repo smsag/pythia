@@ -2009,6 +2009,10 @@ export class PythiaSidebarView extends ItemView {
 
 	private setStreamingState(streaming: boolean): void {
 		this.isStreaming = streaming;
+		// Drives `.p-input-area.streaming`, which hides the next-send estimate: it
+		// describes a send that cannot happen mid-stream, and it costs the toolbar
+		// row ~60px exactly when the button label is at its widest.
+		this.inputAreaEl.toggleClass("streaming", streaming);
 		if (streaming) {
 			this.longPressCleanup?.();
 			this.longPressCleanup = null;

@@ -1859,6 +1859,10 @@ body.is-mobile .p-textarea {
   display: flex;
   gap: 2px;
   flex: 1;
+  /* Without this the icon group cannot shrink below its buttons, so a wide Send
+     label (locales vary: "Stopp" vs a longer stop label) pushes the row past the
+     input area's side padding and into the panel edge. */
+  min-width: 0;
 }
 
 /* Custom-instructions textarea in the settings tab: full width, monospace. */
@@ -1948,6 +1952,12 @@ body.is-mobile .p-textarea {
 /* Minimized input: hide everything that belongs to composing a message — the
    textarea, Send, and the send-adjacent token estimate + max-tokens warning.
    Only the toolbar icons (incl. the expand arrow) stay. */
+/* Streaming: the next-send estimate describes a send that cannot happen yet, and
+   it competes for the toolbar row with the widest state of the Send button. */
+.p-input-area.streaming .p-send-estimate {
+  display: none;
+}
+
 .p-input-area.collapsed .p-textarea,
 .p-input-area.collapsed .p-send-wrap,
 .p-input-area.collapsed .p-send,
@@ -1988,6 +1998,7 @@ body.is-mobile .p-textarea {
 .p-send-wrap {
   position: relative;
   display: inline-flex;
+  flex-shrink: 0;
 }
 
 .p-send-menu {

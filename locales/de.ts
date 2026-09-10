@@ -122,7 +122,7 @@ const de: Strings = {
 	// ── Input toolbar ─────────────────────────────────────────────────────────
 	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
 	sendBtn:             "Senden",
-	stopBtn:             "Anfrage abbrechen",
+	stopBtn:             "Stopp",
 	attachNoteTooltip:   "Notiz anhängen",
 	saveResponseTooltip: "Antwort speichern",
 	showChaptersTooltip: "Kapitel anzeigen",

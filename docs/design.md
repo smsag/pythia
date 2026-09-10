@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-10 — the model popover stays open after a selection (ADR-127): the list repaints in place instead of closing, so a model switch followed by conversation settings (its footer) no longer needs a reopen. Dismissal is outside click, Escape, the badge, or the footer.*
+*Last updated: 2026-09-10 — streaming toolbar row no longer collides with the panel edge: the German stop label is `Stopp` (it was the sentence "Anfrage abbrechen", against this doc's own `Senden`/`Stopp` spec), the next-send estimate hides under `.p-input-area.streaming`, and the row is made unable to overflow (`min-width: 0` on `.p-toolbar-left`, `flex-shrink: 0` on `.p-send-wrap`).*
+
+*Previously, 2026-09-10 — the model popover stays open after a selection (ADR-127): the list repaints in place instead of closing, so a model switch followed by conversation settings (its footer) no longer needs a reopen. Dismissal is outside click, Escape, the badge, or the footer.*
 
 *Previously, 2026-09-10 — max-tokens field (conversation settings): invalid text is flagged (`.p-field-invalid` + reason in the readout) instead of silently ignored, `blur` restores what Save will store, the `.p-param-readout` tag says when the number is the inherited default, the placeholder carries the default that applies when the field is cleared, the keypad is numeric on touch, and an untouched field re-resolves when the model changes rather than pinning a stale default.*
 
@@ -197,7 +199,7 @@ Order left→right (ADR-098): **search · name (grows) · rename · link · dele
 - Trash/Plus: standard header actions
 - Template caption (`.pythia-template-label`): `position: absolute`, centered on the header's bottom edge, mono 9px `--text-faint` — deliberately **out of the flex row** so it never displaces the "+".
 - **Context-budget bar** (`.p-ctx-bar`, ADR-069): 3px track (`--background-modifier-border`) directly under the header row; `.p-ctx-bar-fill` width = context usage / model window (`--color-accent`, → `--text-warning` under `.warn` at ≥80%). Click scrolls to top. A header `.p-ctx-chip` (mono 9px, warning-tinted) shows the percentage only at ≥80%.
-- **Send estimate** (`.p-send-estimate`): mono next-send token estimate ("nächste ~Xk") sits left of the Send button; the Send button label is just `Senden`/`Stopp`.
+- **Send estimate** (`.p-send-estimate`): mono next-send token estimate ("nächste ~Xk") sits left of the Send button; the Send button label is just `Senden`/`Stopp` — a button pill at 10px mono is not a place for a sentence, and a wider label is what pushed the streaming row into the panel edge. **While streaming** (`.p-input-area.streaming`) the estimate is hidden: it describes a send that cannot happen yet, and it frees the toolbar row at the moment the button is at its widest. The row also cannot overflow any more — `.p-toolbar-left` carries `min-width: 0` so the icon group yields first, and `.p-send-wrap` carries `flex-shrink: 0` so the button keeps its size.
 
 **Rename mode** replaces the title + pencil with `.p-rename-input` (inline `<input>`, flex: 1, accent border, 20px height) and `.p-rename-llm-btn` (sparkle, accent colour). Enter/blur confirms and saves; Escape cancels. The LLM sparkle generates a name immediately from the first user+assistant message pair and exits rename mode on success.
 
