@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-10 — model popover legibility pass: every 9px label moved onto the documented scale (`--font-smaller`), provider headers are `--text-muted` and **sticky** while the list scrolls, model names are `--text-normal` at weight 500, the `Reasoning` marker became a neutral chip (orange is reserved for warnings), the context window is a fixed right-aligned column, the active row gained a 2px accent left rail, rows are ≥44px on touch, and the popover widens with the panel (226 → up to 300px).*
+*Last updated: 2026-09-10 — effort segmented control (conversation settings): selection was hard to read. Segment rules are now scoped to `.pythia-modal` so they outrank Obsidian core's `button:not(.clickable-icon)` fill, the active segment adds weight 600 and `aria-pressed` to the accent fill, and the leading segment reads `Standard · Mittel` (the effort that actually applies) instead of the dropdown-era `(nicht gesetzt – Modellstandard verwenden)`.*
+
+*Previously, 2026-09-10 — model popover legibility pass: every 9px label moved onto the documented scale (`--font-smaller`), provider headers are `--text-muted` and **sticky** while the list scrolls, model names are `--text-normal` at weight 500, the `Reasoning` marker became a neutral chip (orange is reserved for warnings), the context window is a fixed right-aligned column, the active row gained a 2px accent left rail, rows are ≥44px on touch, and the popover widens with the panel (226 → up to 300px).*
 
 *Previously, 2026-09-10 — minimized input area: the send-adjacent **token estimate** (`.p-send-estimate`) and the **max-tokens warning** (`.p-send-hint`) now hide together with the textarea and Send when `.p-input-area` carries `collapsed`. Previously they stayed on the toolbar row while the Send button they annotate was gone, leaving a dangling token count.*
 
@@ -308,7 +310,7 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 
 ### Effort segmented control (`.p-effort-seg`, F8)
 
-The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` (accent fill, `--text-on-accent`). The leading **Standard** segment means "no override" (the semantic the old dropdown's empty option carried). When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
+The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` — accent fill, `--p-on-accent`, **and weight 600**, so selection never rests on colour alone — plus `aria-pressed`; the group carries `role="group"`. The leading **Standard** segment means "no override" and names the effort that will actually apply (`Standard · Mittel`) when a global default is configured, plain `Standard` otherwise; the long parenthetical `effortUnsetOption` string stays in the settings-tab dropdown, which can carry it. Every segment rule is **scoped to `.pythia-modal`**: `all: unset` alone is (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at (0,1,1) — the modal has no equivalent of the `.pythia-view` reset at the top of `styles.css`, so the segments inherited core's grey and the selected one was hard to pick out. Segments are ≥28px tall, ≥36px under `@media (pointer: coarse)`. When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
 
 ### Conversation settings modal (temperature)
 

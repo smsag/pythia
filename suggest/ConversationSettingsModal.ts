@@ -147,16 +147,34 @@ export class ConversationSettingsModal extends Modal {
 			.setDesc(t("convEffortDesc"));
 		// Segmented control (F8). Keeps a "Standard" segment for "no override"
 		// (the reason the old dropdown carried an empty option).
+		// The "no override" segment names the effort that will actually apply, so the
+		// control never leaves the user guessing: "Standard · Mittel" when a default
+		// exists, plain "Standard" when none is configured. (The long parenthetical
+		// `effortUnsetOption` label is a dropdown string — it stays in the settings
+		// tab, where a select can carry it, but it does not fit a 4-way segment.)
+		const levelLabel: Record<EffortLevel, string> = {
+			low: t("effortLevelLow"),
+			medium: t("effortLevelMedium"),
+			high: t("effortLevelHigh"),
+		};
+		const defaultSegLabel = this.defaultEffort
+			? t("effortSegmentDefaultWith", { v: levelLabel[this.defaultEffort] })
+			: t("effortSegmentDefault");
 		const effortOptions: { value: EffortLevel | ""; label: string }[] = [
-			{ value: "",       label: t("effortUnsetOption") },
-			{ value: "low",    label: t("effortLevelLow") },
-			{ value: "medium", label: t("effortLevelMedium") },
-			{ value: "high",   label: t("effortLevelHigh") },
+			{ value: "",       label: defaultSegLabel },
+			{ value: "low",    label: levelLabel.low },
+			{ value: "medium", label: levelLabel.medium },
+			{ value: "high",   label: levelLabel.high },
 		];
 		const effortSeg = effortSetting.controlEl.createDiv({ cls: "p-effort-seg" });
+		effortSeg.setAttribute("role", "group");
 		const effortBtns: HTMLButtonElement[] = [];
 		const paintEffort = () =>
-			effortBtns.forEach((b, i) => b.toggleClass("active", effortOptions[i].value === effortValue));
+			effortBtns.forEach((b, i) => {
+				const on = effortOptions[i].value === effortValue;
+				b.toggleClass("active", on);
+				b.setAttribute("aria-pressed", String(on));
+			});
 		for (const opt of effortOptions) {
 			const b = effortSeg.createEl("button", { cls: "p-effort-seg-btn", text: opt.label });
 			b.type = "button";

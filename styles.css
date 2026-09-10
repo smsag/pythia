@@ -2150,27 +2150,51 @@ body.is-mobile .p-textarea {
 }
 
 /* ── Effort segmented control (F8) ──────────────────────────────── */
+/* Every rule is scoped to `.pythia-modal` on purpose. `all: unset` alone sits at
+   (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at
+   (0,1,1) — the same trap the `.pythia-view` reset documents at the top of this
+   file. Inside a modal there is no such reset, so the segments inherited core's
+   grey fill and the selected one was hard to tell from the rest. The extra class
+   puts the base at (0,2,0) and the selected state at (0,3,0). Selection is also
+   carried by weight, not colour alone. */
 .p-effort-seg {
   display: inline-flex;
+  max-width: 100%;
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
   overflow: hidden;
 }
-.p-effort-seg-btn {
+.pythia-modal .p-effort-seg-btn {
   all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-smaller);
   padding: 3px 10px;
+  background-color: transparent;
   color: var(--text-muted);
-  transition: background 0.1s, color 0.1s;
+  transition: background-color 0.1s, color 0.1s;
 }
-.p-effort-seg-btn:not(:last-child) {
+@media (pointer: coarse) {
+  .pythia-modal .p-effort-seg-btn { min-height: 36px; }
+}
+.pythia-modal .p-effort-seg-btn:not(:last-child) {
   border-right: 1px solid var(--background-modifier-border);
 }
-.p-effort-seg-btn:hover { background: var(--background-modifier-hover); }
-.p-effort-seg-btn.active {
-  background: var(--color-accent);
+.pythia-modal .p-effort-seg-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.pythia-modal .p-effort-seg-btn.active {
+  background-color: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  font-weight: 600;
+}
+.pythia-modal .p-effort-seg-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 .p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 
