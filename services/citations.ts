@@ -17,6 +17,8 @@
  * appearance, deduped by (kind, ref).
  */
 
+import { noteBasename } from "./pathUtils";
+
 export type CitationKind = "vault" | "web";
 
 export interface CitationSource {
@@ -36,7 +38,7 @@ function markerRegExp(): RegExp {
 
 function titleFor(kind: CitationKind, ref: string): string {
 	if (kind === "web") return ref.replace(/^www\./, "");
-	return (ref.split("/").pop() ?? ref).replace(/\.md$/, "");
+	return noteBasename(ref);
 }
 
 /** Extract the ordered, deduped source list from a message's content. */

@@ -22,6 +22,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers
+    pathUtils.ts              ← noteBasename: display name for a vault path (last segment, .md stripped)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
@@ -33,10 +34,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
+    turnLabel.ts              ← turn micro-labels: model · template · time · tokens (pure, unit-tested)
     OptimizationController.ts ← inline prompt optimizer state + flow
     NavigatorController.ts    ← # navigator popover logic
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 187 tests across 12 files
+  tests/                      ← Vitest unit tests (npm test) — 630 tests across 41 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -223,7 +225,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 ```
 [ search ][ Title (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
 ```
-Order left→right (ADR-098): search · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. See `docs/design.md` for the full spec.
+Order left→right (ADR-098): search · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. **No template caption** — the template rides the assistant turn label instead (ADR-129). See `docs/design.md` for the full spec.
 - Search (far left, `search` loupe icon, ADR-107): opens the `.p-history` conversation panel with its search input focused. The single in-view conversation-search surface.
 - Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1. Plain, non-interactive text (ADR-107) — no click, no `▾`.
 - Model badge: `--font-monospace`, 10px, `--text-faint`
@@ -257,13 +259,15 @@ REFERENZ  [ pill: filename ✕ ]
 - Plain text, no container, no background
 - Rendered via `MarkdownRenderer.render()`
 
-### Token line (below each AI message)
+### Turn label (above each message)
 ```
-★ | ↑151 ↓430
+user:  [ 27 Aug 2026 · ] 22:19
+AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 ```
-- `--font-monospace`, 10px, `--text-faint`
-- Star toggles bookmark: inactive `☆ --text-faint` → active `★ #f59e0b`
-- Bookmarked messages surface in the `#` navigator under "Starred"
+- `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
+- **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
+- Template (`.p-turn-template`) appears only on the turn where a template *starts* applying: the first answer, and again where a second template takes over. Truncated at 18ch, full name in `title`
+- No per-message star button — favoriting moved to text selection (ADR-085); favorites still surface in the `#` navigator under "Starred"
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

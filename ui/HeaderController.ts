@@ -42,7 +42,6 @@ export interface HeaderDeps {
  */
 export class HeaderController {
 	private convNameEl!: HTMLElement;
-	private templateLabelEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
 	private deleteConvBtn!: HTMLButtonElement;
 	private copyLinkBtn!: HTMLButtonElement;
@@ -163,11 +162,6 @@ export class HeaderController {
 		});
 		setIcon(newConvBtn, "plus");
 		this.d.registerDomEvent(newConvBtn, "click", () => this.d.plugin.cmdNewConversation());
-
-		// Template label is absolutely positioned (see styles.css), so it does not
-		// participate in the header flex row and never displaces the "+" button.
-		this.templateLabelEl = header.createDiv({ cls: "pythia-template-label" });
-		this.templateLabelEl.style.display = "none";
 	}
 
 	renderHeader(): void {
@@ -175,8 +169,6 @@ export class HeaderController {
 		if (!conv) {
 			// Empty state: only history, the name, and "+" are shown (ADR-098).
 			this.convNameEl.setText(t("noConversation"));
-			this.templateLabelEl.setText("");
-			this.templateLabelEl.style.display = "none";
 			this.copyLinkBtn.style.display = "none";
 			this.renameBtn.style.display = "none";
 			this.deleteConvBtn.style.display = "none";
@@ -186,18 +178,6 @@ export class HeaderController {
 		this.renameBtn.style.display = "";
 		this.deleteConvBtn.style.display = "";
 		this.convNameEl.setText(conv.name);
-		if (conv.templateId) {
-			const tplName =
-				conv.templateId
-					.split("/")
-					.pop()
-					?.replace(/\.md$/, "") ?? "";
-			this.templateLabelEl.setText(t("templateLabel", { name: tplName }));
-			this.templateLabelEl.style.display = "";
-		} else {
-			this.templateLabelEl.setText("");
-			this.templateLabelEl.style.display = "none";
-		}
 	}
 
 	updateModelBadge(): void {

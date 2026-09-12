@@ -86,10 +86,6 @@ const de: Strings = {
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",
 
-	// ── Turn labels ───────────────────────────────────────────────────────────
-	turnUser: "DU",
-	turnAI:   "PYTHIA",
-
 	// ── Wikilink references ───────────────────────────────────────────────────
 	addNoteInline: "+ Notiz",
 

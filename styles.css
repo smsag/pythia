@@ -54,26 +54,6 @@
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 34px;
-  position: relative; /* anchors the absolutely-positioned template label */
-}
-
-/* Template caption ("Template: X"): absolutely positioned so it is out of the
-   header flex row and can never displace the trailing "+" button (which must sit
-   at the same right edge in both the main and history-overlay headers). */
-.pythia-template-label {
-  position: absolute;
-  left: 50%;
-  bottom: 1px;
-  transform: translateX(-50%);
-  max-width: 60%;
-  font-family: var(--font-monospace);
-  font-size: 9px;
-  line-height: 1;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
 }
 
 /* ── Context-budget bar (ADR-069) ───────────────────────────────
@@ -949,6 +929,18 @@
   letter-spacing: 0.08em;
   color: var(--text-faint);
   line-height: 1.4;
+}
+
+/* Template caption on the assistant turn that a template starts applying to
+   (ADR-129). Truncates on its own so a long template name can never push the
+   model, time, or token counts off a narrow sidebar. */
+.p-turn-template {
+  display: inline-block;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .p-msg-user {
