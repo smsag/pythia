@@ -6,6 +6,7 @@ import { estimateTokensFromText } from "../services/messageUtils";
 import { buildSystemPrompt } from "../services/ContextBuilder";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
+import { noteBasename } from "../services/pathUtils";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -129,7 +130,7 @@ export class ContextInspectorController {
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
 			const name = ref.createEl("span", {
 				cls: "p-wikilink-name",
-				text: (path.split("/").pop() ?? path).replace(/\.md$/, ""),
+				text: noteBasename(path),
 				attr: { title: path },
 			});
 			name.addEventListener("click", async () => {

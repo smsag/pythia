@@ -83,8 +83,6 @@ const en = {
 	searchFailedLabel: "Web search failed",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
-	turnUser:    "YOU",
-	turnAI:      "PYTHIA",
 	addNoteInline: "+ Note",
 	nextSendEstimate: "next {{n}}",
 	ctxBarTooltip:    "Context: {{used}} / {{total}} tokens ({{pct}}%)",

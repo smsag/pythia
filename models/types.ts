@@ -64,6 +64,7 @@ export interface Message {
 	tokenUsage?: TokenUsage;  // token counts for assistant messages
 	sources?: MessageSource[]; // parsed citation sources (assistant messages, from ⟦cite:…⟧ markers)
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
+	templateId?: string;      // vault path of the template active when this answer was produced
 }
 
 export interface Favorite {

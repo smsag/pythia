@@ -11,8 +11,10 @@ import {
 } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, formatClockTime, lastTokenUsageMessage } from "./services/messageUtils";
+import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage } from "./services/messageUtils";
 import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
+import { noteBasename } from "./services/pathUtils";
+import { renderTurnLabel, appendTokensToTurnLabel } from "./ui/turnLabel";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
 import { openCitationSource, renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
@@ -29,7 +31,7 @@ import { ForkController } from "./ui/ForkController";
 import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
-import type { Conversation, Message, MessageSource, ToolCall, TokenUsage } from "./models/types";
+import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
@@ -847,8 +849,8 @@ export class PythiaSidebarView extends ItemView {
 		if (entries.length === 0) return;
 
 		for (const entry of entries) {
-			const fileName = entry.path.split("/").pop() ?? entry.path;
-			const displayName = fileName.replace(/\.md$/, "");
+			const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
+			const displayName = noteBasename(entry.path);
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
@@ -1000,65 +1002,6 @@ export class PythiaSidebarView extends ItemView {
 		this.attachLastBubbleLongPress();
 	}
 
-	/** Turn micro-label above every message: "DU · 14:31" for user turns,
-	 *  "PYTHIA · SONNET 4.6 · 14:32" for assistant turns. The model is taken from
-	 *  the message (recorded at generation time) and falls back to the
-	 *  conversation's current model for legacy messages that predate the field. */
-	private renderTurnLabel(row: HTMLElement, msg: Message): void {
-		const time = formatClockTime(msg.timestamp);
-		const parts: string[] = [];
-		if (msg.role === "user") {
-			parts.push(t("turnUser"));
-			// Anchor the day: the first user turn of each new day (and the very first
-			// message of the conversation) carries an absolute date, so time-only
-			// labels stay unambiguous across multi-day conversations.
-			if (this.isFirstMessageOfDay(msg)) {
-				const date = this.formatTurnDate(msg.timestamp);
-				if (date) parts.push(date);
-			}
-			if (time) parts.push(time);
-		} else {
-			parts.push(t("turnAI"));
-			const model = msg.model ?? this.activeConversation?.model;
-			if (model) parts.push(abbreviateModel(model).toUpperCase());
-			if (time) parts.push(time);
-		}
-		const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
-		if (msg.role === "assistant" && msg.tokenUsage) {
-			this.appendTokensToTurnLabel(label, msg.tokenUsage);
-		}
-	}
-
-	/** True when `msg` starts a new calendar day relative to the message before it
-	 *  (any role) — or is the first message of the conversation. Computed from the
-	 *  message array so it holds in both the full-rebuild and incremental-append
-	 *  render paths. */
-	private isFirstMessageOfDay(msg: Message): boolean {
-		const msgs = this.activeConversation?.messages;
-		if (!msgs) return false;
-		const idx = msgs.findIndex((m) => m.id === msg.id);
-		if (idx <= 0) return true; // first message (or not found) → anchor the date
-		const dayKey = (iso: string): string | null => {
-			const d = new Date(iso);
-			return Number.isNaN(d.getTime())
-				? null
-				: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-		};
-		const cur = dayKey(msg.timestamp);
-		const prev = dayKey(msgs[idx - 1].timestamp);
-		if (cur === null || prev === null) return false; // no reliable date → no marker
-		return cur !== prev;
-	}
-
-	/** Absolute date for a turn label (`27 Aug 2026`, localized). Deliberately not
-	 *  the relative "Heute/Gestern" of `HistoryController.formatConvDate` — the label
-	 *  must stay correct when the conversation is reopened later. */
-	private formatTurnDate(iso: string): string {
-		const d = new Date(iso);
-		if (Number.isNaN(d.getTime())) return "";
-		return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-	}
-
 	/** Pick the on-accent label color that reads best on the user's accent.
 	 *  Obsidian's `--text-on-accent` is static (white in the default theme) and
 	 *  never adapts to a customized `--color-accent`, so a pale/mid accent leaves
@@ -1102,17 +1045,6 @@ export class PythiaSidebarView extends ItemView {
 		root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
 	}
 
-	/** Append the input/output token counts inline to a turn label
-	 *  ("… · ↑7.028 ↓125"), replacing the old separate footer row. */
-	private appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage): void {
-		const fmt = (n: number) => n.toLocaleString();
-		label.createSpan({
-			cls: "p-turn-tokens",
-			text: ` · ${t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) })}`,
-			attr: { title: t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }) },
-		});
-	}
-
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
 	 *  superscript chips. Mirrors the favorites re-paint: walk text nodes and
 	 *  swap each marker for a `.p-cite` chip that opens its source on click. */
@@ -1151,7 +1083,7 @@ export class PythiaSidebarView extends ItemView {
 				cls: "p-msg-user",
 				attr: { "data-msg-id": msg.id },
 			});
-			this.renderTurnLabel(row, msg);
+			renderTurnLabel(row, msg, this.activeConversation);
 			const bubble = row.createDiv({ cls: "p-bubble" });
 			const isLong = msg.content.length > 280;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
@@ -1184,7 +1116,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
-		this.renderTurnLabel(row, msg);
+		renderTurnLabel(row, msg, this.activeConversation);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
@@ -1211,10 +1143,11 @@ export class PythiaSidebarView extends ItemView {
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
-		this.renderTurnLabel(row, {
+		renderTurnLabel(row, {
 			id: "", role: "assistant", content: "",
 			timestamp: new Date().toISOString(), model: this.activeConversation?.model,
-		});
+			templateId: this.activeConversation?.templateId,
+		}, this.activeConversation);
 		const aiBody = row.createDiv({ cls: "p-ai-body pythia-streaming" });
 		const textNode = document.createTextNode("");
 		aiBody.appendChild(textNode);
@@ -1621,8 +1554,7 @@ export class PythiaSidebarView extends ItemView {
 					typeof call.input["path"] === "string"
 						? call.input["path"]
 						: call.name;
-				const noteName =
-					rawPath.split("/").pop()?.replace(/\.md$/, "") ?? rawPath;
+				const noteName = noteBasename(rawPath);
 				const isRewrite = call.name === "rewrite_note";
 				const isPrepend = call.name === "prepend_note";
 
@@ -1742,6 +1674,7 @@ export class PythiaSidebarView extends ItemView {
 					timestamp: new Date().toISOString(),
 					model: conv.model,
 					tokenUsage,
+					...(conv.templateId ? { templateId: conv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
 				};
 				conv.messages.push(assistantMsg);
@@ -1756,7 +1689,7 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label) this.appendTokensToTurnLabel(label, tokenUsage);
+						if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
 				}
 				await this.plugin.conversationStore.save(conv);
