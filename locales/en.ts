@@ -15,12 +15,26 @@ const en = {
 	deletedConversation:        "Deleted conversation",
 	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
 
+	// ── Merge links (ADR-130) ─────────────────────────────────────────────────
+	mergeBtn:                   "Merge",
+	mergeAnchorLabel:           "MERGED",
+	mergedFromLabel:            "Merged from",
+	mergeNoSummary:             "No summary yet.",
+	mergeRefreshSummary:        "Regenerate summary",
+	mergeRemove:                "Remove merge link",
+	mergeLinked:                "Merged with \"{{name}}\"",
+	mergeAlreadyLinked:         "This passage is already merged with \"{{name}}\".",
+	mergeNoOtherConversations:  "No other conversation to merge with.",
+	mergeSearchPlaceholder:     "Merge with conversation…",
+
 	// ── Context / favorites sections ─────────────────────────────────────────
 	forksSection: "Forks",
 	chaptersSection: "Chapters",
 	addContextNoteTooltip: "Add note to context",
 	favoritesSection: "Favorites",
 	navNoForks:      "No forks yet",
+	mergesSection:   "Merged",
+	navNoMerges:     "No merge links yet",
 	navSourceTag:    "Source",
 	navActiveTag:    "active",
 	switcherSearchPlaceholder: "Search…",

@@ -17,12 +17,26 @@ const de: Strings = {
 	deletedConversation:        "Gelöschtes Gespräch",
 	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
 
+	// ── Merge-Verknüpfungen (ADR-130) ─────────────────────────────────────────
+	mergeBtn:                   "Zusammenführen",
+	mergeAnchorLabel:           "VERKNÜPFT",
+	mergedFromLabel:            "Verknüpft von",
+	mergeNoSummary:             "Noch keine Zusammenfassung.",
+	mergeRefreshSummary:        "Zusammenfassung neu generieren",
+	mergeRemove:                "Verknüpfung entfernen",
+	mergeLinked:                "Mit \"{{name}}\" zusammengeführt",
+	mergeAlreadyLinked:         "Diese Stelle ist bereits mit \"{{name}}\" verknüpft.",
+	mergeNoOtherConversations:  "Kein anderes Gespräch zum Zusammenführen vorhanden.",
+	mergeSearchPlaceholder:     "Mit Gespräch zusammenführen…",
+
 	// ── Context / favorites sections ─────────────────────────────────────────
 	forksSection: "Abzweigungen",
 	chaptersSection: "Kapitel",
 	addContextNoteTooltip: "Notiz zum Kontext hinzufügen",
 	favoritesSection: "Favoriten",
 	navNoForks:      "Noch keine Abzweigungen",
+	mergesSection:   "Verknüpft",
+	navNoMerges:     "Noch keine Verknüpfungen",
 	navSourceTag:    "Quelle",
 	navActiveTag:    "aktiv",
 

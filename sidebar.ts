@@ -11,8 +11,8 @@ import {
 } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage } from "./services/messageUtils";
-import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
+import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
+import { applyAccentContrast } from "./ui/accentContrast";
 import { noteBasename } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel } from "./ui/turnLabel";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
@@ -28,6 +28,8 @@ import { HistoryController } from "./ui/HistoryController";
 import { SummaryController } from "./ui/SummaryController";
 import { ContextInspectorController } from "./ui/ContextInspectorController";
 import { ForkController } from "./ui/ForkController";
+import { MergeController } from "./ui/MergeController";
+import { attachLongPress } from "./ui/longPress";
 import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
@@ -104,6 +106,7 @@ export class PythiaSidebarView extends ItemView {
 
 	// Fork-origin banner, painted marks, and the inline anchor/menu (ADR-103).
 	private forkController!: ForkController;
+	private mergeController!: MergeController;
 	// Summary "Speisekarte" cards at the top of the message list. The container is
 	// created here (for DOM position); the SummaryController (ADR-103) owns the
 	// cards, their auto-collapse observer, and the generate/reveal/save flows.
@@ -178,7 +181,7 @@ export class PythiaSidebarView extends ItemView {
 		// Recompute the on-accent label color when the user changes their accent
 		// or theme in Appearance settings (Obsidian fires css-change) — no reopen.
 		this.registerEvent(
-			this.app.workspace.on("css-change", () => this.applyAccentContrast())
+			this.app.workspace.on("css-change", () => this.refreshAccentContrast())
 		);
 
 		// Track the most-recently-active MarkdownView so insert-into-note
@@ -333,7 +336,7 @@ export class PythiaSidebarView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
-		this.applyAccentContrast();
+		this.refreshAccentContrast();
 
 		this.headerController = new HeaderController({
 			plugin: this.plugin,
@@ -384,6 +387,8 @@ export class PythiaSidebarView extends ItemView {
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			scrollToFavorite: (fav) => this.selectionController.scrollToFavorite(fav),
 			removeFavorite: (favId) => this.selectionController.removeFavorite(favId),
+			revealMergeLink: (mergeId) => this.mergeController.revealMergeLink(mergeId),
+			removeMergeLink: (mergeId) => this.mergeController.removeMergeLink(mergeId),
 			goToFavoritesSummary: () => this.summaryController.goToFavoritesSummary(),
 		});
 
@@ -440,6 +445,21 @@ export class PythiaSidebarView extends ItemView {
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
+
+		this.mergeController = new MergeController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getMessagesEl: () => this.messagesEl,
+			setActiveConversation: (conv) => this.setActiveConversation(conv),
+			scrollToMessage: (id) => this.scrollToMessage(id),
+			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
+			renderMarkdown: (md, el) => {
+				void MarkdownRenderer.render(this.app, md, el, "", this)
+					.catch((e) => console.error("[Pythia] merge summary render:", e));
+			},
+			registerDomEvent: (el, type, cb, opts) =>
+				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
+		});
 	}
 
 	private buildChatArea(container: HTMLElement): void {
@@ -459,6 +479,7 @@ export class PythiaSidebarView extends ItemView {
 			getLastMarkdownView: () => this.lastMarkdownView,
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
 			toggleForkAnchor: (forkId, markEl) => this.forkController.toggleForkAnchor(forkId, markEl),
+			toggleMergeAnchor: (mergeId, markEl) => this.mergeController.toggleMergeAnchor(mergeId, markEl),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
@@ -635,44 +656,13 @@ export class PythiaSidebarView extends ItemView {
 	 *  favorites summary. Reuses the 450 ms touch+mouse timer pattern. */
 	private attachSendLongPress(): void {
 		this.sendLongPressCleanup?.();
-		const btn = this.sendBtn;
-		let timer: ReturnType<typeof setTimeout> | null = null;
-
-		const cancel = () => {
-			if (timer !== null) { clearTimeout(timer); timer = null; }
-		};
-		const fire = () => {
-			timer = null;
+		this.sendLongPressCleanup = attachLongPress(this.sendBtn, () => {
 			if (this.isStreaming) return;
+			// The press already "used up" this interaction; swallow the click that
+			// follows it so releasing doesn't also send the message.
 			this.suppressNextSendClick = true;
 			this.openSummaryMenu();
-		};
-		const onTouchStart = () => {
-			timer = setTimeout(fire, 450);
-		};
-		const onMouseDown = (e: MouseEvent) => {
-			if (e.button !== 0) return;
-			timer = setTimeout(fire, 450);
-		};
-
-		btn.addEventListener("touchstart", onTouchStart, { passive: true });
-		btn.addEventListener("touchend", cancel, { passive: true });
-		btn.addEventListener("touchcancel", cancel, { passive: true });
-		btn.addEventListener("touchmove", cancel, { passive: true });
-		btn.addEventListener("mousedown", onMouseDown);
-		btn.addEventListener("mouseup", cancel);
-		btn.addEventListener("mouseleave", cancel);
-
-		this.sendLongPressCleanup = () => {
-			cancel();
-			btn.removeEventListener("touchstart", onTouchStart);
-			btn.removeEventListener("touchend", cancel);
-			btn.removeEventListener("touchcancel", cancel);
-			btn.removeEventListener("touchmove", cancel);
-			btn.removeEventListener("mousedown", onMouseDown);
-			btn.removeEventListener("mouseup", cancel);
-			btn.removeEventListener("mouseleave", cancel);
-		};
+		});
 	}
 
 	/** Actions offered by the Send long-press menu — shared by the mobile bottom
@@ -966,6 +956,7 @@ export class PythiaSidebarView extends ItemView {
 		// ── Full rebuild ─────────────────────────────────────────────────────────
 		this.messagesEl.empty();
 		this.forkController.closeAnchor(); // fork anchor DOM detached by empty(); drop the stale reference + listeners
+		this.mergeController.closeAnchor(); // same for the merge anchor
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
@@ -979,6 +970,7 @@ export class PythiaSidebarView extends ItemView {
 		// orientation cue, so it sits above the summary cards and next to the first
 		// message (ADR-084).
 		if (conv.forkedFromId) this.forkController.renderForkBanner();
+		this.mergeController.renderIncomingBanner(); // far half of a merge link (ADR-130)
 
 		// Summary "Speisekarte" cards sit below the fork info. Create, then populate —
 		// same reason as the inspector above.
@@ -1015,34 +1007,11 @@ export class PythiaSidebarView extends ItemView {
 	 *  case the earlier "better of the two theme tokens" pick missed: when BOTH
 	 *  theme tokens read poorly on the accent, the less-bad one is still unreadable.
 	 *  Re-run on css-change. */
-	private applyAccentContrast(): void {
+	/** Republish `--p-on-accent` for the current theme accent (ADR-130 session:
+	 *  logic lives in `ui/accentContrast.ts`; the view only supplies the root). */
+	private refreshAccentContrast(): void {
 		const root = this.containerEl.children[1] as HTMLElement | undefined;
-		if (!root) return;
-		const resolve = (expr: string): Rgb | null => {
-			const probe = root.createSpan();
-			probe.style.color = expr;
-			probe.style.display = "none";
-			const rgb = parseRgb(getComputedStyle(probe).color);
-			probe.remove();
-			return rgb;
-		};
-		const accent = resolve("var(--color-accent)");
-		if (!accent) {
-			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
-			return;
-		}
-
-		// Offer the theme's own on-accent tokens (when defined and resolvable) as
-		// candidates; readableOnAccent uses the best one only if it clears AA, else
-		// forces pure black/white. Keeping the CSS var strings (not the resolved rgb)
-		// as the values means the label still tracks a later theme edit to that token.
-		const tokens: { value: string; rgb: Rgb }[] = [];
-		const onAccent = resolve("var(--text-on-accent, #fff)");
-		const inverted = resolve("var(--text-on-accent-inverted, #000)");
-		if (onAccent) tokens.push({ value: "var(--text-on-accent, #fff)", rgb: onAccent });
-		if (inverted) tokens.push({ value: "var(--text-on-accent-inverted, #000)", rgb: inverted });
-
-		root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
+		if (root) applyAccentContrast(root);
 	}
 
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
@@ -1088,12 +1057,13 @@ export class PythiaSidebarView extends ItemView {
 			const isLong = msg.content.length > 280;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
 			try {
-				await MarkdownRenderer.render(this.app, this.unwrapCodeFence(msg.content), bubble, "", this);
+				await MarkdownRenderer.render(this.app, unwrapCodeFence(msg.content), bubble, "", this);
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
 			}
 			this.selectionController.repaintFavorites(bubble, msg.id);
 			this.forkController.repaintForkOrigins(bubble, msg.id);
+			this.mergeController.repaintMergeLinks(bubble, msg.id);
 			if (isLong) {
 				const toggle = row.createEl("button", {
 					cls: "p-bubble-toggle",
@@ -1119,13 +1089,14 @@ export class PythiaSidebarView extends ItemView {
 		renderTurnLabel(row, msg, this.activeConversation);
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
-			await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
+			await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
 		decorateCodeBlocks(aiBody, this.diagObservers);
 		this.selectionController.repaintFavorites(aiBody, msg.id);
 		this.forkController.repaintForkOrigins(aiBody, msg.id);
+		this.mergeController.repaintMergeLinks(aiBody, msg.id);
 		// Citations: paint markers → chips, then render the sources row. Backfill
 		// sources from content for messages saved before the field existed.
 		const sources = msg.sources ?? parseCitations(msg.content);
@@ -1162,7 +1133,7 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				try {
-					await MarkdownRenderer.render(this.app, this.unwrapCodeFence(stripForeignCitations(fullText)), aiBody, "", this);
+					await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(fullText)), aiBody, "", this);
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
@@ -1176,18 +1147,6 @@ export class PythiaSidebarView extends ItemView {
 			},
 		};
 	}
-
-	// ── Code block decoration: drag-to-pan + copy button ────────────────────
-	// When the LLM has a syntax reference in context it sometimes wraps the
-	// generated code fence in a plain outer fence (no language tag). Strip it so
-	// third-party processors (e.g. Vizardry) receive the bare fenced block.
-	private unwrapCodeFence(text: string): string {
-		return text.replace(
-			/```[ \t]*\n(```[a-zA-Z][^\n]*\n[\s\S]*?\n[ \t]*```)[ \t]*\n[ \t]*```/g,
-			"$1"
-		);
-	}
-
 
 	private autoResizeTextarea(): void {
 		requestAnimationFrame(() => {
@@ -1233,6 +1192,16 @@ export class PythiaSidebarView extends ItemView {
 		if (overflow > 0) {
 			container.style.height = `${container.offsetHeight - overflow}px`;
 		}
+	}
+
+	/** Repaint one message's merge marks after a link was added or removed (ADR-130). */
+	repaintMergeMessage(messageId: string): void {
+		this.mergeController.repaintMessage(messageId);
+	}
+
+	/** Scroll to a merge link's passage and open its inline summary anchor (ADR-130). */
+	revealMergeLink(mergeId: string): void {
+		this.mergeController.revealMergeLink(mergeId);
 	}
 
 	scrollToMessage(messageId: string): void {

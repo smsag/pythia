@@ -10,6 +10,7 @@ import {
 	rangeForHighlight,
 	repaintForkOrigins,
 	rangeForForkOrigin,
+	repaintMergeLinks,
 } from "../ui/HighlightPainter";
 
 function makeBody(html: string): HTMLElement {
@@ -269,6 +270,57 @@ describe("HighlightPainter", () => {
 			const marks = body.querySelectorAll('.p-fork-origin[data-fork-id="fork1"]');
 			expect(marks.length).toBeGreaterThan(0);
 			expect(marks[0].textContent).toBe("SSIH");
+		});
+	});
+
+	describe("repaintMergeLinks", () => {
+		it("paints merge marks in their own custom element, alongside favorites and fork origins", () => {
+			const body = makeBody("<p>alpha beta gamma delta</p>");
+			repaintBody(body, [{ id: "fav", text: "alpha", occurrenceIndex: 0 }]);
+			repaintForkOrigins(body, [{ id: "fork1", text: "beta", occurrenceIndex: 0 }]);
+			repaintMergeLinks(body, [{ id: "m1", text: "gamma delta", occurrenceIndex: 0 }]);
+			const merge = body.querySelector('.p-merge-link[data-merge-id="m1"]');
+			expect(merge).not.toBeNull();
+			// A third distinct custom element, so no theme rule and neither of the two
+			// highlighter treatments can bleed onto a merge link (ADR-086 / ADR-130).
+			expect(merge!.tagName.toLowerCase()).toBe("pythia-merge");
+			expect(body.querySelector('.p-highlight[data-fav-id="fav"]')).not.toBeNull();
+			expect(body.querySelector('.p-fork-origin[data-fork-id="fork1"]')).not.toBeNull();
+			expect(body.textContent).toBe("alpha beta gamma delta");
+		});
+
+		it("clears prior merge marks and skips text that is absent", () => {
+			const body = makeBody("<p>alpha beta</p>");
+			repaintMergeLinks(body, [{ id: "m1", text: "beta", occurrenceIndex: 0 }]);
+			expect(body.querySelectorAll(".p-merge-link").length).toBe(1);
+			repaintMergeLinks(body, [{ id: "m2", text: "missing", occurrenceIndex: 0 }]);
+			expect(body.querySelector('[data-merge-id="m1"]')).toBeNull();
+			expect(body.querySelector(".p-merge-link")).toBeNull();
+		});
+
+		it("repainting the same link twice does not nest or duplicate marks", () => {
+			const body = makeBody("<p>alpha beta</p>");
+			const link = [{ id: "m1", text: "beta", occurrenceIndex: 0 }];
+			repaintMergeLinks(body, link);
+			repaintMergeLinks(body, link);
+			expect(body.querySelectorAll(".p-merge-link").length).toBe(1);
+			expect(body.textContent).toBe("alpha beta");
+		});
+
+		it("falls back to the first occurrence when the stored index is out of range", () => {
+			const body = makeBody("<p>SSIH merged with SSIH in 1983</p>");
+			repaintMergeLinks(body, [{ id: "m1", text: "SSIH", occurrenceIndex: 5 }]);
+			const marks = body.querySelectorAll('.p-merge-link[data-merge-id="m1"]');
+			expect(marks.length).toBeGreaterThan(0);
+			expect(marks[0].textContent).toBe("SSIH");
+		});
+
+		it("paints a passage that spans element boundaries as multiple fragments", () => {
+			const body = makeBody("<p>hello <strong>brave</strong> world</p>");
+			repaintMergeLinks(body, [{ id: "m1", text: "brave world", occurrenceIndex: 0 }]);
+			const marks = body.querySelectorAll('.p-merge-link[data-merge-id="m1"]');
+			expect(marks.length).toBeGreaterThan(1);
+			expect(Array.from(marks).map((m) => m.textContent).join("")).toBe("brave world");
 		});
 	});
 

@@ -67,6 +67,34 @@ describe("buildSystemPrompt", () => {
 		expect(result).toContain("research assistant");
 	});
 
+	it("never leaks a merge link into the prompt (ADR-130: merges are display-only)", () => {
+		// A merge is a reading aid, not context. Unlike a fork's forkedFromSummary /
+		// forkedFromSelection, nothing about it may reach the model — otherwise every
+		// linked conversation would silently cost tokens on every single turn.
+		const conv = baseConv({
+			systemPrompt: "Be helpful.",
+			merges: [
+				{
+					id: "m1",
+					conversationId: "other-conversation",
+					messageId: "msg1",
+					text: "the merged passage",
+					occurrenceIndex: 0,
+					createdAt: "2026-01-01T00:00:00.000Z",
+				},
+			],
+		});
+		const result = buildSystemPrompt(conv);
+		expect(result).not.toContain("the merged passage");
+		expect(result).not.toContain("other-conversation");
+		expect(result).not.toContain("merge");
+		// And a merge alone must not flip the untrusted-context guard on, since it
+		// adds no untrusted content to guard.
+		expect(result).not.toContain(UNTRUSTED_CONTENT_INSTRUCTION);
+		// Identical to the same conversation without the link.
+		expect(result).toBe(buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." })));
+	});
+
 	it("wraps the system prompt in a system_prompt tag", () => {
 		const result = buildSystemPrompt(baseConv({ systemPrompt: "Be helpful." }));
 		expect(result).toContain("<system_prompt>\nBe helpful.\n</system_prompt>");

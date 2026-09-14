@@ -11,6 +11,9 @@ export interface NavigatorDeps {
 	scrollToMessage(id: string): void;
 	scrollToFavorite(fav: Favorite): void;
 	removeFavorite(favId: string): Promise<void>;
+	/** Scroll to a merge link's passage and open its anchor (ADR-130). */
+	revealMergeLink(mergeId: string): void;
+	removeMergeLink(mergeId: string): Promise<void>;
 	goToFavoritesSummary(): void;
 }
 
@@ -135,6 +138,51 @@ export class NavigatorController {
 				});
 			}
 		});
+
+		// ── Merged (passages linked to another conversation, ADR-130) ─
+		// The inverse of the fork tree above: instead of branches that left this
+		// conversation, these are the conversations this one points AT. Collapsed by
+		// default like Forks, and hidden entirely when there are none, so the
+		// navigator gains no permanent clutter for users who never merge.
+		// Resolve each link to its live target up front, so a link whose target was
+		// deleted is simply absent here — exactly as its mark stops painting.
+		const merges = (conv?.merges ?? []).flatMap((m) => {
+			const target = this.d.plugin.conversationStore.getById(m.conversationId);
+			return target ? [{ id: m.id, target }] : [];
+		});
+		if (merges.length > 0) {
+			makeSection(t("mergesSection"), true, merges.length, (body) => {
+				for (const merge of merges) {
+					const item = body.createDiv({ cls: "p-nav-item" });
+					item.createEl("span", { cls: "p-nav-merge-icon", text: "⌥" });
+					item.createEl("span", { cls: "p-nav-label", text: merge.target.name });
+					const del = item.createEl("span", {
+						cls: "p-nav-del",
+						text: "✕",
+						attr: { title: t("mergeRemove") },
+					});
+					item.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						// Jump synchronously, then close — same order as Favorites/Chapters.
+						this.d.revealMergeLink(merge.id);
+						navigatorEl.removeClass("open");
+						document.removeEventListener("mousedown", onOutside, true);
+					});
+					del.addEventListener("mousedown", (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						void this.d.removeMergeLink(merge.id).then(() => {
+							item.remove();
+							const count = item.parentElement?.querySelectorAll(".p-nav-item").length ?? 0;
+							if (count === 0) {
+								body.createDiv({ cls: "p-nav-empty", text: t("navNoMerges") });
+							}
+						});
+					});
+				}
+			});
+		}
 
 		// ── Favorites (highlighted spans) ───────────────────────────
 		// The section label links to the favorites summary card when one exists;

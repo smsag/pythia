@@ -5,6 +5,7 @@ import {
 	parseConversations,
 	sanitizeMessages,
 	normalizeFavorites,
+	normalizeMerges,
 	shouldRefuseLoad,
 	evictConversations,
 } from "../services/persistence";
@@ -245,6 +246,76 @@ describe("sanitizeMessages", () => {
 	});
 });
 
+// ── normalizeMerges (merge links, ADR-130) ────────────────────────────────────
+
+describe("normalizeMerges", () => {
+	let counter = 0;
+	const makeId = () => `merge-${counter++}`;
+	const withMerges = (merges: unknown[]): Conversation => {
+		const conv = makeConv("c");
+		(conv as Conversation).merges = merges as Conversation["merges"];
+		return conv;
+	};
+
+	it("keeps a well-formed link untouched", () => {
+		const conv = withMerges([
+			{ id: "keep", conversationId: "other", messageId: "m1", text: "passage", occurrenceIndex: 2, createdAt: "2026-01-01T00:00:00.000Z" },
+		]);
+		normalizeMerges(conv, makeId);
+		expect(conv.merges).toHaveLength(1);
+		expect(conv.merges![0].id).toBe("keep");
+		expect(conv.merges![0].occurrenceIndex).toBe(2);
+	});
+
+	it("assigns an id when one is missing", () => {
+		counter = 0;
+		const conv = withMerges([
+			{ conversationId: "other", messageId: "m1", text: "passage", createdAt: "x" },
+		]);
+		normalizeMerges(conv, makeId);
+		expect(conv.merges![0].id).toBe("merge-0");
+	});
+
+	it("drops null entries and links missing the fields a mark needs", () => {
+		const conv = withMerges([
+			null,
+			{ conversationId: "other", messageId: "m1" },            // no text → can never paint
+			{ conversationId: "other", messageId: "m1", text: "   " }, // whitespace only
+			{ messageId: "m1", text: "passage" },                    // no target
+			{ id: "ok", conversationId: "other", messageId: "m1", text: "passage" },
+		]);
+		normalizeMerges(conv, makeId);
+		expect(conv.merges).toHaveLength(1);
+		expect(conv.merges![0].id).toBe("ok");
+	});
+
+	it("removes the field entirely when nothing survives, so the key never lingers", () => {
+		const conv = withMerges([null, { text: "orphan" }]);
+		normalizeMerges(conv, makeId);
+		expect(conv.merges).toBeUndefined();
+	});
+
+	it("is a no-op when merges is absent", () => {
+		const conv = makeConv("c");
+		normalizeMerges(conv, makeId);
+		expect(conv.merges).toBeUndefined();
+	});
+
+	it("runs automatically via parseConversations", () => {
+		const raw = [
+			{
+				id: "c",
+				messages: [],
+				merges: [null, { conversationId: "other", messageId: "m1", text: "passage" }],
+			},
+		];
+		const { conversations } = parseConversations(raw);
+		expect(conversations[0].merges).toHaveLength(1);
+		expect(typeof conversations[0].merges![0].id).toBe("string");
+		expect(conversations[0].merges![0].id.length).toBeGreaterThan(0);
+	});
+});
+
 // ── normalizeFavorites (highlight-favorites migration) ─────────────────────────
 
 describe("normalizeFavorites", () => {
@@ -332,6 +403,21 @@ describe("evictConversations", () => {
 	it("returns the input unchanged when under cap", () => {
 		const convs = [makeConv("a"), makeConv("b")];
 		expect(evictConversations(convs, 5, [])).toHaveLength(2);
+	});
+
+	it("protects a conversation another conversation has merged with (ADR-130)", () => {
+		// "old" is the stalest and would normally be evicted first; a merge link
+		// pointing at it must keep it alive, or the link silently stops painting.
+		const old = makeConv("old", "2020-01-01T00:00:00.000Z");
+		const mid = makeConv("mid", "2026-02-01T00:00:00.000Z");
+		const recent = makeConv("recent", "2026-03-01T00:00:00.000Z");
+		recent.merges = [
+			{ id: "m1", conversationId: "old", messageId: "msg1", text: "passage", createdAt: "2026-03-01T00:00:00.000Z" },
+		];
+		const kept = evictConversations([old, mid, recent], 2, []).map((c) => c.id);
+		expect(kept).toContain("old");
+		expect(kept).toContain("recent");
+		expect(kept).not.toContain("mid");
 	});
 
 	it("returns the input unchanged when at exactly the cap", () => {
