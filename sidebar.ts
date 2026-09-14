@@ -12,7 +12,7 @@ import {
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
-import { parseRgb, readableOnAccent, type Rgb } from "./services/color";
+import { applyAccentContrast } from "./ui/accentContrast";
 import { noteBasename } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel } from "./ui/turnLabel";
 import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
@@ -181,7 +181,7 @@ export class PythiaSidebarView extends ItemView {
 		// Recompute the on-accent label color when the user changes their accent
 		// or theme in Appearance settings (Obsidian fires css-change) — no reopen.
 		this.registerEvent(
-			this.app.workspace.on("css-change", () => this.applyAccentContrast())
+			this.app.workspace.on("css-change", () => this.refreshAccentContrast())
 		);
 
 		// Track the most-recently-active MarkdownView so insert-into-note
@@ -336,7 +336,7 @@ export class PythiaSidebarView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
-		this.applyAccentContrast();
+		this.refreshAccentContrast();
 
 		this.headerController = new HeaderController({
 			plugin: this.plugin,
@@ -451,6 +451,7 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getMessagesEl: () => this.messagesEl,
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
+			scrollToMessage: (id) => this.scrollToMessage(id),
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
 			renderMarkdown: (md, el) => {
 				void MarkdownRenderer.render(this.app, md, el, "", this)
@@ -969,6 +970,7 @@ export class PythiaSidebarView extends ItemView {
 		// orientation cue, so it sits above the summary cards and next to the first
 		// message (ADR-084).
 		if (conv.forkedFromId) this.forkController.renderForkBanner();
+		this.mergeController.renderIncomingBanner(); // far half of a merge link (ADR-130)
 
 		// Summary "Speisekarte" cards sit below the fork info. Create, then populate —
 		// same reason as the inspector above.
@@ -1005,34 +1007,11 @@ export class PythiaSidebarView extends ItemView {
 	 *  case the earlier "better of the two theme tokens" pick missed: when BOTH
 	 *  theme tokens read poorly on the accent, the less-bad one is still unreadable.
 	 *  Re-run on css-change. */
-	private applyAccentContrast(): void {
+	/** Republish `--p-on-accent` for the current theme accent (ADR-130 session:
+	 *  logic lives in `ui/accentContrast.ts`; the view only supplies the root). */
+	private refreshAccentContrast(): void {
 		const root = this.containerEl.children[1] as HTMLElement | undefined;
-		if (!root) return;
-		const resolve = (expr: string): Rgb | null => {
-			const probe = root.createSpan();
-			probe.style.color = expr;
-			probe.style.display = "none";
-			const rgb = parseRgb(getComputedStyle(probe).color);
-			probe.remove();
-			return rgb;
-		};
-		const accent = resolve("var(--color-accent)");
-		if (!accent) {
-			root.style.removeProperty("--p-on-accent"); // leave the CSS fallback in charge
-			return;
-		}
-
-		// Offer the theme's own on-accent tokens (when defined and resolvable) as
-		// candidates; readableOnAccent uses the best one only if it clears AA, else
-		// forces pure black/white. Keeping the CSS var strings (not the resolved rgb)
-		// as the values means the label still tracks a later theme edit to that token.
-		const tokens: { value: string; rgb: Rgb }[] = [];
-		const onAccent = resolve("var(--text-on-accent, #fff)");
-		const inverted = resolve("var(--text-on-accent-inverted, #000)");
-		if (onAccent) tokens.push({ value: "var(--text-on-accent, #fff)", rgb: onAccent });
-		if (inverted) tokens.push({ value: "var(--text-on-accent-inverted, #000)", rgb: inverted });
-
-		root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
+		if (root) applyAccentContrast(root);
 	}
 
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
@@ -1168,7 +1147,6 @@ export class PythiaSidebarView extends ItemView {
 			},
 		};
 	}
-
 
 	private autoResizeTextarea(): void {
 		requestAnimationFrame(() => {

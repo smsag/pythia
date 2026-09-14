@@ -18,6 +18,7 @@ export interface MergeDeps {
 	getConversation(): Conversation | null;
 	getMessagesEl(): HTMLElement;
 	setActiveConversation(conv: Conversation): Promise<void>;
+	scrollToMessage(id: string): void;
 	expandBubbleIfCollapsed(row: HTMLElement): void;
 	/** Render markdown into `el` using the view as the owning Component. */
 	renderMarkdown(md: string, el: HTMLElement): void;
@@ -41,6 +42,39 @@ export interface MergeDeps {
  * `ConversationService.cmdMergeConversation`, mirroring how fork creation is
  * split from `ForkController`.
  */
+/** One inbound merge link: a conversation that points at the one being rendered. */
+export interface IncomingMerge {
+	source: Conversation;
+	link: MergeLink;
+}
+
+/**
+ * Every merge link across `conversations` that points AT `targetId`.
+ *
+ * Derived on read rather than stored as a back-reference on the target, exactly
+ * as fork origins are (`ForkController.repaintForkOrigins` scans for
+ * `forkedFromId === convId`). One record, one owner: deleting a link or the
+ * conversation that holds it can never leave a stale pointer on the other side,
+ * because there is no other side to update.
+ *
+ * Self-links are excluded so a passage merged with its own conversation — which
+ * the picker does not offer, but data could carry — cannot make a conversation
+ * list itself as its own source.
+ */
+export function incomingMergeLinks(
+	conversations: Conversation[],
+	targetId: string,
+): IncomingMerge[] {
+	const incoming: IncomingMerge[] = [];
+	for (const source of conversations) {
+		if (source.id === targetId) continue;
+		for (const link of source.merges ?? []) {
+			if (link.conversationId === targetId) incoming.push({ source, link });
+		}
+	}
+	return incoming;
+}
+
 export class MergeController {
 	private openMergeAnchor: HTMLElement | null = null;
 
@@ -50,6 +84,56 @@ export class MergeController {
 	closeAnchor(): void {
 		this.openMergeAnchor?.remove();
 		this.openMergeAnchor = null;
+	}
+
+	/**
+	 * Render the "merged from" banner at the top of a conversation other
+	 * conversations have merged with — the far half of the link, so the
+	 * relationship is visible from both ends the way a fork's is.
+	 *
+	 * A fork states this with a banner on the child and a painted passage in the
+	 * source. A merge is the same shape reflected: the painted passage lives in
+	 * the conversation that made the link, and this banner lives in the one it
+	 * points at. Without it, only one side would know.
+	 *
+	 * Renders nothing when there are no inbound links, so a conversation nobody
+	 * merged with looks exactly as it did before.
+	 */
+	renderIncomingBanner(): void {
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		const incoming = incomingMergeLinks(this.d.plugin.conversationStore.getAll(), conv.id);
+		if (incoming.length === 0) return;
+
+		const banner = this.d.getMessagesEl().createDiv({ cls: "pythia-merge-banner" });
+		const header = banner.createDiv({ cls: "pythia-merge-header" });
+		setIcon(header.createSpan({ cls: "pythia-merge-icon" }), "git-merge");
+		header.createSpan({ cls: "pythia-merge-label", text: t("mergedFromLabel") });
+
+		for (const { source, link } of incoming) {
+			const entry = banner.createDiv({ cls: "pythia-merge-entry" });
+			// A span, not an <a> — same reason as the fork banner (ADR-083): Obsidian
+			// core's anchor underline out-specifies a plugin text-decoration rule.
+			const nameEl = entry.createSpan({ cls: "pythia-merge-source-link", text: source.name });
+			nameEl.addEventListener("click", async () => {
+				await this.d.setActiveConversation(source);
+				// Prefer landing on the passage itself (scrolls + expands its anchor);
+				// fall back to the message when the mark can't be located.
+				const mark = this.d.getMessagesEl().querySelector(
+					`.p-merge-link[data-merge-id="${link.id}"]`
+				);
+				if (mark) this.revealMergeLink(link.id);
+				else this.d.scrollToMessage(link.messageId);
+			});
+			// Shorter excerpt than the fork banner's 220: a conversation can be merged
+			// with from many passages, so each row has to stay one or two lines.
+			const MAX = 120;
+			const text = link.text.trim();
+			entry.createDiv({
+				cls: "pythia-merge-selection",
+				text: text.length > MAX ? text.slice(0, MAX).trimEnd() + "…" : text,
+			});
+		}
 	}
 
 	/** Paint every merge link of `messageId` onto its freshly rendered body. */

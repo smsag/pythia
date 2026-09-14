@@ -20,6 +20,7 @@ const de: Strings = {
 	// ── Merge-Verknüpfungen (ADR-130) ─────────────────────────────────────────
 	mergeBtn:                   "Zusammenführen",
 	mergeAnchorLabel:           "VERKNÜPFT",
+	mergedFromLabel:            "Verknüpft von",
 	mergeNoSummary:             "Noch keine Zusammenfassung.",
 	mergeRefreshSummary:        "Zusammenfassung neu generieren",
 	mergeRemove:                "Verknüpfung entfernen",

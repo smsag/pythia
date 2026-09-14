@@ -504,6 +504,55 @@
 }
 .pythia-view .pythia-pill-add:hover { color: var(--color-accent); }
 
+/* ── Merged-from banner (ADR-130) ────────────────────────────── */
+/* The far half of a merge link: shown at the top of a conversation that OTHER
+   conversations have merged with, so the relationship is visible from both ends
+   the way a fork's is. Mirrors .pythia-fork-banner, with a dashed left rule
+   matching the dashed merge mark and anchor, and one entry per inbound link. */
+.pythia-merge-banner {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 0.82em;
+  border-left: 2px dashed var(--color-accent);
+  margin-bottom: 4px;
+}
+.pythia-merge-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.pythia-merge-icon svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.5;
+  vertical-align: middle;
+}
+.pythia-merge-entry + .pythia-merge-entry {
+  margin-top: var(--s2);
+}
+.pythia-merge-source-link {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.pythia-merge-source-link:hover {
+  text-decoration: underline;
+}
+.pythia-merge-selection {
+  margin-top: 5px;
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  font-style: italic;
+  line-height: 1.5;
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: 8px;
+}
+
 /* ── Fork banner ────────────────────────────────────────────── */
 .pythia-fork-banner {
   flex-shrink: 0;

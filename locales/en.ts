@@ -18,6 +18,7 @@ const en = {
 	// ── Merge links (ADR-130) ─────────────────────────────────────────────────
 	mergeBtn:                   "Merge",
 	mergeAnchorLabel:           "MERGED",
+	mergedFromLabel:            "Merged from",
 	mergeNoSummary:             "No summary yet.",
 	mergeRefreshSummary:        "Regenerate summary",
 	mergeRemove:                "Remove merge link",

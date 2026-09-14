@@ -38,10 +38,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     OptimizationController.ts ← inline prompt optimizer state + flow
     NavigatorController.ts    ← # navigator popover logic
     ForkController.ts         ← fork banner, origin marks, inline fork anchor
-    MergeController.ts        ← merge-link marks + inline merge anchor (ADR-130)
+    MergeController.ts        ← merge-link marks, inline merge anchor, merged-from banner (ADR-130)
+    accentContrast.ts         ← readable --p-on-accent for the current theme accent
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 660 tests across 42 files
+  tests/                      ← Vitest unit tests (npm test) — 665 tests across 43 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -278,6 +279,7 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - **Display-only** — a merge never enters the system prompt. Do not add merge content to `ContextBuilder`
 - Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment)
 - The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
+- The link reads from **both ends**, like a fork: the conversation a link points at shows a `.pythia-merge-banner` naming every conversation that merged with it. The inbound list is derived on read via `incomingMergeLinks`, never stored as a back-reference
 - Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
 
 ### # Navigator
