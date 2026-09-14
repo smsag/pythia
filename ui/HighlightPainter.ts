@@ -13,6 +13,7 @@
 
 const HIGHLIGHT_CLASS = "p-highlight";
 const FORK_ORIGIN_CLASS = "p-fork-origin";
+const MERGE_LINK_CLASS = "p-merge-link";
 const FLASH_CLASS = "p-highlight-flash";
 
 // Favorites and fork origins are wrapped in dedicated custom elements rather than
@@ -23,6 +24,7 @@ const FLASH_CLASS = "p-highlight-flash";
 // spec-valid custom-element names. (ADR-086)
 const FAVORITE_TAG = "pythia-favorite";
 const FORK_TAG = "pythia-fork";
+const MERGE_TAG = "pythia-merge";
 
 interface TextPos {
 	node: Text;
@@ -201,6 +203,28 @@ export function rangeForForkOrigin(root: HTMLElement, forkId: string): Range | n
 	range.setStartBefore(marks[0]);
 	range.setEndAfter(marks[marks.length - 1]);
 	return range;
+}
+
+// ── Merge-link marks ────────────────────────────────────────────────────────
+// The inverse of a fork origin: a passage pointed AT an existing conversation,
+// so that conversation's summary can be surfaced where the passage is read.
+// Same find/paint machinery, wrapped in MERGE_TAG with a `data-merge-id`.
+
+/** Repaint merge-link marks for one message body from the given link descriptors. */
+export function repaintMergeLinks(
+	body: HTMLElement,
+	merges: { id: string; text: string; occurrenceIndex?: number }[],
+): void {
+	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${MERGE_LINK_CLASS}`));
+	for (const merge of merges) {
+		if (!merge.text) continue;
+		// Same first-occurrence fallback as fork origins (ADR-096): a stale or
+		// out-of-range stored index must not make the mark — and with it the
+		// tap-to-open anchor — silently vanish.
+		const range =
+			findRange(body, merge.text, merge.occurrenceIndex ?? 0) ?? findRange(body, merge.text, 0);
+		if (range) paintRange(range, merge.id, MERGE_LINK_CLASS, "data-merge-id", MERGE_TAG);
+	}
 }
 
 /** Unwrap a set of highlight elements, restoring their text nodes into the DOM. */

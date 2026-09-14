@@ -267,3 +267,22 @@ export function buildFavoritesDigest(conversation: Conversation): string {
 
 	return blocks.join("\n\n");
 }
+
+/**
+ * Strip a redundant outer code fence. When the LLM has a syntax reference in
+ * context it sometimes wraps the generated fence in a second, plain one (no
+ * language tag); third-party markdown processors (e.g. Vizardry) then receive a
+ * nested block they can't read. Removes only that exact shape — an unlabelled
+ * fence whose entire body is a single labelled fence — so ordinary nested fences
+ * in prose are left alone.
+ *
+ * Moved out of `sidebar.ts` (ADR-097 ratchet, ADR-130 session): pure string in,
+ * pure string out, with no view state, so it belongs with the other message
+ * helpers and is unit-testable on its own.
+ */
+export function unwrapCodeFence(text: string): string {
+	return text.replace(
+		/```[ \t]*\n(```[a-zA-Z][^\n]*\n[\s\S]*?\n[ \t]*```)[ \t]*\n[ \t]*```/g,
+		"$1"
+	);
+}

@@ -1465,6 +1465,99 @@
   display: inline-flex;
 }
 
+/* ── Merge links + inline anchor (ADR-130) ───────────────────── */
+/* The inverse of a fork origin: a passage pointed AT another conversation.
+   Deliberately NOT a highlighter sweep — favorites (yellow ink) and fork origins
+   (accent ink) already own that treatment, and a third fill would be unreadable
+   next to them. A dashed accent underline reads as "this points elsewhere",
+   stays legible over a highlighted span, and uses only accent + border tokens.
+   Wrapped in the custom element <pythia-merge> for the same reason as
+   <pythia-fork> — no theme rules to fight (ADR-086). */
+.pythia-view pythia-merge {
+  color: inherit;
+  cursor: pointer;
+  padding-bottom: 1px;
+  border-bottom: 1px dashed var(--color-accent);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.pythia-view pythia-merge:hover {
+  border-bottom-style: solid;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+/* Frameless merge anchor — mirrors .p-fork-anchor, with a dashed left rule so
+   the two inline anchors are told apart at a glance. */
+.p-merge-anchor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: var(--s1) 0;
+  padding: 2px 0 2px var(--s3);
+  border-left: 2px dashed var(--color-accent);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+.p-merge-anchor-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.p-merge-anchor-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-merge-anchor-icon svg { width: 11px; height: 11px; }
+.p-merge-anchor-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.p-merge-anchor-title {
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.p-merge-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-merge-anchor-empty { font-size: 11px; color: var(--text-faint); font-style: italic; }
+.p-merge-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
+.p-merge-anchor-body > :first-child { margin-top: 0; }
+.p-merge-anchor-body > :last-child { margin-bottom: 0; }
+.p-merge-anchor-body h1,
+.p-merge-anchor-body h2,
+.p-merge-anchor-body h3,
+.p-merge-anchor-body h4,
+.p-merge-anchor-body h5,
+.p-merge-anchor-body h6 {
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: var(--s2) 0 var(--s1);
+}
+.p-merge-anchor-body p { margin: 0 0 var(--s1); }
+.p-merge-anchor-body ul,
+.p-merge-anchor-body ol { padding-left: var(--s4); margin: var(--s1) 0; }
+.p-merge-anchor-body li { font-size: var(--font-smaller); }
+.p-merge-anchor-open {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+.p-merge-anchor-open:hover { text-decoration: underline; }
+.p-merge-anchor-refresh,
+.p-merge-anchor-unlink {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--text-faint);
+}
+.p-merge-anchor-refresh svg,
+.p-merge-anchor-unlink svg { width: 11px; height: 11px; }
+.p-merge-anchor-refresh:hover,
+.p-merge-anchor-unlink:hover { color: var(--color-accent); }
+.p-merge-anchor-refresh.is-stale { color: var(--color-accent); }
+
 /* ── Delete-exchange preview ─────────────────────────────────── */
 .p-msg-user.p-del-preview,
 .p-msg-ai.p-del-preview {
@@ -1734,6 +1827,11 @@
   font-size: 9px;
   color: var(--color-yellow);
   flex-shrink: 0;
+}
+.p-nav-merge-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  font-size: var(--font-smaller);
 }
 
 .p-nav-fork-icon {

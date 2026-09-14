@@ -557,4 +557,7 @@ export default class PythiaPlugin extends Plugin {
 	cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string, forkedFromOccurrenceIndex?: number): Promise<void> {
 		return this.conversationService.cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId, forkedFromOccurrenceIndex);
 	}
+	cmdMergeConversation(convId: string, selectedText: string, messageId: string, occurrenceIndex?: number): Promise<void> {
+		return this.conversationService.cmdMergeConversation(convId, selectedText, messageId, occurrenceIndex);
+	}
 }

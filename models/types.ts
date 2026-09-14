@@ -25,6 +25,7 @@ export interface Conversation {
 	favorites?: Favorite[];   // starred assistant messages
 	savedNotePath?: string;           // vault path last saved to via save button
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
+	merges?: MergeLink[];             // passages linked to another conversation (ADR-130)
 	forkedFromId?: string;            // ID of the conversation this was forked from
 	forkedFromMessageId?: string;     // ID of the source message within that conversation
 	forkedFromSelection?: string;     // The text selected when the fork was created
@@ -76,6 +77,25 @@ export interface Favorite {
 	occurrenceIndex?: number; // which occurrence of `text` within the message (disambiguates
 	                          // duplicate spans). Absent for legacy favorites.
 	createdAt?: string;       // ISO 8601 — when the favorite was created
+}
+
+/**
+ * A merge link — the inverse of a fork (ADR-130). A fork carries a passage OUT of
+ * a conversation into a new one; a merge points a passage AT an existing
+ * conversation, surfacing that conversation's summary where the passage sits.
+ *
+ * Stored on the conversation that holds the passage, so the link paints wherever
+ * the passage is read. It is a reading/navigation aid only: nothing about a merge
+ * reaches the model — `ContextBuilder` never injects a merged conversation's
+ * summary into the system prompt.
+ */
+export interface MergeLink {
+	id: string;               // unique per link (crypto.randomUUID)
+	conversationId: string;   // the merged-in conversation (the summary shown at the passage)
+	messageId: string;        // refers to Message.id — the assistant message the passage lives in
+	text: string;             // exact selected text (trimmed); drives re-highlight and re-find
+	occurrenceIndex?: number; // which occurrence of `text` within the message
+	createdAt: string;        // ISO 8601
 }
 
 export interface PythiaTemplate {

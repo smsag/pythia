@@ -37,8 +37,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     turnLabel.ts              ← turn micro-labels: model · template · time · tokens (pure, unit-tested)
     OptimizationController.ts ← inline prompt optimizer state + flow
     NavigatorController.ts    ← # navigator popover logic
+    ForkController.ts         ← fork banner, origin marks, inline fork anchor
+    MergeController.ts        ← merge-link marks + inline merge anchor (ADR-130)
+    longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 630 tests across 41 files
+  tests/                      ← Vitest unit tests (npm test) — 660 tests across 42 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -269,10 +272,18 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - Template (`.p-turn-template`) appears only on the turn where a template *starts* applying: the first answer, and again where a second template takes over. Truncated at 18ch, full name in `title`
 - No per-message star button — favoriting moved to text selection (ADR-085); favorites still surface in the `#` navigator under "Starred"
 
+### Merge links (ADR-130)
+- The inverse of Fork. A passage selected in an assistant answer is pointed at an **existing** conversation; that conversation's summary is surfaced inline at the passage
+- Created from the selection toolbar's **Merge** button (next to Branch, assistant content only), which opens the conversation search and records a `MergeLink` on the conversation holding the passage
+- **Display-only** — a merge never enters the system prompt. Do not add merge content to `ContextBuilder`
+- Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment)
+- The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
+- Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
+
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input
 - Opens upward as popover, width 260px, max-height 384px
-- Two sections: **Starred** (bookmarked messages) → divider → **All prompts** (every user message)
+- Sections: **Forks** → **Merged** (only when the conversation has merge links) → **Starred** (bookmarked messages) → **All prompts** (every user message)
 - Closes on outside click or item tap
 - No separate Favorites row anywhere — fully consolidated here
 

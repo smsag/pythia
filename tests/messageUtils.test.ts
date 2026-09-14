@@ -12,6 +12,7 @@ import {
 	buildFavoritesDigest,
 	formatClockTime,
 	lastTokenUsageMessage,
+	unwrapCodeFence,
 } from "../services/messageUtils";
 import type { Conversation, Message, Favorite } from "../models/types";
 
@@ -438,5 +439,33 @@ describe("lastTokenUsageMessage", () => {
 
 	it("returns undefined for an empty conversation", () => {
 		expect(lastTokenUsageMessage([])).toBeUndefined();
+	});
+});
+
+// ── unwrapCodeFence (moved out of sidebar.ts, ADR-130 session) ────────────────
+
+describe("unwrapCodeFence", () => {
+	it("strips a plain outer fence wrapping a single labelled fence", () => {
+		const input = "```\n```ts\nconst a = 1;\n```\n```";
+		expect(unwrapCodeFence(input)).toBe("```ts\nconst a = 1;\n```");
+	});
+
+	it("leaves a normal labelled fence untouched", () => {
+		const input = "```ts\nconst a = 1;\n```";
+		expect(unwrapCodeFence(input)).toBe(input);
+	});
+
+	it("leaves an unlabelled fence with ordinary content untouched", () => {
+		const input = "```\nplain text\n```";
+		expect(unwrapCodeFence(input)).toBe(input);
+	});
+
+	it("unwraps every occurrence, not just the first", () => {
+		const input = "```\n```ts\na\n```\n```\n\ntext\n\n```\n```js\nb\n```\n```";
+		expect(unwrapCodeFence(input)).toBe("```ts\na\n```\n\ntext\n\n```js\nb\n```");
+	});
+
+	it("is a no-op on text with no fences", () => {
+		expect(unwrapCodeFence("just prose")).toBe("just prose");
 	});
 });

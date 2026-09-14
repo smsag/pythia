@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
+import { attachLongPress } from "./longPress";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -234,29 +235,19 @@ export class ForkController {
 		this.attachForkLongPress(open, openWrap, anchor, fork);
 	}
 
-	/** 450 ms touch+mouse long-press on the Open-fork button → summary menu. */
+	/** Long-press on the Open-fork button → summary menu (shared gesture helper). */
 	private attachForkLongPress(
 		btn: HTMLElement,
 		wrap: HTMLElement,
 		anchor: HTMLElement,
 		fork: Conversation,
 	): void {
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		const cancel = () => {
-			if (timer !== null) { clearTimeout(timer); timer = null; }
-		};
-		const fire = () => {
-			timer = null;
+		attachLongPress(btn, () => {
+			// Suppress the click that follows the press, so opening the menu doesn't
+			// also open the fork.
 			this.suppressNextForkOpen = true;
 			this.openForkMenu(wrap, anchor, fork);
-		};
-		this.d.registerDomEvent(btn, "touchstart", () => { timer = setTimeout(fire, 450); }, { passive: true });
-		this.d.registerDomEvent(btn, "touchend", cancel, { passive: true });
-		this.d.registerDomEvent(btn, "touchcancel", cancel, { passive: true });
-		this.d.registerDomEvent(btn, "touchmove", cancel, { passive: true });
-		this.d.registerDomEvent(btn, "mousedown", (e) => { if ((e as MouseEvent).button === 0) timer = setTimeout(fire, 450); });
-		this.d.registerDomEvent(btn, "mouseup", cancel);
-		this.d.registerDomEvent(btn, "mouseleave", cancel);
+		}, { bind: this.d.registerDomEvent });
 	}
 
 	/** The fork anchor's long-press menu — a popover above the Open-fork button.

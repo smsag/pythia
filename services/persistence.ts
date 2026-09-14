@@ -1,4 +1,4 @@
-import type { Conversation, Favorite, Message } from "../models/types";
+import type { Conversation, Favorite, MergeLink, Message } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
 
 /**
@@ -73,6 +73,39 @@ export function normalizeFavorites(
 }
 
 /**
+ * Sanitize a conversation's merge links at load time (ADR-130). Merge records are
+ * only ever written by `cmdMergeConversation`, so there is no legacy shape to
+ * migrate — this guards the read path against a truncated or hand-edited
+ * data.json, for the same reason `sanitizeMessages` exists: the paint path reads
+ * `merges` for every rendered message, so one malformed entry would otherwise
+ * throw and take the whole message body down with it. Entries missing the three
+ * fields the mark needs (`conversationId`, `messageId`, `text`) can never paint
+ * or resolve a target, so they are dropped rather than repaired. Mutates in place.
+ */
+export function normalizeMerges(
+	conv: Conversation,
+	makeId: () => string = () => crypto.randomUUID(),
+): void {
+	if (!Array.isArray(conv.merges)) {
+		if (conv.merges !== undefined) delete conv.merges;
+		return;
+	}
+	conv.merges = conv.merges.filter(
+		(m): m is MergeLink =>
+			m !== null &&
+			typeof m === "object" &&
+			typeof (m as MergeLink).conversationId === "string" &&
+			typeof (m as MergeLink).messageId === "string" &&
+			typeof (m as MergeLink).text === "string" &&
+			(m as MergeLink).text.trim().length > 0
+	);
+	for (const merge of conv.merges) {
+		if (typeof merge.id !== "string" || merge.id.length === 0) merge.id = makeId();
+	}
+	if (conv.merges.length === 0) delete conv.merges;
+}
+
+/**
  * Sanitize a conversation's message list at load time so downstream consumers
  * never meet a shape the type system promises but persistence never enforced.
  * `parseConversations` guarantees `messages` is an array — not that each element
@@ -118,6 +151,7 @@ export function parseConversations(raw: unknown[]): {
 	for (const conv of conversations) {
 		sanitizeMessages(conv);
 		normalizeFavorites(conv);
+		normalizeMerges(conv);
 	}
 	return { conversations, dropped: raw.length - conversations.length };
 }
@@ -138,8 +172,14 @@ function byUpdatedAtDesc(a: Conversation, b: Conversation): number {
 
 /**
  * Evict the oldest unprotected conversations when `conversations.length > cap`.
- * Starred conversations (any favorites) and every currently-active conversation
- * (one per open sidebar leaf, not just one) are always kept.
+ * Starred conversations (any favorites), every currently-active conversation
+ * (one per open sidebar leaf, not just one), and every conversation another
+ * conversation has merged with (ADR-130) are always kept.
+ *
+ * Merge targets are protected for the same reason favorites are: a merge link
+ * paints only while its target exists, so evicting a target would silently
+ * delete a link the user deliberately placed, with no warning and nothing left
+ * on screen to explain the disappearance.
  *
  * Survivors are returned in the SAME relative order as the input — the rest of
  * the app (e.g. `onOpen`/`handleDeleteConversation` picking the most recent as
@@ -157,8 +197,11 @@ export function evictConversations(
 	if (cap <= 0 || conversations.length <= cap) return conversations;
 
 	const activeIdSet = new Set(activeIds);
+	const mergeTargetIds = new Set(
+		conversations.flatMap((c) => (c.merges ?? []).map((m) => m.conversationId))
+	);
 	const isProtected = (c: Conversation) =>
-		(c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id);
+		(c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id) || mergeTargetIds.has(c.id);
 
 	// Choose which plain (unprotected) conversations survive: the newest `slots`
 	// by updatedAt. Selection is by date; the result order is not.

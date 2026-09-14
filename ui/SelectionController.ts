@@ -30,6 +30,8 @@ export interface SelectionDeps {
 	expandBubbleIfCollapsed(row: HTMLElement): void;
 	/** Open a fork-origin anchor (ForkController) — a fork-origin tap wins over favorites. */
 	toggleForkAnchor(forkId: string, markEl: HTMLElement): void;
+	/** Open a merge anchor (MergeController) — ranks between fork origins and favorites. */
+	toggleMergeAnchor(mergeId: string, markEl: HTMLElement): void;
 	/** The view's `registerDomEvent`, so toolbar/selection listeners auto-clean on unload. */
 	registerDomEvent: DomEventRegistrar;
 }
@@ -37,7 +39,7 @@ export interface SelectionDeps {
 /**
  * The text-selection toolbar and span-favorites surfaces extracted from
  * `PythiaSidebarView` (ADR-103, engineering-review #120): the floating toolbar
- * (Copy / Favorite / Branch / Insert / Inbox), favorite highlight create/remove/
+ * (Copy / Favorite / Branch / Merge / Insert / Inbox), favorite highlight create/remove/
  * repaint/scroll, and the tap-a-highlight interaction. `mount()` builds the
  * toolbar and wires the selection listeners; the view calls the public
  * `repaintFavorites` (during message render), `scrollToFavorite`/`removeFavorite`
@@ -47,6 +49,7 @@ export class SelectionController {
 	private selectionToolbar!: HTMLElement;
 	private favBtn!: HTMLButtonElement;
 	private forkBtn!: HTMLButtonElement;
+	private mergeBtn!: HTMLButtonElement;
 	private tappedFavId: string | null = null;
 
 	constructor(private readonly d: SelectionDeps) {}
@@ -81,7 +84,8 @@ export class SelectionController {
 		};
 
 		// Toolbar order (left → right): Copy, Favorite/Unfavorite, Branch (Fork),
-		// Insert into note, Save to inbox.
+		// Merge, Insert into note, Save to inbox. Merge sits next to Branch because
+		// the two are inverses of each other (ADR-130).
 		const copyBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
 			text: t("copyBtn"),
@@ -105,6 +109,14 @@ export class SelectionController {
 		});
 		this.d.registerDomEvent(this.forkBtn, "mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
 		this.d.registerDomEvent(this.forkBtn, "touchend", makeSelTouch(() => this.onForkConversation()));
+
+		this.mergeBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("mergeBtn"),
+			attr: { title: t("mergeBtn") },
+		});
+		this.d.registerDomEvent(this.mergeBtn, "mousedown", (e) => { e.preventDefault(); this.onMergeConversation(); });
+		this.d.registerDomEvent(this.mergeBtn, "touchend", makeSelTouch(() => this.onMergeConversation()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -187,6 +199,16 @@ export class SelectionController {
 		const forkId = forkMark?.getAttribute("data-fork-id");
 		if (forkId) {
 			this.d.toggleForkAnchor(forkId, forkMark as HTMLElement);
+			return;
+		}
+
+		// Merge links rank below fork origins, above favorites — a passage can carry
+		// both a merge link and a favorite highlight, and the merge is the more
+		// specific, deliberately placed pointer.
+		const mergeMark = target?.closest(".p-merge-link");
+		const mergeId = mergeMark?.getAttribute("data-merge-id");
+		if (mergeId) {
+			this.d.toggleMergeAnchor(mergeId, mergeMark as HTMLElement);
 			return;
 		}
 
@@ -383,6 +405,7 @@ export class SelectionController {
 		const inSingleAssistant = startAi !== null && startAi === ownerAiMsg(sel.focusNode);
 		this.favBtn.style.display = inSingleAssistant ? "" : "none";
 		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
+		this.mergeBtn.style.display = inSingleAssistant ? "" : "none";
 
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
@@ -466,6 +489,46 @@ export class SelectionController {
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
 		void this.d.plugin.cmdForkConversation(conv.id, text, sourceMessageId, occurrenceIndex);
+	}
+
+	/**
+	 * Merge the selected passage with an existing conversation (ADR-130) — the
+	 * inverse of Fork. Same assistant-only, single-message, trimmed-selection
+	 * constraints as `onForkConversation`; the conversation search and the link
+	 * itself are handled by `cmdMergeConversation`.
+	 */
+	private onMergeConversation(): void {
+		const sel = window.getSelection();
+		// Trim for the same reason forks do (ADR-096): an untrimmed selection can
+		// never be re-found among the body's text nodes, so the mark would not paint.
+		const text = (sel?.toString() ?? "").trim();
+		const conv = this.d.getConversation();
+		if (!conv || !text) return;
+
+		const anchor = sel?.anchorNode;
+		const msgEl = (anchor instanceof Element ? anchor : anchor?.parentElement)
+			?.closest("[data-msg-id]");
+
+		// Assistant content only — the toolbar hides the button over a user bubble;
+		// guard here too so it is never possible.
+		if (!msgEl || msgEl.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
+
+		const messageId = msgEl.getAttribute("data-msg-id");
+		if (!messageId) return;
+
+		let occurrenceIndex: number | undefined;
+		if (sel && sel.rangeCount > 0) {
+			const body = msgEl.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? (msgEl as HTMLElement);
+			occurrenceIndex = computeOccurrenceIndex(body, sel.getRangeAt(0));
+		}
+
+		this.selectionToolbar.style.display = "none";
+		window.getSelection()?.removeAllRanges();
+		void this.d.plugin.cmdMergeConversation(conv.id, text, messageId, occurrenceIndex);
 	}
 
 	private async onSaveToInbox(): Promise<void> {
