@@ -26,22 +26,6 @@ export interface MergeDeps {
 	registerDomEvent: DomEventRegistrar;
 }
 
-/**
- * Merge links — the inverse of a fork (ADR-130).
- *
- * A fork takes a selected passage OUT of a conversation into a new one and shows
- * the *source* summary in the child. A merge points a selected passage AT an
- * existing conversation and shows *that* conversation's summary right where the
- * passage sits, as an inline anchor — the same reading affordance as the
- * fork-origin anchor (ADR-058/128), mirrored.
- *
- * Deliberately display-only: a merge never reaches the model. `ContextBuilder`
- * injects no merged summary, so linking conversations costs zero tokens per turn.
- *
- * Creating a merge from a selection lives in `SelectionController` +
- * `ConversationService.cmdMergeConversation`, mirroring how fork creation is
- * split from `ForkController`.
- */
 /** One inbound merge link: a conversation that points at the one being rendered. */
 export interface IncomingMerge {
 	source: Conversation;
@@ -75,6 +59,22 @@ export function incomingMergeLinks(
 	return incoming;
 }
 
+/**
+ * Merge links — the inverse of a fork (ADR-130).
+ *
+ * A fork takes a selected passage OUT of a conversation into a new one and shows
+ * the *source* summary in the child. A merge points a selected passage AT an
+ * existing conversation and shows *that* conversation's summary right where the
+ * passage sits, as an inline anchor — the same reading affordance as the
+ * fork-origin anchor (ADR-058/128), mirrored.
+ *
+ * Deliberately display-only: a merge never reaches the model. `ContextBuilder`
+ * injects no merged summary, so linking conversations costs zero tokens per turn.
+ *
+ * Creating a merge from a selection lives in `SelectionController` +
+ * `ConversationService.cmdMergeConversation`, mirroring how fork creation is
+ * split from `ForkController`.
+ */
 export class MergeController {
 	private openMergeAnchor: HTMLElement | null = null;
 
