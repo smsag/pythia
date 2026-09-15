@@ -105,3 +105,31 @@ export function updateViewportInsets(container: HTMLElement): void {
 	// nothing is uncovered and `overflow: hidden` has nothing to crop.
 	if (overlap > 0) container.style.paddingBottom = `${overlap}px`;
 }
+
+/**
+ * Call `onChange` whenever the viewport changes, and once on mount.
+ *
+ * Returns a disposer. The `visualViewport` listeners are added directly rather
+ * than through Obsidian's `registerDomEvent`, which does not accept a
+ * `VisualViewport` target, so the caller must dispose on unload.
+ *
+ * The double `requestAnimationFrame` is not superstition: iOS WKWebView applies
+ * safe-area insets after the first paint, so a single frame can measure a panel
+ * whose insets are not settled yet.
+ *
+ * NOTE for callers: this covers viewport changes only. The panel's bottom edge
+ * also moves when leaves open, close or resize, and none of those fire a
+ * `visualViewport` event — subscribe to the workspace separately (ADR-134).
+ */
+export function watchViewport(onChange: () => void): () => void {
+	const vv = window.visualViewport;
+	if (!vv) return () => { /* no viewport API: nothing to watch or dispose */ };
+	const handler = () => onChange();
+	vv.addEventListener("resize", handler);
+	vv.addEventListener("scroll", handler);
+	requestAnimationFrame(() => { onChange(); requestAnimationFrame(onChange); });
+	return () => {
+		vv.removeEventListener("resize", handler);
+		vv.removeEventListener("scroll", handler);
+	};
+}
