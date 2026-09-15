@@ -48,6 +48,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Toggle vault context default (semantic RAG)` | Turn the vault-context **default** on/off for new conversations (per-conversation toggle lives on the input toolbar) |
 | `Pythia: Rebuild vault context index` | Wipe and rebuild the semantic index in the background (e.g. after changing indexed folders) |
 | `Pythia: Open sidebar` | Open / focus the chat sidebar |
+| `Pythia: Diagnose panel layout` | Writes `Pythia/Scratch/Pythia layout report.md` describing where the panel's edges actually are and what is painted below the composer — attach it to a bug report about spacing or a stray strip on mobile |
 
 ### Context menus
 

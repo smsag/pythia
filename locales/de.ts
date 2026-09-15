@@ -247,6 +247,9 @@ const de: Strings = {
 	vaultContextReindexBtn:            "Index neu aufbauen",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
+	cmdDiagnoseLayout:                 "Panel-Layout diagnostizieren",
+	diagnoseNoPanel:                   "Bitte zuerst das Pythia-Panel öffnen — es gibt kein Layout zu melden.",
+	diagnoseWritten:                   "Layout-Bericht geschrieben nach {{path}}",
 
 	// ── Command hub ───────────────────────────────────────────────────────────
 	cmdHub:                                  "Befehle…",

@@ -328,6 +328,16 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => void this.reindexVault(),
 		});
 
+		// Instrumentation, not a feature (ADR-148). Five records guessed at which
+		// box owns the strip below the composer; this reports it from the device
+		// instead, which is the only place the answer exists.
+		this.addCommand({
+			id: "diagnose-layout",
+			name: t("cmdDiagnoseLayout"),
+			icon: "bot",
+			callback: () => void this.viewManager.diagnoseLayout(),
+		});
+
 		// Watcher (ADR-121): keep the vault index fresh with EVENT-DRIVEN, targeted
 		// updates — an edit re-embeds just that one note instead of rescanning the
 		// whole corpus. Changed/deleted paths are batched and flushed on a debounce

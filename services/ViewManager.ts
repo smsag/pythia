@@ -1,4 +1,6 @@
-import { WorkspaceLeaf } from "obsidian";
+import { Notice, normalizePath, WorkspaceLeaf } from "obsidian";
+import { t } from "../i18n";
+import { collectLayoutReport, formatLayoutReport } from "../ui/layoutReport";
 import type PythiaPlugin from "../main";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 
@@ -55,5 +57,31 @@ export class ViewManager {
 	getSidebarView(): PythiaSidebarView | null {
 		const leaf = this.plugin.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0];
 		return leaf ? (leaf.view as PythiaSidebarView) : null;
+	}
+
+	/** Write a layout report for the open panel into the scratch folder (ADR-148).
+	 *
+	 *  Deliberately a note rather than a console log or the clipboard: the strip
+	 *  this exists to explain has only ever been seen on a phone, where there is
+	 *  no console to read and a long clipboard is awkward to hand back. A note
+	 *  syncs, opens, and can be pasted from at leisure. It is rewritten in place
+	 *  on every run, so repeated diagnoses do not litter the vault. */
+	async diagnoseLayout(): Promise<void> {
+		const { app, settings } = this.plugin;
+		const view = app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE)[0]?.view;
+		const panel = view?.containerEl?.children[1] as HTMLElement | undefined;
+		const composer = panel?.querySelector<HTMLElement>(".p-input-area");
+		if (!panel || !composer) {
+			new Notice(t("diagnoseNoPanel"));
+			return;
+		}
+		const platform = `${navigator.userAgent} · dpr ${window.devicePixelRatio}`;
+		const report = formatLayoutReport(
+			collectLayoutReport(panel, composer, window, this.plugin.manifest.version, platform)
+		);
+		const path = normalizePath(`${settings.scratchFolder}/Pythia layout report.md`);
+		const file = await this.plugin.noteWriter.writeNote(report, path);
+		await app.workspace.getLeaf(true).openFile(file);
+		new Notice(t("diagnoseWritten", { path }));
 	}
 }

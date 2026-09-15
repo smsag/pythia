@@ -47,11 +47,12 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
+    layoutReport.ts           ← panel-geometry report behind the `Diagnose panel layout` command (ADR-148)
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 766 tests across 51 files
+  tests/                      ← Vitest unit tests (npm test) — 775 tests across 52 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -226,7 +227,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
-7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is now `padding: var(--s2) var(--s3) var(--s1)`, full stop. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
+7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is now `padding: var(--s1) var(--s3) var(--s1)` with `gap: var(--s2)` (tightened by ADR-148 — the composer is the panel's floor, so every pixel it does not need is transcript), full stop. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
 8b. **Never set an explicit `height` on `containerEl.children[1]`.** It is `overflow: hidden`, so a height below the content silently crops the input area (including its mandated safe-area padding) and uncovers the background behind the panel. Move content with padding instead (ADR-132).
@@ -357,6 +358,7 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Textarea: transparent, no border, `--font-monospace`, 12px
 - Toolbar icons: inline SVG, 22×22px hit area
 - Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
+- Box: `padding: var(--s1) var(--s3) var(--s1)`, `gap: var(--s2)` between textarea and toolbar (ADR-148)
 
 ---
 

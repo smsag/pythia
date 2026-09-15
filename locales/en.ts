@@ -236,6 +236,9 @@ const en = {
 	vaultContextReindexBtn:            "Rebuild index",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
+	cmdDiagnoseLayout:                 "Diagnose panel layout",
+	diagnoseNoPanel:                   "Open the Pythia panel first — there is no layout to report.",
+	diagnoseWritten:                   "Layout report written to {{path}}",
 
 	// ── Command hub ───────────────────────────────────────────────────────────
 	cmdHub:                                  "Commands…",
