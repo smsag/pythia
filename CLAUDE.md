@@ -366,6 +366,10 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Resolution is conversation override → global setting; `Conversation.outputLanguage === undefined` means *inherit*, and the modal's `Standard` option must keep writing `undefined` rather than copying the global value in
 - The **prompt optimizer is exempt** — it rewrites the user's own prompt, and translating that would destroy what it was asked to improve
 
+### State fills on touch (ADR-155)
+- **Never `transition` a fill that communicates state** — a selected segment, an active toggle, a pressed control. It must be true at the moment of the tap; on iOS WebKit a transitioned `background-color` started from a class toggle in a touch handler may not paint until the next composite, and the user sees the old state until they scroll. Decorative transitions (opacity on a hover-revealed control) are fine
+- **`:hover` rules belong in `@media (hover: hover)`.** iOS keeps `:hover` on the last-tapped element, so a hover fill sticks to exactly the control the user just pressed — and `--background-modifier-hover` next to an accent selection reads as a second selection
+
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
 - **Auto-focus the input on desktop only.** On mobile the soft keyboard overlays the webview, so focusing on open hides the last conversations behind it. `Platform.isMobile` gates it

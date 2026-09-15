@@ -2576,7 +2576,13 @@ body.is-mobile .p-textarea {
   padding: 3px 10px;
   background-color: transparent;
   color: var(--text-muted);
-  transition: background-color 0.1s, color 0.1s;
+  /* NO transition (ADR-155). A segmented control's fill is not decoration, it is
+     the answer to "which one did I just pick" — it has to be true at the moment
+     of the tap. On iOS WebKit a background-color transition started from a class
+     toggle inside a touch handler may not paint until the next composite, which
+     a scroll provides: the reported symptom was a segment that stayed grey until
+     the sheet was scrolled. `color` is not transitioned either, so the label and
+     the fill can never disagree mid-flight. 0.1s was imperceptible anyway. */
 }
 @media (pointer: coarse) {
   .pythia-modal .p-effort-seg-btn { min-height: 36px; }
@@ -2584,9 +2590,16 @@ body.is-mobile .p-textarea {
 .pythia-modal .p-effort-seg-btn:not(:last-child) {
   border-right: 1px solid var(--background-modifier-border);
 }
-.pythia-modal .p-effort-seg-btn:hover {
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* Hover only where a pointer can actually hover (ADR-155). iOS keeps :hover
+   applied to the last-tapped element until something else is touched, so on a
+   phone the hover fill stuck to the segment the user had just pressed — a grey
+   that reads exactly like "selected" next to the real accent selection. The
+   codebase already draws this line for the model popover and the copy buttons. */
+@media (hover: hover) {
+  .pythia-modal .p-effort-seg-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 .pythia-modal .p-effort-seg-btn.active {
   background-color: var(--color-accent);
