@@ -1274,11 +1274,24 @@
    tracks the cell's own font rather than assuming a pixel size, and it is a
    floor only — a column whose longest word is wider still gets that width. */
 .pythia-view .p-scroll-frame > table {
+  /* max-content, not the frame's width (ADR-134). ADR-131 only lifted the cap
+     with `max-width: none`, which was not enough: a table still sizes itself to
+     its containing block, so it kept fitting the panel and paid for it by
+     wrapping one long cell into a 400px-tall column instead of getting wider.
+     max-content makes the table take the width its columns actually want, which
+     is what gives the frame something to scroll. */
+  width: max-content;
   max-width: none;
 }
 .pythia-view .p-scroll-frame > table th,
 .pythia-view .p-scroll-frame > table td {
   min-width: 8ch;
+  /* The cap that makes max-content usable. Without it one 200-character cell
+     would set the table's width and the row would be a single endless line.
+     32ch keeps a long cell to a readable measure and a handful of lines, and
+     the columns beside it keep their natural width. Measured at a 320px panel:
+     the row drops from 399px tall and 18 lines to 163px and 7. */
+  max-width: 32ch;
   white-space: normal;
   overflow-wrap: normal;
   word-break: normal;
@@ -1982,7 +1995,14 @@
   position: relative;
   border-top: 1px solid var(--background-modifier-border);
   padding: var(--s2) var(--s3);
-  padding-bottom: max(var(--s2), env(safe-area-inset-bottom, var(--s2)));
+  /* The home-indicator inset, but only where a home indicator actually is
+     (ADR-134). `env(safe-area-inset-bottom)` reports the device inset no matter
+     where the element sits, so in a stacked mobile sidebar — another leaf below
+     us, nothing to clear — it reserved ~25px of dead space under the composer.
+     The view measures whether the panel really reaches the screen edge and sets
+     `--p-bottom-inset: 0px` when it does not; unset, the env() default applies
+     exactly as before. */
+  padding-bottom: max(var(--s2), var(--p-bottom-inset, env(safe-area-inset-bottom, var(--s2))));
   display: flex;
   flex-direction: column;
   gap: var(--s3);

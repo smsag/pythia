@@ -34,7 +34,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
-import { currentKeyboardOverlap } from "./ui/keyboardInset";
+import { updateViewportInsets } from "./ui/keyboardInset";
 import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -1170,20 +1170,11 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	// The layout viewport doesn't shrink when the soft keyboard appears, but
-	// visualViewport does. Lift the panel's content above the keyboard while it is
-	// open, and leave the panel alone when it is not (ADR-132).
+	// Viewport-derived insets: lift content above an open soft keyboard (ADR-132),
+	// and drop the home-indicator padding when the panel does not actually reach
+	// the screen edge (ADR-134). Both live in ui/keyboardInset.ts.
 	private adjustForKeyboard(): void {
-		const container = this.containerEl.children[1] as HTMLElement;
-		// Reset before measuring so repeated calls are idempotent; this also heals
-		// a panel left shrunken by an older build.
-		container.style.paddingBottom = "";
-		container.style.height = "";
-		// Padding, not height: the panel keeps filling its leaf, so content lifts
-		// without uncovering a strip beneath it, and `overflow: hidden` cannot clip
-		// the input area's own safe-area padding.
-		const overlap = currentKeyboardOverlap(container);
-		if (overlap > 0) container.style.paddingBottom = `${overlap}px`;
+		updateViewportInsets(this.containerEl.children[1] as HTMLElement);
 	}
 
 	/** Repaint one message's merge marks after a link was added or removed (ADR-130). */
