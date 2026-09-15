@@ -21,7 +21,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
-    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers
+    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers, formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename: display name for a vault path (last segment, .md stripped)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
@@ -47,10 +47,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
+    clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 738 tests across 48 files
+  tests/                      ← Vitest unit tests (npm test) — 758 tests across 50 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -276,21 +277,48 @@ REFERENZ  [ pill: filename ✕ ]
 ### Turn label (above each message)
 ```
 user:  [ 27 Aug 2026 · ] 22:19
-AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
+AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 ```
 - `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
 - **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
-- Template (`.p-turn-template`) appears only on the turn where a template *starts* applying: the first answer, and again where a second template takes over. Truncated at 18ch, full name in `title`
+- **No template here** (ADR-140) — the template is a reference, not a fact about the generation; it rides the sources row under the answer. `turnTemplateCaption` still decides which turns carry it
 - No per-message star button — favoriting moved to text selection (ADR-085); favorites still surface in the `#` navigator under "Starred"
 
-### Merge links (ADR-130)
+### Merge links / Verknüpfungen (ADR-130/142)
 - The inverse of Fork. A passage selected in an assistant answer is pointed at an **existing** conversation; that conversation's summary is surfaced inline at the passage
+- **The link anchor IS the fork anchor** (ADR-142). `.p-merge-anchor*` is grouped into every `.p-fork-anchor*` rule — never restate a rule for one of them, or they drift (they already have, twice). Same for the two banners
+- Only two things differ, both deliberate: the meta line keeps the **unlink** control (a link can be removed; a fork cannot be un-forked), and the header is the **`link` icon + `VERKNÜPFUNG`/`LINK`** — a noun naming the card, like `ABZWEIGUNG`, never the state `VERKNÜPFT`
 - Created from the selection toolbar's **Merge** button (next to Branch, assistant content only), which opens the conversation search and records a `MergeLink` on the conversation holding the passage
 - **Display-only** — a merge never enters the system prompt. Do not add merge content to `ContextBuilder`
-- Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment)
-- The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
+- Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment). Keep it — since ADR-142 unified the cards, the mark is the ONLY signal of which kind of thing a tap will open
+- The anchor `.p-merge-anchor` is `.p-fork-anchor`, solid accent rule included: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Öffnen →`
 - The link reads from **both ends**, like a fork: the conversation a link points at shows a `.pythia-merge-banner` naming every conversation that merged with it. The inbound list is derived on read via `incomingMergeLinks`, never stored as a back-reference
 - Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
+
+### Sources row (under an assistant answer)
+```
+TEMPLATE  [[Podcast Summary]]
+VAULT     1 [[Some Note]]
+WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+```
+- Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
+- The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
+- **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
+- Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
+- `.p-sources-label` is a **54px column**, the same width as the reference row's label, so stacked rows start their chips at one x
+- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, the column is read once rather than aimed at, and the words pair this row with REFERENZ
+- `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
+
+### Dates and micro-label rows (ADR-139)
+- **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
+- An icon button sitting in a row of micro-label text needs `vertical-align: middle` **plus `position: relative; top: -0.09em`**. `middle` centres on x-height; these rows are caps and digits, so the icon otherwise sits ~1px low. Measured, and stable across sans/serif/mono faces
+
+### Conversation summaries (ADR-141)
+- Both summary prompts share ONE `SUMMARY_RULES` block in `services/BaseProvider.ts`. Never edit one prompt's rules without the other — that is why they are shared
+- The contract: **substance, never the session** (no narrating what was done, produced, saved or inserted; no file names; no "as requested" — if the conversation produced a document, summarize what it *says*), **at most 5 sentences / 100 words**, **plain prose** (no headings, lists, bold or code)
+- Do NOT lower `maxTokens` to force brevity — that truncates rather than shortens, and on a reasoning model the same budget pays for hidden reasoning. The sentence count is the contract; the cap is a safety valve
+- `generateFavoritesSummary` is deliberately exempt — its `## Key learnings` structure is the point
+- The fork and merge anchors clamp the summary to five lines via `clampSummary`, because a prompt is a request and summaries already on disk will never be regenerated
 
 ### Tables (ADR-131)
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
@@ -308,6 +336,7 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - An entry also carries `aliases` — inflections, plurals and the term's equivalent in the other language of a bilingual conversation (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can. The model returns them alongside the definition in one `DEFINITION:` / `VARIANTS:` reply
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
+- The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
 
 ### # Navigator

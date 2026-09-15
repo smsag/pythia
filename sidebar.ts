@@ -14,7 +14,7 @@ import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
 import { noteBasename } from "./services/pathUtils";
-import { renderTurnLabel, appendTokensToTurnLabel } from "./ui/turnLabel";
+import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
@@ -1068,7 +1068,10 @@ export class PythiaSidebarView extends ItemView {
 		// sources from content for messages saved before the field existed.
 		const sources = msg.sources ?? parseCitations(msg.content);
 		paintCitations(this.app, aiBody, sources);
-		renderSourcesRow(this.app, row, sources);
+		// The template rides the sources row, not the turn label (ADR-140), and on
+		// the same turns the label used to caption: where a template starts
+		// applying, never repeated down the transcript.
+		renderSourcesRow(this.app, row, sources, turnTemplateCaption(msg, this.activeConversation));
 		// Token counts are shown inline in the turn label (renderTurnLabel),
 		// not a separate footer.
 
@@ -1081,11 +1084,15 @@ export class PythiaSidebarView extends ItemView {
 		row: HTMLElement;
 	} {
 		const row = this.messagesEl.createDiv({ cls: "p-msg-ai" });
-		renderTurnLabel(row, {
+		const streamMsg: Message = {
 			id: "", role: "assistant", content: "",
 			timestamp: new Date().toISOString(), model: this.activeConversation?.model,
 			templateId: this.activeConversation?.templateId,
-		}, this.activeConversation);
+		};
+		// Resolved before the answer exists, so the finished row shows the template
+		// under the same rule as a re-rendered one.
+		const streamTemplate = turnTemplateCaption(streamMsg, this.activeConversation);
+		renderTurnLabel(row, streamMsg, this.activeConversation);
 		const aiBody = row.createDiv({ cls: "p-ai-body pythia-streaming" });
 		const textNode = document.createTextNode("");
 		aiBody.appendChild(textNode);
@@ -1107,7 +1114,7 @@ export class PythiaSidebarView extends ItemView {
 				decorateCodeBlocks(aiBody, this.diagObservers);
 				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				paintCitations(this.app, aiBody, sources);
-				renderSourcesRow(this.app, row, sources);
+				renderSourcesRow(this.app, row, sources, streamTemplate);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));

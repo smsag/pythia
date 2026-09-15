@@ -210,13 +210,49 @@ export function formatClockTime(iso: string | undefined): string {
 	return `${hh}:${mm}`;
 }
 
-/** Absolute "12 Aug 2026 · 14:30"-style stamp for summary cards and the fork
- *  anchor meta line (localized). */
-export function formatSummaryTimestamp(iso: string): string {
+/** Month abbreviations for `formatDate`. Fixed rather than localized: see the
+ *  note there. */
+const MONTH_ABBR = [
+	"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Absolute date as `15 Sep 2026` — the single date format in Pythia's UI.
+ *
+ * Deliberately NOT `toLocaleDateString`, for the same reason `formatClockTime`
+ * is not `toLocaleTimeString`: the locale forms disagree with each other in
+ * every way that matters here. German produces "15. Sept. 2026" and US English
+ * "Sep 15, 2026" — different order, different punctuation, different width —
+ * so the same 9px mono label lines up on one device and not on another, and the
+ * turn label's fixed column rhythm depends on it not moving. One format also
+ * makes the date testable without pinning a locale.
+ *
+ * Day-month-year with a three-letter month is the form that reads unambiguously
+ * in both languages this plugin is used in; "15 Sep 2026" cannot be misread as
+ * a US-style month-first date the way "09/15" can.
+ *
+ * Returns "" on an unparseable input, like the other formatters here.
+ */
+export function formatDate(iso: string | undefined): string {
+	if (!iso) return "";
 	const d = new Date(iso);
-	const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-	const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-	return `${date} · ${time}`;
+	if (Number.isNaN(d.getTime())) return "";
+	return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** Month and year as `SEP 2026`, for the history view's date-group headers. */
+export function formatMonthYear(iso: string | undefined): string {
+	if (!iso) return "";
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return "";
+	return `${MONTH_ABBR[d.getMonth()].toUpperCase()} ${d.getFullYear()}`;
+}
+
+/** Absolute "15 Sep 2026 · 14:30" stamp for summary cards and the inline
+ *  anchors' meta line. */
+export function formatSummaryTimestamp(iso: string): string {
+	return `${formatDate(iso)} · ${formatClockTime(iso)}`;
 }
 
 /** Estimate token count from a text string. Uses a weighted heuristic: Latin

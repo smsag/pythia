@@ -119,12 +119,14 @@ export class GlossaryController {
 		this.d.renderMarkdown(entry.definition, body);
 
 		const meta = anchor.createDiv({ cls: "p-term-anchor-meta" });
-		const parts: string[] = [];
-		if (entry.source === "model") {
-			parts.push(t("glossarySourceModel", { model: abbreviateModel(this.d.plugin.settings.defaultAnthropicModel) }));
-		} else {
-			parts.push(t("glossarySourceManual"));
-		}
+		// Bare model name and date, exactly like the fork and merge meta lines —
+		// no "defined by" prefix. The row's job is provenance at a glance, and the
+		// prefix is the one part of it the reader already knows.
+		const parts: string[] = [
+			entry.source === "model"
+				? abbreviateModel(this.d.plugin.settings.defaultAnthropicModel)
+				: t("glossarySourceManual"),
+		];
 		if (entry.updatedAt) parts.push(formatSummaryTimestamp(entry.updatedAt));
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: `${parts.join(" · ")} · ` });
 
@@ -150,7 +152,14 @@ export class GlossaryController {
 		});
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
 
-		const open = meta.createEl("button", { cls: "p-term-anchor-open", text: t("glossaryOpenNote") });
+		// Same short label and arrow as the fork and merge anchors — "Im Glossar
+		// öffnen" is long enough to wrap the meta row onto a second line. The
+		// specific wording survives as the tooltip.
+		const open = meta.createEl("button", {
+			cls: "p-term-anchor-open",
+			text: t("forkOpenShort"),
+			attr: { "aria-label": t("glossaryOpenNote"), title: t("glossaryOpenNote") },
+		});
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.d.plugin.app.workspace.openLinkText(this.d.plugin.settings.glossaryNote, "", true);

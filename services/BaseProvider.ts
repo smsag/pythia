@@ -29,6 +29,47 @@ export interface RoundResult {
 	hasUsage: boolean;
 }
 
+/**
+ * The shared contract for a conversation summary, used by `generateSummary` and
+ * `generateSummaryWithTitle`. One copy, because two copies is how one of them
+ * silently stops matching the other.
+ *
+ * Three constraints, each for a reported failure:
+ *
+ * **Substance, not session.** A conversation whose *content* was a task ("write
+ * this summary into that note") makes the model narrate the task — "a summary
+ * was generated and inserted at the top of `_inbox/Unbenannt.md` … as
+ * requested". True, and useless: nobody reopens a conversation to be told a file
+ * was written. The old rule only banned the opening phrase, so the narration
+ * moved into the body. This bans the act, not the phrasing.
+ *
+ * **A countable length.** "Keep it brief" is read very differently by different
+ * models, which is exactly what the user saw. Sentences and words can be counted
+ * by the model as it writes; "brief" cannot. The budget stays generous — the cap
+ * is a safety valve, and a cap low enough to force brevity would truncate
+ * mid-sentence instead (worse on reasoning models, where the cap also pays for
+ * hidden reasoning).
+ *
+ * **Prose only.** The summary is displayed in three places, the smallest of
+ * which is an inline anchor a few lines tall. Headings and bullet lists are
+ * built for a page, and they inflate that anchor without adding meaning at this
+ * length. The favorites summary is deliberately NOT under this rule — it is a
+ * study aid and its structure is the point.
+ *
+ * It is also read back as context by a fork (PRIOR_SUMMARY_INSTRUCTION), which
+ * is why the ceiling is five sentences and not two: the summary has to carry the
+ * topic, not just label it.
+ */
+const SUMMARY_RULES =
+	"- Lead with the subject matter, written as knowledge, for someone who has not read the conversation. " +
+	"Never open with \"This conversation…\", \"In this conversation…\", \"The user…\", \"We discussed…\", or a \"Summary of…\" heading.\n" +
+	"- Summarize the substance, never the session. Do not narrate what was done, asked for, produced, saved, " +
+	"inserted or edited; do not name a file that was created or changed; never write \"as requested\" or \"as asked\". " +
+	"If the conversation produced a document, summarize what that document SAYS.\n" +
+	"- Capture the main topics and any conclusions reached.\n" +
+	"- At most five sentences and under 100 words.\n" +
+	"- Plain prose only: no headings, no bullet points, no numbered lists, no bold, no code formatting.";
+
 export abstract class BaseProvider implements LLMProvider {
 	protected app: App;
 	protected settings: PythiaSettings;
@@ -280,7 +321,7 @@ export abstract class BaseProvider implements LLMProvider {
 			.join("\n\n");
 		return this.callUtility(
 			model,
-			`Recap the substance of the discussion below so it stands on its own as a reminder of what was covered — and works as context if the discussion continues.\n\n- Lead with the subject matter itself, written as knowledge. Do NOT describe the chat: never open with "This conversation…", "In this conversation…", "The user…", "We discussed…", or a "Summary of…" heading.\n- Capture the main topics, any decisions or conclusions reached, and important outputs.\n- Keep it brief and factual — a few short sentences or tight bullet points.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Recap the substance of the discussion below so it stands on its own as a reminder of what was covered — and works as context if the discussion continues.\n\n${SUMMARY_RULES}${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 			1024
 		);
 	}
@@ -293,7 +334,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const sfx = langSuffix(this.settings.outputLanguage);
 		const raw = await this.callUtility(
 			model,
-			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary: recap the substance so it stands on its own — capture the main topics, any decisions or conclusions, and important outputs, written as knowledge. Lead with the subject matter; do NOT open with "This conversation…", "In this conversation…", "The user…", "We discussed…", or a "Summary of…" heading. Keep it brief and factual.${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary, recap the substance so it stands on its own:\n${SUMMARY_RULES}${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
 			1024
 		);
 		return parseTitleAndSummary(raw);

@@ -38,22 +38,16 @@ const ai = (id: string, over: Partial<Message> = {}): Message =>
 const conversation = (over: Partial<Conversation> = {}): Conversation =>
 	({ id: "c1", name: "Test", messages: [], model: "claude-sonnet-4-6", ...over } as Conversation);
 
-/** Render every message of `conv` and return the caption text per assistant turn
- *  (empty string where no caption was rendered). */
+/** The template each assistant turn of `conv` is credited with, "" where none.
+ *  Since ADR-140 the credit is rendered by the sources row, not the turn label,
+ *  but the rule deciding *which* turns carry it is still this one. */
 function captions(conv: Conversation): string[] {
-	const out: string[] = [];
-	for (const msg of conv.messages) {
-		const row = document.createElement("div");
-		document.body.appendChild(row);
-		renderTurnLabel(row, msg, conv);
-		if (msg.role === "assistant") {
-			out.push(row.querySelector(".p-turn-template")?.textContent?.trim() ?? "");
-		}
-	}
-	return out;
+	return conv.messages
+		.filter((m) => m.role === "assistant")
+		.map((m) => turnTemplateCaption(m, conv) ?? "");
 }
 
-describe("turn labels — template caption (ADR-129)", () => {
+describe("turn labels — which turns carry the template (ADR-129/140)", () => {
 	beforeEach(() => { document.body.innerHTML = ""; });
 
 	it("captions only the first assistant turn of a templated conversation", () => {
@@ -63,7 +57,7 @@ describe("turn labels — template caption (ADR-129)", () => {
 			messages: [user("u1"), ai("a1", { templateId: tpl }), user("u2"), ai("a2", { templateId: tpl })],
 		});
 
-		expect(captions(conv)).toEqual(["· PODCAST SUMMARY", ""]);
+		expect(captions(conv)).toEqual([tpl, ""]);
 	});
 
 	it("captions again where a second template takes over mid-conversation", () => {
@@ -78,16 +72,17 @@ describe("turn labels — template caption (ADR-129)", () => {
 			],
 		});
 
-		expect(captions(conv)).toEqual(["· PODCAST SUMMARY", "· MEETING NOTES", ""]);
+		expect(captions(conv)).toEqual([first, second, ""]);
 	});
 
 	it("captions the first answer of a legacy conversation whose messages predate templateId", () => {
+		const tpl = "Templates/Podcast Summary.md";
 		const conv = conversation({
-			templateId: "Templates/Podcast Summary.md",
+			templateId: tpl,
 			messages: [user("u1"), ai("a1"), user("u2"), ai("a2")],
 		});
 
-		expect(captions(conv)).toEqual(["· PODCAST SUMMARY", ""]);
+		expect(captions(conv)).toEqual([tpl, ""]);
 	});
 
 	it("renders no caption when the conversation has no template", () => {
@@ -110,11 +105,13 @@ describe("turn labels — template caption (ADR-129)", () => {
 		expect(turnTemplateCaption(streaming, answered)).toBeUndefined();
 	});
 
-	it("carries the full template path as the caption tooltip", () => {
+	it("no longer writes the template into the turn label (ADR-140)", () => {
+		// It lives in the sources row now; two copies on one turn is noise.
 		const row = document.createElement("div");
 		renderTurnLabel(row, ai("a1", { templateId: "Templates/Podcast Summary.md" }), conversation());
 
-		expect(row.querySelector(".p-turn-template")?.getAttribute("title")).toContain("Podcast Summary");
+		expect(row.querySelector(".p-turn-template")).toBeNull();
+		expect(row.textContent).not.toContain("PODCAST");
 	});
 });
 

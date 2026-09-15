@@ -31,13 +31,12 @@ const de: Strings = {
 	glossaryOpenNote:          "Im Glossar öffnen",
 	glossaryRegenerate:        "Neu erklären",
 	glossaryRemove:            "Aus dem Glossar entfernen",
-	glossarySourceModel:       "erklärt von {{model}}",
-	glossarySourceManual:      "von Hand geschrieben",
+	glossarySourceManual:      "von Hand",
 	glossaryNoTerm:            "Bitte einen einzelnen Begriff markieren.",
 	glossaryNoteName:          "Glossar-Notiz",
 	glossaryNoteDesc:          "Vault-Pfad der Notiz, in der nachgeschlagene Begriffe gespeichert werden. Erklärte Begriffe werden überall markiert, in jedem Gespräch.",
-	mergeAnchorLabel:           "VERKNÜPFT",
-	mergedFromLabel:            "Verknüpft von",
+	mergeAnchorLabel:           "VERKNÜPFUNG",
+	mergedFromLabel:            "Verknüpfung von",
 	mergeNoSummary:             "Noch keine Zusammenfassung.",
 	mergeRefreshSummary:        "Zusammenfassung neu generieren",
 	mergeRemove:                "Verknüpfung entfernen",
@@ -134,7 +133,9 @@ const de: Strings = {
 	ctxSummarize:      "Zusammenfassen",
 
 	// ── Citations / sources ───────────────────────────────────────────────────
-	sourcesLabel: "QUELLEN",
+	summaryMore: "mehr",
+	summaryLess: "weniger",
+	sourcesTemplate: "VORLAGE",
 	sourcesWeb:   "WEB",
 	sourcesVault: "VAULT",
 

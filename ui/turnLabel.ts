@@ -3,8 +3,9 @@
  *
  * The mono 9px line above every message. User turns read `14:31` (with an
  * absolute date on the first turn of each new calendar day); assistant turns
- * read `SONNET 4.6 · 14:32 · ↑7.028 ↓125`, plus a template caption on the turn
- * where a template starts applying.
+ * read `SONNET 4.6 · 14:32 · ↑7.028 ↓125`. The template is NOT here — it rides
+ * the sources row under the answer as a wikilink (ADR-140); `turnTemplateCaption`
+ * still decides which turns show it.
  *
  * Extracted from `sidebar.ts` under the ADR-097 ratchet. Everything here is a
  * pure function of (row, message, conversation) — no view state — which is what
@@ -12,8 +13,7 @@
  */
 
 import type { Conversation, Message, TokenUsage } from "../models/types";
-import { formatClockTime } from "../services/messageUtils";
-import { noteBasename } from "../services/pathUtils";
+import { formatClockTime, formatDate } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { t } from "../i18n";
 
@@ -21,11 +21,10 @@ import { t } from "../i18n";
  *  (ADR-129) — the accent bubble vs. the plain body already tells the two apart.
  *  The model comes from the message (recorded at generation time) and falls back
  *  to the conversation's current model for legacy messages that predate the
- *  field; the template caption follows the same rule. */
+ *  field. */
 export function renderTurnLabel(row: HTMLElement, msg: Message, conv: Conversation | null): void {
 	const time = formatClockTime(msg.timestamp);
 	const parts: string[] = [];
-	let template: string | undefined;
 	if (msg.role === "user") {
 		// Anchor the day: the first user turn of each new day (and the very first
 		// message of the conversation) carries an absolute date, so time-only
@@ -38,20 +37,9 @@ export function renderTurnLabel(row: HTMLElement, msg: Message, conv: Conversati
 	} else {
 		const model = msg.model ?? conv?.model;
 		if (model) parts.push(abbreviateModel(model).toUpperCase());
-		template = turnTemplateCaption(msg, conv);
 		if (time) parts.push(time);
 	}
 	const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
-	if (template) {
-		// Its own span so it truncates independently of the rest of the label,
-		// which must stay readable on a narrow sidebar.
-		const name = noteBasename(template);
-		label.createSpan({
-			cls: "p-turn-template",
-			text: ` · ${name.toUpperCase()}`,
-			attr: { title: t("templateLabel", { name }) },
-		});
-	}
 	if (msg.role === "assistant" && msg.tokenUsage) {
 		appendTokensToTurnLabel(label, msg.tokenUsage);
 	}
@@ -115,11 +103,9 @@ export function isFirstMessageOfDay(msg: Message, conv: Conversation | null): bo
 	return cur !== prev;
 }
 
-/** Absolute date for a turn label (`27 Aug 2026`, localized). Deliberately not
- *  the relative "Heute/Gestern" of `HistoryController.formatConvDate` — the label
- *  must stay correct when the conversation is reopened later. */
+/** Absolute date for a turn label (`27 Aug 2026`). Deliberately not the relative
+ *  "Heute/Gestern" of `HistoryController.formatConvDate` — the label must stay
+ *  correct when the conversation is reopened later. */
 export function formatTurnDate(iso: string): string {
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return "";
-	return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	return formatDate(iso);
 }
