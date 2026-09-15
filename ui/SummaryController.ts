@@ -206,7 +206,8 @@ export class SummaryController {
 			return;
 		}
 		const text = await this.runFavoritesSummary(conv);
-		if (text && this.d.getConversation()?.id === conv.id) {
+		if (!text) return; // runFavoritesSummary has already said why
+		if (this.d.getConversation()?.id === conv.id) {
 			this.renderSummaryCards();
 			this.revealSummaryCard("favorites");
 		}
@@ -218,10 +219,22 @@ export class SummaryController {
 		const notice = new Notice(t("generatingFavoritesSummary"), 0);
 		try {
 			const text = await this.d.plugin.llmRouter.generateFavoritesSummary(conv);
-			if (text) {
-				conv.favoritesSummary = { text, updatedAt: new Date().toISOString() };
-				await this.d.plugin.conversationStore.save(conv);
+			if (!text) {
+				// An empty result used to return silently, which is indistinguishable
+				// from "it worked but produced nothing" — the reported symptom was a
+				// run that appeared to succeed and then showed no card at all
+				// (ADR-158). A utility call reports errors by returning "", so this is
+				// the only place the user can be told anything happened.
+				new Notice(t("summaryEmpty"));
+				return "";
 			}
+			// Write to the conversation the store currently holds for this id, not
+			// only to the captured reference: `renderSummaryCards` re-reads through
+			// `getConversation()`, and a card can only appear if the object it reads
+			// is the one that got the summary.
+			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
+			live.favoritesSummary = { text, updatedAt: new Date().toISOString() };
+			await this.d.plugin.conversationStore.save(live);
 			return text;
 		} catch (e) {
 			new Notice(t("favoritesSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));

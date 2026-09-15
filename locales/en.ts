@@ -181,6 +181,7 @@ const en = {
 	messageLimitReached:       "Message limit reached ({{cap}}). Start a new conversation or raise the limit in Settings → Pythia.",
 	noMessagesToSummarize:     "No messages to summarize.",
 	generatingSummary:         "Generating summary…",
+	summaryEmpty:            "The model returned nothing — try again, or raise the token limit if the model is a reasoning model.",
 	summaryFailed:             "Summary failed: {{error}}",
 	streamInterruptedPartialKept: "Response interrupted: {{error}} — the partial reply was kept.",
 	noFavoritesToSummarize:    "No favorites to summarize. Highlight text and favorite it first.",

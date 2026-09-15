@@ -61,8 +61,17 @@ export class AnthropicService extends BaseProvider {
 			...(systemMessage ? { system: systemMessage } : {}),
 			messages: [{ role: "user", content: userMessage }],
 		});
-		const block = response.content[0];
-		return block?.type === "text" ? block.text.trim() : "";
+		// Every text block, not `content[0]` (ADR-158). A response is a LIST of
+		// blocks and text is not guaranteed to lead it: with extended thinking the
+		// first block is a `thinking` block, and a server-side tool use can precede
+		// the answer too. Indexing 0 and type-checking it returned "" in exactly
+		// those cases — and `callUtility`'s contract turns "" into "no result", so
+		// the caller showed nothing and reported no error.
+		return response.content
+			.filter((b): b is Extract<typeof b, { type: "text" }> => b?.type === "text")
+			.map((b) => b.text)
+			.join("")
+			.trim();
 	}
 
 	private getClient(): Anthropic {

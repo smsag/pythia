@@ -192,6 +192,7 @@ const de: Strings = {
 	messageLimitReached:       "Nachrichtenlimit erreicht ({{cap}}). Starte ein neues Gespräch oder erhöhe das Limit in Einstellungen → Pythia.",
 	noMessagesToSummarize:     "Keine Nachrichten zum Zusammenfassen.",
 	generatingSummary:         "Zusammenfassung wird erstellt…",
+	summaryEmpty:            "Das Modell hat nichts zurückgegeben — bitte erneut versuchen oder bei Reasoning-Modellen das Token-Limit erhöhen.",
 	summaryFailed:             "Zusammenfassung fehlgeschlagen: {{error}}",
 	streamInterruptedPartialKept: "Antwort unterbrochen: {{error}} — die Teilantwort wurde behalten.",
 	noFavoritesToSummarize:    "Keine Favoriten zum Zusammenfassen. Markiere zuerst Text und favorisiere ihn.",

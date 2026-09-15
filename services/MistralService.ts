@@ -74,8 +74,18 @@ export class MistralService extends BaseProvider {
 			maxTokens,
 			messages,
 		}));
+		// Same shape of bug as Anthropic's (ADR-158): `content` is a string OR a list
+		// of content chunks, and returning "" for the list case makes a successful
+		// call look like an empty result.
 		const content = response.choices?.[0]?.message?.content;
-		return (typeof content === "string" ? content : "").trim();
+		if (typeof content === "string") return content.trim();
+		if (Array.isArray(content)) {
+			return content
+				.map((c) => (typeof c === "string" ? c : c?.type === "text" ? c.text : ""))
+				.join("")
+				.trim();
+		}
+		return "";
 	}
 
 	private getClient(): MistralCore {

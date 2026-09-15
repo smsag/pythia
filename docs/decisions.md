@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-157 (marks nest; the innermost one owns the tap). Only one direction was blocked: `findRange`/`paintRange` already ignore element boundaries, but `repaintTerms` skipped text inside `.p-highlight`/`.p-fork-origin`/`.p-merge-link`, so **favoriting a passage silently un-marked every term in it**. The exclusion's stated reason — overlapping wrappers to untangle — was wrong: terms paint last, so they *nest* inside, and each unwrapper targets its own class. Terms may now nest (only term-in-term is still refused), `normalize()` rejoins text split by an unwrap so a term straddling the seam still matches, and **the innermost mark owns the tap**, replacing a fixed type order that had never actually fired and left a visible term mark doing nothing inside a fork. Also fixes an ADR-151 bug: the tap lookup asked for `.p-term` only, so person marks were painted and dead. Resolution extracted to `ui/markTap.ts`. +19 tests (875).
+*Last updated: 2026-09-15 — ADR-158 (a response is a list of blocks, and "" is not a diagnosis). The favorites summary ran and showed no card. `AnthropicService.callUtility` read `response.content[0]` and returned `""` unless that one block was text — but **a response is a list, and with extended thinking the first block is `thinking`**. It hit the favorites summary because that is one of only three utility calls that run on the *conversation's* model rather than the fast model, and the reporter is on Opus 5 at high effort. It was invisible because `callUtility` returns `""` for both "no text" and "it failed", and the callers read `""` as "nothing to show" and said nothing. Now every text block is collected (same fix on Mistral, whose chunk-list case had the identical hole), and an empty result reports itself. **The bug is old; what changed is how often a thinking block leads.** +5 tests (880).
+
+*Previously, 2026-09-15 — ADR-157 (marks nest; the innermost one owns the tap). Only one direction was blocked: `findRange`/`paintRange` already ignore element boundaries, but `repaintTerms` skipped text inside `.p-highlight`/`.p-fork-origin`/`.p-merge-link`, so **favoriting a passage silently un-marked every term in it**. The exclusion's stated reason — overlapping wrappers to untangle — was wrong: terms paint last, so they *nest* inside, and each unwrapper targets its own class. Terms may now nest (only term-in-term is still refused), `normalize()` rejoins text split by an unwrap so a term straddling the seam still matches, and **the innermost mark owns the tap**, replacing a fixed type order that had never actually fired and left a visible term mark doing nothing inside a fork. Also fixes an ADR-151 bug: the tap lookup asked for `.p-term` only, so person marks were painted and dead. Resolution extracted to `ui/markTap.ts`. +19 tests (875).*
 
 *Previously, 2026-09-15 — ADR-156 (the glossary anchor goes where the fork anchor goes). Fork and merge call `lastMark.after(anchor)`; the glossary called `block.after(anchor)`, so the definition appeared at the end of the term's paragraph instead of beside the term. The original reasoning — a block spliced into a sentence reflows the text — is true and does not survive: fork and merge pay the same price, so the paragraph version bought "reflow somewhere else", and somewhere else is worse, because **in a long paragraph the card lands far from the word that opened it**. A term also repeats, so several marked words would all open their card in the same place. ADR-138 already said the cards are one component differing only in the left rule's stroke; **where a card appears is part of being that component**. +5 tests (858) in a new suite — the anchor had no coverage at all, which is how the divergence hid behind an ADR claiming they were identical.*
 
@@ -2590,3 +2592,40 @@ Worth recording: the old order between a term and a deliberate mark **had never 
 **Verification:** both halves were checked in the failing direction. Restoring the exclusion fails four of the new painter tests; the tap tests cover nesting in both directions, including the inverted order a favorite painted over a term produces. Two tests in `tests/termPainter.test.ts` asserted the old exclusion and were rewritten — they are now the clearest statement of what changed.
 
 **Consequence:** +19 tests (875 across 56 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-158 — A response is a list of blocks, and "" is not a diagnosis
+
+**Status:** Active — fixes the favorites summary producing no card; hardens `callUtility` on two providers
+
+**Context:** Reported as: the favorites summary runs, and the box never appears. No error.
+
+The UI path was innocent — mounting the real view and calling `summarizeFavorites` with a stubbed router renders the card correctly, and `buildFavoritesDigest` is fine including the orphaned-favorite case. The defect is one line in `AnthropicService.callUtility`:
+
+```ts
+const block = response.content[0];
+return block?.type === "text" ? block.text.trim() : "";
+```
+
+**A response is a *list* of content blocks, and text is not guaranteed to lead it.** With extended thinking the first block is a `thinking` block; a server-side tool use can precede the answer too. In those cases this returns `""`.
+
+**Why the favorites summary and not everything else.** Most utility calls run on `this.fastModel`. `generateSummary`, `generateSummaryWithTitle` and `generateFavoritesSummary` are the only ones that run on `resolveModel(conversation.model)` — the conversation's own model. On a reasoning-capable model at high effort, a leading non-text block is the normal case rather than the exception. The reporter's own conversation settings screenshot two messages earlier showed Opus 5 with effort *Hoch*.
+
+**Why it was invisible.** `callUtility`'s documented contract is "return "" on empty/error", and the callers read `""` as "nothing to show": `runFavoritesSummary` returned early without a Notice, and `summarizeFavorites` skipped the render. A successful call that produced no text and an error that was swallowed were the same value, and neither said anything. **A sentinel that means both "nothing" and "it broke" cannot be reported on.**
+
+**Decision:**
+
+**Collect every text block.** Filter the content list to `type === "text"` and join. Never index 0, never infer from one block's type whether the response had text.
+
+**Same fix on Mistral.** Its `content` is a string *or* a list of content chunks, and the list case returned `""` — the identical shape of bug, waiting for a model that returns chunks. OpenAI's shape has one `choices[0].message.content` string and is fine.
+
+**Say something when the result is empty.** `runFavoritesSummary` now shows a Notice naming the likely cause (raise the token limit on a reasoning model) instead of returning silently. This does not fix the bug; it makes the next one of its kind reportable in one step instead of four rounds of probing.
+
+**Write to the conversation the store holds.** `renderSummaryCards` re-reads through `getConversation()`, so the summary is written to `conversationStore.getById(conv.id) ?? conv`. Defensive rather than diagnosed — the captured reference and the stored one are the same object today — but a card can only appear if the object the renderer reads is the one that got the summary, and that invariant should not be implicit.
+
+**Verification:** checked in the failing direction — restoring `content[0]` fails three of the five new tests (leading thinking block, several text blocks, leading tool use), and the two that still pass are the ones that were never broken. The UI path was ruled out by reproduction, not by reading.
+
+**What this says about the earlier work.** The bug is old, not recent. What changed was the reporter's model and effort setting, which moved a leading `thinking` block from rare to routine. **"Recently introduced" describes when a latent bug became reachable at least as often as it describes a new one**, and the four things I checked first were all recent changes of mine, none of which were involved.
+
+**Consequence:** +5 tests (880 across 56 files). Build, lint, file-size and tests green. Not runtime-verified against a live Anthropic response.

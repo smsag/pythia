@@ -56,7 +56,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 875 tests across 56 files
+  tests/                      ← Vitest unit tests (npm test) — 880 tests across 56 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -321,6 +321,11 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ### Dates and micro-label rows (ADR-139)
 - **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
 - An icon button sitting in a row of micro-label text needs `vertical-align: middle` **plus `position: relative; top: -0.09em`**. `middle` centres on x-height; these rows are caps and digits, so the icon otherwise sits ~1px low. Measured, and stable across sans/serif/mono faces
+
+### Utility calls (`callUtility`) — ADR-158
+- **A provider response is a list of content blocks.** Collect every `type === "text"` block and join; **never read `content[0]`** and infer from it. With extended thinking the first block is `thinking`, and a server-side tool use can precede the answer — both returned `""` and looked like "the model said nothing"
+- `generateSummary`, `generateSummaryWithTitle` and `generateFavoritesSummary` are the only utility calls that run on the **conversation's** model rather than `fastModel`, so they are the ones that meet reasoning models and their leading thinking blocks
+- `callUtility` returns `""` for *both* "no text" and "it failed". **A caller must never treat `""` as a silent no-op** — say something, or the next bug of this kind is unreportable
 
 ### Conversation summaries (ADR-141)
 - Both summary prompts share ONE `SUMMARY_RULES` block in `services/BaseProvider.ts`. Never edit one prompt's rules without the other — that is why they are shared
