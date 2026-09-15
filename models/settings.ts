@@ -35,6 +35,8 @@ export interface PythiaSettings {
 	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
 	inboxNote: string;
+	/** Vault path of the glossary note (ADR-136). */
+	glossaryNote: string;
 	/** Language for AI-generated text (titles, summaries, chapter names).
 	 *  "auto" = follow the conversation language. Otherwise an ISO 639-1 locale code. */
 	outputLanguage: "auto" | "en" | "de";
@@ -101,6 +103,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	maxConversations: 200,
 	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
+	glossaryNote: "Pythia/Glossary.md",
 	outputLanguage: "auto",
 	debugMode: false,
 	promptOptimizerTemplateId: "",

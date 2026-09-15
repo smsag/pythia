@@ -31,6 +31,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, mergeConversations, shouldRefuseLoad, evictConversations
+    glossary.ts               ← pure: parseGlossary, upsertGlossaryEntry, buildTermIndex (ADR-136/137)
+    GlossaryService.ts        ← glossary note I/O + vault-then-model term lookup (ADR-136)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -45,8 +47,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
+    GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
+    citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 694 tests across 46 files
+  tests/                      ← Vitest unit tests (npm test) — 738 tests across 48 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -295,6 +299,16 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - The rules must stay scoped under `.pythia-view`, or Obsidian core and theme `word-break: break-all` on cells wins (ADR-065)
 - No sticky first column. The whole table scrolls as one piece
 - Render non-message markdown through `renderRichMarkdown` so it gets this treatment too, never a bare `MarkdownRenderer.render`
+
+### Glossary terms (ADR-136)
+- Select a term in an answer and press **Define**. The lookup is a utility call, so it never enters the message list: no new prompt, no fork
+- Resolution is **vault first, then the model given the passage**. No web tier, no API key
+- The definition lives in the glossary note (`glossaryNote` setting), never on the conversation. **Do not add a `Conversation` field for terms** — the note is the only source of truth and terms are matched, not stored
+- Every occurrence is marked in every conversation, via `repaintTerms` and a single alternation from `buildTermIndex`
+- An entry also carries `aliases` — inflections, plurals and the term's equivalent in the other language of a bilingual conversation (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can. The model returns them alongside the definition in one `DEFINITION:` / `VARIANTS:` reply
+- A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
+- Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
+- A glossary definition never enters the system prompt, for the same reason a merge link does not
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

@@ -104,6 +104,10 @@ export class LLMRouter {
 		return this.get(conversation).generateFavoritesSummary(conversation);
 	}
 
+	defineTerm(term: string, passage: string, provider?: Provider): Promise<string> {
+		return this.byProvider(provider).defineTerm(term, passage);
+	}
+
 	generateChapterName(content: string, provider: Provider): Promise<string> {
 		return this.byProvider(provider).generateChapterName(content);
 	}

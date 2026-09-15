@@ -29,6 +29,12 @@ export const CUSTOM_INSTRUCTIONS_TAG = "custom_instructions";
 export const TITLE_MARKER = "TITLE";
 export const SUMMARY_MARKER = "SUMMARY";
 
+/** Markers for the glossary lookup's structured reply (ADR-136): the definition
+ *  and the term's inflected / translated surface forms, asked for in one call
+ *  and read back by `messageUtils.parseDefinitionAndVariants`. */
+export const DEFINITION_MARKER = "DEFINITION";
+export const VARIANTS_MARKER = "VARIANTS";
+
 /** Fallback max-output-tokens when neither the conversation nor the global
  *  setting specifies one. */
 export const DEFAULT_MAX_TOKENS = 8192;

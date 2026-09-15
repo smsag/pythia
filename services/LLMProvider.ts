@@ -18,6 +18,8 @@ export interface LLMProvider {
 	generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }>;
 	generateFavoritesSummary(conversation: Conversation): Promise<string>;
 	generateChapterName(content: string): Promise<string>;
+	/** Define `term` as used in `passage` (ADR-136). */
+	defineTerm(term: string, passage: string): Promise<string>;
 	generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string>;
 	summarizeNotes(content: string): Promise<string>;
 	optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string>;

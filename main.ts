@@ -12,6 +12,7 @@ import { AppContainer } from "./appContainer";
 import type { LLMRouter } from "./services/LLMRouter";
 import type { TemplateLoader } from "./services/TemplateLoader";
 import type { NoteWriter } from "./services/NoteWriter";
+import type { GlossaryService } from "./services/GlossaryService";
 import type { ToolHandler } from "./services/ToolHandler";
 import type { WebSearchService } from "./services/WebSearchService";
 import type { PromptOptimizerService } from "./services/PromptOptimizerService";
@@ -54,6 +55,7 @@ export default class PythiaPlugin extends Plugin {
 	get llmRouter(): LLMRouter { return this.container?.llmRouter as LLMRouter; }
 	get templateLoader(): TemplateLoader { return this.container?.templateLoader as TemplateLoader; }
 	get noteWriter(): NoteWriter { return this.container?.noteWriter as NoteWriter; }
+	get glossaryService(): GlossaryService { return this.container?.glossaryService as GlossaryService; }
 	get webSearchService(): WebSearchService { return this.container?.webSearchService as WebSearchService; }
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
@@ -342,6 +344,9 @@ export default class PythiaPlugin extends Plugin {
 		}, 2000);
 		const markChanged = (file: TFile) => {
 			if (file.extension !== "md") return;
+			// Editing the glossary note by hand must take effect without a reload,
+			// so the cached entries are dropped as soon as the file changes (ADR-136).
+			if (this.glossaryService?.isGlossaryNote(file.path)) this.glossaryService.invalidate();
 			changedFiles.set(file.path, file);
 			deletedPaths.delete(file.path);
 			flushChanges();

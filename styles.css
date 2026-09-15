@@ -1556,6 +1556,87 @@
   display: inline-flex;
 }
 
+/* ── Glossary terms + inline definition (ADR-136) ────────────── */
+/* A term is marked at EVERY occurrence, in every conversation, which makes the
+   quietness of this style load-bearing rather than a preference: a loud
+   treatment repeated forty times down a page would wreck the prose it is meant
+   to help you read. So a dotted underline in a faint token, the conventional
+   affordance for a definition, and accent only on hover. That also keeps it
+   clearly below the three deliberate marks — yellow favorites, accent fork
+   origins, dashed-accent merge links — which the reader placed on purpose. */
+.pythia-view pythia-term {
+  color: inherit;
+  cursor: pointer;
+  padding-bottom: 1px;
+  border-bottom: 1px dotted var(--text-faint);
+}
+.pythia-view pythia-term:hover {
+  border-bottom-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+/* Frameless definition, matching the fork and merge anchors but with a dotted
+   left rule so the three are distinguishable without reading them. */
+.p-term-anchor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: var(--s1) 0;
+  padding: 2px 0 2px var(--s3);
+  border-left: 2px dotted var(--text-faint);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+.p-term-anchor-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.p-term-anchor-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+.p-term-anchor-icon svg { width: 11px; height: 11px; }
+.p-term-anchor-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.p-term-anchor-title {
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+/* The entry's other surface forms. Monospace and faint so it reads as metadata
+   about the entry, not as part of the definition. */
+.p-term-anchor-aliases {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: -2px;
+}
+.p-term-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
+.p-term-anchor-body > :first-child { margin-top: 0; }
+.p-term-anchor-body > :last-child { margin-bottom: 0; }
+.p-term-anchor-body p { margin: 0 0 var(--s1); }
+.p-term-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-term-anchor-metatext { color: var(--text-faint); }
+.p-term-anchor-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--text-faint);
+}
+.p-term-anchor-btn svg { width: 11px; height: 11px; }
+.p-term-anchor-btn:hover { color: var(--color-accent); }
+.p-term-anchor-open {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+.p-term-anchor-open:hover { text-decoration: underline; }
+
 /* ── Merge links + inline anchor (ADR-130) ───────────────────── */
 /* The inverse of a fork origin: a passage pointed AT another conversation.
    Deliberately NOT a highlighter sweep — favorites (yellow ink) and fork origins

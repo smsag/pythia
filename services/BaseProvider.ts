@@ -6,7 +6,7 @@ import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
 import { parseTitleAndSummary, langInstruction, langSuffix, debugLog, buildFavoritesDigest } from "./messageUtils";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
-import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+import { TITLE_MARKER, SUMMARY_MARKER, DEFINITION_MARKER, VARIANTS_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
@@ -297,6 +297,42 @@ export abstract class BaseProvider implements LLMProvider {
 			1024
 		);
 		return parseTitleAndSummary(raw);
+	}
+
+	/**
+	 * Define one term as it is used in a specific passage (ADR-136).
+	 *
+	 * The passage is the whole point. A dictionary can say what "Bauteil" means in
+	 * general; only the surrounding sentences can say which sense an answer meant,
+	 * and that sense is what the reader is stuck on. Sending the passage is also
+	 * what keeps this from needing a new prompt in the conversation.
+	 *
+	 * The same call also returns the term's other surface forms, because the
+	 * model that just read the passage knows whether "Zählern" is the same word
+	 * and whether the answer's English "counter" means it too. Asking separately
+	 * would double the latency of a lookup the reader is waiting on.
+	 *
+	 * Runs on the fast model with a small token budget: this is a gloss, not an
+	 * essay, and it is fetched while the reader waits.
+	 */
+	async defineTerm(term: string, passage: string): Promise<string> {
+		const excerpt = passage.slice(0, 1200);
+		return this.callUtility(
+			this.fastModel,
+			`Define the term "${term}" as it is used in the passage below, and list its other surface forms.\n\n` +
+				`Reply in EXACTLY this format — no other text before or after:\n` +
+				`${DEFINITION_MARKER}:\n<two or three sentences>\n` +
+				`${VARIANTS_MARKER}: <forms separated by | , or leave empty>\n\n` +
+				`For the definition: explain the sense that applies here, not every possible meaning. ` +
+				`Do not repeat the passage, do not add a heading, do not use the word "context".\n` +
+				`For the variants: the inflected forms of this term a reader would meet in running text ` +
+				`(plural, genitive, dative, declined adjective forms), plus the term's equivalent in the ` +
+				`other language if the passage mixes languages, plus a common abbreviation or spelling ` +
+				`variant if one exists. Forms only — never related concepts, never explanations, and never ` +
+				`a form so generic it would match unrelated sentences. Leave the line empty if there are none.` +
+				`${langInstruction(this.settings.outputLanguage)}\n\nPassage:\n${excerpt}`,
+			300
+		);
 	}
 
 	async generateChapterName(content: string): Promise<string> {

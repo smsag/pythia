@@ -2,7 +2,7 @@ import { MarkdownView, Notice } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
-import { todayISO } from "../utils";
+import { todayISO, withConversationBacklink } from "../utils";
 import {
 	findRange,
 	computeOccurrenceIndex,
@@ -32,6 +32,10 @@ export interface SelectionDeps {
 	toggleForkAnchor(forkId: string, markEl: HTMLElement): void;
 	/** Open a merge anchor (MergeController) — ranks between fork origins and favorites. */
 	toggleMergeAnchor(mergeId: string, markEl: HTMLElement): void;
+	/** Open a glossary definition (GlossaryController) — lowest precedence of the marks. */
+	toggleTermAnchor(term: string, markEl: HTMLElement): void;
+	/** Define the selected term and mark it everywhere (ADR-136). */
+	defineTerm(term: string, passage: string): void;
 	/** The view's `registerDomEvent`, so toolbar/selection listeners auto-clean on unload. */
 	registerDomEvent: DomEventRegistrar;
 }
@@ -39,7 +43,7 @@ export interface SelectionDeps {
 /**
  * The text-selection toolbar and span-favorites surfaces extracted from
  * `PythiaSidebarView` (ADR-103, engineering-review #120): the floating toolbar
- * (Copy / Favorite / Branch / Merge / Insert / Inbox), favorite highlight create/remove/
+ * (Copy / Favorite / Branch / Merge / Define / Insert / Inbox), favorite highlight create/remove/
  * repaint/scroll, and the tap-a-highlight interaction. `mount()` builds the
  * toolbar and wires the selection listeners; the view calls the public
  * `repaintFavorites` (during message render), `scrollToFavorite`/`removeFavorite`
@@ -50,6 +54,7 @@ export class SelectionController {
 	private favBtn!: HTMLButtonElement;
 	private forkBtn!: HTMLButtonElement;
 	private mergeBtn!: HTMLButtonElement;
+	private defineBtn!: HTMLButtonElement;
 	private tappedFavId: string | null = null;
 
 	constructor(private readonly d: SelectionDeps) {}
@@ -117,6 +122,14 @@ export class SelectionController {
 		});
 		this.d.registerDomEvent(this.mergeBtn, "mousedown", (e) => { e.preventDefault(); this.onMergeConversation(); });
 		this.d.registerDomEvent(this.mergeBtn, "touchend", makeSelTouch(() => this.onMergeConversation()));
+
+		this.defineBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("defineBtn"),
+			attr: { title: t("defineBtn") },
+		});
+		this.d.registerDomEvent(this.defineBtn, "mousedown", (e) => { e.preventDefault(); this.onDefineTerm(); });
+		this.d.registerDomEvent(this.defineBtn, "touchend", makeSelTouch(() => this.onDefineTerm()));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -209,6 +222,16 @@ export class SelectionController {
 		const mergeId = mergeMark?.getAttribute("data-merge-id");
 		if (mergeId) {
 			this.d.toggleMergeAnchor(mergeId, mergeMark as HTMLElement);
+			return;
+		}
+
+		// Glossary terms rank below the three deliberate marks: a term is matched
+		// automatically and can sit anywhere, so a span the user placed on purpose
+		// always wins the tap.
+		const termMark = target?.closest(".p-term");
+		const term = termMark?.getAttribute("data-term");
+		if (term) {
+			this.d.toggleTermAnchor(term, termMark as HTMLElement);
 			return;
 		}
 
@@ -406,6 +429,7 @@ export class SelectionController {
 		this.favBtn.style.display = inSingleAssistant ? "" : "none";
 		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
 		this.mergeBtn.style.display = inSingleAssistant ? "" : "none";
+		this.defineBtn.style.display = inSingleAssistant ? "" : "none";
 
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
@@ -440,13 +464,7 @@ export class SelectionController {
 			new Notice(t("noActiveNoteToInsert"));
 			return;
 		}
-		let insertion = text;
-		const conv = this.d.getConversation();
-		if (conv) {
-			const vault = encodeURIComponent(this.d.plugin.app.vault.getName());
-			const uri = `obsidian://pythia?vault=${vault}&cmd=resume&id=${encodeURIComponent(conv.id)}`;
-			insertion += `\n\n[↗ ${conv.name}](${uri})`;
-		}
+		const insertion = withConversationBacklink(text, this.d.getConversation(), this.d.plugin.app.vault.getName());
 		view.editor.replaceSelection(insertion);
 		this.selectionToolbar.style.display = "none";
 		new Notice(t("insertedIntoNote"));
@@ -531,17 +549,41 @@ export class SelectionController {
 		void this.d.plugin.cmdMergeConversation(conv.id, text, messageId, occurrenceIndex);
 	}
 
+	/**
+	 * Define the selected term (ADR-136). Assistant content only, like the other
+	 * span actions, because the terminology that needs explaining is the model's.
+	 *
+	 * A term is a word or a short phrase, so a long selection is rejected rather
+	 * than turned into a glossary entry nobody will ever match again.
+	 */
+	private onDefineTerm(): void {
+		const sel = window.getSelection();
+		const term = (sel?.toString() ?? "").trim();
+		const anchor = sel?.anchorNode;
+		const msgEl = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest("[data-msg-id]");
+		if (!msgEl || msgEl.classList.contains("p-msg-user")) {
+			this.selectionToolbar.style.display = "none";
+			window.getSelection()?.removeAllRanges();
+			return;
+		}
+		const words = term.split(/\s+/).filter(Boolean).length;
+		if (!term || words > 5 || term.length > 60) {
+			new Notice(t("glossaryNoTerm"));
+			return;
+		}
+		// The whole message is the passage: the sense of a term is often fixed a
+		// sentence or two away from where it appears.
+		const passage = msgEl.textContent ?? "";
+		this.selectionToolbar.style.display = "none";
+		window.getSelection()?.removeAllRanges();
+		this.d.defineTerm(term, passage);
+	}
+
 	private async onSaveToInbox(): Promise<void> {
 		const text = window.getSelection()?.toString() ?? "";
 		if (!text) return;
 		const inboxPath = this.d.plugin.settings.inboxNote || "Pythia/Inbox.md";
-		let entry = text;
-		const conv = this.d.getConversation();
-		if (conv) {
-			const vault = encodeURIComponent(this.d.plugin.app.vault.getName());
-			const uri = `obsidian://pythia?vault=${vault}&cmd=resume&id=${encodeURIComponent(conv.id)}`;
-			entry += `\n\n[↗ ${conv.name}](${uri})`;
-		}
+		const entry = withConversationBacklink(text, this.d.getConversation(), this.d.plugin.app.vault.getName());
 		try {
 			await this.d.plugin.noteWriter.prependToInbox(entry, inboxPath);
 			this.selectionToolbar.style.display = "none";
