@@ -1606,6 +1606,14 @@
   font-weight: 600;
   color: var(--text-normal);
 }
+/* The entry's other surface forms. Monospace and faint so it reads as metadata
+   about the entry, not as part of the definition. */
+.p-term-anchor-aliases {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: -2px;
+}
 .p-term-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
 .p-term-anchor-body > :first-child { margin-top: 0; }
 .p-term-anchor-body > :last-child { margin-bottom: 0; }

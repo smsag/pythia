@@ -22,6 +22,7 @@ const de: Strings = {
 
 	// ── Glossary (ADR-136) ────────────────────────────────────────────────────
 	defineBtn:                 "Erklären",
+	glossaryAliases:           "Auch: {{list}}",
 	glossaryAnchorLabel:       "GLOSSAR",
 	glossaryDefined:           "\"{{term}}\" ins Glossar aufgenommen",
 	glossaryNoteTitle:         "Glossar",

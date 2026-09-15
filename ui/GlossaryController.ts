@@ -48,7 +48,7 @@ export class GlossaryController {
 		if (!service) return;
 		const entries = await service.all();
 		if (!body.isConnected) return;
-		repaintTerms(body, service.matcherFor(entries));
+		repaintTerms(body, service.indexFor(entries));
 	}
 
 	/**
@@ -104,6 +104,16 @@ export class GlossaryController {
 		head.createSpan({ cls: "p-term-anchor-label", text: t("glossaryAnchorLabel") });
 
 		anchor.createDiv({ cls: "p-term-anchor-title", text: entry.term });
+
+		// The other forms this entry answers for. Shown because a mark on "Zählern"
+		// opening an entry titled "Zähler" otherwise looks like a mismatch, and
+		// because seeing the list is what tells the user a wrong one is editable.
+		if (entry.aliases?.length) {
+			anchor.createDiv({
+				cls: "p-term-anchor-aliases",
+				text: t("glossaryAliases", { list: entry.aliases.join(" · ") }),
+			});
+		}
 
 		const body = anchor.createDiv({ cls: "p-term-anchor-body" });
 		this.d.renderMarkdown(entry.definition, body);

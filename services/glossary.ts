@@ -26,6 +26,17 @@ export interface GlossaryEntry {
 	source: "model" | "manual";
 	/** ISO 8601. Absent on entries a human wrote by hand without one. */
 	updatedAt?: string;
+	/**
+	 * Other surface forms of the same term: inflections, plurals, and the
+	 * translation the other language of a bilingual conversation uses
+	 * ("Zählers", "Zählern", "counter"). Each is matched and marked exactly like
+	 * the canonical term and resolves back to this one entry (ADR-136).
+	 *
+	 * Stored rather than derived because stemming is language-specific and
+	 * lossy — German compounds in particular — and because a stored list can be
+	 * corrected by hand in the note, which a stemmer cannot.
+	 */
+	aliases?: string[];
 }
 
 /** Marker line placed under a heading to record provenance without cluttering the prose. */
@@ -72,6 +83,13 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 			if (/\bsource=model\b/.test(meta)) current.source = "model";
 			const at = /\bupdatedAt=(\S+?)(?:\s|%%|$)/.exec(meta);
 			if (at) current.updatedAt = at[1];
+			// `aliases=` runs to the closing `%%` because a surface form may contain
+			// spaces, which is also why it is rendered last and separated by `|`.
+			const aliases = /\baliases=(.*?)\s*%%\s*$/.exec(meta);
+			if (aliases) {
+				const list = aliases[1].split("|").map((a) => a.trim()).filter(Boolean);
+				if (list.length > 0) current.aliases = list;
+			}
 			continue;
 		}
 		body.push(line);
@@ -82,8 +100,14 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 
 /** Render one entry back to markdown, including its provenance comment. */
 function renderEntry(entry: GlossaryEntry): string {
+	// `aliases` goes last: it is the only field whose value may contain spaces, so
+	// it needs the run to the closing `%%` as its terminator.
+	const aliases = (entry.aliases ?? [])
+		.map((a) => a.replace(/[|%]/g, " ").trim())
+		.filter(Boolean);
 	const meta = `${META_PREFIX} source=${entry.source}` +
-		(entry.updatedAt ? ` updatedAt=${entry.updatedAt}` : "") + " %%";
+		(entry.updatedAt ? ` updatedAt=${entry.updatedAt}` : "") +
+		(aliases.length > 0 ? ` aliases=${aliases.join("|")}` : "") + " %%";
 	return `## ${entry.term}\n${meta}\n\n${entry.definition.trim()}\n`;
 }
 
@@ -118,15 +142,36 @@ export function upsertGlossaryEntry(markdown: string, entry: GlossaryEntry): str
 	return `${base}${base ? "\n\n" : ""}${renderEntry(entry)}`;
 }
 
+/** The parts of an entry the matcher needs — so callers can index plain terms
+ *  without constructing whole entries. */
+export type TermSource = Pick<GlossaryEntry, "term"> & { aliases?: string[] };
+
 /** Characters that must be escaped before a term goes into a RegExp. */
 function escapeRegExp(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
- * Build one regular expression that matches any known term.
+ * A surface-form index over the glossary: one matcher for every form of every
+ * term, plus the map back from a matched form to the term that owns it.
  *
- * One alternation rather than a pass per term, because with a large glossary the
+ * The map is the part aliases made necessary. Before them the matched text *was*
+ * the term, so the painter could tag a mark with `match[0]` and the anchor could
+ * look that up directly. With aliases the matched form is usually not the term
+ * ("Zählern" → "Zähler"), so the resolution has to happen here, where both ends
+ * are known, rather than at the two call sites.
+ */
+export interface TermIndex {
+	/** One alternation over every surface form of every term. */
+	matcher: RegExp;
+	/** Normalized surface form → the canonical term it belongs to. */
+	canonical: Map<string, string>;
+}
+
+/**
+ * Build the index for a set of entries.
+ *
+ * One alternation rather than a pass per form, because with a large glossary the
  * painter runs this against every text node of every rendered message; N passes
  * would be N times the work for the same result.
  *
@@ -134,28 +179,46 @@ function escapeRegExp(s: string): string {
  * Sorting by length is what makes the alternation behave like longest-match,
  * since JavaScript alternation is first-match, not longest-match.
  *
+ * Canonical terms are registered before any alias, so a term is never shadowed
+ * by another entry's alias for it — order in the note must not decide which
+ * definition a word opens.
+ *
  * Boundaries are handled with lookarounds over a letter class rather than `\b`,
  * because `\b` is ASCII-only: it would happily match inside "Schrödinger" and
  * fail to bound German, Greek or Cyrillic terms correctly.
  *
  * Returns null for an empty glossary so callers can skip the walk entirely.
  */
-export function buildTermMatcher(terms: string[]): RegExp | null {
-	const seen = new Set<string>();
-	const usable = terms
-		.map((t) => t.trim())
-		.filter((t) => {
-			// One-character terms match far too much to be useful as a reading aid.
-			if (t.length < 2) return false;
-			const key = normalizeTerm(t);
-			if (seen.has(key)) return false;
-			seen.add(key);
-			return true;
-		})
-		.sort((a, b) => b.length - a.length);
-	if (usable.length === 0) return null;
+export function buildTermIndex(entries: TermSource[]): TermIndex | null {
+	const canonical = new Map<string, string>();
+	const surfaces: string[] = [];
+
+	const register = (form: string, term: string) => {
+		const clean = form.trim();
+		// One-character forms match far too much to be useful as a reading aid.
+		if (clean.length < 2) return;
+		const key = normalizeTerm(clean);
+		if (canonical.has(key)) return;
+		canonical.set(key, term);
+		surfaces.push(clean);
+	};
+
+	for (const entry of entries) register(entry.term, entry.term.trim());
+	for (const entry of entries) {
+		const term = entry.term.trim();
+		if (!term) continue;
+		for (const alias of entry.aliases ?? []) register(alias, term);
+	}
+
+	if (surfaces.length === 0) return null;
+	surfaces.sort((a, b) => b.length - a.length);
 
 	const L = "\\p{L}\\p{N}_";
-	const body = usable.map(escapeRegExp).join("|");
-	return new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu");
+	const body = surfaces.map(escapeRegExp).join("|");
+	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical };
+}
+
+/** Resolve a matched surface form back to the term that owns it. */
+export function canonicalTerm(index: TermIndex, surface: string): string {
+	return index.canonical.get(normalizeTerm(surface)) ?? surface;
 }

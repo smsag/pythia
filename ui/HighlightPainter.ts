@@ -11,6 +11,8 @@
 // ranges — cannot be used. Instead we split the range per text node and wrap each
 // fragment in its own <mark>, all tagged with the same data-fav-id.
 
+import { canonicalTerm, type TermIndex } from "../services/glossary";
+
 const HIGHLIGHT_CLASS = "p-highlight";
 const FORK_ORIGIN_CLASS = "p-fork-origin";
 const MERGE_LINK_CLASS = "p-merge-link";
@@ -241,9 +243,11 @@ const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
 /**
  * Mark every occurrence of every known term in `body`.
  *
- * `matcher` is one alternation over all terms (see `buildTermMatcher`), so this
- * is a single pass over the text nodes rather than one pass per term — the
- * difference between linear and quadratic as a glossary grows.
+ * `index` carries one alternation over every surface form of every term (see
+ * `buildTermIndex`), so this is a single pass over the text nodes rather than
+ * one pass per term — the difference between linear and quadratic as a glossary
+ * grows. The mark records the *canonical* term, not the form that matched, so
+ * tapping "Zählern" opens the entry filed under "Zähler".
  *
  * Text inside code, links and citation chips is skipped: a term inside an
  * identifier is not the term, and marking inside a link would nest two
@@ -254,9 +258,10 @@ const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
  * Nodes are collected before mutating, because wrapping a node invalidates a
  * live TreeWalker mid-iteration.
  */
-export function repaintTerms(body: HTMLElement, matcher: RegExp | null): void {
+export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}`));
-	if (!matcher) return;
+	if (!index) return;
+	const matcher = index.matcher;
 
 	const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
 	const targets: Text[] = [];
@@ -284,7 +289,7 @@ export function repaintTerms(body: HTMLElement, matcher: RegExp | null): void {
 			if (match.index > cursor) frag.appendChild(document.createTextNode(data.slice(cursor, match.index)));
 			const mark = document.createElement(TERM_TAG);
 			mark.className = TERM_CLASS;
-			mark.setAttribute("data-term", match[0]);
+			mark.setAttribute("data-term", canonicalTerm(index, match[0]));
 			mark.textContent = match[0];
 			frag.appendChild(mark);
 			cursor = match.index + match[0].length;

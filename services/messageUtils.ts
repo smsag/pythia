@@ -3,7 +3,7 @@
  * Extracted from AnthropicService.ts and OpenAIProvider.ts (#6, #14).
  */
 
-import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
+import { TITLE_MARKER, SUMMARY_MARKER, DEFINITION_MARKER, VARIANTS_MARKER } from "./promptConstants";
 import type { PythiaSettings } from "../models/settings";
 import type { Conversation } from "../models/types";
 import { redactSecrets } from "./redact";
@@ -47,6 +47,65 @@ export function parseTitleAndSummary(raw: string): { title: string; summary: str
 			.replace(new RegExp(`^${SUMMARY_MARKER}:[ \\t]*`, "im"), "")
 			.trim();
 	return { title, summary };
+}
+
+// ── Glossary lookup parsing ───────────────────────────────────────────────────
+
+/** Upper bound on stored variants. A term has a handful of real surface forms;
+ *  a longer list means the model started inventing related words, and each one
+ *  is a phrase that gets marked in every conversation. */
+const MAX_VARIANTS = 8;
+
+/**
+ * Parses the structured DEFINITION / VARIANTS response produced by
+ * `defineTerm` (ADR-136):
+ *   DEFINITION:
+ *   <two or three sentences>
+ *   VARIANTS: Zählers | Zählern | counter
+ *
+ * Variants are separated by `|` because a surface form may contain spaces
+ * ("sparse coding"). Commas are accepted as a fallback separator for the case
+ * where the model ignores the format — but only when no `|` is present, so a
+ * correctly formatted reply is never re-split.
+ *
+ * The definition falls back to the whole reply with the marker lines stripped:
+ * a lookup that returns prose without markers is still a usable definition, and
+ * losing it to a strict parser would be worse than losing the variants.
+ */
+export function parseDefinitionAndVariants(raw: string): { definition: string; variants: string[] } {
+	const variantsMatch = raw.match(new RegExp(`^${VARIANTS_MARKER}:[ \\t]*(.*)$`, "im"));
+	// Split at the variants line rather than matching up to it: with the `m` flag a
+	// trailing `$` anchors to the first line break, which would truncate a
+	// multi-paragraph definition to its opening sentence.
+	const head = variantsMatch?.index ? raw.slice(0, variantsMatch.index) : raw;
+	const defMatch = head.match(new RegExp(`^${DEFINITION_MARKER}:\\s*([\\s\\S]*)`, "im"));
+
+	const definition = (defMatch ? defMatch[1] : head
+		.replace(new RegExp(`^${DEFINITION_MARKER}:[ \\t]*`, "im"), "")
+		.replace(new RegExp(`^${VARIANTS_MARKER}:.*$`, "im"), "")
+	).trim();
+
+	const rawList = variantsMatch ? variantsMatch[1].trim() : "";
+	const pieces = rawList.includes("|") ? rawList.split("|") : rawList.split(",");
+	const seen = new Set<string>();
+	const variants: string[] = [];
+	for (const piece of pieces) {
+		// Strip the decoration models add around list items: bullets, quotes,
+		// a trailing period, and the "(plural)" style annotations.
+		const cleaned = piece
+			.replace(/\([^)]*\)/g, " ")
+			.replace(/^[\s\-\u2013\u2014*\u2022\u201c\u201d\u2018\u2019"']+/, "")
+			.replace(/[\s.;:\u201c\u201d\u2018\u2019"']+$/, "")
+			.trim();
+		if (cleaned.length < 2 || cleaned.length > 60) continue;
+		if (/^(none|keine|n\/a|-)$/i.test(cleaned)) continue;
+		const key = cleaned.toLocaleLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		variants.push(cleaned);
+		if (variants.length >= MAX_VARIANTS) break;
+	}
+	return { definition, variants };
 }
 
 // ── Message normalisation ─────────────────────────────────────────────────────

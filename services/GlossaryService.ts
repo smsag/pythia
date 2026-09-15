@@ -5,9 +5,11 @@ import {
 	parseGlossary,
 	upsertGlossaryEntry,
 	normalizeTerm,
-	buildTermMatcher,
+	buildTermIndex,
 	type GlossaryEntry,
+	type TermIndex,
 } from "./glossary";
+import { parseDefinitionAndVariants } from "./messageUtils";
 
 /**
  * Owns the glossary note: reads it, looks terms up, writes new ones back
@@ -30,8 +32,8 @@ import {
  */
 export class GlossaryService {
 	private entries: GlossaryEntry[] | null = null;
-	private matcher: RegExp | null = null;
-	private matcherBuiltFor = -1;
+	private index: TermIndex | null = null;
+	private indexBuiltFor = -1;
 	/** In-flight lookups, so tapping the same term twice does not call twice. */
 	private pending = new Map<string, Promise<GlossaryEntry | null>>();
 
@@ -44,8 +46,8 @@ export class GlossaryService {
 	/** Drop the cache. Called on our own writes and on external edits to the note. */
 	invalidate(): void {
 		this.entries = null;
-		this.matcher = null;
-		this.matcherBuiltFor = -1;
+		this.index = null;
+		this.indexBuiltFor = -1;
 	}
 
 	/** True when `filePath` is the glossary note, so the caller can invalidate. */
@@ -71,24 +73,33 @@ export class GlossaryService {
 	}
 
 	/**
-	 * A matcher for every known term, or null when the glossary is empty.
+	 * The surface-form index for every known term, or null when the glossary is
+	 * empty.
 	 *
 	 * Cached against the entry count so the painter can call this per message
 	 * without rebuilding the alternation each time. The count is a sufficient key
-	 * because every write path invalidates the cache outright.
+	 * because every write path — ours and the vault's — invalidates the cache
+	 * outright, so an entry that gains an alias without changing the count still
+	 * rebuilds.
 	 */
-	matcherFor(entries: GlossaryEntry[]): RegExp | null {
-		if (this.matcherBuiltFor !== entries.length) {
-			this.matcher = buildTermMatcher(entries.map((e) => e.term));
-			this.matcherBuiltFor = entries.length;
+	indexFor(entries: GlossaryEntry[]): TermIndex | null {
+		if (this.indexBuiltFor !== entries.length) {
+			this.index = buildTermIndex(entries);
+			this.indexBuiltFor = entries.length;
 		}
-		return this.matcher;
+		return this.index;
 	}
 
-	/** The entry for `term`, or undefined. Case-insensitive. */
+	/**
+	 * The entry for `term`, or undefined. Case-insensitive, and matches aliases as
+	 * well as the canonical term: the user may select "Zählern" in the text, and
+	 * looking that up again would otherwise re-ask the model for a term the
+	 * glossary already knows.
+	 */
 	find(entries: GlossaryEntry[], term: string): GlossaryEntry | undefined {
 		const key = normalizeTerm(term);
-		return entries.find((e) => normalizeTerm(e.term) === key);
+		return entries.find((e) => normalizeTerm(e.term) === key)
+			?? entries.find((e) => (e.aliases ?? []).some((a) => normalizeTerm(a) === key));
 	}
 
 	/**
@@ -122,13 +133,15 @@ export class GlossaryService {
 	private async defineAndStore(term: string, passage: string): Promise<GlossaryEntry | null> {
 		const notice = new Notice(t("glossaryLookingUp", { term }), 0);
 		try {
-			const definition = (await this.plugin.llmRouter.defineTerm(term, passage)).trim();
+			const raw = await this.plugin.llmRouter.defineTerm(term, passage);
+			const { definition, variants } = parseDefinitionAndVariants(raw);
 			if (!definition) return null;
 			const entry: GlossaryEntry = {
 				term,
 				definition,
 				source: "model",
 				updatedAt: new Date().toISOString(),
+				aliases: dedupeAliases(term, variants),
 			};
 			await this.save(entry);
 			return entry;
@@ -159,8 +172,9 @@ export class GlossaryService {
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.path);
 		if (!(file instanceof TFile)) return;
 		const key = normalizeTerm(term);
-		const kept = parseGlossary(await this.plugin.app.vault.read(file))
-			.filter((e) => normalizeTerm(e.term) !== key);
+		const isTarget = (e: GlossaryEntry) =>
+			normalizeTerm(e.term) === key || (e.aliases ?? []).some((a) => normalizeTerm(a) === key);
+		const kept = parseGlossary(await this.plugin.app.vault.read(file)).filter((e) => !isTarget(e));
 		// Rebuild from the surviving entries. The preamble is not preserved here,
 		// unlike upsert: removal is rare and explicit, and keeping the two paths
 		// symmetrical would mean a second delete-aware renderer for little gain.
@@ -168,4 +182,24 @@ export class GlossaryService {
 		await this.plugin.noteWriter.writeNote(body, this.path);
 		this.invalidate();
 	}
+}
+
+/**
+ * Keep only the variants worth storing: drop the canonical term itself (it is
+ * already matched) and any repeat, case-insensitively.
+ *
+ * Returns undefined rather than an empty array so an entry with no variants
+ * renders no `aliases=` field at all, leaving the note as it was before this
+ * existed.
+ */
+function dedupeAliases(term: string, variants: string[]): string[] | undefined {
+	const seen = new Set<string>([normalizeTerm(term)]);
+	const kept: string[] = [];
+	for (const variant of variants) {
+		const key = normalizeTerm(variant);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		kept.push(variant.trim());
+	}
+	return kept.length > 0 ? kept : undefined;
 }

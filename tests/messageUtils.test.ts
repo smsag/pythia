@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	parseTitleAndSummary,
+	parseDefinitionAndVariants,
 	normalizeMessages,
 	selectHistoryForSend,
 	trimHistoryToBudget,
@@ -467,5 +468,53 @@ describe("unwrapCodeFence", () => {
 
 	it("is a no-op on text with no fences", () => {
 		expect(unwrapCodeFence("just prose")).toBe("just prose");
+	});
+});
+
+describe("parseDefinitionAndVariants", () => {
+	it("reads the definition and the pipe-separated variants", () => {
+		const { definition, variants } = parseDefinitionAndVariants(
+			"DEFINITION:\nEin Zähler misst den Verbrauch.\nVARIANTS: Zählers | Zählern | counter"
+		);
+		expect(definition).toBe("Ein Zähler misst den Verbrauch.");
+		expect(variants).toEqual(["Zählers", "Zählern", "counter"]);
+	});
+
+	it("keeps a multi-line definition intact and stops it at the variants line", () => {
+		const { definition, variants } = parseDefinitionAndVariants(
+			"DEFINITION:\nFirst line.\n\nSecond line.\nVARIANTS: Neuronen"
+		);
+		expect(definition).toBe("First line.\n\nSecond line.");
+		expect(variants).toEqual(["Neuronen"]);
+	});
+
+	it("falls back to the whole reply when the model ignores the markers", () => {
+		const { definition, variants } = parseDefinitionAndVariants("Just prose, no markers.");
+		expect(definition).toBe("Just prose, no markers.");
+		expect(variants).toEqual([]);
+	});
+
+	it("accepts commas only when no pipe is present, so a spaced form is not split", () => {
+		expect(parseDefinitionAndVariants("DEFINITION:\nX.\nVARIANTS: Neuronen, neuronal").variants)
+			.toEqual(["Neuronen", "neuronal"]);
+		expect(parseDefinitionAndVariants("DEFINITION:\nX.\nVARIANTS: sparse coding | Coding").variants)
+			.toEqual(["sparse coding", "Coding"]);
+	});
+
+	it("strips list decoration, annotations and duplicates", () => {
+		expect(
+			parseDefinitionAndVariants('DEFINITION:\nX.\nVARIANTS: - "Zählers" (genitive) | Zählers | Zählern.').variants
+		).toEqual(["Zählers", "Zählern"]);
+	});
+
+	it("drops an empty or explicitly-none variants line", () => {
+		expect(parseDefinitionAndVariants("DEFINITION:\nX.\nVARIANTS:").variants).toEqual([]);
+		expect(parseDefinitionAndVariants("DEFINITION:\nX.\nVARIANTS: none").variants).toEqual([]);
+		expect(parseDefinitionAndVariants("DEFINITION:\nX.\nVARIANTS: keine").variants).toEqual([]);
+	});
+
+	it("caps the list, so one bad reply cannot mark a dozen phrases everywhere", () => {
+		const many = Array.from({ length: 20 }, (_, i) => `form${i}`).join(" | ");
+		expect(parseDefinitionAndVariants(`DEFINITION:\nX.\nVARIANTS: ${many}`).variants).toHaveLength(8);
 	});
 });

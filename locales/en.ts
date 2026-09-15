@@ -20,6 +20,7 @@ const en = {
 
 	// ── Glossary (ADR-136) ────────────────────────────────────────────────────
 	defineBtn:                 "Define",
+	glossaryAliases:           "Also: {{list}}",
 	glossaryAnchorLabel:       "GLOSSARY",
 	glossaryDefined:           "Added \"{{term}}\" to the glossary",
 	glossaryNoteTitle:         "Glossary",
