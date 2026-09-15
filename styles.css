@@ -1288,9 +1288,21 @@
      is what gives the frame something to scroll. */
   width: max-content;
   max-width: none;
+  /* A hairline grid (ADR-145). A cell in this table often wraps to several lines
+     and sits beside a cell that wrapped to a different number, so without column
+     rules the eye loses which line belongs to which column — the exact failure a
+     sidebar-width table invites. `collapse` so adjacent cells share one 1px rule
+     rather than stacking two. */
+  border-collapse: collapse;
+  border: 1px solid var(--background-modifier-border);
 }
 .pythia-view .p-scroll-frame > table th,
 .pythia-view .p-scroll-frame > table td {
+  border: 1px solid var(--background-modifier-border);
+  /* Breathing room inside the rule, or the border reads as crowding the text.
+     Vertical padding stays tight: rows are already tall when cells wrap. */
+  padding: 3px var(--s2);
+  vertical-align: top;
   min-width: 8ch;
   /* The cap that makes max-content usable. Without it one 200-character cell
      would set the table's width and the row would be a single endless line.
@@ -1302,6 +1314,14 @@
   overflow-wrap: normal;
   word-break: normal;
   hyphens: none;
+}
+/* The header's only distinction is a heavier bottom rule — same token, 2px. No
+   fill: the design system keeps these surfaces flat, and a tinted header row in
+   a transcript reads as a card (hard rule 3/4). */
+.pythia-view .p-scroll-frame > table th {
+  border-bottom-width: 2px;
+  font-weight: 600;
+  text-align: left;
 }
 
 /* Copy button: pinned to the top-right of the frame so it stays fixed

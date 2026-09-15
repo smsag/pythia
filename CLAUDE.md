@@ -328,6 +328,7 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Cell text **wraps between words but is never split inside one**. `min-width: 8ch` is a floor so short columns are not crushed
 - The rules must stay scoped under `.pythia-view` (ADR-065: core and themes load after the plugin and win a tie). What they actually override is Pythia's own `.p-ai-body` inherited into the cells — themes were blamed for the mid-word breaking for three ADRs and were never the cause (ADR-144)
 - No sticky first column. The whole table scrolls as one piece
+- **Hairline grid** (ADR-145): `1px solid var(--background-modifier-border)` on every cell, `border-collapse: collapse`, `padding: 3px var(--s2)`, and a 2px bottom rule on `th`. A full grid, not row rules — ragged multi-line rows make column tracking the problem, and a sideways-scrolling table needs vertical rules. **No header background**: a tinted row reads as a card (hard rules 3/4)
 - Render non-message markdown through `renderRichMarkdown` so it gets this treatment too, never a bare `MarkdownRenderer.render`
 
 ### Glossary terms (ADR-136)
