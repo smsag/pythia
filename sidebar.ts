@@ -33,6 +33,7 @@ import { attachLongPress } from "./ui/longPress";
 import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
+import { renderRichMarkdown } from "./ui/renderMarkdown";
 import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -407,10 +408,7 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getCardsEl: () => this.summaryCardsEl,
 			getMessagesEl: () => this.messagesEl,
-			renderMarkdown: (md, el) => {
-				void MarkdownRenderer.render(this.app, md, el, "", this)
-					.catch((e) => console.error("[Pythia] summary card render:", e));
-			},
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
 			renderHeader: () => this.headerController.renderHeader(),
 		});
 
@@ -437,10 +435,7 @@ export class PythiaSidebarView extends ItemView {
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
-			renderMarkdown: (md, el) => {
-				void MarkdownRenderer.render(this.app, md, el, "", this)
-					.catch((e) => console.error("[Pythia] fork summary render:", e));
-			},
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
 			runFavoritesSummary: (conv) => this.summaryController.runFavoritesSummary(conv),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
@@ -453,10 +448,7 @@ export class PythiaSidebarView extends ItemView {
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
-			renderMarkdown: (md, el) => {
-				void MarkdownRenderer.render(this.app, md, el, "", this)
-					.catch((e) => console.error("[Pythia] merge summary render:", e));
-			},
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});

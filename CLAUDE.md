@@ -41,8 +41,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     MergeController.ts        ← merge-link marks, inline merge anchor, merged-from banner (ADR-130)
     accentContrast.ts         ← readable --p-on-accent for the current theme accent
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
+    dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
+    tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
+    renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 665 tests across 43 files
+  tests/                      ← Vitest unit tests (npm test) — 673 tests across 44 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -281,6 +284,13 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
 - The link reads from **both ends**, like a fork: the conversation a link points at shows a `.pythia-merge-banner` naming every conversation that merged with it. The inbound list is derived on read via `incomingMergeLinks`, never stored as a back-reference
 - Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
+
+### Tables (ADR-131)
+- Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
+- Cell text **wraps between words but is never split inside one**. `min-width: 8ch` is a floor so short columns are not crushed
+- The rules must stay scoped under `.pythia-view`, or Obsidian core and theme `word-break: break-all` on cells wins (ADR-065)
+- No sticky first column. The whole table scrolls as one piece
+- Render non-message markdown through `renderRichMarkdown` so it gets this treatment too, never a bare `MarkdownRenderer.render`
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

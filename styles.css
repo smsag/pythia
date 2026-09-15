@@ -1256,6 +1256,35 @@
 .p-scroll-frame::-webkit-scrollbar-thumb  { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-scroll-frame.p-panning                 { cursor: grabbing; user-select: none; }
 
+/* The frame alone does nothing without these (ADR-131). A table with automatic
+   layout shrinks to its container rather than overflowing it, so it squeezes
+   itself into the sidebar and the frame never has anything to scroll. Two rules
+   change that, and both must out-rank Obsidian core and themes, hence the
+   .pythia-view scope (ADR-065):
+
+   1. max-width: none lets the table grow past the frame. Core sets a width on
+      rendered tables; without this the table can never become the wider element.
+   2. The cell rules stop words being split. Themes apply break-all / anywhere to
+      table cells, which is what turns a heading like "Messbarkeit" into
+      "Messba / rkeit" in a narrow column. Wrapping is still allowed, but only
+      between words, so long prose cells stay compact while labels stay whole.
+
+   min-width is the floor that keeps a short column ("gut", "mittel") from being
+   crushed to one character per line by a wide neighbour. It is in ch so it
+   tracks the cell's own font rather than assuming a pixel size, and it is a
+   floor only — a column whose longest word is wider still gets that width. */
+.pythia-view .p-scroll-frame > table {
+  max-width: none;
+}
+.pythia-view .p-scroll-frame > table th,
+.pythia-view .p-scroll-frame > table td {
+  min-width: 8ch;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
 /* Copy button: pinned to the top-right of the frame so it stays fixed
    while the pre scrolls horizontally underneath. */
 .p-code-actions {
