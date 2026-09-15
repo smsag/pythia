@@ -22,6 +22,7 @@ vi.mock("obsidian", () => ({
 
 vi.mock("../i18n", () => ({
 	t: (key: string) => key,
+	getObsidianLocale: () => "en",
 }));
 
 const { chatCompleteMock, chatStreamMock } = vi.hoisted(() => ({

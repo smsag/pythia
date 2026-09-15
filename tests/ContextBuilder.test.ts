@@ -118,6 +118,26 @@ describe("buildSystemPrompt", () => {
 		expect(buildSystemPrompt(baseConv(), "   \n  ")).not.toContain("custom_instructions");
 	});
 
+	it("adds no language directive for 'auto' — the absence of one IS the setting (ADR-148)", () => {
+		expect(buildSystemPrompt(baseConv(), "", { languageLabel: "" })).not.toContain("Always write your replies");
+		expect(buildSystemPrompt(baseConv())).not.toContain("Always write your replies");
+	});
+
+	it("adds a language directive naming the resolved language (ADR-148)", () => {
+		const result = buildSystemPrompt(baseConv(), "", { languageLabel: "Italian" });
+		expect(result).toContain("Always write your replies in Italian");
+	});
+
+	it("puts the language directive after the custom instructions, above the context blocks", () => {
+		const result = buildSystemPrompt(
+			baseConv({ summaryText: "We discussed X." }),
+			"Be terse.",
+			{ languageLabel: "Spanish" }
+		);
+		expect(result.indexOf("Be terse.")).toBeLessThan(result.indexOf("Always write your replies in Spanish"));
+		expect(result.indexOf("Always write your replies in Spanish")).toBeLessThan(result.indexOf("We discussed X."));
+	});
+
 	it("wraps the summary in a previous_conversation_summary tag", () => {
 		const result = buildSystemPrompt(baseConv({ summaryText: "We discussed X." }));
 		expect(result).toContain("<previous_conversation_summary>\nWe discussed X.\n</previous_conversation_summary>");

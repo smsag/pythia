@@ -289,7 +289,8 @@ export class PythiaSidebarView extends ItemView {
 					try {
 						const name = await this.plugin.llmRouter.generateChapterName(
 							msg.content,
-							conversation.provider
+							conversation.provider,
+							conversation
 						);
 						if (name) msg.chapterName = name;
 					} catch (e) {
@@ -434,6 +435,7 @@ export class PythiaSidebarView extends ItemView {
 
 		this.glossaryController = new GlossaryController({
 			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
 			getMessagesEl: () => this.messagesEl,
 			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
 		});
@@ -1638,7 +1640,7 @@ export class PythiaSidebarView extends ItemView {
 				if (shouldGenerateTitle(conv)) {
 					const convId = conv.id;
 					this.plugin.llmRouter
-						.generateConversationTitle(userMsg.content, fullText, conv.provider)
+						.generateConversationTitle(userMsg.content, fullText, conv.provider, conv)
 						.then(async (title) => {
 							const c = this.plugin.conversationStore.getById(convId);
 							if (!c) return;
@@ -1655,7 +1657,7 @@ export class PythiaSidebarView extends ItemView {
 					const convId = conv.id;
 					const msgId  = userMsg.id;
 					this.plugin.llmRouter
-						.generateChapterName(userMsg.content, conv.provider)
+						.generateChapterName(userMsg.content, conv.provider, conv)
 						.then(async (name) => {
 							if (!name) return;
 							const c = this.plugin.conversationStore.getById(convId);

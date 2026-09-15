@@ -17,12 +17,16 @@ export interface LLMProvider {
 	generateSummary(conversation: Conversation): Promise<string>;
 	generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }>;
 	generateFavoritesSummary(conversation: Conversation): Promise<string>;
-	generateChapterName(content: string): Promise<string>;
+	generateChapterName(content: string, conversation?: Conversation): Promise<string>;
 	/** Define `term` as used in `passage` (ADR-136). */
-	defineTerm(term: string, passage: string): Promise<string>;
+	defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string>;
 	/** The model `defineTerm` and the other utility calls run on. */
 	readonly fastModel: string;
-	generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string>;
-	summarizeNotes(content: string): Promise<string>;
+	generateConversationTitle(
+		userMessage: string,
+		assistantMessage: string,
+		conversation?: Conversation
+	): Promise<string>;
+	summarizeNotes(content: string, conversation?: Conversation): Promise<string>;
 	optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string>;
 }

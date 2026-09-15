@@ -21,7 +21,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
-    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers, formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
+    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename: display name for a vault path (last segment, .md stripped)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
@@ -48,10 +48,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
+    languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 766 tests across 51 files
+  tests/                      ← Vitest unit tests (npm test) — 781 tests across 52 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -341,6 +342,14 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
+
+### Output language (ADR-148)
+- **One setting, both halves.** `outputLanguage` instructs the chat answer *and* every utility prompt. Adding a new prompt anywhere means routing it through `BaseProvider.languageLabel(conversation?)` — a prompt that skips it is the bug ADR-148 fixed, reintroduced
+- Six values: `obsidian` · `auto` · `de` · `en` · `it` · `es`, listed once in `OUTPUT_LANGUAGES` (`models/types.ts`) and labelled once in `ui/languageOptions.ts`. **Never hand-write the option list a second time** — the global setting and the per-conversation override must name the same languages in the same order
+- **`auto` adds no instruction at all.** Do not "improve" it into a sentence like "respond in the conversation's language": a model with no language instruction already does that, and one holding a sentence about languages has something to reason about
+- `obsidian` follows Obsidian's UI locale into any of its ~30 languages, not just the four offered — `LANG_LABELS` is deliberately wider than the dropdown. An unknown locale falls back to English, never to `auto`
+- Resolution is conversation override → global setting; `Conversation.outputLanguage === undefined` means *inherit*, and the modal's `Standard` option must keep writing `undefined` rather than copying the global value in
+- The **prompt optimizer is exempt** — it rewrites the user's own prompt, and translating that would destroy what it was asked to improve
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

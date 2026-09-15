@@ -10,6 +10,7 @@ import {
 	type TermIndex,
 } from "./glossary";
 import { parseDefinitionAndVariants } from "./messageUtils";
+import type { Conversation } from "../models/types";
 
 /**
  * Owns the glossary note: reads it, looks terms up, writes new ones back
@@ -109,7 +110,14 @@ export class GlossaryService {
 	 * `force` re-asks the model for a term that is already known, for the
 	 * anchor's regenerate control.
 	 */
-	async lookup(term: string, passage: string, force = false): Promise<GlossaryEntry | null> {
+	async lookup(
+		term: string,
+		passage: string,
+		force = false,
+		/** Conversation the term was selected in — carries the language override
+		 *  the definition is written in (ADR-148). */
+		conversation?: Conversation
+	): Promise<GlossaryEntry | null> {
 		const clean = term.trim();
 		if (!clean) return null;
 		const key = normalizeTerm(clean);
@@ -121,7 +129,7 @@ export class GlossaryService {
 			if (inFlight) return inFlight;
 		}
 
-		const run = this.defineAndStore(clean, passage);
+		const run = this.defineAndStore(clean, passage, conversation);
 		this.pending.set(key, run);
 		try {
 			return await run;
@@ -130,10 +138,18 @@ export class GlossaryService {
 		}
 	}
 
-	private async defineAndStore(term: string, passage: string): Promise<GlossaryEntry | null> {
+	private async defineAndStore(
+		term: string,
+		passage: string,
+		conversation?: Conversation
+	): Promise<GlossaryEntry | null> {
 		const notice = new Notice(t("glossaryLookingUp", { term }), 0);
 		try {
-			const raw = await this.plugin.llmRouter.defineTerm(term, passage);
+			// Provider stays unset on purpose: a lookup runs on the default
+			// provider's fast model regardless of which conversation it was
+			// triggered from (the stored entry records that model). The
+			// conversation is passed for its language override only (ADR-148).
+			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation);
 			const { definition, variants } = parseDefinitionAndVariants(raw);
 			if (!definition) return null;
 			const entry: GlossaryEntry = {

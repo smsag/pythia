@@ -1,5 +1,6 @@
 import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
+import type { Conversation } from "../models/types";
 import type { GlossaryEntry } from "../services/glossary";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
@@ -8,6 +9,10 @@ import { repaintTerms } from "./HighlightPainter";
 
 export interface GlossaryDeps {
 	plugin: PythiaPlugin;
+	/** The conversation the lookup was triggered from — supplies its language
+	 *  override, so a definition is written in the language that conversation
+	 *  answers in (ADR-148). */
+	getConversation(): Conversation | null;
 	getMessagesEl(): HTMLElement;
 	/** Render markdown into `el` using the view as the owning Component. */
 	renderMarkdown(md: string, el: HTMLElement): void;
@@ -58,7 +63,7 @@ export class GlossaryController {
 	 * explain the sense that applies here rather than every possible meaning.
 	 */
 	async defineSelection(term: string, passage: string): Promise<void> {
-		const entry = await this.d.plugin.glossaryService.lookup(term, passage);
+		const entry = await this.d.plugin.glossaryService.lookup(term, passage, false, this.d.getConversation() ?? undefined);
 		if (!entry) return;
 		// Every message can contain the new term, so the whole transcript is
 		// repainted rather than just the message the selection came from.
@@ -170,7 +175,7 @@ export class GlossaryController {
 
 	private async regenerate(anchor: HTMLElement, term: string, markEl: HTMLElement): Promise<void> {
 		const passage = markEl.closest("[data-msg-id]")?.textContent ?? "";
-		const entry = await this.d.plugin.glossaryService.lookup(term, passage, true);
+		const entry = await this.d.plugin.glossaryService.lookup(term, passage, true, this.d.getConversation() ?? undefined);
 		if (entry && this.openAnchor === anchor) this.build(anchor, entry, markEl);
 	}
 

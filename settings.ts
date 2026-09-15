@@ -1,9 +1,10 @@
 import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidian";
 import type PythiaPlugin from "./main";
-import type { Provider, EffortLevel } from "./models/types";
+import type { Provider, EffortLevel, OutputLanguage } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { renderEmbeddingSettings } from "./ui/embeddingSettings";
+import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import {
 	KNOWN_MODELS,
@@ -382,17 +383,15 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("outputLanguageName"))
 			.setDesc(t("outputLanguageDesc"))
-			.addDropdown((drop) =>
+			.addDropdown((drop) => {
+				for (const [value, label] of languageOptions()) drop.addOption(value, label);
 				drop
-					.addOption("auto", t("outputLanguageAuto"))
-					.addOption("en", t("outputLanguageEnglish"))
-					.addOption("de", t("outputLanguageGerman"))
 					.setValue(this.plugin.settings.outputLanguage)
 					.onChange(async (value) => {
-						this.plugin.settings.outputLanguage = value as "auto" | "en" | "de";
+						this.plugin.settings.outputLanguage = value as OutputLanguage;
 						await this.plugin.saveSettings();
-					})
-			);
+					});
+			});
 
 		renderEmbeddingSettings(containerEl, this.plugin);
 
