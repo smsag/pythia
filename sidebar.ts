@@ -34,6 +34,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
+import { currentKeyboardOverlap } from "./ui/keyboardInset";
 import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -1170,20 +1171,19 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	// The layout viewport doesn't shrink when the soft keyboard appears, but
-	// visualViewport does. Shrink the container to keep the input area visible.
+	// visualViewport does. Lift the panel's content above the keyboard while it is
+	// open, and leave the panel alone when it is not (ADR-132).
 	private adjustForKeyboard(): void {
-		const vv = window.visualViewport;
-		if (!vv) return;
 		const container = this.containerEl.children[1] as HTMLElement;
-		// Reset before measuring so repeated calls are idempotent.
-		container.style.paddingBottom = '';
-		container.style.height = '';
-		const rect = container.getBoundingClientRect();
-		const visibleBottom = vv.offsetTop + vv.height;
-		const overflow = Math.round(rect.bottom - visibleBottom);
-		if (overflow > 0) {
-			container.style.height = `${container.offsetHeight - overflow}px`;
-		}
+		// Reset before measuring so repeated calls are idempotent; this also heals
+		// a panel left shrunken by an older build.
+		container.style.paddingBottom = "";
+		container.style.height = "";
+		// Padding, not height: the panel keeps filling its leaf, so content lifts
+		// without uncovering a strip beneath it, and `overflow: hidden` cannot clip
+		// the input area's own safe-area padding.
+		const overlap = currentKeyboardOverlap(container);
+		if (overlap > 0) container.style.paddingBottom = `${overlap}px`;
 	}
 
 	/** Repaint one message's merge marks after a link was added or removed (ADR-130). */

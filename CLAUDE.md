@@ -44,8 +44,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
+    keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 673 tests across 44 files
+  tests/                      ← Vitest unit tests (npm test) — 681 tests across 45 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -221,6 +222,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
 7. **iOS safe area on input.** Always: `padding-bottom: max(var(--s2), env(safe-area-inset-bottom, var(--s2)))`.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
+8b. **Never set an explicit `height` on `containerEl.children[1]`.** It is `overflow: hidden`, so a height below the content silently crops the input area (including its mandated safe-area padding) and uncovers the background behind the panel. Move content with padding instead (ADR-132).
 9. **No inline modal logic in `sidebar.ts`.** All modals go in `suggest/`.
 10. **No raw `addEventListener`.** Always use `registerDomEvent` / `registerEvent`.
 
