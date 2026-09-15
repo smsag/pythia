@@ -109,11 +109,6 @@ export class GlossaryController {
 		// and is read for the one term actually being opened (ADR-150).
 		const entry = await service.hydrate(found);
 
-		// Insert after the mark's own paragraph rather than inline beside it: a term
-		// sits mid-sentence, and splicing a block into a sentence reflows the text
-		// around it. Fork and merge anchors can attach directly because their marks
-		// are deliberate, often sentence-length selections.
-		const block = markEl.closest("p, li, td, th, div") ?? markEl;
 		const isPerson = entry.kind === "person";
 		const anchor = createDiv({
 			// One class, one set of rules: a person anchor IS a term anchor, with a
@@ -122,7 +117,21 @@ export class GlossaryController {
 			cls: isPerson ? "p-term-anchor p-term-anchor--person" : "p-term-anchor",
 			attr: { "data-term": term },
 		});
-		block.after(anchor);
+		// Immediately after the tapped mark, exactly like the fork and merge anchors
+		// (ADR-156).
+		//
+		// This used to insert after the mark's whole *paragraph*, reasoning that a
+		// term sits mid-sentence and a block spliced into one reflows the text
+		// around it. The reflow is real and it is the price: the paragraph breaks at
+		// the word. But fork and merge pay it too, and what the paragraph version
+		// cost was worse — in a long paragraph the definition arrived far below the
+		// word that opened it, so the reader had to find the connection the anchor
+		// exists to make. Proximity is the whole point of an inline anchor; a card
+		// at the end of a paragraph is a footnote, and this surface already has one
+		// of those. A term also repeats, which makes distance worse rather than
+		// better: several marked words in one paragraph would all open their card in
+		// the same place.
+		markEl.after(anchor);
 		this.openAnchor = anchor;
 		this.build(anchor, entry, markEl);
 	}

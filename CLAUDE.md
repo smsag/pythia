@@ -55,7 +55,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 853 tests across 54 files
+  tests/                      ← Vitest unit tests (npm test) — 858 tests across 55 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -355,6 +355,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
+- The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
 
