@@ -150,7 +150,14 @@ export class GlossaryController {
 		});
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
 
-		const open = meta.createEl("button", { cls: "p-term-anchor-open", text: t("glossaryOpenNote") });
+		// Same short label and arrow as the fork and merge anchors — "Im Glossar
+		// öffnen" is long enough to wrap the meta row onto a second line. The
+		// specific wording survives as the tooltip.
+		const open = meta.createEl("button", {
+			cls: "p-term-anchor-open",
+			text: t("forkOpenShort"),
+			attr: { "aria-label": t("glossaryOpenNote"), title: t("glossaryOpenNote") },
+		});
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.d.plugin.app.workspace.openLinkText(this.d.plugin.settings.glossaryNote, "", true);
