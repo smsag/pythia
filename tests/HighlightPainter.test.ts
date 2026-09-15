@@ -9,9 +9,11 @@ import {
 	removeHighlightById,
 	rangeForHighlight,
 	repaintForkOrigins,
+	repaintTerms,
 	rangeForForkOrigin,
 	repaintMergeLinks,
 } from "../ui/HighlightPainter";
+import { buildTermIndex } from "../services/glossary";
 
 function makeBody(html: string): HTMLElement {
 	const el = document.createElement("div");
@@ -337,5 +339,68 @@ describe("HighlightPainter", () => {
 			const body = makeBody("<p>alpha</p>");
 			expect(rangeForForkOrigin(body, "nope")).toBeNull();
 		});
+	});
+});
+
+// ── Terms nest inside deliberate marks (ADR-157) ──────────────────────────────
+
+describe("repaintTerms inside favorites, forks and merge links", () => {
+	const index = () => buildTermIndex([{ term: "Zähler", aliases: ["Zählern"] }]);
+	const body = (html: string): HTMLElement => {
+		document.body.innerHTML = `<div id="body">${html}</div>`;
+		return document.querySelector<HTMLElement>("#body")!;
+	};
+	const termMarks = (el: HTMLElement) => Array.from(el.querySelectorAll(".p-term"));
+
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	it("marks a term inside a favorite — favoriting a passage no longer un-marks its terms", () => {
+		const el = body(`<p><pythia-favorite class="p-highlight" data-fav-id="v1">Der Zähler läuft.</pythia-favorite></p>`);
+		repaintTerms(el, index());
+		expect(termMarks(el)).toHaveLength(1);
+		expect(termMarks(el)[0].closest(".p-highlight")).not.toBeNull();
+	});
+
+	it("marks a term inside a fork origin", () => {
+		const el = body(`<p><pythia-fork class="p-fork-origin" data-fork-id="f1">Der Zähler läuft.</pythia-fork></p>`);
+		repaintTerms(el, index());
+		expect(termMarks(el)).toHaveLength(1);
+		expect(termMarks(el)[0].closest(".p-fork-origin")).not.toBeNull();
+	});
+
+	it("marks a term inside a merge link", () => {
+		const el = body(`<p><pythia-merge class="p-merge-link" data-merge-id="m1">Der Zähler läuft.</pythia-merge></p>`);
+		repaintTerms(el, index());
+		expect(termMarks(el)[0].closest(".p-merge-link")).not.toBeNull();
+	});
+
+	it("marks the same term inside and outside a highlight in one pass", () => {
+		const el = body(`<p>Ein Zähler. <pythia-favorite class="p-highlight" data-fav-id="v1">Noch ein Zähler.</pythia-favorite></p>`);
+		repaintTerms(el, index());
+		expect(termMarks(el)).toHaveLength(2);
+	});
+
+	it("still refuses to nest a term inside another term", () => {
+		const el = body(`<p>Der Zähler läuft.</p>`);
+		repaintTerms(el, index());
+		repaintTerms(el, index()); // second pass must not double-wrap
+		expect(termMarks(el)).toHaveLength(1);
+		expect(termMarks(el)[0].querySelector(".p-term")).toBeNull();
+	});
+
+	it("re-matches a term whose text was split by unwrapping a previous mark", () => {
+		// Unwrapping leaves adjacent text nodes; a term is matched within ONE node,
+		// so without normalize() a term straddling the seam would stop matching.
+		const el = body(`<p>Der <pythia-term class="p-term" data-term="x">Zäh</pythia-term>ler läuft.</p>`);
+		repaintTerms(el, index());
+		expect(termMarks(el)).toHaveLength(1);
+		expect(termMarks(el)[0].textContent).toBe("Zähler");
+	});
+
+	it("leaves the favorite intact when the terms are repainted", () => {
+		const el = body(`<p><pythia-favorite class="p-highlight" data-fav-id="v1">Der Zähler läuft.</pythia-favorite></p>`);
+		repaintTerms(el, index());
+		repaintTerms(el, null); // glossary emptied
+		expect(el.querySelector(".p-highlight")?.textContent).toBe("Der Zähler läuft.");
 	});
 });

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-156 (the glossary anchor goes where the fork anchor goes). Fork and merge call `lastMark.after(anchor)`; the glossary called `block.after(anchor)`, so the definition appeared at the end of the term's paragraph instead of beside the term. The original reasoning — a block spliced into a sentence reflows the text — is true and does not survive: fork and merge pay the same price, so the paragraph version bought "reflow somewhere else", and somewhere else is worse, because **in a long paragraph the card lands far from the word that opened it**. A term also repeats, so several marked words would all open their card in the same place. ADR-138 already said the cards are one component differing only in the left rule's stroke; **where a card appears is part of being that component**. +5 tests (858) in a new suite — the anchor had no coverage at all, which is how the divergence hid behind an ADR claiming they were identical.
+*Last updated: 2026-09-15 — ADR-157 (marks nest; the innermost one owns the tap). Only one direction was blocked: `findRange`/`paintRange` already ignore element boundaries, but `repaintTerms` skipped text inside `.p-highlight`/`.p-fork-origin`/`.p-merge-link`, so **favoriting a passage silently un-marked every term in it**. The exclusion's stated reason — overlapping wrappers to untangle — was wrong: terms paint last, so they *nest* inside, and each unwrapper targets its own class. Terms may now nest (only term-in-term is still refused), `normalize()` rejoins text split by an unwrap so a term straddling the seam still matches, and **the innermost mark owns the tap**, replacing a fixed type order that had never actually fired and left a visible term mark doing nothing inside a fork. Also fixes an ADR-151 bug: the tap lookup asked for `.p-term` only, so person marks were painted and dead. Resolution extracted to `ui/markTap.ts`. +19 tests (875).
+
+*Previously, 2026-09-15 — ADR-156 (the glossary anchor goes where the fork anchor goes). Fork and merge call `lastMark.after(anchor)`; the glossary called `block.after(anchor)`, so the definition appeared at the end of the term's paragraph instead of beside the term. The original reasoning — a block spliced into a sentence reflows the text — is true and does not survive: fork and merge pay the same price, so the paragraph version bought "reflow somewhere else", and somewhere else is worse, because **in a long paragraph the card lands far from the word that opened it**. A term also repeats, so several marked words would all open their card in the same place. ADR-138 already said the cards are one component differing only in the left rule's stroke; **where a card appears is part of being that component**. +5 tests (858) in a new suite — the anchor had no coverage at all, which is how the divergence hid behind an ADR claiming they were identical.*
 
 *Previously, 2026-09-15 — ADR-155 (a segmented control's fill is state, not decoration). Selecting an effort level left the segment grey until the sheet was scrolled. **A cascade error cannot be fixed by scrolling** — scrolling forces a composite, so the class was already right and the pixel was not. Two mechanisms: the fill was `transition`ed, and on iOS WebKit a background-color transition started from a class toggle in a touch handler may not paint until the next composite (aggravated by the group's `overflow: hidden` + `border-radius` clip); and `:hover` was unconditional, so iOS's sticky hover left `--background-modifier-hover` on the segment just tapped — a second grey reading as "selected". The transition is gone (a selection must be true at the moment of the tap) and `:hover` is now behind `@media (hover: hover)`, the line this codebase already draws twice. Reasoned, not reproduced: no iOS here.*
 
@@ -2556,3 +2558,35 @@ A term also **repeats**, which the original reasoning treated as irrelevant and 
 **Cost, stated:** the paragraph is now split at the term while the card is open. That is the same thing fork does, it reverses on close, and it is what puts the definition beside the word.
 
 **Consequence:** +5 tests (858 across 55 files), in a new `tests/glossaryAnchor.test.ts` — the anchor had no coverage at all before this, which is why a placement divergence could sit behind an ADR that claimed the cards were identical. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-157 — Marks nest; the innermost one owns the tap
+
+**Status:** Active — reverses ADR-136's mark exclusion and replaces ADR-136/138's fixed tap order. Fixes a person-mark bug from ADR-151
+
+**Context:** Asked for directly: a glossary term should still be markable inside a highlighted selection, and a selection should still be highlightable over a marked term.
+
+Only one direction was actually blocked. `findRange`/`paintRange` walk text nodes and split per node, so a favorite painted across a term already works — element boundaries are irrelevant to them. But `repaintTerms` skipped any text node inside `.p-highlight`, `.p-fork-origin` or `.p-merge-link`, so **favoriting a passage silently un-marked every term in it** — the passage a reader is most likely to be working through.
+
+The exclusion's stated reason was avoiding "overlapping wrappers that later unwrapping would have to untangle". They do not overlap, they **nest**: terms paint last (favorites → forks → merges → terms), so a term mark lands strictly inside the deliberate mark, and each unwrapper targets its own class and leaves the other alone. There was no tangle to avoid.
+
+**Decision:**
+
+**Terms may nest inside the three deliberate marks.** Only another term or person mark is still excluded — a term must not nest inside a term.
+
+**`normalize()` before collecting text nodes.** Unwrapping a mark leaves its text split into adjacent nodes, and a term is matched *within a single node*, so a term straddling the seam would silently stop matching. This was latent before and becomes reachable once marks and terms share text.
+
+**The innermost mark owns the tap**, replacing the fixed order (fork → merge → term → favorite). Every candidate is an ancestor of the tap target, so they form a chain and "innermost" is total. It is the right rule because **the outer mark stays tappable everywhere else along its span, while the inner one has nowhere else to be tapped** — a fixed type order leaves a visible mark that does nothing, which is worse than either outcome.
+
+Worth recording: the old order between a term and a deliberate mark **had never fired**, because the painter refused to create the situation it arbitrated. It was written defensively, and the first time the case became real it was wrong. Depth also survives either nesting order, which matters because which mark ends up outside depends on which repaint ran last — a favorite created over an existing term wraps from the inside and inverts the usual order.
+
+**A person mark was dead on tap.** The lookup asked for `.p-term` only, so `.p-person` — painted since ADR-151 — did nothing when tapped. Now `.p-term, .p-person`. That is a straightforward bug from ADR-151, found only because this change made me read the chain.
+
+**Extraction.** The resolution moved to `ui/markTap.ts`, pure and unit-tested, which also paid the ADR-097 budget `SelectionController` broke again. That is the second extraction from this file in as many sessions (`entitySelection.ts` was the first); the file is at its ceiling and every further addition will have to buy its way in.
+
+**Alternatives rejected.** *Keeping the type order and accepting dead marks* — a mark that cannot be opened is worse than either choice about which opens. *Resolving by mark type at paint time instead* (e.g. refusing to paint a term inside a fork) — that is the exclusion this ADR removes, with the same cost. *Normalizing the nesting order after every paint* — choreography across three controllers to make depth predictable, when depth is already sufficient.
+
+**Verification:** both halves were checked in the failing direction. Restoring the exclusion fails four of the new painter tests; the tap tests cover nesting in both directions, including the inverted order a favorite painted over a term produces. Two tests in `tests/termPainter.test.ts` asserted the old exclusion and were rewritten — they are now the clearest statement of what changed.
+
+**Consequence:** +19 tests (875 across 56 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian.

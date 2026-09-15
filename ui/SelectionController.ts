@@ -3,6 +3,7 @@ import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 import { readEntitySelection } from "./entitySelection";
+import { resolveMarkTap } from "./markTap";
 import { todayISO, withConversationBacklink } from "../utils";
 import {
 	findRange,
@@ -218,31 +219,12 @@ export class SelectionController {
 		if (sel && sel.rangeCount > 0 && !sel.isCollapsed) { this.tappedFavId = null; return; }
 		const target = e.target instanceof Element ? e.target : null;
 
-		// Fork origin wins over favorites.
-		const forkMark = target?.closest(".p-fork-origin");
-		const forkId = forkMark?.getAttribute("data-fork-id");
-		if (forkId) {
-			this.d.toggleForkAnchor(forkId, forkMark as HTMLElement);
-			return;
-		}
-
-		// Merge links rank below fork origins, above favorites — a passage can carry
-		// both a merge link and a favorite highlight, and the merge is the more
-		// specific, deliberately placed pointer.
-		const mergeMark = target?.closest(".p-merge-link");
-		const mergeId = mergeMark?.getAttribute("data-merge-id");
-		if (mergeId) {
-			this.d.toggleMergeAnchor(mergeId, mergeMark as HTMLElement);
-			return;
-		}
-
-		// Glossary terms rank below the three deliberate marks: a term is matched
-		// automatically and can sit anywhere, so a span the user placed on purpose
-		// always wins the tap.
-		const termMark = target?.closest(".p-term");
-		const term = termMark?.getAttribute("data-term");
-		if (term) {
-			this.d.toggleTermAnchor(term, termMark as HTMLElement);
+		// Innermost mark wins where they nest (ADR-157) — see ui/markTap.ts.
+		const tapped = resolveMarkTap(target);
+		if (tapped) {
+			if (tapped.kind === "fork") this.d.toggleForkAnchor(tapped.id, tapped.el);
+			else if (tapped.kind === "merge") this.d.toggleMergeAnchor(tapped.id, tapped.el);
+			else this.d.toggleTermAnchor(tapped.term, tapped.el);
 			return;
 		}
 

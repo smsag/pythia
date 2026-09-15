@@ -52,10 +52,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
+    markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 858 tests across 55 files
+  tests/                      ← Vitest unit tests (npm test) — 875 tests across 56 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -354,7 +355,9 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **`describePerson` leads with the passage and must decline rather than guess.** A person the model has never met is the normal case in a working vault, and a generated biography reads later as a recorded fact — which is why model-sourced person entries carry `source: model` visibly. Vault-first-then-model is a user decision (ADR-151), not a default to loosen
 - **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
-- Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
+- Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats
+- **Marks nest, and the innermost one owns the tap** (ADR-157). A term may sit inside a favorite, fork origin or merge link — only term-inside-term is refused. Resolution lives in `ui/markTap.ts`: never reintroduce a fixed type order, because the outer mark stays tappable along the rest of its span while the inner one has nowhere else to be tapped. `resolveMarkTap` matches `.p-term, .p-person` — a person mark opens the same anchor
+- `repaintTerms` calls `body.normalize()` after unwrapping: a term is matched **within one text node**, and unwrapping a mark leaves its text split, so a term straddling the seam would silently stop matching
 - The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not

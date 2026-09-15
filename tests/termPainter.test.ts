@@ -41,21 +41,25 @@ describe("repaintTerms", () => {
 		expect(marks(root)).toEqual(["neuron"]);
 	});
 
-	it("does not mark inside an existing favorite or fork highlight", () => {
+	it("marks a term INSIDE a favorite (ADR-157 reverses the old exclusion)", () => {
+		// This used to assert the opposite. The exclusion meant favoriting a passage
+		// silently un-marked every term in it — the passage a reader is most likely
+		// to be working through.
 		const root = render("<p>alpha neuron omega</p>");
 		repaintBody(root, [{ id: "f1", text: "alpha neuron", occurrenceIndex: 0 }]);
 		repaintTerms(root, idx(["neuron"]));
-		// The occurrence inside the favorite is skipped; no overlapping wrappers.
-		expect(marks(root)).toEqual([]);
+		expect(marks(root)).toEqual(["neuron"]);
+		expect(root.querySelector(".p-term")?.closest(".p-highlight")).not.toBeNull();
 		expect(root.textContent).toBe("alpha neuron omega");
 	});
 
-	it("leaves fork origins intact and marks only outside them", () => {
+	it("marks terms both inside and outside a fork origin, leaving the fork intact", () => {
 		const root = render("<p>neuron here and neuron there</p>");
 		repaintForkOrigins(root, [{ id: "k1", text: "neuron here", occurrenceIndex: 0 }]);
 		repaintTerms(root, idx(["neuron"]));
 		expect(root.querySelector(".p-fork-origin")).not.toBeNull();
-		expect(marks(root)).toEqual(["neuron"]);
+		expect(marks(root)).toEqual(["neuron", "neuron"]);
+		expect(root.textContent).toBe("neuron here and neuron there");
 	});
 
 	it("is idempotent — repainting never nests or duplicates marks", () => {
