@@ -3,11 +3,13 @@ import type PythiaPlugin from "../main";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
+import { debugLog } from "./messageUtils";
 import {
 	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
 	shouldRefuseLoad,
+	mergeConversations,
 	evictConversations,
 } from "./persistence";
 
@@ -67,8 +69,8 @@ export class PluginDataStore {
 		// conversations" works normally: conversations decrement one by one through
 		// normal deletes; persist() is never blocked and always saves whatever is in
 		// p.conversations.
-		const existingCount = Array.isArray(p.conversations) ? p.conversations.length : 0;
-		if (shouldRefuseLoad(loaded, existingCount)) {
+		const existing = Array.isArray(p.conversations) ? p.conversations : [];
+		if (shouldRefuseLoad(loaded, existing.length)) {
 			new Notice(
 				"[Pythia] Loaded 0 conversations from disk while having conversations in memory. " +
 				"Keeping existing state. Check iCloud sync.",
@@ -77,7 +79,21 @@ export class PluginDataStore {
 			return;
 		}
 
-		p.conversations = loaded;
+		// Reconcile rather than replace (ADR-133). A disk copy older than memory —
+		// a sync delivering another device's state, or a write that has not landed
+		// yet — must never roll back a conversation the user is still writing in.
+		const merged = mergeConversations(existing, loaded);
+		p.conversations = merged.conversations;
+		if (merged.keptFromMemory > 0) {
+			// Disk is behind for these. Mark them so the next flush corrects it;
+			// markDirty deliberately does not itself trigger a write, so startup
+			// stays read-only and the reload path decides when to persist.
+			for (const conv of merged.conversations) p.conversationStore?.markDirty(conv.id);
+			debugLog(p.settings, "loadPluginData kept newer in-memory conversations", {
+				kept: merged.keptFromMemory,
+				onDisk: loaded.length,
+			});
+		}
 
 		// getSecret() is async in Obsidian's current typings (truly async on iOS WebKit). (#18)
 		p.plaintextApiKey =
@@ -132,6 +148,10 @@ export class PluginDataStore {
 				settings: p.settings,
 				conversations: p.conversations,
 			});
+			// Stamp again on completion: saveData can take seconds on mobile, and the
+			// watcher's own-write window is measured from the stamp. Without this a
+			// slow write lands outside its own window and is re-read as external.
+			this.saveDataRecordTime?.();
 			if (snapshot) p.conversationStore?.clearDirtySnapshot(snapshot);
 		} catch (err) {
 			new Notice(
@@ -163,6 +183,9 @@ export class PluginDataStore {
 		p.webSearchService?.updateSettings(p.settings);
 		p.webSearchService?.updateApiKey(p.plaintextSearchKey);
 		p.promptOptimizerService?.updateSettings(p.settings);
+		// Anything memory won during the merge is newer than disk; write it back now
+		// rather than leaving the file stale until the next edit (ADR-133).
+		await p.conversationStore?.flush();
 		const leaves = p.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
 		for (const leaf of leaves) {
 			const view = leaf.view as PythiaSidebarView;
@@ -189,8 +212,13 @@ export class PluginDataStore {
 	watchDataJson(): void {
 		const p = this.plugin;
 		const DATA_JSON_PATH = `.obsidian/plugins/${p.manifest.id}/data.json`;
-		let lastKnownMtime = Date.now();
+		// Seeded from the clock and corrected on the first poll below. Using the
+		// file's own mtime as the baseline matters: data.json is routinely older
+		// than the moment the plugin loads, and seeding from the clock would let a
+		// genuinely newer external write go unnoticed until the next one.
+		let lastKnownMtime = 0;
 		let lastOwnWrite   = Date.now();
+		let seeded         = false;
 
 		// Record whenever WE write so we can ignore our own saves.
 		this.saveDataRecordTime = () => { lastOwnWrite = Date.now(); };
@@ -199,6 +227,7 @@ export class PluginDataStore {
 			try {
 				const stat = await p.app.vault.adapter.stat(DATA_JSON_PATH);
 				if (!stat) return;
+				if (!seeded) { seeded = true; lastKnownMtime = stat.mtime; return; }
 				// External write: mtime is newer than what we last saw AND
 				// we didn't write it ourselves within the last 3 seconds.
 				if (stat.mtime > lastKnownMtime && Date.now() - lastOwnWrite > 3000) {

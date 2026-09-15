@@ -156,6 +156,73 @@ export function parseConversations(raw: unknown[]): {
 	return { conversations, dropped: raw.length - conversations.length };
 }
 
+/** Outcome of reconciling the in-memory conversation list with the one on disk. */
+export interface MergeOutcome {
+	conversations: Conversation[];
+	/** How many conversations were taken from memory because disk was stale or missing them. */
+	keptFromMemory: number;
+}
+
+/**
+ * Reconcile the conversations held in memory with the ones just read from disk
+ * (ADR-133), keeping the newer copy of each.
+ *
+ * The plugin re-reads data.json whenever its mtime changes, which on an iCloud or
+ * Obsidian Sync vault happens constantly in the background. That read used to
+ * REPLACE the in-memory list wholesale. Any conversation whose disk copy was
+ * older than memory — a sync delivering another device's state, a cloud copy
+ * materializing late, or simply a write that had not landed yet — silently rolled
+ * back, and the rollback became permanent on the next save. The visible symptom is
+ * a conversation that keeps its earlier turns and loses its newest one.
+ *
+ * Reconciling per conversation on `updatedAt` makes that impossible: a stale disk
+ * copy can no longer overwrite fresher state, and a genuinely newer copy from
+ * another device still wins.
+ *
+ * Ties go to memory, which may hold edits not yet stamped onto disk.
+ *
+ * A conversation present in only one side is KEPT rather than treated as deleted.
+ * Without tombstones, "deleted elsewhere" and "created here and not yet saved"
+ * look identical, and resurrecting a deleted conversation is a far smaller harm
+ * than destroying one the user is still writing in. Deletes on this device are
+ * unaffected: `ConversationStore.delete` removes the conversation from memory and
+ * persists immediately, so neither side still holds it.
+ *
+ * Ordering follows disk, with memory-only conversations appended. The rest of the
+ * app treats the array as insertion-ordered (`conversations[length - 1]` is "most
+ * recent"), so unsaved conversations belong at the end. On a first load memory is
+ * empty and the result is exactly the disk list, unchanged.
+ */
+export function mergeConversations(
+	memory: Conversation[],
+	disk: Conversation[],
+): MergeOutcome {
+	const byId = new Map(memory.map((c) => [c.id, c]));
+	const taken = new Set<string>();
+	const conversations: Conversation[] = [];
+
+	for (const diskConv of disk) {
+		const memConv = byId.get(diskConv.id);
+		if (!memConv) {
+			conversations.push(diskConv);
+			continue;
+		}
+		taken.add(diskConv.id);
+		// ISO 8601 sorts chronologically, so a plain compare is enough. A missing
+		// timestamp sorts oldest, which is the safe direction: it loses only to a
+		// copy that actually carries one.
+		const memWins = (memConv.updatedAt ?? "") >= (diskConv.updatedAt ?? "");
+		conversations.push(memWins ? memConv : diskConv);
+	}
+
+	const memoryOnly = memory.filter((c) => !taken.has(c.id));
+	conversations.push(...memoryOnly);
+
+	const keptFromMemory =
+		conversations.filter((c) => byId.get(c.id) === c).length;
+	return { conversations, keptFromMemory };
+}
+
 /**
  * Check whether a disk load should be refused because iCloud evicted data.json.
  * Returns true (refuse) when loaded is empty but conversations already exist in memory.
