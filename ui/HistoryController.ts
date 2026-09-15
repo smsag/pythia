@@ -1,4 +1,4 @@
-import { Menu, Notice, setIcon } from "obsidian";
+import { Menu, Notice, Platform, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
@@ -11,6 +11,7 @@ import {
 	bestMatchSnippet,
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
+import { keyboardOverlap, watchViewport } from "./keyboardInset";
 
 /**
  * Using the history panel to choose a conversation rather than switch to one
@@ -145,6 +146,35 @@ export class HistoryController {
 			attr: { type: "text", placeholder: pick?.placeholder ?? t("switcherSearchPlaceholder") },
 		});
 
+		// Clear (✕), shown only while there is something to clear.
+		//
+		// An explicit control rather than `type="search"`: WebKit's native clear
+		// button is the one this panel used to get for free, and `.pythia-view input
+		// { -webkit-appearance: none }` (ADR-108's reset, which stops Obsidian's
+		// form-field fill from greying our inline inputs) removes it. A native one
+		// would also be WebKit-only and unstyleable, so the reset is not worth
+		// unpicking — the control belongs to us.
+		const clearBtn = searchRow.createEl("button", {
+			cls: "p-switcher-clear",
+			attr: { "aria-label": t("switcherClear"), title: t("switcherClear") },
+		});
+		setIcon(clearBtn, "x");
+		const syncClear = (): void => { clearBtn.hidden = input.value.length === 0; };
+		syncClear();
+		// mousedown, not click, to preventDefault: a button steals focus from the
+		// input otherwise, which on a phone closes the keyboard the user is still
+		// typing on. The clear then happens on click as usual.
+		clearBtn.addEventListener("mousedown", (e) => e.preventDefault());
+		clearBtn.addEventListener("click", () => {
+			input.value = "";
+			syncClear();
+			if (related) { related = null; renderChip(); }
+			buildList("");
+			// Only re-focus if the field already had it: tapping ✕ while the keyboard
+			// is up should keep it up, but it must not raise one that was down.
+			if (document.activeElement === input) input.focus();
+		});
+
 		// Related-conversations mode (ADR-109): a source conversation's semantic
 		// neighbours, behind a dismissible chip. null = normal browse/search.
 		const chipEl = overlay.createDiv({ cls: "p-history-chip-wrap" });
@@ -152,23 +182,28 @@ export class HistoryController {
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
 
-		// The panel opens with the search field focused, which raises the on-screen
-		// keyboard — and the keyboard OVERLAYS the webview rather than resizing it,
-		// so the overlay keeps its full height and its last rows sit underneath.
-		// `visualViewport` reports the part that is actually visible; pad the scroll
-		// area by whatever it covers so every conversation can be scrolled clear.
-		const vv = window.visualViewport;
+		// The soft keyboard OVERLAYS the webview rather than resizing it, so the
+		// overlay keeps its full height and its last rows sit underneath. Pad the
+		// scroll area by whatever is covered so every conversation can be reached.
+		//
+		// Uses the shared, unit-tested `keyboardOverlap` rather than the arithmetic
+		// this panel used to do itself. That copy had no MIN_KEYBOARD_INSET floor,
+		// so it treated Obsidian's own bottom chrome as a keyboard and padded the
+		// list at rest — which is the other half of why the last rows were hard to
+		// reach (ADR-152).
 		const applyKeyboardInset = (): void => {
-			if (!vv || !overlay.isConnected) return;
-			const covered = overlay.getBoundingClientRect().bottom - (vv.offsetTop + vv.height);
-			listEl.style.paddingBottom = covered > 1 ? `${Math.round(covered) + 8}px` : "";
+			if (!overlay.isConnected) return;
+			const vv = window.visualViewport;
+			if (!vv) return;
+			const covered = keyboardOverlap({
+				containerBottom: overlay.getBoundingClientRect().bottom,
+				layoutHeight: window.innerHeight,
+				visualHeight: vv.height,
+				visualOffsetTop: vv.offsetTop,
+			});
+			listEl.style.paddingBottom = covered > 0 ? `${covered + 8}px` : "";
 		};
-		vv?.addEventListener("resize", applyKeyboardInset);
-		vv?.addEventListener("scroll", applyKeyboardInset);
-		const detachKeyboardInset = (): void => {
-			vv?.removeEventListener("resize", applyKeyboardInset);
-			vv?.removeEventListener("scroll", applyKeyboardInset);
-		};
+		const detachKeyboardInset = watchViewport(applyKeyboardInset);
 
 		// Searchable text per conversation, built once and memoized for the life of
 		// the panel so each keystroke only re-scores, never re-concatenates messages.
@@ -389,6 +424,7 @@ export class HistoryController {
 
 		input.addEventListener("input", () => {
 			if (related) { related = null; renderChip(); } // typing exits related mode
+			syncClear();
 			buildList(input.value);
 		});
 		input.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -402,7 +438,12 @@ export class HistoryController {
 			// Escape is bound a tick late so the keypress that opened the panel — if
 			// it was a keypress — cannot immediately close it again.
 			document.addEventListener("keydown", onKey, true);
-			input.focus();
+			// Desktop only (ADR-152). Auto-focus is a keyboard affordance: you open
+			// the switcher and type. On a phone it raises the on-screen keyboard
+			// unbidden, which covers the bottom of the very list the panel exists to
+			// show — so the panel opens showing conversations, and the keyboard
+			// arrives only when the user taps the field.
+			if (!Platform.isMobile) input.focus();
 			// The keyboard animates in; `visualViewport` fires resize when it lands,
 			// but measure once here too in case it is already up (re-open).
 			applyKeyboardInset();

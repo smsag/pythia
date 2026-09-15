@@ -67,6 +67,7 @@ const en = {
 	navNoMerges:     "No merge links yet",
 	navSourceTag:    "Source",
 	navActiveTag:    "active",
+	switcherClear:           "Clear search",
 	switcherSearchPlaceholder: "Search…",
 	msgCount:                  "{{n}} messages",
 	msgCountShort:             "{{n}} msgs",

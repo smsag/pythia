@@ -71,6 +71,7 @@ const de: Strings = {
 	navActiveTag:    "aktiv",
 
 	// ── Quick switcher / history ──────────────────────────────────────────────
+	switcherClear:           "Suche löschen",
 	switcherSearchPlaceholder: "Suchen…",
 	msgCount:                  "{{n}} Nachrichten",
 	msgCountShort:             "{{n}} Nachr.",
