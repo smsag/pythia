@@ -50,7 +50,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 743 tests across 48 files
+  tests/                      ← Vitest unit tests (npm test) — 752 tests across 49 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -276,11 +276,11 @@ REFERENZ  [ pill: filename ✕ ]
 ### Turn label (above each message)
 ```
 user:  [ 27 Aug 2026 · ] 22:19
-AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
+AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 ```
 - `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
 - **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
-- Template (`.p-turn-template`) appears only on the turn where a template *starts* applying: the first answer, and again where a second template takes over. Truncated at 18ch, full name in `title`
+- **No template here** (ADR-140) — the template is a reference, not a fact about the generation; it rides the sources row under the answer. `turnTemplateCaption` still decides which turns carry it
 - No per-message star button — favoriting moved to text selection (ADR-085); favorites still surface in the `#` navigator under "Starred"
 
 ### Merge links (ADR-130)
@@ -291,6 +291,18 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
 - The link reads from **both ends**, like a fork: the conversation a link points at shows a `.pythia-merge-banner` naming every conversation that merged with it. The inbound list is derived on read via `incomingMergeLinks`, never stored as a back-reference
 - Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
+
+### Sources row (under an assistant answer)
+```
+TEMPLATE  [[Podcast Summary]]
+WEB       1 thetransmitter.org ↗  2 sainsburywellcome.org ↗
+VAULT     3 [[Some Note]]
+```
+- Rows in that order, template always first: it is the frame the answer was written in, not one of the passages inside it
+- **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
+- Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
+- `.p-sources-label` is a **54px column**, the same width as the reference row's label, so stacked rows start their chips at one x
+- A single `SOURCES` row replaces WEB/VAULT when every citation is a vault note
 
 ### Dates and micro-label rows (ADR-139)
 - **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)

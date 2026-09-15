@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-139 (one date format, and icons centred on cap height). Four reported details in the inline anchors' meta row. The glossary's `erklärt von` prefix is gone — fork and merge show a bare model name, and the prefix is the one part the reader already knows. **All UI dates are now `15 Sep 2026`**, locale-independent like `formatClockTime` already was: `toLocaleDateString` renders "15. Sept. 2026" in German and "Sep 15, 2026" in US English, and a 9px mono label drawn in a fixed rhythm cannot have a width that changes under the user — nor be asserted without pinning a locale. `Im Glossar öffnen` takes the shared `Öffnen →` control, its wording kept as the tooltip. And the meta-row icons now centre on **cap height**, not on `vertical-align: middle`, which centres on x-height and left them a measured 1.09px low beside caps and digits; the 0.09em nudge was picked by measuring two candidates across sans, serif and mono faces and holds within 0.11px in all three. +5 tests (743). Build, lint, file-size and tests green.*
+*Last updated: 2026-09-15 — ADR-140 (the template is a reference, not a caption; supersedes ADR-129's placement). ADR-129 put the template name in the assistant turn label, next to the model, clock and token counts — a row of facts about the *generation*, where a note the user wrote does not belong. It moves to the sources row that web search introduced, **first**, because it is the frame the answer was written in rather than one of the passages inside it, and as a **`[[wikilink]]`**, which is not a new affordance: vault citations in that same row already render that way, and both now share one `renderWikilink`. The template gets **no number** — the numbers are citation indices matching the chips in the prose, and nothing cites the template. Harmony between WEB and TEMPLATE comes from one component with one axis of difference (numbered + `↗` for the web, `[[…]]` for the vault), plus a new **54px label column** — the reference row's existing width — so three stacked rows start their chips at one x instead of three. Which turns show it is unchanged (`turnTemplateCaption`: first answer, and wherever a template changes), and it is **removed** from the turn label rather than duplicated. +14 tests (752), the first coverage `ui/sourcesRow.ts` has had.*
+
+*Previously, 2026-09-15 — ADR-139 (one date format, and icons centred on cap height). Four reported details in the inline anchors' meta row. The glossary's `erklärt von` prefix is gone — fork and merge show a bare model name, and the prefix is the one part the reader already knows. **All UI dates are now `15 Sep 2026`**, locale-independent like `formatClockTime` already was: `toLocaleDateString` renders "15. Sept. 2026" in German and "Sep 15, 2026" in US English, and a 9px mono label drawn in a fixed rhythm cannot have a width that changes under the user — nor be asserted without pinning a locale. `Im Glossar öffnen` takes the shared `Öffnen →` control, its wording kept as the tooltip. And the meta-row icons now centre on **cap height**, not on `vertical-align: middle`, which centres on x-height and left them a measured 1.09px low beside caps and digits; the 0.09em nudge was picked by measuring two candidates across sans, serif and mono faces and holds within 0.11px in all three. +5 tests (743). Build, lint, file-size and tests green.*
 
 *Previously, 2026-09-15 — ADR-138 (the inline anchors are one component; the fork anchor is its spec). The glossary anchor had drifted faint — `--text-faint` rule and icon, faint label, 12px title, a long open label that wrapped the meta row — and read as disabled next to fork and merge. The cause was ADR-136's argument applied to the wrong element: a term **mark** is the quietest of the four because it repeats many times per screen, but an **anchor** never repeats — it is opened one at a time by a deliberate tap. Fork is now the explicit spec for all three (2px accent rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →`), and the only thing that varies is the rule's stroke: **solid fork, dashed merge, dotted term**. The merge label had drifted the same way and is aligned too. The rule worth keeping: quietness belongs to marks, not to anchors. CSS plus one button label; no behaviour change, 738 tests still green.*
 
@@ -2020,3 +2022,38 @@ The glossary's open button takes the shared `forkOpenShort` label; the specific 
 That constant was chosen by measurement, not arithmetic: two candidates were tested across a sans, a serif and a mono face, because a theme can change the font under this rule. The nudge holds within 0.11px in all three. The alternative — giving the button a cap-height box and baseline-aligning it — missed by 1.5–2px in every font, because an inline-flex whose only child is an `<svg>` has no baseline and falls back to its bottom margin edge. Applied to all three anchors, per ADR-138.
 
 **Consequence:** the meta row reads as one line again. The rule worth keeping: **`vertical-align: middle` is centred on x-height, so it is wrong next to caps, digits or small-caps labels — which is most micro-labels.** +5 tests (743), all on the date formatters, which are only testable at all because they no longer depend on the runtime locale. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-140 — The template is a reference, not a caption
+
+**Status:** Active — supersedes ADR-129's placement of the template caption
+
+**Context:** ADR-129 moved the template name out of the header and into the assistant turn label, `OPUS 5 · PODCAST SUMMARY · 02:44 · ↑3.300 ↓5.139`. That was right to remove it from the header and wrong about where it landed. The turn label is a row of *facts about the generation* — which model, when, how many tokens — all of them numbers or identifiers that belong to that one turn. A template is not that. It is a note in the vault, written by the user, that the answer was produced through.
+
+Meanwhile the answer already has a place for "what this was made from": the sources row that web search introduced, which lists numbered web pages and `[[wikilinks]]` to vault notes. The template belonged there the whole time, and the user asked for it directly.
+
+**Decision:** the template moves from the turn label to the sources row, as its own labelled line above the citations.
+
+**1. First, always.** It is the frame the answer was written in, not one of the passages inside it — everything listed below it was read *through* it. Ordering it after the web sources would file it as one citation among seventeen.
+
+**2. A wikilink, `[[Podcast Summary]]`.** Not a new affordance: vault citations in this same row are already rendered as `[[…]]`, and the two now share one `renderWikilink`. In Obsidian, `[[…]]` is what "a note you can open" looks like, which is exactly what the user asked for — the template is now openable, which as a label it never was.
+
+**3. No number.** This is the one structural difference from a citation, and it carries meaning. The numbers in this row are citation indices that match the superscript chips in the prose; nothing in the answer cites its template, so a number would be an affordance pointing at nothing.
+
+**Harmony between WEB and TEMPLATE** — the question the user actually asked — comes from making them the same component and letting only the meaningful differences show:
+
+| | shared | differs |
+|---|---|---|
+| label | 9px mono, uppercase, `--text-faint`, **54px column** | the word |
+| chip | 11.5px, accent, click-to-open | numbered + `↗` (web, leaves the app) vs `[[…]]` (vault, stays) |
+
+The 54px label column is new and is the part that makes it read as one block: with three stacked rows, ragged labels would start their chips at three different x positions. 54px is the reference row's existing label width (`docs/design.md`), so Pythia now has one label-column width rather than two, and it clears the widest label (`TEMPLATE`, measured at 49px) with room for a wider theme monospace. `min-width`, not `width`, so a long translation is never clipped.
+
+**Which turns show it: unchanged.** `turnTemplateCaption` still decides — the first answer, and again wherever a second template takes over. That rule was ADR-129's good half, and it moves with the fact rather than being re-derived. A template applies to every answer under it, so listing it on every turn would be *truthful* and would also repeat a constant down the whole transcript, which is the noise ADR-129 removed in the first place.
+
+**And it is removed from the turn label, not duplicated.** Two copies of one string on one turn is the worst of both placements.
+
+**Alternatives rejected:** *Keep the caption and add the row* — duplication. *Show the template on every assistant turn* — repeats a constant; the reader learns it once. *A distinct colour or icon for the template chip* — a third treatment to distinguish something the label already names, in a row whose whole job is to be quiet. *Order it last, after the citations* — files the frame as one of the contents.
+
+**Consequence:** the template is now openable with one tap, sits with the other provenance instead of among the token counts, and the turn label is back to being facts about the generation. +14 tests (752), including the first coverage `ui/sourcesRow.ts` has had. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.

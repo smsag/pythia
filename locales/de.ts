@@ -134,6 +134,7 @@ const de: Strings = {
 
 	// ── Citations / sources ───────────────────────────────────────────────────
 	sourcesLabel: "QUELLEN",
+	sourcesTemplate: "VORLAGE",
 	sourcesWeb:   "WEB",
 	sourcesVault: "VAULT",
 
