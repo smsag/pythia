@@ -51,7 +51,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 758 tests across 50 files
+  tests/                      ← Vitest unit tests (npm test) — 766 tests across 51 files
+    helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -225,7 +226,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
-7. **iOS safe area on input.** Always: `padding-bottom: max(var(--s2), var(--p-bottom-inset, env(safe-area-inset-bottom, var(--s2))))`. `env()` reports the device inset wherever the element sits, so the view measures whether the panel really reaches the screen edge and sets `--p-bottom-inset: 0px` when another leaf is below it — otherwise the inset is dead space (ADR-134). Never drop the `env()` default: a full-height leaf still needs it.
+7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is now `padding: var(--s2) var(--s3) var(--s1)`, full stop. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
 8b. **Never set an explicit `height` on `containerEl.children[1]`.** It is `overflow: hidden`, so a height below the content silently crops the input area (including its mandated safe-area padding) and uncovers the background behind the panel. Move content with padding instead (ADR-132).
@@ -248,9 +249,9 @@ Order left→right (ADR-098): search · name (grows) · rename · link · delete
 
 ### Reference row
 ```
-REFERENZ  [ pill: filename ✕ ]
+[ pill: filename ✕ ][ pill: filename ✕ ]
 ```
-- Label: `--font-monospace`, 10px, uppercase, `--text-faint`, width 54px
+- **No label.** This spec described a `REFERENZ` label in a 54px column for a long time; `.p-ref-row` holds only `.p-pills` and no such element has ever been created (flagged in the 2026-09-10 locale audit, corrected in ADR-144). Removed rather than built: the pills carry an ✕ and read as attachments on their own
 - Pills: `--color-accent` border + text, 10px mono, `border-radius: 10px`
 
 ### Summary bar (sticky, always visible)
@@ -289,6 +290,7 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 - **The link anchor IS the fork anchor** (ADR-142). `.p-merge-anchor*` is grouped into every `.p-fork-anchor*` rule — never restate a rule for one of them, or they drift (they already have, twice). Same for the two banners
 - Only two things differ, both deliberate: the meta line keeps the **unlink** control (a link can be removed; a fork cannot be un-forked), and the header is the **`link` icon + `VERKNÜPFUNG`/`LINK`** — a noun naming the card, like `ABZWEIGUNG`, never the state `VERKNÜPFT`
 - Created from the selection toolbar's **Merge** button (next to Branch, assistant content only), which opens the conversation search and records a `MergeLink` on the conversation holding the passage
+- **Never open a modal to choose a conversation** (ADR-143). Use `view.pickConversation({ excludeId, placeholder, onPick })` — the same `.p-history` panel the header loupe opens, in pick mode. ADR-107 made it the single in-view conversation search; a `ConversationSuggestModal` is only for command-palette entry points, which can run with no view open
 - **Display-only** — a merge never enters the system prompt. Do not add merge content to `ContextBuilder`
 - Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment). Keep it — since ADR-142 unified the cards, the mark is the ONLY signal of which kind of thing a tap will open
 - The anchor `.p-merge-anchor` is `.p-fork-anchor`, solid accent rule included: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Öffnen →`
@@ -305,8 +307,8 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
 - Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
-- `.p-sources-label` is a **54px column**, the same width as the reference row's label, so stacked rows start their chips at one x
-- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, the column is read once rather than aimed at, and the words pair this row with REFERENZ
+- `.p-sources-label` is a **54px column** so stacked rows start their chips at one x. 54px clears the widest label (`TEMPLATE`, measured at 49px) with slack for a wider theme monospace — it is NOT, as ADR-140 claimed, borrowed from the reference row, which has no label at all (ADR-144)
+- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)
@@ -324,8 +326,9 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
 - The table takes `width: max-content` with `max-width: 32ch` per cell. `max-width: none` alone does NOT widen a table — it sizes itself to its container (ADR-134)
 - Cell text **wraps between words but is never split inside one**. `min-width: 8ch` is a floor so short columns are not crushed
-- The rules must stay scoped under `.pythia-view`, or Obsidian core and theme `word-break: break-all` on cells wins (ADR-065)
+- The rules must stay scoped under `.pythia-view` (ADR-065: core and themes load after the plugin and win a tie). What they actually override is Pythia's own `.p-ai-body` inherited into the cells — themes were blamed for the mid-word breaking for three ADRs and were never the cause (ADR-144)
 - No sticky first column. The whole table scrolls as one piece
+- **Hairline grid** (ADR-145): `1px solid var(--background-modifier-border)` on every cell, `border-collapse: collapse`, `padding: 3px var(--s2)`, and a 2px bottom rule on `th`. A full grid, not row rules — ragged multi-line rows make column tracking the problem, and a sideways-scrolling table needs vertical rules. **No header background**: a tinted row reads as a card (hard rules 3/4)
 - Render non-message markdown through `renderRichMarkdown` so it gets this treatment too, never a bare `MarkdownRenderer.render`
 
 ### Glossary terms (ADR-136)

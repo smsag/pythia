@@ -26,6 +26,9 @@ export interface GlossaryEntry {
 	source: "model" | "manual";
 	/** ISO 8601. Absent on entries a human wrote by hand without one. */
 	updatedAt?: string;
+	/** The model that actually wrote this definition (ADR-144). Absent on
+	 *  hand-written entries and on entries stored before this was recorded. */
+	model?: string;
 	/**
 	 * Other surface forms of the same term: inflections, plurals, and the
 	 * translation the other language of a bilingual conversation uses
@@ -83,6 +86,8 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 			if (/\bsource=model\b/.test(meta)) current.source = "model";
 			const at = /\bupdatedAt=(\S+?)(?:\s|%%|$)/.exec(meta);
 			if (at) current.updatedAt = at[1];
+			const model = /\bmodel=(\S+?)(?:\s|%%|$)/.exec(meta);
+			if (model) current.model = model[1];
 			// `aliases=` runs to the closing `%%` because a surface form may contain
 			// spaces, which is also why it is rendered last and separated by `|`.
 			const aliases = /\baliases=(.*?)\s*%%\s*$/.exec(meta);
@@ -107,6 +112,7 @@ function renderEntry(entry: GlossaryEntry): string {
 		.filter(Boolean);
 	const meta = `${META_PREFIX} source=${entry.source}` +
 		(entry.updatedAt ? ` updatedAt=${entry.updatedAt}` : "") +
+		(entry.model ? ` model=${entry.model.replace(/\s+/g, "-")}` : "") +
 		(aliases.length > 0 ? ` aliases=${aliases.join("|")}` : "") + " %%";
 	return `## ${entry.term}\n${meta}\n\n${entry.definition.trim()}\n`;
 }

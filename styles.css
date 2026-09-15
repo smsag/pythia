@@ -1008,7 +1008,7 @@
   padding: var(--s1) var(--s2) var(--s1) var(--s3);
   border-radius: 10px 10px 2px 10px;
   max-width: 86%;
-  word-break: break-word;
+  overflow-wrap: break-word;  /* see .p-ai-body — never word-break (ADR-144) */
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -1058,7 +1058,13 @@
 .p-summary-card-md {
   font-size: var(--font-small);
   line-height: 1.65;
-  word-break: break-word;
+  /* `overflow-wrap`, NOT `word-break: break-word` (ADR-144). Both keep a long URL
+     from overflowing the panel, but `word-break: break-word` behaves like
+     `overflow-wrap: anywhere`: it also collapses a cell's min-content width to a
+     single character, which is what let a narrow table column split `Messbarkeit`
+     into `Messba / rkeit`. Measured with no Obsidian theme loaded at all — this
+     was Pythia's own rule, not a theme's. */
+  overflow-wrap: break-word;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -1282,9 +1288,21 @@
      is what gives the frame something to scroll. */
   width: max-content;
   max-width: none;
+  /* A hairline grid (ADR-145). A cell in this table often wraps to several lines
+     and sits beside a cell that wrapped to a different number, so without column
+     rules the eye loses which line belongs to which column — the exact failure a
+     sidebar-width table invites. `collapse` so adjacent cells share one 1px rule
+     rather than stacking two. */
+  border-collapse: collapse;
+  border: 1px solid var(--background-modifier-border);
 }
 .pythia-view .p-scroll-frame > table th,
 .pythia-view .p-scroll-frame > table td {
+  border: 1px solid var(--background-modifier-border);
+  /* Breathing room inside the rule, or the border reads as crowding the text.
+     Vertical padding stays tight: rows are already tall when cells wrap. */
+  padding: 3px var(--s2);
+  vertical-align: top;
   min-width: 8ch;
   /* The cap that makes max-content usable. Without it one 200-character cell
      would set the table's width and the row would be a single endless line.
@@ -1296,6 +1314,14 @@
   overflow-wrap: normal;
   word-break: normal;
   hyphens: none;
+}
+/* The header's only distinction is a heavier bottom rule — same token, 2px. No
+   fill: the design system keeps these surfaces flat, and a tinted header row in
+   a transcript reads as a card (hard rule 3/4). */
+.pythia-view .p-scroll-frame > table th {
+  border-bottom-width: 2px;
+  font-weight: 600;
+  text-align: left;
 }
 
 /* Copy button: pinned to the top-right of the frame so it stays fixed
@@ -2062,15 +2088,16 @@
   flex-shrink: 0;
   position: relative;
   border-top: 1px solid var(--background-modifier-border);
-  padding: var(--s2) var(--s3);
-  /* The home-indicator inset, but only where a home indicator actually is
-     (ADR-134). `env(safe-area-inset-bottom)` reports the device inset no matter
-     where the element sits, so in a stacked mobile sidebar — another leaf below
-     us, nothing to clear — it reserved ~25px of dead space under the composer.
-     The view measures whether the panel really reaches the screen edge and sets
-     `--p-bottom-inset: 0px` when it does not; unset, the env() default applies
-     exactly as before. */
-  padding-bottom: max(var(--s2), var(--p-bottom-inset, env(safe-area-inset-bottom, var(--s2))));
+  /* No `env(safe-area-inset-bottom)` here, deliberately (ADR-146). It reports
+     the device's inset wherever the element sits, so a panel with another leaf
+     below it reserved ~34px of dead space for a home indicator it was nowhere
+     near. ADR-134 tried to keep the inset and switch it off by measuring whether
+     the panel reaches the screen edge; measured on the reporter's device, that
+     switch does not fire — 42px below the send button where 8 was intended,
+     which is 8 + exactly one 34pt home indicator. Two attempts at conditional
+     logic is enough: Obsidian's own mobile chrome already sits between a sidebar
+     leaf and the screen edge, so the inset was buying nothing here. */
+  padding: var(--s2) var(--s3) var(--s1);
   display: flex;
   flex-direction: column;
   gap: var(--s3);

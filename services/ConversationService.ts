@@ -270,62 +270,81 @@ export class ConversationService {
 			return;
 		}
 
-		const modal = new ConversationSuggestModal(p.app, candidates, async (target) => {
-			// Same passage, same target → don't stack a duplicate link; just reveal
-			// the one that already exists.
-			const existing = (conv.merges ?? []).find(
-				(m) =>
-					m.messageId === messageId &&
-					m.text.trim() === text &&
-					m.occurrenceIndex === occurrenceIndex,
-			);
-			if (existing) {
-				const linkedTo = p.conversationStore.getById(existing.conversationId);
-				new Notice(t("mergeAlreadyLinked", { name: linkedTo?.name ?? target.name }));
-				const view = await p.activateView();
-				view.revealMergeLink(existing.id);
-				return;
-			}
-
-			// Resolve the target's summary BEFORE the anchor opens, so confirming a
-			// merge always lands on a populated preview rather than an empty one that
-			// fills in later. Mirrors the fork path's await-then-open ordering (ADR-042).
-			if (!target.summaryText?.trim() && target.messages.length > 0) {
-				const notice = new Notice(t("generatingSummary"), 0);
-				try {
-					// generateSummary, not generateSummaryWithTitle: merging must never
-					// rename a conversation the user already named (see MergeController).
-					const summary = await p.llmRouter.generateSummary(target);
-					if (summary) {
-						target.summaryText = summary;
-						target.summaryUpdatedAt = new Date().toISOString();
-						await p.conversationStore.save(target);
-					}
-				} catch (e) {
-					new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
-				} finally {
-					notice.hide();
-				}
-			}
-
-			const link = {
-				id: crypto.randomUUID(),
-				conversationId: target.id,
-				messageId,
-				text,
-				occurrenceIndex,
-				createdAt: new Date().toISOString(),
-			};
-			conv.merges = [...(conv.merges ?? []), link];
-			await p.conversationStore.save(conv);
-
-			const view = await p.activateView();
-			view.repaintMergeMessage(messageId);
-			view.revealMergeLink(link.id);
-			new Notice(t("mergeLinked", { name: target.name }));
+		// The link target is chosen in the conversation panel the header loupe opens,
+		// not in a modal of its own (ADR-143). ADR-107 made that panel the single
+		// in-view conversation search, and picking a conversation is still searching
+		// for one — a second surface would mean two different-looking searches over
+		// the same list, reachable from the same screen.
+		const view = await p.activateView();
+		view.pickConversation({
+			excludeId: convId,
+			placeholder: t("mergeSearchPlaceholder"),
+			onPick: (target) => void this.linkToConversation(p, conv, target, messageId, text, occurrenceIndex ?? 0),
 		});
-		modal.setPlaceholder(t("mergeSearchPlaceholder"));
-		modal.open();
+	}
+
+	/** Record the link once the user has chosen its target. Split out of
+	 *  `cmdMergeConversation` so the picker callback stays a single line. */
+	private async linkToConversation(
+		p: PythiaPlugin,
+		conv: Conversation,
+		target: Conversation,
+		messageId: string,
+		text: string,
+		occurrenceIndex: number,
+	): Promise<void> {
+		// Same passage, same target → don't stack a duplicate link; just reveal
+		// the one that already exists.
+		const existing = (conv.merges ?? []).find(
+			(m) =>
+				m.messageId === messageId &&
+				m.text.trim() === text &&
+				m.occurrenceIndex === occurrenceIndex,
+		);
+		if (existing) {
+			const linkedTo = p.conversationStore.getById(existing.conversationId);
+			new Notice(t("mergeAlreadyLinked", { name: linkedTo?.name ?? target.name }));
+			const view = await p.activateView();
+			view.revealMergeLink(existing.id);
+			return;
+		}
+
+		// Resolve the target's summary BEFORE the anchor opens, so confirming a
+		// merge always lands on a populated preview rather than an empty one that
+		// fills in later. Mirrors the fork path's await-then-open ordering (ADR-042).
+		if (!target.summaryText?.trim() && target.messages.length > 0) {
+			const notice = new Notice(t("generatingSummary"), 0);
+			try {
+				// generateSummary, not generateSummaryWithTitle: merging must never
+				// rename a conversation the user already named (see MergeController).
+				const summary = await p.llmRouter.generateSummary(target);
+				if (summary) {
+					target.summaryText = summary;
+					target.summaryUpdatedAt = new Date().toISOString();
+					await p.conversationStore.save(target);
+				}
+			} catch (e) {
+				new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));
+			} finally {
+				notice.hide();
+			}
+		}
+
+		const link = {
+			id: crypto.randomUUID(),
+			conversationId: target.id,
+			messageId,
+			text,
+			occurrenceIndex,
+			createdAt: new Date().toISOString(),
+		};
+		conv.merges = [...(conv.merges ?? []), link];
+		await p.conversationStore.save(conv);
+
+		const view = await p.activateView();
+		view.repaintMergeMessage(messageId);
+		view.revealMergeLink(link.id);
+		new Notice(t("mergeLinked", { name: target.name }));
 	}
 
 	async cmdBrowseConversations(): Promise<void> {

@@ -1,5 +1,4 @@
 import {
-	App,
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
@@ -24,7 +23,7 @@ import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
-import { HistoryController } from "./ui/HistoryController";
+import { HistoryController, type HistoryPick } from "./ui/HistoryController";
 import { SummaryController } from "./ui/SummaryController";
 import { ContextInspectorController } from "./ui/ContextInspectorController";
 import { ForkController } from "./ui/ForkController";
@@ -1164,6 +1163,12 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	/** Scroll to a merge link's passage and open its inline summary anchor (ADR-130). */
+	/** Choose a conversation in the history panel (ADR-143). The view owns the
+	 *  controller, so plugin-level commands reach the picker through here. */
+	pickConversation(pick: HistoryPick): void {
+		this.historyController.openHistoryView(pick);
+	}
+
 	revealMergeLink(mergeId: string): void {
 		this.mergeController.revealMergeLink(mergeId);
 	}

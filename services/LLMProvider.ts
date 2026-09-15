@@ -20,6 +20,8 @@ export interface LLMProvider {
 	generateChapterName(content: string): Promise<string>;
 	/** Define `term` as used in `passage` (ADR-136). */
 	defineTerm(term: string, passage: string): Promise<string>;
+	/** The model `defineTerm` and the other utility calls run on. */
+	readonly fastModel: string;
 	generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string>;
 	summarizeNotes(content: string): Promise<string>;
 	optimizePrompt(systemPrompt: string, userMessage: string, model?: string): Promise<string>;

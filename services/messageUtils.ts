@@ -272,7 +272,6 @@ export function lastTokenUsageMessage<T extends { tokenUsage?: unknown }>(
 
 export function estimateTokensFromText(text: string): number {
 	if (text.length === 0) return 0;
-	// eslint-disable-next-line no-control-regex
 	const nonAscii = text.replace(/[\x00-\x7F]/g, "").length;
 	const ascii = text.length - nonAscii;
 	return Math.round(ascii / 4 + nonAscii / 1.5);

@@ -103,7 +103,10 @@ export abstract class BaseProvider implements LLMProvider {
 	protected abstract resetClient(): void;
 
 	/** Cheap fast model for utility calls (chapter names, titles, note summaries). */
-	protected abstract get fastModel(): string;
+	/** The small/cheap model utility calls run on. Public because a stored
+	 *  artifact — a glossary entry — has to record which model actually wrote it,
+	 *  and only the provider knows (ADR-144). */
+	abstract get fastModel(): string;
 
 	/** Label used for the assistant role in conversation transcripts sent to the API. */
 	protected get assistantLabel(): string { return "Assistant"; }

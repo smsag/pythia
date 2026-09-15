@@ -43,7 +43,7 @@ const de: Strings = {
 	mergeLinked:                "Mit \"{{name}}\" zusammengeführt",
 	mergeAlreadyLinked:         "Diese Stelle ist bereits mit \"{{name}}\" verknüpft.",
 	mergeNoOtherConversations:  "Kein anderes Gespräch zum Zusammenführen vorhanden.",
-	mergeSearchPlaceholder:     "Mit Gespräch zusammenführen…",
+	mergeSearchPlaceholder:     "Mit Gespräch verknüpfen…",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	forksSection: "Abzweigungen",
