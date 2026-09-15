@@ -849,7 +849,9 @@
 .p-sources-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  /* 8px, down from 10: with a run-in label the first gap is read as the space
+     after a colon, and 10px reads as a column that is not there. */
+  gap: 8px;
   flex-wrap: wrap;
 }
 .p-sources-label {
@@ -858,13 +860,13 @@
   letter-spacing: 0.08em;
   color: var(--text-faint);
   flex-shrink: 0;
-  /* A column, not a prefix: TEMPLATE / WEB / VAULT are stacked rows, and ragged
-     labels would leave their chips starting at three different x positions. 54px
-     is the reference row's label column (design.md) — one width for both of
-     Pythia's label+chips rows — and clears the widest label, TEMPLATE, with room
-     for a wider theme monospace. `min-width`, so a long translation is never
-     clipped. */
-  min-width: 54px;
+  /* A run-in prefix, NOT a column (ADR-153). The 54px column this used to set
+     could not do what it promised: `.p-sources-row` wraps, and a wrapped flex
+     line starts at the container edge rather than under the first item — so the
+     column only ever aligned each row's FIRST line, while costing 54px of a
+     ~300px sidebar on every line. With nineteen web citations that is one
+     aligned line in five. The label now reads `Web:` in the flow, which needs no
+     alignment to be read. */
 }
 .p-source { font-size: 11.5px; display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
 /* Inside a sources row the wikilink name may be a long template title; truncate

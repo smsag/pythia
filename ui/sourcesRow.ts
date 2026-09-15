@@ -9,7 +9,7 @@ import { noteBasename } from "../services/pathUtils";
  * decomposition). `openCitationSource` handles a click on a citation chip or a
  * sources-row entry: a web source opens in the browser (http(s) only, via
  * noopener,noreferrer — see urlSafety), a vault source opens the note.
- * `renderSourcesRow` paints the TEMPLATE / WEB / VAULT rows under an assistant
+ * `renderSourcesRow` paints the Template / Vault / Web rows under an assistant
  * message. Free functions taking `app` so the view stays thin and both the
  * inline chips and the row share one code path.
  */
@@ -25,24 +25,43 @@ export async function openCitationSource(app: App, src: MessageSource): Promise<
 	else new Notice(t("fileNotFound", { path: src.ref }));
 }
 
-/** One vault reference as `[[Name]]`, the form Obsidian users read as "a note
- *  you can open". Shared by the vault citations and the template row. */
+/**
+ * One vault reference as a plain accent-coloured name. Shared by the vault
+ * citations and the template row.
+ *
+ * **No `[[ ]]` brackets** (ADR-153). ADR-140 drew them because `[[…]]` is what
+ * "a note you can open" looks like in Obsidian — sound reasoning for a surface
+ * with nothing else to say what a name is. This row now says it out loud: the
+ * run-in label reads `Vault:` or `Template:` before the name, so the brackets
+ * repeat a fact already stated and spend four characters doing it, on a row that
+ * was already too wide for a sidebar. The affordance survives in the accent
+ * colour and the hover underline, which is what every other openable reference
+ * in the panel uses.
+ *
+ * The context inspector keeps its brackets: its note list has no label column,
+ * so there the brackets are the only thing marking a name as a note.
+ */
 function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?: string): void {
-	item.createSpan({ cls: "p-wikilink-bracket", text: "[[" });
 	const name = item.createSpan({
 		cls: "p-wikilink-name",
 		text: src.title,
 		attr: title ? { title } : {},
 	});
 	name.addEventListener("click", () => void openCitationSource(app, src));
-	item.createSpan({ cls: "p-wikilink-bracket", text: "]]" });
 }
 
 /**
  * Sources row under an assistant message (ADR-140).
  *
- * Up to three labelled rows, always in this order: the TEMPLATE that shaped the
- * answer, the VAULT notes it cited, the WEB pages it cited.
+ * Up to three labelled rows, always in this order: the Template that shaped the
+ * answer, the Vault notes it cited, the Web pages it cited.
+ *
+ * **Each row opens with a run-in `Label:`** (ADR-153), not a fixed label column.
+ * The column ADR-140 specified could never hold: `.p-sources-row` wraps, and a
+ * wrapped flex line starts at the container edge, not under the first item — so
+ * the 54px only ever aligned the first line of each row. With nineteen web
+ * citations it aligned one line in five and cost 54px of a ~300px sidebar on
+ * every one of them.
  *
  * The order runs from the user outwards. The template is theirs and framed the
  * whole answer; the vault notes are their own knowledge, which they can correct;
@@ -52,8 +71,8 @@ function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?:
  *
  * The template leads because it is the frame the answer was written in, not one
  * of the passages inside it — everything below it was read *through* it. It is
- * rendered as a wikilink for the same reason vault citations are: in Obsidian,
- * `[[…]]` is what "a note you can open" looks like.
+ * rendered exactly like a vault citation for the same reason: both are notes the
+ * reader can open.
  *
  * It carries no number. The numbers here are citation indices matching the
  * superscript chips in the prose, and nothing in the answer cites its template,
@@ -72,7 +91,10 @@ export function renderSourcesRow(
 
 	const makeRow = (label: string, items: MessageSource[], numbered = true, tip?: (s: MessageSource) => string) => {
 		const r = container.createDiv({ cls: "p-sources-row" });
-		r.createSpan({ cls: "p-sources-label", text: label });
+		// Run-in label, not a column (ADR-153): `Web:` sits in the flow ahead of the
+		// first entry. The colon is added here rather than in the string tables so a
+		// translator cannot drop it and leave the row reading as a heading.
+		r.createSpan({ cls: "p-sources-label", text: `${label}:` });
 		for (const s of items) {
 			const item = r.createSpan({ cls: "p-source" });
 			if (numbered) item.createSpan({ cls: "p-source-num", text: String(s.n) });

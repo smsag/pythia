@@ -150,9 +150,9 @@ const de: Strings = {
 	// ── Citations / sources ───────────────────────────────────────────────────
 	summaryMore: "mehr",
 	summaryLess: "weniger",
-	sourcesTemplate: "VORLAGE",
-	sourcesWeb:   "WEB",
-	sourcesVault: "VAULT",
+	sourcesTemplate: "Vorlage",
+	sourcesWeb:   "Web",
+	sourcesVault: "Vault",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",

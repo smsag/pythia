@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-15 — the search row's clear control (ADR-152). `.p-switcher-clear` sits after the input in `.p-switcher-search`: a 20×20 `x` icon button, `--text-faint` → `--text-normal` on hover with the standard hover fill, **hidden until the field has content** so the row is a plain loupe + field at rest. It balances the loupe on the other end of the row. The panel no longer auto-focuses its input on mobile — auto-focus is a keyboard affordance, and on a phone it covered the bottom of the list with the on-screen keyboard.*
+*Last updated: 2026-09-15 — the sources row is run-in, not columnar (ADR-153). `.p-sources-label` loses `min-width: 54px` and reads `Template:` / `Vault:` / `Web:` in the flow ahead of the first entry; row `gap` drops 10px → 8px so the first gap reads as the space after a colon. Vault and template references lose their `[[ ]]` brackets — the run-in label already says the name is a note — keeping accent colour + hover underline as the affordance. The column was not mis-tuned: `.p-sources-row` is `flex-wrap: wrap`, and **a wrapped flex line starts at the container edge, not under the first item**, so it only ever aligned each row's first line while charging 54px of a ~300px sidebar on all of them.*
+
+*Previously, 2026-09-15 — the search row's clear control (ADR-152). `.p-switcher-clear` sits after the input in `.p-switcher-search`: a 20×20 `x` icon button, `--text-faint` → `--text-normal` on hover with the standard hover fill, **hidden until the field has content** so the row is a plain loupe + field at rest. It balances the loupe on the other end of the row. The panel no longer auto-focuses its input on mobile — auto-focus is a keyboard affordance, and on a phone it covered the bottom of the list with the on-screen keyboard.*
 
 *Previously, 2026-09-15 — the person mark (ADR-151). A fifth mark type: `<pythia-person class="p-person">`, a **solid** `--text-faint` underline where a term is dotted. Still faint, because like a term it repeats wherever the name appears; solid rather than dotted because the mark is the only signal of which kind of card a tap opens, and a name is the rarer of the two on a page. The anchor is **not** a second component — it is `.p-term-anchor` plus `.p-term-anchor--person`, which changes only the left rule to `double`, continuing the series: solid fork, dashed merge, dotted term, double person. The selection toolbar gains a **Person** button next to Define.*
 
@@ -366,6 +368,16 @@ Copy button `.p-diag-copy`: `position: absolute; top: 6px; right: 6px; z-index: 
 ### Citations & sources (`.p-cite`, `.p-sources`, F2/F11)
 
 Model-declared citations (ADR-072). The model emits `⟦cite:note:<path>⟧` / `⟦cite:web:<domain>⟧` markers (instructed only when notes are attached / research is on); `services/citations.ts` parses them into a numbered, deduped `Message.sources`. `paintCitations()` re-paints markers into `.p-cite` superscript chips (mono 9px accent on `color-mix(accent 10%)`) after every render; `renderSourcesRow()` adds a sources row under the message — a single `QUELLEN` row of `[[wikilinks]]`, or split `WEB` (accent `domain ↗`) + `VAULT` rows when any web source is present. Chips/links open the note or the source URL. `stripCitationMarkers()` keeps raw markers out of saved notes. **Web sources (research mode, ADR-077) are deterministic:** they're parsed from the actual Tavily `web_search` result (`parseWebSourcesFromResult` → `appendWebSources`), not from model markers, so the `WEB` row always reflects the real sources; the model's own `【…†source】`-style markers are stripped from the text (`stripForeignCitations`). Vault citations remain model-declared.
+
+**Sources row layout (ADR-153).** Each row opens with a **run-in `Label:`** — `Template:` / `Vault:` / `Web:` — in the flow ahead of the first entry, never a fixed label column. The 54px `min-width` ADR-140 specified could not do what it promised: the row is `display: flex; flex-wrap: wrap`, and a wrapped flex line starts at the container edge rather than under the first item, so the column aligned only each row's first line while costing 54px of a ~300px sidebar on every line. The colon is added in code, not in the string tables, so a translation cannot drop it and leave the row reading as a heading. Vault and template entries are a **bare accent-coloured name with no `[[ ]]`**; the label states what they are, so the brackets repeated it. Web entries keep `domain ↗`, which is the one mark separating them from notes. The context inspector's note list keeps its brackets — it has no label, so there they are the only signal.
+
+```
+Template: Podcast Summary
+Vault: 1 Some Note
+Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+```
+
+Tokens, top to bottom: rule `--background-modifier-border`; labels `--font-monospace` 9px `--text-faint`; citation numbers `--font-monospace` 9px `--text-faint`; note names and web domains 11.5px `--color-accent`, underlined on hover.
 
 ### Token counts (inline in the AI turn label)
 

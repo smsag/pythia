@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-152 (two regressions in the conversation panel's search row). The clear ✕ was most likely WebKit's native one, removed by ADR-108's `-webkit-appearance: none` reset — so an explicit control was built rather than unpicking a reset that exists for a good reason. And ADR-107's auto-focus raises the iOS keyboard on open, which **overlays** the webview and puts the last conversations underneath; auto-focus is a keyboard affordance and is now desktop-only. The panel's existing inset fix turned out to be a hand-rolled copy of `ui/keyboardInset.ts` that had dropped `MIN_KEYBOARD_INSET`, so it padded the list at rest too — replaced with the shared, tested `keyboardOverlap`/`watchViewport`. Both fixes are kept: the focus change removes the unbidden keyboard, the inset handles the wanted one. +3 tests (842).
+*Last updated: 2026-09-15 — ADR-153 (run-in labels in the sources row; no wikilink brackets). A screenshot with nineteen web citations showed the `WEB` row wrapping to five lines with only the first starting at the label column. Not a tuning problem: `.p-sources-row` is `flex-wrap: wrap`, and **a wrapped flex line starts at the container edge, not under the first item** — there is no hanging indent in flex, so the 54px could only ever align each row's first line while charging 54px of a ~300px sidebar for all of them. Replaced with a run-in `Web:` prefix. The `[[ ]]` brackets go with it: the label now says the name is a note, so the brackets repeat it and cost four characters on the row that just ran out of width; the affordance survives as accent colour + hover underline. The context inspector keeps its brackets — it has no label. +4 tests (846).
+
+*Previously, 2026-09-15 — ADR-152 (two regressions in the conversation panel's search row). The clear ✕ was most likely WebKit's native one, removed by ADR-108's `-webkit-appearance: none` reset — so an explicit control was built rather than unpicking a reset that exists for a good reason. And ADR-107's auto-focus raises the iOS keyboard on open, which **overlays** the webview and puts the last conversations underneath; auto-focus is a keyboard affordance and is now desktop-only. The panel's existing inset fix turned out to be a hand-rolled copy of `ui/keyboardInset.ts` that had dropped `MIN_KEYBOARD_INSET`, so it padded the list at rest too — replaced with the shared, tested `keyboardOverlap`/`watchViewport`. Both fixes are kept: the focus change removes the unbidden keyboard, the inset handles the wanted one. +3 tests (842).*
 
 *Previously, 2026-09-15 — ADR-151 (people are glossary entries). "Highlight a name and see who they are in every later conversation" is ADR-136 with a different noun, so `GlossaryEntry.kind` is `"term" | "person"` and everything is shared: folder format, merge rule, theme property, anchor, and **one index** — people and terms match in a single alternation. Only three things differ: the folder, the resolver, and the mark (solid underline where a term is dotted; the anchor adds a `double` left rule to the existing series). The prompt differs most: `describePerson` leads with what the passage establishes and is told to say it does not know rather than guess, because a person the model has never met is the normal case in a working vault. Vault-first-then-model-knowledge was the user's call with the risk stated; generated entries carry `source: model` visibly. The duplicated selection rule became `ui/entitySelection.ts`. +16 tests (839).*
 
@@ -2446,3 +2448,31 @@ The panel already had a fix for this (`d3b3665`, "keep the last conversations re
 **Verification:** the mobile test was checked in the failing direction first — with `Platform.isMobile` honoured it passes, with the guard removed it fails — so it cannot pass because `activeElement` happened to be something else. The clear-control tests assert the hidden→visible transition and that clearing restores the full browse list, not just an empty field.
 
 **Consequence:** a phone user opening the panel sees conversations rather than half a list and a keyboard, and a search can be cleared without selecting and deleting text. One copy of the keyboard arithmetic instead of two. +3 tests (842 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified on iOS** — which is where both reports came from, so both deserve a look on the device.
+
+---
+
+### ADR-153 — Run-in labels in the sources row; no wikilink brackets
+
+**Status:** Active — supersedes ADR-140's label column and its bracketed vault references
+
+**Context:** A screenshot of a research answer with nineteen web citations. The `WEB` row wraps to five lines, and **only the first one starts at the label column** — every wrapped line begins at the container edge. The column ADR-140 introduced is doing nothing on four lines out of five while charging 54px for all of them.
+
+The cause is not a tuning problem, and it was always going to happen: `.p-sources-row` is `display: flex; flex-wrap: wrap`, and **a wrapped flex line starts at the container edge, not under the first item.** There is no hanging indent in flex wrapping. The 54px could therefore only ever align each row's first line — which looked correct in every two-or-three-citation case it was designed against, and fell apart the first time a row wrapped.
+
+ADR-144 already corrected one false claim about this column (that 54px was borrowed from the reference row, which has no label at all). The remaining claim — that the column makes stacked rows start at one x — is false too, for rows long enough to matter.
+
+**Decision:**
+
+**A run-in `Label:` instead of a column.** `Web: alleninstitute.org ↗ …`. The label joins the flow ahead of the first entry, so there is no alignment to fail to hold, and 54px of a ~300px sidebar comes back on every line. Title case with a colon rather than the old spaced uppercase: a colon is what makes a run-in read as a prefix rather than a heading, and the colon is added in code so a translator cannot drop it.
+
+**No `[[ ]]` brackets on vault and template references.** ADR-140 drew them because `[[…]]` is what "a note you can open" looks like in Obsidian. That was sound when the row had nothing else to say what a name was — but the run-in label now says it out loud, so the brackets repeat a fact already stated and spend four characters doing it on the row that just ran out of width. The affordance survives where it already lived: accent colour plus a hover underline, the same as every other openable reference in the panel.
+
+**The row's one remaining distinction is the `↗`.** A web entry is `example.com ↗`; a note is a bare accent-coloured name. That is enough, because the label has already declared which kind of row this is.
+
+**What is unchanged.** The row order (template → vault → web, from the reader outwards), one label per row type unconditionally (ADR-144), the template carrying no citation number, and the numbers on everything that has one.
+
+**Not changed elsewhere: the context inspector keeps its brackets.** Its note list has no label at all, so there the brackets are the only thing marking a name as a note. The two surfaces look different now, and that is the point — one of them says "Vault:" and the other does not.
+
+**Alternatives rejected.** *A hanging indent* — `display: flex` cannot produce one; it would mean rebuilding the row as text flow with `text-indent`, to align something the label already identifies. *Icons instead of words* — ADR-140 rejected this and was right: at 11px a template and a note have no distinct glyph, and the reporter says the same. *Keeping the column and shrinking it* — the column's problem is that it does not apply to wrapped lines, which no width fixes.
+
+**Consequence:** a nineteen-citation row reads as prose and fits the sidebar. +4 tests (846 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian** — the report was a screenshot from a phone, and that is where the fix should be looked at.

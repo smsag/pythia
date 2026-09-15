@@ -55,7 +55,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 842 tests across 54 files
+  tests/                      ← Vitest unit tests (npm test) — 846 tests across 54 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -303,15 +303,15 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 
 ### Sources row (under an assistant answer)
 ```
-TEMPLATE  [[Podcast Summary]]
-VAULT     1 [[Some Note]]
-WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+Template: Podcast Summary
+Vault: 1 Some Note
+Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ```
 - Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
-- Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
-- `.p-sources-label` is a **54px column** so stacked rows start their chips at one x. 54px clears the widest label (`TEMPLATE`, measured at 49px) with slack for a wider theme monospace — it is NOT, as ADR-140 claimed, borrowed from the reference row, which has no label at all (ADR-144)
+- Vault references — the template included — render as a **bare accent-coloured name, no `[[ ]]`** (ADR-153): the run-in label already says it is a note. Web chips are numbered and end with `↗`, the one mark separating them from notes. The **context inspector keeps its brackets** — it has no label, so there they are the only signal
+- `.p-sources-label` is a **run-in prefix, never a column** (ADR-153): `Template:` / `Vault:` / `Web:` in the flow ahead of the first entry, colon added in code so a translation cannot drop it. **Do not reintroduce a label column** — `.p-sources-row` wraps, flex wrapping has no hanging indent, so a column aligns only each row's first line while charging its width on every line
 - **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
