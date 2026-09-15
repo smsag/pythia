@@ -124,7 +124,9 @@ export class GlossaryController {
 		// prefix is the one part of it the reader already knows.
 		const parts: string[] = [
 			entry.source === "model"
-				? abbreviateModel(this.d.plugin.settings.defaultAnthropicModel)
+				// Entries written before the model was recorded fall back to the old
+				// (often wrong) guess rather than showing nothing.
+				? abbreviateModel(entry.model ?? this.d.plugin.settings.defaultAnthropicModel)
 				: t("glossarySourceManual"),
 		];
 		if (entry.updatedAt) parts.push(formatSummaryTimestamp(entry.updatedAt));

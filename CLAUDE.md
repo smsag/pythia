@@ -249,9 +249,9 @@ Order left→right (ADR-098): search · name (grows) · rename · link · delete
 
 ### Reference row
 ```
-REFERENZ  [ pill: filename ✕ ]
+[ pill: filename ✕ ][ pill: filename ✕ ]
 ```
-- Label: `--font-monospace`, 10px, uppercase, `--text-faint`, width 54px
+- **No label.** This spec described a `REFERENZ` label in a 54px column for a long time; `.p-ref-row` holds only `.p-pills` and no such element has ever been created (flagged in the 2026-09-10 locale audit, corrected in ADR-144). Removed rather than built: the pills carry an ✕ and read as attachments on their own
 - Pills: `--color-accent` border + text, 10px mono, `border-radius: 10px`
 
 ### Summary bar (sticky, always visible)
@@ -307,8 +307,8 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
 - Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
-- `.p-sources-label` is a **54px column**, the same width as the reference row's label, so stacked rows start their chips at one x
-- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, the column is read once rather than aimed at, and the words pair this row with REFERENZ
+- `.p-sources-label` is a **54px column** so stacked rows start their chips at one x. 54px clears the widest label (`TEMPLATE`, measured at 49px) with slack for a wider theme monospace — it is NOT, as ADR-140 claimed, borrowed from the reference row, which has no label at all (ADR-144)
+- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)
@@ -326,7 +326,7 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
 - The table takes `width: max-content` with `max-width: 32ch` per cell. `max-width: none` alone does NOT widen a table — it sizes itself to its container (ADR-134)
 - Cell text **wraps between words but is never split inside one**. `min-width: 8ch` is a floor so short columns are not crushed
-- The rules must stay scoped under `.pythia-view`, or Obsidian core and theme `word-break: break-all` on cells wins (ADR-065)
+- The rules must stay scoped under `.pythia-view` (ADR-065: core and themes load after the plugin and win a tie). What they actually override is Pythia's own `.p-ai-body` inherited into the cells — themes were blamed for the mid-word breaking for three ADRs and were never the cause (ADR-144)
 - No sticky first column. The whole table scrolls as one piece
 - Render non-message markdown through `renderRichMarkdown` so it gets this treatment too, never a bare `MarkdownRenderer.render`
 

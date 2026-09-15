@@ -193,3 +193,24 @@ describe("aliases", () => {
 		expect("N and Neuron".match(ix.matcher)).toEqual(["Neuron"]);
 	});
 });
+
+describe("model provenance (ADR-144)", () => {
+	it("round-trips the model that wrote the definition", () => {
+		const md = upsertGlossaryEntry("# Glossary\n", entry({ model: "claude-haiku-4-5" }));
+		expect(md).toContain("model=claude-haiku-4-5");
+		expect(parseGlossary(md)[0].model).toBe("claude-haiku-4-5");
+	});
+
+	it("stays absent for a hand-written entry, leaving the old note format intact", () => {
+		const md = upsertGlossaryEntry("# Glossary\n", entry({ source: "manual" }));
+		expect(md).not.toContain("model=");
+		expect(parseGlossary(md)[0].model).toBeUndefined();
+	});
+
+	it("survives alongside aliases, which run to the closing marker", () => {
+		const e = entry({ model: "gpt-5-mini", aliases: ["Zählers", "sparse counter"] });
+		const parsed = parseGlossary(upsertGlossaryEntry("# Glossary\n", e))[0];
+		expect(parsed.model).toBe("gpt-5-mini");
+		expect(parsed.aliases).toEqual(["Zählers", "sparse counter"]);
+	});
+});

@@ -41,7 +41,7 @@ export class AnthropicService extends BaseProvider {
 		this.client = null;
 	}
 
-	protected get fastModel(): string {
+	get fastModel(): string {
 		return "claude-haiku-4-5";
 	}
 

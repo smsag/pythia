@@ -1008,7 +1008,7 @@
   padding: var(--s1) var(--s2) var(--s1) var(--s3);
   border-radius: 10px 10px 2px 10px;
   max-width: 86%;
-  word-break: break-word;
+  overflow-wrap: break-word;  /* see .p-ai-body — never word-break (ADR-144) */
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -1058,7 +1058,13 @@
 .p-summary-card-md {
   font-size: var(--font-small);
   line-height: 1.65;
-  word-break: break-word;
+  /* `overflow-wrap`, NOT `word-break: break-word` (ADR-144). Both keep a long URL
+     from overflowing the panel, but `word-break: break-word` behaves like
+     `overflow-wrap: anywhere`: it also collapses a cell's min-content width to a
+     single character, which is what let a narrow table column split `Messbarkeit`
+     into `Messba / rkeit`. Measured with no Obsidian theme loaded at all — this
+     was Pythia's own rule, not a theme's. */
+  overflow-wrap: break-word;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;

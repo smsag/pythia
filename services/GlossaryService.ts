@@ -141,6 +141,10 @@ export class GlossaryService {
 				definition,
 				source: "model",
 				updatedAt: new Date().toISOString(),
+				// The model that answered, not the conversation's chat model: lookups
+				// run on the provider's fast model, and the anchor used to name the
+				// default Anthropic model even on an OpenAI vault (ADR-144).
+				model: this.plugin.llmRouter.fastModelFor(),
 				aliases: dedupeAliases(term, variants),
 			};
 			await this.save(entry);

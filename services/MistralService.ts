@@ -56,7 +56,7 @@ export class MistralService extends BaseProvider {
 		this.client = null;
 	}
 
-	protected get fastModel(): string {
+	get fastModel(): string {
 		return "mistral-small-latest";
 	}
 

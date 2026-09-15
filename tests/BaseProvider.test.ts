@@ -33,7 +33,7 @@ import type { TokenUsage } from "../models/types";
  */
 class TestProvider extends BaseProvider {
 	protected resetClient(): void {}
-	protected get fastModel(): string { return "fast"; }
+	get fastModel(): string { return "fast"; }
 	protected callUtility(): Promise<string> { return Promise.resolve(""); }
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
 	protected runStreamRound(): Promise<RoundResult> {
