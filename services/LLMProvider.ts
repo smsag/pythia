@@ -20,6 +20,7 @@ export interface LLMProvider {
 	generateChapterName(content: string, conversation?: Conversation): Promise<string>;
 	/** Define `term` as used in `passage` (ADR-136). */
 	defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string>;
+	describePerson(name: string, passage: string, conversation?: Conversation): Promise<string>;
 	/** The model `defineTerm` and the other utility calls run on. */
 	readonly fastModel: string;
 	generateConversationTitle(

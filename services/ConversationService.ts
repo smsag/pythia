@@ -4,6 +4,7 @@ import type { Conversation, Provider, PythiaTemplate } from "../models/types";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { todayISO } from "../utils";
 import { t } from "../i18n";
+import { effectiveTheme } from "./glossaryNotes";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
 import { ResumeModeModal } from "../suggest/ResumeModeModal";
@@ -17,6 +18,30 @@ import { ResumeModeModal } from "../suggest/ResumeModeModal";
  */
 export class ConversationService {
 	constructor(private readonly plugin: PythiaPlugin) {}
+
+	/**
+	 * Rename a conversation, keeping everything that follows its name in step
+	 * (ADR-150).
+	 *
+	 * One place, because the name is renamed from four: the header's rename box,
+	 * the two summarize-with-title flows, and the automatic title after the first
+	 * exchange. A theme that follows the conversation name has to follow it from
+	 * all four, and the old name is only available *before* the assignment — which
+	 * is exactly why this cannot live inside `renameConversationFile`.
+	 */
+	async renameConversation(conv: Conversation, newName: string): Promise<void> {
+		const name = newName.trim();
+		if (!name || name === conv.name) return;
+		const previous = conv.name;
+		conv.name = name;
+		await this.plugin.conversationStore.save(conv);
+		// Only when the theme is following the name. A pinned theme is the user's
+		// own label and must not be renamed out from under them.
+		if (conv.theme === undefined) {
+			await this.plugin.glossaryService?.renameTheme(previous, name);
+		}
+		await this.renameConversationFile(conv);
+	}
 
 	async renameConversationFile(conv: Conversation): Promise<void> {
 		const p = this.plugin;
@@ -238,6 +263,12 @@ export class ConversationService {
 		// (its own summaryText/favoritesSummary stay empty until the user summarizes
 		// the fork, so the source can surface a genuine fork summary at the origin).
 		if (summary) conv.forkedFromSummary = summary;
+		// Resolve the source's theme rather than copying `theme` verbatim: a source
+		// that is following its own name would otherwise hand the fork "undefined",
+		// and the fork would then follow its OWN name instead of inheriting
+		// anything. Pinning it also means renaming the fork leaves the theme alone,
+		// which is what "inherited, but changeable" has to mean (ADR-150).
+		conv.theme = effectiveTheme(source);
 		await p.saveConversations();
 
 		const view = await p.activateView();

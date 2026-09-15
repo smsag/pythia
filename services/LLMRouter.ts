@@ -108,6 +108,10 @@ export class LLMRouter {
 		return this.byProvider(provider).defineTerm(term, passage, conversation);
 	}
 
+	describePerson(name: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
+		return this.byProvider(provider).describePerson(name, passage, conversation);
+	}
+
 	/** Which model `defineTerm` will actually use, so a stored definition can
 	 *  record its real author instead of the default chat model (ADR-144). */
 	fastModelFor(provider?: Provider): string {

@@ -473,6 +473,7 @@ export class PythiaSidebarView extends ItemView {
 			toggleMergeAnchor: (mergeId, markEl) => this.mergeController.toggleMergeAnchor(mergeId, markEl),
 			toggleTermAnchor: (term, markEl) => void this.glossaryController.toggleAnchor(term, markEl),
 			defineTerm: (term, passage) => void this.glossaryController.defineSelection(term, passage),
+			describePerson: (name, passage) => void this.glossaryController.describePerson(name, passage),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
@@ -1644,8 +1645,7 @@ export class PythiaSidebarView extends ItemView {
 						.then(async (title) => {
 							const c = this.plugin.conversationStore.getById(convId);
 							if (!c) return;
-							c.name = title;
-							await this.plugin.conversationStore.save(c);
+							await this.plugin.renameConversation(c, title);
 							if (this.activeConversation?.id === convId) {
 								this.headerController.setConvName(c.name);
 							}

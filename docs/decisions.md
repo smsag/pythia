@@ -1,6 +1,12 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-148 (one language setting, resolved per conversation). `outputLanguage` reached only the utility prompts, so a user could pin German and still get English chat answers; it now also feeds `buildSystemPrompt`. Six options (Obsidian's language, the conversation's language, German, English, Italian, Spanish), a global default with a per-conversation override, and one resolver — `BaseProvider.languageLabel(conversation?)` — behind every prompt. Two values resolve rather than name: `auto` adds **no instruction at all** (the absence is the feature) and `obsidian` follows Obsidian's UI locale into any of its ~30 languages. The system prompt gets a longer directive than the utility calls, because a chat answer has to hold its language across turns against a user typing in another one. +16 tests (781).
+*Last updated: 2026-09-15 — ADR-151 (people are glossary entries). "Highlight a name and see who they are in every later conversation" is ADR-136 with a different noun, so `GlossaryEntry.kind` is `"term" | "person"` and everything is shared: folder format, merge rule, theme property, anchor, and **one index** — people and terms match in a single alternation. Only three things differ: the folder, the resolver, and the mark (solid underline where a term is dotted; the anchor adds a `double` left rule to the existing series). The prompt differs most: `describePerson` leads with what the passage establishes and is told to say it does not know rather than guess, because a person the model has never met is the normal case in a working vault. Vault-first-then-model-knowledge was the user's call with the risk stated; generated entries carry `source: model` visibly. The duplicated selection rule became `ui/entitySelection.ts`. +16 tests (839).
+
+*Previously, 2026-09-15 — ADR-150 (one note per term; the glossary folder is the database). Verified, not assumed: Obsidian Bases is a core plugin where **"each row is a file"**, and Dataview inline fields attach to the **page** with no per-heading scope. A theme-filtered deck is a per-term view, so one note per term is the precondition for the feature, not a preference — and ADR-149's visible labels were solving the wrong half, making fields visible to a reader while leaving every term invisible as a row. Terms are now notes with frontmatter (`aliases` is Obsidian's own property; translations are flat `term_xx` keys because properties have no object type; `theme` holds `[[links]]`), the theme note carries an embedded base filtered to itself, and `Conversation.theme === undefined` means *follow the conversation name* rather than a copy of it. Renaming is centralized so the theme moves with `fileManager.renameFile`, which rewrites the links. Writes merge rather than overwrite. `renderEntry`/`upsertGlossaryEntry` deleted. +34 tests (823).*
+
+*Previously, 2026-09-15 — ADR-149 (the glossary note is the interchange format). The question behind "are there standards for glossaries?" was how to *avoid* building a flashcard reviewer: Pythia captures terms, other tools drill them. Only half of this has standards — terminology content does (SKOS, ISO 12620, ISO 704, TBX), flashcard drilling does not. Two findings followed: **a field inside `%% pythia: … %%` does not exist** to any external reader, and the flat alias list could not say whether "counter" was an inflection or a translation — wrong as of ADR-148's six languages. So card-relevant fields (`Forms:`, `Translations:`, `Context:`) became visible markdown with only provenance left in the comment, `aliases` narrowed to same-language forms, `translations` became language-tagged, `context` is new (one verbatim sentence, ISO 12620's attested context), and ISO 704's definition rules went into the prompt. Labels are English in every vault because they are keys, not prose. +16 tests (797).*
+
+*Previously, 2026-09-15 — ADR-148 (one language setting, resolved per conversation). `outputLanguage` reached only the utility prompts, so a user could pin German and still get English chat answers; it now also feeds `buildSystemPrompt`. Six options (Obsidian's language, the conversation's language, German, English, Italian, Spanish), a global default with a per-conversation override, and one resolver — `BaseProvider.languageLabel(conversation?)` — behind every prompt. Two values resolve rather than name: `auto` adds **no instruction at all** (the absence is the feature) and `obsidian` follows Obsidian's UI locale into any of its ~30 languages. The system prompt gets a longer directive than the utility calls, because a chat answer has to hold its language across turns against a user typing in another one. +16 tests (781).*
 
 *Previously, 2026-09-15 — ADR-147 (the panel was inset from its own leaf). Fifth report of dead space below the composer, after four shipped fixes that all changed padding *inside* the panel. The user then reported that the conversation panel leaves a gap **left and right as well** — and `.p-history` is `inset: 0` on `.pythia-view`, so it outlines the panel's true edges. **No padding inside the composer can produce a gap on the left.** The panel was inset on three sides by its own leaf container; only the bottom strip was large enough to notice. Fixed with `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. Verified in the failing direction first: without the rule the panel and the history overlay are both inset 8px left, 8px right, 34px bottom; with it, flush on all four sides. ADR-146's change is kept, its explanation withdrawn — the "exactly one 34pt home indicator" arithmetic was numerology, because an ordinary bottom padding produces the same 34. **When a fix fails twice, the next move is not a better guess at the same evidence; it is to get different evidence.**
 
@@ -2309,3 +2315,104 @@ The request was for a "Sprache" dropdown with six options (Obsidian's language, 
 **Threading.** Four utility methods (`defineTerm`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`) had no conversation in reach; each gained an optional trailing `conversation?` parameter, mirrored on `LLMProvider` and `LLMRouter`, and every call site that has one now passes it. A glossary lookup still runs on the default provider's fast model — only the language rides along, not the provider choice.
 
 **Consequence:** the setting now means what its name says. `langInstruction`/`langSuffix` changed signature — they take the *resolved label*, not the setting code, so there is one place that knows how a setting becomes a language. +16 tests (781 across 52 files), with the language suite split into `tests/outputLanguage.test.ts` because `messageUtils.test.ts` hit its 600-line budget. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-149 — The glossary note is the interchange format
+
+**Status:** Active — extends ADR-136/137; narrows `aliases` and moves it out of the provenance comment
+
+**Context:** The question that started this was "are there standards for glossaries?", and the reason behind it was the opposite of a feature request: the user wants terms captured in Pythia and *drilled somewhere else* — browsed flashcard-style to learn the definitions met while reading. Not built here.
+
+That reframes what the glossary note is for. Pythia's unique contribution is capture: it is inside the conversation, it holds the passage, it can ask the model. Browsing, testing and scheduling are solved problems with mature tools, and rebuilding them inside a 300px sidebar is the expensive mistake. **The note is therefore not a private store; it is the integration surface.**
+
+Three findings followed.
+
+**Only half of this has standards.** Terminology *content* is well standardized — SKOS (W3C) for the concept/label model, ISO 12620 for data-category names, ISO 704 for what makes a definition a definition, TBX (ISO 30042) for termbase interchange. Flashcard *drilling* has no standard at all; there is only de-facto tooling. So "use a standard" buys a clean, portable data model and does not buy a review app — those are separate decisions, and only the first one is ours.
+
+**A field in a comment does not exist.** `aliases` lived inside `%% pythia: … %%`. That is an Obsidian comment, invisible to every external reader — so the moment the note has to be read by another tool, every field stored there is simply missing. This was invisible while Pythia was the only reader.
+
+**The flat alias list could not name a language.** "Zählern" (an inflection) and "counter" (a translation) sat in one list with nothing to tell them apart. Tolerable while the vault was effectively bilingual; wrong as of ADR-148, which shipped six output languages — an Italian answer could file `contatore` against a German entry with no record of which language it belonged to.
+
+**Decision:**
+
+**Split the note by audience, not by tidiness.** Everything a reader needs — definition, `Forms:`, `Translations:`, `Context:` — is visible markdown. Only provenance (`source`, `updatedAt`, `model`) stays in the comment, because it is machine state rather than content. The `## Term` heading already provides the question/answer boundary, so no specific tool has to be chosen now: adapting to one later is a mechanical transform, not a re-modelling.
+
+**`aliases` becomes same-language only; `translations` is language-tagged.** This is SKOS's distinction — an `altLabel` is same-language, and a label in another language differs by its language tag, not by being a different concept. Both are registered in the term index, so an Italian answer still marks "contatore" and opens the entry filed under "Zähler".
+
+**`context` is new: one verbatim sentence from the passage.** ISO 12620 calls this an attested *context*. `defineTerm` is deliberately prompted for "the sense that applies here", which makes every definition depend on a passage the entry did not keep — so an entry read anywhere but next to its originating answer was quietly decontextualized. One sentence fixes that and costs one field.
+
+**ISO 704's rules go into the prompt.** Name the broader category and what distinguishes the term within it; be substitutable for the term in a sentence; never define a term with itself; never open with "is when". Away from its passage, a circular or "is when" definition says nothing — and away from its passage is now the normal case.
+
+**Labels are English in every vault.** `Forms:`, `Translations:`, `Context:` are keys, not prose: an external reader has to find them without per-vault configuration, which a localized label cannot offer. Stated as a deliberate cost, not an oversight.
+
+**Alternatives rejected.** *TBX or SKOS/RDF as the storage format* — both destroy every property ADR-136 chose a markdown note for: a user cannot hand-correct XML, the file stops reading correctly with no plugin installed, and `[[Glossary#Term]]` stops resolving. TBX also serves CAT tools, which is not this use case. *Committing to one flashcard tool's syntax now* — the tool is undecided, and the fields are the part that would have to be right either way. *Building a reviewer and a scheduler* — explicitly not wanted, and the reason the standards question was asked.
+
+**Compatibility.** The parser reads both shapes: legacy `aliases=` in the comment still loads, so a glossary written by an earlier build keeps marking its variants. Entries are upgraded lazily when re-defined; nothing is rewritten wholesale, per ADR-136's rule that the file is hand-edited between writes. Three characters are stripped from visible values — the `·` and `|` separators, and `%`, because a stray `%%` in the body would open a comment and swallow the rest of the note.
+
+**What was deliberately not touched.** The inline glossary anchor still shows the definition alone. Context is redundant there (the passage is on screen), and the anchor is a lookup surface, not a study surface.
+
+**Consequence:** the glossary note can be read by something other than Pythia, which is the whole point. +16 tests (797 across 52 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian — and the note format change in particular deserves a look at a real glossary before trusting it.
+
+---
+
+### ADR-150 — One note per term; the glossary folder is the database
+
+**Status:** Active — supersedes ADR-136's storage choice and most of ADR-149's note format. Storage and themes only; person entities follow in ADR-151
+
+**Context:** The requirement that broke the old storage was "browse the definitions I met, grouped by theme, and let authors enrich them". Verified against the documentation rather than assumed:
+
+- Obsidian **Bases** is a core plugin, and **"each row is a file, and each column is a property of that file"**. Views: table, list, cards, kanban, map.
+- **Dataview** inline fields (`Key:: Value`, bold keys supported, formatting stripped at index time) attach to the **page**. There is no per-heading scope; list items are indexed individually, headings are not.
+
+So a single glossary note with `## Term` headings can never produce a per-term row, in either tool. **A theme-filtered deck is a per-term view**, which makes one note per term not a preference but the precondition for the feature. ADR-149's careful visible-label format was solving the wrong half: it made fields visible to a reader, but left every term invisible as a *row*.
+
+**Decision:**
+
+**One note per term**, in `<root>/Terms/`, with the data as frontmatter properties and the definition as the body. Theme notes live in `<root>/Themes/`.
+
+**Properties, not our own labels.** `aliases` is Obsidian's **native** property, so search, autocomplete and linking work with no code of ours. Translations are flat keys (`term_en`, `term_it`) because Obsidian properties have no object type and a flat key becomes a Base column, which a list of `"en: counter"` strings cannot; the set is finite — the six languages of ADR-148. `theme` holds `[[links]]`, so the theme note gets backlinks for free.
+
+**Contexts became plural.** One note per term means a term met in three conversations is one entry with three attestations. They are blockquotes in the body rather than a property: prose, unbounded in number, and useless as a Base column.
+
+**The theme note is the deck, not a pointer to one.** It carries an embedded base filtered to itself (`theme.contains(this.file.link)`), so opening it *is* browsing that deck — a Cards view. Written once and never rewritten: the user owns it afterwards.
+
+**`Conversation.theme === undefined` means "follow the conversation name"** — not a copy of the name. The distinction is the whole feature: a conversation that is following gets its theme renamed when the LLM titles it after the first exchange, while a pinned theme does not. `effectiveTheme()` resolves it in one place; the settings field writes `undefined` for an empty input, never the name.
+
+**A fork inherits a resolved theme.** Copying `theme` verbatim would hand a fork `undefined`, and the fork would then follow its *own* name — inheriting nothing. So the fork is pinned to the source's effective theme, which is also what makes "inherited, but changeable" true.
+
+**Renaming is centralized.** `ConversationService.renameConversation` is now the only path that changes a conversation's name, because the old name is needed *before* the assignment and four call sites were each doing it themselves. The theme note is moved with `fileManager.renameFile`, which is the call that rewrites the `[[links]]` in every term note — `vault.rename` would not.
+
+**Merge, never overwrite.** A re-lookup adds themes and contexts to the existing note and keeps a `manual` definition as written; only the anchor's explicit regenerate replaces it. This is what makes a term met in several conversations one note, and what makes multi-author enrichment mostly conflict-free — two people editing different terms edit different files.
+
+**What this deletes.** `renderEntry` and `upsertGlossaryEntry` are gone: we no longer write that format, and a writer for a format nothing writes is how two formats quietly drift apart. `parseGlossary` survives as the migration's reader, and its tests were rewritten against a **literal** 2.13.x fixture rather than a re-implemented renderer — a fixture generated by our own code could drift with it and still pass. Reading is now Obsidian's job: `all()` takes frontmatter from `metadataCache` and reads **no file at all**; the body is read for the one term whose anchor is opened (`hydrate`).
+
+**Migration is a button, not a startup step.** Non-destructive, idempotent, and it leaves the old note untouched — the only way a user learns it worked is by looking, so it has to be safe to run twice.
+
+**Alternatives rejected.** *List item per term in one note* — Dataview indexes list items, but Bases does not (row = file), so it would forfeit the core-plugin route and give up `## Term` headings, which are why `[[Glossary#Term]]` links worked. *Note per theme containing its terms* — reintroduces exactly the constraint being fixed, and a term can only be in one deck. *Keeping ADR-149's labels* — they make fields visible to a human reader and a term invisible to every query surface.
+
+**Costs, stated plainly.** This reverses ADR-136's single-note decision and makes ADR-149's label format legacy one day after shipping it — the aliases/translations split, the context field and the ISO 704 prompt rules from that ADR survive; the storage does not. Homonyms are now worse than they were: two senses of one spelling need two note titles, and no disambiguation convention is implemented yet. Vault clutter is real, confined to one folder. `settings.ts` paid the ADR-097 ratchet with a `ui/glossarySettings.ts` extraction.
+
+**Consequence:** a theme-filtered deck is a saved filter the user makes in a core plugin, and Pythia builds no browse UI, no scheduler and no export. +34 tests (823 across 53 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian** — and this one writes into the vault, so the migration deserves a look at a real glossary before it is trusted.
+
+---
+
+### ADR-151 — People are glossary entries
+
+**Status:** Active — extends ADR-150. The person-lookup resolution policy was chosen by the user with the risk stated; see "The decision that was not mine"
+
+**Context:** The request was "a user highlights a name, and in future conversations that person is highlighted with info about them and the notes stored in Obsidian." Read plainly, that is ADR-136 with a different noun. Mark every occurrence, open an anchor, resolve vault-first — none of that is about terminology; it is about **entities**, and terms were simply the first kind.
+
+**Decision: one mechanism, two kinds.** `GlossaryEntry.kind` is `"term" | "person"` (undefined reads as term, so every existing entry keeps its meaning). People are notes in `<root>/People/` with `type: person`, which is what a Base filters on. Everything else is shared: the folder format, the merge rule, the theme property, the anchor, and — importantly — **one term index**. People and terms are matched in a single alternation, because two passes over every text node of every message is precisely the cost that index exists to avoid.
+
+**What differs, and only this.** Where an entry is filed; how it is resolved; and how the mark is drawn. A person mark is a **solid** faint underline where a term is dotted — the mark is the only signal of what a tap will open, so it has to differ; solid goes to the person because a name is the rarer of the two on a page and can afford the heavier stroke. The anchor is literally `.p-term-anchor` plus a modifier that changes the left rule to `double`, continuing the series (solid fork, dashed merge, dotted term, double person). Not a second set of rules — ADR-142 recorded what happens when a near-twin gets its own copy.
+
+**The prompt is where a person genuinely differs.** `defineTerm` asks the model to explain a term as used in the passage. `describePerson` asks it to say what the *passage establishes* and to add outside knowledge only if confident it is the same person — and, explicitly, to say it does not know rather than guess. A term the model has never met is rare; a person it has never met is the normal case in a working vault, where the names are colleagues, clients and counterparties. A model that leads with recall writes a plausible biography for a stranger.
+
+**The decision that was not mine.** I recommended vault-only for people, with no model tier: a named private individual is personal data, and a confidently invented biography is indistinguishable from a recorded one to whoever reads the note next. The user chose vault-first-then-model-knowledge with that risk stated, and that is their call. What I built in as a consequence: the model tier is the fallback rather than the source, the prompt is instructed to decline rather than guess, and every generated entry carries `source: model` **visibly** in the note — so the distinction between recorded and generated survives into the artifact, which is where someone will eventually act on it.
+
+**Alternatives rejected.** *A separate PersonService with its own index and marks* — two implementations of mark-anchor-resolve, drifting from the first day, for a difference that is three fields wide. *Storing people on the conversation* — the same reason ADR-136 refused it for terms: a person met once should be known everywhere afterwards, including in conversations that do not exist yet. *A `person` subtype of the term prompt* — the instruction that matters ("say you do not know") is specific to people, and burying it in a shared prompt would make it easy to lose.
+
+**What this deletes.** The duplicated selection rule. Define and Person accept the same shape of selection — a short span in assistant content, the whole message as its passage — and that was written twice within an hour of people existing. It is now `ui/entitySelection.ts`, pure enough to unit-test, which paid the ADR-097 budget `SelectionController` had just broken.
+
+**Consequence:** a name highlighted once is marked in every conversation, its note carries theme links like any term, and a Base filtered `type == "person"` is a people directory the user builds themselves. +16 tests (839 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian**, and the person prompt's refusal behaviour in particular is the thing to check first on a real name the model cannot know.

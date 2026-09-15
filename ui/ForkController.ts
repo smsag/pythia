@@ -329,10 +329,7 @@ export class ForkController {
 			if (summary) {
 				fork.summaryText = summary;
 				fork.summaryUpdatedAt = new Date().toISOString();
-				if (title) {
-					fork.name = title;
-					void this.d.plugin.renameConversationFile(fork);
-				}
+				if (title) await this.d.plugin.renameConversation(fork, title);
 				await this.d.plugin.conversationStore.save(fork);
 				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
 			}

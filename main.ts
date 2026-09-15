@@ -553,6 +553,10 @@ export default class PythiaPlugin extends Plugin {
 	createConversationFromTemplate(tpl: PythiaTemplate, contextNotes?: string[], outputFolder?: string): Promise<Conversation> {
 		return this.conversationService.createConversationFromTemplate(tpl, contextNotes, outputFolder);
 	}
+	renameConversation(conv: Conversation, newName: string): Promise<void> {
+		return this.conversationService.renameConversation(conv, newName);
+	}
+
 	renameConversationFile(conv: Conversation): Promise<void> {
 		return this.conversationService.renameConversationFile(conv);
 	}

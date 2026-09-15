@@ -2,6 +2,7 @@ import { MarkdownView, Notice } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
+import { readEntitySelection } from "./entitySelection";
 import { todayISO, withConversationBacklink } from "../utils";
 import {
 	findRange,
@@ -36,6 +37,7 @@ export interface SelectionDeps {
 	toggleTermAnchor(term: string, markEl: HTMLElement): void;
 	/** Define the selected term and mark it everywhere (ADR-136). */
 	defineTerm(term: string, passage: string): void;
+	describePerson(name: string, passage: string): void;
 	/** The view's `registerDomEvent`, so toolbar/selection listeners auto-clean on unload. */
 	registerDomEvent: DomEventRegistrar;
 }
@@ -55,6 +57,7 @@ export class SelectionController {
 	private forkBtn!: HTMLButtonElement;
 	private mergeBtn!: HTMLButtonElement;
 	private defineBtn!: HTMLButtonElement;
+	private personBtn!: HTMLButtonElement;
 	private tappedFavId: string | null = null;
 
 	constructor(private readonly d: SelectionDeps) {}
@@ -128,8 +131,16 @@ export class SelectionController {
 			text: t("defineBtn"),
 			attr: { title: t("defineBtn") },
 		});
-		this.d.registerDomEvent(this.defineBtn, "mousedown", (e) => { e.preventDefault(); this.onDefineTerm(); });
-		this.d.registerDomEvent(this.defineBtn, "touchend", makeSelTouch(() => this.onDefineTerm()));
+		this.d.registerDomEvent(this.defineBtn, "mousedown", (e) => { e.preventDefault(); this.onEntityAction("term"); });
+		this.d.registerDomEvent(this.defineBtn, "touchend", makeSelTouch(() => this.onEntityAction("term")));
+
+		this.personBtn = this.selectionToolbar.createEl("button", {
+			cls: "pythia-sel-btn",
+			text: t("personBtn"),
+			attr: { title: t("personBtn") },
+		});
+		this.d.registerDomEvent(this.personBtn, "mousedown", (e) => { e.preventDefault(); this.onEntityAction("person"); });
+		this.d.registerDomEvent(this.personBtn, "touchend", makeSelTouch(() => this.onEntityAction("person")));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
 			cls: "pythia-sel-btn",
@@ -550,33 +561,24 @@ export class SelectionController {
 	}
 
 	/**
-	 * Define the selected term (ADR-136). Assistant content only, like the other
-	 * span actions, because the terminology that needs explaining is the model's.
+	 * Define the selected term (ADR-136) or describe the selected person
+	 * (ADR-151). One handler: the two differ only in the word cap, the rejection
+	 * message and which resolver they hand the span to.
 	 *
-	 * A term is a word or a short phrase, so a long selection is rejected rather
-	 * than turned into a glossary entry nobody will ever match again.
+	 * The person cap is looser by one word, and only because of titles and
+	 * multi-part surnames ("van der Berg").
 	 */
-	private onDefineTerm(): void {
-		const sel = window.getSelection();
-		const term = (sel?.toString() ?? "").trim();
-		const anchor = sel?.anchorNode;
-		const msgEl = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest("[data-msg-id]");
-		if (!msgEl || msgEl.classList.contains("p-msg-user")) {
-			this.selectionToolbar.style.display = "none";
-			window.getSelection()?.removeAllRanges();
-			return;
-		}
-		const words = term.split(/\s+/).filter(Boolean).length;
-		if (!term || words > 5 || term.length > 60) {
-			new Notice(t("glossaryNoTerm"));
-			return;
-		}
-		// The whole message is the passage: the sense of a term is often fixed a
-		// sentence or two away from where it appears.
-		const passage = msgEl.textContent ?? "";
+	private onEntityAction(kind: "term" | "person"): void {
+		const result = readEntitySelection(kind === "person" ? 6 : 5);
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		this.d.defineTerm(term, passage);
+		if (!result.ok) {
+			if (result.reason === "too-long") new Notice(kind === "person" ? t("personNoName") : t("glossaryNoTerm"));
+			return;
+		}
+		const { text, passage } = result.selection;
+		if (kind === "person") this.d.describePerson(text, passage);
+		else this.d.defineTerm(text, passage);
 	}
 
 	private async onSaveToInbox(): Promise<void> {

@@ -35,8 +35,11 @@ export interface PythiaSettings {
 	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
 	inboxNote: string;
-	/** Vault path of the glossary note (ADR-136). */
+	/** Vault path of the single-note glossary written by builds up to 2.13.x.
+	 *  Read-only since ADR-150 — the migration command's source. */
 	glossaryNote: string;
+	/** Root folder of the glossary (ADR-150): `Terms/`, `Themes/` live under it. */
+	glossaryFolder: string;
 	/** Language Pythia answers in — chat replies and every utility prompt
 	 *  (titles, summaries, chapter names, glossary definitions).
 	 *  "auto" = follow the conversation language, "obsidian" = follow Obsidian's
@@ -106,6 +109,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
 	glossaryNote: "Pythia/Glossary.md",
+	glossaryFolder: "Glossary",
 	outputLanguage: "auto",
 	debugMode: false,
 	promptOptimizerTemplateId: "",

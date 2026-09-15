@@ -47,6 +47,14 @@ export interface Conversation {
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	/**
+	 * The theme this conversation files its terms under (ADR-150).
+	 *
+	 * `undefined` means **follow the conversation name** — not a copy of the name,
+	 * so renaming the conversation renames the theme with it. A fork resolves it
+	 * to a concrete value, and setting it in the conversation settings pins it.
+	 */
+	theme?: string;
 	/** Per-conversation override of the global `outputLanguage` setting (ADR-148).
 	 *  Undefined → inherit the global default. */
 	outputLanguage?: OutputLanguage;

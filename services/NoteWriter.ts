@@ -222,7 +222,10 @@ ${summary}
 		}
 	}
 
-	private async ensureFolder(folderPath: string): Promise<void> {
+	/** Create every missing folder in a file path. Public since ADR-150: the
+	 *  glossary writes into a folder tree it owns, and re-implementing this would
+	 *  be a second place that has to get vault-root and existing-folder cases right. */
+	async ensureFolder(folderPath: string): Promise<void> {
 		const parts = folderPath.split("/").filter(Boolean);
 		let current = "";
 		for (const part of parts) {

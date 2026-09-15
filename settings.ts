@@ -4,6 +4,7 @@ import type { Provider, EffortLevel, OutputLanguage } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
 import { FileSuggestModal } from "./suggest/FileSuggest";
 import { renderEmbeddingSettings } from "./ui/embeddingSettings";
+import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import {
@@ -236,20 +237,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
-			.setName(t("glossaryNoteName"))
-			.setDesc(t("glossaryNoteDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("Pythia/Glossary.md")
-					.setValue(this.plugin.settings.glossaryNote)
-					.onChange(async (value) => {
-						this.plugin.settings.glossaryNote = value.trim();
-						await this.plugin.saveSettings();
-						// The service caches the note's contents keyed to the old path.
-						this.plugin.glossaryService?.invalidate();
-					})
-			);
+		renderGlossarySettings(containerEl, this.plugin);
 
 		containerEl.createEl("h3", { text: t("behaviourSection") });
 

@@ -12,16 +12,54 @@
  * is possible if the definition lives on the conversation that happened to ask.
  * The note is also a surface other tools can read.
  *
- * **Format: `## Term` followed by its definition.** Headings rather than a list
+ * **Since ADR-150 this module no longer writes.** The glossary is a folder of
+ * notes (`services/glossaryNotes.ts`); what remains here is `parseGlossary`, the
+ * reader for the single-note format written by builds up to 2.13.x, which the
+ * migration needs, and `buildTermIndex`, which is storage-agnostic. The renderer
+ * was deleted rather than kept "just in case": a writer for a format nothing
+ * writes is how two formats quietly drift apart.
+ *
+ * **Legacy format: `## Term` followed by its definition.** Headings rather than a list
  * because Obsidian can link to `[[Glossary#Term]]`, and because a definition is
  * allowed to be several paragraphs. The file stays ordinary markdown that reads
  * correctly with no plugin installed.
+ *
+ * **Visible fields vs. machine state (ADR-149).** Everything a reader — human or
+ * another tool — needs to understand the term is written as visible markdown:
+ * the definition, its other surface forms, its equivalents in other languages,
+ * and the sentence it was met in. Only provenance (who wrote it, when, with
+ * which model) hides in the `%% pythia: … %%` comment.
+ *
+ * That split is the whole point: an Obsidian comment is invisible to every
+ * external reader, so a field stored there does not exist as far as any other
+ * tool is concerned. Pythia's job is to capture terms; browsing and drilling
+ * them is a solved problem elsewhere, and the note can only reach those tools
+ * through content they can actually see.
+ *
+ * Labels are English (`Forms:`, `Translations:`, `Context:`) even in a German
+ * vault, and named after ISO 12620's data categories rather than invented. They
+ * are keys, not prose: a reader has to find them without per-vault
+ * configuration, which a localized label cannot offer.
  */
+
+/**
+ * What an entry *is* (ADR-151). Terms and people share every mechanism — the
+ * mark, the anchor, the folder format, the index — and differ only in where they
+ * are filed, how they are looked up, and how the mark is drawn.
+ *
+ * They are one type rather than two because the painter must match both in a
+ * single alternation: two passes over every text node of every message is the
+ * cost this index exists to avoid.
+ */
+export type EntryKind = "term" | "person";
 
 /** One glossary entry. `term` is stored as written; matching is case-insensitive. */
 export interface GlossaryEntry {
 	term: string;
 	definition: string;
+	/** Term unless stated otherwise (ADR-151) — undefined reads as "term" so every
+	 *  entry written before people existed keeps its meaning. */
+	kind?: EntryKind;
 	/** Where the definition came from, for display and for re-lookup decisions. */
 	source: "model" | "manual";
 	/** ISO 8601. Absent on entries a human wrote by hand without one. */
@@ -30,20 +68,109 @@ export interface GlossaryEntry {
 	 *  hand-written entries and on entries stored before this was recorded. */
 	model?: string;
 	/**
-	 * Other surface forms of the same term: inflections, plurals, and the
-	 * translation the other language of a bilingual conversation uses
-	 * ("Zählers", "Zählern", "counter"). Each is matched and marked exactly like
-	 * the canonical term and resolves back to this one entry (ADR-136).
+	 * Other surface forms of the same term **in its own language**: inflections,
+	 * plurals, declined forms ("Zählers", "Zählern"). Each is matched and marked
+	 * exactly like the canonical term and resolves back to this one entry
+	 * (ADR-136).
 	 *
 	 * Stored rather than derived because stemming is language-specific and
 	 * lossy — German compounds in particular — and because a stored list can be
 	 * corrected by hand in the note, which a stemmer cannot.
+	 *
+	 * **Cross-language equivalents no longer live here** (ADR-149). Until then
+	 * "counter" and "Zählern" sat in one flat list, which made it impossible to
+	 * say which language a form belonged to — tolerable while the vault was
+	 * effectively bilingual, wrong once ADR-148 shipped six output languages.
+	 * They are `translations` now; this list is same-language only.
 	 */
 	aliases?: string[];
+	/**
+	 * The term's equivalents in other languages, each tagged with the language it
+	 * belongs to — SKOS's distinction between an `altLabel` (same language) and a
+	 * label in another language, which is a property of the label, not a separate
+	 * concept.
+	 *
+	 * Matched and marked exactly like an alias, so an Italian answer still marks
+	 * "contatore" and opens the entry filed under "Zähler".
+	 */
+	translations?: Translation[];
+	/**
+	 * Sentences from the passages where the term was met, kept verbatim.
+	 *
+	 * ISO 12620 calls this a *context*: an attested example of the term in use.
+	 * `defineTerm` is deliberately prompted to explain "the sense that applies
+	 * here", which makes the definition dependent on a passage the entry does not
+	 * otherwise keep — so the entry reads as decontextualized the moment it is
+	 * seen anywhere but next to the answer it came from.
+	 *
+	 * Plural since ADR-150: one note per term means a term met in three
+	 * conversations is one entry with three attestations, not three entries.
+	 */
+	contexts?: string[];
+	/**
+	 * The themes this term belongs to, by name (ADR-150). Stored as `[[links]]`
+	 * in the note's `theme` property so backlinks work from the theme note, and
+	 * carried here as plain names because a link is a rendering detail.
+	 *
+	 * A list, not a single value: a term met in several conversations belongs to
+	 * every one of their themes, which is exactly what lets one term appear in
+	 * several decks.
+	 */
+	theme?: string[];
+}
+
+/** One cross-language equivalent: an ISO 639-1 code and the term in that language. */
+export interface Translation {
+	/** ISO 639-1 code, lowercased ("en", "it"). */
+	lang: string;
+	term: string;
 }
 
 /** Marker line placed under a heading to record provenance without cluttering the prose. */
 const META_PREFIX = "%% pythia:";
+
+/**
+ * Labels for the visible fields (ADR-149), named after ISO 12620 data
+ * categories. Written in bold so they read as labels rather than prose, and
+ * parsed case-insensitively with the bold markers optional, because the note is
+ * hand-edited and someone will type `Context:` without the asterisks.
+ */
+const FIELD_LABELS = { forms: "Forms", translations: "Translations", context: "Context" } as const;
+
+/**
+ * Read one labelled field off a line, or null if the line is not that field.
+ *
+ * Bold markers are stripped before matching rather than pattern-matched around
+ * the label, because `**Forms:**` puts the colon *inside* the emphasis while a
+ * hand-typed `Forms:` has none at all — two shapes one regex handles badly and
+ * a strip handles exactly.
+ */
+function readField(line: string, label: string): string | null {
+	const bare = line.replace(/\*\*/g, "").trim();
+	const m = new RegExp(`^${label}\\s*:\\s*(.+?)\\s*$`, "i").exec(bare);
+	return m ? m[1] : null;
+}
+
+/** Separator between list items in a visible field. `·` is written; `|` and `,`
+ *  are accepted because a hand-editing user will reach for them. */
+function splitList(raw: string): string[] {
+	const sep = raw.includes("\u00b7") ? "\u00b7" : raw.includes("|") ? "|" : ",";
+	return raw.split(sep).map((x) => x.trim()).filter(Boolean);
+}
+
+/** Parse `en: counter · it: contatore` into language-tagged translations.
+ *  An item with no `lang:` prefix is dropped rather than guessed at — a
+ *  translation whose language is unknown cannot be used as one. */
+function parseTranslations(raw: string): Translation[] {
+	const out: Translation[] = [];
+	for (const item of splitList(raw)) {
+		const m = /^([A-Za-z]{2,3})\s*[:=]\s*(.+)$/.exec(item);
+		if (!m) continue;
+		const term = m[2].trim();
+		if (term) out.push({ lang: m[1].toLowerCase(), term });
+	}
+	return out;
+}
 
 /** Case-folded key for lookup and de-duplication. */
 export function normalizeTerm(term: string): string {
@@ -90,12 +217,38 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 			if (model) current.model = model[1];
 			// `aliases=` runs to the closing `%%` because a surface form may contain
 			// spaces, which is also why it is rendered last and separated by `|`.
+			// Legacy: aliases used to live in this comment, invisible to every
+			// external reader (ADR-149 moved them into the body). Still read, so a
+			// glossary written by an earlier build keeps marking its variants; the
+			// entry is rewritten into the new shape the next time it is defined.
 			const aliases = /\baliases=(.*?)\s*%%\s*$/.exec(meta);
 			if (aliases) {
 				const list = aliases[1].split("|").map((a) => a.trim()).filter(Boolean);
-				if (list.length > 0) current.aliases = list;
+				if (list.length > 0) current.aliases = [...(current.aliases ?? []), ...list];
 			}
 			continue;
+		}
+		if (current) {
+			// Visible labelled fields (ADR-149). Matched before the line is treated
+			// as definition prose, so they never end up inside the definition.
+			const forms = readField(line, FIELD_LABELS.forms);
+			if (forms !== null) {
+				const list = splitList(forms);
+				if (list.length > 0) current.aliases = [...(current.aliases ?? []), ...list];
+				continue;
+			}
+			const translations = readField(line, FIELD_LABELS.translations);
+			if (translations !== null) {
+				const list = parseTranslations(translations);
+				if (list.length > 0) current.translations = [...(current.translations ?? []), ...list];
+				continue;
+			}
+			const context = readField(line, FIELD_LABELS.context);
+			if (context !== null) {
+				const text = context.replace(/^[\u201c\u201e"']|[\u201d"']$/g, "").trim();
+				if (text) current.contexts = [...(current.contexts ?? []), text];
+				continue;
+			}
 		}
 		body.push(line);
 	}
@@ -103,54 +256,12 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 	return entries.filter((e) => e.term.length > 0);
 }
 
-/** Render one entry back to markdown, including its provenance comment. */
-function renderEntry(entry: GlossaryEntry): string {
-	// `aliases` goes last: it is the only field whose value may contain spaces, so
-	// it needs the run to the closing `%%` as its terminator.
-	const aliases = (entry.aliases ?? [])
-		.map((a) => a.replace(/[|%]/g, " ").trim())
-		.filter(Boolean);
-	const meta = `${META_PREFIX} source=${entry.source}` +
-		(entry.updatedAt ? ` updatedAt=${entry.updatedAt}` : "") +
-		(entry.model ? ` model=${entry.model.replace(/\s+/g, "-")}` : "") +
-		(aliases.length > 0 ? ` aliases=${aliases.join("|")}` : "") + " %%";
-	return `## ${entry.term}\n${meta}\n\n${entry.definition.trim()}\n`;
-}
-
-/**
- * Insert or replace one entry, returning the whole note.
- *
- * Replacing rewrites only the matched entry and leaves every other byte of the
- * file alone, including the preamble and the user's ordering, because this note
- * is expected to be edited by hand between writes.
- *
- * New entries are appended rather than sorted in: re-sorting a file someone
- * has arranged themselves is a destructive surprise, and ordering is something
- * they can do in the editor if they want it.
- */
-export function upsertGlossaryEntry(markdown: string, entry: GlossaryEntry): string {
-	const key = normalizeTerm(entry.term);
-	const lines = markdown.split("\n");
-	const headingAt: number[] = [];
-	lines.forEach((line, i) => { if (/^##\s+.+/.test(line)) headingAt.push(i); });
-
-	for (let h = 0; h < headingAt.length; h++) {
-		const start = headingAt[h];
-		const term = /^##\s+(.+?)\s*$/.exec(lines[start])?.[1] ?? "";
-		if (normalizeTerm(term) !== key) continue;
-		const end = h + 1 < headingAt.length ? headingAt[h + 1] : lines.length;
-		const before = lines.slice(0, start).join("\n");
-		const after = lines.slice(end).join("\n");
-		return `${before}${before ? "\n" : ""}${renderEntry(entry)}${after ? "\n" + after.replace(/^\n+/, "") : ""}`;
-	}
-
-	const base = markdown.trimEnd();
-	return `${base}${base ? "\n\n" : ""}${renderEntry(entry)}`;
-}
-
 /** The parts of an entry the matcher needs — so callers can index plain terms
  *  without constructing whole entries. */
-export type TermSource = Pick<GlossaryEntry, "term"> & { aliases?: string[] };
+export type TermSource = Pick<GlossaryEntry, "term" | "kind"> & {
+	aliases?: string[];
+	translations?: Translation[];
+};
 
 /** Characters that must be escaped before a term goes into a RegExp. */
 function escapeRegExp(s: string): string {
@@ -172,6 +283,9 @@ export interface TermIndex {
 	matcher: RegExp;
 	/** Normalized surface form → the canonical term it belongs to. */
 	canonical: Map<string, string>;
+	/** Normalized canonical term → what it is, so the painter can draw a person
+	 *  differently from a term without looking the entry up again (ADR-151). */
+	kinds: Map<string, EntryKind>;
 }
 
 /**
@@ -197,6 +311,7 @@ export interface TermIndex {
  */
 export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 	const canonical = new Map<string, string>();
+	const kinds = new Map<string, EntryKind>();
 	const surfaces: string[] = [];
 
 	const register = (form: string, term: string) => {
@@ -209,11 +324,17 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 		surfaces.push(clean);
 	};
 
-	for (const entry of entries) register(entry.term, entry.term.trim());
+	for (const entry of entries) {
+		register(entry.term, entry.term.trim());
+		kinds.set(normalizeTerm(entry.term), entry.kind ?? "term");
+	}
 	for (const entry of entries) {
 		const term = entry.term.trim();
 		if (!term) continue;
 		for (const alias of entry.aliases ?? []) register(alias, term);
+		// A translation is a surface form like any other: an Italian answer should
+		// mark "contatore" and open the entry filed under "Zähler" (ADR-149).
+		for (const t of entry.translations ?? []) register(t.term, term);
 	}
 
 	if (surfaces.length === 0) return null;
@@ -221,10 +342,15 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 
 	const L = "\\p{L}\\p{N}_";
 	const body = surfaces.map(escapeRegExp).join("|");
-	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical };
+	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical, kinds };
 }
 
 /** Resolve a matched surface form back to the term that owns it. */
 export function canonicalTerm(index: TermIndex, surface: string): string {
 	return index.canonical.get(normalizeTerm(surface)) ?? surface;
+}
+
+/** What a matched surface form is — a term unless the entry says otherwise. */
+export function entryKind(index: TermIndex, surface: string): EntryKind {
+	return index.kinds.get(normalizeTerm(canonicalTerm(index, surface))) ?? "term";
 }
