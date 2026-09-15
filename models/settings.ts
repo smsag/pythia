@@ -1,4 +1,4 @@
-import type { Provider, EffortLevel } from "./types";
+import type { Provider, EffortLevel, OutputLanguage } from "./types";
 import {
 	type EmbeddingModelId,
 	DEFAULT_EMBEDDING_MODEL_ID,
@@ -37,9 +37,11 @@ export interface PythiaSettings {
 	inboxNote: string;
 	/** Vault path of the glossary note (ADR-136). */
 	glossaryNote: string;
-	/** Language for AI-generated text (titles, summaries, chapter names).
-	 *  "auto" = follow the conversation language. Otherwise an ISO 639-1 locale code. */
-	outputLanguage: "auto" | "en" | "de";
+	/** Language Pythia answers in — chat replies and every utility prompt
+	 *  (titles, summaries, chapter names, glossary definitions).
+	 *  "auto" = follow the conversation language, "obsidian" = follow Obsidian's
+	 *  UI locale. Otherwise an ISO 639-1 locale code. See ADR-148. */
+	outputLanguage: OutputLanguage;
 	debugMode: boolean;
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;

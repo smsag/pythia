@@ -3,6 +3,20 @@ export type Provider = "anthropic" | "openai" | "mistral";
 export type EffortLevel = "low" | "medium" | "high";
 export const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high"];
 
+/**
+ * The language Pythia answers in (ADR-148).
+ *
+ * Two of the values are resolved rather than named: "auto" adds no instruction
+ * at all, leaving the model to follow the conversation, and "obsidian" follows
+ * Obsidian's own UI locale — which can be any of the ~30 languages Obsidian
+ * ships, not just the four offered explicitly.
+ */
+export type OutputLanguage = "obsidian" | "auto" | "de" | "en" | "it" | "es";
+
+/** The order the language dropdowns render in, shared by the global setting and
+ *  the per-conversation override so the two lists cannot drift apart. */
+export const OUTPUT_LANGUAGES: OutputLanguage[] = ["obsidian", "auto", "de", "en", "it", "es"];
+
 export interface Conversation {
 	id: string;
 	name: string;
@@ -33,6 +47,9 @@ export interface Conversation {
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	/** Per-conversation override of the global `outputLanguage` setting (ADR-148).
+	 *  Undefined → inherit the global default. */
+	outputLanguage?: OutputLanguage;
 	researchMode?: boolean;           // when true, expose the web_search tool + inject recency context
 	vaultContext?: boolean;           // when true, auto-retrieve relevant vault notes per turn (ADR-116);
 	                                  // undefined → fall back to the global vaultContextEnabled default

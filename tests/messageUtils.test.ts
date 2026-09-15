@@ -9,9 +9,6 @@ import {
 	selectHistoryForSend,
 	trimHistoryToBudget,
 	estimateTokensFromText,
-	langInstruction,
-	langSuffix,
-	LANG_LABELS,
 	arrayBufferToBase64,
 	buildFavoritesDigest,
 	formatClockTime,
@@ -264,54 +261,6 @@ describe("estimateTokensFromText", () => {
 		const ascii = estimateTokensFromText("a".repeat(300));
 		const cjk = estimateTokensFromText("一".repeat(300));
 		expect(cjk).toBeGreaterThan(ascii);
-	});
-});
-
-// ── langInstruction / langSuffix ──────────────────────────────────────────────
-
-describe("langInstruction", () => {
-	it("returns empty string for 'auto'", () => {
-		expect(langInstruction("auto")).toBe("");
-	});
-
-	it("returns empty string for unknown locale", () => {
-		expect(langInstruction("fr")).toBe("");
-	});
-
-	it("returns correct instruction for English", () => {
-		expect(langInstruction("en")).toBe("\n\nRespond in English.");
-	});
-
-	it("returns correct instruction for German", () => {
-		expect(langInstruction("de")).toBe("\n\nRespond in German.");
-	});
-});
-
-describe("langSuffix", () => {
-	it("returns empty string for 'auto'", () => {
-		expect(langSuffix("auto")).toBe("");
-	});
-
-	it("returns empty string for unknown locale", () => {
-		expect(langSuffix("zz")).toBe("");
-	});
-
-	it("returns ' in English' for 'en'", () => {
-		expect(langSuffix("en")).toBe(" in English");
-	});
-
-	it("returns ' in German' for 'de'", () => {
-		expect(langSuffix("de")).toBe(" in German");
-	});
-});
-
-describe("LANG_LABELS", () => {
-	it("maps 'en' to 'English'", () => {
-		expect(LANG_LABELS["en"]).toBe("English");
-	});
-
-	it("maps 'de' to 'German'", () => {
-		expect(LANG_LABELS["de"]).toBe("German");
 	});
 });
 

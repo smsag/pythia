@@ -356,7 +356,8 @@ export class HeaderController {
 			},
 			this.d.plugin.settings.temperature,
 			this.d.plugin.settings.effort,
-			this.d.plugin.settings.maxTokens
+			this.d.plugin.settings.maxTokens,
+			this.d.plugin.settings.outputLanguage
 		).open();
 	}
 
@@ -402,7 +403,7 @@ export class HeaderController {
 			const userMsg   = msgs.find(m => m.role === "user")?.content     ?? "";
 			const assistMsg = msgs.find(m => m.role === "assistant")?.content ?? "";
 			const title = await this.d.plugin.llmRouter.generateConversationTitle(
-				userMsg, assistMsg, conv.provider
+				userMsg, assistMsg, conv.provider, conv
 			);
 			// Fill the input with the generated name — user can still edit before confirming
 			this.renameInputEl.value = title;

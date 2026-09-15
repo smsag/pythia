@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Track every Notice constructed so tests can assert the non-destructive surface.
 const { noticeMessages } = vi.hoisted(() => ({ noticeMessages: [] as string[] }));
 
+// Obsidian's UI locale, mutable so the "follow Obsidian" language setting can be
+// exercised (ADR-148).
+const { obsidianLocale } = vi.hoisted(() => ({ obsidianLocale: { value: "en" } }));
+
 vi.mock("obsidian", () => ({
 	App: class {},
 	Notice: class { constructor(message?: string) { noticeMessages.push(message ?? ""); } },
@@ -19,12 +23,13 @@ vi.mock("obsidian", () => ({
 vi.mock("../i18n", () => ({
 	t: (key: string, params?: Record<string, string>) =>
 		params ? `${key}: ${params.error ?? ""}` : key,
+	getObsidianLocale: () => obsidianLocale.value,
 }));
 
 import { BaseProvider, type RoundResult } from "../services/BaseProvider";
 import type { App } from "obsidian";
 import type { PythiaSettings } from "../settings";
-import type { TokenUsage } from "../models/types";
+import type { Conversation, TokenUsage } from "../models/types";
 
 /**
  * Minimal concrete BaseProvider that stubs the abstract streaming hooks and
@@ -41,6 +46,11 @@ class TestProvider extends BaseProvider {
 	}
 	protected handleToolCalls(): Promise<void> { return Promise.resolve(); }
 
+	/** `languageLabel` is protected; expose it so the resolution order is testable. */
+	lang(conversation?: Conversation): string {
+		return this.languageLabel(conversation);
+	}
+
 	finish(
 		error: unknown,
 		fullText: string,
@@ -51,9 +61,12 @@ class TestProvider extends BaseProvider {
 	}
 }
 
-function makeProvider(): TestProvider {
-	return new TestProvider({} as App, {} as PythiaSettings, "", "anthropic");
+function makeProvider(settings: Partial<PythiaSettings> = {}): TestProvider {
+	return new TestProvider({} as App, settings as PythiaSettings, "", "anthropic");
 }
+
+const conv = (outputLanguage?: Conversation["outputLanguage"]): Conversation =>
+	({ outputLanguage } as Conversation);
 
 describe("BaseProvider.finishOrError", () => {
 	beforeEach(() => { noticeMessages.length = 0; });
@@ -105,5 +118,33 @@ describe("BaseProvider.finishOrError", () => {
 		const arg = onError.mock.calls[0][0] as Error;
 		expect(arg).toBeInstanceOf(Error);
 		expect(arg.message).toBe("string failure");
+	});
+});
+
+// ── Output language resolution (ADR-148) ──────────────────────────────────────
+
+describe("BaseProvider.languageLabel", () => {
+	beforeEach(() => { obsidianLocale.value = "en"; });
+
+	it("falls back to the global setting when the conversation has no override", () => {
+		expect(makeProvider({ outputLanguage: "it" }).lang(conv())).toBe("Italian");
+	});
+
+	it("lets a conversation override the global setting", () => {
+		expect(makeProvider({ outputLanguage: "it" }).lang(conv("es"))).toBe("Spanish");
+	});
+
+	it("lets a conversation override a fixed global language back to 'auto'", () => {
+		expect(makeProvider({ outputLanguage: "de" }).lang(conv("auto"))).toBe("");
+	});
+
+	it("uses the global setting for utility calls that have no conversation in reach", () => {
+		expect(makeProvider({ outputLanguage: "de" }).lang()).toBe("German");
+	});
+
+	it("follows Obsidian's UI locale for the 'obsidian' setting", () => {
+		obsidianLocale.value = "fr";
+		expect(makeProvider({ outputLanguage: "obsidian" }).lang(conv())).toBe("French");
+		expect(makeProvider({ outputLanguage: "auto" }).lang(conv("obsidian"))).toBe("French");
 	});
 });

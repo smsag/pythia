@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-15 — bottom-inset machinery removed (ADR-146). `ui/keyboardInset.ts` loses `needsBottomSafeArea` and `BOTTOM_EDGE_TOLERANCE`; `updateViewportInsets` now does one job (lift the pane clear of an open soft keyboard) and clears any stale `--p-bottom-inset` left by builds ≤ 2.12.0. `styles.css` drops `env(safe-area-inset-bottom)` from `.p-input-area` — it stays on `.pythia-modal` and the action sheet. −4 tests (765 across 51 files).*
+*Last updated: 2026-09-15 — one language setting, resolved per conversation (ADR-148). `outputLanguage` is now `OutputLanguage` (`"obsidian" | "auto" | "de" | "en" | "it" | "es"`, `models/types.ts`) and feeds the chat answer as well as the utility prompts: `buildSystemPrompt` takes an `opts.languageLabel` and pushes `langDirective(label)` after the `<custom_instructions>` block. `Conversation.outputLanguage?` overrides the global setting (undefined = inherit), edited in `ConversationSettingsModal`; `BaseProvider.languageLabel(conversation?)` is the single resolver every prompt in the class goes through. `services/messageUtils.ts` gains `LANG_LABELS` (widened to Obsidian's ~30 UI locales), `languageLabelForLocale`, `resolveLanguageLabel` and `langDirective` — `langInstruction`/`langSuffix` now take the resolved label, not the setting code. `i18n.ts` gains `getObsidianLocale()`; new `ui/languageOptions.ts` owns the shared dropdown list. `defineTerm`/`generateChapterName`/`generateConversationTitle`/`summarizeNotes` gained an optional trailing `conversation?` (mirrored on `LLMProvider`/`LLMRouter`). +16 tests (781 across 52 files).*
+
+*Previously, 2026-09-15 — bottom-inset machinery removed (ADR-146). `ui/keyboardInset.ts` loses `needsBottomSafeArea` and `BOTTOM_EDGE_TOLERANCE`; `updateViewportInsets` now does one job (lift the pane clear of an open soft keyboard) and clears any stale `--p-bottom-inset` left by builds ≤ 2.12.0. `styles.css` drops `env(safe-area-inset-bottom)` from `.p-input-area` — it stays on `.pythia-modal` and the action sheet. −4 tests (765 across 51 files).*
 
 *Previously, 2026-09-15 — bug fixes and corrections (ADR-144). `GlossaryEntry` gained `model`, written from the new `LLMRouter.fastModelFor()` (which required `fastModel` to become public on `LLMProvider`/`BaseProvider`) so an entry records the model that actually wrote it rather than `settings.defaultAnthropicModel`; it round-trips through the `%% pythia: … %%` marker. `styles.css` replaces `word-break: break-word` with `overflow-wrap: break-word` on the three text surfaces. Two stale lint warnings removed. +3 tests (769 across 51 files).*
 
@@ -175,9 +177,9 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/webSearchHeuristics.ts` | 64 | Pure `looksTimeSensitive(text, currentYear)` — whole-word recency cues + year ≥ now; auto-arms `web_search` for a send when the research globe is off (ADR-099) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
-| `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), lang helpers, `arrayBufferToBase64` (Buffer-free, mobile-safe) |
+| `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), output-language resolution + the three prompt shapes (ADR-148), `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
-| `services/ContextBuilder.ts` | 147 | Builds system prompt (always-on no-solicitation guard + optional global `<custom_instructions>` from settings + grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
+| `services/ContextBuilder.ts` | 147 | Builds system prompt (always-on no-solicitation guard + the output-language directive when one is pinned + optional global `<custom_instructions>` from settings + grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
 | `services/promptConstants.ts` | 66 | Shared literal constants: XML-ish prompt tags (incl. `RECENT_CONTEXT_TAG`), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |
 | `services/noteChunking.ts` | 95 | Heading-based chunking with paragraph-level fallback + relevance-filtered excerpting (always includes first chunk) for notes over 12K chars |
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking, `#` suggestion ranking, and conversation search |
@@ -306,6 +308,8 @@ Conversation
   summaryText?, summaryUpdatedAt?, summaryNote?
   savedNotePath?, lastSavedMessageCount?
   forkedFromId?, forkedFromMessageId?, forkedFromSelection?
+  outputLanguage?                ← per-conversation language override (ADR-148); undefined = inherit the
+                                    global setting. Same value set as PythiaSettings.outputLanguage.
   merges[]?                      ← merge links: passages pointing at another conversation (ADR-130).
     id, conversationId, messageId, text, occurrenceIndex?, createdAt
                                     Display-only — never enters the system prompt. Stored on the
@@ -314,7 +318,10 @@ Conversation
 PythiaSettings
   defaultProvider, defaultAnthropicModel, defaultOpenAIModel, defaultMistralModel
   maxMessagesPerSession, maxConversations   ← eviction cap (default 200)
-  outputLanguage ("auto" | "en" | "de")    ← locale code, not display label
+  outputLanguage (OutputLanguage)           ← "obsidian" | "auto" | "de" | "en" | "it" | "es" — a setting
+                                              value, not a display label. "auto" adds no instruction at all;
+                                              "obsidian" resolves through Obsidian's UI locale (ADR-148).
+                                              Overridable per conversation.
   templatesFolder, conversationsFolder, scratchFolder, inboxNote
   autoSaveSummary, defaultResumeMode
   injectActiveNoteOnTemplate, debugMode
@@ -622,7 +629,8 @@ Shared logic in `services/messageUtils.ts`:
 - `selectHistoryForSend(messages, resumeMode)` — returns `[]` in `"summary"` mode, last 6 messages in `"hybrid"` mode, `messages` unchanged in `"full"` mode
 - `trimHistoryToBudget(history, contextWindow, outputBudget, systemPromptTokens)` — trims oldest messages from front when estimated tokens exceed the available context window budget
 - `estimateTokensFromBytes(bytes)` / `estimateTokensFromText(text)` — token count helpers
-- `LANG_LABELS`, `langInstruction`, `langSuffix` — output language helpers
+- `LANG_LABELS`, `languageLabelForLocale`, `resolveLanguageLabel` — turn an `OutputLanguage` setting (plus Obsidian's UI locale, for `"obsidian"`) into the English language name used in prompts; `""` means "add no instruction" (`"auto"`)
+- `langInstruction` / `langSuffix` / `langDirective` — the three prompt shapes built from that label: a one-line instruction for utility calls, an in-placeholder suffix for the `TITLE:`/`SUMMARY:` format string, and the longer system-prompt directive that has to hold across turns (ADR-148)
 - `debugLog(settings, ...args)` — verbose diagnostic trace gated on `settings.debugMode`; used for retry attempts and tool-round outcomes. Genuine errors (as opposed to opt-in diagnostics) use un-gated `console.warn`/`console.error` instead, so they're visible without enabling debug mode first.
 
 Shared logic in `services/retry.ts`:

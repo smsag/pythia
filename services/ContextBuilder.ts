@@ -1,6 +1,6 @@
 import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
-import { estimateTokensFromText, arrayBufferToBase64 } from "./messageUtils";
+import { estimateTokensFromText, arrayBufferToBase64, langDirective } from "./messageUtils";
 import { selectRelevantChunks } from "./noteChunking";
 import {
 	SYSTEM_PROMPT_TAG,
@@ -68,7 +68,14 @@ export function buildSystemPrompt(
 	 *  guard must key off the content that is really present, not just the manual
 	 *  context list, or auto-retrieved notes would be injected uncited AND without
 	 *  the ADR-115 "treat as data" framing. */
-	opts: { hasAttachedNotes?: boolean } = {}
+	opts: {
+		hasAttachedNotes?: boolean;
+		/** English language name the answer must be written in, already resolved
+		 *  from the conversation override / global setting (ADR-148). Empty or
+		 *  omitted = "auto", i.e. no language instruction at all. Resolved by the
+		 *  caller so this module stays free of Obsidian and settings access. */
+		languageLabel?: string;
+	} = {}
 ): string {
 	const parts: string[] = [];
 	const hasAttachedNotes = opts.hasAttachedNotes === true;
@@ -84,6 +91,13 @@ export function buildSystemPrompt(
 	if (custom) {
 		parts.push(`<${CUSTOM_INSTRUCTIONS_TAG}>\n${custom}\n</${CUSTOM_INSTRUCTIONS_TAG}>`);
 	}
+
+	// Output language, when the user pinned one (ADR-148). Sits directly after the
+	// custom instructions because it is the same kind of thing — the user's own
+	// standing preference — and above the context blocks, so it frames the
+	// material the answer is built from rather than trailing it.
+	const languageDirective = langDirective(opts.languageLabel ?? "");
+	if (languageDirective) parts.push(languageDirective);
 
 	// Always suppress the assistant's boilerplate closing offer to save-as-note /
 	// continue (independent of the user's own system prompt, since the behavior is

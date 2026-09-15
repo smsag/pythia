@@ -1,5 +1,5 @@
 import { App, DropdownComponent, Modal, Setting, SliderComponent } from "obsidian";
-import type { Conversation, Provider, EffortLevel } from "../models/types";
+import type { Conversation, Provider, EffortLevel, OutputLanguage } from "../models/types";
 import { t } from "../i18n";
 import {
 	KNOWN_MODELS as MODELS_BY_PROVIDER,
@@ -9,6 +9,7 @@ import {
 	isMistralReasoningModel,
 } from "../models/knownModels";
 import { resolveDefaultMaxTokens } from "../services/promptConstants";
+import { languageOptions, languageOptionLabel } from "../ui/languageOptions";
 
 export class ConversationSettingsModal extends Modal {
 	private conversation: Conversation;
@@ -16,6 +17,7 @@ export class ConversationSettingsModal extends Modal {
 	private defaultTemperature: number | undefined;
 	private defaultEffort: EffortLevel | undefined;
 	private defaultMaxTokens: number | undefined;
+	private defaultLanguage: OutputLanguage;
 
 	constructor(
 		app: App,
@@ -23,7 +25,8 @@ export class ConversationSettingsModal extends Modal {
 		onSave: (conversation: Conversation) => Promise<void>,
 		defaultTemperature?: number,
 		defaultEffort?: EffortLevel,
-		defaultMaxTokens?: number
+		defaultMaxTokens?: number,
+		defaultLanguage: OutputLanguage = "auto"
 	) {
 		super(app);
 		this.conversation = conversation;
@@ -31,6 +34,7 @@ export class ConversationSettingsModal extends Modal {
 		this.defaultTemperature = defaultTemperature;
 		this.defaultEffort = defaultEffort;
 		this.defaultMaxTokens = defaultMaxTokens;
+		this.defaultLanguage = defaultLanguage;
 	}
 
 	onOpen(): void {
@@ -316,6 +320,26 @@ export class ConversationSettingsModal extends Modal {
 		};
 		updateParamAvailability();
 
+		// Output language override (ADR-148). "Default" is a distinct value, not
+		// the global setting pre-selected: a conversation that inherits has to keep
+		// inheriting when the global setting later changes.
+		const DEFAULT_LANGUAGE_VALUE = "__default__";
+		let languageValue: OutputLanguage | undefined = this.conversation.outputLanguage;
+		new Setting(contentEl)
+			.setName(t("convLanguageLabel"))
+			.setDesc(t("convLanguageDesc"))
+			.addDropdown((drop) => {
+				drop.addOption(
+					DEFAULT_LANGUAGE_VALUE,
+					t("convLanguageDefault", { v: languageOptionLabel(this.defaultLanguage) })
+				);
+				for (const [value, label] of languageOptions()) drop.addOption(value, label);
+				drop.setValue(languageValue ?? DEFAULT_LANGUAGE_VALUE);
+				drop.onChange((value) => {
+					languageValue = value === DEFAULT_LANGUAGE_VALUE ? undefined : (value as OutputLanguage);
+				});
+			});
+
 		// Action buttons
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -336,6 +360,7 @@ export class ConversationSettingsModal extends Modal {
 						this.conversation.temperature = temperatureValue;
 						this.conversation.effort = effortValue === "" ? undefined : effortValue;
 						this.conversation.maxTokens = maxTokensValue;
+						this.conversation.outputLanguage = languageValue;
 						await this.onSave(this.conversation);
 						this.close();
 					})

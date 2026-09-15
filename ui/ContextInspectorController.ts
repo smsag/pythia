@@ -1,8 +1,8 @@
 import { Notice, setIcon, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message } from "../models/types";
-import { t } from "../i18n";
-import { estimateTokensFromText } from "../services/messageUtils";
+import { t, getObsidianLocale } from "../i18n";
+import { estimateTokensFromText, resolveLanguageLabel } from "../services/messageUtils";
 import { buildSystemPrompt } from "../services/ContextBuilder";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
@@ -80,7 +80,16 @@ export class ContextInspectorController {
 			return { path: p, tokens };
 		});
 		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(buildSystemPrompt(conv, this.d.plugin.settings.customInstructions));
+		const sysTokens = estimateTokensFromText(
+			buildSystemPrompt(conv, this.d.plugin.settings.customInstructions, {
+				// The language directive is part of what is really sent, so the
+				// inspector's token count has to include it (ADR-148).
+				languageLabel: resolveLanguageLabel(
+					conv.outputLanguage ?? this.d.plugin.settings.outputLanguage,
+					getObsidianLocale()
+				),
+			})
+		);
 		const last = this.d.getLastTokenUsageMsg();
 		const windowSize = getContextWindow(conv.model);
 		const used = last?.tokenUsage

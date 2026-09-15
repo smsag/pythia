@@ -294,25 +294,108 @@ export function arrayBufferToBase64(buf: ArrayBuffer): string {
 // ── Output language helpers ───────────────────────────────────────────────────
 
 /**
- * Maps ISO 639-1 locale codes (the stored setting value) to the English
- * language name used in LLM prompts.  Keeping these separate means UI label
- * translations never affect prompt content, and adding a language is one line.
+ * Maps locale codes to the English language name used in LLM prompts. Keeping
+ * these separate from the UI string tables means label translations never
+ * affect prompt content, and adding a language is one line.
+ *
+ * The table is wider than the language dropdown on purpose (ADR-148): the
+ * "obsidian" setting follows Obsidian's own UI locale, and Obsidian ships ~30
+ * languages. Regional codes are listed only where the region changes the
+ * language a model should write ("pt-br", "zh-tw"); everything else falls back
+ * to its base code, so "en-gb" resolves through "en".
  */
 export const LANG_LABELS: Record<string, string> = {
-	en: "English",
+	// Offered explicitly in the language dropdown
 	de: "German",
+	en: "English",
+	it: "Italian",
+	es: "Spanish",
+	// Reachable via "Follow Obsidian" — Obsidian's other UI locales
+	ar: "Arabic",
+	be: "Belarusian",
+	ca: "Catalan",
+	cs: "Czech",
+	da: "Danish",
+	fa: "Persian",
+	fr: "French",
+	he: "Hebrew",
+	hi: "Hindi",
+	hu: "Hungarian",
+	id: "Indonesian",
+	ja: "Japanese",
+	ko: "Korean",
+	ms: "Malay",
+	nl: "Dutch",
+	no: "Norwegian",
+	pl: "Polish",
+	pt: "Portuguese",
+	"pt-br": "Brazilian Portuguese",
+	ro: "Romanian",
+	ru: "Russian",
+	sq: "Albanian",
+	sr: "Serbian",
+	ta: "Tamil",
+	te: "Telugu",
+	th: "Thai",
+	tr: "Turkish",
+	uk: "Ukrainian",
+	ur: "Urdu",
+	vi: "Vietnamese",
+	zh: "Simplified Chinese",
+	"zh-tw": "Traditional Chinese",
 };
 
-/** Returns "\n\nRespond in <Language>." for a known locale code, or "" for auto. */
-export function langInstruction(lang: string): string {
-	const label = LANG_LABELS[lang];
+/** English language name for a locale code, trying the full code first so
+ *  "pt-br" beats "pt". Returns "" when the code is unknown. */
+export function languageLabelForLocale(locale: string): string {
+	const code = (locale || "").toLowerCase().trim();
+	if (!code) return "";
+	return LANG_LABELS[code] ?? LANG_LABELS[code.split("-")[0]] ?? "";
+}
+
+/**
+ * Resolve an `OutputLanguage` setting to the English language name to instruct
+ * the model with, or "" for "add no instruction at all".
+ *
+ * "auto" resolves to "" by design: the absence of an instruction is what lets
+ * the model follow the conversation, and saying "respond in the conversation's
+ * language" out loud is weaker than saying nothing.
+ *
+ * "obsidian" resolves through `obsidianLocale`; an Obsidian locale outside
+ * LANG_LABELS falls back to English rather than to "auto", because the user
+ * asked for a fixed language and silence would not give them one.
+ */
+export function resolveLanguageLabel(setting: string, obsidianLocale = "en"): string {
+	if (setting === "obsidian") return languageLabelForLocale(obsidianLocale) || "English";
+	if (setting === "auto") return "";
+	return LANG_LABELS[setting] ?? "";
+}
+
+/** Returns "\n\nRespond in <Language>." for a resolved label, or "" for auto. */
+export function langInstruction(label: string): string {
 	return label ? `\n\nRespond in ${label}.` : "";
 }
 
 /** Returns " in <Language>" for use inside format string placeholders, or "" for auto. */
-export function langSuffix(lang: string): string {
-	const label = LANG_LABELS[lang];
+export function langSuffix(label: string): string {
 	return label ? ` in ${label}` : "";
+}
+
+/**
+ * The system-prompt form of the language instruction (ADR-148).
+ *
+ * Longer than `langInstruction` because it has a harder job: a utility prompt
+ * gets one instruction and produces one line, whereas a chat answer has to stay
+ * in the chosen language across many turns, against a user typing in another
+ * one. Naming the conflict explicitly is what keeps the model from drifting
+ * back to the language of the question.
+ */
+export function langDirective(label: string): string {
+	return label
+		? `Always write your replies in ${label}, even when the user writes to you in another language. ` +
+			`This covers the entire reply — prose, headings, lists and any note content you produce. ` +
+			`Quoted source material keeps its original wording.`
+		: "";
 }
 
 // ── Favorites digest ────────────────────────────────────────────────────────────

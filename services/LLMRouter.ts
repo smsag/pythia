@@ -104,8 +104,8 @@ export class LLMRouter {
 		return this.get(conversation).generateFavoritesSummary(conversation);
 	}
 
-	defineTerm(term: string, passage: string, provider?: Provider): Promise<string> {
-		return this.byProvider(provider).defineTerm(term, passage);
+	defineTerm(term: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
+		return this.byProvider(provider).defineTerm(term, passage, conversation);
 	}
 
 	/** Which model `defineTerm` will actually use, so a stored definition can
@@ -114,16 +114,21 @@ export class LLMRouter {
 		return this.byProvider(provider).fastModel;
 	}
 
-	generateChapterName(content: string, provider: Provider): Promise<string> {
-		return this.byProvider(provider).generateChapterName(content);
+	generateChapterName(content: string, provider: Provider, conversation?: Conversation): Promise<string> {
+		return this.byProvider(provider).generateChapterName(content, conversation);
 	}
 
-	generateConversationTitle(userMessage: string, assistantMessage: string, provider: Provider): Promise<string> {
-		return this.byProvider(provider).generateConversationTitle(userMessage, assistantMessage);
+	generateConversationTitle(
+		userMessage: string,
+		assistantMessage: string,
+		provider: Provider,
+		conversation?: Conversation
+	): Promise<string> {
+		return this.byProvider(provider).generateConversationTitle(userMessage, assistantMessage, conversation);
 	}
 
-	summarizeNotes(content: string, provider: Provider): Promise<string> {
-		return this.byProvider(provider).summarizeNotes(content);
+	summarizeNotes(content: string, provider: Provider, conversation?: Conversation): Promise<string> {
+		return this.byProvider(provider).summarizeNotes(content, conversation);
 	}
 
 	optimizePrompt(systemPrompt: string, userMessage: string, provider: Provider, model?: string): Promise<string> {

@@ -1,10 +1,17 @@
 import { App, Notice } from "obsidian";
-import { t } from "../i18n";
+import { t, getObsidianLocale } from "../i18n";
 import type { Conversation, ToolCall, TokenUsage, Provider } from "../models/types";
 import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
-import { parseTitleAndSummary, langInstruction, langSuffix, debugLog, buildFavoritesDigest } from "./messageUtils";
+import {
+	parseTitleAndSummary,
+	resolveLanguageLabel,
+	langInstruction,
+	langSuffix,
+	debugLog,
+	buildFavoritesDigest,
+} from "./messageUtils";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { TITLE_MARKER, SUMMARY_MARKER, DEFINITION_MARKER, VARIANTS_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
@@ -114,6 +121,22 @@ export abstract class BaseProvider implements LLMProvider {
 	/** Resolve the model to use, falling back to the provider's configured default. */
 	protected resolveModel(modelOverride?: string): string {
 		return modelOverride || resolveDefaultModelForProvider(this.providerType, this.settings);
+	}
+
+	/**
+	 * The English language name every prompt in this class instructs the model
+	 * with, or "" for "say nothing and let the model follow the conversation"
+	 * (ADR-148).
+	 *
+	 * Resolution is conversation override → global setting. `conversation` is
+	 * optional because some utility calls genuinely have none in reach — a note
+	 * summary is asked for outside any conversation — and those fall back to the
+	 * global setting, which is what an unconfigured conversation resolves to
+	 * anyway.
+	 */
+	protected languageLabel(conversation?: Conversation): string {
+		const setting = conversation?.outputLanguage ?? this.settings.outputLanguage;
+		return resolveLanguageLabel(setting, getObsidianLocale());
 	}
 
 	/**
@@ -271,6 +294,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const systemPrompt =
 			buildSystemPrompt(conversation, this.settings.customInstructions, {
 				hasAttachedNotes: attachedContent.length > 0,
+				languageLabel: this.languageLabel(conversation),
 			}) + attachedContent;
 
 		return {
@@ -324,7 +348,7 @@ export abstract class BaseProvider implements LLMProvider {
 			.join("\n\n");
 		return this.callUtility(
 			model,
-			`Recap the substance of the discussion below so it stands on its own as a reminder of what was covered — and works as context if the discussion continues.\n\n${SUMMARY_RULES}${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Recap the substance of the discussion below so it stands on its own as a reminder of what was covered — and works as context if the discussion continues.\n\n${SUMMARY_RULES}${langInstruction(this.languageLabel(conversation))}\n\n${conversationText}`,
 			1024
 		);
 	}
@@ -334,10 +358,11 @@ export abstract class BaseProvider implements LLMProvider {
 		const conversationText = conversation.messages
 			.map((m) => `${m.role === "user" ? "User" : this.assistantLabel}: ${m.content}`)
 			.join("\n\n");
-		const sfx = langSuffix(this.settings.outputLanguage);
+		const lang = this.languageLabel(conversation);
+		const sfx = langSuffix(lang);
 		const raw = await this.callUtility(
 			model,
-			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary, recap the substance so it stands on its own:\n${SUMMARY_RULES}${langInstruction(this.settings.outputLanguage)}\n\n${conversationText}`,
+			`Give this conversation a concise title and a brief summary.\n\nReply in EXACTLY this format — no other text before or after:\n${TITLE_MARKER}: <3-6 word title${sfx}, no punctuation, no quotes>\n${SUMMARY_MARKER}:\n<summary${sfx} here>\n\nFor the summary, recap the substance so it stands on its own:\n${SUMMARY_RULES}${langInstruction(lang)}\n\n${conversationText}`,
 			1024
 		);
 		return parseTitleAndSummary(raw);
@@ -359,7 +384,7 @@ export abstract class BaseProvider implements LLMProvider {
 	 * Runs on the fast model with a small token budget: this is a gloss, not an
 	 * essay, and it is fetched while the reader waits.
 	 */
-	async defineTerm(term: string, passage: string): Promise<string> {
+	async defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string> {
 		const excerpt = passage.slice(0, 1200);
 		return this.callUtility(
 			this.fastModel,
@@ -374,27 +399,31 @@ export abstract class BaseProvider implements LLMProvider {
 				`other language if the passage mixes languages, plus a common abbreviation or spelling ` +
 				`variant if one exists. Forms only — never related concepts, never explanations, and never ` +
 				`a form so generic it would match unrelated sentences. Leave the line empty if there are none.` +
-				`${langInstruction(this.settings.outputLanguage)}\n\nPassage:\n${excerpt}`,
+				`${langInstruction(this.languageLabel(conversation))}\n\nPassage:\n${excerpt}`,
 			300
 		);
 	}
 
-	async generateChapterName(content: string): Promise<string> {
+	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
 		const excerpt = content.slice(0, 500);
 		return this.callUtility(
 			this.fastModel,
-			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.settings.outputLanguage)}\n\nMessage:\n${excerpt}`,
+			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nMessage:\n${excerpt}`,
 			15
 		);
 	}
 
-	async generateConversationTitle(userMessage: string, assistantMessage: string): Promise<string> {
+	async generateConversationTitle(
+		userMessage: string,
+		assistantMessage: string,
+		conversation?: Conversation
+	): Promise<string> {
 		const userExcerpt = userMessage.slice(0, 300);
 		const assistantExcerpt = assistantMessage.slice(0, 300);
 		return (
 			(await this.callUtility(
 				this.fastModel,
-				`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.settings.outputLanguage)}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+				`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
 				20
 			)) || "New Conversation"
 		);
@@ -406,15 +435,15 @@ export abstract class BaseProvider implements LLMProvider {
 		const model = this.resolveModel(conversation.model);
 		return this.callUtility(
 			model,
-			`The following are the highlights a user hand-picked from a conversation as its most important insights. Synthesize them into a learning aid that helps the user retain the knowledge and act on it.\n\nReply in Markdown, starting directly with the "## Key learnings" heading — no preamble:\n\n## Key learnings\nA bullet list that consolidates and deduplicates the insights across the highlights — group related points and stay grounded in the provided text. State each learning directly as a fact; do NOT phrase bullets as "The user highlighted…", "This note says…", or "The conversation covered…". Do not restate the highlights one by one.\n\n## Action items\nA list of concrete, actionable next steps derived from the highlights, each written as a checkbox: "- [ ] <action>". Only include actions the highlights actually support — if none are genuinely warranted, omit this section and its heading entirely.${langInstruction(this.settings.outputLanguage)}\n\n${digest}`,
+			`The following are the highlights a user hand-picked from a conversation as its most important insights. Synthesize them into a learning aid that helps the user retain the knowledge and act on it.\n\nReply in Markdown, starting directly with the "## Key learnings" heading — no preamble:\n\n## Key learnings\nA bullet list that consolidates and deduplicates the insights across the highlights — group related points and stay grounded in the provided text. State each learning directly as a fact; do NOT phrase bullets as "The user highlighted…", "This note says…", or "The conversation covered…". Do not restate the highlights one by one.\n\n## Action items\nA list of concrete, actionable next steps derived from the highlights, each written as a checkbox: "- [ ] <action>". Only include actions the highlights actually support — if none are genuinely warranted, omit this section and its heading entirely.${langInstruction(this.languageLabel(conversation))}\n\n${digest}`,
 			1536
 		);
 	}
 
-	async summarizeNotes(content: string): Promise<string> {
+	async summarizeNotes(content: string, conversation?: Conversation): Promise<string> {
 		return this.callUtility(
 			this.fastModel,
-			`Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.${langInstruction(this.settings.outputLanguage)}\n\n${content}`,
+			`Summarize the following note(s) concisely. Focus on key topics, decisions, and insights.${langInstruction(this.languageLabel(conversation))}\n\n${content}`,
 			1024
 		);
 	}

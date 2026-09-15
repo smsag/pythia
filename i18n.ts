@@ -16,12 +16,22 @@ function getLocale(): Strings {
 	return locale;
 }
 
+/** Obsidian's own UI locale, verbatim and lowercased (e.g. "de", "pt-br").
+ *  Unlike `getLang` this does NOT clamp to the two languages Pythia's UI is
+ *  translated into: the "Follow Obsidian" language setting (ADR-148) instructs
+ *  the model in whatever language Obsidian is running in. Guarded for the
+ *  headless test environment, where there is no `window`. */
+export function getObsidianLocale(): string {
+	if (typeof window === "undefined") return "en";
+	return ((window as unknown as { moment?: { locale?: () => string } })
+		.moment?.locale?.() ?? "en")
+		.toLowerCase();
+}
+
 /** Active UI language as a 2-letter code, for content localized outside the
  *  `t()` string table (e.g. per-model guidance keyed by model id). */
 export function getLang(): "en" | "de" {
-	const code = ((window as unknown as { moment?: { locale?: () => string } })
-		.moment?.locale?.() ?? "en")
-		.split("-")[0];
+	const code = getObsidianLocale().split("-")[0];
 	return code === "de" ? "de" : "en";
 }
 
