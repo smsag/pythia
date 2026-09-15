@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
 	keyboardOverlap,
-	needsBottomSafeArea,
-	BOTTOM_EDGE_TOLERANCE,
 	MIN_KEYBOARD_INSET,
 	type ViewportMetrics,
 } from "../ui/keyboardInset";
@@ -61,27 +59,7 @@ describe("keyboardOverlap", () => {
 	});
 });
 
-describe("needsBottomSafeArea", () => {
-	const SCREEN = 900;
-
-	it("is true when the panel reaches the bottom of the screen", () => {
-		// Pythia is the only leaf: the home indicator really is under the composer.
-		expect(needsBottomSafeArea(900, SCREEN)).toBe(true);
-	});
-
-	it("is false when another leaf sits below the panel (ADR-134)", () => {
-		// The reported case: a stacked mobile sidebar. env(safe-area-inset-bottom)
-		// still reports the device inset here, which is why CSS alone reserved ~25px
-		// of dead space under the composer.
-		expect(needsBottomSafeArea(700, SCREEN)).toBe(false);
-	});
-
-	it("tolerates sub-pixel layout and a hairline border at the edge", () => {
-		expect(needsBottomSafeArea(SCREEN - BOTTOM_EDGE_TOLERANCE, SCREEN)).toBe(true);
-		expect(needsBottomSafeArea(SCREEN - BOTTOM_EDGE_TOLERANCE - 1, SCREEN)).toBe(false);
-	});
-
-	it("is true when the panel extends past the screen bottom", () => {
-		expect(needsBottomSafeArea(950, SCREEN)).toBe(true);
-	});
-});
+// `needsBottomSafeArea` and its tests are gone with the conditional home-indicator
+// padding they drove (ADR-146): the input area no longer reserves that inset at
+// all, so there is nothing to switch off. `keyboardOverlap` above is the half of
+// this module that was never in doubt.

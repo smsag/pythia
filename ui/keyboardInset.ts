@@ -14,9 +14,10 @@
  * obstruction the panel must move out of the way for. A soft keyboard is at
  * least ~250px tall on any phone, while Obsidian's own bottom chrome and the
  * home indicator account for a few tens of pixels. Anything under this
- * threshold is therefore not a keyboard, and the panel is left alone — the home
- * indicator is already handled by the input area's `env(safe-area-inset-bottom)`
- * padding, which is a hard rule of this project.
+ * threshold is therefore not a keyboard, and the panel is left alone. (That
+ * last sentence used to add "the home indicator is handled by the input area's
+ * `env(safe-area-inset-bottom)` padding" — there is no such padding any more,
+ * see ADR-146.)
  */
 export const MIN_KEYBOARD_INSET = 120;
 
@@ -50,53 +51,26 @@ export function keyboardOverlap(m: ViewportMetrics): number {
 	return Math.max(0, Math.round(m.containerBottom - visibleBottom));
 }
 
-/** Slack allowed when deciding whether the panel touches the screen edge, in
- *  CSS px — enough for sub-pixel layout and a hairline border. */
-export const BOTTOM_EDGE_TOLERANCE = 4;
-
 /**
- * Whether the panel really reaches the bottom of the screen, and therefore has a
- * home indicator to clear (ADR-134).
+ * Lift the plugin's content pane clear of an open soft keyboard (ADR-132).
  *
- * `env(safe-area-inset-bottom)` reports the device's inset regardless of where
- * the element sits, so CSS alone cannot tell "I am the bottom-most thing on
- * screen" from "there is another leaf below me". Only a measurement can, and
- * without it the input area reserved that inset as dead space in a stacked
- * sidebar.
- */
-export function needsBottomSafeArea(containerBottom: number, layoutHeight: number): boolean {
-	return containerBottom >= layoutHeight - BOTTOM_EDGE_TOLERANCE;
-}
-
-/**
- * Apply both viewport-derived insets to the plugin's content pane.
+ * This used to do two jobs; the second — switching the input area's
+ * home-indicator padding off when the panel does not reach the screen edge —
+ * is gone with the padding itself (ADR-146). What remains is the one that was
+ * never in doubt.
  *
- * Kept together because both are driven by the same events (viewport resize and
- * scroll, focus, blur, open) and both are pure measurement applied as style:
- *
- *  - `padding-bottom` lifts content clear of an open soft keyboard, and is
- *    removed the moment there is no keyboard (ADR-132).
- *  - `--p-bottom-inset` switches the input area's home-indicator padding off
- *    when the panel does not actually reach the screen edge (ADR-134).
- *
- * Both properties are cleared before measuring, so repeated calls are idempotent
+ * The properties are cleared before measuring, so repeated calls are idempotent
  * and a pane left styled by an older build heals on the next event.
  */
 export function updateViewportInsets(container: HTMLElement): void {
 	container.style.paddingBottom = "";
 	container.style.height = "";
+	container.style.removeProperty("--p-bottom-inset"); // left by builds ≤ 2.12.0
 	const vv = window.visualViewport;
 	if (!vv) return;
-	const containerBottom = container.getBoundingClientRect().bottom;
-
-	if (needsBottomSafeArea(containerBottom, window.innerHeight)) {
-		container.style.removeProperty("--p-bottom-inset");
-	} else {
-		container.style.setProperty("--p-bottom-inset", "0px");
-	}
 
 	const overlap = keyboardOverlap({
-		containerBottom,
+		containerBottom: container.getBoundingClientRect().bottom,
 		layoutHeight: window.innerHeight,
 		visualHeight: vv.height,
 		visualOffsetTop: vv.offsetTop,
@@ -120,6 +94,8 @@ export function updateViewportInsets(container: HTMLElement): void {
  * NOTE for callers: this covers viewport changes only. The panel's bottom edge
  * also moves when leaves open, close or resize, and none of those fire a
  * `visualViewport` event — subscribe to the workspace separately (ADR-134).
+ * That mattered more when the bottom inset was conditional; it still matters for
+ * a keyboard open across a layout change.
  */
 export function watchViewport(onChange: () => void): () => void {
 	const vv = window.visualViewport;

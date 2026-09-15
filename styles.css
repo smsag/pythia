@@ -2088,15 +2088,16 @@
   flex-shrink: 0;
   position: relative;
   border-top: 1px solid var(--background-modifier-border);
-  padding: var(--s2) var(--s3);
-  /* The home-indicator inset, but only where a home indicator actually is
-     (ADR-134). `env(safe-area-inset-bottom)` reports the device inset no matter
-     where the element sits, so in a stacked mobile sidebar — another leaf below
-     us, nothing to clear — it reserved ~25px of dead space under the composer.
-     The view measures whether the panel really reaches the screen edge and sets
-     `--p-bottom-inset: 0px` when it does not; unset, the env() default applies
-     exactly as before. */
-  padding-bottom: max(var(--s2), var(--p-bottom-inset, env(safe-area-inset-bottom, var(--s2))));
+  /* No `env(safe-area-inset-bottom)` here, deliberately (ADR-146). It reports
+     the device's inset wherever the element sits, so a panel with another leaf
+     below it reserved ~34px of dead space for a home indicator it was nowhere
+     near. ADR-134 tried to keep the inset and switch it off by measuring whether
+     the panel reaches the screen edge; measured on the reporter's device, that
+     switch does not fire — 42px below the send button where 8 was intended,
+     which is 8 + exactly one 34pt home indicator. Two attempts at conditional
+     logic is enough: Obsidian's own mobile chrome already sits between a sidebar
+     leaf and the screen edge, so the inset was buying nothing here. */
+  padding: var(--s2) var(--s3) var(--s1);
   display: flex;
   flex-direction: column;
   gap: var(--s3);
