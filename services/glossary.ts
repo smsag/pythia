@@ -42,10 +42,24 @@
  * configuration, which a localized label cannot offer.
  */
 
+/**
+ * What an entry *is* (ADR-151). Terms and people share every mechanism — the
+ * mark, the anchor, the folder format, the index — and differ only in where they
+ * are filed, how they are looked up, and how the mark is drawn.
+ *
+ * They are one type rather than two because the painter must match both in a
+ * single alternation: two passes over every text node of every message is the
+ * cost this index exists to avoid.
+ */
+export type EntryKind = "term" | "person";
+
 /** One glossary entry. `term` is stored as written; matching is case-insensitive. */
 export interface GlossaryEntry {
 	term: string;
 	definition: string;
+	/** Term unless stated otherwise (ADR-151) — undefined reads as "term" so every
+	 *  entry written before people existed keeps its meaning. */
+	kind?: EntryKind;
 	/** Where the definition came from, for display and for re-lookup decisions. */
 	source: "model" | "manual";
 	/** ISO 8601. Absent on entries a human wrote by hand without one. */
@@ -244,7 +258,7 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 
 /** The parts of an entry the matcher needs — so callers can index plain terms
  *  without constructing whole entries. */
-export type TermSource = Pick<GlossaryEntry, "term"> & {
+export type TermSource = Pick<GlossaryEntry, "term" | "kind"> & {
 	aliases?: string[];
 	translations?: Translation[];
 };
@@ -269,6 +283,9 @@ export interface TermIndex {
 	matcher: RegExp;
 	/** Normalized surface form → the canonical term it belongs to. */
 	canonical: Map<string, string>;
+	/** Normalized canonical term → what it is, so the painter can draw a person
+	 *  differently from a term without looking the entry up again (ADR-151). */
+	kinds: Map<string, EntryKind>;
 }
 
 /**
@@ -294,6 +311,7 @@ export interface TermIndex {
  */
 export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 	const canonical = new Map<string, string>();
+	const kinds = new Map<string, EntryKind>();
 	const surfaces: string[] = [];
 
 	const register = (form: string, term: string) => {
@@ -306,7 +324,10 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 		surfaces.push(clean);
 	};
 
-	for (const entry of entries) register(entry.term, entry.term.trim());
+	for (const entry of entries) {
+		register(entry.term, entry.term.trim());
+		kinds.set(normalizeTerm(entry.term), entry.kind ?? "term");
+	}
 	for (const entry of entries) {
 		const term = entry.term.trim();
 		if (!term) continue;
@@ -321,10 +342,15 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 
 	const L = "\\p{L}\\p{N}_";
 	const body = surfaces.map(escapeRegExp).join("|");
-	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical };
+	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical, kinds };
 }
 
 /** Resolve a matched surface form back to the term that owns it. */
 export function canonicalTerm(index: TermIndex, surface: string): string {
 	return index.canonical.get(normalizeTerm(surface)) ?? surface;
+}
+
+/** What a matched surface form is — a term unless the entry says otherwise. */
+export function entryKind(index: TermIndex, surface: string): EntryKind {
+	return index.kinds.get(normalizeTerm(canonicalTerm(index, surface))) ?? "term";
 }

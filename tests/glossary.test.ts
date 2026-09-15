@@ -4,6 +4,7 @@ import {
 	normalizeTerm,
 	buildTermIndex,
 	canonicalTerm,
+	entryKind,
 	type GlossaryEntry,
 } from "../services/glossary";
 
@@ -241,5 +242,37 @@ describe("legacy visible fields", () => {
 		expect(index).not.toBeNull();
 		expect("Il contatore è rotto.".match(index!.matcher)?.[0]).toBe("contatore");
 		expect(canonicalTerm(index!, "contatore")).toBe("Zähler");
+	});
+});
+
+// ── Entry kinds in the index (ADR-151) ────────────────────────────────────────
+
+describe("entryKind", () => {
+	it("reports what a matched surface form is, so the painter can draw it", () => {
+		const ix = buildTermIndex([
+			{ term: "Zähler", aliases: ["Zählern"] },
+			{ term: "Anna Weber", kind: "person", aliases: ["Weber"] },
+		])!;
+		expect(entryKind(ix, "Zählern")).toBe("term");
+		expect(entryKind(ix, "Weber")).toBe("person");
+	});
+
+	it("resolves through an alias to the canonical entry's kind, not the form's", () => {
+		const ix = buildTermIndex([{ term: "Anna Weber", kind: "person", aliases: ["Weber"] }])!;
+		expect(entryKind(ix, "WEBER")).toBe("person");
+		expect(canonicalTerm(ix, "Weber")).toBe("Anna Weber");
+	});
+
+	it("defaults to term for an entry that never declared a kind", () => {
+		const ix = buildTermIndex([{ term: "Zähler" }])!;
+		expect(entryKind(ix, "Zähler")).toBe("term");
+	});
+
+	it("matches people and terms in one alternation, not one pass each", () => {
+		const ix = buildTermIndex([
+			{ term: "Zähler" },
+			{ term: "Anna Weber", kind: "person" },
+		])!;
+		expect("Anna Weber prüft den Zähler.".match(ix.matcher)).toEqual(["Anna Weber", "Zähler"]);
 	});
 });

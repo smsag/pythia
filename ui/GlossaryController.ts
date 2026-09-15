@@ -71,6 +71,22 @@ export class GlossaryController {
 		new Notice(t("glossaryDefined", { term: entry.term }));
 	}
 
+	/**
+	 * Describe the selected person and mark them everywhere (ADR-151).
+	 *
+	 * The same shape as `defineSelection` because it is the same feature with a
+	 * different resolver: vault note first, model second, one entry, marked in
+	 * every conversation from then on.
+	 */
+	async describePerson(name: string, passage: string): Promise<void> {
+		const entry = await this.d.plugin.glossaryService.lookupPerson(
+			name, passage, false, this.d.getConversation() ?? undefined
+		);
+		if (!entry) return;
+		this.repaintAll();
+		new Notice(t("personDefined", { name: entry.term }));
+	}
+
 	/** Repaint every rendered answer. A term is known globally, so adding or
 	 *  removing one changes the whole transcript, not just one message. */
 	repaintAll(): void {
@@ -98,7 +114,14 @@ export class GlossaryController {
 		// around it. Fork and merge anchors can attach directly because their marks
 		// are deliberate, often sentence-length selections.
 		const block = markEl.closest("p, li, td, th, div") ?? markEl;
-		const anchor = createDiv({ cls: "p-term-anchor", attr: { "data-term": term } });
+		const isPerson = entry.kind === "person";
+		const anchor = createDiv({
+			// One class, one set of rules: a person anchor IS a term anchor, with a
+			// modifier that changes only the left rule's stroke (ADR-142's lesson —
+			// restating a rule for a near-twin is how the two drift apart).
+			cls: isPerson ? "p-term-anchor p-term-anchor--person" : "p-term-anchor",
+			attr: { "data-term": term },
+		});
 		block.after(anchor);
 		this.openAnchor = anchor;
 		this.build(anchor, entry, markEl);
@@ -108,8 +131,12 @@ export class GlossaryController {
 		anchor.empty();
 
 		const head = anchor.createDiv({ cls: "p-term-anchor-head" });
-		setIcon(head.createSpan({ cls: "p-term-anchor-icon" }), "book-open");
-		head.createSpan({ cls: "p-term-anchor-label", text: t("glossaryAnchorLabel") });
+		const isPerson = entry.kind === "person";
+		setIcon(head.createSpan({ cls: "p-term-anchor-icon" }), isPerson ? "user" : "book-open");
+		head.createSpan({
+			cls: "p-term-anchor-label",
+			text: isPerson ? t("personAnchorLabel") : t("glossaryAnchorLabel"),
+		});
 
 		anchor.createDiv({ cls: "p-term-anchor-title", text: entry.term });
 
@@ -179,7 +206,12 @@ export class GlossaryController {
 
 	private async regenerate(anchor: HTMLElement, term: string, markEl: HTMLElement): Promise<void> {
 		const passage = markEl.closest("[data-msg-id]")?.textContent ?? "";
-		const entry = await this.d.plugin.glossaryService.lookup(term, passage, true, this.d.getConversation() ?? undefined);
+		const service = this.d.plugin.glossaryService;
+		const conv = this.d.getConversation() ?? undefined;
+		const known = service.find(await service.all(), term);
+		const entry = known?.kind === "person"
+			? await service.lookupPerson(term, passage, true, conv)
+			: await service.lookup(term, passage, true, conv);
 		if (entry && this.openAnchor === anchor) this.build(anchor, entry, markEl);
 	}
 

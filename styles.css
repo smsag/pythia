@@ -1643,6 +1643,21 @@
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 
+/* A person mark (ADR-151). Solid where a term is dotted: the two open the same
+   kind of card, so the underline is the only thing that says which — and a
+   person is the rarer of the two on a page, so it can afford the heavier stroke.
+   Still --text-faint, because like a term it repeats wherever the name appears. */
+.pythia-view pythia-person {
+  color: inherit;
+  cursor: pointer;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--text-faint);
+}
+.pythia-view pythia-person:hover {
+  border-bottom-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
 /* Frameless definition, matching the fork and merge anchors but with a dotted
    left rule so the three are distinguishable without reading them. */
 .p-term-anchor {
@@ -1659,6 +1674,11 @@
   font-size: var(--font-smaller);
   color: var(--text-muted);
 }
+/* A person anchor IS a term anchor — every rule above applies. Only the stroke
+   changes, continuing the series: solid fork, dashed merge, dotted term, double
+   person. Never restate the other rules here (ADR-142). */
+.p-term-anchor--person { border-left-style: double; border-left-width: 3px; }
+
 .p-term-anchor-head {
   display: flex;
   align-items: center;

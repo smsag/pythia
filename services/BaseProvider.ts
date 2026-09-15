@@ -428,6 +428,44 @@ export abstract class BaseProvider implements LLMProvider {
 		);
 	}
 
+	/**
+	 * Describe a person named in an answer (ADR-151).
+	 *
+	 * Deliberately different from `defineTerm` in one way that matters: the
+	 * passage is the primary source and the model's own knowledge is the fallback,
+	 * stated in that order, because a person is far more likely than a term to be
+	 * someone the model has never heard of — a colleague, a client, a local
+	 * counterparty. A model that leads with recall invents a plausible biography;
+	 * one told to prefer the passage says what the conversation actually
+	 * established. What it produces is stored as `source: model` either way, so
+	 * the note never presents a generated claim as a recorded one.
+	 */
+	async describePerson(name: string, passage: string, conversation?: Conversation): Promise<string> {
+		const excerpt = passage.slice(0, 1200);
+		return this.callUtility(
+			this.fastModel,
+			`Who is "${name}", as referred to in the passage below?\n\n` +
+				`Reply in EXACTLY this format — no other text before or after:\n` +
+				`${DEFINITION_MARKER}:\n<two or three sentences>\n` +
+				`${VARIANTS_MARKER}: <other names this person is called, separated by | , or leave empty>\n` +
+				`${CONTEXT_MARKER}: <one sentence from the passage, or leave empty>\n\n` +
+				`Use the passage first: say what it establishes about this person — their role, ` +
+				`their relation to the subject, what they did. Only add what you independently know ` +
+				`if you are confident it is the same person, and never pad the answer with generic ` +
+				`description to reach three sentences.\n` +
+				`If the passage does not make clear who this is and you do not recognise the name, ` +
+				`say exactly that in one sentence rather than guessing — an invented biography is ` +
+				`worse than an empty entry, because it will be read later as something that was recorded.\n` +
+				`For the variants: other names the same person is called in running text — surname ` +
+				`alone, given name alone, an initial form, a former name. Names only, never roles, ` +
+				`and never a name so common it would match unrelated sentences.\n` +
+				`For the context: copy ONE short sentence or clause from the passage naming this ` +
+				`person, verbatim. Leave the line empty if none does.` +
+				`${langInstruction(this.languageLabel(conversation))}\n\nPassage:\n${excerpt}`,
+			420
+		);
+	}
+
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
 		const excerpt = content.slice(0, 500);
 		return this.callUtility(

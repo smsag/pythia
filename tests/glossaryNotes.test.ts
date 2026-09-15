@@ -107,7 +107,7 @@ describe("entryFromFrontmatter", () => {
 			definition: original.definition,
 			contexts: [],
 		});
-		expect(back).toEqual({ ...original, contexts: undefined });
+		expect(back).toEqual({ ...original, kind: "term", contexts: undefined });
 	});
 
 	it("survives a note with no frontmatter at all", () => {
@@ -239,5 +239,47 @@ describe("effectiveTheme", () => {
 
 	it("survives a conversation with no name", () => {
 		expect(effectiveTheme({ } as Conversation)).toBe("");
+	});
+});
+
+// ── Person entities (ADR-151) ─────────────────────────────────────────────────
+
+describe("person entries", () => {
+	const person = (over: Partial<GlossaryEntry> = {}): GlossaryEntry =>
+		entry({ term: "Anna Weber", kind: "person", definition: "Maklerin im Team Nord.", ...over });
+
+	it("files people in their own folder, terms in theirs", () => {
+		expect(termPath("Glossary", "Anna Weber", "person")).toBe("Glossary/People/Anna Weber.md");
+		expect(termPath("Glossary", "Zähler", "term")).toBe("Glossary/Terms/Zähler.md");
+	});
+
+	it("defaults to the term folder when no kind is given", () => {
+		expect(termPath("Glossary", "Zähler")).toBe("Glossary/Terms/Zähler.md");
+	});
+
+	it("writes the kind as the type property, which is what a Base filters on", () => {
+		expect(entryFrontmatter(person()).type).toBe("person");
+		expect(entryFrontmatter(entry()).type).toBe("term");
+	});
+
+	it("reads the kind back, defaulting to term for a note written before people existed", () => {
+		expect(entryFromFrontmatter("Anna Weber", { type: "person" }).kind).toBe("person");
+		expect(entryFromFrontmatter("Zähler", { source: "model" }).kind).toBe("term");
+	});
+
+	it("round-trips a person through frontmatter", () => {
+		const original = person({ aliases: ["Weber"], theme: ["Mietrecht 2026"] });
+		const back = entryFromFrontmatter("Anna Weber", entryFrontmatter(original), {
+			definition: original.definition,
+			contexts: [],
+		});
+		expect(back).toEqual({ ...original, contexts: undefined, translations: undefined });
+	});
+
+	it("merges a person like any other entry, keeping a hand-written description", () => {
+		const existing = person({ source: "manual", definition: "Von Hand." });
+		const merged = mergeEntry(existing, person({ definition: "Vom Modell.", theme: ["Neu"] }));
+		expect(merged.definition).toBe("Von Hand.");
+		expect(merged.theme).toEqual(["Neu"]);
 	});
 });

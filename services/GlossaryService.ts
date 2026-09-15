@@ -11,6 +11,7 @@ import {
 } from "./glossary";
 import {
 	TERMS_SUBFOLDER,
+	PEOPLE_SUBFOLDER,
 	entryFrontmatter,
 	folderOf,
 	entryFromFrontmatter,
@@ -64,6 +65,10 @@ export class GlossaryService {
 		return `${this.root}/${TERMS_SUBFOLDER}`;
 	}
 
+	private get peopleFolder(): string {
+		return `${this.root}/${PEOPLE_SUBFOLDER}`;
+	}
+
 	/** The single-note glossary written by builds up to 2.13.x — read only, by
 	 *  the migration command. */
 	get legacyNotePath(): string {
@@ -81,7 +86,9 @@ export class GlossaryService {
 	 *  invalidate. Broader than the old single-note check by necessity: any term
 	 *  note can now change the index. */
 	isGlossaryNote(filePath: string): boolean {
-		return filePath.startsWith(`${this.termsFolder}/`) || filePath === this.legacyNotePath;
+		return filePath.startsWith(`${this.termsFolder}/`)
+			|| filePath.startsWith(`${this.peopleFolder}/`)
+			|| filePath === this.legacyNotePath;
 	}
 
 	/**
@@ -97,16 +104,15 @@ export class GlossaryService {
 	 */
 	async all(): Promise<GlossaryEntry[]> {
 		if (this.entries) return this.entries;
-		const folder = this.plugin.app.vault.getAbstractFileByPath(this.termsFolder);
-		if (!(folder instanceof TFolder)) {
-			this.entries = [];
-			return this.entries;
-		}
 		const entries: GlossaryEntry[] = [];
-		for (const child of folder.children) {
-			if (!(child instanceof TFile) || child.extension !== "md") continue;
-			const fm = this.plugin.app.metadataCache.getFileCache(child)?.frontmatter;
-			entries.push(entryFromFrontmatter(child.basename, fm));
+		for (const path of [this.termsFolder, this.peopleFolder]) {
+			const folder = this.plugin.app.vault.getAbstractFileByPath(path);
+			if (!(folder instanceof TFolder)) continue;
+			for (const child of folder.children) {
+				if (!(child instanceof TFile) || child.extension !== "md") continue;
+				const fm = this.plugin.app.metadataCache.getFileCache(child)?.frontmatter;
+				entries.push(entryFromFrontmatter(child.basename, fm));
+			}
 		}
 		this.entries = entries;
 		return this.entries;
@@ -118,7 +124,7 @@ export class GlossaryService {
 	 */
 	async hydrate(entry: GlossaryEntry): Promise<GlossaryEntry> {
 		if (entry.definition) return entry;
-		const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, entry.term));
+		const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, entry.term, entry.kind));
 		if (!(file instanceof TFile)) return entry;
 		try {
 			const body = parseBody(stripFrontmatter(await this.plugin.app.vault.read(file)));
@@ -194,6 +200,70 @@ export class GlossaryService {
 		}
 	}
 
+	/**
+	 * Resolve a person: return the stored note, or ask the model and store one
+	 * (ADR-151).
+	 *
+	 * **Vault first is not an optimization here.** A person note the user has
+	 * already written is the authoritative record; the model tier only runs when
+	 * the vault has nothing, and what it produces is marked `source: model` in the
+	 * note so a reader can always tell a recorded fact from a generated one. That
+	 * distinction is the whole safeguard: model text about a named person may be
+	 * confidently wrong, and the note is where someone will later act on it.
+	 */
+	async lookupPerson(name: string, passage: string, force = false, conversation?: Conversation): Promise<GlossaryEntry | null> {
+		const clean = name.trim();
+		if (!clean) return null;
+		const key = `person:${normalizeTerm(clean)}`;
+
+		if (!force) {
+			const known = this.find(await this.all(), clean);
+			if (known) return known;
+			const inFlight = this.pending.get(key);
+			if (inFlight) return inFlight;
+		}
+
+		const run = this.describeAndStore(clean, passage, conversation, force);
+		this.pending.set(key, run);
+		try {
+			return await run;
+		} finally {
+			this.pending.delete(key);
+		}
+	}
+
+	private async describeAndStore(
+		name: string,
+		passage: string,
+		conversation?: Conversation,
+		force = false
+	): Promise<GlossaryEntry | null> {
+		const notice = new Notice(t("personLookingUp", { name }), 0);
+		try {
+			const raw = await this.plugin.llmRouter.describePerson(name, passage, undefined, conversation);
+			const { definition, variants, context } = parseDefinitionReply(raw);
+			if (!definition) return null;
+			const entry: GlossaryEntry = {
+				term: name,
+				kind: "person",
+				definition,
+				source: "model",
+				updatedAt: new Date().toISOString(),
+				model: this.plugin.llmRouter.fastModelFor(),
+				// Name variants only — a person has no translations.
+				aliases: dedupeAliases(name, variants),
+				contexts: context ? [context] : undefined,
+				theme: conversation ? [effectiveTheme(conversation)] : undefined,
+			};
+			return await this.save(entry, force);
+		} catch (e) {
+			new Notice(t("personLookupFailed", { error: e instanceof Error ? e.message : String(e) }));
+			return null;
+		} finally {
+			notice.hide();
+		}
+	}
+
 	private async defineAndStore(
 		term: string,
 		passage: string,
@@ -245,7 +315,7 @@ export class GlossaryService {
 	 */
 	async save(entry: GlossaryEntry, force = false): Promise<GlossaryEntry> {
 		const app = this.plugin.app;
-		const path = termPath(this.root, entry.term);
+		const path = termPath(this.root, entry.term, entry.kind);
 		await this.plugin.noteWriter.ensureFolder(folderOf(path));
 
 		const existingFile = app.vault.getAbstractFileByPath(path);
@@ -318,7 +388,7 @@ export class GlossaryService {
 	async remove(term: string): Promise<void> {
 		const entries = await this.all();
 		const target = this.find(entries, term);
-		const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, target?.term ?? term));
+		const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, target?.term ?? term, target?.kind));
 		if (!(file instanceof TFile)) return;
 		// Trash rather than delete: a definition the user spent a lookup on should
 		// be recoverable from the system trash like any other note.

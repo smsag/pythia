@@ -1,4 +1,4 @@
-import type { GlossaryEntry, Translation } from "./glossary";
+import type { EntryKind, GlossaryEntry, Translation } from "./glossary";
 import type { Conversation } from "../models/types";
 
 /**
@@ -23,11 +23,13 @@ import type { Conversation } from "../models/types";
 
 export const TERMS_SUBFOLDER = "Terms";
 export const THEMES_SUBFOLDER = "Themes";
+export const PEOPLE_SUBFOLDER = "People";
 
 /** Frontmatter `type`, so one Base can separate terms from the person entities
  *  that follow in ADR-151 without a second folder convention. */
 export const TERM_TYPE = "term";
 export const THEME_TYPE = "theme";
+export const PERSON_TYPE = "person";
 
 /** Characters no vault can carry in a file name, plus the ones Obsidian reserves
  *  for links. The true term survives in the `aliases` property, so a sanitized
@@ -48,8 +50,14 @@ export function folderOf(path: string): string {
 }
 
 /** Vault path of the note holding `term`. */
-export function termPath(root: string, term: string): string {
-	return `${root}/${TERMS_SUBFOLDER}/${sanitizeFileName(term)}.md`;
+export function termPath(root: string, term: string, kind: EntryKind = "term"): string {
+	const folder = kind === "person" ? PEOPLE_SUBFOLDER : TERMS_SUBFOLDER;
+	return `${root}/${folder}/${sanitizeFileName(term)}.md`;
+}
+
+/** The folder an entry of this kind is filed in, relative to the glossary root. */
+export function subfolderFor(kind: EntryKind): string {
+	return kind === "person" ? PEOPLE_SUBFOLDER : TERMS_SUBFOLDER;
 }
 
 /** Vault path of the note for `theme`. */
@@ -89,7 +97,7 @@ function toList(value: unknown): string[] {
  * property a user added by hand is never dropped by our write.
  */
 export function entryFrontmatter(entry: GlossaryEntry): Record<string, unknown> {
-	const fm: Record<string, unknown> = { type: TERM_TYPE };
+	const fm: Record<string, unknown> = { type: entry.kind === "person" ? PERSON_TYPE : TERM_TYPE };
 	fm.aliases = entry.aliases ?? [];
 	fm.theme = (entry.theme ?? []).map(themeLink);
 	for (const t of entry.translations ?? []) fm[translationKey(t.lang)] = t.term;
@@ -120,6 +128,7 @@ export function entryFromFrontmatter(
 	return {
 		term,
 		definition: body?.definition ?? "",
+		kind: f.type === PERSON_TYPE ? "person" : "term",
 		source: f.source === "model" ? "model" : "manual",
 		updatedAt: typeof f.updated === "string" ? f.updated : undefined,
 		model: typeof f.model === "string" ? f.model : undefined,

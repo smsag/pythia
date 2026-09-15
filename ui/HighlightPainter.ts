@@ -11,7 +11,7 @@
 // ranges — cannot be used. Instead we split the range per text node and wrap each
 // fragment in its own <mark>, all tagged with the same data-fav-id.
 
-import { canonicalTerm, type TermIndex } from "../services/glossary";
+import { entryKind, canonicalTerm, type TermIndex } from "../services/glossary";
 
 const HIGHLIGHT_CLASS = "p-highlight";
 const FORK_ORIGIN_CLASS = "p-fork-origin";
@@ -29,6 +29,8 @@ const FAVORITE_TAG = "pythia-favorite";
 const FORK_TAG = "pythia-fork";
 const MERGE_TAG = "pythia-merge";
 const TERM_TAG = "pythia-term";
+const PERSON_CLASS = "p-person";
+const PERSON_TAG = "pythia-person";
 
 interface TextPos {
 	node: Text;
@@ -259,7 +261,7 @@ const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
  * live TreeWalker mid-iteration.
  */
 export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
-	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}`));
+	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}, .${PERSON_CLASS}`));
 	if (!index) return;
 	const matcher = index.matcher;
 
@@ -269,7 +271,7 @@ export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 	while (node) {
 		const parent = node.parentElement;
 		if (parent && node.data.trim() && !parent.closest(TERM_SKIP) &&
-			!parent.closest(`.${HIGHLIGHT_CLASS}, .${FORK_ORIGIN_CLASS}, .${MERGE_LINK_CLASS}, .${TERM_CLASS}`)) {
+			!parent.closest(`.${HIGHLIGHT_CLASS}, .${FORK_ORIGIN_CLASS}, .${MERGE_LINK_CLASS}, .${TERM_CLASS}, .${PERSON_CLASS}`)) {
 			targets.push(node);
 		}
 		node = walker.nextNode() as Text | null;
@@ -287,8 +289,11 @@ export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 		let cursor = 0;
 		while (match) {
 			if (match.index > cursor) frag.appendChild(document.createTextNode(data.slice(cursor, match.index)));
-			const mark = document.createElement(TERM_TAG);
-			mark.className = TERM_CLASS;
+			// People and terms share the index and the anchor; only the mark differs,
+			// because the mark is the sole signal of what a tap will open (ADR-151).
+			const isPerson = entryKind(index, match[0]) === "person";
+			const mark = document.createElement(isPerson ? PERSON_TAG : TERM_TAG);
+			mark.className = isPerson ? PERSON_CLASS : TERM_CLASS;
 			mark.setAttribute("data-term", canonicalTerm(index, match[0]));
 			mark.textContent = match[0];
 			frag.appendChild(mark);

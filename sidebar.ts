@@ -473,6 +473,7 @@ export class PythiaSidebarView extends ItemView {
 			toggleMergeAnchor: (mergeId, markEl) => this.mergeController.toggleMergeAnchor(mergeId, markEl),
 			toggleTermAnchor: (term, markEl) => void this.glossaryController.toggleAnchor(term, markEl),
 			defineTerm: (term, passage) => void this.glossaryController.defineSelection(term, passage),
+			describePerson: (name, passage) => void this.glossaryController.describePerson(name, passage),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 		});

@@ -32,7 +32,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
-    glossaryNotes.ts          ← pure: the note-per-term format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150)
+    glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150)
     apiError.ts               ← HTTP error classification
   ui/
@@ -51,10 +51,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
+    entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 823 tests across 53 files
+  tests/                      ← Vitest unit tests (npm test) — 839 tests across 54 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -346,6 +347,9 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **`Conversation.theme === undefined` means *follow the conversation name*** — never a copy of it. Only the undefined case gets renamed when the LLM titles the conversation. Resolve with `effectiveTheme()`; a fork pins the source's resolved theme, so "inherited but changeable" is true
 - **Rename conversations only through `plugin.renameConversation(conv, name)`** — the old name is needed before the assignment, and the theme note moves via `fileManager.renameFile` (which rewrites the `[[links]]`; `vault.rename` does not)
 - **Writes merge, never overwrite.** A re-lookup adds themes and contexts and keeps a `manual` definition; only the anchor's regenerate replaces it. This is what makes a term met in several conversations one note
+- **People are entries too** (ADR-151): `GlossaryEntry.kind` is `"term" | "person"`, undefined reads as term. One index matches both in a single alternation — never add a second pass or a second painter. People live in `<glossaryFolder>/People/` with `type: person`; only the folder, the resolver and the mark differ
+- **The person mark is a solid faint underline; the person anchor is `.p-term-anchor` + `.p-term-anchor--person`** (double left rule, `user` icon, `PERSON` label). Never restate a `.p-term-anchor-*` rule for a person
+- **`describePerson` leads with the passage and must decline rather than guess.** A person the model has never met is the normal case in a working vault, and a generated biography reads later as a recorded fact — which is why model-sourced person entries carry `source: model` visibly. Vault-first-then-model is a user decision (ADR-151), not a default to loosen
 - **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
