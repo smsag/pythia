@@ -1,5 +1,7 @@
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
+import { attachDragToPan } from "./dragToPan";
+import { decorateTables } from "./tableDecorator";
 
 type DiagObserverEntry = { mo: MutationObserver; ro: ResizeObserver };
 
@@ -112,41 +114,6 @@ function fixDiagramSvgSize(
 	setTimeout(done, 10_000);
 }
 
-function attachDragToPan(el: HTMLElement): void {
-	const THRESHOLD = 5;
-	let startX         = 0;
-	let startScrollLeft = 0;
-	let panning        = false;
-
-	const onMove = (e: PointerEvent) => {
-		const dx = e.clientX - startX;
-		if (!panning) {
-			if (Math.abs(dx) < THRESHOLD) return;
-			panning = true;
-			el.classList.add("p-panning");
-		}
-		el.scrollLeft = startScrollLeft - dx;
-	};
-
-	const cleanup = () => {
-		if (panning) el.classList.remove("p-panning");
-		panning = false;
-		document.removeEventListener("pointermove",  onMove);
-		document.removeEventListener("pointerup",    cleanup);
-		document.removeEventListener("pointercancel", cleanup);
-	};
-
-	el.addEventListener("pointerdown", (e) => {
-		if (e.pointerType !== "mouse" || e.button !== 0) return;
-		if (el.scrollWidth <= el.clientWidth) return;
-		startX          = e.clientX;
-		startScrollLeft = el.scrollLeft;
-		panning         = false;
-		document.addEventListener("pointermove",  onMove);
-		document.addEventListener("pointerup",    cleanup);
-		document.addEventListener("pointercancel", cleanup);
-	});
-}
 
 export function decorateCodeBlocks(
 	container: HTMLElement,
@@ -215,11 +182,6 @@ export function decorateCodeBlocks(
 		attachDragToPan(el);
 	});
 
-	container.querySelectorAll<HTMLElement>("table:not([data-decorated])").forEach((table) => {
-		table.dataset.decorated = "1";
-		const frame = createEl("div", { cls: "p-scroll-frame" });
-		table.parentNode!.insertBefore(frame, table);
-		frame.appendChild(table);
-		attachDragToPan(frame);
-	});
+	// Wide tables get the same scroll-frame treatment (ADR-131).
+	decorateTables(container);
 }
