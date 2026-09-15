@@ -2244,10 +2244,20 @@ body.is-mobile .p-textarea {
 }
 .p-tool-btn.is-active {
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 .p-tool-btn.is-active:hover {
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 /* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
@@ -2278,6 +2288,11 @@ body.is-mobile .p-textarea {
   padding: 3px 10px;
   background: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   border-radius: 3px;
   transition: opacity 0.12s;
   white-space: nowrap;
@@ -2576,6 +2591,11 @@ body.is-mobile .p-textarea {
 .pythia-modal .p-effort-seg-btn.active {
   background-color: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   font-weight: 600;
 }
 .pythia-modal .p-effort-seg-btn:focus-visible {

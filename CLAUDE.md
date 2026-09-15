@@ -55,7 +55,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 846 tests across 54 files
+  tests/                      ← Vitest unit tests (npm test) — 853 tests across 54 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -205,7 +205,8 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 | `--text-normal` | Primary readable text, AI response body |
 | `--text-muted` | Secondary text |
 | `--text-faint` | Labels, badges, token counts, inactive icons |
-| `--text-on-accent` | Text on accent-colored surfaces |
+| `--text-on-accent` | Only as the CSS fallback behind `--p-on-accent` (see below) |
+| `--p-on-accent` | **Text on accent-colored surfaces.** Published by `ui/accentContrast.ts` as pure `#ffffff`/`#000000` by WCAG contrast against the live accent (ADR-154) |
 
 ### Spacing — 4px grid, no arbitrary values
 
@@ -230,6 +231,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
+6a. **Text on an accent fill is `var(--p-on-accent, var(--text-on-accent))`, and every such rule must ALSO set `-webkit-text-fill-color` to the same value** (ADR-154). These controls are `all: unset`; `all` resolves the inherited `-webkit-text-fill-color` to `inherit`, and **WebKit reads it in preference to `color`** — so a `color:` line alone silently loses on iOS and the label inherits `--text-normal`. `--p-on-accent` is always pure black or white; never let a theme token reach the label.
 7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is now `padding: var(--s2) var(--s3) var(--s1)`, full stop. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
