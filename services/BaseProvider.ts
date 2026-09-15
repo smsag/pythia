@@ -299,6 +299,29 @@ export abstract class BaseProvider implements LLMProvider {
 		return parseTitleAndSummary(raw);
 	}
 
+	/**
+	 * Define one term as it is used in a specific passage (ADR-136).
+	 *
+	 * The passage is the whole point. A dictionary can say what "Bauteil" means in
+	 * general; only the surrounding sentences can say which sense an answer meant,
+	 * and that sense is what the reader is stuck on. Sending the passage is also
+	 * what keeps this from needing a new prompt in the conversation.
+	 *
+	 * Runs on the fast model with a small token budget: this is a gloss, not an
+	 * essay, and it is fetched while the reader waits.
+	 */
+	async defineTerm(term: string, passage: string): Promise<string> {
+		const excerpt = passage.slice(0, 1200);
+		return this.callUtility(
+			this.fastModel,
+			`Define the term "${term}" as it is used in the passage below. ` +
+				`Two or three sentences. Explain the sense that applies here, not every possible meaning. ` +
+				`Do not repeat the passage, do not add a heading, do not use the word "context".` +
+				`${langInstruction(this.settings.outputLanguage)}\n\nPassage:\n${excerpt}`,
+			200
+		);
+	}
+
 	async generateChapterName(content: string): Promise<string> {
 		const excerpt = content.slice(0, 500);
 		return this.callUtility(

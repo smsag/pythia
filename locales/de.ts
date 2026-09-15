@@ -19,6 +19,22 @@ const de: Strings = {
 
 	// ── Merge-Verknüpfungen (ADR-130) ─────────────────────────────────────────
 	mergeBtn:                   "Zusammenführen",
+
+	// ── Glossary (ADR-136) ────────────────────────────────────────────────────
+	defineBtn:                 "Erklären",
+	glossaryAnchorLabel:       "GLOSSAR",
+	glossaryDefined:           "\"{{term}}\" ins Glossar aufgenommen",
+	glossaryNoteTitle:         "Glossar",
+	glossaryLookingUp:         "Schlage \"{{term}}\" nach…",
+	glossaryLookupFailed:      "Begriff konnte nicht erklärt werden: {{error}}",
+	glossaryOpenNote:          "Im Glossar öffnen",
+	glossaryRegenerate:        "Neu erklären",
+	glossaryRemove:            "Aus dem Glossar entfernen",
+	glossarySourceModel:       "erklärt von {{model}}",
+	glossarySourceManual:      "von Hand geschrieben",
+	glossaryNoTerm:            "Bitte einen einzelnen Begriff markieren.",
+	glossaryNoteName:          "Glossar-Notiz",
+	glossaryNoteDesc:          "Vault-Pfad der Notiz, in der nachgeschlagene Begriffe gespeichert werden. Erklärte Begriffe werden überall markiert, in jedem Gespräch.",
 	mergeAnchorLabel:           "VERKNÜPFT",
 	mergedFromLabel:            "Verknüpft von",
 	mergeNoSummary:             "Noch keine Zusammenfassung.",

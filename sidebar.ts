@@ -15,8 +15,8 @@ import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage,
 import { applyAccentContrast } from "./ui/accentContrast";
 import { noteBasename } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel } from "./ui/turnLabel";
-import { parseCitations, eachCitationSegment, stripForeignCitations, appendWebSources } from "./services/citations";
-import { openCitationSource, renderSourcesRow } from "./ui/sourcesRow";
+import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
+import { renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
@@ -29,13 +29,15 @@ import { SummaryController } from "./ui/SummaryController";
 import { ContextInspectorController } from "./ui/ContextInspectorController";
 import { ForkController } from "./ui/ForkController";
 import { MergeController } from "./ui/MergeController";
+import { GlossaryController } from "./ui/GlossaryController";
+import { paintCitations } from "./ui/citationPainter";
 import { attachLongPress } from "./ui/longPress";
 import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
-import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
+import type { Conversation, Message, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
@@ -109,6 +111,7 @@ export class PythiaSidebarView extends ItemView {
 	// Fork-origin banner, painted marks, and the inline anchor/menu (ADR-103).
 	private forkController!: ForkController;
 	private mergeController!: MergeController;
+	private glossaryController!: GlossaryController;
 	// Summary "Speisekarte" cards at the top of the message list. The container is
 	// created here (for DOM position); the SummaryController (ADR-103) owns the
 	// cards, their auto-collapse observer, and the generate/reveal/save flows.
@@ -430,6 +433,12 @@ export class PythiaSidebarView extends ItemView {
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
 
+		this.glossaryController = new GlossaryController({
+			plugin: this.plugin,
+			getMessagesEl: () => this.messagesEl,
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+		});
+
 		this.mergeController = new MergeController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -461,6 +470,8 @@ export class PythiaSidebarView extends ItemView {
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
 			toggleForkAnchor: (forkId, markEl) => this.forkController.toggleForkAnchor(forkId, markEl),
 			toggleMergeAnchor: (mergeId, markEl) => this.mergeController.toggleMergeAnchor(mergeId, markEl),
+			toggleTermAnchor: (term, markEl) => void this.glossaryController.toggleAnchor(term, markEl),
+			defineTerm: (term, passage) => void this.glossaryController.defineSelection(term, passage),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
@@ -938,6 +949,7 @@ export class PythiaSidebarView extends ItemView {
 		this.messagesEl.empty();
 		this.forkController.closeAnchor(); // fork anchor DOM detached by empty(); drop the stale reference + listeners
 		this.mergeController.closeAnchor(); // same for the merge anchor
+		this.glossaryController.closeAnchor();
 		this.renderedConvId = conv.id;
 		this.lastRenderedMsgId = null;
 
@@ -998,33 +1010,6 @@ export class PythiaSidebarView extends ItemView {
 	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
 	 *  superscript chips. Mirrors the favorites re-paint: walk text nodes and
 	 *  swap each marker for a `.p-cite` chip that opens its source on click. */
-	private paintCitations(body: HTMLElement, sources: MessageSource[]): void {
-		const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-		const targets: Text[] = [];
-		let node: Node | null;
-		while ((node = walker.nextNode())) {
-			if (node.nodeValue && node.nodeValue.indexOf("⟦cite:") !== -1) targets.push(node as Text);
-		}
-		for (const textNode of targets) {
-			const text = textNode.nodeValue ?? "";
-			const frag = document.createDocumentFragment();
-			eachCitationSegment(
-				text,
-				sources,
-				(t) => { if (t) frag.appendChild(document.createTextNode(t)); },
-				(src) => {
-					if (!src) return; // drop an unresolved marker entirely
-					const chip = document.createElement("sup");
-					chip.className = "p-cite";
-					chip.textContent = String(src.n);
-					chip.title = src.title;
-					chip.addEventListener("click", (e) => { e.stopPropagation(); void openCitationSource(this.app, src); });
-					frag.appendChild(chip);
-				},
-			);
-			textNode.parentNode?.replaceChild(frag, textNode);
-		}
-	}
 
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		// ── User message ────────────────────────────────────────────
@@ -1078,10 +1063,11 @@ export class PythiaSidebarView extends ItemView {
 		this.selectionController.repaintFavorites(aiBody, msg.id);
 		this.forkController.repaintForkOrigins(aiBody, msg.id);
 		this.mergeController.repaintMergeLinks(aiBody, msg.id);
+		void this.glossaryController.repaint(aiBody);
 		// Citations: paint markers → chips, then render the sources row. Backfill
 		// sources from content for messages saved before the field existed.
 		const sources = msg.sources ?? parseCitations(msg.content);
-		this.paintCitations(aiBody, sources);
+		paintCitations(this.app, aiBody, sources);
 		renderSourcesRow(this.app, row, sources);
 		// Token counts are shown inline in the turn label (renderTurnLabel),
 		// not a separate footer.
@@ -1120,7 +1106,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
 				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
-				this.paintCitations(aiBody, sources);
+				paintCitations(this.app, aiBody, sources);
 				renderSourcesRow(this.app, row, sources);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
 				this.autoScroll = true;

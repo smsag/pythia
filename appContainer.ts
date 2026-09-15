@@ -5,6 +5,7 @@ import { MistralService } from "./services/MistralService";
 import { LLMRouter } from "./services/LLMRouter";
 import { TemplateLoader } from "./services/TemplateLoader";
 import { NoteWriter } from "./services/NoteWriter";
+import { GlossaryService } from "./services/GlossaryService";
 import { WebSearchService } from "./services/WebSearchService";
 import { ToolHandler } from "./services/ToolHandler";
 import { PromptOptimizerService } from "./services/PromptOptimizerService";
@@ -31,6 +32,7 @@ export class AppContainer {
 		readonly llmRouter: LLMRouter,
 		readonly templateLoader: TemplateLoader,
 		readonly noteWriter: NoteWriter,
+		readonly glossaryService: GlossaryService,
 		readonly webSearchService: WebSearchService,
 		readonly toolHandler: ToolHandler,
 		readonly promptOptimizerService: PromptOptimizerService,
@@ -52,6 +54,7 @@ export class AppContainer {
 		const llmRouter = new LLMRouter(anthropicSvc, openaiSvc, mistralSvc);
 		const templateLoader = new TemplateLoader(plugin.app, plugin.settings);
 		const noteWriter = new NoteWriter(plugin.app, plugin.settings);
+		const glossaryService = new GlossaryService(plugin);
 		const webSearchService = new WebSearchService(plugin.settings, plugin.plaintextSearchKey);
 		const toolHandler = new ToolHandler(noteWriter, webSearchService);
 		const promptOptimizerService = new PromptOptimizerService(plugin.app, plugin, plugin.settings, llmRouter);
@@ -64,6 +67,7 @@ export class AppContainer {
 			llmRouter,
 			templateLoader,
 			noteWriter,
+			glossaryService,
 			webSearchService,
 			toolHandler,
 			promptOptimizerService,

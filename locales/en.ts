@@ -17,6 +17,22 @@ const en = {
 
 	// ── Merge links (ADR-130) ─────────────────────────────────────────────────
 	mergeBtn:                   "Merge",
+
+	// ── Glossary (ADR-136) ────────────────────────────────────────────────────
+	defineBtn:                 "Define",
+	glossaryAnchorLabel:       "GLOSSARY",
+	glossaryDefined:           "Added \"{{term}}\" to the glossary",
+	glossaryNoteTitle:         "Glossary",
+	glossaryLookingUp:         "Looking up \"{{term}}\"…",
+	glossaryLookupFailed:      "Could not define the term: {{error}}",
+	glossaryOpenNote:          "Open in glossary",
+	glossaryRegenerate:        "Define again",
+	glossaryRemove:            "Remove from glossary",
+	glossarySourceModel:       "defined by {{model}}",
+	glossarySourceManual:      "written by hand",
+	glossaryNoTerm:            "Select a single term to define.",
+	glossaryNoteName:          "Glossary note",
+	glossaryNoteDesc:          "Vault path of the note that stores looked-up terms. Terms defined here are marked wherever they appear, in every conversation.",
 	mergeAnchorLabel:           "MERGED",
 	mergedFromLabel:            "Merged from",
 	mergeNoSummary:             "No summary yet.",

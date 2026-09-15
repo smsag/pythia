@@ -14,6 +14,7 @@
 const HIGHLIGHT_CLASS = "p-highlight";
 const FORK_ORIGIN_CLASS = "p-fork-origin";
 const MERGE_LINK_CLASS = "p-merge-link";
+const TERM_CLASS = "p-term";
 const FLASH_CLASS = "p-highlight-flash";
 
 // Favorites and fork origins are wrapped in dedicated custom elements rather than
@@ -25,6 +26,7 @@ const FLASH_CLASS = "p-highlight-flash";
 const FAVORITE_TAG = "pythia-favorite";
 const FORK_TAG = "pythia-fork";
 const MERGE_TAG = "pythia-merge";
+const TERM_TAG = "pythia-term";
 
 interface TextPos {
 	node: Text;
@@ -224,6 +226,75 @@ export function repaintMergeLinks(
 		const range =
 			findRange(body, merge.text, merge.occurrenceIndex ?? 0) ?? findRange(body, merge.text, 0);
 		if (range) paintRange(range, merge.id, MERGE_LINK_CLASS, "data-merge-id", MERGE_TAG);
+	}
+}
+
+// ── Glossary term marks ─────────────────────────────────────────────────────
+// Unlike favorites, fork origins and merge links, a term mark is not anchored to
+// a stored span: any occurrence of any known term is marked, everywhere (ADR-136).
+// So this walks the body once against a single alternation rather than re-finding
+// specific text.
+
+/** Elements whose text must never be marked. */
+const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
+
+/**
+ * Mark every occurrence of every known term in `body`.
+ *
+ * `matcher` is one alternation over all terms (see `buildTermMatcher`), so this
+ * is a single pass over the text nodes rather than one pass per term — the
+ * difference between linear and quadratic as a glossary grows.
+ *
+ * Text inside code, links and citation chips is skipped: a term inside an
+ * identifier is not the term, and marking inside a link would nest two
+ * interactive elements. Text already inside another mark is skipped too, so a
+ * term sitting in a favorite or a fork origin does not produce overlapping
+ * wrappers that later unwrapping would have to untangle.
+ *
+ * Nodes are collected before mutating, because wrapping a node invalidates a
+ * live TreeWalker mid-iteration.
+ */
+export function repaintTerms(body: HTMLElement, matcher: RegExp | null): void {
+	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}`));
+	if (!matcher) return;
+
+	const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+	const targets: Text[] = [];
+	let node = walker.nextNode() as Text | null;
+	while (node) {
+		const parent = node.parentElement;
+		if (parent && node.data.trim() && !parent.closest(TERM_SKIP) &&
+			!parent.closest(`.${HIGHLIGHT_CLASS}, .${FORK_ORIGIN_CLASS}, .${MERGE_LINK_CLASS}, .${TERM_CLASS}`)) {
+			targets.push(node);
+		}
+		node = walker.nextNode() as Text | null;
+	}
+
+	for (const text of targets) {
+		matcher.lastIndex = 0;
+		const data = text.data;
+		let match = matcher.exec(data);
+		if (!match) continue;
+
+		// Build a replacement fragment for the whole node in one pass, rather than
+		// splitting repeatedly, which would re-walk the same text for each hit.
+		const frag = document.createDocumentFragment();
+		let cursor = 0;
+		while (match) {
+			if (match.index > cursor) frag.appendChild(document.createTextNode(data.slice(cursor, match.index)));
+			const mark = document.createElement(TERM_TAG);
+			mark.className = TERM_CLASS;
+			mark.setAttribute("data-term", match[0]);
+			mark.textContent = match[0];
+			frag.appendChild(mark);
+			cursor = match.index + match[0].length;
+			// A zero-length match would loop forever; the matcher cannot produce one
+			// (every term is at least two characters) but the guard is cheap.
+			if (match[0].length === 0) break;
+			match = matcher.exec(data);
+		}
+		if (cursor < data.length) frag.appendChild(document.createTextNode(data.slice(cursor)));
+		text.parentNode?.replaceChild(frag, text);
 	}
 }
 
