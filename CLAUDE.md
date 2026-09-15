@@ -31,7 +31,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, mergeConversations, shouldRefuseLoad, evictConversations
-    glossary.ts               ← pure: parseGlossary, upsertGlossaryEntry, buildTermIndex (ADR-136/137)
+    glossary.ts               ← pure: parseGlossary, upsertGlossaryEntry, buildTermIndex (ADR-136/137/149)
     GlossaryService.ts        ← glossary note I/O + vault-then-model term lookup (ADR-136)
     apiError.ts               ← HTTP error classification
   ui/
@@ -52,7 +52,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 781 tests across 52 files
+  tests/                      ← Vitest unit tests (npm test) — 797 tests across 52 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -337,7 +337,10 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Resolution is **vault first, then the model given the passage**. No web tier, no API key
 - The definition lives in the glossary note (`glossaryNote` setting), never on the conversation. **Do not add a `Conversation` field for terms** — the note is the only source of truth and terms are matched, not stored
 - Every occurrence is marked in every conversation, via `repaintTerms` and a single alternation from `buildTermIndex`
-- An entry also carries `aliases` — inflections, plurals and the term's equivalent in the other language of a bilingual conversation (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can. The model returns them alongside the definition in one `DEFINITION:` / `VARIANTS:` reply
+- An entry also carries `aliases` — inflections and plurals **in the term's own language** (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can
+- Cross-language equivalents are `translations`, not aliases (ADR-149) — each tagged with its ISO 639-1 code, because a flat list cannot say which language a form belongs to, and ADR-148 made that six languages rather than two. Matched and marked exactly like an alias. An entry also carries `context`: one verbatim sentence from the passage, because `defineTerm` explains "the sense that applies here" and the entry otherwise keeps nothing of the here. The model returns all four in one `DEFINITION:` / `VARIANTS:` / `TRANSLATIONS:` / `CONTEXT:` reply
+- **Card-relevant fields are visible markdown; only provenance hides in `%% pythia: … %%`** (ADR-149). An Obsidian comment is invisible to every external reader, so a field stored there does not exist as far as any other tool is concerned — and the note's job is to be readable by the tools that already do browsing and drilling. Labels are English (`Forms:`, `Translations:`, `Context:`), named after ISO 12620 data categories: they are keys a reader must find without per-vault configuration, not prose
+- **Do not build a flashcard reviewer or a scheduler.** Pythia captures terms; drilling them is a solved problem in other tools. The note format is the integration surface (ADR-149)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not

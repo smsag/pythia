@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-148 (one language setting, resolved per conversation). `outputLanguage` reached only the utility prompts, so a user could pin German and still get English chat answers; it now also feeds `buildSystemPrompt`. Six options (Obsidian's language, the conversation's language, German, English, Italian, Spanish), a global default with a per-conversation override, and one resolver — `BaseProvider.languageLabel(conversation?)` — behind every prompt. Two values resolve rather than name: `auto` adds **no instruction at all** (the absence is the feature) and `obsidian` follows Obsidian's UI locale into any of its ~30 languages. The system prompt gets a longer directive than the utility calls, because a chat answer has to hold its language across turns against a user typing in another one. +16 tests (781).
+*Last updated: 2026-09-15 — ADR-149 (the glossary note is the interchange format). The question behind "are there standards for glossaries?" was how to *avoid* building a flashcard reviewer: Pythia captures terms, other tools drill them. Only half of this has standards — terminology content does (SKOS, ISO 12620, ISO 704, TBX), flashcard drilling does not. Two findings followed: **a field inside `%% pythia: … %%` does not exist** to any external reader, and the flat alias list could not say whether "counter" was an inflection or a translation — wrong as of ADR-148's six languages. So card-relevant fields (`Forms:`, `Translations:`, `Context:`) became visible markdown with only provenance left in the comment, `aliases` narrowed to same-language forms, `translations` became language-tagged, `context` is new (one verbatim sentence, ISO 12620's attested context), and ISO 704's definition rules went into the prompt. Labels are English in every vault because they are keys, not prose. +16 tests (797).
+
+*Previously, 2026-09-15 — ADR-148 (one language setting, resolved per conversation). `outputLanguage` reached only the utility prompts, so a user could pin German and still get English chat answers; it now also feeds `buildSystemPrompt`. Six options (Obsidian's language, the conversation's language, German, English, Italian, Spanish), a global default with a per-conversation override, and one resolver — `BaseProvider.languageLabel(conversation?)` — behind every prompt. Two values resolve rather than name: `auto` adds **no instruction at all** (the absence is the feature) and `obsidian` follows Obsidian's UI locale into any of its ~30 languages. The system prompt gets a longer directive than the utility calls, because a chat answer has to hold its language across turns against a user typing in another one. +16 tests (781).*
 
 *Previously, 2026-09-15 — ADR-147 (the panel was inset from its own leaf). Fifth report of dead space below the composer, after four shipped fixes that all changed padding *inside* the panel. The user then reported that the conversation panel leaves a gap **left and right as well** — and `.p-history` is `inset: 0` on `.pythia-view`, so it outlines the panel's true edges. **No padding inside the composer can produce a gap on the left.** The panel was inset on three sides by its own leaf container; only the bottom strip was large enough to notice. Fixed with `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. Verified in the failing direction first: without the rule the panel and the history overlay are both inset 8px left, 8px right, 34px bottom; with it, flush on all four sides. ADR-146's change is kept, its explanation withdrawn — the "exactly one 34pt home indicator" arithmetic was numerology, because an ordinary bottom padding produces the same 34. **When a fix fails twice, the next move is not a better guess at the same evidence; it is to get different evidence.**
 
@@ -2309,3 +2311,41 @@ The request was for a "Sprache" dropdown with six options (Obsidian's language, 
 **Threading.** Four utility methods (`defineTerm`, `generateChapterName`, `generateConversationTitle`, `summarizeNotes`) had no conversation in reach; each gained an optional trailing `conversation?` parameter, mirrored on `LLMProvider` and `LLMRouter`, and every call site that has one now passes it. A glossary lookup still runs on the default provider's fast model — only the language rides along, not the provider choice.
 
 **Consequence:** the setting now means what its name says. `langInstruction`/`langSuffix` changed signature — they take the *resolved label*, not the setting code, so there is one place that knows how a setting becomes a language. +16 tests (781 across 52 files), with the language suite split into `tests/outputLanguage.test.ts` because `messageUtils.test.ts` hit its 600-line budget. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-149 — The glossary note is the interchange format
+
+**Status:** Active — extends ADR-136/137; narrows `aliases` and moves it out of the provenance comment
+
+**Context:** The question that started this was "are there standards for glossaries?", and the reason behind it was the opposite of a feature request: the user wants terms captured in Pythia and *drilled somewhere else* — browsed flashcard-style to learn the definitions met while reading. Not built here.
+
+That reframes what the glossary note is for. Pythia's unique contribution is capture: it is inside the conversation, it holds the passage, it can ask the model. Browsing, testing and scheduling are solved problems with mature tools, and rebuilding them inside a 300px sidebar is the expensive mistake. **The note is therefore not a private store; it is the integration surface.**
+
+Three findings followed.
+
+**Only half of this has standards.** Terminology *content* is well standardized — SKOS (W3C) for the concept/label model, ISO 12620 for data-category names, ISO 704 for what makes a definition a definition, TBX (ISO 30042) for termbase interchange. Flashcard *drilling* has no standard at all; there is only de-facto tooling. So "use a standard" buys a clean, portable data model and does not buy a review app — those are separate decisions, and only the first one is ours.
+
+**A field in a comment does not exist.** `aliases` lived inside `%% pythia: … %%`. That is an Obsidian comment, invisible to every external reader — so the moment the note has to be read by another tool, every field stored there is simply missing. This was invisible while Pythia was the only reader.
+
+**The flat alias list could not name a language.** "Zählern" (an inflection) and "counter" (a translation) sat in one list with nothing to tell them apart. Tolerable while the vault was effectively bilingual; wrong as of ADR-148, which shipped six output languages — an Italian answer could file `contatore` against a German entry with no record of which language it belonged to.
+
+**Decision:**
+
+**Split the note by audience, not by tidiness.** Everything a reader needs — definition, `Forms:`, `Translations:`, `Context:` — is visible markdown. Only provenance (`source`, `updatedAt`, `model`) stays in the comment, because it is machine state rather than content. The `## Term` heading already provides the question/answer boundary, so no specific tool has to be chosen now: adapting to one later is a mechanical transform, not a re-modelling.
+
+**`aliases` becomes same-language only; `translations` is language-tagged.** This is SKOS's distinction — an `altLabel` is same-language, and a label in another language differs by its language tag, not by being a different concept. Both are registered in the term index, so an Italian answer still marks "contatore" and opens the entry filed under "Zähler".
+
+**`context` is new: one verbatim sentence from the passage.** ISO 12620 calls this an attested *context*. `defineTerm` is deliberately prompted for "the sense that applies here", which makes every definition depend on a passage the entry did not keep — so an entry read anywhere but next to its originating answer was quietly decontextualized. One sentence fixes that and costs one field.
+
+**ISO 704's rules go into the prompt.** Name the broader category and what distinguishes the term within it; be substitutable for the term in a sentence; never define a term with itself; never open with "is when". Away from its passage, a circular or "is when" definition says nothing — and away from its passage is now the normal case.
+
+**Labels are English in every vault.** `Forms:`, `Translations:`, `Context:` are keys, not prose: an external reader has to find them without per-vault configuration, which a localized label cannot offer. Stated as a deliberate cost, not an oversight.
+
+**Alternatives rejected.** *TBX or SKOS/RDF as the storage format* — both destroy every property ADR-136 chose a markdown note for: a user cannot hand-correct XML, the file stops reading correctly with no plugin installed, and `[[Glossary#Term]]` stops resolving. TBX also serves CAT tools, which is not this use case. *Committing to one flashcard tool's syntax now* — the tool is undecided, and the fields are the part that would have to be right either way. *Building a reviewer and a scheduler* — explicitly not wanted, and the reason the standards question was asked.
+
+**Compatibility.** The parser reads both shapes: legacy `aliases=` in the comment still loads, so a glossary written by an earlier build keeps marking its variants. Entries are upgraded lazily when re-defined; nothing is rewritten wholesale, per ADR-136's rule that the file is hand-edited between writes. Three characters are stripped from visible values — the `·` and `|` separators, and `%`, because a stray `%%` in the body would open a comment and swallow the rest of the note.
+
+**What was deliberately not touched.** The inline glossary anchor still shows the definition alone. Context is redundant there (the passage is on screen), and the anchor is a lookup surface, not a study surface.
+
+**Consequence:** the glossary note can be read by something other than Pythia, which is the whole point. +16 tests (797 across 52 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian — and the note format change in particular deserves a look at a real glossary before trusting it.

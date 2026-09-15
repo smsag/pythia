@@ -34,6 +34,8 @@ export const SUMMARY_MARKER = "SUMMARY";
  *  and read back by `messageUtils.parseDefinitionAndVariants`. */
 export const DEFINITION_MARKER = "DEFINITION";
 export const VARIANTS_MARKER = "VARIANTS";
+export const TRANSLATIONS_MARKER = "TRANSLATIONS";
+export const CONTEXT_MARKER = "CONTEXT";
 
 /** Fallback max-output-tokens when neither the conversation nor the global
  *  setting specifies one. */

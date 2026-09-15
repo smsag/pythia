@@ -156,10 +156,12 @@ describe("aliases", () => {
 		expect(parseGlossary(md)[0].aliases).toBeUndefined();
 	});
 
-	it("strips separators out of an alias so a hand-edit cannot corrupt the marker", () => {
+	it("strips separators and comment markers out of a form so one item cannot corrupt the entry", () => {
+		// `|` would split the item, and a stray `%%` in the body would open an
+		// Obsidian comment and swallow the rest of the note (ADR-149).
 		const md = upsertGlossaryEntry("# Glossary\n", entry({ aliases: ["a|b", "c%%d"] }));
-		expect(md).toContain("aliases=a b|c  d");
-		expect(parseGlossary(md)[0].aliases).toEqual(["a b", "c  d"]);
+		expect(md).toContain("**Forms:** a b \u00b7 c d");
+		expect(parseGlossary(md)[0].aliases).toEqual(["a b", "c d"]);
 	});
 
 	it("matches an alias and resolves it back to the canonical term", () => {
@@ -212,5 +214,92 @@ describe("model provenance (ADR-144)", () => {
 		const parsed = parseGlossary(upsertGlossaryEntry("# Glossary\n", e))[0];
 		expect(parsed.model).toBe("gpt-5-mini");
 		expect(parsed.aliases).toEqual(["Zählers", "sparse counter"]);
+	});
+});
+
+// ── Visible fields (ADR-149) ──────────────────────────────────────────────────
+
+describe("visible fields", () => {
+	it("writes forms, translations and context as visible markdown, not inside the comment", () => {
+		// The whole point of ADR-149: an Obsidian comment is invisible to every
+		// external reader, so card-relevant content cannot live there.
+		const md = upsertGlossaryEntry("# Glossary\n", entry({
+			aliases: ["Zählers"],
+			translations: [{ lang: "en", term: "counter" }],
+			context: "Der Zähler wird monatlich abgelesen.",
+		}));
+		const body = md.replace(/%%[^%]*%%/g, "");
+		expect(body).toContain("**Forms:** Zählers");
+		expect(body).toContain("**Translations:** en: counter");
+		expect(body).toContain("**Context:** Der Zähler wird monatlich abgelesen.");
+	});
+
+	it("keeps provenance in the comment, where it is machine state and not card content", () => {
+		const md = upsertGlossaryEntry("# Glossary\n", entry({ model: "gpt-5-mini" }));
+		expect(md).toContain("%% pythia: source=model");
+		expect(md).toContain("model=gpt-5-mini");
+		expect(md).not.toContain("**Forms:**");
+	});
+
+	it("round-trips forms, translations and context", () => {
+		const original = entry({
+			aliases: ["Zählers", "Zählern"],
+			translations: [{ lang: "en", term: "counter" }, { lang: "it", term: "contatore" }],
+			context: "Der Zähler wird monatlich abgelesen.",
+		});
+		const [parsed] = parseGlossary(upsertGlossaryEntry("# Glossary\n", original));
+		expect(parsed.aliases).toEqual(["Zählers", "Zählern"]);
+		expect(parsed.translations).toEqual([
+			{ lang: "en", term: "counter" },
+			{ lang: "it", term: "contatore" },
+		]);
+		expect(parsed.context).toBe("Der Zähler wird monatlich abgelesen.");
+	});
+
+	it("omits a field entirely rather than writing an empty label", () => {
+		const md = upsertGlossaryEntry("# Glossary\n", entry());
+		expect(md).not.toContain("Forms:");
+		expect(md).not.toContain("Translations:");
+		expect(md).not.toContain("Context:");
+	});
+
+	it("keeps labelled lines out of the definition", () => {
+		const md = `## Zähler\n\nEin Gerät, das Ereignisse erfasst.\n\n**Forms:** Zählers\n**Context:** Der Zähler läuft.\n`;
+		const [e] = parseGlossary(md);
+		expect(e.definition).toBe("Ein Gerät, das Ereignisse erfasst.");
+	});
+
+	it("reads a hand-typed label without bold markers", () => {
+		// The note is hand-edited, so someone will type the label plainly.
+		const md = `## Zähler\n\nEin Gerät.\n\nForms: Zählers · Zählern\nTranslations: en: counter\n`;
+		const [e] = parseGlossary(md);
+		expect(e.aliases).toEqual(["Zählers", "Zählern"]);
+		expect(e.translations).toEqual([{ lang: "en", term: "counter" }]);
+	});
+
+	it("accepts | and , as hand-edit separators alongside the written ·", () => {
+		const md = `## Zähler\n\nEin Gerät.\n\n**Forms:** Zählers | Zählern\n`;
+		expect(parseGlossary(md)[0].aliases).toEqual(["Zählers", "Zählern"]);
+	});
+
+	it("drops a translation with no language code rather than guessing one", () => {
+		const md = `## Zähler\n\nEin Gerät.\n\n**Translations:** counter · it: contatore\n`;
+		expect(parseGlossary(md)[0].translations).toEqual([{ lang: "it", term: "contatore" }]);
+	});
+
+	it("still reads aliases from the legacy comment marker", () => {
+		// A glossary written before ADR-149 must keep marking its variants.
+		const md = `## Zähler\n%% pythia: source=model aliases=Zählers|Zählern %%\n\nEin Gerät.\n`;
+		expect(parseGlossary(md)[0].aliases).toEqual(["Zählers", "Zählern"]);
+	});
+
+	it("matches a translation and resolves it back to the canonical term", () => {
+		// An Italian answer should mark "contatore" and open the German entry.
+		const index = buildTermIndex([
+			{ term: "Zähler", translations: [{ lang: "it", term: "contatore" }] },
+		]);
+		expect(index).not.toBeNull();
+		expect("Il contatore è rotto.".match(index!.matcher)?.[0]).toBe("contatore");
+		expect(canonicalTerm(index!, "contatore")).toBe("Zähler");
 	});
 });

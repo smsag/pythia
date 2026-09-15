@@ -3,7 +3,14 @@
  * Extracted from AnthropicService.ts and OpenAIProvider.ts (#6, #14).
  */
 
-import { TITLE_MARKER, SUMMARY_MARKER, DEFINITION_MARKER, VARIANTS_MARKER } from "./promptConstants";
+import {
+	TITLE_MARKER,
+	SUMMARY_MARKER,
+	DEFINITION_MARKER,
+	VARIANTS_MARKER,
+	TRANSLATIONS_MARKER,
+	CONTEXT_MARKER,
+} from "./promptConstants";
 import type { PythiaSettings } from "../models/settings";
 import type { Conversation } from "../models/types";
 import { redactSecrets } from "./redact";
@@ -57,11 +64,16 @@ export function parseTitleAndSummary(raw: string): { title: string; summary: str
 const MAX_VARIANTS = 8;
 
 /**
- * Parses the structured DEFINITION / VARIANTS response produced by
- * `defineTerm` (ADR-136):
+ * Parses the structured response produced by `defineTerm` (ADR-136/149):
  *   DEFINITION:
  *   <two or three sentences>
- *   VARIANTS: Zählers | Zählern | counter
+ *   VARIANTS: Zählers | Zählern
+ *   TRANSLATIONS: en: counter | it: contatore
+ *   CONTEXT: …der Zähler wird monatlich abgelesen…
+ *
+ * Variants are same-language forms and translations are language-tagged; they
+ * were one flat list until ADR-149, which could not say which language a form
+ * belonged to.
  *
  * Variants are separated by `|` because a surface form may contain spaces
  * ("sparse coding"). Commas are accepted as a fallback separator for the case
@@ -72,17 +84,29 @@ const MAX_VARIANTS = 8;
  * a lookup that returns prose without markers is still a usable definition, and
  * losing it to a strict parser would be worse than losing the variants.
  */
-export function parseDefinitionAndVariants(raw: string): { definition: string; variants: string[] } {
+export function parseDefinitionReply(raw: string): {
+	definition: string;
+	variants: string[];
+	translations: { lang: string; term: string }[];
+	context: string;
+} {
+	const translationsMatch = raw.match(new RegExp(`^${TRANSLATIONS_MARKER}:[ \\t]*(.*)$`, "im"));
+	const contextMatch = raw.match(new RegExp(`^${CONTEXT_MARKER}:[ \\t]*(.*)$`, "im"));
 	const variantsMatch = raw.match(new RegExp(`^${VARIANTS_MARKER}:[ \\t]*(.*)$`, "im"));
-	// Split at the variants line rather than matching up to it: with the `m` flag a
-	// trailing `$` anchors to the first line break, which would truncate a
-	// multi-paragraph definition to its opening sentence.
-	const head = variantsMatch?.index ? raw.slice(0, variantsMatch.index) : raw;
+	// Split at the first marker line rather than matching up to it: with the `m`
+	// flag a trailing `$` anchors to the first line break, which would truncate a
+	// multi-paragraph definition to its opening sentence. The earliest of the
+	// three markers wins, because a model that reorders them must not be able to
+	// drag a stray marker line into the definition.
+	const markerAt = [variantsMatch, translationsMatch, contextMatch]
+		.map((m) => m?.index)
+		.filter((i): i is number => typeof i === "number" && i > 0);
+	const head = markerAt.length > 0 ? raw.slice(0, Math.min(...markerAt)) : raw;
 	const defMatch = head.match(new RegExp(`^${DEFINITION_MARKER}:\\s*([\\s\\S]*)`, "im"));
 
 	const definition = (defMatch ? defMatch[1] : head
 		.replace(new RegExp(`^${DEFINITION_MARKER}:[ \\t]*`, "im"), "")
-		.replace(new RegExp(`^${VARIANTS_MARKER}:.*$`, "im"), "")
+		.replace(new RegExp(`^(?:${VARIANTS_MARKER}|${TRANSLATIONS_MARKER}|${CONTEXT_MARKER}):.*$`, "gim"), "")
 	).trim();
 
 	const rawList = variantsMatch ? variantsMatch[1].trim() : "";
@@ -105,7 +129,31 @@ export function parseDefinitionAndVariants(raw: string): { definition: string; v
 		variants.push(cleaned);
 		if (variants.length >= MAX_VARIANTS) break;
 	}
-	return { definition, variants };
+	// `lang: term`, the shape the prompt asks for. An item without a language code
+	// is dropped rather than guessed at: a translation whose language is unknown
+	// cannot be filed under one, and guessing would be a silent mislabel.
+	const translations: { lang: string; term: string }[] = [];
+	const rawTranslations = translationsMatch ? translationsMatch[1].trim() : "";
+	const tPieces = rawTranslations.includes("|") ? rawTranslations.split("|") : rawTranslations.split(",");
+	for (const piece of tPieces) {
+		const m = /^\s*\(?([A-Za-z]{2,3})\)?\s*[:=-]\s*(.+?)\s*$/.exec(piece.replace(/["'\u201c\u201d]/g, ""));
+		if (!m) continue;
+		const term = m[2].trim();
+		if (!term || term.length > 60) continue;
+		const lang = m[1].toLowerCase();
+		if (translations.some((t) => t.lang === lang && t.term.toLocaleLowerCase() === term.toLocaleLowerCase())) continue;
+		translations.push({ lang, term });
+		if (translations.length >= MAX_VARIANTS) break;
+	}
+
+	// One sentence, kept verbatim — it is an attested example, so "cleaning" it
+	// would defeat the point. Only the model's own decoration comes off.
+	const context = (contextMatch ? contextMatch[1] : "")
+		.replace(/^[\s\-\u2013\u2014*\u2022]+/, "")
+		.replace(/^[\u201c\u201e"']|[\u201d"']$/g, "")
+		.trim();
+
+	return { definition, variants, translations, context: /^(none|keine|n\/a|-)$/i.test(context) ? "" : context };
 }
 
 // ── Message normalisation ─────────────────────────────────────────────────────

@@ -8,8 +8,9 @@ import {
 	buildTermIndex,
 	type GlossaryEntry,
 	type TermIndex,
+	type Translation,
 } from "./glossary";
-import { parseDefinitionAndVariants } from "./messageUtils";
+import { parseDefinitionReply } from "./messageUtils";
 import type { Conversation } from "../models/types";
 
 /**
@@ -150,7 +151,7 @@ export class GlossaryService {
 			// triggered from (the stored entry records that model). The
 			// conversation is passed for its language override only (ADR-148).
 			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation);
-			const { definition, variants } = parseDefinitionAndVariants(raw);
+			const { definition, variants, translations, context } = parseDefinitionReply(raw);
 			if (!definition) return null;
 			const entry: GlossaryEntry = {
 				term,
@@ -162,6 +163,8 @@ export class GlossaryService {
 				// default Anthropic model even on an OpenAI vault (ADR-144).
 				model: this.plugin.llmRouter.fastModelFor(),
 				aliases: dedupeAliases(term, variants),
+				translations: dedupeTranslations(term, variants, translations),
+				context: context || undefined,
 			};
 			await this.save(entry);
 			return entry;
@@ -209,7 +212,7 @@ export class GlossaryService {
  * already matched) and any repeat, case-insensitively.
  *
  * Returns undefined rather than an empty array so an entry with no variants
- * renders no `aliases=` field at all, leaving the note as it was before this
+ * renders no `Forms:` line at all, leaving the note as it was before this
  * existed.
  */
 function dedupeAliases(term: string, variants: string[]): string[] | undefined {
@@ -220,6 +223,31 @@ function dedupeAliases(term: string, variants: string[]): string[] | undefined {
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
 		kept.push(variant.trim());
+	}
+	return kept.length > 0 ? kept : undefined;
+}
+
+/**
+ * Keep only the translations worth storing (ADR-149).
+ *
+ * Drops the term itself and anything already kept as a same-language form: the
+ * model is asked to separate the two lists, and when it fails to, the form list
+ * wins. A word appearing in both would otherwise be registered twice in the term
+ * index — harmless for matching, but it would render in the note as if the term
+ * were its own translation, which is what the split exists to prevent.
+ */
+function dedupeTranslations(
+	term: string,
+	variants: string[],
+	translations: { lang: string; term: string }[]
+): Translation[] | undefined {
+	const taken = new Set<string>([normalizeTerm(term), ...variants.map(normalizeTerm)]);
+	const kept: Translation[] = [];
+	for (const t of translations) {
+		const key = normalizeTerm(t.term);
+		if (!key || taken.has(key)) continue;
+		taken.add(key);
+		kept.push({ lang: t.lang, term: t.term.trim() });
 	}
 	return kept.length > 0 ? kept : undefined;
 }

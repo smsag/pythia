@@ -13,7 +13,14 @@ import {
 	buildFavoritesDigest,
 } from "./messageUtils";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
-import { TITLE_MARKER, SUMMARY_MARKER, DEFINITION_MARKER, VARIANTS_MARKER } from "./promptConstants";
+import {
+	TITLE_MARKER,
+	SUMMARY_MARKER,
+	DEFINITION_MARKER,
+	VARIANTS_MARKER,
+	TRANSLATIONS_MARKER,
+	CONTEXT_MARKER,
+} from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
@@ -391,16 +398,33 @@ export abstract class BaseProvider implements LLMProvider {
 			`Define the term "${term}" as it is used in the passage below, and list its other surface forms.\n\n` +
 				`Reply in EXACTLY this format — no other text before or after:\n` +
 				`${DEFINITION_MARKER}:\n<two or three sentences>\n` +
-				`${VARIANTS_MARKER}: <forms separated by | , or leave empty>\n\n` +
+				`${VARIANTS_MARKER}: <forms separated by | , or leave empty>\n` +
+				`${TRANSLATIONS_MARKER}: <lang: term, separated by | , or leave empty>\n` +
+				`${CONTEXT_MARKER}: <one sentence from the passage, or leave empty>\n\n` +
 				`For the definition: explain the sense that applies here, not every possible meaning. ` +
 				`Do not repeat the passage, do not add a heading, do not use the word "context".\n` +
-				`For the variants: the inflected forms of this term a reader would meet in running text ` +
-				`(plural, genitive, dative, declined adjective forms), plus the term's equivalent in the ` +
-				`other language if the passage mixes languages, plus a common abbreviation or spelling ` +
-				`variant if one exists. Forms only — never related concepts, never explanations, and never ` +
-				`a form so generic it would match unrelated sentences. Leave the line empty if there are none.` +
+				// ISO 704's rules for a terminological definition. They matter because
+				// the definition is read away from this passage — in the glossary note,
+				// or by another tool — where a circular or "is when" definition says
+				// nothing at all (ADR-149).
+				`Write it as a terminological definition: name the broader category the term belongs to and ` +
+				`then what distinguishes it from others in that category, so that the definition could be ` +
+				`substituted for the term in a sentence. Never define a term with itself or a word built ` +
+				`from it, and never open with "is when", "is where" or "describes the fact that".\n` +
+				`For the variants: the inflected forms of this term **in the same language** a reader would ` +
+				`meet in running text (plural, genitive, dative, declined adjective forms), plus a common ` +
+				`abbreviation or spelling variant if one exists. Forms only — never related concepts, never ` +
+				`explanations, never a translation, and never a form so generic it would match unrelated ` +
+				`sentences. Leave the line empty if there are none.\n` +
+				`For the translations: the term's equivalent in any OTHER language the passage uses, each ` +
+				`written as an ISO 639-1 code, a colon and the term ("en: counter"). Only languages actually ` +
+				`present in the passage — never a translation you were not asked for. Leave the line empty ` +
+				`if the passage is monolingual.\n` +
+				`For the context: copy ONE short sentence or clause from the passage in which the term ` +
+				`actually appears, verbatim and unedited. Leave the line empty if no single sentence shows ` +
+				`it in use.` +
 				`${langInstruction(this.languageLabel(conversation))}\n\nPassage:\n${excerpt}`,
-			300
+			420
 		);
 	}
 
