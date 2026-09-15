@@ -182,10 +182,7 @@ export class SummaryController {
 			if (summary) {
 				conv.summaryText = summary;
 				conv.summaryUpdatedAt = new Date().toISOString();
-				if (title) {
-					conv.name = title;
-					void this.d.plugin.renameConversationFile(conv);
-				}
+				if (title) await this.d.plugin.renameConversation(conv, title);
 				await this.d.plugin.conversationStore.save(conv);
 				// Only touch UI if the user hasn't switched conversations meanwhile.
 				if (this.d.getConversation()?.id === conv.id) {

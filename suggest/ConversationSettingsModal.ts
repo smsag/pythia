@@ -340,6 +340,26 @@ export class ConversationSettingsModal extends Modal {
 				});
 			});
 
+		// Theme override (ADR-150). The placeholder carries the conversation name
+		// because that is what applies when the field is left empty — the same
+		// "state the inherited value where the override goes" convention the
+		// temperature and max-tokens readouts use.
+		let themeValue: string | undefined = this.conversation.theme;
+		new Setting(contentEl)
+			.setName(t("convThemeLabel"))
+			.setDesc(t("convThemeDesc"))
+			.addText((text) => {
+				text
+					.setPlaceholder(this.conversation.name)
+					.setValue(themeValue ?? "")
+					.onChange((value) => {
+						// Empty means "follow the conversation name", which is a distinct
+						// state from a theme that happens to equal the name today: only the
+						// former keeps following after a rename.
+						themeValue = value.trim() || undefined;
+					});
+			});
+
 		// Action buttons
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -361,6 +381,7 @@ export class ConversationSettingsModal extends Modal {
 						this.conversation.effort = effortValue === "" ? undefined : effortValue;
 						this.conversation.maxTokens = maxTokensValue;
 						this.conversation.outputLanguage = languageValue;
+						this.conversation.theme = themeValue;
 						await this.onSave(this.conversation);
 						this.close();
 					})

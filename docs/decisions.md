@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-149 (the glossary note is the interchange format). The question behind "are there standards for glossaries?" was how to *avoid* building a flashcard reviewer: Pythia captures terms, other tools drill them. Only half of this has standards — terminology content does (SKOS, ISO 12620, ISO 704, TBX), flashcard drilling does not. Two findings followed: **a field inside `%% pythia: … %%` does not exist** to any external reader, and the flat alias list could not say whether "counter" was an inflection or a translation — wrong as of ADR-148's six languages. So card-relevant fields (`Forms:`, `Translations:`, `Context:`) became visible markdown with only provenance left in the comment, `aliases` narrowed to same-language forms, `translations` became language-tagged, `context` is new (one verbatim sentence, ISO 12620's attested context), and ISO 704's definition rules went into the prompt. Labels are English in every vault because they are keys, not prose. +16 tests (797).
+*Last updated: 2026-09-15 — ADR-150 (one note per term; the glossary folder is the database). Verified, not assumed: Obsidian Bases is a core plugin where **"each row is a file"**, and Dataview inline fields attach to the **page** with no per-heading scope. A theme-filtered deck is a per-term view, so one note per term is the precondition for the feature, not a preference — and ADR-149's visible labels were solving the wrong half, making fields visible to a reader while leaving every term invisible as a row. Terms are now notes with frontmatter (`aliases` is Obsidian's own property; translations are flat `term_xx` keys because properties have no object type; `theme` holds `[[links]]`), the theme note carries an embedded base filtered to itself, and `Conversation.theme === undefined` means *follow the conversation name* rather than a copy of it. Renaming is centralized so the theme moves with `fileManager.renameFile`, which rewrites the links. Writes merge rather than overwrite. `renderEntry`/`upsertGlossaryEntry` deleted. +34 tests (823).
+
+*Previously, 2026-09-15 — ADR-149 (the glossary note is the interchange format). The question behind "are there standards for glossaries?" was how to *avoid* building a flashcard reviewer: Pythia captures terms, other tools drill them. Only half of this has standards — terminology content does (SKOS, ISO 12620, ISO 704, TBX), flashcard drilling does not. Two findings followed: **a field inside `%% pythia: … %%` does not exist** to any external reader, and the flat alias list could not say whether "counter" was an inflection or a translation — wrong as of ADR-148's six languages. So card-relevant fields (`Forms:`, `Translations:`, `Context:`) became visible markdown with only provenance left in the comment, `aliases` narrowed to same-language forms, `translations` became language-tagged, `context` is new (one verbatim sentence, ISO 12620's attested context), and ISO 704's definition rules went into the prompt. Labels are English in every vault because they are keys, not prose. +16 tests (797).*
 
 *Previously, 2026-09-15 — ADR-148 (one language setting, resolved per conversation). `outputLanguage` reached only the utility prompts, so a user could pin German and still get English chat answers; it now also feeds `buildSystemPrompt`. Six options (Obsidian's language, the conversation's language, German, English, Italian, Spanish), a global default with a per-conversation override, and one resolver — `BaseProvider.languageLabel(conversation?)` — behind every prompt. Two values resolve rather than name: `auto` adds **no instruction at all** (the absence is the feature) and `obsidian` follows Obsidian's UI locale into any of its ~30 languages. The system prompt gets a longer directive than the utility calls, because a chat answer has to hold its language across turns against a user typing in another one. +16 tests (781).*
 
@@ -2349,3 +2351,44 @@ Three findings followed.
 **What was deliberately not touched.** The inline glossary anchor still shows the definition alone. Context is redundant there (the passage is on screen), and the anchor is a lookup surface, not a study surface.
 
 **Consequence:** the glossary note can be read by something other than Pythia, which is the whole point. +16 tests (797 across 52 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian — and the note format change in particular deserves a look at a real glossary before trusting it.
+
+---
+
+### ADR-150 — One note per term; the glossary folder is the database
+
+**Status:** Active — supersedes ADR-136's storage choice and most of ADR-149's note format. Storage and themes only; person entities follow in ADR-151
+
+**Context:** The requirement that broke the old storage was "browse the definitions I met, grouped by theme, and let authors enrich them". Verified against the documentation rather than assumed:
+
+- Obsidian **Bases** is a core plugin, and **"each row is a file, and each column is a property of that file"**. Views: table, list, cards, kanban, map.
+- **Dataview** inline fields (`Key:: Value`, bold keys supported, formatting stripped at index time) attach to the **page**. There is no per-heading scope; list items are indexed individually, headings are not.
+
+So a single glossary note with `## Term` headings can never produce a per-term row, in either tool. **A theme-filtered deck is a per-term view**, which makes one note per term not a preference but the precondition for the feature. ADR-149's careful visible-label format was solving the wrong half: it made fields visible to a reader, but left every term invisible as a *row*.
+
+**Decision:**
+
+**One note per term**, in `<root>/Terms/`, with the data as frontmatter properties and the definition as the body. Theme notes live in `<root>/Themes/`.
+
+**Properties, not our own labels.** `aliases` is Obsidian's **native** property, so search, autocomplete and linking work with no code of ours. Translations are flat keys (`term_en`, `term_it`) because Obsidian properties have no object type and a flat key becomes a Base column, which a list of `"en: counter"` strings cannot; the set is finite — the six languages of ADR-148. `theme` holds `[[links]]`, so the theme note gets backlinks for free.
+
+**Contexts became plural.** One note per term means a term met in three conversations is one entry with three attestations. They are blockquotes in the body rather than a property: prose, unbounded in number, and useless as a Base column.
+
+**The theme note is the deck, not a pointer to one.** It carries an embedded base filtered to itself (`theme.contains(this.file.link)`), so opening it *is* browsing that deck — a Cards view. Written once and never rewritten: the user owns it afterwards.
+
+**`Conversation.theme === undefined` means "follow the conversation name"** — not a copy of the name. The distinction is the whole feature: a conversation that is following gets its theme renamed when the LLM titles it after the first exchange, while a pinned theme does not. `effectiveTheme()` resolves it in one place; the settings field writes `undefined` for an empty input, never the name.
+
+**A fork inherits a resolved theme.** Copying `theme` verbatim would hand a fork `undefined`, and the fork would then follow its *own* name — inheriting nothing. So the fork is pinned to the source's effective theme, which is also what makes "inherited, but changeable" true.
+
+**Renaming is centralized.** `ConversationService.renameConversation` is now the only path that changes a conversation's name, because the old name is needed *before* the assignment and four call sites were each doing it themselves. The theme note is moved with `fileManager.renameFile`, which is the call that rewrites the `[[links]]` in every term note — `vault.rename` would not.
+
+**Merge, never overwrite.** A re-lookup adds themes and contexts to the existing note and keeps a `manual` definition as written; only the anchor's explicit regenerate replaces it. This is what makes a term met in several conversations one note, and what makes multi-author enrichment mostly conflict-free — two people editing different terms edit different files.
+
+**What this deletes.** `renderEntry` and `upsertGlossaryEntry` are gone: we no longer write that format, and a writer for a format nothing writes is how two formats quietly drift apart. `parseGlossary` survives as the migration's reader, and its tests were rewritten against a **literal** 2.13.x fixture rather than a re-implemented renderer — a fixture generated by our own code could drift with it and still pass. Reading is now Obsidian's job: `all()` takes frontmatter from `metadataCache` and reads **no file at all**; the body is read for the one term whose anchor is opened (`hydrate`).
+
+**Migration is a button, not a startup step.** Non-destructive, idempotent, and it leaves the old note untouched — the only way a user learns it worked is by looking, so it has to be safe to run twice.
+
+**Alternatives rejected.** *List item per term in one note* — Dataview indexes list items, but Bases does not (row = file), so it would forfeit the core-plugin route and give up `## Term` headings, which are why `[[Glossary#Term]]` links worked. *Note per theme containing its terms* — reintroduces exactly the constraint being fixed, and a term can only be in one deck. *Keeping ADR-149's labels* — they make fields visible to a human reader and a term invisible to every query surface.
+
+**Costs, stated plainly.** This reverses ADR-136's single-note decision and makes ADR-149's label format legacy one day after shipping it — the aliases/translations split, the context field and the ISO 704 prompt rules from that ADR survive; the storage does not. Homonyms are now worse than they were: two senses of one spelling need two note titles, and no disambiguation convention is implemented yet. Vault clutter is real, confined to one folder. `settings.ts` paid the ADR-097 ratchet with a `ui/glossarySettings.ts` extraction.
+
+**Consequence:** a theme-filtered deck is a saved filter the user makes in a core plugin, and Pythia builds no browse UI, no scheduler and no export. +34 tests (823 across 53 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian** — and this one writes into the vault, so the migration deserves a look at a real glossary before it is trusted.

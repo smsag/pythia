@@ -31,8 +31,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, mergeConversations, shouldRefuseLoad, evictConversations
-    glossary.ts               ← pure: parseGlossary, upsertGlossaryEntry, buildTermIndex (ADR-136/137/149)
-    GlossaryService.ts        ← glossary note I/O + vault-then-model term lookup (ADR-136)
+    glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
+    glossaryNotes.ts          ← pure: the note-per-term format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150)
+    GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -49,10 +50,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
+    glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 797 tests across 52 files
+  tests/                      ← Vitest unit tests (npm test) — 823 tests across 53 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -339,8 +341,12 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Every occurrence is marked in every conversation, via `repaintTerms` and a single alternation from `buildTermIndex`
 - An entry also carries `aliases` — inflections and plurals **in the term's own language** (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can
 - Cross-language equivalents are `translations`, not aliases (ADR-149) — each tagged with its ISO 639-1 code, because a flat list cannot say which language a form belongs to, and ADR-148 made that six languages rather than two. Matched and marked exactly like an alias. An entry also carries `context`: one verbatim sentence from the passage, because `defineTerm` explains "the sense that applies here" and the entry otherwise keeps nothing of the here. The model returns all four in one `DEFINITION:` / `VARIANTS:` / `TRANSLATIONS:` / `CONTEXT:` reply
-- **Card-relevant fields are visible markdown; only provenance hides in `%% pythia: … %%`** (ADR-149). An Obsidian comment is invisible to every external reader, so a field stored there does not exist as far as any other tool is concerned — and the note's job is to be readable by the tools that already do browsing and drilling. Labels are English (`Forms:`, `Translations:`, `Context:`), named after ISO 12620 data categories: they are keys a reader must find without per-vault configuration, not prose
-- **Do not build a flashcard reviewer or a scheduler.** Pythia captures terms; drilling them is a solved problem in other tools. The note format is the integration surface (ADR-149)
+- **One note per term** (ADR-150), in `<glossaryFolder>/Terms/`. Not a preference — **Bases rows are files** ("each row is a file, and each column is a property of that file") and Dataview inline fields attach to the *page*, so a term inside a shared note is invisible as a row, and a theme-filtered deck is exactly a per-term view. ADR-149's visible `Forms:`/`Translations:`/`Context:` labels are superseded; that format survives only in `parseGlossary`, the migration reader
+- **Properties, not our own labels.** `aliases` is Obsidian's native property; translations are flat `term_<lang>` keys (properties have no object type, and a flat key is a Base column); `theme` holds `[[links]]` so the theme note gets backlinks. Never re-introduce a custom label for something a property can carry
+- **`Conversation.theme === undefined` means *follow the conversation name*** — never a copy of it. Only the undefined case gets renamed when the LLM titles the conversation. Resolve with `effectiveTheme()`; a fork pins the source's resolved theme, so "inherited but changeable" is true
+- **Rename conversations only through `plugin.renameConversation(conv, name)`** — the old name is needed before the assignment, and the theme note moves via `fileManager.renameFile` (which rewrites the `[[links]]`; `vault.rename` does not)
+- **Writes merge, never overwrite.** A re-lookup adds themes and contexts and keeps a `manual` definition; only the anchor's regenerate replaces it. This is what makes a term met in several conversations one note
+- **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not

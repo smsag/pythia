@@ -12,7 +12,14 @@
  * is possible if the definition lives on the conversation that happened to ask.
  * The note is also a surface other tools can read.
  *
- * **Format: `## Term` followed by its definition.** Headings rather than a list
+ * **Since ADR-150 this module no longer writes.** The glossary is a folder of
+ * notes (`services/glossaryNotes.ts`); what remains here is `parseGlossary`, the
+ * reader for the single-note format written by builds up to 2.13.x, which the
+ * migration needs, and `buildTermIndex`, which is storage-agnostic. The renderer
+ * was deleted rather than kept "just in case": a writer for a format nothing
+ * writes is how two formats quietly drift apart.
+ *
+ * **Legacy format: `## Term` followed by its definition.** Headings rather than a list
  * because Obsidian can link to `[[Glossary#Term]]`, and because a definition is
  * allowed to be several paragraphs. The file stays ordinary markdown that reads
  * correctly with no plugin installed.
@@ -74,15 +81,28 @@ export interface GlossaryEntry {
 	 */
 	translations?: Translation[];
 	/**
-	 * One sentence from the passage where the term was met, kept verbatim.
+	 * Sentences from the passages where the term was met, kept verbatim.
 	 *
 	 * ISO 12620 calls this a *context*: an attested example of the term in use.
 	 * `defineTerm` is deliberately prompted to explain "the sense that applies
 	 * here", which makes the definition dependent on a passage the entry does not
 	 * otherwise keep — so the entry reads as decontextualized the moment it is
 	 * seen anywhere but next to the answer it came from.
+	 *
+	 * Plural since ADR-150: one note per term means a term met in three
+	 * conversations is one entry with three attestations, not three entries.
 	 */
-	context?: string;
+	contexts?: string[];
+	/**
+	 * The themes this term belongs to, by name (ADR-150). Stored as `[[links]]`
+	 * in the note's `theme` property so backlinks work from the theme note, and
+	 * carried here as plain names because a link is a rendering detail.
+	 *
+	 * A list, not a single value: a term met in several conversations belongs to
+	 * every one of their themes, which is exactly what lets one term appear in
+	 * several decks.
+	 */
+	theme?: string[];
 }
 
 /** One cross-language equivalent: an ISO 639-1 code and the term in that language. */
@@ -211,7 +231,8 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 			}
 			const context = readField(line, FIELD_LABELS.context);
 			if (context !== null) {
-				current.context = context.replace(/^[\u201c\u201e"']|[\u201d"']$/g, "").trim();
+				const text = context.replace(/^[\u201c\u201e"']|[\u201d"']$/g, "").trim();
+				if (text) current.contexts = [...(current.contexts ?? []), text];
 				continue;
 			}
 		}
@@ -219,71 +240,6 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
 	}
 	flush();
 	return entries.filter((e) => e.term.length > 0);
-}
-
-/**
- * Render one entry back to markdown.
- *
- * The comment carries provenance only; everything a reader needs is visible
- * markdown below the definition (ADR-149). Fields are omitted entirely when
- * empty rather than written as empty labels — a note full of `Forms:` lines with
- * nothing after them is worse than no label at all.
- */
-function renderEntry(entry: GlossaryEntry): string {
-	const meta = `${META_PREFIX} source=${entry.source}` +
-		(entry.updatedAt ? ` updatedAt=${entry.updatedAt}` : "") +
-		(entry.model ? ` model=${entry.model.replace(/\s+/g, "-")}` : "") + " %%";
-
-	// Three classes of character cannot survive inside a visible field value:
-	// a newline (a field is one line, so it would split the entry), the `·` and
-	// `|` separators (they would split the item), and `%` (a stray `%%` in the
-	// body opens an Obsidian comment and would swallow the rest of the note).
-	const clean = (v: string) => v.replace(/[\r\n\u00b7|%]+/g, " ").trim();
-	const forms = (entry.aliases ?? []).map(clean).filter(Boolean);
-	const translations = (entry.translations ?? [])
-		.filter((t) => t.lang && t.term)
-		.map((t) => `${t.lang.toLowerCase()}: ${clean(t.term)}`);
-	const context = entry.context ? clean(entry.context) : "";
-
-	const fields = [
-		forms.length > 0 ? `**${FIELD_LABELS.forms}:** ${forms.join(" \u00b7 ")}` : "",
-		translations.length > 0 ? `**${FIELD_LABELS.translations}:** ${translations.join(" \u00b7 ")}` : "",
-		context ? `**${FIELD_LABELS.context}:** ${context}` : "",
-	].filter(Boolean);
-
-	const tail = fields.length > 0 ? `\n\n${fields.join("\n")}` : "";
-	return `## ${entry.term}\n${meta}\n\n${entry.definition.trim()}${tail}\n`;
-}
-
-/**
- * Insert or replace one entry, returning the whole note.
- *
- * Replacing rewrites only the matched entry and leaves every other byte of the
- * file alone, including the preamble and the user's ordering, because this note
- * is expected to be edited by hand between writes.
- *
- * New entries are appended rather than sorted in: re-sorting a file someone
- * has arranged themselves is a destructive surprise, and ordering is something
- * they can do in the editor if they want it.
- */
-export function upsertGlossaryEntry(markdown: string, entry: GlossaryEntry): string {
-	const key = normalizeTerm(entry.term);
-	const lines = markdown.split("\n");
-	const headingAt: number[] = [];
-	lines.forEach((line, i) => { if (/^##\s+.+/.test(line)) headingAt.push(i); });
-
-	for (let h = 0; h < headingAt.length; h++) {
-		const start = headingAt[h];
-		const term = /^##\s+(.+?)\s*$/.exec(lines[start])?.[1] ?? "";
-		if (normalizeTerm(term) !== key) continue;
-		const end = h + 1 < headingAt.length ? headingAt[h + 1] : lines.length;
-		const before = lines.slice(0, start).join("\n");
-		const after = lines.slice(end).join("\n");
-		return `${before}${before ? "\n" : ""}${renderEntry(entry)}${after ? "\n" + after.replace(/^\n+/, "") : ""}`;
-	}
-
-	const base = markdown.trimEnd();
-	return `${base}${base ? "\n\n" : ""}${renderEntry(entry)}`;
 }
 
 /** The parts of an entry the matcher needs — so callers can index plain terms

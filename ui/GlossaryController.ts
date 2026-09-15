@@ -87,8 +87,11 @@ export class GlossaryController {
 		this.closeAnchor();
 
 		const service = this.d.plugin.glossaryService;
-		const entry = service.find(await service.all(), term);
-		if (!entry) return;
+		const found = service.find(await service.all(), term);
+		if (!found) return;
+		// `all()` carries frontmatter only — the definition lives in the note body
+		// and is read for the one term actually being opened (ADR-150).
+		const entry = await service.hydrate(found);
 
 		// Insert after the mark's own paragraph rather than inline beside it: a term
 		// sits mid-sentence, and splicing a block into a sentence reflows the text
@@ -169,7 +172,8 @@ export class GlossaryController {
 		});
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
-			void this.d.plugin.app.workspace.openLinkText(this.d.plugin.settings.glossaryNote, "", true);
+			// Open the term's own note now that each term is one (ADR-150).
+			void this.d.plugin.app.workspace.openLinkText(entry.term, "", true);
 		});
 	}
 

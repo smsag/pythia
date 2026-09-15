@@ -383,9 +383,7 @@ export class HeaderController {
 		if (confirm && conv) {
 			const newName = this.renameInputEl.value.trim();
 			if (newName && newName !== conv.name) {
-				conv.name = newName;
-				void this.d.plugin.conversationStore.save(conv);
-				void this.d.plugin.renameConversationFile(conv);
+				void this.d.plugin.renameConversation(conv, newName);
 				this.convNameEl.setText(newName);
 			}
 		}
