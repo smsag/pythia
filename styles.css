@@ -4,8 +4,24 @@
    ───────────────────────────────────────────────────────────── */
 
 /* ── View container ────────────────────────────────────────── */
+/* Our leaf's own container, not just our view (ADR-147). Obsidian insets
+   `.view-content` inside `.workspace-leaf-content`, and that inset paints the
+   workspace background around the panel: a strip left, right and below it. That
+   is why four attempts at the composer's own padding never touched it — content
+   padding cannot produce a gap on the LEFT. The user found it by opening the
+   conversation panel, which is `inset: 0` on `.pythia-view` and so reveals the
+   panel's true edges: it stopped short on both sides.
+
+   Scoped by `data-type`, which Obsidian sets from PYTHIA_VIEW_TYPE, so no other
+   plugin's leaf is touched. */
+.workspace-leaf-content[data-type="pythia"] {
+  padding: 0;
+}
+
 .pythia-view {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  /* Flush to the leaf on every side — hard rule 1 is about the same edges. */
+  padding: 0;
   --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
   position: relative;
   display: flex;
