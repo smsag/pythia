@@ -41,9 +41,14 @@ function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?:
 /**
  * Sources row under an assistant message (ADR-140).
  *
- * Up to three labelled rows, in this order: the TEMPLATE that shaped the answer,
- * the WEB pages it cited, the VAULT notes it cited. A single QUELLEN row replaces
- * WEB/VAULT when every citation is a vault note.
+ * Up to three labelled rows, always in this order: the TEMPLATE that shaped the
+ * answer, the VAULT notes it cited, the WEB pages it cited.
+ *
+ * The order runs from the user outwards. The template is theirs and framed the
+ * whole answer; the vault notes are their own knowledge, which they can correct;
+ * the web is the outside, and the only part that can rot or mislead. Reading
+ * top-down therefore moves from what the reader owns to what they do not, which
+ * is also roughly the order of how much they should trust it.
  *
  * The template leads because it is the frame the answer was written in, not one
  * of the passages inside it — everything below it was read *through* it. It is
@@ -91,10 +96,10 @@ export function renderSourcesRow(
 			(s) => t("templateLabel", { name: s.title }),
 		);
 	}
-	if (web.length) {
-		makeRow(t("sourcesWeb"), web);
-		if (vault.length) makeRow(t("sourcesVault"), vault);
-	} else if (vault.length) {
-		makeRow(t("sourcesLabel"), vault);
-	}
+	// One label per row type, unconditionally. The vault row used to be relabelled
+	// "SOURCES" when no web row was present, which made the same row read two
+	// different ways depending on what else was on screen — invisible in isolation
+	// and confusing side by side.
+	if (vault.length) makeRow(t("sourcesVault"), vault);
+	if (web.length) makeRow(t("sourcesWeb"), web);
 }

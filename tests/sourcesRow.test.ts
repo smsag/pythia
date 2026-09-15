@@ -55,9 +55,17 @@ const labels = (row: HTMLElement) =>
 describe("renderSourcesRow — template row (ADR-140)", () => {
 	beforeEach(() => { document.body.innerHTML = ""; });
 
-	it("lists the template first, before the web sources", () => {
+	it("lists the template first, before the citations", () => {
 		const row = render([web(1, "example.com")], "Templates/Podcast Summary.md");
 		expect(labels(row)).toEqual(["TEMPLATE", "WEB"]);
+	});
+
+	it("orders the rows from the user outwards: template, vault, web", () => {
+		// Web is listed last as the only part that is neither the reader's nor
+		// correctable by them — the citations arrive web-first here to prove the
+		// row order does not follow the source order.
+		const row = render([web(1, "a.com"), vault(2, "Notes/B.md", "B")], "Templates/T.md");
+		expect(labels(row)).toEqual(["TEMPLATE", "VAULT", "WEB"]);
 	});
 
 	it("renders the template as a wikilink, by basename", () => {
@@ -93,13 +101,10 @@ describe("renderSourcesRow — template row (ADR-140)", () => {
 		expect(labels(row)).toEqual(["WEB"]);
 	});
 
-	it("keeps the single QUELLEN row when every citation is a vault note", () => {
+	it("labels the vault row VAULT even when there is no web row", () => {
+		// It used to be relabelled SOURCES in that case, so the same row read two
+		// different ways depending on what else happened to be on screen.
 		const row = render([vault(1, "Notes/A.md", "A")], "Templates/T.md");
-		expect(labels(row)).toEqual(["TEMPLATE", "SOURCES"]);
-	});
-
-	it("splits WEB and VAULT under the template when both are cited", () => {
-		const row = render([web(1, "a.com"), vault(2, "Notes/B.md", "B")], "Templates/T.md");
-		expect(labels(row)).toEqual(["TEMPLATE", "WEB", "VAULT"]);
+		expect(labels(row)).toEqual(["TEMPLATE", "VAULT"]);
 	});
 });

@@ -295,14 +295,16 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 ### Sources row (under an assistant answer)
 ```
 TEMPLATE  [[Podcast Summary]]
-WEB       1 thetransmitter.org ↗  2 sainsburywellcome.org ↗
-VAULT     3 [[Some Note]]
+VAULT     1 [[Some Note]]
+WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ```
-- Rows in that order, template always first: it is the frame the answer was written in, not one of the passages inside it
+- Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
+- The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
 - Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
 - `.p-sources-label` is a **54px column**, the same width as the reference row's label, so stacked rows start their chips at one x
-- A single `SOURCES` row replaces WEB/VAULT when every citation is a vault note
+- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, the column is read once rather than aimed at, and the words pair this row with REFERENZ
+- `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)
 - **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
