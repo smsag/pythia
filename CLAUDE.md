@@ -51,7 +51,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 758 tests across 50 files
+  tests/                      ← Vitest unit tests (npm test) — 766 tests across 51 files
+    helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -289,6 +290,7 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 - **The link anchor IS the fork anchor** (ADR-142). `.p-merge-anchor*` is grouped into every `.p-fork-anchor*` rule — never restate a rule for one of them, or they drift (they already have, twice). Same for the two banners
 - Only two things differ, both deliberate: the meta line keeps the **unlink** control (a link can be removed; a fork cannot be un-forked), and the header is the **`link` icon + `VERKNÜPFUNG`/`LINK`** — a noun naming the card, like `ABZWEIGUNG`, never the state `VERKNÜPFT`
 - Created from the selection toolbar's **Merge** button (next to Branch, assistant content only), which opens the conversation search and records a `MergeLink` on the conversation holding the passage
+- **Never open a modal to choose a conversation** (ADR-143). Use `view.pickConversation({ excludeId, placeholder, onPick })` — the same `.p-history` panel the header loupe opens, in pick mode. ADR-107 made it the single in-view conversation search; a `ConversationSuggestModal` is only for command-palette entry points, which can run with no view open
 - **Display-only** — a merge never enters the system prompt. Do not add merge content to `ContextBuilder`
 - Marks are `<pythia-merge class="p-merge-link">`: a **dashed accent underline**, never a third highlighter fill (yellow favorites and accent fork origins own that treatment). Keep it — since ADR-142 unified the cards, the mark is the ONLY signal of which kind of thing a tap will open
 - The anchor `.p-merge-anchor` is `.p-fork-anchor`, solid accent rule included: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Öffnen →`

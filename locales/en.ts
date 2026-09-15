@@ -41,7 +41,7 @@ const en = {
 	mergeLinked:                "Merged with \"{{name}}\"",
 	mergeAlreadyLinked:         "This passage is already merged with \"{{name}}\".",
 	mergeNoOtherConversations:  "No other conversation to merge with.",
-	mergeSearchPlaceholder:     "Merge with conversation…",
+	mergeSearchPlaceholder:     "Link with conversation…",
 
 	// ── Context / favorites sections ─────────────────────────────────────────
 	forksSection: "Forks",

@@ -12,6 +12,17 @@ import {
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
 
+/**
+ * Using the history panel to choose a conversation rather than switch to one
+ * (ADR-143). The destructive row controls are hidden while picking, and
+ * `excludeId` drops the conversation the choice is being made from.
+ */
+export interface HistoryPick {
+	excludeId?: string;
+	placeholder?: string;
+	onPick(conv: Conversation): void;
+}
+
 export interface HistoryDeps {
 	plugin: PythiaPlugin;
 	/** The view's content pane (`containerEl.children[1]`) — the overlay mounts here. */
@@ -87,9 +98,20 @@ export class HistoryController {
 	 *  as content search. Opened from the header loupe with the search input
 	 *  focused. Empty query → conversations grouped by date, forks indented under
 	 *  their source; a query → a flat relevance-ranked list with match snippets.
-	 *  ↑/↓ move the selection, Enter opens it, Esc closes. */
-	openHistoryView(): void {
-		if (this.historyCleanup) { this.historyCleanup(); return; } // toggle
+	 *  ↑/↓ move the selection, Enter opens it, Esc closes.
+	 *
+	 *  With `pick`, the same panel is used to CHOOSE a conversation instead of
+	 *  switching to one (ADR-143). Anything that needs the user to name a
+	 *  conversation — linking a passage, today; anything else, tomorrow — reuses
+	 *  this surface rather than growing a second search. ADR-107 made this the
+	 *  single in-view conversation search, and a picker is still a search. */
+	openHistoryView(pick?: HistoryPick): void {
+		// Toggle when reopening the same thing; when a picker is requested while the
+		// browse panel is open, replace it rather than closing and doing nothing.
+		if (this.historyCleanup) {
+			this.historyCleanup();
+			if (!pick) return;
+		}
 		const container = this.d.getContainer();
 		const overlay = container.createDiv({ cls: "p-history" });
 
@@ -100,7 +122,17 @@ export class HistoryController {
 			this.historyCleanup = null;
 		};
 		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
-		const openConv = (conv: Conversation) => { close(); void this.d.setActiveConversation(conv); };
+		// Registered synchronously, not in the focus timeout below: until this is
+		// set, the panel is open but the controller does not know it, so a second
+		// open in the same tick stacked a second overlay instead of toggling.
+		this.historyCleanup = close;
+		const openConv = (conv: Conversation) => {
+			close();
+			if (pick) pick.onPick(conv);
+			else void this.d.setActiveConversation(conv);
+		};
+		/** In pick mode the passage's own conversation is not a valid target. */
+		const selectable = (conv: Conversation) => !pick || conv.id !== pick.excludeId;
 
 		// ── Search row (no separate header): back · loupe · input ────
 		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
@@ -110,7 +142,7 @@ export class HistoryController {
 		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
 		const input = searchRow.createEl("input", {
 			cls: "p-switcher-input",
-			attr: { type: "text", placeholder: t("switcherSearchPlaceholder") },
+			attr: { type: "text", placeholder: pick?.placeholder ?? t("switcherSearchPlaceholder") },
 		});
 
 		// Related-conversations mode (ADR-109): a source conversation's semantic
@@ -255,6 +287,7 @@ export class HistoryController {
 		// Shared row body for browse and search rows. `snippetTokens` (search mode)
 		// appends the best-matching message line; browse rows keep the fork indent.
 		const makeRow = (conv: Conversation, isFork: boolean, indentFork: boolean, snippetTokens?: string[]): void => {
+			if (!selectable(conv)) return;
 			const row = listEl.createDiv({ cls: indentFork ? "p-history-row fork" : "p-history-row" });
 			if (conv.id === this.d.getConversation()?.id) row.addClass("active");
 			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
@@ -267,14 +300,17 @@ export class HistoryController {
 			}
 			// Relate affordance (ADR-109): a hover-revealed icon on desktop; a
 			// long-press on the row on touch devices. Both open related mode.
-			if (this.d.getRelated) {
+			if (this.d.getRelated && !pick) {
 				const relate = row.createSpan({ cls: "p-history-relate", attr: { title: t("relatedTooltip") } });
 				setIcon(relate, "git-compare");
 				relate.addEventListener("click", (e) => { e.stopPropagation(); void enterRelated(conv); });
 			}
 			if (conv.id === this.d.getConversation()?.id) {
 				row.createSpan({ cls: "p-history-active", text: t("navActiveTag") });
-			} else {
+			} else if (!pick) {
+				// No delete control while picking: the panel is being used to name a
+				// target, and a trash icon one thumb-width from every row is the wrong
+				// thing to offer when the user's intent is "choose this one".
 				const del = row.createSpan({ cls: "p-switcher-del", attr: { title: t("deleteConvTooltip") } });
 				setIcon(del, "trash");
 				del.addEventListener("click", (e) => {
@@ -294,6 +330,7 @@ export class HistoryController {
 				const x = touch?.clientX ?? 0;
 				const y = touch?.clientY ?? 0;
 				lpFired = false;
+				if (pick) return;
 				lpTimer = setTimeout(() => { lpFired = true; showRowMenu(conv, x, y); }, 500);
 			}, { passive: true });
 			row.addEventListener("touchend", clearLp);
@@ -362,8 +399,9 @@ export class HistoryController {
 
 		buildList("");
 		setTimeout(() => {
+			// Escape is bound a tick late so the keypress that opened the panel — if
+			// it was a keypress — cannot immediately close it again.
 			document.addEventListener("keydown", onKey, true);
-			this.historyCleanup = close;
 			input.focus();
 			// The keyboard animates in; `visualViewport` fires resize when it lands,
 			// but measure once here too in case it is already up (re-open).
