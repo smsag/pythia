@@ -6,6 +6,7 @@ import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
+import { clampSummary } from "./clampBody";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -176,10 +177,14 @@ export class ForkController {
 		// Fork title.
 		anchor.createDiv({ cls: "p-fork-anchor-title", text: fork.name });
 
-		// One or more summary paragraphs (multi-paragraph is the norm — no clamp).
+		// The summary, clamped to five lines with an expand control when it runs
+		// longer (ADR-141). The mount is created now so the control lands between
+		// the body and the meta line, not after it — the measurement that decides
+		// whether it appears at all happens a frame later.
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			this.d.renderMarkdown(summary, body);
+			clampSummary(body, anchor.createDiv({ cls: "p-anchor-more-wrap" }));
 		}
 
 		// Meta line: "N Nachrichten · Model · <generated date> · Öffnen →". Model and

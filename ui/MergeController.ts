@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintMergeLinks as paintMergeLinks } from "./HighlightPainter";
+import { clampSummary } from "./clampBody";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -240,9 +241,11 @@ export class MergeController {
 
 		anchor.createDiv({ cls: "p-merge-anchor-title", text: target.name });
 
+		// Clamped to five lines with an expand control when longer — see ADR-141.
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-merge-anchor-body" });
 			this.d.renderMarkdown(summary, body);
+			clampSummary(body, anchor.createDiv({ cls: "p-anchor-more-wrap" }));
 		} else {
 			anchor.createDiv({ cls: "p-merge-anchor-empty", text: t("mergeNoSummary") });
 		}

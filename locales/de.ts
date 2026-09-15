@@ -133,6 +133,8 @@ const de: Strings = {
 	ctxSummarize:      "Zusammenfassen",
 
 	// ── Citations / sources ───────────────────────────────────────────────────
+	summaryMore: "mehr",
+	summaryLess: "weniger",
 	sourcesTemplate: "VORLAGE",
 	sourcesWeb:   "WEB",
 	sourcesVault: "VAULT",

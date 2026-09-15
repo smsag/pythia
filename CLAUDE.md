@@ -47,10 +47,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
+    clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 752 tests across 49 files
+  tests/                      ← Vitest unit tests (npm test) — 758 tests across 50 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -309,6 +310,13 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ### Dates and micro-label rows (ADR-139)
 - **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
 - An icon button sitting in a row of micro-label text needs `vertical-align: middle` **plus `position: relative; top: -0.09em`**. `middle` centres on x-height; these rows are caps and digits, so the icon otherwise sits ~1px low. Measured, and stable across sans/serif/mono faces
+
+### Conversation summaries (ADR-141)
+- Both summary prompts share ONE `SUMMARY_RULES` block in `services/BaseProvider.ts`. Never edit one prompt's rules without the other — that is why they are shared
+- The contract: **substance, never the session** (no narrating what was done, produced, saved or inserted; no file names; no "as requested" — if the conversation produced a document, summarize what it *says*), **at most 5 sentences / 100 words**, **plain prose** (no headings, lists, bold or code)
+- Do NOT lower `maxTokens` to force brevity — that truncates rather than shortens, and on a reasoning model the same budget pays for hidden reasoning. The sentence count is the contract; the cap is a safety valve
+- `generateFavoritesSummary` is deliberately exempt — its `## Key learnings` structure is the point
+- The fork and merge anchors clamp the summary to five lines via `clampSummary`, because a prompt is a request and summaries already on disk will never be regenerated
 
 ### Tables (ADR-131)
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams

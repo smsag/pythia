@@ -807,6 +807,25 @@
   margin-left: 2px;
   cursor: pointer;
 }
+/* Clamped summary body inside an inline anchor (ADR-141). Five lines at the
+   anchor's 1.55 line-height, faded at the cut so the truncation is visible
+   rather than a sentence that merely stops. The mask is doubled with the
+   unprefixed property for engines that have moved on from -webkit-. */
+.pythia-view .p-clamped {
+  max-height: 7.75em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+}
+.p-anchor-more-wrap { display: flex; }
+.p-anchor-more {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 11px;
+}
+.p-anchor-more:hover { text-decoration: underline; }
+
 .p-sources {
   display: flex;
   flex-direction: column;
