@@ -21,7 +21,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
-    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers
+    messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, lang helpers, formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename: display name for a vault path (last segment, .md stripped)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
@@ -50,7 +50,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 738 tests across 48 files
+  tests/                      ← Vitest unit tests (npm test) — 743 tests across 48 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -291,6 +291,10 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 - The anchor `.p-merge-anchor` mirrors `.p-fork-anchor` with a dashed left rule: target name, conversation summary, `N messages · MODEL · date [· outdated]`, regenerate, unlink, `Open →`
 - The link reads from **both ends**, like a fork: the conversation a link points at shows a `.pythia-merge-banner` naming every conversation that merged with it. The inbound list is derived on read via `incomingMergeLinks`, never stored as a back-reference
 - Regeneration uses `generateSummary`, never `generateSummaryWithTitle` — merging must not rename the target
+
+### Dates and micro-label rows (ADR-139)
+- **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
+- An icon button sitting in a row of micro-label text needs `vertical-align: middle` **plus `position: relative; top: -0.09em`**. `middle` centres on x-height; these rows are caps and digits, so the icon otherwise sits ~1px low. Measured, and stable across sans/serif/mono faces
 
 ### Tables (ADR-131)
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams

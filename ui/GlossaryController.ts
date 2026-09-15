@@ -119,12 +119,14 @@ export class GlossaryController {
 		this.d.renderMarkdown(entry.definition, body);
 
 		const meta = anchor.createDiv({ cls: "p-term-anchor-meta" });
-		const parts: string[] = [];
-		if (entry.source === "model") {
-			parts.push(t("glossarySourceModel", { model: abbreviateModel(this.d.plugin.settings.defaultAnthropicModel) }));
-		} else {
-			parts.push(t("glossarySourceManual"));
-		}
+		// Bare model name and date, exactly like the fork and merge meta lines —
+		// no "defined by" prefix. The row's job is provenance at a glance, and the
+		// prefix is the one part of it the reader already knows.
+		const parts: string[] = [
+			entry.source === "model"
+				? abbreviateModel(this.d.plugin.settings.defaultAnthropicModel)
+				: t("glossarySourceManual"),
+		];
 		if (entry.updatedAt) parts.push(formatSummaryTimestamp(entry.updatedAt));
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: `${parts.join(" · ")} · ` });
 

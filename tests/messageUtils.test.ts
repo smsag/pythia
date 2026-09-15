@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
 	parseTitleAndSummary,
+	formatDate,
+	formatMonthYear,
+	formatSummaryTimestamp,
 	parseDefinitionAndVariants,
 	normalizeMessages,
 	selectHistoryForSend,
@@ -516,5 +519,40 @@ describe("parseDefinitionAndVariants", () => {
 	it("caps the list, so one bad reply cannot mark a dozen phrases everywhere", () => {
 		const many = Array.from({ length: 20 }, (_, i) => `form${i}`).join(" | ");
 		expect(parseDefinitionAndVariants(`DEFINITION:\nX.\nVARIANTS: ${many}`).variants).toHaveLength(8);
+	});
+});
+
+describe("formatDate", () => {
+	it("renders the one Pythia date format, day-month-year", () => {
+		expect(formatDate("2026-09-15T04:39:00")).toBe("15 Sep 2026");
+		expect(formatDate("2026-01-01T12:00:00")).toBe("1 Jan 2026");
+		expect(formatDate("2026-12-31T23:59:00")).toBe("31 Dec 2026");
+	});
+
+	it("does not follow the runtime locale, so the label cannot shift under a user", () => {
+		// The whole reason this is not toLocaleDateString: German would render
+		// "15. Sept. 2026" and US English "Sep 15, 2026" — different order, width
+		// and punctuation, in a fixed-width mono label.
+		const out = formatDate("2026-09-15T04:39:00");
+		expect(out).not.toContain(".");
+		expect(out).not.toContain(",");
+	});
+
+	it("returns empty for a missing or unparseable input", () => {
+		expect(formatDate(undefined)).toBe("");
+		expect(formatDate("not a date")).toBe("");
+	});
+});
+
+describe("formatMonthYear", () => {
+	it("renders the history group header", () => {
+		expect(formatMonthYear("2026-09-15T04:39:00")).toBe("SEP 2026");
+		expect(formatMonthYear("")).toBe("");
+	});
+});
+
+describe("formatSummaryTimestamp", () => {
+	it("joins the shared date and 24-hour clock formats", () => {
+		expect(formatSummaryTimestamp("2026-09-15T04:39:00")).toBe("15 Sep 2026 · 04:39");
 	});
 });

@@ -1545,6 +1545,9 @@
   cursor: pointer;
   display: inline-flex;
   vertical-align: middle;
+  /* Cap-height centring — see .p-term-anchor-btn. */
+  position: relative;
+  top: -0.09em;
   color: var(--text-faint);
 }
 .p-fork-anchor-refresh svg { width: 11px; height: 11px; }
@@ -1629,6 +1632,14 @@
   cursor: pointer;
   display: inline-flex;
   vertical-align: middle;
+  /* Centre the glyph on the text's cap height, not on `vertical-align: middle`
+     alone. `middle` centres an inline box on baseline + half the x-height, which
+     leaves an 11px icon sitting ~1px below the centre of the 11px caps and
+     digits beside it — measured, and visible in the meta row. The nudge is
+     (cap-height − x-height) / 2, which holds within 0.1px across sans, serif and
+     mono faces, so it survives a theme font change. */
+  position: relative;
+  top: -0.09em;
   color: var(--text-faint);
 }
 .p-term-anchor-btn svg { width: 11px; height: 11px; }
@@ -1727,6 +1738,9 @@
   cursor: pointer;
   display: inline-flex;
   vertical-align: middle;
+  /* Cap-height centring — see .p-term-anchor-btn. */
+  position: relative;
+  top: -0.09em;
   color: var(--text-faint);
 }
 .p-merge-anchor-refresh svg,

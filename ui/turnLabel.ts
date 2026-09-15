@@ -12,7 +12,7 @@
  */
 
 import type { Conversation, Message, TokenUsage } from "../models/types";
-import { formatClockTime } from "../services/messageUtils";
+import { formatClockTime, formatDate } from "../services/messageUtils";
 import { noteBasename } from "../services/pathUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { t } from "../i18n";
@@ -115,11 +115,9 @@ export function isFirstMessageOfDay(msg: Message, conv: Conversation | null): bo
 	return cur !== prev;
 }
 
-/** Absolute date for a turn label (`27 Aug 2026`, localized). Deliberately not
- *  the relative "Heute/Gestern" of `HistoryController.formatConvDate` — the label
- *  must stay correct when the conversation is reopened later. */
+/** Absolute date for a turn label (`27 Aug 2026`). Deliberately not the relative
+ *  "Heute/Gestern" of `HistoryController.formatConvDate` — the label must stay
+ *  correct when the conversation is reopened later. */
 export function formatTurnDate(iso: string): string {
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return "";
-	return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	return formatDate(iso);
 }

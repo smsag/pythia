@@ -3,6 +3,7 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { abbreviateModel } from "../models/knownModels";
+import { formatMonthYear } from "../services/messageUtils";
 import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
 import {
 	buildConversationHaystack,
@@ -68,7 +69,7 @@ export class HistoryController {
 	}
 
 	/** Uppercase mono date-group label for the history view (HEUTE / GESTERN /
-	 *  DIESE WOCHE / "August 2026"). */
+	 *  DIESE WOCHE / "SEP 2026"). */
 	private historyBucket(iso: string | undefined): string {
 		if (!iso) return "—";
 		const d = new Date(iso);
@@ -79,7 +80,7 @@ export class HistoryController {
 		if (dayDiff <= 0) return t("histToday");
 		if (dayDiff === 1) return t("histYesterday");
 		if (dayDiff < 7) return t("histThisWeek");
-		return d.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase();
+		return formatMonthYear(iso);
 	}
 
 	/** The full-panel conversation overlay: a browse-by-date listing that doubles
