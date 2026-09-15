@@ -50,18 +50,58 @@ export function keyboardOverlap(m: ViewportMetrics): number {
 	return Math.max(0, Math.round(m.containerBottom - visibleBottom));
 }
 
+/** Slack allowed when deciding whether the panel touches the screen edge, in
+ *  CSS px — enough for sub-pixel layout and a hairline border. */
+export const BOTTOM_EDGE_TOLERANCE = 4;
+
 /**
- * DOM-facing shell over `keyboardOverlap`: reads the live viewport for
- * `container` and returns how much of it the keyboard covers, 0 when there is
- * no keyboard or no `visualViewport` support.
+ * Whether the panel really reaches the bottom of the screen, and therefore has a
+ * home indicator to clear (ADR-134).
+ *
+ * `env(safe-area-inset-bottom)` reports the device's inset regardless of where
+ * the element sits, so CSS alone cannot tell "I am the bottom-most thing on
+ * screen" from "there is another leaf below me". Only a measurement can, and
+ * without it the input area reserved that inset as dead space in a stacked
+ * sidebar.
  */
-export function currentKeyboardOverlap(container: HTMLElement): number {
+export function needsBottomSafeArea(containerBottom: number, layoutHeight: number): boolean {
+	return containerBottom >= layoutHeight - BOTTOM_EDGE_TOLERANCE;
+}
+
+/**
+ * Apply both viewport-derived insets to the plugin's content pane.
+ *
+ * Kept together because both are driven by the same events (viewport resize and
+ * scroll, focus, blur, open) and both are pure measurement applied as style:
+ *
+ *  - `padding-bottom` lifts content clear of an open soft keyboard, and is
+ *    removed the moment there is no keyboard (ADR-132).
+ *  - `--p-bottom-inset` switches the input area's home-indicator padding off
+ *    when the panel does not actually reach the screen edge (ADR-134).
+ *
+ * Both properties are cleared before measuring, so repeated calls are idempotent
+ * and a pane left styled by an older build heals on the next event.
+ */
+export function updateViewportInsets(container: HTMLElement): void {
+	container.style.paddingBottom = "";
+	container.style.height = "";
 	const vv = window.visualViewport;
-	if (!vv) return 0;
-	return keyboardOverlap({
-		containerBottom: container.getBoundingClientRect().bottom,
+	if (!vv) return;
+	const containerBottom = container.getBoundingClientRect().bottom;
+
+	if (needsBottomSafeArea(containerBottom, window.innerHeight)) {
+		container.style.removeProperty("--p-bottom-inset");
+	} else {
+		container.style.setProperty("--p-bottom-inset", "0px");
+	}
+
+	const overlap = keyboardOverlap({
+		containerBottom,
 		layoutHeight: window.innerHeight,
 		visualHeight: vv.height,
 		visualOffsetTop: vv.offsetTop,
 	});
+	// Padding, not height: the panel keeps filling and painting its leaf, so
+	// nothing is uncovered and `overflow: hidden` has nothing to crop.
+	if (overlap > 0) container.style.paddingBottom = `${overlap}px`;
 }

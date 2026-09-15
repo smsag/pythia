@@ -46,7 +46,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule (pure, unit-tested) — ADR-132
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 690 tests across 46 files
+  tests/                      ← Vitest unit tests (npm test) — 694 tests across 46 files
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
@@ -220,7 +220,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
-7. **iOS safe area on input.** Always: `padding-bottom: max(var(--s2), env(safe-area-inset-bottom, var(--s2)))`.
+7. **iOS safe area on input.** Always: `padding-bottom: max(var(--s2), var(--p-bottom-inset, env(safe-area-inset-bottom, var(--s2))))`. `env()` reports the device inset wherever the element sits, so the view measures whether the panel really reaches the screen edge and sets `--p-bottom-inset: 0px` when another leaf is below it — otherwise the inset is dead space (ADR-134). Never drop the `env()` default: a full-height leaf still needs it.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
 8b. **Never set an explicit `height` on `containerEl.children[1]`.** It is `overflow: hidden`, so a height below the content silently crops the input area (including its mandated safe-area padding) and uncovers the background behind the panel. Move content with padding instead (ADR-132).
@@ -290,6 +290,7 @@ AI:    OPUS 4.8 · [ PODCAST SUMMARY · ] 22:20 · ↑151 ↓430
 
 ### Tables (ADR-131)
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
+- The table takes `width: max-content` with `max-width: 32ch` per cell. `max-width: none` alone does NOT widen a table — it sizes itself to its container (ADR-134)
 - Cell text **wraps between words but is never split inside one**. `min-width: 8ch` is a floor so short columns are not crushed
 - The rules must stay scoped under `.pythia-view`, or Obsidian core and theme `word-break: break-all` on cells wins (ADR-065)
 - No sticky first column. The whole table scrolls as one piece
