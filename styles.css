@@ -504,35 +504,11 @@
 }
 .pythia-view .pythia-pill-add:hover { color: var(--color-accent); }
 
-/* ── Merged-from banner (ADR-130) ────────────────────────────── */
-/* The far half of a merge link: shown at the top of a conversation that OTHER
-   conversations have merged with, so the relationship is visible from both ends
-   the way a fork's is. Mirrors .pythia-fork-banner, with a dashed left rule
-   matching the dashed merge mark and anchor, and one entry per inbound link. */
-.pythia-merge-banner {
-  flex-shrink: 0;
-  padding: 8px 12px;
-  font-size: 0.82em;
-  border-left: 2px dashed var(--color-accent);
-  margin-bottom: 4px;
-}
-.pythia-merge-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-muted);
-  font-size: 0.78em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
-}
-.pythia-merge-icon svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.5;
-  vertical-align: middle;
-}
+/* ── Merged-from banner (ADR-130/142) ────────────────────────── */
+/* The far half of a link: shown at the top of a conversation that OTHER
+   conversations link to, so the relationship is visible from both ends the way a
+   fork's is. It IS the fork banner — same rules, grouped selectors, so the two
+   cannot drift apart again (ADR-142). Only the header icon and word differ. */
 .pythia-merge-entry + .pythia-merge-entry {
   margin-top: var(--s2);
 }
@@ -553,15 +529,17 @@
   padding-left: 8px;
 }
 
-/* ── Fork banner ────────────────────────────────────────────── */
-.pythia-fork-banner {
+/* ── Fork banner — and the merge banner, which is the same component ── */
+.pythia-fork-banner,
+.pythia-merge-banner {
   flex-shrink: 0;
   padding: 8px 12px;
   font-size: 0.82em;
-  border-left: 2px solid var(--interactive-accent);
+  border-left: 2px solid var(--color-accent);
   margin-bottom: 4px;
 }
-.pythia-fork-header {
+.pythia-fork-header,
+.pythia-merge-header {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -572,7 +550,8 @@
   letter-spacing: 0.04em;
   margin-bottom: 4px;
 }
-.pythia-fork-icon svg {
+.pythia-fork-icon svg,
+.pythia-merge-icon svg {
   width: 11px;
   height: 11px;
   stroke-width: 1.5;
@@ -1489,8 +1468,13 @@
 }
 
 /* Frameless fork anchor (ADR-066 / F1): 2px accent left-rule, no fill or
-   radius. Header micro-label + title + summary paragraph(s) + meta line. */
-.p-fork-anchor {
+   radius. Header micro-label + title + summary paragraph(s) + meta line.
+   The link (merge) anchor is the SAME component (ADR-142) — it is grouped into
+   every rule here rather than restating them, so the two cannot drift apart.
+   What distinguishes them is the header icon and word, plus the unlink control
+   a link carries in its meta line. */
+.p-fork-anchor,
+.p-merge-anchor {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -1500,30 +1484,39 @@
   font-size: var(--font-smaller);
   color: var(--text-muted);
 }
-.p-fork-anchor-head {
+.p-fork-anchor-head,
+.p-merge-anchor-head {
   display: flex;
   align-items: center;
   gap: 5px;
 }
-.p-fork-anchor-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
-.p-fork-anchor-icon svg { width: 11px; height: 11px; }
-.p-fork-anchor-label {
+.p-fork-anchor-icon,
+.p-merge-anchor-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-fork-anchor-icon svg,
+.p-merge-anchor-icon svg { width: 11px; height: 11px; }
+.p-fork-anchor-label,
+.p-merge-anchor-label {
   font-family: var(--font-monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
-.p-fork-anchor-title {
+.p-fork-anchor-title,
+.p-merge-anchor-title {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-normal);
 }
-.p-fork-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-fork-anchor-meta,
+.p-merge-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 /* Compact typography for the inline fork summary — headings especially. */
-.p-fork-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
-.p-fork-anchor-body > :first-child { margin-top: 0; }
-.p-fork-anchor-body > :last-child { margin-bottom: 0; }
+.p-fork-anchor-body,
+.p-merge-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
+.p-fork-anchor-body > :first-child,
+.p-merge-anchor-body > :first-child { margin-top: 0; }
+.p-fork-anchor-body > :last-child,
+.p-merge-anchor-body > :last-child { margin-bottom: 0; }
 .p-fork-anchor-body h1,
 .p-fork-anchor-body h2,
 .p-fork-anchor-body h3,
@@ -1552,16 +1545,20 @@
   margin: 2px 0 0 0;
   flex-shrink: 0;
 }
-.p-fork-anchor-open {
+.p-fork-anchor-open,
+.p-merge-anchor-open {
   all: unset;
   cursor: pointer;
   color: var(--color-accent);
   font-size: 11px;
 }
-.p-fork-anchor-open:hover { text-decoration: underline; }
+.p-fork-anchor-open:hover,
+.p-merge-anchor-open:hover { text-decoration: underline; }
 /* Visible one-tap regenerate for the fork summary (ADR-128). Faint by default,
    accent on hover; accent when the shown summary is stale to invite a refresh. */
-.p-fork-anchor-refresh {
+.p-fork-anchor-refresh,
+.p-merge-anchor-refresh,
+.p-merge-anchor-unlink {
   all: unset;
   cursor: pointer;
   display: inline-flex;
@@ -1571,9 +1568,14 @@
   top: -0.09em;
   color: var(--text-faint);
 }
-.p-fork-anchor-refresh svg { width: 11px; height: 11px; }
-.p-fork-anchor-refresh:hover { color: var(--color-accent); }
-.p-fork-anchor-refresh.is-stale { color: var(--color-accent); }
+.p-fork-anchor-refresh svg,
+.p-merge-anchor-refresh svg,
+.p-merge-anchor-unlink svg { width: 11px; height: 11px; }
+.p-fork-anchor-refresh:hover,
+.p-merge-anchor-refresh:hover,
+.p-merge-anchor-unlink:hover { color: var(--color-accent); }
+.p-fork-anchor-refresh.is-stale,
+.p-merge-anchor-refresh.is-stale { color: var(--color-accent); }
 /* Wrap so the long-press generate menu can stack directly above Open-fork. */
 .p-fork-open-wrap {
   position: relative;
@@ -1694,43 +1696,11 @@
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 
-/* Frameless merge anchor — mirrors .p-fork-anchor, with a dashed left rule so
-   the two inline anchors are told apart at a glance. */
-.p-merge-anchor {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin: var(--s1) 0;
-  padding: 2px 0 2px var(--s3);
-  border-left: 2px dashed var(--color-accent);
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-}
-.p-merge-anchor-head {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.p-merge-anchor-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
-.p-merge-anchor-icon svg { width: 11px; height: 11px; }
-.p-merge-anchor-label {
-  font-family: var(--font-monospace);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.p-merge-anchor-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-normal);
-}
-.p-merge-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+/* A link anchor IS a fork anchor (ADR-142). Everything visual is shared with
+   .p-fork-anchor through the grouped selectors in its own block; what remains
+   here is only what a link has and a fork does not — the "no summary yet" line —
+   plus the markdown rules for its body. */
 .p-merge-anchor-empty { font-size: 11px; color: var(--text-faint); font-style: italic; }
-.p-merge-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
-.p-merge-anchor-body > :first-child { margin-top: 0; }
-.p-merge-anchor-body > :last-child { margin-bottom: 0; }
 .p-merge-anchor-body h1,
 .p-merge-anchor-body h2,
 .p-merge-anchor-body h3,
@@ -1746,29 +1716,6 @@
 .p-merge-anchor-body ul,
 .p-merge-anchor-body ol { padding-left: var(--s4); margin: var(--s1) 0; }
 .p-merge-anchor-body li { font-size: var(--font-smaller); }
-.p-merge-anchor-open {
-  all: unset;
-  cursor: pointer;
-  color: var(--color-accent);
-  font-size: 11px;
-}
-.p-merge-anchor-open:hover { text-decoration: underline; }
-.p-merge-anchor-refresh,
-.p-merge-anchor-unlink {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
-  vertical-align: middle;
-  /* Cap-height centring — see .p-term-anchor-btn. */
-  position: relative;
-  top: -0.09em;
-  color: var(--text-faint);
-}
-.p-merge-anchor-refresh svg,
-.p-merge-anchor-unlink svg { width: 11px; height: 11px; }
-.p-merge-anchor-refresh:hover,
-.p-merge-anchor-unlink:hover { color: var(--color-accent); }
-.p-merge-anchor-refresh.is-stale { color: var(--color-accent); }
 
 /* ── Delete-exchange preview ─────────────────────────────────── */
 .p-msg-user.p-del-preview,

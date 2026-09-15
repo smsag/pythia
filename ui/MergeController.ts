@@ -108,7 +108,7 @@ export class MergeController {
 
 		const banner = this.d.getMessagesEl().createDiv({ cls: "pythia-merge-banner" });
 		const header = banner.createDiv({ cls: "pythia-merge-header" });
-		setIcon(header.createSpan({ cls: "pythia-merge-icon" }), "git-merge");
+		setIcon(header.createSpan({ cls: "pythia-merge-icon" }), "link");
 		header.createSpan({ cls: "pythia-merge-label", text: t("mergedFromLabel") });
 
 		for (const { source, link } of incoming) {
@@ -236,7 +236,11 @@ export class MergeController {
 
 		// Header: merge icon + micro-label.
 		const head = anchor.createDiv({ cls: "p-merge-anchor-head" });
-		setIcon(head.createSpan({ cls: "p-merge-anchor-icon" }), "git-merge");
+		// The link icon, not `git-merge`: the meta line's control is `unlink`, and the
+		// header is the same relationship stated positively (ADR-142). It is also the
+		// one thing that distinguishes this card from a fork's, so it has to name
+		// what the user calls it — a Verknüpfung, not a developer's merge.
+		setIcon(head.createSpan({ cls: "p-merge-anchor-icon" }), "link");
 		head.createSpan({ cls: "p-merge-anchor-label", text: t("mergeAnchorLabel") });
 
 		anchor.createDiv({ cls: "p-merge-anchor-title", text: target.name });
