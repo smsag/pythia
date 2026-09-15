@@ -34,7 +34,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
-import { updateViewportInsets } from "./ui/keyboardInset";
+import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message, MessageSource, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
@@ -137,7 +137,7 @@ export class PythiaSidebarView extends ItemView {
 	private inlineSuggest!: InlineSuggest;
 	private indexTriggerEl!: HTMLButtonElement;
 	private navigatorEl!: HTMLElement;
-	private onViewportResize: (() => void) | null = null;
+	private disposeViewport: (() => void) | null = null;
 
 	private researchBtnEl!: HTMLButtonElement;
 	private vaultBtnEl!: HTMLButtonElement;
@@ -163,22 +163,13 @@ export class PythiaSidebarView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.buildUI();
 
-		// iOS keyboard avoidance: the layout viewport doesn't shrink when the
-		// soft keyboard appears, but visualViewport does. Compensate by applying
-		// padding-bottom equal to the overlap between the container bottom and
-		// the visible area bottom. Also corrects the at-rest gap from Obsidian's
-		// own bottom chrome (tab bar, home indicator).
-		if (window.visualViewport) {
-			this.onViewportResize = () => this.adjustForKeyboard();
-			window.visualViewport.addEventListener("resize", this.onViewportResize);
-			window.visualViewport.addEventListener("scroll", this.onViewportResize);
-			// Run once immediately to fix at-rest gap; double-rAF guards against
-			// iOS WKWebView applying safe-area insets after the first paint.
-			requestAnimationFrame(() => {
-				this.adjustForKeyboard();
-				requestAnimationFrame(() => this.adjustForKeyboard());
-			});
-		}
+		// Viewport-driven insets (ADR-132/134): lift above the keyboard, and drop the
+		// home-indicator padding when another leaf sits below us.
+		this.disposeViewport = watchViewport(() => this.adjustForKeyboard());
+		// Opening, closing or resizing a leaf moves this panel's bottom edge and
+		// fires no visualViewport event, so the inset would otherwise go stale.
+		this.registerEvent(this.app.workspace.on("resize", () => this.adjustForKeyboard()));
+		this.registerEvent(this.app.workspace.on("layout-change", () => this.adjustForKeyboard()));
 
 		// Recompute the on-accent label color when the user changes their accent
 		// or theme in Appearance settings (Obsidian fires css-change) — no reopen.
@@ -230,11 +221,8 @@ export class PythiaSidebarView extends ItemView {
 
 		// The selectionchange listener is registered via registerDomEvent and is
 		// cleaned up automatically on view unload — no manual removal needed.
-		if (window.visualViewport && this.onViewportResize) {
-			window.visualViewport.removeEventListener("resize", this.onViewportResize);
-			window.visualViewport.removeEventListener("scroll", this.onViewportResize);
-			this.onViewportResize = null;
-		}
+		this.disposeViewport?.();
+		this.disposeViewport = null;
 		this.inlineSuggest.dismiss();
 	}
 
