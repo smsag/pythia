@@ -26,10 +26,11 @@ vi.mock("../i18n", () => ({
 }));
 
 const streamMock = vi.fn();
+const createMock = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => {
 	class FakeAnthropic {
-		messages = { stream: streamMock, create: vi.fn() };
+		messages = { stream: streamMock, create: createMock };
 		constructor(_opts: unknown) { void _opts; }
 	}
 	return { default: FakeAnthropic };
@@ -343,5 +344,54 @@ describe("AnthropicService — PDF attachments", () => {
 
 		const params = streamMock.mock.calls[0][0] as { messages: Array<{ role: string; content: unknown }> };
 		expect(typeof params.messages[params.messages.length - 1].content).toBe("string");
+	});
+});
+
+// ── callUtility reads every text block (ADR-158) ──────────────────────────────
+//
+// The reported symptom was a favorites summary that "ran" and produced no card.
+// `callUtility` returned `content[0]` only if it happened to be a text block, and
+// a response is a LIST: with extended thinking the first block is `thinking`.
+// Returning "" there is indistinguishable from "the model said nothing", and the
+// caller treats "" as nothing to show.
+
+describe("AnthropicService — callUtility block handling", () => {
+	beforeEach(() => { createMock.mockReset(); });
+
+	/** callUtility is protected; generateChapterName is the thinnest public caller. */
+	const run = async (content: unknown[]): Promise<string> => {
+		createMock.mockResolvedValue({ content });
+		const provider = new AnthropicService({} as never, makeSettings(), "key");
+		return provider.generateChapterName("some message");
+	};
+
+	it("returns the text when it is the only block", async () => {
+		expect(await run([{ type: "text", text: "  A title  " }])).toBe("A title");
+	});
+
+	it("returns the text when a thinking block comes first — the reported bug", async () => {
+		expect(await run([
+			{ type: "thinking", thinking: "let me consider…" },
+			{ type: "text", text: "A title" },
+		])).toBe("A title");
+	});
+
+	it("joins several text blocks rather than taking only the first", async () => {
+		expect(await run([
+			{ type: "text", text: "## Key learnings\n" },
+			{ type: "text", text: "- one" },
+		])).toBe("## Key learnings\n- one");
+	});
+
+	it("skips a leading tool-use block", async () => {
+		expect(await run([
+			{ type: "server_tool_use", id: "t1", name: "web_search", input: {} },
+			{ type: "text", text: "A title" },
+		])).toBe("A title");
+	});
+
+	it("still returns empty when the model genuinely produced no text", async () => {
+		expect(await run([{ type: "thinking", thinking: "…" }])).toBe("");
+		expect(await run([])).toBe("");
 	});
 });

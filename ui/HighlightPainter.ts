@@ -253,15 +253,26 @@ const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
  *
  * Text inside code, links and citation chips is skipped: a term inside an
  * identifier is not the term, and marking inside a link would nest two
- * interactive elements. Text already inside another mark is skipped too, so a
- * term sitting in a favorite or a fork origin does not produce overlapping
- * wrappers that later unwrapping would have to untangle.
+ * interactive elements.
+ *
+ * **Text inside a favorite, fork origin or merge link is NOT skipped** (ADR-157).
+ * It used to be, to avoid "overlapping wrappers that later unwrapping would have
+ * to untangle" — but they do not overlap, they nest: terms paint last, so a term
+ * mark lands strictly inside the deliberate mark, and each unwrapper targets its
+ * own class and leaves the other alone. The cost of the exclusion was that
+ * favoriting a passage silently un-marked every term in it, which is the passage
+ * a reader is most likely to be working through.
+ *
+ * `normalize()` first: unwrapping a mark leaves its text split into adjacent
+ * nodes, and a term is matched within a single node — so without it, a term that
+ * happened to sit where a mark used to end would stop matching.
  *
  * Nodes are collected before mutating, because wrapping a node invalidates a
  * live TreeWalker mid-iteration.
  */
 export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}, .${PERSON_CLASS}`));
+	body.normalize(); // rejoin text split by the unwrap above, so terms still match
 	if (!index) return;
 	const matcher = index.matcher;
 
@@ -270,8 +281,11 @@ export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 	let node = walker.nextNode() as Text | null;
 	while (node) {
 		const parent = node.parentElement;
+		// Only another term/person mark is excluded — a term must not nest inside a
+		// term. Favorites, fork origins and merge links are fine to sit inside
+		// (ADR-157).
 		if (parent && node.data.trim() && !parent.closest(TERM_SKIP) &&
-			!parent.closest(`.${HIGHLIGHT_CLASS}, .${FORK_ORIGIN_CLASS}, .${MERGE_LINK_CLASS}, .${TERM_CLASS}, .${PERSON_CLASS}`)) {
+			!parent.closest(`.${TERM_CLASS}, .${PERSON_CLASS}`)) {
 			targets.push(node);
 		}
 		node = walker.nextNode() as Text | null;

@@ -271,6 +271,24 @@
   -webkit-appearance: none !important;
   appearance: none !important;
 }
+/* Clear (✕) — hidden until there is something to clear, so the row is a plain
+   loupe + field at rest. Faint like the loupe it balances; the accent is kept
+   for hover, matching every other icon button in the panel. */
+.p-switcher-clear {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-faint);
+  border-radius: 3px;
+}
+.p-switcher-clear svg { width: 13px; height: 13px; }
+.p-switcher-clear:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+
 .pythia-view .p-switcher-input:focus,
 .pythia-view .p-switcher-input:active {
   background: transparent !important;
@@ -831,7 +849,9 @@
 .p-sources-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  /* 8px, down from 10: with a run-in label the first gap is read as the space
+     after a colon, and 10px reads as a column that is not there. */
+  gap: 8px;
   flex-wrap: wrap;
 }
 .p-sources-label {
@@ -840,13 +860,13 @@
   letter-spacing: 0.08em;
   color: var(--text-faint);
   flex-shrink: 0;
-  /* A column, not a prefix: TEMPLATE / WEB / VAULT are stacked rows, and ragged
-     labels would leave their chips starting at three different x positions. 54px
-     is the reference row's label column (design.md) — one width for both of
-     Pythia's label+chips rows — and clears the widest label, TEMPLATE, with room
-     for a wider theme monospace. `min-width`, so a long translation is never
-     clipped. */
-  min-width: 54px;
+  /* A run-in prefix, NOT a column (ADR-153). The 54px column this used to set
+     could not do what it promised: `.p-sources-row` wraps, and a wrapped flex
+     line starts at the container edge rather than under the first item — so the
+     column only ever aligned each row's FIRST line, while costing 54px of a
+     ~300px sidebar on every line. With nineteen web citations that is one
+     aligned line in five. The label now reads `Web:` in the flow, which needs no
+     alignment to be read. */
 }
 .p-source { font-size: 11.5px; display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
 /* Inside a sources row the wikilink name may be a long template title; truncate
@@ -2224,10 +2244,20 @@ body.is-mobile .p-textarea {
 }
 .p-tool-btn.is-active {
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 .p-tool-btn.is-active:hover {
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   background: var(--color-accent);
 }
 /* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
@@ -2258,6 +2288,11 @@ body.is-mobile .p-textarea {
   padding: 3px 10px;
   background: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   border-radius: 3px;
   transition: opacity 0.12s;
   white-space: nowrap;
@@ -2541,7 +2576,13 @@ body.is-mobile .p-textarea {
   padding: 3px 10px;
   background-color: transparent;
   color: var(--text-muted);
-  transition: background-color 0.1s, color 0.1s;
+  /* NO transition (ADR-155). A segmented control's fill is not decoration, it is
+     the answer to "which one did I just pick" — it has to be true at the moment
+     of the tap. On iOS WebKit a background-color transition started from a class
+     toggle inside a touch handler may not paint until the next composite, which
+     a scroll provides: the reported symptom was a segment that stayed grey until
+     the sheet was scrolled. `color` is not transitioned either, so the label and
+     the fill can never disagree mid-flight. 0.1s was imperceptible anyway. */
 }
 @media (pointer: coarse) {
   .pythia-modal .p-effort-seg-btn { min-height: 36px; }
@@ -2549,13 +2590,25 @@ body.is-mobile .p-textarea {
 .pythia-modal .p-effort-seg-btn:not(:last-child) {
   border-right: 1px solid var(--background-modifier-border);
 }
-.pythia-modal .p-effort-seg-btn:hover {
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* Hover only where a pointer can actually hover (ADR-155). iOS keeps :hover
+   applied to the last-tapped element until something else is touched, so on a
+   phone the hover fill stuck to the segment the user had just pressed — a grey
+   that reads exactly like "selected" next to the real accent selection. The
+   codebase already draws this line for the model popover and the copy buttons. */
+@media (hover: hover) {
+  .pythia-modal .p-effort-seg-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 .pythia-modal .p-effort-seg-btn.active {
   background-color: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
+  /* WebKit reads -webkit-text-fill-color in preference to color, and these
+     buttons are `all: unset`, which resolves that property to `inherit` — so the
+     label inherits the surrounding --text-normal and `color` never gets a say.
+     Restating it here is the only way to win on WebKit (ADR-154). */
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
   font-weight: 600;
 }
 .pythia-modal .p-effort-seg-btn:focus-visible {

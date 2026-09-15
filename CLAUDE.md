@@ -52,10 +52,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
+    markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 839 tests across 54 files
+  tests/                      ← Vitest unit tests (npm test) — 880 tests across 56 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -205,7 +206,8 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 | `--text-normal` | Primary readable text, AI response body |
 | `--text-muted` | Secondary text |
 | `--text-faint` | Labels, badges, token counts, inactive icons |
-| `--text-on-accent` | Text on accent-colored surfaces |
+| `--text-on-accent` | Only as the CSS fallback behind `--p-on-accent` (see below) |
+| `--p-on-accent` | **Text on accent-colored surfaces.** Published by `ui/accentContrast.ts` as pure `#ffffff`/`#000000` by WCAG contrast against the live accent (ADR-154) |
 
 ### Spacing — 4px grid, no arbitrary values
 
@@ -230,6 +232,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
+6a. **Text on an accent fill is `var(--p-on-accent, var(--text-on-accent))`, and every such rule must ALSO set `-webkit-text-fill-color` to the same value** (ADR-154). These controls are `all: unset`; `all` resolves the inherited `-webkit-text-fill-color` to `inherit`, and **WebKit reads it in preference to `color`** — so a `color:` line alone silently loses on iOS and the label inherits `--text-normal`. `--p-on-accent` is always pure black or white; never let a theme token reach the label.
 7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is now `padding: var(--s2) var(--s3) var(--s1)`, full stop. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
@@ -303,21 +306,26 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
 
 ### Sources row (under an assistant answer)
 ```
-TEMPLATE  [[Podcast Summary]]
-VAULT     1 [[Some Note]]
-WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+Template: Podcast Summary
+Vault: 1 Some Note
+Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ```
 - Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
-- Vault references — the template included — render as `[[Name]]` via the shared `renderWikilink`; web chips are numbered and end with `↗`. That is the only axis on which the rows differ
-- `.p-sources-label` is a **54px column** so stacked rows start their chips at one x. 54px clears the widest label (`TEMPLATE`, measured at 49px) with slack for a wider theme monospace — it is NOT, as ADR-140 claimed, borrowed from the reference row, which has no label at all (ADR-144)
+- Vault references — the template included — render as a **bare accent-coloured name, no `[[ ]]`** (ADR-153): the run-in label already says it is a note. Web chips are numbered and end with `↗`, the one mark separating them from notes. The **context inspector keeps its brackets** — it has no label, so there they are the only signal
+- `.p-sources-label` is a **run-in prefix, never a column** (ADR-153): `Template:` / `Vault:` / `Web:` in the flow ahead of the first entry, colon added in code so a translation cannot drop it. **Do not reintroduce a label column** — `.p-sources-row` wraps, flex wrapping has no hanging indent, so a column aligns only each row's first line while charging its width on every line
 - **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)
 - **One date format: `15 Sep 2026`**, one clock format: `04:39`. Both locale-independent — use `formatDate` / `formatClockTime` / `formatSummaryTimestamp` from `services/messageUtils.ts`. Never `toLocaleDateString` or `toLocaleTimeString` in the UI: the locale forms differ in order, punctuation and *width*, and these labels are drawn to a fixed mono rhythm. (`NoteWriter`'s ISO stamps are file data, not display — leave them.)
 - An icon button sitting in a row of micro-label text needs `vertical-align: middle` **plus `position: relative; top: -0.09em`**. `middle` centres on x-height; these rows are caps and digits, so the icon otherwise sits ~1px low. Measured, and stable across sans/serif/mono faces
+
+### Utility calls (`callUtility`) — ADR-158
+- **A provider response is a list of content blocks.** Collect every `type === "text"` block and join; **never read `content[0]`** and infer from it. With extended thinking the first block is `thinking`, and a server-side tool use can precede the answer — both returned `""` and looked like "the model said nothing"
+- `generateSummary`, `generateSummaryWithTitle` and `generateFavoritesSummary` are the only utility calls that run on the **conversation's** model rather than `fastModel`, so they are the ones that meet reasoning models and their leading thinking blocks
+- `callUtility` returns `""` for *both* "no text" and "it failed". **A caller must never treat `""` as a silent no-op** — say something, or the next bug of this kind is unreportable
 
 ### Conversation summaries (ADR-141)
 - Both summary prompts share ONE `SUMMARY_RULES` block in `services/BaseProvider.ts`. Never edit one prompt's rules without the other — that is why they are shared
@@ -352,7 +360,10 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **`describePerson` leads with the passage and must decline rather than guess.** A person the model has never met is the normal case in a working vault, and a generated biography reads later as a recorded fact — which is why model-sourced person entries carry `source: model` visibly. Vault-first-then-model is a user decision (ADR-151), not a default to loosen
 - **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
-- Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats. Tap precedence is fork, merge, favorite, then term
+- Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats
+- **Marks nest, and the innermost one owns the tap** (ADR-157). A term may sit inside a favorite, fork origin or merge link — only term-inside-term is refused. Resolution lives in `ui/markTap.ts`: never reintroduce a fixed type order, because the outer mark stays tappable along the rest of its span while the inner one has nowhere else to be tapped. `resolveMarkTap` matches `.p-term, .p-person` — a person mark opens the same anchor
+- `repaintTerms` calls `body.normalize()` after unwrapping: a term is matched **within one text node**, and unwrapping a mark leaves its text split, so a term straddling the seam would silently stop matching
+- The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
 
@@ -363,6 +374,15 @@ WEB       2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - `obsidian` follows Obsidian's UI locale into any of its ~30 languages, not just the four offered — `LANG_LABELS` is deliberately wider than the dropdown. An unknown locale falls back to English, never to `auto`
 - Resolution is conversation override → global setting; `Conversation.outputLanguage === undefined` means *inherit*, and the modal's `Standard` option must keep writing `undefined` rather than copying the global value in
 - The **prompt optimizer is exempt** — it rewrites the user's own prompt, and translating that would destroy what it was asked to improve
+
+### State fills on touch (ADR-155)
+- **Never `transition` a fill that communicates state** — a selected segment, an active toggle, a pressed control. It must be true at the moment of the tap; on iOS WebKit a transitioned `background-color` started from a class toggle in a touch handler may not paint until the next composite, and the user sees the old state until they scroll. Decorative transitions (opacity on a hover-revealed control) are fine
+- **`:hover` rules belong in `@media (hover: hover)`.** iOS keeps `:hover` on the last-tapped element, so a hover fill sticks to exactly the control the user just pressed — and `--background-modifier-hover` next to an accent selection reads as a second selection
+
+### Conversation panel search row (ADR-152)
+- `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
+- **Auto-focus the input on desktop only.** On mobile the soft keyboard overlays the webview, so focusing on open hides the last conversations behind it. `Platform.isMobile` gates it
+- Pad `.p-history-list` with `keyboardOverlap()` from `ui/keyboardInset.ts` — **never re-derive that arithmetic locally**. The copy that did dropped `MIN_KEYBOARD_INSET` and padded the list at rest (ADR-152)
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

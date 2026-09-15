@@ -1,6 +1,20 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-151 (people are glossary entries). "Highlight a name and see who they are in every later conversation" is ADR-136 with a different noun, so `GlossaryEntry.kind` is `"term" | "person"` and everything is shared: folder format, merge rule, theme property, anchor, and **one index** — people and terms match in a single alternation. Only three things differ: the folder, the resolver, and the mark (solid underline where a term is dotted; the anchor adds a `double` left rule to the existing series). The prompt differs most: `describePerson` leads with what the passage establishes and is told to say it does not know rather than guess, because a person the model has never met is the normal case in a working vault. Vault-first-then-model-knowledge was the user's call with the risk stated; generated entries carry `source: model` visibly. The duplicated selection rule became `ui/entitySelection.ts`. +16 tests (839).
+*Last updated: 2026-09-15 — ADR-158 (a response is a list of blocks, and "" is not a diagnosis). The favorites summary ran and showed no card. `AnthropicService.callUtility` read `response.content[0]` and returned `""` unless that one block was text — but **a response is a list, and with extended thinking the first block is `thinking`**. It hit the favorites summary because that is one of only three utility calls that run on the *conversation's* model rather than the fast model, and the reporter is on Opus 5 at high effort. It was invisible because `callUtility` returns `""` for both "no text" and "it failed", and the callers read `""` as "nothing to show" and said nothing. Now every text block is collected (same fix on Mistral, whose chunk-list case had the identical hole), and an empty result reports itself. **The bug is old; what changed is how often a thinking block leads.** +5 tests (880).
+
+*Previously, 2026-09-15 — ADR-157 (marks nest; the innermost one owns the tap). Only one direction was blocked: `findRange`/`paintRange` already ignore element boundaries, but `repaintTerms` skipped text inside `.p-highlight`/`.p-fork-origin`/`.p-merge-link`, so **favoriting a passage silently un-marked every term in it**. The exclusion's stated reason — overlapping wrappers to untangle — was wrong: terms paint last, so they *nest* inside, and each unwrapper targets its own class. Terms may now nest (only term-in-term is still refused), `normalize()` rejoins text split by an unwrap so a term straddling the seam still matches, and **the innermost mark owns the tap**, replacing a fixed type order that had never actually fired and left a visible term mark doing nothing inside a fork. Also fixes an ADR-151 bug: the tap lookup asked for `.p-term` only, so person marks were painted and dead. Resolution extracted to `ui/markTap.ts`. +19 tests (875).*
+
+*Previously, 2026-09-15 — ADR-156 (the glossary anchor goes where the fork anchor goes). Fork and merge call `lastMark.after(anchor)`; the glossary called `block.after(anchor)`, so the definition appeared at the end of the term's paragraph instead of beside the term. The original reasoning — a block spliced into a sentence reflows the text — is true and does not survive: fork and merge pay the same price, so the paragraph version bought "reflow somewhere else", and somewhere else is worse, because **in a long paragraph the card lands far from the word that opened it**. A term also repeats, so several marked words would all open their card in the same place. ADR-138 already said the cards are one component differing only in the left rule's stroke; **where a card appears is part of being that component**. +5 tests (858) in a new suite — the anchor had no coverage at all, which is how the divergence hid behind an ADR claiming they were identical.*
+
+*Previously, 2026-09-15 — ADR-155 (a segmented control's fill is state, not decoration). Selecting an effort level left the segment grey until the sheet was scrolled. **A cascade error cannot be fixed by scrolling** — scrolling forces a composite, so the class was already right and the pixel was not. Two mechanisms: the fill was `transition`ed, and on iOS WebKit a background-color transition started from a class toggle in a touch handler may not paint until the next composite (aggravated by the group's `overflow: hidden` + `border-radius` clip); and `:hover` was unconditional, so iOS's sticky hover left `--background-modifier-hover` on the segment just tapped — a second grey reading as "selected". The transition is gone (a selection must be true at the moment of the tap) and `:hover` is now behind `@media (hover: hover)`, the line this codebase already draws twice. Reasoned, not reproduced: no iOS here.*
+
+*Previously, 2026-09-15 — ADR-154 (the on-accent label is pure black or white, and says so twice). The Send button rendered a dark label on the accent fill. The mechanism was already wired correctly, so the question was why a working mechanism produces a dark label — and there are two candidates, both now closed. **The value:** `readableOnAccent` was allowed to keep a theme's `--text-on-accent` whenever it cleared AA, but black and white are the two highest-contrast choices against any colour, so deferring to a token can only lower contrast; it now gets `[]` and returns `#ffffff`/`#000000`. **The property:** these buttons are `all: unset`, `all` resolves the *inherited* `-webkit-text-fill-color` to `inherit`, and **WebKit reads that in preference to `color`** — so the `color:` line never got a say on iOS. All four on-accent rules now restate it. The contrast half is unit-tested; the WebKit half is reasoned, not reproduced. +7 tests (853).*
+
+*Previously, 2026-09-15 — ADR-153 (run-in labels in the sources row; no wikilink brackets). A screenshot with nineteen web citations showed the `WEB` row wrapping to five lines with only the first starting at the label column. Not a tuning problem: `.p-sources-row` is `flex-wrap: wrap`, and **a wrapped flex line starts at the container edge, not under the first item** — there is no hanging indent in flex, so the 54px could only ever align each row's first line while charging 54px of a ~300px sidebar for all of them. Replaced with a run-in `Web:` prefix. The `[[ ]]` brackets go with it: the label now says the name is a note, so the brackets repeat it and cost four characters on the row that just ran out of width; the affordance survives as accent colour + hover underline. The context inspector keeps its brackets — it has no label. +4 tests (846).*
+
+*Previously, 2026-09-15 — ADR-152 (two regressions in the conversation panel's search row). The clear ✕ was most likely WebKit's native one, removed by ADR-108's `-webkit-appearance: none` reset — so an explicit control was built rather than unpicking a reset that exists for a good reason. And ADR-107's auto-focus raises the iOS keyboard on open, which **overlays** the webview and puts the last conversations underneath; auto-focus is a keyboard affordance and is now desktop-only. The panel's existing inset fix turned out to be a hand-rolled copy of `ui/keyboardInset.ts` that had dropped `MIN_KEYBOARD_INSET`, so it padded the list at rest too — replaced with the shared, tested `keyboardOverlap`/`watchViewport`. Both fixes are kept: the focus change removes the unbidden keyboard, the inset handles the wanted one. +3 tests (842).*
+
+*Previously, 2026-09-15 — ADR-151 (people are glossary entries). "Highlight a name and see who they are in every later conversation" is ADR-136 with a different noun, so `GlossaryEntry.kind` is `"term" | "person"` and everything is shared: folder format, merge rule, theme property, anchor, and **one index** — people and terms match in a single alternation. Only three things differ: the folder, the resolver, and the mark (solid underline where a term is dotted; the anchor adds a `double` left rule to the existing series). The prompt differs most: `describePerson` leads with what the passage establishes and is told to say it does not know rather than guess, because a person the model has never met is the normal case in a working vault. Vault-first-then-model-knowledge was the user's call with the risk stated; generated entries carry `source: model` visibly. The duplicated selection rule became `ui/entitySelection.ts`. +16 tests (839).*
 
 *Previously, 2026-09-15 — ADR-150 (one note per term; the glossary folder is the database). Verified, not assumed: Obsidian Bases is a core plugin where **"each row is a file"**, and Dataview inline fields attach to the **page** with no per-heading scope. A theme-filtered deck is a per-term view, so one note per term is the precondition for the feature, not a preference — and ADR-149's visible labels were solving the wrong half, making fields visible to a reader while leaving every term invisible as a row. Terms are now notes with frontmatter (`aliases` is Obsidian's own property; translations are flat `term_xx` keys because properties have no object type; `theme` holds `[[links]]`), the theme note carries an embedded base filtered to itself, and `Conversation.theme === undefined` means *follow the conversation name* rather than a copy of it. Renaming is centralized so the theme moves with `fileManager.renameFile`, which rewrites the links. Writes merge rather than overwrite. `renderEntry`/`upsertGlossaryEntry` deleted. +34 tests (823).*
 
@@ -2416,3 +2430,202 @@ So a single glossary note with `## Term` headings can never produce a per-term r
 **What this deletes.** The duplicated selection rule. Define and Person accept the same shape of selection — a short span in assistant content, the whole message as its passage — and that was written twice within an hour of people existing. It is now `ui/entitySelection.ts`, pure enough to unit-test, which paid the ADR-097 budget `SelectionController` had just broken.
 
 **Consequence:** a name highlighted once is marked in every conversation, its note carries theme links like any term, and a Base filtered `type == "person"` is a people directory the user builds themselves. +16 tests (839 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian**, and the person prompt's refusal behaviour in particular is the thing to check first on a real name the model cannot know.
+
+---
+
+### ADR-152 — Two regressions in the conversation panel's search row
+
+**Status:** Active — corrects ADR-107's auto-focus on mobile and restores the clear control ADR-108's reset removed
+
+**Context:** Two reports about the same row.
+
+**1. The clear (✕) is gone.** I could not find one in this panel's history, so it was most likely never ours: WebKit draws a clear button on a search field for free, and `.pythia-view input { -webkit-appearance: none }` — ADR-108's reset, which stops Obsidian's form-field fill from greying our inline inputs — removes it. Either way the fix is the same, and it is not a workaround: a native clear button is WebKit-only and effectively unstyleable, so unpicking a reset that exists for a good reason to get one back would be the worse trade. **The control belongs to us.**
+
+**2. Auto-focus makes the bottom of the list unreachable on iOS.** ADR-107 opens the panel with the search input focused. On a phone that raises the on-screen keyboard immediately, and the keyboard **overlays** the webview rather than resizing it — so the panel keeps its full height and its last rows sit underneath. The last conversations cannot be tapped.
+
+The panel already had a fix for this (`d3b3665`, "keep the last conversations reachable above the keyboard"), and the fix was a **hand-rolled copy** of arithmetic that already existed, tested, in `ui/keyboardInset.ts`. The copy lost the part that mattered: `MIN_KEYBOARD_INSET`. Without that floor, Obsidian's own bottom chrome measures as an obstruction, so the list was padded *at rest* as well — which does not help reach the last rows and costs a strip of the list on every open.
+
+**Decision:**
+
+**Add an explicit clear button**, hidden until the field has content so the row is a plain loupe + field at rest. `mousedown` is prevented so the button does not steal focus from the input — on a phone that would dismiss the keyboard the user is still typing on — and the clear happens on click. Re-focus only if the input already had focus: tapping ✕ with the keyboard up should keep it up, and must not raise one that was down.
+
+**Do not auto-focus on mobile.** Auto-focus is a *keyboard* affordance: you open the switcher and type. On a touch device it covers the bottom of the very list the panel exists to show, to solve a problem — reaching the keyboard — that the user has not got. The panel now opens showing conversations, and the keyboard arrives when the user taps the field. Desktop is unchanged.
+
+**Use the shared `keyboardOverlap` / `watchViewport`** instead of the local copy. The duplicated arithmetic is deleted.
+
+**Why the inset fix is kept as well as the focus fix.** The keyboard can still be open — the user tapped the field and is searching — and the last rows must be reachable then too. The focus change removes the *unbidden* keyboard; the inset handles the wanted one. Fixing only one of them leaves a real case broken.
+
+**Verification:** the mobile test was checked in the failing direction first — with `Platform.isMobile` honoured it passes, with the guard removed it fails — so it cannot pass because `activeElement` happened to be something else. The clear-control tests assert the hidden→visible transition and that clearing restores the full browse list, not just an empty field.
+
+**Consequence:** a phone user opening the panel sees conversations rather than half a list and a keyboard, and a search can be cleared without selecting and deleting text. One copy of the keyboard arithmetic instead of two. +3 tests (842 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified on iOS** — which is where both reports came from, so both deserve a look on the device.
+
+---
+
+### ADR-153 — Run-in labels in the sources row; no wikilink brackets
+
+**Status:** Active — supersedes ADR-140's label column and its bracketed vault references
+
+**Context:** A screenshot of a research answer with nineteen web citations. The `WEB` row wraps to five lines, and **only the first one starts at the label column** — every wrapped line begins at the container edge. The column ADR-140 introduced is doing nothing on four lines out of five while charging 54px for all of them.
+
+The cause is not a tuning problem, and it was always going to happen: `.p-sources-row` is `display: flex; flex-wrap: wrap`, and **a wrapped flex line starts at the container edge, not under the first item.** There is no hanging indent in flex wrapping. The 54px could therefore only ever align each row's first line — which looked correct in every two-or-three-citation case it was designed against, and fell apart the first time a row wrapped.
+
+ADR-144 already corrected one false claim about this column (that 54px was borrowed from the reference row, which has no label at all). The remaining claim — that the column makes stacked rows start at one x — is false too, for rows long enough to matter.
+
+**Decision:**
+
+**A run-in `Label:` instead of a column.** `Web: alleninstitute.org ↗ …`. The label joins the flow ahead of the first entry, so there is no alignment to fail to hold, and 54px of a ~300px sidebar comes back on every line. Title case with a colon rather than the old spaced uppercase: a colon is what makes a run-in read as a prefix rather than a heading, and the colon is added in code so a translator cannot drop it.
+
+**No `[[ ]]` brackets on vault and template references.** ADR-140 drew them because `[[…]]` is what "a note you can open" looks like in Obsidian. That was sound when the row had nothing else to say what a name was — but the run-in label now says it out loud, so the brackets repeat a fact already stated and spend four characters doing it on the row that just ran out of width. The affordance survives where it already lived: accent colour plus a hover underline, the same as every other openable reference in the panel.
+
+**The row's one remaining distinction is the `↗`.** A web entry is `example.com ↗`; a note is a bare accent-coloured name. That is enough, because the label has already declared which kind of row this is.
+
+**What is unchanged.** The row order (template → vault → web, from the reader outwards), one label per row type unconditionally (ADR-144), the template carrying no citation number, and the numbers on everything that has one.
+
+**Not changed elsewhere: the context inspector keeps its brackets.** Its note list has no label at all, so there the brackets are the only thing marking a name as a note. The two surfaces look different now, and that is the point — one of them says "Vault:" and the other does not.
+
+**Alternatives rejected.** *A hanging indent* — `display: flex` cannot produce one; it would mean rebuilding the row as text flow with `text-indent`, to align something the label already identifies. *Icons instead of words* — ADR-140 rejected this and was right: at 11px a template and a note have no distinct glyph, and the reporter says the same. *Keeping the column and shrinking it* — the column's problem is that it does not apply to wrapped lines, which no width fixes.
+
+**Consequence:** a nineteen-citation row reads as prose and fits the sidebar. +4 tests (846 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified in Obsidian** — the report was a screenshot from a phone, and that is where the fix should be looked at.
+
+---
+
+### ADR-154 — The on-accent label is pure black or white, and says so twice
+
+**Status:** Active — narrows ADR-130's accent-contrast pick; `readableOnAccent` itself is unchanged
+
+**Context:** The Send button rendered a dark label on the accent fill — the primary action of the plugin, hard to read, on a phone.
+
+The machinery for this already existed and was correctly wired: `applyAccentContrast` publishes `--p-on-accent` on `.pythia-view`, from `buildUI` and again on every `css-change`, and all four accent-filled surfaces consume it. So the question was not "why is there no mechanism" but **"why does a working mechanism produce a dark label"** — and there turned out to be two candidate answers, neither of which can be ruled out from here, and both of which are worth closing.
+
+**The value it publishes.** `readableOnAccent` was offered the theme's `--text-on-accent` and `--text-on-accent-inverted` as candidates and kept the better one *whenever it cleared AA*, to respect a theme that deliberately tints its on-accent label. But black and white are the two highest-contrast choices that exist against any colour — **no theme token can beat both** — so deferring to a token can only ever lower contrast, and a token sitting just over 4.5 is still hard work at 10px mono. Respecting a theme's taste is not worth an unreadable primary action.
+
+**The property that actually paints.** These buttons are `all: unset`. `all` resolves every property, including `-webkit-text-fill-color`, and that property is *inherited* — so `unset` makes it `inherit`, and the label inherits the surrounding `--text-normal`. **WebKit reads `-webkit-text-fill-color` in preference to `color`**, so on WebKit the `color:` line never gets a say, no matter what `--p-on-accent` holds. This is the mechanism that best explains a dark label under a correct value, and it is invisible on any engine that does not implement the property.
+
+**Decision:** fix both.
+
+**`applyAccentContrast` calls `readableOnAccent(accent, [])`** — the empty-token path the function already documented and supported. `--p-on-accent` is now always `#ffffff` or `#000000`, chosen by WCAG contrast against the resolved accent. `readableOnAccent` keeps its token handling: it is a general function with its own tests, and this is a decision about which caller asks for what.
+
+**Every rule that sets `color: var(--p-on-accent, …)` restates it as `-webkit-text-fill-color`.** Four rules — Send, active toolbar button (and its hover), active effort segment. This is the only way to win on WebKit given `all: unset`, and it is a no-op everywhere else.
+
+**Honesty about what is verified.** The contrast change is unit-tested and provably correct: the tests assert pure values across five accents including the reported indigo, and that the chosen one clears AA in each. The `-webkit-text-fill-color` change is **reasoned, not reproduced** — there is no iOS WebKit here to measure, and the CSS cascade rule it relies on is documented behaviour rather than something I observed failing. If the label is still dark after this, the value is not the cause and the fill property is not the cause, and the next step is to read the computed style on the device rather than add a third guess.
+
+**Alternatives rejected.** *Dropping `all: unset` from `.p-send`* — it is what keeps Obsidian's `button` chrome off our controls, and removing it trades one theme bug for several. *Hardcoding white* — wrong on a pale or yellow accent, which is the case the whole helper exists for. *Raising the AA threshold instead of dropping tokens* — a higher bar still lets a mid-grey through on some accent, and black/white always beat it anyway.
+
+**Consequence:** the primary action is legible on any accent a user can pick, and stops depending on a theme's opinion. +7 tests (853 across 54 files). Build, lint, file-size and tests green. **Not runtime-verified on iOS**, which is where it was reported.
+
+---
+
+### ADR-155 — A segmented control's fill is state, not decoration
+
+**Status:** Active — fixes the effort segment's selection on touch; refines ADR-108's segment styling
+
+**Context:** Selecting an effort level leaves the segment grey; it only turns accent after the sheet is scrolled. Reported against a build where ADR-108 had already "fixed" this control once.
+
+Two mechanisms in the same eleven lines, and the scroll is what identifies which kind of bug this is: **a cascade error cannot be fixed by scrolling.** Scrolling does not change specificity or class state — it forces a composite. So whatever else is wrong, the class is already correct at the moment of the tap and the pixel is not.
+
+**1. The fill was transitioned.** `.p-effort-seg-btn` carried `transition: background-color 0.1s, color 0.1s`. On iOS WebKit a `background-color` transition kicked off by a class toggle inside a touch handler may not paint until the next composite — which a scroll provides, exactly as reported. The control also sits inside `.p-effort-seg`, which is `overflow: hidden` with a `border-radius`: a rounded clip is a known aggravator for exactly this class of deferred background invalidation.
+
+**2. `:hover` was unconditional.** iOS keeps `:hover` applied to the last-tapped element until something else is touched. The hover fill is `--background-modifier-hover` — a grey that, sitting next to the real accent selection, reads as "selected". That is a second grey on the same control, arriving from a different direction, on precisely the element the user just pressed.
+
+**Decision:**
+
+**Remove the transition.** A segmented control's fill answers "which one did I just pick". It has to be true at the moment of the tap, not 100ms later and not at the next composite. `color` goes with it, so the label and the fill can never disagree mid-flight — which is how this presented after ADR-154 set `-webkit-text-fill-color` (not a transitioned property): the label flipped to white instantly while the background lagged, so the selected segment read white-on-grey. ADR-154 did not cause the repaint bug; it changed what the bug looks like, from "nothing happened" to "unreadable". 0.1s was imperceptible either way, so nothing is lost.
+
+**Gate `:hover` behind `@media (hover: hover)`.** The codebase already draws this line twice — the model popover's detail row (`hover: hover`) and the code-block/diagram copy buttons (`hover: none`). The segmented control should have been on the same side of it from the start.
+
+**Why not a JS repaint nudge.** Reading `offsetHeight` after the class toggle would force a synchronous layout and probably work. It is also a guess stacked on a guess, invisible to the next reader, and it treats the symptom of a transition this control should not have had. If the two CSS changes do not fix it, the next step is to read the computed style on the device — not to add a third mechanism.
+
+**Verification, stated plainly.** The JS is correct and was verified by reading: `paintEffort` calls `toggleClass("active", on)` and sets `aria-pressed` synchronously on click, for every button, so the state is right before any paint. The two changes are CSS and **not runtime-verified** — no unit test can observe an iOS composite, and there is no iOS here. What is verified is that the cascade now has only one source of grey on this control, and that nothing about the fill is deferred.
+
+**Consequence:** the selected segment is accent the instant it is tapped. No test delta (853 across 54 files). Build, lint, file-size and tests green.
+
+---
+
+### ADR-156 — The glossary anchor goes where the fork anchor goes
+
+**Status:** Active — corrects ADR-136's anchor placement
+
+**Context:** Reported plainly: the glossary card is the same pattern as the fork card, but it appears at the end of the paragraph containing the term rather than immediately after the term. The code agrees — `ForkController` and `MergeController` both call `lastMark.after(anchor)`; `GlossaryController` called `block.after(anchor)`, resolving `block` with `markEl.closest("p, li, td, th, div")`.
+
+That was deliberate, and the reasoning was written down: a term sits mid-sentence, and splicing a block element into a sentence reflows the text around it, whereas fork and merge marks are deliberate, often sentence-length selections that sit closer to a paragraph boundary.
+
+**Why the reasoning does not survive contact.** The reflow is real, and it is the price — the paragraph breaks at the word. But fork and merge pay exactly the same price, for the same reason, and accepted it. What the paragraph version bought was not "no reflow"; it was "reflow somewhere else", and somewhere else turns out to be worse: **in a long paragraph the definition arrives far below the word that opened it, so the reader has to reconstruct the connection the anchor exists to make.** Proximity is the entire point of an inline anchor. A card at the end of a paragraph is a footnote, and this surface already has footnotes.
+
+A term also **repeats**, which the original reasoning treated as irrelevant and which actually makes distance worse rather than better: several marked words in one paragraph would all open their card in the same place, with nothing to say which word it belonged to.
+
+**Decision:** `markEl.after(anchor)`. ADR-138 already established that the three cards are one component differing only in the stroke of the left rule — solid fork, dashed merge, dotted term, double person. **Where a card appears is part of being that component**, not a per-feature choice, and the divergence was invisible in the CSS that ADR-138 was checking.
+
+**Verification:** the placement tests were checked in the failing direction first — four of the five fail with `block.after(anchor)` restored and pass with `markEl.after(anchor)` — so they assert the change rather than the DOM's default shape. They also pin the two properties that make the placement meaningful: the card is the mark's `nextElementSibling`, and it stays *inside* the paragraph.
+
+**Cost, stated:** the paragraph is now split at the term while the card is open. That is the same thing fork does, it reverses on close, and it is what puts the definition beside the word.
+
+**Consequence:** +5 tests (858 across 55 files), in a new `tests/glossaryAnchor.test.ts` — the anchor had no coverage at all before this, which is why a placement divergence could sit behind an ADR that claimed the cards were identical. Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-157 — Marks nest; the innermost one owns the tap
+
+**Status:** Active — reverses ADR-136's mark exclusion and replaces ADR-136/138's fixed tap order. Fixes a person-mark bug from ADR-151
+
+**Context:** Asked for directly: a glossary term should still be markable inside a highlighted selection, and a selection should still be highlightable over a marked term.
+
+Only one direction was actually blocked. `findRange`/`paintRange` walk text nodes and split per node, so a favorite painted across a term already works — element boundaries are irrelevant to them. But `repaintTerms` skipped any text node inside `.p-highlight`, `.p-fork-origin` or `.p-merge-link`, so **favoriting a passage silently un-marked every term in it** — the passage a reader is most likely to be working through.
+
+The exclusion's stated reason was avoiding "overlapping wrappers that later unwrapping would have to untangle". They do not overlap, they **nest**: terms paint last (favorites → forks → merges → terms), so a term mark lands strictly inside the deliberate mark, and each unwrapper targets its own class and leaves the other alone. There was no tangle to avoid.
+
+**Decision:**
+
+**Terms may nest inside the three deliberate marks.** Only another term or person mark is still excluded — a term must not nest inside a term.
+
+**`normalize()` before collecting text nodes.** Unwrapping a mark leaves its text split into adjacent nodes, and a term is matched *within a single node*, so a term straddling the seam would silently stop matching. This was latent before and becomes reachable once marks and terms share text.
+
+**The innermost mark owns the tap**, replacing the fixed order (fork → merge → term → favorite). Every candidate is an ancestor of the tap target, so they form a chain and "innermost" is total. It is the right rule because **the outer mark stays tappable everywhere else along its span, while the inner one has nowhere else to be tapped** — a fixed type order leaves a visible mark that does nothing, which is worse than either outcome.
+
+Worth recording: the old order between a term and a deliberate mark **had never fired**, because the painter refused to create the situation it arbitrated. It was written defensively, and the first time the case became real it was wrong. Depth also survives either nesting order, which matters because which mark ends up outside depends on which repaint ran last — a favorite created over an existing term wraps from the inside and inverts the usual order.
+
+**A person mark was dead on tap.** The lookup asked for `.p-term` only, so `.p-person` — painted since ADR-151 — did nothing when tapped. Now `.p-term, .p-person`. That is a straightforward bug from ADR-151, found only because this change made me read the chain.
+
+**Extraction.** The resolution moved to `ui/markTap.ts`, pure and unit-tested, which also paid the ADR-097 budget `SelectionController` broke again. That is the second extraction from this file in as many sessions (`entitySelection.ts` was the first); the file is at its ceiling and every further addition will have to buy its way in.
+
+**Alternatives rejected.** *Keeping the type order and accepting dead marks* — a mark that cannot be opened is worse than either choice about which opens. *Resolving by mark type at paint time instead* (e.g. refusing to paint a term inside a fork) — that is the exclusion this ADR removes, with the same cost. *Normalizing the nesting order after every paint* — choreography across three controllers to make depth predictable, when depth is already sufficient.
+
+**Verification:** both halves were checked in the failing direction. Restoring the exclusion fails four of the new painter tests; the tap tests cover nesting in both directions, including the inverted order a favorite painted over a term produces. Two tests in `tests/termPainter.test.ts` asserted the old exclusion and were rewritten — they are now the clearest statement of what changed.
+
+**Consequence:** +19 tests (875 across 56 files). Build, lint, file-size and tests green. Not runtime-verified in Obsidian.
+
+---
+
+### ADR-158 — A response is a list of blocks, and "" is not a diagnosis
+
+**Status:** Active — fixes the favorites summary producing no card; hardens `callUtility` on two providers
+
+**Context:** Reported as: the favorites summary runs, and the box never appears. No error.
+
+The UI path was innocent — mounting the real view and calling `summarizeFavorites` with a stubbed router renders the card correctly, and `buildFavoritesDigest` is fine including the orphaned-favorite case. The defect is one line in `AnthropicService.callUtility`:
+
+```ts
+const block = response.content[0];
+return block?.type === "text" ? block.text.trim() : "";
+```
+
+**A response is a *list* of content blocks, and text is not guaranteed to lead it.** With extended thinking the first block is a `thinking` block; a server-side tool use can precede the answer too. In those cases this returns `""`.
+
+**Why the favorites summary and not everything else.** Most utility calls run on `this.fastModel`. `generateSummary`, `generateSummaryWithTitle` and `generateFavoritesSummary` are the only ones that run on `resolveModel(conversation.model)` — the conversation's own model. On a reasoning-capable model at high effort, a leading non-text block is the normal case rather than the exception. The reporter's own conversation settings screenshot two messages earlier showed Opus 5 with effort *Hoch*.
+
+**Why it was invisible.** `callUtility`'s documented contract is "return "" on empty/error", and the callers read `""` as "nothing to show": `runFavoritesSummary` returned early without a Notice, and `summarizeFavorites` skipped the render. A successful call that produced no text and an error that was swallowed were the same value, and neither said anything. **A sentinel that means both "nothing" and "it broke" cannot be reported on.**
+
+**Decision:**
+
+**Collect every text block.** Filter the content list to `type === "text"` and join. Never index 0, never infer from one block's type whether the response had text.
+
+**Same fix on Mistral.** Its `content` is a string *or* a list of content chunks, and the list case returned `""` — the identical shape of bug, waiting for a model that returns chunks. OpenAI's shape has one `choices[0].message.content` string and is fine.
+
+**Say something when the result is empty.** `runFavoritesSummary` now shows a Notice naming the likely cause (raise the token limit on a reasoning model) instead of returning silently. This does not fix the bug; it makes the next one of its kind reportable in one step instead of four rounds of probing.
+
+**Write to the conversation the store holds.** `renderSummaryCards` re-reads through `getConversation()`, so the summary is written to `conversationStore.getById(conv.id) ?? conv`. Defensive rather than diagnosed — the captured reference and the stored one are the same object today — but a card can only appear if the object the renderer reads is the one that got the summary, and that invariant should not be implicit.
+
+**Verification:** checked in the failing direction — restoring `content[0]` fails three of the five new tests (leading thinking block, several text blocks, leading tool use), and the two that still pass are the ones that were never broken. The UI path was ruled out by reproduction, not by reading.
+
+**What this says about the earlier work.** The bug is old, not recent. What changed was the reporter's model and effort setting, which moved a leading `thinking` block from rare to routine. **"Recently introduced" describes when a latent bug became reachable at least as often as it describes a new one**, and the four things I checked first were all recent changes of mine, none of which were involved.
+
+**Consequence:** +5 tests (880 across 56 files). Build, lint, file-size and tests green. Not runtime-verified against a live Anthropic response.

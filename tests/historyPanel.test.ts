@@ -11,6 +11,7 @@ import { makePlugin, mountView, seedConversation, userMsg } from "./helpers/view
 import type PythiaPlugin from "../main";
 import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation } from "../models/types";
+import { Platform } from "obsidian";
 
 // ── Conversation search / history panel (ADR-107) ─────────────────────────────
 //
@@ -26,6 +27,8 @@ const panelEl = (pane: () => Element): HTMLElement | null =>
 	pane().querySelector<HTMLElement>(".p-history");
 const panelInput = (pane: () => Element): HTMLInputElement =>
 	pane().querySelector<HTMLInputElement>(".p-history .p-switcher-input")!;
+const clearBtn = (pane: () => Element): HTMLButtonElement =>
+	pane().querySelector<HTMLButtonElement>(".p-history .p-switcher-clear")!;
 const historyRows = (pane: () => Element): HTMLElement[] =>
 	Array.from(pane().querySelectorAll<HTMLElement>(".p-history-row"));
 /** openHistoryView() focuses the input inside a 0 ms timeout — let it run. */
@@ -66,6 +69,52 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(panelEl(pane)).not.toBeNull();              // opened by the click wiring
 		await tick();
 		expect(document.activeElement).toBe(panelInput(pane)); // search input focused
+	});
+
+	it("does not focus the input on mobile, where that would raise a keyboard over the list", async () => {
+		// ADR-152: auto-focus is a keyboard affordance. On a phone it covers the
+		// bottom of the very list the panel exists to show.
+		await seedThree();
+		const { pane } = await mountView(plugin);
+		Platform.isMobile = true;
+		try {
+			loupeBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+			await tick();
+			expect(panelEl(pane)).not.toBeNull();                   // panel still opens
+			expect(document.activeElement).not.toBe(panelInput(pane));
+		} finally {
+			Platform.isMobile = false;
+		}
+	});
+
+	it("shows a clear control only once there is something to clear", async () => {
+		await seedThree();
+		const { pane } = await mountView(plugin);
+		loupeBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await tick();
+
+		expect(clearBtn(pane).hidden).toBe(true);
+		const input = panelInput(pane);
+		input.value = "seiko";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(clearBtn(pane).hidden).toBe(false);
+	});
+
+	it("clearing empties the query and returns the full browse list", async () => {
+		await seedThree();
+		const { pane } = await mountView(plugin);
+		loupeBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await tick();
+
+		const input = panelInput(pane);
+		input.value = "seiko";
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(historyRows(pane)).toHaveLength(1);       // search narrowed it
+
+		clearBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(input.value).toBe("");
+		expect(clearBtn(pane).hidden).toBe(true);        // nothing left to clear
+		expect(historyRows(pane).length).toBeGreaterThan(1);
 	});
 
 	it("empty box browses (date groups); a query switches to a flat ranked list with a snippet", async () => {

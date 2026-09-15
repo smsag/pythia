@@ -84,3 +84,42 @@ describe("readableOnAccent", () => {
 		expect(readableOnAccent(midPurple, whiteOnly, 4)).toBe("white-token");
 	});
 });
+
+// ── Pure black/white only (ADR-154) ───────────────────────────────────────────
+//
+// `applyAccentContrast` now calls `readableOnAccent(accent, [])` — theme tokens
+// are no longer candidates, because a token that clears AA numerically can still
+// be a dark grey on a mid accent, which is what a user saw on the Send button.
+
+describe("readableOnAccent with no tokens — the on-accent label contract", () => {
+	const ACCENTS: { name: string; rgb: Rgb; expect: string }[] = [
+		{ name: "the reported mid indigo", rgb: [82, 87, 214], expect: "#ffffff" },
+		{ name: "Obsidian's default purple", rgb: [112, 93, 207], expect: "#ffffff" },
+		{ name: "a near-black accent", rgb: [20, 20, 24], expect: "#ffffff" },
+		{ name: "a pale lavender accent", rgb: [200, 190, 230], expect: "#000000" },
+		{ name: "a bright yellow accent", rgb: [250, 220, 60], expect: "#000000" },
+	];
+
+	for (const a of ACCENTS) {
+		it(`picks ${a.expect} on ${a.name}`, () => {
+			expect(readableOnAccent(a.rgb, [])).toBe(a.expect);
+		});
+	}
+
+	it("never returns a theme token, whatever is offered", () => {
+		// The whole point: no theme value can reach the label any more, so a theme
+		// whose on-accent is a dark grey cannot make the primary action unreadable.
+		const tempting = [{ value: "var(--text-on-accent)", rgb: [245, 245, 245] as Rgb }];
+		expect(readableOnAccent([30, 24, 70], tempting, 4.5)).toBe("var(--text-on-accent)"); // still works when asked
+		expect(readableOnAccent([30, 24, 70], [])).toBe("#ffffff");                          // not asked → pure
+	});
+
+	it("always clears AA, because black and white bracket every possible accent", () => {
+		// For any colour, the better of black/white is at least ~4.5 — there is no
+		// accent where both fail, which is what makes dropping the tokens safe.
+		for (const a of ACCENTS) {
+			const picked: Rgb = a.expect === "#ffffff" ? [255, 255, 255] : [0, 0, 0];
+			expect(contrastRatio(a.rgb, picked)).toBeGreaterThanOrEqual(4.5);
+		}
+	});
+});

@@ -71,6 +71,7 @@ const de: Strings = {
 	navActiveTag:    "aktiv",
 
 	// ── Quick switcher / history ──────────────────────────────────────────────
+	switcherClear:           "Suche löschen",
 	switcherSearchPlaceholder: "Suchen…",
 	msgCount:                  "{{n}} Nachrichten",
 	msgCountShort:             "{{n}} Nachr.",
@@ -149,9 +150,9 @@ const de: Strings = {
 	// ── Citations / sources ───────────────────────────────────────────────────
 	summaryMore: "mehr",
 	summaryLess: "weniger",
-	sourcesTemplate: "VORLAGE",
-	sourcesWeb:   "WEB",
-	sourcesVault: "VAULT",
+	sourcesTemplate: "Vorlage",
+	sourcesWeb:   "Web",
+	sourcesVault: "Vault",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	copyBtn:  "Kopieren",
@@ -191,6 +192,7 @@ const de: Strings = {
 	messageLimitReached:       "Nachrichtenlimit erreicht ({{cap}}). Starte ein neues Gespräch oder erhöhe das Limit in Einstellungen → Pythia.",
 	noMessagesToSummarize:     "Keine Nachrichten zum Zusammenfassen.",
 	generatingSummary:         "Zusammenfassung wird erstellt…",
+	summaryEmpty:            "Das Modell hat nichts zurückgegeben — bitte erneut versuchen oder bei Reasoning-Modellen das Token-Limit erhöhen.",
 	summaryFailed:             "Zusammenfassung fehlgeschlagen: {{error}}",
 	streamInterruptedPartialKept: "Antwort unterbrochen: {{error}} — die Teilantwort wurde behalten.",
 	noFavoritesToSummarize:    "Keine Favoriten zum Zusammenfassen. Markiere zuerst Text und favorisiere ihn.",

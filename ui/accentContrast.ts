@@ -4,12 +4,22 @@ import { parseRgb, readableOnAccent, type Rgb } from "../services/color";
  * Resolve a readable text color for accent-filled surfaces and publish it as
  * `--p-on-accent` on `root`.
  *
- * The plugin cannot know a theme's accent in advance, and a theme's own
- * `--text-on-accent` is not guaranteed to clear AA contrast against it. So the
- * accent and the theme's two on-accent tokens are resolved through a throwaway
- * probe span (the only way to read a CSS custom property's computed value), and
- * `readableOnAccent` picks the best candidate that clears AA, falling back to
- * pure black or white when none does.
+ * The plugin cannot know a theme's accent in advance, so the accent is resolved
+ * through a throwaway probe span (the only way to read a CSS custom property's
+ * computed value) and `readableOnAccent` picks **pure white or pure black**,
+ * whichever contrasts more.
+ *
+ * **Theme tokens are no longer candidates** (ADR-154). This used to offer the
+ * theme's `--text-on-accent` / `--text-on-accent-inverted` and keep the better
+ * one whenever it cleared AA, to respect a theme that deliberately tints its
+ * on-accent label. Two problems with that, and the second is the one that was
+ * reported: the label is 10px mono, where a token sitting just over 4.5 is still
+ * hard work; and a token that clears AA *numerically* can still be a dark grey on
+ * a mid accent, which is what a user saw on the Send button. Black and white are
+ * the two highest-contrast choices available against any colour — there is no
+ * accent for which a theme token beats both — so deferring to a token could only
+ * ever lower contrast. Honouring a theme's taste is not worth an unreadable
+ * primary action.
  *
  * Moved out of `sidebar.ts` (ADR-097 ratchet, ADR-130 session): it reads nothing
  * from the view but the root element, so it belongs beside the other UI helpers.
@@ -30,15 +40,6 @@ export function applyAccentContrast(root: HTMLElement): void {
 		return;
 	}
 
-	// Offer the theme's own on-accent tokens (when defined and resolvable) as
-	// candidates; readableOnAccent uses the best one only if it clears AA, else
-	// forces pure black/white. Keeping the CSS var strings (not the resolved rgb)
-	// as the values means the label still tracks a later theme edit to that token.
-	const tokens: { value: string; rgb: Rgb }[] = [];
-	const onAccent = resolve("var(--text-on-accent, #fff)");
-	const inverted = resolve("var(--text-on-accent-inverted, #000)");
-	if (onAccent) tokens.push({ value: "var(--text-on-accent, #fff)", rgb: onAccent });
-	if (inverted) tokens.push({ value: "var(--text-on-accent-inverted, #000)", rgb: inverted });
-
-	root.style.setProperty("--p-on-accent", readableOnAccent(accent, tokens));
+	// No candidates: pure black or white, whichever reads better on this accent.
+	root.style.setProperty("--p-on-accent", readableOnAccent(accent, []));
 }

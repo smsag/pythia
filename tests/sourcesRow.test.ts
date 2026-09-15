@@ -57,7 +57,7 @@ describe("renderSourcesRow — template row (ADR-140)", () => {
 
 	it("lists the template first, before the citations", () => {
 		const row = render([web(1, "example.com")], "Templates/Podcast Summary.md");
-		expect(labels(row)).toEqual(["TEMPLATE", "WEB"]);
+		expect(labels(row)).toEqual(["Template:", "Web:"]);
 	});
 
 	it("orders the rows from the user outwards: template, vault, web", () => {
@@ -65,14 +65,16 @@ describe("renderSourcesRow — template row (ADR-140)", () => {
 		// correctable by them — the citations arrive web-first here to prove the
 		// row order does not follow the source order.
 		const row = render([web(1, "a.com"), vault(2, "Notes/B.md", "B")], "Templates/T.md");
-		expect(labels(row)).toEqual(["TEMPLATE", "VAULT", "WEB"]);
+		expect(labels(row)).toEqual(["Template:", "Vault:", "Web:"]);
 	});
 
-	it("renders the template as a wikilink, by basename", () => {
+	it("renders the template by basename, with no wikilink brackets", () => {
+		// ADR-153: the run-in `Template:` already says it is a note, so the
+		// brackets repeat it and cost four characters of a narrow row.
 		const row = render([], "Templates/Podcast Summary.md");
 		expect(row.querySelector(".p-wikilink-name")?.textContent).toBe("Podcast Summary");
-		expect(row.textContent).toContain("[[");
-		expect(row.textContent).toContain("]]");
+		expect(row.textContent).not.toContain("[[");
+		expect(row.textContent).not.toContain("]]");
 	});
 
 	it("gives the template no citation number", () => {
@@ -98,13 +100,43 @@ describe("renderSourcesRow — template row (ADR-140)", () => {
 
 	it("keeps the template row out of a conversation that uses none", () => {
 		const row = render([web(1, "example.com")]);
-		expect(labels(row)).toEqual(["WEB"]);
+		expect(labels(row)).toEqual(["Web:"]);
 	});
 
-	it("labels the vault row VAULT even when there is no web row", () => {
+	it("labels the vault row Vault even when there is no web row", () => {
 		// It used to be relabelled SOURCES in that case, so the same row read two
 		// different ways depending on what else happened to be on screen.
 		const row = render([vault(1, "Notes/A.md", "A")], "Templates/T.md");
-		expect(labels(row)).toEqual(["TEMPLATE", "VAULT"]);
+		expect(labels(row)).toEqual(["Template:", "Vault:"]);
+	});
+});
+
+// ── Run-in labels (ADR-153) ───────────────────────────────────────────────────
+
+describe("renderSourcesRow — run-in labels (ADR-153)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	it("ends every label with a colon, so it reads as a prefix and not a heading", () => {
+		const row = render([web(1, "a.com"), vault(2, "Notes/B.md", "B")], "Templates/T.md");
+		expect(labels(row).every((l) => l?.endsWith(":"))).toBe(true);
+	});
+
+	it("puts the label first in its row, ahead of the first entry", () => {
+		const row = render([web(1, "example.com")]);
+		const first = row.querySelector(".p-sources-row")?.firstElementChild;
+		expect(first?.className).toBe("p-sources-label");
+		expect(first?.textContent).toBe("Web:");
+	});
+
+	it("renders a vault citation with no brackets either", () => {
+		const row = render([vault(1, "Notes/Some Note.md", "Some Note")]);
+		expect(row.querySelector(".p-wikilink-name")?.textContent).toBe("Some Note");
+		expect(row.textContent).not.toContain("[[");
+	});
+
+	it("keeps the ↗ on web entries — the one mark that separates them from notes", () => {
+		const row = render([web(1, "example.com"), vault(2, "Notes/A.md", "A")]);
+		expect(row.querySelector(".p-source-web")?.textContent).toBe("example.com ↗");
+		expect(row.querySelector(".p-wikilink-name")?.textContent).toBe("A");
 	});
 });
