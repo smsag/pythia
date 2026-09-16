@@ -20,7 +20,16 @@ export const UPSTREAM_PROVIDERS = { anthropic: "anthropic", openai: "openai", mi
 
 /** Catalog model id → models.dev model id, where they differ. A model that is
  *  not listed here is looked up under its own id. */
-export const UPSTREAM_IDS = {};
+export const UPSTREAM_IDS = {
+	"magistral-small-latest": "magistral-small",
+};
+
+/** Catalog models models.dev does not list. Their committed row is kept as
+ *  is and the run says so — the built-in value is an assumption (Opus-tier
+ *  for the hidden Mythos entry), which the disclaimer already covers. A model
+ *  belongs here only after a run has shown it missing upstream; it is never
+ *  a way to silence a renamed id. */
+export const NO_UPSTREAM = new Set(["claude-mythos-5"]);
 
 /** The catalog: `{ id, provider }` per model — hidden ones included, since a
  *  conversation can still be on one — read from the source of truth so this
@@ -36,11 +45,12 @@ export function readCatalog(source) {
 /** Pull `{ input, output, cacheRead?, cacheWrite? }` per catalog model from
  *  the upstream document. Throws with every unmapped model listed, plus
  *  nearby upstream ids as a hint, so one run tells you the whole fix. */
-export function buildTable(upstream, catalog, ids = UPSTREAM_IDS) {
+export function buildTable(upstream, catalog, ids = UPSTREAM_IDS, noUpstream = NO_UPSTREAM) {
 	if (!upstream || typeof upstream !== "object") throw new Error("upstream is not an object");
 	const table = {};
 	const missing = [];
 	for (const { id, provider } of catalog) {
+		if (noUpstream.has(id)) continue;
 		const upProvider = upstream[UPSTREAM_PROVIDERS[provider]];
 		const models = upProvider?.models;
 		if (!models || typeof models !== "object") {
@@ -62,6 +72,18 @@ export function buildTable(upstream, catalog, ids = UPSTREAM_IDS) {
 	}
 	if (missing.length) {
 		throw new Error(`No upstream price for ${missing.length} catalog model(s). Add a mapping to UPSTREAM_IDS in scripts/update-pricing.mjs:\n  ${missing.join("\n  ")}`);
+	}
+	return table;
+}
+
+/** The rows currently committed in modelPricing.ts — the source for models
+ *  models.dev does not list, and the round-trip test's input. */
+export function readCommittedTable(source) {
+	const table = {};
+	for (const m of source.matchAll(/^\t"([^"]+)":\s*\{([^}]*)\},/gm)) {
+		const entry = {};
+		for (const f of m[2].matchAll(/(\w+):\s*([\d.]+)/g)) entry[f[1]] = Number(f[2]);
+		table[m[1]] = entry;
 	}
 	return table;
 }
@@ -118,6 +140,12 @@ async function main() {
 	const asOf = new Date().toISOString().slice(0, 10);
 	const file = resolve(root, "models/modelPricing.ts");
 	const before = readFileSync(file, "utf8");
+	const committed = readCommittedTable(before);
+	for (const id of NO_UPSTREAM) {
+		if (!committed[id]) throw new Error(`${id} is in NO_UPSTREAM but has no committed row to keep`);
+		table[id] = committed[id];
+		console.warn(`update-pricing: ${id} is not listed on models.dev — committed row kept (built-in assumption)`);
+	}
 	const after = spliceGenerated(before, renderTable(table, catalog, asOf));
 	// Only the date changed → nothing to report; keep the old date so a
 	// no-op run does not produce a diff.

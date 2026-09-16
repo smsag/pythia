@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { readCatalog, buildTable, renderTable, spliceGenerated } from "../scripts/update-pricing.mjs";
+import { readCatalog, buildTable, renderTable, spliceGenerated, readCommittedTable, NO_UPSTREAM, UPSTREAM_IDS } from "../scripts/update-pricing.mjs";
 import { MODEL_CATALOG } from "../models/knownModels";
 import { MODEL_PRICING, PRICING_AS_OF } from "../models/modelPricing";
 
@@ -44,6 +44,19 @@ describe("buildTable", () => {
 		expect(buildTable(up, [{ id: "gpt-4o", provider: "openai" }], { "gpt-4o": "gpt-4o-2024" })).toEqual({ "gpt-4o": { input: 1, output: 2 } });
 	});
 
+	it("skips models declared as not listed upstream instead of failing on them", () => {
+		const cat = [...catalog, { id: "claude-mythos-5", provider: "anthropic" }];
+		expect(buildTable(upstream, cat, {}, new Set(["claude-mythos-5"]))).not.toHaveProperty("claude-mythos-5");
+		expect(() => buildTable(upstream, cat, {}, new Set())).toThrow(/claude-mythos-5/);
+	});
+
+	it("the committed mappings name real catalog models", () => {
+		const ids = new Set(MODEL_CATALOG.map((m) => m.id));
+		for (const id of [...Object.keys(UPSTREAM_IDS), ...NO_UPSTREAM]) expect(ids.has(id), id).toBe(true);
+		// A model is either mapped or declared missing, never both.
+		for (const id of NO_UPSTREAM) expect(UPSTREAM_IDS).not.toHaveProperty(id);
+	});
+
 	it("fails when the upstream schema has no models for a provider", () => {
 		expect(() => buildTable({ openai: {} }, [{ id: "gpt-4o", provider: "openai" }])).toThrow(/schema changed/);
 	});
@@ -57,6 +70,8 @@ describe("renderTable + spliceGenerated", () => {
 		const catalog = readCatalog(knownModelsSource);
 		const block = renderTable(MODEL_PRICING, catalog, PRICING_AS_OF);
 		expect(spliceGenerated(pricingSource, block)).toBe(pricingSource);
+		// The file parser the script uses for kept rows agrees with the module.
+		expect(readCommittedTable(pricingSource)).toEqual(MODEL_PRICING);
 	});
 
 	it("refuses a file without markers", () => {

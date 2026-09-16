@@ -7,7 +7,9 @@ export interface TableRow { input: number; output: number; cacheRead?: number; c
 export const SOURCE_URL: string;
 export const UPSTREAM_PROVIDERS: Record<string, string>;
 export const UPSTREAM_IDS: Record<string, string>;
+export const NO_UPSTREAM: Set<string>;
+export function readCommittedTable(source: string): Record<string, TableRow>;
 export function readCatalog(source: string): CatalogRow[];
-export function buildTable(upstream: unknown, catalog: CatalogRow[], ids?: Record<string, string>): Record<string, TableRow>;
+export function buildTable(upstream: unknown, catalog: CatalogRow[], ids?: Record<string, string>, noUpstream?: Set<string>): Record<string, TableRow>;
 export function renderTable(table: Record<string, TableRow>, catalog: CatalogRow[], asOf: string): string;
 export function spliceGenerated(source: string, block: string): string;
