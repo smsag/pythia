@@ -15,16 +15,16 @@
 import type { Conversation, Message, TokenUsage } from "../models/types";
 import { formatClockTime, formatDate } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
-import { formatCost, messageCost, type PriceOverrides } from "../models/modelPricing";
+import { formatCost, messageCost } from "../models/modelPricing";
 import { t } from "../i18n";
 
 /** What a label may add beyond model and time. `showCost` is the user's
  *  setting; the model is needed to price the counts (ADR-163). */
-export interface TurnLabelOptions { showCost?: boolean; priceOverrides?: PriceOverrides }
+export interface TurnLabelOptions { showCost?: boolean }
 
-/** What prices a label's counts: the message (its stored snapshot, else its
- *  model for a live estimate) and the user's price corrections. */
-export interface CostContext { msg: Pick<Message, "model" | "tokenUsage" | "cost">; overrides?: PriceOverrides }
+/** What prices a label's counts: the message — its stored snapshot, else its
+ *  model for a live estimate. */
+export interface CostContext { msg: Pick<Message, "model" | "tokenUsage" | "cost"> }
 
 /** Render the micro-label as the first child of a message row. No role captions
  *  (ADR-129) — the accent bubble vs. the plain body already tells the two apart.
@@ -50,7 +50,7 @@ export function renderTurnLabel(row: HTMLElement, msg: Message, conv: Conversati
 	}
 	const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
 	if (msg.role === "assistant" && msg.tokenUsage) {
-		appendTokensToTurnLabel(label, msg.tokenUsage, opts.showCost ? { msg: { ...msg, model: msg.model ?? conv?.model }, overrides: opts.priceOverrides } : undefined);
+		appendTokensToTurnLabel(label, msg.tokenUsage, opts.showCost ? { msg: { ...msg, model: msg.model ?? conv?.model } } : undefined);
 	}
 }
 
@@ -67,7 +67,7 @@ export function appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage, c
 		attr: { title: t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }) },
 	});
 	if (!cost) return;
-	const priced = messageCost(cost.msg, cost.overrides);
+	const priced = messageCost(cost.msg);
 	if (!priced) return;
 	label.createSpan({
 		cls: "p-turn-cost",

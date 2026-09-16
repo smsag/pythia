@@ -1066,7 +1066,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
-		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost, priceOverrides: this.plugin.settings.priceOverrides });
+		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost });
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
@@ -1614,7 +1614,7 @@ export class PythiaSidebarView extends ItemView {
 				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
 				// Priced now, with the prices in force now (ADR-163) — a later table
 				// update must not re-price an answer that was already paid for.
-				const cost = costSnapshot(conv.model, tokenUsage, this.plugin.settings.priceOverrides);
+				const cost = costSnapshot(conv.model, tokenUsage);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
@@ -1639,7 +1639,7 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label && this.plugin.settings.showCost) appendTokensToTurnLabel(label, tokenUsage, { msg: assistantMsg, overrides: this.plugin.settings.priceOverrides });
+						if (label && this.plugin.settings.showCost) appendTokensToTurnLabel(label, tokenUsage, { msg: assistantMsg });
 						else if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
 					this.truncation.paint(lastRow, assistantMsg);

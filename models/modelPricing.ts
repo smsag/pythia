@@ -6,9 +6,11 @@ import type { Message, MessageCost, TokenUsage } from "./types";
  * token counts already on every assistant message, so past answers get a
  * number too and nothing new is stored.
  *
- * Prices rot. `PRICING_AS_OF` is the date this table was checked; the label
- * says "≈" and its tooltip names the date, so a stale table is a visible
- * estimate, not a silent lie. A model with no row shows no cost — a missing
+ * Prices rot. `PRICING_AS_OF` is the date this table was last pulled from
+ * models.dev; the label says "≈" and its tooltip names the source and the
+ * date, so a stale table is a visible estimate, not a silent lie. There is
+ * no per-user correction: a wrong price is fixed upstream, where everyone
+ * benefits, and reaches users with the next weekly pull request. A model with no row shows no cost — a missing
  * number is honest, a wrong one is not. Every non-hidden MODEL_CATALOG entry
  * must have a row (tests/modelPricing.test.ts).
  *
@@ -65,53 +67,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 // END GENERATED PRICES
 
-/** A user's correction to a built-in row, USD per million tokens. Either
- *  field may be absent; an absent field keeps the built-in value. Cache prices
- *  are not overridable: they follow the input price at the built-in ratio
- *  (Anthropic bills reads at 10 % and writes at 125 % of input). */
-export interface PriceOverride { input?: number; output?: number }
-export type PriceOverrides = Record<string, PriceOverride>;
-
-/** The row that prices `model` once the user's overrides are applied, or null
- *  for a model with no built-in row (overrides never *create* a row: a user
- *  who types a price for an unknown model would also have to know its cache
- *  behaviour, and a wrong number is worse than none). */
-export function resolvePricing(model: string, overrides?: PriceOverrides): ModelPricing | null {
-	const base = MODEL_PRICING[model];
-	if (!base) return null;
-	const o = overrides?.[model];
-	if (!o || (o.input === undefined && o.output === undefined)) return base;
-	const input = o.input ?? base.input;
-	const ratio = base.input > 0 ? input / base.input : 1;
-	return {
-		input,
-		output: o.output ?? base.output,
-		...(base.cacheRead !== undefined ? { cacheRead: base.cacheRead * ratio } : {}),
-		...(base.cacheWrite !== undefined ? { cacheWrite: base.cacheWrite * ratio } : {}),
-	};
-}
-
-/** Load-time guard for `settings.priceOverrides` (principle 1): keeps only
- *  entries for known models whose fields are finite, non-negative numbers. */
-export function sanitizePriceOverrides(raw: unknown): PriceOverrides {
-	const out: PriceOverrides = {};
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
-	for (const [model, v] of Object.entries(raw as Record<string, unknown>)) {
-		if (!MODEL_PRICING[model] || !v || typeof v !== "object") continue;
-		const { input, output } = v as { input?: unknown; output?: unknown };
-		const ok = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
-		const entry: PriceOverride = {};
-		if (ok(input)) entry.input = input;
-		if (ok(output)) entry.output = output;
-		if (entry.input !== undefined || entry.output !== undefined) out[model] = entry;
-	}
-	return out;
-}
-
 /** Estimated USD for one reply, or null when the model has no price row. */
-export function estimateCost(model: string | undefined, usage: TokenUsage | undefined, overrides?: PriceOverrides): number | null {
+export function estimateCost(model: string | undefined, usage: TokenUsage | undefined): number | null {
 	if (!model || !usage) return null;
-	const p = resolvePricing(model, overrides);
+	const p = MODEL_PRICING[model];
 	if (!p) return null;
 	const per = 1_000_000;
 	return (
@@ -137,27 +96,27 @@ export function formatCost(usd: number): string {
 /** The snapshot to store on a new assistant message: the estimate under the
  *  prices in force now, stamped with the table's date. Undefined when the
  *  model has no row, so a message never carries a made-up number. */
-export function costSnapshot(model: string | undefined, usage: TokenUsage | undefined, overrides?: PriceOverrides): MessageCost | undefined {
-	const usd = estimateCost(model, usage, overrides);
+export function costSnapshot(model: string | undefined, usage: TokenUsage | undefined): MessageCost | undefined {
+	const usd = estimateCost(model, usage);
 	return usd === null ? undefined : { usd, asOf: PRICING_AS_OF };
 }
 
 /** What the label shows: the stored snapshot when the message has one, else
  *  a live estimate for a message that predates snapshots. */
-export function messageCost(msg: Pick<Message, "model" | "tokenUsage" | "cost">, overrides?: PriceOverrides): MessageCost | null {
+export function messageCost(msg: Pick<Message, "model" | "tokenUsage" | "cost">): MessageCost | null {
 	if (msg.cost) return msg.cost;
-	const usd = estimateCost(msg.model, msg.tokenUsage, overrides);
+	const usd = estimateCost(msg.model, msg.tokenUsage);
 	return usd === null ? null : { usd, asOf: PRICING_AS_OF };
 }
 
 /** Sum over a conversation's assistant turns. `unpriced` counts the turns that
  *  carry token usage but have no price row (a custom model), so a total can
  *  say when it is a floor rather than the whole bill. */
-export function conversationCost(messages: Message[], overrides?: PriceOverrides): { usd: number; priced: number; unpriced: number } {
+export function conversationCost(messages: Message[]): { usd: number; priced: number; unpriced: number } {
 	let usd = 0, priced = 0, unpriced = 0;
 	for (const m of messages) {
 		if (m.role !== "assistant" || (!m.tokenUsage && !m.cost)) continue;
-		const c = messageCost(m, overrides);
+		const c = messageCost(m);
 		if (c === null) unpriced++;
 		else { usd += c.usd; priced++; }
 	}

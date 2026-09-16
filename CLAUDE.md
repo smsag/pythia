@@ -17,7 +17,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   models/
     types.ts                  ← shared TypeScript interfaces (Conversation, Message, …)
     settings.ts               ← PythiaSettings interface + DEFAULT_SETTINGS (no Obsidian dependency)
-    modelPricing.ts           ← USD list prices per model + PRICING_AS_OF; resolvePricing (user overrides), estimateCost / formatCost / conversationCost, sanitizePriceOverrides (ADR-163)
+    modelPricing.ts           ← USD list prices per model (GENERATED from models.dev) + PRICING_AS_OF; estimateCost / costSnapshot / messageCost / formatCost / conversationCost (ADR-163)
   services/
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
@@ -55,7 +55,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
-    pricingSettings.ts        ← Show-cost toggle, the estimate-not-bill disclaimer, one editable price row per model (ADR-163)
+    pricingSettings.ts        ← Show-cost toggle + the estimate-not-bill disclaimer naming models.dev; no price table (ADR-163)
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
@@ -67,7 +67,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 1027 tests across 65 files
+  tests/                      ← Vitest unit tests (npm test) — 1020 tests across 65 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -321,7 +321,7 @@ user:  [ 27 Aug 2026 · ] 22:19
 AI:    OPUS 4.8 · 22:20 · ↑151 ↓430 · ≈ $0.012
 ```
 - `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
-- **The cost is snapshotted on the message at generation** (`Message.cost { usd, asOf }`, ADR-163 addendum 2) with the prices in force then; the label prefers it and prices a legacy message live from `models/modelPricing.ts`. A later table update never rewrites a snapshot. A model with no price row adds nothing; never show a wrong number. **Off by default** (`settings.showCost`). **Prices are generated**: the block between the GENERATED markers is rewritten by `npm run update:pricing` from models.dev and a weekly workflow opens a PR — edit the mapping in `scripts/update-pricing.mjs`, not the rows by hand, and never fetch prices at build or run time. The user can correct any row under *List prices* (`settings.priceOverrides`, validated on load); **the disclaimer there is part of the feature** — estimate, not bill; the provider's invoice is authoritative — never shorten it into a footnote
+- **The cost is snapshotted on the message at generation** (`Message.cost { usd, asOf }`, ADR-163 addendum 2) with the prices in force then; the label prefers it and prices a legacy message live from `models/modelPricing.ts`. A later table update never rewrites a snapshot. A model with no price row adds nothing; never show a wrong number. **Off by default** (`settings.showCost`). **Prices are generated**: the block between the GENERATED markers is rewritten by `npm run update:pricing` from models.dev and a weekly workflow opens a PR — edit the mapping in `scripts/update-pricing.mjs`, not the rows by hand, and never fetch prices at build or run time. **No price table and no per-user overrides in the settings** (ADR-163 addendum 3): a wrong price is fixed upstream on models.dev and arrives with the weekly PR. **The disclaimer under the toggle is part of the feature** — estimate, not bill; source models.dev with a link; the provider's invoice is authoritative — never shorten it into a footnote
 - **No next-send estimate beside Send** (removed in ADR-163). Do not bring it back; the label answers the question after the fact
 - **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
 - **No template here** (ADR-140) — the template is a reference, not a fact about the generation; it rides the sources row under the answer. `turnTemplateCaption` still decides which turns carry it

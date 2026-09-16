@@ -108,14 +108,10 @@ const en = {
 	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
 	// ── Cost per answer (ADR-163) ──────────────────────────────────────────
-	costEstimateTitle: "Estimate, not a bill: token counts × list prices (as of {{date}}), which may be outdated or wrong. Your provider's invoice is authoritative. Web search is billed separately.",
+	costEstimateTitle: "Estimate, not a bill: token counts × list prices from models.dev (as of {{date}}), which may be outdated or wrong. Your provider's invoice is authoritative. Web search is billed separately.",
 	showCostName:      "Show cost per answer",
-	showCostDesc:      "Adds an estimated price (≈ $) to every answer's label and a running total per conversation in the history panel. An estimate from token counts and the list prices below (as of {{date}}), not a bill.",
-	pricingSection:    "List prices",
-	pricingDisclaimer: "Cost figures in Pythia are estimates, not a bill. They are calculated from the token counts your provider reports and the list prices in this table. Pythia ships with list prices as of {{date}} and tries to keep them current, but prices change, and any value here may be outdated or wrong for your account, region or plan. Your provider's invoice is the only authoritative record of what you are charged. Check the prices below against your provider's price page and correct them; an empty field uses Pythia's built-in value. Web search calls are billed separately and are not included.",
-	pricingRowDesc:    "Built-in: ${{input}} in · ${{output}} out, per 1M tokens",
-	pricingInputLabel: "In $/M",
-	pricingOutputLabel: "Out $/M",
+	showCostDesc:      "Adds an estimated price (≈ $) to every answer's label and a running total per conversation in the history panel. An estimate from token counts and models.dev list prices (as of {{date}}), not a bill.",
+	pricingDisclaimer: "Cost figures in Pythia are estimates, not a bill. They are calculated from the token counts your provider reports and list prices taken from {{source}}, an open, community-maintained catalog; Pythia refreshes them with each release (this build: prices as of {{date}}). Prices change, and any value may be outdated or wrong for your account, region or plan. Your provider's invoice is the only authoritative record of what you are charged. Web search calls are billed separately and are not included.",
 
 	// ── Code block actions ────────────────────────────────────────────────────
 	copyCodeTooltip:       "Copy",
