@@ -156,3 +156,24 @@ describe("parseWebSourcesFromResult", () => {
 		expect(parseWebSourcesFromResult('No web results found for "q".')).toEqual([]);
 	});
 });
+
+describe("WebSearchService — request shape and status classes", () => {
+	it("sends the key as a bearer header and never in the JSON body", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [] }));
+		await new WebSearchService(settings(), "tvly-secret").search("q");
+		const req = requestUrlMock.mock.calls[0][0];
+		expect(req.headers.Authorization).toBe("Bearer tvly-secret");
+		expect(req.body).not.toContain("tvly-secret");
+		expect(JSON.parse(req.body).api_key).toBeUndefined();
+	});
+
+	it("names a rejected key so the model asks for settings instead of retrying", async () => {
+		requestUrlMock.mockResolvedValue({ status: 403, json: {}, text: "forbidden" });
+		expect(await new WebSearchService(settings(), "k").search("q")).toMatch(/key was rejected .*403/);
+	});
+
+	it("names a rate limit", async () => {
+		requestUrlMock.mockResolvedValue({ status: 429, json: {}, text: "" });
+		expect(await new WebSearchService(settings(), "k").search("q")).toMatch(/rate limit/);
+	});
+});

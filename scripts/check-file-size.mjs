@@ -19,7 +19,7 @@ const DEFAULT_MAX = 600;
 // DOWN as ADR-097 extractions land; delete an entry once the file drops under
 // DEFAULT_MAX on its own.
 const CEILINGS = {
-	"sidebar.ts": 1885,
+	"sidebar.ts": 1853,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// Settings tab monolith; grows one setting at a time (embedding model, related-
 	// similarity preset, …). TODO: split into grouped sections. Split later.

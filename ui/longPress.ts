@@ -29,6 +29,11 @@ export interface LongPressOptions {
 	delayMs?: number;
 	/** Obsidian's `registerDomEvent`; when given, listeners are auto-removed by it. */
 	bind?: Binder;
+	/** Call `preventDefault()` on `touchstart`. Needed on a text surface (a
+	 *  message bubble) where a long touch would otherwise open iOS's magnifier
+	 *  and start a text selection; wrong on a button, where it would also
+	 *  suppress the click. Makes the touchstart listener non-passive. */
+	preventTouchDefault?: boolean;
 }
 
 /**
@@ -38,7 +43,7 @@ export interface LongPressOptions {
 export function attachLongPress(
 	el: HTMLElement,
 	onFire: () => void,
-	{ delayMs = LONG_PRESS_MS, bind }: LongPressOptions = {},
+	{ delayMs = LONG_PRESS_MS, bind, preventTouchDefault = false }: LongPressOptions = {},
 ): () => void {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -52,11 +57,14 @@ export function attachLongPress(
 	// Left button only — a right-click opens a context menu, and a middle-click
 	// press should not arm a gesture the user can't see.
 	const onMouseDown = (e: Event) => { if ((e as MouseEvent).button === 0) start(); };
-	const onTouchStart = () => start();
+	const onTouchStart = (e: Event) => {
+		if (preventTouchDefault) e.preventDefault();
+		start();
+	};
 
 	// touchmove cancels so a scroll that begins on the control never fires it.
 	const listeners: [string, (ev: Event) => void, AddEventListenerOptions?][] = [
-		["touchstart", onTouchStart, { passive: true }],
+		["touchstart", onTouchStart, { passive: !preventTouchDefault }],
 		["touchend", cancel, { passive: true }],
 		["touchcancel", cancel, { passive: true }],
 		["touchmove", cancel, { passive: true }],

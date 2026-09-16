@@ -57,7 +57,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 926 tests across 58 files
+  tests/                      ← Vitest unit tests (npm test) — 930 tests across 58 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings

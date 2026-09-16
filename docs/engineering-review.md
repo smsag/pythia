@@ -1203,8 +1203,13 @@ Whole-codebase review at v2.15.0 (ADR-159). Every item below is **resolved** in 
 2. **Silence is a bug.** An empty result, a swallowed catch, a no-op on a missing file: each must either say something to the user, log something a report can quote, or be proven to be the idle case. `catch {}` needs a comment naming why silence is right.
 3. **If it is a rule, the tooling enforces it.** A convention worth writing into CLAUDE.md is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. Prose is for the reasoning; the guard is for the regression.
 
+### Follow-up (2026-09-16, same day)
+
+| # | Finding | Fix |
+|---|---|---|
+| 179 | Tavily key travelled in the JSON body — the part of a request that gets logged, echoed in error payloads and kept by proxies | `Authorization: Bearer` header; body carries no key. 401/403 and 429 now return a specific `Error:` the model can act on (ask for settings / stop retrying) |
+| 180 | The delete-exchange gesture was a fourth hand-rolled 450 ms long-press | `attachLongPress` gained `preventTouchDefault` (non-passive `touchstart`, `preventDefault` for the iOS magnifier); `sidebar.ts` 1885 → 1857 |
+
 ### Deliberately not done
 
 - A request timeout on utility calls — the SDK's 10-minute default stands; a reasoning model's summary can legitimately run long.
-- `Authorization: Bearer` for Tavily — the body field works and is tested; a header change is a product/API decision.
-- Replacing the delete-exchange long-press with `ui/longPress.ts` — it needs `preventDefault` on `touchstart` (iOS magnifier), which the shared helper's passive listener cannot give.

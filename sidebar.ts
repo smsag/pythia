@@ -1704,47 +1704,15 @@ export class PythiaSidebarView extends ItemView {
 		const bubble = lastUserRow.querySelector<HTMLElement>(".p-bubble");
 		if (!bubble) return;
 
-		let timer: ReturnType<typeof setTimeout> | null = null;
-
-		const cancel = () => {
-			if (timer !== null) { clearTimeout(timer); timer = null; }
-		};
-
-		const onTouchStart = (e: TouchEvent) => {
-			if (this.activeDeletePreview) return;
-			e.preventDefault(); // prevent iOS magnifier / text-selection
-			timer = setTimeout(() => {
-				timer = null;
-				this.showDeletePreview(lastUserRow, assistantRow);
-			}, 450);
-		};
-
-		const onMouseDown = (e: MouseEvent) => {
-			if (e.button !== 0 || this.activeDeletePreview) return;
-			timer = setTimeout(() => {
-				timer = null;
-				this.showDeletePreview(lastUserRow, assistantRow);
-			}, 450);
-		};
-
-		bubble.addEventListener("touchstart", onTouchStart, { passive: false });
-		bubble.addEventListener("touchend",   cancel, { passive: true });
-		bubble.addEventListener("touchcancel",cancel, { passive: true });
-		bubble.addEventListener("touchmove",  cancel, { passive: true });
-		bubble.addEventListener("mousedown",  onMouseDown);
-		bubble.addEventListener("mouseup",    cancel);
-		bubble.addEventListener("mouseleave", cancel);
-
-		this.longPressCleanup = () => {
-			cancel();
-			bubble.removeEventListener("touchstart",  onTouchStart);
-			bubble.removeEventListener("touchend",    cancel);
-			bubble.removeEventListener("touchcancel", cancel);
-			bubble.removeEventListener("touchmove",   cancel);
-			bubble.removeEventListener("mousedown",   onMouseDown);
-			bubble.removeEventListener("mouseup",     cancel);
-			bubble.removeEventListener("mouseleave",  cancel);
-		};
+		// The shared gesture (ui/longPress.ts), with preventTouchDefault so a long
+		// touch on the bubble opens the delete bar instead of iOS's magnifier. The
+		// bubble is rebuilt with the message list, so the direct-listener mode's
+		// cleanup is kept and re-run on every attach.
+		this.longPressCleanup = attachLongPress(
+			bubble,
+			() => { if (!this.activeDeletePreview) this.showDeletePreview(lastUserRow, assistantRow); },
+			{ preventTouchDefault: true },
+		);
 	}
 
 	private showDeletePreview(userRow: HTMLElement, assistantRow: HTMLElement): void {
