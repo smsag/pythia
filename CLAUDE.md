@@ -37,7 +37,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
-    GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150)
+    GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
+    languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -71,7 +72,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1046 tests across 68 files
+  tests/                      ← Vitest unit tests (npm test) — 1074 tests across 70 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -411,11 +412,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
+- **The anchor shows the definition in the conversation's language** (ADR-166): the instructed language, or under `auto` the language of the tapped answer (`displayLanguage`). The stored definition is never rewritten for this — a translation is cached in the note as `definition_<lang>`, valid while `translated_from` equals `definitionHash(definition)`; an edit or regenerate makes every cached language stale and the next translation clears them (`applyTranslation`). The anchor never shows the untranslated text first: a faint `Translating to EN…` placeholder, then the translation with `translated from DE` in the meta line — for a hand-written definition too. Term titles and context quotes are never translated: one is the word in the text, the other a verbatim attestation
+- Language detection is local and returns `null` rather than guess (`services/languageDetect.ts`, function words, winner needs ≥2 hits and 1.5× the runner-up). A new entry records `language`; an old one is detected when needed
 
 ### Output language (ADR-148)
 - **One setting, both halves.** `outputLanguage` instructs the chat answer *and* every utility prompt. Adding a new prompt anywhere means routing it through `BaseProvider.languageLabel(conversation?)` — a prompt that skips it is the bug ADR-148 fixed, reintroduced
 - Six values: `obsidian` · `auto` · `de` · `en` · `it` · `es`, listed once in `OUTPUT_LANGUAGES` (`models/types.ts`) and labelled once in `ui/languageOptions.ts`. **Never hand-write the option list a second time** — the global setting and the per-conversation override must name the same languages in the same order
 - **`auto` adds no instruction at all.** Do not "improve" it into a sentence like "respond in the conversation's language": a model with no language instruction already does that, and one holding a sentence about languages has something to reason about
+- **One exception: `defineTerm` and `describePerson`** (ADR-166). Their prompt is English, so silence made the model answer in English whatever the passage said, and the note kept it. Under `auto` they say "write the definition in the language the passage is written in" (`BaseProvider.definitionLanguage`). Do not extend the exception to chat or to other utility prompts without the same reason
 - `obsidian` follows Obsidian's UI locale into any of its ~30 languages, not just the four offered — `LANG_LABELS` is deliberately wider than the dropdown. An unknown locale falls back to English, never to `auto`
 - Resolution is conversation override → global setting; `Conversation.outputLanguage === undefined` means *inherit*, and the modal's `Standard` option must keep writing `undefined` rather than copying the global value in
 - The **prompt optimizer is exempt** — it rewrites the user's own prompt, and translating that would destroy what it was asked to improve

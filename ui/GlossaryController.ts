@@ -2,8 +2,10 @@ import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import type { GlossaryEntry } from "../services/glossary";
-import { t } from "../i18n";
+import { t, getObsidianLocale } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
+import { definitionLanguageOf, displayLanguage, needsTranslation } from "../services/glossaryNotes";
+import { resolveLanguageState } from "./instructionState";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintTerms } from "./HighlightPainter";
 
@@ -138,10 +140,45 @@ export class GlossaryController {
 		// the same place.
 		markEl.after(anchor);
 		this.openAnchor = anchor;
-		this.build(anchor, entry, markEl);
+		// Read before the anchor adds its own text to the message (ADR-166).
+		const passage = markEl.closest("[data-msg-id]")?.textContent ?? "";
+		const target = this.displayLanguage(passage);
+		if (target) anchor.setAttr("data-lang", target);
+		await this.show(anchor, entry, markEl);
 	}
 
-	private build(anchor: HTMLElement, entry: GlossaryEntry, markEl: HTMLElement): void {
+	/** The language this conversation's anchors show definitions in (ADR-166). */
+	private displayLanguage(passage: string): string | null {
+		const settings = this.d.plugin.settings;
+		const conv = this.d.getConversation();
+		const state = resolveLanguageState(conv?.outputLanguage, settings.outputLanguage ?? "auto", getObsidianLocale());
+		return displayLanguage(state, passage);
+	}
+
+	/**
+	 * Render `entry` in the anchor's language: the stored definition when it
+	 * already is in that language, the cached translation when there is one, and
+	 * otherwise a placeholder that the translation replaces. The stored text is
+	 * never shown first and then swapped — reading a sentence that changes
+	 * language under you is worse than a moment's wait.
+	 */
+	private async show(anchor: HTMLElement, entry: GlossaryEntry, markEl: HTMLElement): Promise<void> {
+		const target = anchor.getAttribute("data-lang");
+		if (!needsTranslation(entry, target)) { this.build(anchor, entry, markEl); return; }
+		const from = definitionLanguageOf(entry);
+		this.build(anchor, entry, markEl, { pending: target });
+		const text = await this.d.plugin.glossaryService.translate(entry, target);
+		if (this.openAnchor !== anchor) return; // closed or replaced meanwhile
+		this.build(anchor, entry, markEl, text ? { text, from } : undefined);
+	}
+
+	private build(
+		anchor: HTMLElement,
+		entry: GlossaryEntry,
+		markEl: HTMLElement,
+		/** A translation to show instead of the stored definition, or the language one is pending in. */
+		shown?: { text: string; from: string | null } | { pending: string },
+	): void {
 		anchor.empty();
 
 		const head = anchor.createDiv({ cls: "p-term-anchor-head" });
@@ -165,7 +202,12 @@ export class GlossaryController {
 		}
 
 		const body = anchor.createDiv({ cls: "p-term-anchor-body" });
-		this.d.renderMarkdown(entry.definition, body);
+		if (shown && "pending" in shown) {
+			body.addClass("is-pending");
+			body.setText(t("glossaryTranslating", { code: shown.pending.toUpperCase() }));
+		} else {
+			this.d.renderMarkdown(shown ? shown.text : entry.definition, body);
+		}
 
 		const meta = anchor.createDiv({ cls: "p-term-anchor-meta" });
 		// Bare model name and date, exactly like the fork and merge meta lines —
@@ -179,6 +221,13 @@ export class GlossaryController {
 				: t("glossarySourceManual"),
 		];
 		if (entry.updatedAt) parts.push(formatSummaryTimestamp(entry.updatedAt));
+		// A translation says so — of a hand-written definition too, whose words are
+		// then no longer the user's own (ADR-166).
+		if (shown && "text" in shown) {
+			parts.push(shown.from
+				? t("glossaryTranslatedFrom", { code: shown.from.toUpperCase() })
+				: t("glossaryTranslated"));
+		}
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: `${parts.join(" · ")} · ` });
 
 		const regen = meta.createEl("button", {
@@ -228,7 +277,7 @@ export class GlossaryController {
 		const entry = known?.kind === "person"
 			? await service.lookupPerson(term, passage, true, conv)
 			: await service.lookup(term, passage, true, conv);
-		if (entry && this.openAnchor === anchor) this.build(anchor, entry, markEl);
+		if (entry && this.openAnchor === anchor) await this.show(anchor, entry, markEl);
 	}
 
 	private async forget(term: string): Promise<void> {

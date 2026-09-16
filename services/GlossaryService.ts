@@ -23,8 +23,13 @@ import {
 	themePath,
 	THEME_TYPE,
 	effectiveTheme,
+	applyTranslation,
+	cachedTranslation,
+	definitionHash,
+	definitionLanguageOf,
 } from "./glossaryNotes";
-import { parseDefinitionReply } from "./messageUtils";
+import { LANG_LABELS, parseDefinitionReply } from "./messageUtils";
+import { detectLanguage } from "./languageDetect";
 import type { Conversation } from "../models/types";
 
 /**
@@ -52,6 +57,10 @@ export class GlossaryService {
 	private indexBuiltFor = -1;
 	/** In-flight lookups, so tapping the same term twice does not call twice. */
 	private pending = new Map<string, Promise<GlossaryEntry | null>>();
+	/** In-flight translations, so reopening an anchor mid-call does not call twice. */
+	private pendingTranslations = new Map<string, Promise<string | null>>();
+	/** Translations made this session, until the metadata cache has caught up with the note. */
+	private recentTranslations = new Map<string, string>();
 
 	constructor(private readonly plugin: PythiaPlugin) {}
 
@@ -259,6 +268,7 @@ export class GlossaryService {
 				aliases: dedupeAliases(name, variants),
 				contexts: context ? [context] : undefined,
 				theme: conversation ? [effectiveTheme(conversation)] : undefined,
+				language: detectLanguage(definition) ?? undefined,
 			};
 			return await this.save(entry, force);
 		} catch (e) {
@@ -297,6 +307,7 @@ export class GlossaryService {
 				translations: dedupeTranslations(term, variants, translations),
 				contexts: context ? [context] : undefined,
 				theme: conversation ? [effectiveTheme(conversation)] : undefined,
+				language: detectLanguage(definition) ?? undefined,
 			};
 			return await this.save(entry, force);
 		} catch (e) {
@@ -344,6 +355,56 @@ export class GlossaryService {
 		for (const theme of merged.theme ?? []) await this.ensureThemeNote(theme);
 		this.invalidate();
 		return merged;
+	}
+
+	/**
+	 * The definition in `lang`, from the note's cache or translated now and cached
+	 * (ADR-166). Null when it cannot be had — the caller shows the stored text.
+	 *
+	 * The cache is the note itself (`definition_<lang>` + `translated_from`), so it
+	 * syncs, is a Base column, and can be corrected by hand. A translation made
+	 * from an older definition is stale by its hash; the first new translation
+	 * clears every stale language at once rather than leaving them to mislead.
+	 */
+	async translate(entry: GlossaryEntry, lang: string): Promise<string | null> {
+		const cached = cachedTranslation(entry, lang);
+		if (cached) return cached;
+		const key = `translate:${entry.kind ?? "term"}:${normalizeTerm(entry.term)}:${lang}:${definitionHash(entry.definition)}`;
+		// Obsidian re-parses the frontmatter we just wrote asynchronously; until it
+		// has, the note still reads as untranslated. Keyed by the definition's hash,
+		// so an edit is never answered from here.
+		const recent = this.recentTranslations.get(key);
+		if (recent) return recent;
+		const inFlight = this.pendingTranslations.get(key);
+		if (inFlight) return inFlight;
+		const run = this.translateAndStore(entry, lang);
+		this.pendingTranslations.set(key, run);
+		try {
+			const text = await run;
+			if (text) this.recentTranslations.set(key, text);
+			return text;
+		} finally {
+			this.pendingTranslations.delete(key);
+		}
+	}
+
+	private async translateAndStore(entry: GlossaryEntry, lang: string): Promise<string | null> {
+		try {
+			const text = (await this.plugin.llmRouter.translateDefinition(entry.definition, LANG_LABELS[lang] ?? lang)).trim();
+			// "" is not a translation (ADR-158): say so, and let the anchor keep the original.
+			if (!text) { new Notice(t("glossaryTranslateEmpty", { term: entry.term })); return null; }
+			const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, entry.term, entry.kind));
+			if (file instanceof TFile) {
+				const source = definitionLanguageOf(entry);
+				await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) =>
+					applyTranslation(fm, lang, text, entry.definition, source));
+				this.invalidate();
+			}
+			return text;
+		} catch (e) {
+			new Notice(t("glossaryTranslateFailed", { error: e instanceof Error ? e.message : String(e) }));
+			return null;
+		}
 	}
 
 	/**

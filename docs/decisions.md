@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
+*Last updated: 2026-09-16 — ADR-166 (glossary definitions read in the conversation's language: translated on open, cached in the term note per language, invalidated by a hash of the definition; under AUTO new definitions follow the passage's language).*
+
+*Previously: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
 
 *Previously: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
 
@@ -2812,3 +2814,29 @@ return block?.type === "text" ? block.text.trim() : "";
 **Rejected.** A status strip of every conversation setting (repeats the composer toolbar; it was what the first brief asked for, and the wrong ask). One combined control opening a three-part panel (two taps again for the value you want). Showing "Standard · Hoch" in the header (long, and "Standard" is the word that hid the value). Tinting by "an instruction is active" rather than "pinned" (would not tell a user why a value changed when the global setting did).
 
 **Consequences.** `HeaderController.updateModelBadge` → `updateInstructions`, `onModelBadgeClick` → `openConversationSettings`. The header's title truncates first on a narrow leaf; within the group only the model name may. The settings dialog is unchanged and still edits the same fields. +17 tests (1046 across 68 files): the two resolvers, and the header — resolved values, tint, picker writes, default → `undefined`, dimmed dash, repaint on a changed default, the menu.
+
+---
+
+### ADR-166 — Glossary definitions read in the conversation's language
+
+**Date:** 2026-09-16
+**Status:** Accepted — narrows ADR-148's "AUTO adds no instruction" for two prompts
+
+**Context.** A term's definition is written once, at the first lookup, in whatever language that conversation resolved to, and the vault-first rule (ADR-136) then shows that text everywhere. Two things made this read as "the glossary is in English". First, the default language setting is AUTO, which adds no instruction; in a chat turn that lets the model follow the user, but `defineTerm`'s prompt is itself English, so the model answered in English even for a German passage — and the note kept it. Second, a term met later in a conversation of another language showed the stored text regardless. The expectation is that text follows the language setting.
+
+**Decision.** Four parts, each confirmed by the user against alternatives.
+
+1. **Translate at display, cache in the note.** When an anchor opens, the definition is shown in the conversation's language. If the stored definition is in another language, it is translated once (`BaseProvider.translateDefinition`, fast model) and written into the term note as `definition_<lang>`. The note stays the single source of truth; the cache syncs, is a column in a Base, and a wrong translation is corrected where the definition is.
+2. **Under AUTO, the target is the language of the answer the term was tapped in.** It is detected locally (`services/languageDetect.ts`, function words), because a model call per opened anchor would put latency on the one interaction that must be instant. When the text is too short or mixed to tell, detection returns `null` and nothing is translated — unknown is never a guess.
+3. **Hand-written definitions are translated too, and every translation says so** (`translated from DE` in the meta line). The user's own words are never silently replaced by the model's.
+4. **Fix the source as well.** Under AUTO, `defineTerm` and `describePerson` now instruct "write the definition in the language the passage is written in". This departs from ADR-148's rule on purpose and only here: the rule's reasoning — silence lets the model follow the conversation — does not hold for a prompt written in English. New entries record their `language`.
+
+**Cache validity.** `translated_from` holds an FNV-1a hash of the definition the translations were made from. A regenerate, or a hand edit of the body, changes the hash; every cached language is then stale, and the next translation deletes them all before writing the new one (`applyTranslation`), so a stale language cannot survive beside a fresh one. `mergeEntry` carries translations and the hash through a re-lookup untouched; `entryFrontmatter` never writes them — `GlossaryService.translate` is the only writer. Because Obsidian re-parses the written frontmatter asynchronously, the service also keeps this session's translations in memory, keyed by term, language and hash.
+
+**What is not translated.** The term title (it is the word as it appears in the text, and marks match it), the aliases, and the context quotes (verbatim attestations; a translated quote is no longer one).
+
+**Display.** The anchor never shows the stored text and then swaps it: while a translation runs, the body is a faint italic `Translating to EN…`. If the call fails or returns nothing, the stored definition is shown unmarked and a Notice says why (principle 2).
+
+**Rejected.** A plugin-side cache file (does not sync, invisible to Bases, not editable). A body section per language (not a Base column; notes grow long). Obsidian's UI language as the AUTO target (predictable, but a German user reading an English conversation would get German definitions under English answers). A model call to detect the passage's language (latency on every open). Translating the stored definition in place (would destroy the original and make a second translation a translation of a translation).
+
+**Consequences.** A term note can carry `language`, `translated_from` and one `definition_<lang>` per language read. `GlossaryEntry` gains `language`, `definitionTranslations`, `translatedFrom`. `LLMProvider`/`LLMRouter` gain `translateDefinition`. +23 tests (1069 across 69 files): the detector (seven languages, the short-definition overlap, a quoted English phrase, refusal on short or mixed text), frontmatter read and write, cache validity by hash, stale-language clearing, the target rule, the merge, both prompts under AUTO and a named language, and the anchor's four states — translated and marked, same language with no call, failure falling back unmarked, placeholder while pending.

@@ -1840,6 +1840,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-faint);
 }
 .p-term-anchor-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
+.p-term-anchor-body.is-pending { color: var(--text-faint); font-style: italic; }
 .p-term-anchor-body > :first-child { margin-top: 0; }
 .p-term-anchor-body > :last-child { margin-bottom: 0; }
 .p-term-anchor-body p { margin: 0 0 var(--s1); }

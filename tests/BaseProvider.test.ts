@@ -39,7 +39,12 @@ import type { Conversation, TokenUsage } from "../models/types";
 class TestProvider extends BaseProvider {
 	protected resetClient(): void {}
 	get fastModel(): string { return "fast"; }
-	protected callUtility(): Promise<string> { return Promise.resolve(""); }
+	/** Every utility prompt sent, so prompt wording is assertable (ADR-166). */
+	prompts: string[] = [];
+	protected callUtility(_model: string, userMessage: string): Promise<string> {
+		this.prompts.push(userMessage);
+		return Promise.resolve("");
+	}
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
 	protected runStreamRound(): Promise<RoundResult> {
 		return Promise.resolve({ action: "done", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, hasUsage: false, truncated: false });
@@ -146,5 +151,39 @@ describe("BaseProvider.languageLabel", () => {
 		obsidianLocale.value = "fr";
 		expect(makeProvider({ outputLanguage: "obsidian" }).lang(conv())).toBe("French");
 		expect(makeProvider({ outputLanguage: "auto" }).lang(conv("obsidian"))).toBe("French");
+	});
+});
+
+// ── Definition language (ADR-166) ─────────────────────────────────────────────
+
+describe("glossary prompts follow the passage under AUTO", () => {
+	const PASSAGE_RULE = "Write the definition in the language the passage is written in.";
+
+	it("AUTO names the passage's language instead of adding nothing", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zähler", "Der Zähler wird abgelesen.");
+		await p.describePerson("Anna Weber", "Anna Weber leitet das Projekt.");
+		expect(p.prompts[0]).toContain(PASSAGE_RULE);
+		expect(p.prompts[1]).toContain(PASSAGE_RULE);
+	});
+
+	it("a named language is instructed as before, without the passage rule", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zähler", "Der Zähler wird abgelesen.", conv("it"));
+		expect(p.prompts[0]).toContain("Respond in Italian.");
+		expect(p.prompts[0]).not.toContain(PASSAGE_RULE);
+	});
+
+	it("chat and other utility prompts keep ADR-148's silence under AUTO", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.generateChapterName("Wie liest man einen Zähler ab?");
+		expect(p.prompts[0]).not.toContain("language");
+	});
+
+	it("translateDefinition names the target and carries the definition", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
+		expect(p.prompts[0]).toContain("into English");
+		expect(p.prompts[0]).toContain("Ein Gerät, das Ereignisse erfasst.");
 	});
 });
