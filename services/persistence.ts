@@ -197,6 +197,9 @@ export function sanitizeMessages(conv: Conversation): void {
 	);
 	for (const m of conv.messages) {
 		if (typeof m.content !== "string") m.content = m.content == null ? "" : String(m.content);
+		// `truncated` is a flag that only ever reads `true`; anything else is noise
+		// from a hand edit and would paint a recovery card under a finished answer.
+		if (m.truncated !== undefined && m.truncated !== true) delete (m as { truncated?: unknown }).truncated;
 	}
 }
 

@@ -30,6 +30,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
+    conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
@@ -60,8 +62,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
+    SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
+    TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 967 tests across 60 files
+  tests/                      ← Vitest unit tests (npm test) — 997 tests across 63 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -416,6 +420,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Keep** appends the chosen candidate (its id becomes the message id) and forks the rest via `keepCandidate` → `ConversationService.createComparisonFork`. Fork name is `forkNameFor(conv.name, model)`; branch point is the kept message; no `forkedFromSelection`. Favorites and merge links on a non-kept answer move into its fork — never delete them
 - **Send is blocked** while `conv.comparison` is set (`comparePending`). Discard restores candidate 0 verbatim
 - The card reuses the fork anchor's grammar (accent rule, mono caps label); the active tab's fill is state — no transition (ADR-155). Model picking uses `suggest/ModelSuggest.ts`, never the header popover, which would change the conversation's model
+
+### Token limit support (ADR-162)
+- **The stop reason is a fact, not a detail.** Every provider sets `RoundResult.truncated` (`max_tokens` / `length`) and `BaseProvider` passes `StreamFinish` to `onComplete`. A new provider that maps every stop to `"done"` reintroduces the bug: a cut-off reply that looks finished
+- **One rule: `maxTokensAdvice` in `services/settingsAdvice.ts`.** The modal's advice line, `SendHintController` and `TruncationController` all read it. Never compare against `DEFAULT_MAX_TOKENS_REASONING` in a controller
+- **The fix is offered, never applied.** `clear` (drop the conversation's override so it follows the model again — principle 6) when that is enough; `pin` only when the global setting is the low value. No auto-bump on model switch
+- **Actions only on the last answer.** Continue and Retry rewrite what comes next, not history. Retry is withheld when a star or merge link sits on the answer; it goes through `spliceExchange`, the one exchange-removal function
+- **An empty reply always says something** (`noticeEmptyReply`). An empty *truncated* reply names the budget — that is the reasoning-model case
+- Model rows show `MODEL_PROFILE` tiers (speed · depth · cost, 1–3) — tiers, not prices; the test requires one per catalog entry
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

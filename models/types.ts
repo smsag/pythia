@@ -118,6 +118,16 @@ export interface Message {
 	sources?: MessageSource[]; // parsed citation sources (assistant messages, from ⟦cite:…⟧ markers)
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
 	templateId?: string;      // vault path of the template active when this answer was produced
+	/** The provider stopped at the max-tokens cap: the answer ends where the
+	 *  budget ended, not where the model did (ADR-162). Only ever `true`. */
+	truncated?: true;
+}
+
+/** How a stream ended, beyond its text (ADR-162). `truncated` is the one fact
+ *  the user cannot see in the text itself: a reply cut at the token cap reads
+ *  exactly like a finished one. */
+export interface StreamFinish {
+	truncated: boolean;
 }
 
 export interface Favorite {

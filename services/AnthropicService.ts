@@ -227,6 +227,7 @@ export class AnthropicService extends BaseProvider {
 
 		return {
 			action: finalMsg.stop_reason === "tool_use" ? "tool_use" : "done",
+			truncated: finalMsg.stop_reason === "max_tokens",
 			inputTokens: finalMsg.usage.input_tokens,
 			outputTokens: finalMsg.usage.output_tokens,
 			cacheReadTokens: finalMsg.usage.cache_read_input_tokens ?? 0,

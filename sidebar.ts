@@ -39,6 +39,8 @@ import { renderRichMarkdown } from "./ui/renderMarkdown";
 import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
+import { SendHintController } from "./ui/SendHintController";
+import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -49,8 +51,6 @@ import { describeErrorForLog } from "./services/redact";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { abbreviateModel, isReasoningModel, isMistralReasoningModel } from "./models/knownModels";
-import { DEFAULT_MAX_TOKENS_REASONING } from "./services/promptConstants";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -128,9 +128,8 @@ export class PythiaSidebarView extends ItemView {
 	/** Bottom action sheet used on mobile in place of the desktop `.p-send-menu`
 	 *  popover (created lazily on first long-press). */
 	private actionSheet: ActionSheet | null = null;
-	// Warning shown beside Send when the effective max-tokens looks too low for
-	// the selected reasoning model (its reasoning budget can truncate the reply).
-	private sendHintEl!: HTMLButtonElement;
+	private sendHint!: SendHintController;
+	private truncation!: TruncationController;
 
 	private inputAreaEl!: HTMLElement;
 	private inputCollapseBtn!: HTMLButtonElement;
@@ -349,7 +348,7 @@ export class PythiaSidebarView extends ItemView {
 			revealContextInspector: () => this.contextInspector.reveal(),
 			updateContextBar: () => this.contextInspector.updateContextBar(),
 			refreshContextInspector: () => this.contextInspector.refresh(),
-			updateSendHint: () => this.updateSendHint(),
+			updateSendHint: () => this.sendHint.update(),
 		});
 		this.headerController.mount(container);
 
@@ -456,6 +455,15 @@ export class PythiaSidebarView extends ItemView {
 				if (conv && conv.messages.length === 0) renderWelcome(this.messagesEl);
 				this.exchangeActions.attach();
 			},
+			startComparison: (userId, assistantId) => this.comparisonController.start(userId, assistantId),
+		});
+
+		this.truncation = new TruncationController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			isStreaming: () => this.isStreaming,
+			sendText: (text) => this.sendText(text),
+			rerender: () => { this.renderedConvId = null; return this.renderMessages(); },
 			startComparison: (userId, assistantId) => this.comparisonController.start(userId, assistantId),
 		});
 
@@ -649,12 +657,14 @@ export class PythiaSidebarView extends ItemView {
 		// Next-send token estimate (mono), sits left of the warning + Send.
 		this.sendEstimateEl = toolbar.createEl("span", { cls: "p-send-estimate" });
 
-		// Max-tokens warning, sits just left of Send. Hidden unless the effective
-		// max-tokens looks too low for a reasoning model; clicking opens settings.
-		this.sendHintEl = toolbar.createEl("button", { cls: "p-send-hint" });
-		setIcon(this.sendHintEl, "alert-triangle");
-		this.sendHintEl.style.display = "none";
-		this.registerDomEvent(this.sendHintEl, "click", () => this.headerController.onModelBadgeClick());
+		// Max-tokens warning, sits just left of Send (ADR-162: SendHintController).
+		this.sendHint = new SendHintController({
+			getConversation: () => this.activeConversation,
+			getGlobalMaxTokens: () => this.plugin.settings.maxTokens,
+			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+			openSettings: () => this.headerController.onModelBadgeClick(),
+		});
+		this.sendHint.mount(toolbar);
 
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
@@ -1079,8 +1089,7 @@ export class PythiaSidebarView extends ItemView {
 		// the same turns the label used to caption: where a template starts
 		// applying, never repeated down the transcript.
 		renderSourcesRow(this.app, row, sources, turnTemplateCaption(msg, this.activeConversation));
-		// Token counts are shown inline in the turn label (renderTurnLabel),
-		// not a separate footer.
+		this.truncation.paint(row, msg);
 
 		return aiBody;
 	}
@@ -1205,32 +1214,6 @@ export class PythiaSidebarView extends ItemView {
 			setIcon(toggle, "chevron-up");
 			toggle.title = t("showLess");
 		}
-	}
-
-	/** Show a warning beside Send when the effective max-tokens is low enough that
-	 *  a reasoning model's hidden reasoning budget could truncate the reply — the
-	 *  main sharp edge of switching a conversation onto a reasoning model. */
-	private updateSendHint(): void {
-		if (!this.sendHintEl) return;
-		const conv = this.activeConversation;
-		const model = conv?.model ?? "";
-		const isReasoning = !!model && (isReasoningModel(model) || isMistralReasoningModel(model));
-		// undefined ⇒ the model-appropriate default applies, so there is nothing to warn about.
-		const effective = conv?.maxTokens ?? this.plugin.settings.maxTokens;
-		const warn = isReasoning && effective !== undefined && effective < DEFAULT_MAX_TOKENS_REASONING;
-		if (!warn) {
-			this.sendHintEl.style.display = "none";
-			return;
-		}
-		this.sendHintEl.setAttribute(
-			"title",
-			t("sendMaxTokensHint", {
-				max: String(effective),
-				model: abbreviateModel(model),
-				recommended: String(DEFAULT_MAX_TOKENS_REASONING),
-			}),
-		);
-		this.sendHintEl.style.display = "";
 	}
 
 	/** Reflect the active conversation's research (web-search) state on the
@@ -1404,6 +1387,16 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	// ── /Inline prompt optimizer (extracted to ui/OptimizationController.ts) ───
+
+	/** Send `text` as the next user turn, keeping whatever the user had typed
+	 *  as their draft (the Continue / Retry actions under a cut-off answer). */
+	sendText(text: string): Promise<void> {
+		const draft = this.inputEl.value;
+		this.inputEl.value = text;
+		const sent = this.sendMessage(); // reads and clears the field synchronously
+		this.inputEl.value = draft;
+		return sent;
+	}
 
 	async sendMessage(): Promise<void> {
 		if (this.isStreaming || this.optimizationController.isActive) return;
@@ -1604,7 +1597,7 @@ export class PythiaSidebarView extends ItemView {
 			text,
 			attachedNotes,
 			appendToken,
-			async (fullText, tokenUsage) => {
+			async (fullText, tokenUsage, finish) => {
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
 				// callback is in flight — don't touch messagesEl/autoScroll in that case.
@@ -1617,6 +1610,7 @@ export class PythiaSidebarView extends ItemView {
 
 				if (!fullText) {
 					streamingRow.remove();
+					this.truncation.noticeEmptyReply(finish);
 					return;
 				}
 
@@ -1630,6 +1624,7 @@ export class PythiaSidebarView extends ItemView {
 					tokenUsage,
 					...(conv.templateId ? { templateId: conv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
+					...(finish?.truncated ? { truncated: true as const } : {}),
 				};
 				conv.messages.push(assistantMsg);
 				if (this.activeConversation?.id === conv.id) {
@@ -1645,6 +1640,7 @@ export class PythiaSidebarView extends ItemView {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
 						if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
+					this.truncation.paint(lastRow, assistantMsg);
 				}
 				await this.plugin.conversationStore.save(conv);
 				if (this.activeConversation?.id === conv.id) {

@@ -77,3 +77,18 @@ describe("parseConversations — field repair", () => {
 		expect(conversations[1].writeMode).toBe("create");
 	});
 });
+
+describe("sanitizeMessages — truncated flag (ADR-162)", () => {
+	it("keeps a true flag and drops anything else", () => {
+		const { conversations: [conv] } = parseConversations([{
+			id: "c", messages: [
+				{ id: "a", role: "assistant", content: "x", timestamp: "", truncated: true },
+				{ id: "b", role: "assistant", content: "y", timestamp: "", truncated: "yes" },
+				{ id: "c", role: "assistant", content: "z", timestamp: "", truncated: false },
+			],
+		}]);
+		expect(conv.messages[0].truncated).toBe(true);
+		expect("truncated" in conv.messages[1]).toBe(false);
+		expect("truncated" in conv.messages[2]).toBe(false);
+	});
+});

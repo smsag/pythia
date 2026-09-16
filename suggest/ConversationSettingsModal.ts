@@ -6,6 +6,7 @@ import {
 	parameterSupport,
 } from "../models/knownModels";
 import { resolveDefaultMaxTokens } from "../services/promptConstants";
+import { maxTokensAdvice } from "../services/settingsAdvice";
 import { languageOptions, languageOptionLabel } from "../ui/languageOptions";
 
 export class ConversationSettingsModal extends Modal {
@@ -259,6 +260,41 @@ export class ConversationSettingsModal extends Modal {
 			});
 		});
 		const maxTokensReadout = maxTokensSetting.controlEl.createSpan({ cls: "p-param-readout" });
+		// Advice under the field (ADR-162): the one case a user cannot see coming
+		// — a reasoning model whose budget is spent on thinking before it writes.
+		// Fires on open when the conflict already exists and follows every model
+		// change. The fix is offered, never applied: "use the default" clears the
+		// override so it follows the model again (principle 6); only when the
+		// global setting itself is the low value does it pin a number.
+		const globalMaxTokens = this.defaultMaxTokens;
+		const adviceEl = contentEl.createDiv({ cls: "p-param-advice" });
+		const adviceText = adviceEl.createSpan({ cls: "p-param-advice-text" });
+		const adviceBtn = adviceEl.createEl("button", { cls: "p-param-advice-btn" });
+		adviceBtn.type = "button";
+		adviceBtn.addEventListener("click", () => {
+			const advice = maxTokensAdvice(selectedModel, maxTokensIsDefault ? undefined : maxTokensValue, globalMaxTokens);
+			if (!advice) return;
+			if (advice.kind === "clear") {
+				maxTokensIsDefault = true;
+				maxTokensValue = resolvedMaxTokens();
+			} else {
+				maxTokensIsDefault = false;
+				maxTokensValue = advice.recommended;
+			}
+			maxTokensInput.value = String(maxTokensValue);
+			paintMaxTokens(false);
+		});
+		function paintAdvice(): void {
+			const advice = maxTokensAdvice(selectedModel, maxTokensIsDefault ? undefined : maxTokensValue, globalMaxTokens);
+			adviceEl.style.display = advice ? "" : "none";
+			if (!advice) return;
+			adviceText.setText(t("convTokensAdvice", { max: String(advice.effective), recommended: String(advice.recommended) }));
+			adviceBtn.setText(
+				advice.kind === "clear"
+					? t("convTokensAdviceClearBtn", { recommended: String(advice.recommended) })
+					: t("convTokensAdvicePinBtn", { recommended: String(advice.recommended) })
+			);
+		}
 		function paintMaxTokens(invalid: boolean): void {
 			maxTokensInput.toggleClass("p-field-invalid", invalid);
 			maxTokensReadout.toggleClass("is-error", invalid);
@@ -271,6 +307,7 @@ export class ConversationSettingsModal extends Modal {
 						? t("paramValueDefault", { v: String(maxTokensValue ?? resolvedMaxTokens()) })
 						: ""
 			);
+			paintAdvice();
 		}
 		paintMaxTokens(false);
 

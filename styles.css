@@ -381,6 +381,8 @@
 }
 .p-model-pop-good { color: var(--text-faint); font-weight: 400; }
 .p-model-pop-taphint { color: var(--color-accent); font-family: var(--font-monospace); }
+/* Speed · depth · cost line (ADR-162): mono so the dots align across rows. */
+.p-model-pop-profile { font-family: var(--font-monospace); letter-spacing: 0.02em; }
 @media (hover: hover) {
   .p-model-pop-row:hover .p-model-pop-good { display: block; }
 }
@@ -1889,6 +1891,53 @@
   .p-del-compare:hover { opacity: 1; }
 }
 
+/* ── Cut-off answer card (ADR-162) ───────────────────────────── */
+/* Under an answer that stopped at the token cap. The fork anchor's grammar —
+   left rule, mono caps label, 11px meta — in this UI's warning colour, because
+   it reports a fault, not a branch point. The fill-free buttons follow
+   `.p-del-compare` (accent outline = an action) and `.p-del-cancel` (quiet). */
+.pythia-view .p-trunc {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: var(--s2) 0 var(--s1);
+  padding: 2px 0 2px var(--s3);
+  border-left: 2px solid var(--text-warning, var(--color-orange));
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+.pythia-view .p-trunc-head { display: flex; align-items: center; gap: 5px; }
+.pythia-view .p-trunc-icon { display: flex; color: var(--text-warning, var(--color-orange)); flex-shrink: 0; }
+.pythia-view .p-trunc-icon svg { width: 11px; height: 11px; }
+.pythia-view .p-trunc-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.pythia-view .p-trunc-meta { font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+.pythia-view .p-trunc-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: 2px; }
+.pythia-view .p-trunc-btn {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  color: var(--color-accent);
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  border: 1px solid var(--color-accent);
+  opacity: 0.75;
+  box-sizing: border-box;
+}
+.pythia-view .p-trunc-btn--quiet { color: var(--text-faint); border-color: var(--background-modifier-border); }
+@media (hover: hover) {
+  .pythia-view .p-trunc-btn:hover { opacity: 1; }
+}
+@media (pointer: coarse) {
+  .pythia-view .p-trunc-btn { min-height: 32px; display: inline-flex; align-items: center; }
+}
+
 /* ── Model comparison card (ADR-160) ─────────────────────────── */
 /* Sits where the assistant turn would be. Same left rule as the fork anchor
    (it is the same kind of card: a branch point), tabs instead of a title. */
@@ -2692,6 +2741,35 @@ body.is-mobile .p-textarea {
   flex-shrink: 0;
 }
 .pythia-modal .p-param-readout.is-error { color: var(--text-error, var(--color-red)); }
+/* Advice under the token field (ADR-162): the readout's voice — mono, muted —
+   with the warning colour on the text and a one-tap fix beside it. Hidden
+   (display:none) whenever `maxTokensAdvice` has nothing to say. */
+.pythia-modal .p-param-advice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: calc(-1 * var(--s2)) 0 var(--s3);
+  font-size: var(--font-smaller);
+  line-height: 1.4;
+  color: var(--text-warning, var(--color-orange));
+}
+.pythia-modal .p-param-advice-text { flex: 1 1 220px; }
+.pythia-modal .p-param-advice-btn {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  color: var(--color-accent);
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  border: 1px solid var(--color-accent);
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+@media (pointer: coarse) {
+  .pythia-modal .p-param-advice-btn { min-height: 32px; display: inline-flex; align-items: center; }
+}
 /* Unsupported parameter: `Setting.setDisabled` only marks the row, so dim and
    seal the control area itself. */
 .pythia-modal .p-param-off {

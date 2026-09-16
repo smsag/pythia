@@ -392,3 +392,15 @@ describe("MistralService — PDF attachments", () => {
 		expect(typeof last.content).toBe("string");
 	});
 });
+
+describe("MistralService — finish reason (ADR-162)", () => {
+	it("reports truncated when the stream finished with 'length'", async () => {
+		chatStreamMock.mockReturnValueOnce(
+			okStream([{ choices: [{ delta: { content: "cut" }, finishReason: "length" }], usage: { promptTokens: 5, completionTokens: 2 } }])
+		);
+		const provider = new MistralService({} as never, makeSettings(), "key");
+		let finish: { truncated: boolean } | undefined;
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, (_t, _u, f) => { finish = f; }, () => {});
+		expect(finish?.truncated).toBe(true);
+	});
+});
