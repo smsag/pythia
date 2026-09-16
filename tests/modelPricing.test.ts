@@ -74,12 +74,15 @@ describe("conversationCost", () => {
 	it("sums priced answers and counts unpriced ones separately", () => {
 		const msgs: Message[] = [
 			{ id: "u", role: "user", content: "", timestamp: "" },
-			ai("a", "gpt-4o", { inputTokens: 1_000_000, outputTokens: 0 }),           // $2.50
+			ai("a", "gpt-4o", { inputTokens: 1_000_000, outputTokens: 0 }),           // one million input tokens
 			ai("b", "custom-x", { inputTokens: 1_000_000, outputTokens: 0 }),         // unpriced
-			ai("c", "claude-haiku-4-5", { inputTokens: 0, outputTokens: 1_000_000 }), // $5
+			ai("c", "claude-haiku-4-5", { inputTokens: 0, outputTokens: 1_000_000 }), // one million output tokens
 			ai("d", "gpt-4o"),                                                        // no usage: ignored
 		];
-		expect(conversationCost(msgs)).toEqual({ usd: 7.5, priced: 2, unpriced: 1 });
+		const expected = MODEL_PRICING["gpt-4o"].input + MODEL_PRICING["claude-haiku-4-5"].output;
+		const sum = conversationCost(msgs);
+		expect(sum.usd).toBeCloseTo(expected, 6);
+		expect(sum).toMatchObject({ priced: 2, unpriced: 1 });
 	});
 
 	it("is zero with nothing priced", () => {
