@@ -44,3 +44,66 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 export function goodForModel(id: string, lang: "en" | "de"): string {
 	return MODEL_GOOD_FOR[id]?.[lang] ?? "";
 }
+
+/**
+ * Three relative axes per model, each 1–3 (ADR-162): how fast it answers, how
+ * deep it goes, and what one message costs relative to the rest of the
+ * catalog. Relative tiers rather than prices or latencies, because both change
+ * monthly and per provider while the *ranking* between a small and a large
+ * model does not. A user picks by outcome — faster or better, and what it
+ * costs — which is the question an id and a context window never answer.
+ * Every non-hidden MODEL_CATALOG entry must have one — enforced by
+ * tests/modelGuidance.test.ts.
+ */
+export type Tier = 1 | 2 | 3;
+export interface ModelProfile { speed: Tier; depth: Tier; cost: Tier }
+
+export const MODEL_PROFILE: Record<string, ModelProfile> = {
+	// ── Anthropic ────────────────────────────────────────────────────────────
+	"claude-opus-5":     { speed: 1, depth: 3, cost: 3 },
+	"claude-fable-5":    { speed: 1, depth: 3, cost: 3 },
+	"claude-mythos-5":   { speed: 1, depth: 3, cost: 3 },
+	"claude-opus-4-8":   { speed: 1, depth: 3, cost: 3 },
+	"claude-opus-4-7":   { speed: 1, depth: 3, cost: 3 },
+	"claude-opus-4-6":   { speed: 1, depth: 3, cost: 3 },
+	"claude-sonnet-5":   { speed: 2, depth: 2, cost: 2 },
+	"claude-sonnet-4-6": { speed: 2, depth: 2, cost: 2 },
+	"claude-haiku-4-5":  { speed: 3, depth: 1, cost: 1 },
+
+	// ── OpenAI ───────────────────────────────────────────────────────────────
+	"gpt-4.1":      { speed: 2, depth: 2, cost: 2 },
+	"gpt-4.1-mini": { speed: 3, depth: 1, cost: 1 },
+	"gpt-4.1-nano": { speed: 3, depth: 1, cost: 1 },
+	"gpt-4o":       { speed: 2, depth: 2, cost: 2 },
+	"gpt-4o-mini":  { speed: 3, depth: 1, cost: 1 },
+	"o3-pro":       { speed: 1, depth: 3, cost: 3 },
+	"o3":           { speed: 1, depth: 3, cost: 3 },
+	"o3-mini":      { speed: 2, depth: 2, cost: 2 },
+	"o4-mini":      { speed: 2, depth: 2, cost: 2 },
+
+	// ── Mistral ──────────────────────────────────────────────────────────────
+	"mistral-large-latest":    { speed: 2, depth: 2, cost: 2 },
+	"mistral-small-latest":    { speed: 3, depth: 1, cost: 1 },
+	"codestral-latest":        { speed: 3, depth: 2, cost: 1 },
+	"magistral-medium-latest": { speed: 1, depth: 3, cost: 2 },
+	"magistral-small-latest":  { speed: 2, depth: 2, cost: 1 },
+};
+
+const AXIS_LABELS: Record<"en" | "de", [string, string, string]> = {
+	en: ["Speed", "Depth", "Cost"],
+	de: ["Tempo", "Tiefe", "Kosten"],
+};
+
+/** `●●○` for a tier — geometric marks, not icons, so the row stays text. */
+export function tierDots(tier: Tier): string {
+	return "●".repeat(tier) + "○".repeat(3 - tier);
+}
+
+/** One mono-friendly line — `Speed ●●○ · Depth ●●● · Cost ●●●` — or "" for a
+ *  model with no profile (a custom id the user typed in). */
+export function profileLine(id: string, lang: "en" | "de"): string {
+	const p = MODEL_PROFILE[id];
+	if (!p) return "";
+	const [s, d, c] = AXIS_LABELS[lang];
+	return `${s} ${tierDots(p.speed)} · ${d} ${tierDots(p.depth)} · ${c} ${tierDots(p.cost)}`;
+}

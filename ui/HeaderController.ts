@@ -5,7 +5,8 @@ import { t, getLang } from "../i18n";
 import { resumeDeepLink } from "../utils";
 import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
-import { goodForModel } from "../models/modelGuidance";
+import { goodForModel, profileLine } from "../models/modelGuidance";
+import { DEFAULT_MAX_TOKENS_REASONING } from "../services/promptConstants";
 import { ConversationSettingsModal } from "../suggest/ConversationSettingsModal";
 import { attachOutsideDismiss } from "./outsideDismiss";
 
@@ -296,6 +297,13 @@ export class HeaderController {
 				// "Good for" examples (smaller, hover- or tap-revealed) + touch confirm hint.
 				const good = goodForModel(m.id, lang);
 				if (good) row.createSpan({ cls: "p-model-pop-good", text: good });
+				// Speed · depth · cost, and the one fact a reasoning tag does not
+				// say: it needs a bigger token budget (ADR-162).
+				const profile = profileLine(m.id, lang);
+				if (profile) row.createSpan({ cls: "p-model-pop-good p-model-pop-profile", text: profile });
+				if (m.isReasoning || m.isMistralReasoning) {
+					row.createSpan({ cls: "p-model-pop-good", text: t("reasoningNeedsBudget", { recommended: String(DEFAULT_MAX_TOKENS_REASONING) }) });
+				}
 				row.createSpan({ cls: "p-model-pop-taphint", text: t("tapAgainToSelect") });
 				row.addEventListener("mousedown", (e) => {
 					e.preventDefault(); e.stopPropagation();

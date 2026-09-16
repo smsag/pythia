@@ -1,6 +1,6 @@
 import { App, Notice } from "obsidian";
 import { t, getObsidianLocale } from "../i18n";
-import type { Conversation, ToolCall, TokenUsage, Provider } from "../models/types";
+import type { Conversation, ToolCall, TokenUsage, StreamFinish, Provider } from "../models/types";
 import { ToolLoopLimitError } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import type { LLMProvider } from "./LLMProvider";
@@ -42,6 +42,9 @@ export interface RoundResult {
 	cacheCreationTokens: number;
 	/** Whether the provider actually received usage data this round. */
 	hasUsage: boolean;
+	/** The round ended because the max-tokens cap was reached (`max_tokens` /
+	 *  `length`), not because the model finished (ADR-162). */
+	truncated: boolean;
 }
 
 /**
@@ -190,7 +193,7 @@ export abstract class BaseProvider implements LLMProvider {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
@@ -214,6 +217,9 @@ export abstract class BaseProvider implements LLMProvider {
 			let totalCacheReadTokens = 0;
 			let totalCacheCreationTokens = 0;
 			let receivedUsage = false;
+			// Only the last round can be cut short: a truncated round has no tool
+			// call to answer, so the loop ends on it.
+			let truncated = false;
 
 			while (true) {
 				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
@@ -228,6 +234,7 @@ export abstract class BaseProvider implements LLMProvider {
 				totalCacheReadTokens += result.cacheReadTokens;
 				totalCacheCreationTokens += result.cacheCreationTokens;
 				if (result.hasUsage) receivedUsage = true;
+				truncated = result.truncated;
 
 				debugLog(this.settings, "tool round", round, "action:", result.action, "usage:", {
 					inputTokens: totalInputTokens,
@@ -257,9 +264,10 @@ export abstract class BaseProvider implements LLMProvider {
 				model: conversation.model,
 				rounds: round,
 				chars: fullText.length,
+				truncated,
 				...(tokenUsage ?? {}),
 			});
-			onComplete(fullText, tokenUsage);
+			onComplete(fullText, tokenUsage, { truncated });
 		} catch (error) {
 			debugLog(this.settings, `stream ended with error (${Date.now() - startedAt}ms)`, {
 				provider: this.providerType,

@@ -197,6 +197,16 @@ export function sanitizeMessages(conv: Conversation): void {
 	);
 	for (const m of conv.messages) {
 		if (typeof m.content !== "string") m.content = m.content == null ? "" : String(m.content);
+		// `truncated` is a flag that only ever reads `true`; anything else is noise
+		// from a hand edit and would paint a recovery card under a finished answer.
+		if (m.truncated !== undefined && m.truncated !== true) delete (m as { truncated?: unknown }).truncated;
+		// A cost snapshot is `{ usd, asOf }` with a finite non-negative number;
+		// anything else would render as `$NaN` on the label.
+		if (m.cost !== undefined) {
+			const c = m.cost as { usd?: unknown; asOf?: unknown } | null;
+			const ok = !!c && typeof c === "object" && typeof c.usd === "number" && Number.isFinite(c.usd) && c.usd >= 0 && typeof c.asOf === "string";
+			if (!ok) delete (m as { cost?: unknown }).cost;
+		}
 	}
 }
 

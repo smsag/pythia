@@ -42,7 +42,7 @@ class TestProvider extends BaseProvider {
 	protected callUtility(): Promise<string> { return Promise.resolve(""); }
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
 	protected runStreamRound(): Promise<RoundResult> {
-		return Promise.resolve({ action: "done", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, hasUsage: false });
+		return Promise.resolve({ action: "done", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, hasUsage: false, truncated: false });
 	}
 	protected handleToolCalls(): Promise<void> { return Promise.resolve(); }
 

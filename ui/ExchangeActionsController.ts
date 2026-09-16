@@ -4,6 +4,7 @@ import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { attachLongPress } from "./longPress";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
+import { spliceExchange } from "../services/conversationEdits";
 
 export interface ExchangeActionsDeps {
 	plugin: PythiaPlugin;
@@ -130,19 +131,9 @@ export class ExchangeActionsController {
 		const userId      = userRow.getAttribute("data-msg-id");
 		const assistantId = assistantRow.getAttribute("data-msg-id");
 		if (!userId) return;
-		const userIdx = conv.messages.findIndex((m) => m.id === userId);
-		if (userIdx === -1) return;
-
-		const removeCount = assistantId ? 2 : 1;
-		conv.messages.splice(userIdx, removeCount);
-		// Keep the save-boundary accurate
-		if (conv.lastSavedMessageCount !== undefined && conv.lastSavedMessageCount > userIdx) {
-			conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
-		}
-		// Remove the starred entry for the deleted assistant message
-		if (assistantId && conv.favorites?.length) {
-			conv.favorites = conv.favorites.filter((f) => f.messageId !== assistantId);
-		}
+		// Shared with the raise-and-retry action under a cut-off answer (ADR-162):
+		// one splice keeps the save boundary, favorites and merge links consistent.
+		if (!spliceExchange(conv, userId, assistantId)) return;
 
 		this.hidePreview();
 		userRow.remove();

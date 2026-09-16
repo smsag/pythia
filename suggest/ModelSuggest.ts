@@ -1,7 +1,8 @@
 import { App, FuzzySuggestModal } from "obsidian";
 import { MODEL_CATALOG, type ModelInfo } from "../models/knownModels";
 import type { Provider } from "../models/types";
-import { t } from "../i18n";
+import { t, getLang } from "../i18n";
+import { profileLine } from "../models/modelGuidance";
 
 /**
  * Pick a model to run a comparison on (ADR-160). Lists every catalog model
@@ -38,7 +39,10 @@ export class ModelSuggestModal extends FuzzySuggestModal<ModelInfo> {
 	}
 
 	getItemText(item: ModelInfo): string {
-		return `${item.abbreviation} — ${item.provider}${item.isReasoning || item.isMistralReasoning ? ` · ${t("reasoningTag")}` : ""}`;
+		const profile = profileLine(item.id, getLang());
+		return `${item.abbreviation} — ${item.provider}`
+			+ (item.isReasoning || item.isMistralReasoning ? ` · ${t("reasoningTag")}` : "")
+			+ (profile ? ` · ${profile}` : "");
 	}
 
 	onChooseItem(item: ModelInfo): void {

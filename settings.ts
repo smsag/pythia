@@ -7,6 +7,7 @@ import { renderEmbeddingSettings } from "./ui/embeddingSettings";
 import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
+import { renderPricingSettings } from "./ui/pricingSettings";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -18,6 +19,9 @@ import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
 // that service modules can import them without pulling in the Obsidian UI layer.
 export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
 import type { PythiaSettings } from "./models/settings";
+
+/** The settings a plain on/off toggle can flip. */
+type BooleanSettingKey = { [K in keyof PythiaSettings]-?: PythiaSettings[K] extends boolean ? K : never }[keyof PythiaSettings];
 
 const ANTHROPIC_MODELS = KNOWN_MODELS.anthropic;
 const OPENAI_MODELS = KNOWN_MODELS.openai;
@@ -148,29 +152,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
-			.setName(t("webSearchDefaultName"))
-			.setDesc(t("webSearchDefaultDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.webSearchDefault)
-					.onChange(async (value) => {
-						this.plugin.settings.webSearchDefault = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		this.addToggle(containerEl, t("webSearchDefaultName"), t("webSearchDefaultDesc"), "webSearchDefault");
 
-		new Setting(containerEl)
-			.setName(t("webSearchAutoArmName"))
-			.setDesc(t("webSearchAutoArmDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.webSearchAutoArm)
-					.onChange(async (value) => {
-						this.plugin.settings.webSearchAutoArm = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		this.addToggle(containerEl, t("webSearchAutoArmName"), t("webSearchAutoArmDesc"), "webSearchAutoArm");
 
 		new Setting(containerEl)
 			.setName(t("webSearchMaxResultsName"))
@@ -403,31 +387,13 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text.inputEl.addClass("pythia-settings-textarea");
 			});
 
-		new Setting(containerEl)
-			.setName(t("debugModeName"))
-			.setDesc(t("debugModeDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.debugMode)
-					.onChange(async (value) => {
-						this.plugin.settings.debugMode = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		this.addToggle(containerEl, t("debugModeName"), t("debugModeDesc"), "debugMode");
 
 		containerEl.createEl("h3", { text: t("featuresSection") });
 
-		new Setting(containerEl)
-			.setName(t("injectActiveNoteOnTemplateName"))
-			.setDesc(t("injectActiveNoteOnTemplateDesc"))
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.injectActiveNoteOnTemplate)
-					.onChange(async (value) => {
-						this.plugin.settings.injectActiveNoteOnTemplate = value;
-						await this.plugin.saveSettings();
-					})
-			);
+		renderPricingSettings(containerEl, this.plugin);
+
+		this.addToggle(containerEl, t("injectActiveNoteOnTemplateName"), t("injectActiveNoteOnTemplateDesc"), "injectActiveNoteOnTemplate");
 
 		containerEl.createEl("h3", { text: t("promptOptimizerSection") });
 
@@ -581,5 +547,19 @@ export class PythiaSettingTab extends PluginSettingTab {
 			cls: "pythia-folder-display",
 			text: this.plugin.settings[key] || "—",
 		});
+	}
+
+	/** One boolean setting: name, description, the settings key it flips. Five
+	 *  toggles used to spell out the same eleven lines each (ADR-097 ratchet). */
+	private addToggle(containerEl: HTMLElement, name: string, desc: string, key: BooleanSettingKey): void {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings[key]).onChange(async (value) => {
+					this.plugin.settings[key] = value;
+					await this.plugin.saveSettings();
+				})
+			);
 	}
 }
