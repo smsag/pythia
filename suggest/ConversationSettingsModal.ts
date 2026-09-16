@@ -75,6 +75,7 @@ export class ConversationSettingsModal extends Modal {
 		// Provider toggle
 		new Setting(contentEl)
 			.setName(t("providerLabel"))
+			.setDesc(t("providerDesc"))
 			.addDropdown((drop) => {
 				drop.addOption("anthropic", t("providerAnthropic"));
 				drop.addOption("openai", t("providerOpenAI"));
@@ -91,7 +92,9 @@ export class ConversationSettingsModal extends Modal {
 			});
 
 		// Model selection
-		const modelSetting = new Setting(contentEl).setName(t("modelLabel"));
+		const modelSetting = new Setting(contentEl)
+			.setName(t("modelLabel"))
+			.setDesc(t("modelDesc"));
 		modelSetting.addDropdown((drop) => {
 			modelDropdown = drop;
 			rebuildModelOptions(drop, selectedProvider, selectedModel);
