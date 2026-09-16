@@ -39,9 +39,20 @@ function idf(df: number, n: number): number {
 export function scoreRelevanceTokensWeighted(queryTokens: string[], haystacks: string[]): number[] {
 	if (haystacks.length === 0) return [];
 	if (queryTokens.length === 0) return haystacks.map(() => 0);
+	return scoreRelevanceTokenSets(queryTokens, haystacks.map((h) => new Set(tokenize(h))));
+}
 
-	const tokenSets = haystacks.map((h) => new Set(tokenize(h)));
-	const n = haystacks.length;
+/**
+ * The same scoring over haystacks a caller has ALREADY tokenized. For the two
+ * surfaces that score the same corpus on every keystroke — the `#` note picker
+ * over every vault file, the conversation panel over every conversation —
+ * tokenizing is the expensive half, and it never changes between keystrokes.
+ * They cache the sets and call this.
+ */
+export function scoreRelevanceTokenSets(queryTokens: string[], tokenSets: Set<string>[]): number[] {
+	if (tokenSets.length === 0) return [];
+	if (queryTokens.length === 0) return tokenSets.map(() => 0);
+	const n = tokenSets.length;
 	const weights = new Map<string, number>();
 	for (const tok of queryTokens) {
 		const df = tokenSets.reduce((count, set) => count + (set.has(tok) ? 1 : 0), 0);

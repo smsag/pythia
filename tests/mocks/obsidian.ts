@@ -110,7 +110,9 @@ export const Platform = { isMobile: false, isDesktop: true, isIosApp: false, isA
 
 export const setIcon = noop;
 export const getIcon = (): null => null;
-export const debounce = <T>(fn: T): T => fn;
+// Immediate, but with the Debouncer surface (`run`/`cancel`) production code calls.
+export const debounce = <A extends unknown[]>(fn: (...args: A) => unknown) =>
+	Object.assign((...args: A) => { fn(...args); }, { run: () => { fn(...([] as unknown as A)); }, cancel: () => {} });
 export const normalizePath = (p: string): string => p;
 export const parseYaml = (): Record<string, unknown> => ({});
 export const stringifyYaml = (): string => "";

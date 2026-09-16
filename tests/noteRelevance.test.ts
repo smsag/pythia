@@ -114,3 +114,20 @@ describe("scoreRelevanceTokensWeighted", () => {
 		expect(second[0]).toBeGreaterThan(0);
 	});
 });
+
+import { scoreRelevanceTokenSets, tokenize as tok } from "../services/noteRelevance";
+
+describe("scoreRelevanceTokenSets", () => {
+	it("scores pre-tokenized sets identically to the string form", () => {
+		const q = tok("kayak lake");
+		const hay = ["kayak on the lake", "tax filing", "lake house"];
+		const a = scoreRelevanceTokensWeighted(q, hay);
+		const b = scoreRelevanceTokenSets(q, hay.map((h) => new Set(tok(h))));
+		expect(b).toEqual(a);
+	});
+
+	it("returns zeros for an empty query and [] for no sets", () => {
+		expect(scoreRelevanceTokenSets([], [new Set(["a"])])).toEqual([0]);
+		expect(scoreRelevanceTokenSets(["a"], [])).toEqual([]);
+	});
+});

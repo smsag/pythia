@@ -7,13 +7,7 @@ import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
 import { clampSummary } from "./clampBody";
-
-type DomEventRegistrar = (
-	el: HTMLElement,
-	type: string,
-	callback: (ev: Event) => void,
-	options?: boolean | AddEventListenerOptions,
-) => void;
+import { attachOutsideDismiss } from "./outsideDismiss";
 
 export interface ForkDeps {
 	plugin: PythiaPlugin;
@@ -26,8 +20,6 @@ export interface ForkDeps {
 	renderMarkdown(md: string, el: HTMLElement): void;
 	/** Run the LLM favorites-summary call (SummaryController), persist, return text. */
 	runFavoritesSummary(conv: Conversation): Promise<string>;
-	/** The view's `registerDomEvent`, so long-press listeners auto-clean on unload. */
-	registerDomEvent: DomEventRegistrar;
 }
 
 /**
@@ -247,12 +239,15 @@ export class ForkController {
 		anchor: HTMLElement,
 		fork: Conversation,
 	): void {
+		// Direct listeners, not the view's registerDomEvent: the anchor is rebuilt
+		// on every open and removed by closeAnchor, so binding through the view
+		// would leave one dead listener set per open until the view unloads.
 		attachLongPress(btn, () => {
 			// Suppress the click that follows the press, so opening the menu doesn't
 			// also open the fork.
 			this.suppressNextForkOpen = true;
 			this.openForkMenu(wrap, anchor, fork);
-		}, { bind: this.d.registerDomEvent });
+		});
 	}
 
 	/** The fork anchor's long-press menu — a popover above the Open-fork button.
@@ -286,16 +281,13 @@ export class ForkController {
 				() => void this.generateForkSummary(anchor, fork, "favorites"));
 		}
 
-		const onOutside = (e: Event) => {
-			if (!wrap.contains(e.target as Node)) this.closeForkMenu();
-		};
-		window.setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			document.addEventListener("touchstart", onOutside, true);
-		}, 0);
+		const detachOutside = attachOutsideDismiss(
+			(target) => wrap.contains(target),
+			() => this.closeForkMenu(),
+			{ touch: true },
+		);
 		this.forkMenuCleanup = () => {
-			document.removeEventListener("mousedown", onOutside, true);
-			document.removeEventListener("touchstart", onOutside, true);
+			detachOutside();
 			menu.remove();
 		};
 	}
@@ -326,13 +318,12 @@ export class ForkController {
 			// the origin keeps its generic "Fork of X" name while one summarized from
 			// inside gets a real title.
 			const { title, summary } = await this.d.plugin.llmRouter.generateSummaryWithTitle(fork);
-			if (summary) {
-				fork.summaryText = summary;
-				fork.summaryUpdatedAt = new Date().toISOString();
-				if (title) await this.d.plugin.renameConversation(fork, title);
-				await this.d.plugin.conversationStore.save(fork);
-				if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
-			}
+			if (!summary) { new Notice(t("summaryEmpty")); return; } // ADR-158: "" is not a result
+			fork.summaryText = summary;
+			fork.summaryUpdatedAt = new Date().toISOString();
+			if (title) await this.d.plugin.renameConversation(fork, title);
+			await this.d.plugin.conversationStore.save(fork);
+			if (this.openForkAnchor === anchor) this.buildForkAnchor(anchor, fork, "conversation");
 		} catch (err) {
 			new Notice(t("summaryFailed", { error: err instanceof Error ? err.message : String(err) }));
 		} finally {

@@ -56,11 +56,12 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
+    outsideDismiss.ts         ← the one deferred outside-press / Escape dismisser for popovers and menus (ADR-161)
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 949 tests across 59 files
+  tests/                      ← Vitest unit tests (npm test) — 967 tests across 60 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -86,6 +87,14 @@ Three rules that every change is measured against. They came out of the 2026-09-
 3. **If it is a rule, the tooling enforces it.** A convention worth writing into this file is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. `tsconfig` is `strict`; ESLint bans `==`, `toLocaleDateString`/`toLocaleTimeString` and `innerHTML`; the file-size ratchet and CI run the same four steps you run locally (`lint`, `check:filesize`, `build`, `test`). Prose is for the reasoning; the guard is for the regression.
 
 Two corollaries: **a write that can destroy content is a distinct operation** (`createNote` refuses an existing path; only `rewrite_note`, confirmed by name, overwrites), and **one builder per fact** (`safeNoteName`, `resumeDeepLink`, `resolveDefaultModelForProvider` — never a second copy of a regex or a ternary).
+
+Three more from the second review (ADR-161), which read the UI layer the first one had only skimmed:
+
+4. **One implementation per interaction.** A gesture, a dismissal, a copy-to-clipboard: the second hand-rolled copy is where the leak lives. `attachLongPress` (five copies before), `attachOutsideDismiss` (five, four of them leaking), `copyWithFeedback`. ESLint now confines raw `document`/`window` listeners to an allow-list; a new surface uses the helper or names its reason in `eslint.config.mjs`.
+5. **Pay for the keystroke, not the corpus.** Work triggered by input is proportional to the input. The conversation panel re-tokenized every conversation per keystroke; the `#` picker re-tokenized every vault file; every typed settings character rewrote the whole `data.json`. Cache what the keystroke does not change (`tokensFor`, `noteTokens`), debounce what the disk does not need to see yet (`saveSettingsSoon`), precompute what the loop reads (`countForks`).
+6. **Inherited stays inherited.** `undefined` on an override means *follow the default*, and a control may *show* the resolved default but must never *store* it — the conversation modal pinned temperature and max-tokens on every Save, turning "follow the global setting" into "frozen at today's value". Already the rule for `theme` and `outputLanguage`; it is the rule for every override.
+
+The canonical list lives here, because this file is what every session reads first; the reasoning behind each lives in its ADR (159, 161); the guard that stops the regression lives in `eslint.config.mjs`, `tsconfig.json` or a test that fails in the forbidden direction.
 
 ---
 

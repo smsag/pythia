@@ -318,12 +318,11 @@ export class MergeController {
 		const notice = new Notice(t("generatingSummary"), 0);
 		try {
 			const summary = await this.d.plugin.llmRouter.generateSummary(target);
-			if (summary) {
-				target.summaryText = summary;
-				target.summaryUpdatedAt = new Date().toISOString();
-				await this.d.plugin.conversationStore.save(target);
-				if (this.openMergeAnchor === anchor) this.buildMergeAnchor(anchor, link, target);
-			}
+			if (!summary) { new Notice(t("summaryEmpty")); return; } // ADR-158: "" is not a result
+			target.summaryText = summary;
+			target.summaryUpdatedAt = new Date().toISOString();
+			await this.d.plugin.conversationStore.save(target);
+			if (this.openMergeAnchor === anchor) this.buildMergeAnchor(anchor, link, target);
 		} catch (err) {
 			new Notice(t("summaryFailed", { error: err instanceof Error ? err.message : String(err) }));
 		} finally {

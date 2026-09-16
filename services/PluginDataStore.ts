@@ -1,4 +1,4 @@
-import { Notice, normalizePath } from "obsidian";
+import { Notice, debounce, normalizePath } from "obsidian";
 import type PythiaPlugin from "../main";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
@@ -22,9 +22,15 @@ import {
  * it replaced; `settings`/`conversations`/`plaintext*` still live on the plugin
  * (the ConversationStore ownership inversion is a later step).
  */
+/** Typed settings fire per keystroke; every save rewrites the whole data.json. */
+const SETTINGS_SAVE_DEBOUNCE_MS = 400;
+
 export class PluginDataStore {
 	/** Set by watchDataJson() so persist() can stamp the own-write time. */
 	private saveDataRecordTime: (() => void) | null = null;
+	/** The one coalesced save for text/number settings fields — the settings tab
+	 *  and its sub-panels all go through it, so no surface writes per keystroke. */
+	private readonly settingsSaveSoon = debounce(() => void this.saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS, true);
 
 	constructor(private readonly plugin: PythiaPlugin) {}
 
@@ -128,6 +134,16 @@ export class PluginDataStore {
 		p.noteWriter?.updateSettings(p.settings);
 		p.webSearchService?.updateSettings(p.settings);
 		p.promptOptimizerService?.updateSettings(p.settings);
+	}
+
+	/** Save settings a beat after the last call (typed fields). */
+	saveSettingsSoon(): void {
+		this.settingsSaveSoon();
+	}
+
+	/** Run a pending debounced settings save now (closing the settings tab). */
+	flushSettingsSave(): void {
+		this.settingsSaveSoon.run();
 	}
 
 	async saveConversations(): Promise<void> {

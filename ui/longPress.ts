@@ -34,7 +34,13 @@ export interface LongPressOptions {
 	 *  and start a text selection; wrong on a button, where it would also
 	 *  suppress the click. Makes the touchstart listener non-passive. */
 	preventTouchDefault?: boolean;
+	/** Arm on touch only — a slow mouse click stays a click. For rows whose
+	 *  pointer users already have hover controls. */
+	touchOnly?: boolean;
 }
+
+/** Where the press started, for a menu that opens at the finger. */
+export interface PressPoint { x: number; y: number }
 
 /**
  * Fire `onFire` when `el` is pressed and held. Returns a cleanup function:
@@ -42,24 +48,30 @@ export interface LongPressOptions {
  */
 export function attachLongPress(
 	el: HTMLElement,
-	onFire: () => void,
-	{ delayMs = LONG_PRESS_MS, bind, preventTouchDefault = false }: LongPressOptions = {},
+	onFire: (at: PressPoint) => void,
+	{ delayMs = LONG_PRESS_MS, bind, preventTouchDefault = false, touchOnly = false }: LongPressOptions = {},
 ): () => void {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	const cancel = () => {
 		if (timer !== null) { clearTimeout(timer); timer = null; }
 	};
-	const start = () => {
+	const start = (at: PressPoint) => {
 		cancel();
-		timer = setTimeout(() => { timer = null; onFire(); }, delayMs);
+		timer = setTimeout(() => { timer = null; onFire(at); }, delayMs);
 	};
 	// Left button only — a right-click opens a context menu, and a middle-click
 	// press should not arm a gesture the user can't see.
-	const onMouseDown = (e: Event) => { if ((e as MouseEvent).button === 0) start(); };
+	const onMouseDown = (e: Event) => {
+		if (touchOnly) return;
+		const m = e as MouseEvent;
+		if (m.button === 0) start({ x: m.clientX ?? 0, y: m.clientY ?? 0 });
+	};
 	const onTouchStart = (e: Event) => {
 		if (preventTouchDefault) e.preventDefault();
-		start();
+		// A synthetic Event (tests, some shims) carries no touches — start at 0,0.
+		const t = (e as TouchEvent).touches?.[0];
+		start({ x: t?.clientX ?? 0, y: t?.clientY ?? 0 });
 	};
 
 	// touchmove cancels so a scroll that begins on the control never fires it.

@@ -61,12 +61,12 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 			area
 				.setPlaceholder("Product Practice\nInsights")
 				.setValue(plugin.settings.vaultContextFolders.join("\n"))
-				.onChange(async (value) => {
+				.onChange((value) => {
 					plugin.settings.vaultContextFolders = value
 						.split("\n")
-						.map((s) => s.trim())
+						.map((s) => s.trim().replace(/\/+$/, ""))
 						.filter(Boolean);
-					await plugin.saveSettings();
+					plugin.saveSettingsSoon();
 				})
 		);
 
@@ -77,10 +77,10 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 			txt
 				.setPlaceholder("5000")
 				.setValue(String(plugin.settings.vaultContextMaxIndexedNotes))
-				.onChange(async (value) => {
+				.onChange((value) => {
 					const n = Number.parseInt(value, 10);
 					plugin.settings.vaultContextMaxIndexedNotes = Number.isFinite(n) && n >= 0 ? n : 0;
-					await plugin.saveSettings();
+					plugin.saveSettingsSoon();
 				})
 		);
 

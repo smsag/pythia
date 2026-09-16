@@ -283,3 +283,18 @@ describe("person entries", () => {
 		expect(merged.theme).toEqual(["Neu"]);
 	});
 });
+
+describe("entryFrontmatter — the real term survives a sanitized file name", () => {
+	it("writes a `term` property only when the file name had to change", () => {
+		expect(entryFrontmatter(entry({ term: "Zähler" })).term).toBeUndefined();
+		expect(entryFrontmatter(entry({ term: "C#" })).term).toBe("C#");
+		expect(entryFrontmatter(entry({ term: "A/B testing" })).term).toBe("A/B testing");
+	});
+
+	it("reads the real term back in preference to the basename", () => {
+		const fm = entryFrontmatter(entry({ term: "C#" }));
+		expect(entryFrontmatter(entry({ term: "C#" })).term).toBe("C#");
+		expect(entryFromFrontmatter("C-", fm).term).toBe("C#");
+		expect(entryFromFrontmatter("Zähler", {}).term).toBe("Zähler");
+	});
+});

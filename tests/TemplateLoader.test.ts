@@ -211,3 +211,10 @@ describe("TemplateLoader — field validation additions", () => {
 		expect(tpl.maxTokens).toBeUndefined();
 	});
 });
+
+describe("TemplateLoader — the vault root as templates folder", () => {
+	it("treats '/' (what the folder picker stores for the root) as every markdown file", async () => {
+		const loader = new TemplateLoader(makeApp([{ path: "t.md", content: VALID_FRONTMATTER }]) as never, makeSettings("/"));
+		expect(await loader.loadTemplates()).toHaveLength(1);
+	});
+});

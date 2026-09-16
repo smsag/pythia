@@ -100,11 +100,15 @@ export function updateViewportInsets(container: HTMLElement): void {
 export function watchViewport(onChange: () => void): () => void {
 	const vv = window.visualViewport;
 	if (!vv) return () => { /* no viewport API: nothing to watch or dispose */ };
-	const handler = () => onChange();
+	let live = true;
+	const handler = () => { if (live) onChange(); };
 	vv.addEventListener("resize", handler);
 	vv.addEventListener("scroll", handler);
-	requestAnimationFrame(() => { onChange(); requestAnimationFrame(onChange); });
+	// Guarded: a view closed within two frames of opening must not be measured
+	// after its disposer ran.
+	requestAnimationFrame(() => { handler(); requestAnimationFrame(handler); });
 	return () => {
+		live = false;
 		vv.removeEventListener("resize", handler);
 		vv.removeEventListener("scroll", handler);
 	};

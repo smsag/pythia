@@ -423,6 +423,9 @@ export class SelectionController {
 		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
 		this.mergeBtn.style.display = inSingleAssistant ? "" : "none";
 		this.defineBtn.style.display = inSingleAssistant ? "" : "none";
+		// Person follows the same rule as Define; it was the one button that stayed
+		// visible over a user bubble, where its handler then silently declined.
+		this.personBtn.style.display = inSingleAssistant ? "" : "none";
 
 		// Tapped-highlight selection → the button unfavorites; otherwise it favorites.
 		this.setFavButtonMode(this.tappedFavId !== null);
@@ -451,7 +454,12 @@ export class SelectionController {
 	private onInsertIntoNote(): void {
 		const text = window.getSelection()?.toString() ?? "";
 		if (!text) return;
-		const view = this.d.getLastMarkdownView()
+		// The remembered view may belong to a leaf the user has since closed; its
+		// editor is detached and `replaceSelection` would throw or write nowhere.
+		const remembered = this.d.getLastMarkdownView();
+		const stillOpen = remembered && this.d.plugin.app.workspace
+			.getLeavesOfType("markdown").some((leaf) => leaf.view === remembered);
+		const view = (stillOpen ? remembered : null)
 			?? this.d.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
 			new Notice(t("noActiveNoteToInsert"));

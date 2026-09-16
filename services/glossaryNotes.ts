@@ -98,6 +98,11 @@ function toList(value: unknown): string[] {
  */
 export function entryFrontmatter(entry: GlossaryEntry): Record<string, unknown> {
 	const fm: Record<string, unknown> = { type: entry.kind === "person" ? PERSON_TYPE : TERM_TYPE };
+	// The file name is the term — except when the term holds a character no file
+	// name can ("C#", "A/B testing"). Then the note carries the real term as a
+	// property, or the sanitized name would become the term everywhere: in the
+	// index, the anchor title and the next lookup's miss.
+	if (sanitizeFileName(entry.term) !== entry.term) fm.term = entry.term;
 	fm.aliases = entry.aliases ?? [];
 	fm.theme = (entry.theme ?? []).map(themeLink);
 	for (const t of entry.translations ?? []) fm[translationKey(t.lang)] = t.term;
@@ -125,8 +130,9 @@ export function entryFromFrontmatter(
 	}
 	const aliases = toList(f.aliases);
 	const theme = toList(f.theme).map(themeName);
+	const realTerm = typeof f.term === "string" && f.term.trim() ? f.term.trim() : term;
 	return {
-		term,
+		term: realTerm,
 		definition: body?.definition ?? "",
 		kind: f.type === PERSON_TYPE ? "person" : "term",
 		source: f.source === "model" ? "model" : "manual",

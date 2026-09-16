@@ -7,6 +7,7 @@ import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
 import { goodForModel } from "../models/modelGuidance";
 import { ConversationSettingsModal } from "../suggest/ConversationSettingsModal";
+import { attachOutsideDismiss } from "./outsideDismiss";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -236,17 +237,20 @@ export class HeaderController {
 		pop.style.maxHeight = `${Math.max(120, cRect.height - top - 8)}px`;
 		this.modelBadgeEl.addClass("open");
 
-		const onOutside = (e: MouseEvent) => {
-			if (!pop.contains(e.target as Node) && e.target !== this.modelBadgeEl) closePop();
-		};
-		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closePop(); };
 		const closePop = () => {
 			pop.remove();
 			this.modelBadgeEl.removeClass("open");
-			document.removeEventListener("mousedown", onOutside, true);
-			document.removeEventListener("keydown", onKey, true);
+			detachOutside();
 			this.modelPopoverCleanup = null;
 		};
+		const detachOutside = attachOutsideDismiss(
+			(target) => pop.contains(target) || target === this.modelBadgeEl,
+			closePop,
+			{ escape: true },
+		);
+		// Set now, not after the deferred listener registration: a `close()` from a
+		// view rebuild in the same tick must find something to call.
+		this.modelPopoverCleanup = closePop;
 
 		// Touch (no hover): first tap on a row reveals its "good for" examples and
 		// arms it; a second tap on the same row confirms. Desktop reveals on hover
@@ -327,11 +331,6 @@ export class HeaderController {
 			this.onModelBadgeClick();
 		});
 
-		setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			document.addEventListener("keydown", onKey, true);
-			this.modelPopoverCleanup = closePop;
-		}, 0);
 	}
 
 	private async applyModelChoice(m: ModelInfo): Promise<void> {
@@ -339,6 +338,10 @@ export class HeaderController {
 		if (!conv) return;
 		conv.provider = m.provider;
 		conv.model = m.id;
+		// Say so now, not at the next send: the switch is allowed (the key may be
+		// added in a moment), but a send that fails with "key not configured" after
+		// the model badge changed reads as a bug.
+		if (!this.d.plugin.hasApiKeyFor(m.provider)) new Notice(t("modelNoKeyNotice", { provider: m.provider }));
 		await this.d.plugin.conversationStore.save(conv);
 		this.updateModelBadge();
 		this.d.refreshContextInspector();
@@ -404,6 +407,8 @@ export class HeaderController {
 			const title = await this.d.plugin.llmRouter.generateConversationTitle(
 				userMsg, assistMsg, conv.provider, conv
 			);
+			// "" is not a title (ADR-158): say so rather than blanking the field.
+			if (!title) { new Notice(t("summaryEmpty")); return; }
 			// Fill the input with the generated name — user can still edit before confirming
 			this.renameInputEl.value = title;
 			this.renameInputEl.focus();

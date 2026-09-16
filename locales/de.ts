@@ -451,6 +451,8 @@ const de: Strings = {
 	deleteExchangeBtn: "✕ Löschen",
 
 	// ── Modellvergleich (ADR-160) ─────────────────────────────────────────────
+	copyDiagramTooltip:    "Diagrammquelle kopieren",
+	modelNoKeyNotice:      "Noch kein API-Schlüssel für {{provider}} — vor dem Senden in den Pythia-Einstellungen hinterlegen.",
 	compareBtn:            "⇄ Vergleichen",
 	compareTitle:          "VERGLEICH",
 	compareKeep:           "Diese Antwort übernehmen",

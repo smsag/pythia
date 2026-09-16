@@ -19,11 +19,14 @@ export class TemplateLoader {
 	async loadTemplates(): Promise<PythiaTemplate[]> {
 		// Tolerate a trailing slash or leading "./" in the setting — a folder
 		// picked by hand as "Pythia/Templates/" used to match nothing at all.
-		const folder = (this.settings.templatesFolder ?? "").trim().replace(/^\.?\/+|\/+$/g, "");
-		if (!folder) return [];
+		const raw = (this.settings.templatesFolder ?? "").trim();
+		if (!raw) return [];
+		// The folder picker stores the vault root as "/" (settings.ts). Empty
+		// stays "disabled"; root means every markdown file is a candidate.
+		const folder = raw.replace(/^\.?\/+|\/+$/g, "");
 		const files = this.app.vault
 			.getMarkdownFiles()
-			.filter((f) => f.path.startsWith(folder + "/"));
+			.filter((f) => folder === "" || f.path.startsWith(folder + "/"));
 
 		const templates = await Promise.all(files.map((file) => this.loadTemplate(file)));
 		return templates.filter((tpl): tpl is PythiaTemplate => tpl !== null);

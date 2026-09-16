@@ -63,7 +63,7 @@ export class OptimizationController {
 		} catch (err) {
 			if (myGen !== this.generation) return;
 			this.setBusy(false);
-			new Notice(t("optimizeFailed", { error: String(err) }));
+			new Notice(t("optimizeFailed", { error: err instanceof Error ? err.message : String(err) }));
 		}
 	}
 

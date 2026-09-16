@@ -192,3 +192,18 @@ describe("rankConversations — recency order tolerates a missing updatedAt", ()
 		expect(ranked.map((r) => r.conversation.id)).toEqual(["new", "old", "none"]);
 	});
 });
+
+describe("rankConversations — accepts pre-tokenized haystacks", () => {
+	it("ranks the same whether given strings or their token arrays", () => {
+		const convs = [
+			{ id: "a", name: "Kayak", messages: [msg("we rented a kayak")], updatedAt: "" },
+			{ id: "b", name: "Tax", messages: [msg("quarterly filing")], updatedAt: "" },
+		] as unknown as Conversation[];
+		const hay = convs.map(buildConversationHaystack);
+		const q = tokenize("kayak");
+		const byString = rankConversations(q, convs, hay).map((r) => r.conversation.id);
+		const byTokens = rankConversations(q, convs, hay.map(tokenize)).map((r) => r.conversation.id);
+		expect(byTokens).toEqual(byString);
+		expect(byTokens).toEqual(["a"]);
+	});
+});

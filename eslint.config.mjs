@@ -51,6 +51,35 @@ export default tseslint.config(
 				{ selector: "AssignmentExpression > MemberExpression.left[property.name='innerHTML']", message: "Never assign innerHTML — build DOM nodes or use MarkdownRenderer." },
 				{ selector: "AssignmentExpression > MemberExpression.left[property.name='outerHTML']", message: "Never assign outerHTML — build DOM nodes or use MarkdownRenderer." },
 				{ selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "Never insert HTML strings — build DOM nodes or use MarkdownRenderer." },
+				// A document/window listener outlives the surface that added it unless
+				// its removal is wired to that surface's close path — five copies of
+				// that wiring each had the same leak (ADR-161). Popovers and menus go
+				// through ui/outsideDismiss.ts; the few files that genuinely need a raw
+				// listener are allow-listed below.
+				{ selector: "CallExpression[callee.object.name='document'][callee.property.name='addEventListener']", message: "Use attachOutsideDismiss() from ui/outsideDismiss.ts (ADR-161), or allow-list this file in eslint.config.mjs with a reason." },
+				{ selector: "CallExpression[callee.object.name='window'][callee.property.name='addEventListener']", message: "Use the view's registerDomEvent or watchViewport() (ADR-161), or allow-list this file in eslint.config.mjs with a reason." },
+			],
+		},
+	},
+	// Files that own a raw document/window listener AND its removal (ADR-161):
+	// the dismiss helper itself; the drag-to-pan gesture (pointer capture must
+	// follow the pointer off the element); the action sheet and inline picker
+	// (register and remove in the same open/close pair); the delete bar (capture
+	// listener added and removed by hidePreview); the embedding iframe bridge.
+	{
+		files: [
+			"ui/outsideDismiss.ts",
+			"ui/dragToPan.ts",
+			"ui/ActionSheet.ts",
+			"ui/InlineSuggest.ts",
+			"ui/ExchangeActionsController.ts",
+			"services/embedding/host/**/*.ts",
+		],
+		rules: {
+			"no-restricted-syntax": ["error",
+				{ selector: "AssignmentExpression > MemberExpression.left[property.name='innerHTML']", message: "Never assign innerHTML — build DOM nodes or use MarkdownRenderer." },
+				{ selector: "AssignmentExpression > MemberExpression.left[property.name='outerHTML']", message: "Never assign outerHTML — build DOM nodes or use MarkdownRenderer." },
+				{ selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "Never insert HTML strings — build DOM nodes or use MarkdownRenderer." },
 			],
 		},
 	},

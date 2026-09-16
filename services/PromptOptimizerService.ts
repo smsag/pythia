@@ -160,7 +160,7 @@ export class PromptOptimizerService {
 				model
 			));
 		} catch (err) {
-			new Notice(t("promptOptimizerFailed", { error: String(err) }));
+			new Notice(t("promptOptimizerFailed", { error: err instanceof Error ? err.message : String(err) }));
 			return;
 		}
 

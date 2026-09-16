@@ -67,6 +67,14 @@ const STEM_CUES: string[] = [
 // caller in control, matching the codebase's no-argless-Date convention).
 const YEAR_RE = /\b(20\d{2})\b/g;
 
+// Compiled once at module load: this runs on every send, and building ~100
+// RegExps per keystroke-free send was pure waste. Multi-word cues stay as
+// substrings (spaces already bound them).
+const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const WORD_CUE_RE = new RegExp(`\\b(?:${CUE_WORDS.filter((c) => !c.includes(" ")).map(escapeRx).join("|")})\\b`);
+const PHRASE_CUES = CUE_WORDS.filter((c) => c.includes(" "));
+const STEM_CUE_RE = new RegExp(`\\b(?:${STEM_CUES.map(escapeRx).join("|")})`);
+
 /**
  * Returns true when `text` reads as time-sensitive and should auto-arm web
  * search. `currentYear` anchors the year check; pass the real year at the call
@@ -77,19 +85,10 @@ export function looksTimeSensitive(text: string, currentYear: number): boolean {
 	if (!text) return false;
 	const lower = text.toLowerCase();
 
-	for (const cue of CUE_WORDS) {
-		if (cue.includes(" ")) {
-			// Multi-word cue: plain substring is fine (spaces already bound it).
-			if (lower.includes(cue)) return true;
-		} else if (new RegExp(`\\b${cue}\\b`).test(lower)) {
-			return true;
-		}
-	}
-
+	if (WORD_CUE_RE.test(lower)) return true;
+	for (const cue of PHRASE_CUES) if (lower.includes(cue)) return true;
 	// Declining German stems: word-start boundary, any suffix.
-	for (const stem of STEM_CUES) {
-		if (new RegExp(`\\b${stem}`).test(lower)) return true;
-	}
+	if (STEM_CUE_RE.test(lower)) return true;
 
 	let m: RegExpExecArray | null;
 	YEAR_RE.lastIndex = 0;

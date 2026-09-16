@@ -1,9 +1,23 @@
-import { setIcon } from "obsidian";
+import { Notice, setIcon } from "obsidian";
 import { t } from "../i18n";
 import { attachDragToPan } from "./dragToPan";
 import { decorateTables } from "./tableDecorator";
 
 type DiagObserverEntry = { mo: MutationObserver; ro: ResizeObserver };
+
+/** Copy `text` and flash the button to a check mark; a denied clipboard says so
+ *  instead of surfacing as an unhandled rejection. */
+async function copyWithFeedback(btn: HTMLElement, text: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch {
+		new Notice(t("copyFailed"));
+		return;
+	}
+	setIcon(btn, "check");
+	btn.addClass("copied");
+	setTimeout(() => { setIcon(btn, "copy"); btn.removeClass("copied"); }, 1500);
+}
 
 function wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
 	const frame = createEl("div", { cls: "p-code-frame" });
@@ -141,12 +155,9 @@ export function decorateCodeBlocks(
 		const actions = head.createEl("div", { cls: "p-code-actions" });
 		const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
 		setIcon(copyBtn, "copy");
-		copyBtn.addEventListener("click", async (e) => {
+		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			await navigator.clipboard.writeText(makeFenced());
-			setIcon(copyBtn, "check");
-			copyBtn.addClass("copied");
-			setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
+			void copyWithFeedback(copyBtn, makeFenced());
 		});
 
 		attachDragToPan(pre);
@@ -166,15 +177,12 @@ export function decorateCodeBlocks(
 
 			const copyBtn = el.createEl("button", {
 				cls:  "p-code-btn p-code-copy p-diag-copy",
-				attr: { title: "Copy diagram source" },
+				attr: { title: t("copyDiagramTooltip") },
 			});
 			setIcon(copyBtn, "copy");
-			copyBtn.addEventListener("click", async (e) => {
+			copyBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
-				await navigator.clipboard.writeText(makeFenced());
-				setIcon(copyBtn, "check");
-				copyBtn.addClass("copied");
-				setTimeout(() => { setIcon(copyBtn, "copy"); copyBtn.removeClass("copied"); }, 1500);
+				void copyWithFeedback(copyBtn, makeFenced());
 			});
 		}
 

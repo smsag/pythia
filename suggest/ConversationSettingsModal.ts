@@ -3,10 +3,7 @@ import type { Conversation, Provider, EffortLevel, OutputLanguage } from "../mod
 import { t } from "../i18n";
 import {
 	KNOWN_MODELS as MODELS_BY_PROVIDER,
-	supportsTemperature,
-	supportsEffort,
-	isReasoningModel,
-	isMistralReasoningModel,
+	parameterSupport,
 } from "../models/knownModels";
 import { resolveDefaultMaxTokens } from "../services/promptConstants";
 import { languageOptions, languageOptionLabel } from "../ui/languageOptions";
@@ -275,26 +272,7 @@ export class ConversationSettingsModal extends Modal {
 		paintMaxTokens(false);
 
 		updateParamAvailability = (): void => {
-			let tempSupported: boolean;
-			let effortSupported: boolean;
-			switch (selectedProvider) {
-				case "anthropic":
-					tempSupported = supportsTemperature(selectedModel);
-					effortSupported = supportsEffort(selectedModel);
-					break;
-				case "openai":
-					tempSupported = !isReasoningModel(selectedModel);
-					effortSupported = isReasoningModel(selectedModel);
-					break;
-				case "mistral":
-					tempSupported = !isMistralReasoningModel(selectedModel);
-					effortSupported = true;
-					break;
-				default: {
-					const exhaustiveCheck: never = selectedProvider;
-					throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
-				}
-			}
+			const { temperature: tempSupported, effort: effortSupported } = parameterSupport(selectedProvider, selectedModel);
 
 			// `Setting.setDisabled` only marks the row — the control underneath stays
 			// draggable — so the slider is disabled directly and the whole control
@@ -377,9 +355,12 @@ export class ConversationSettingsModal extends Modal {
 
 						this.conversation.provider = selectedProvider;
 						this.conversation.model = selectedModel;
-						this.conversation.temperature = temperatureValue;
+						// An untouched field stays "inherit": the readout said `· Standard`,
+						// and Save must not quietly turn that into a pinned override that
+						// stops following the global default the next time it changes.
+						this.conversation.temperature = temperatureIsDefault ? undefined : temperatureValue;
 						this.conversation.effort = effortValue === "" ? undefined : effortValue;
-						this.conversation.maxTokens = maxTokensValue;
+						this.conversation.maxTokens = maxTokensIsDefault ? undefined : maxTokensValue;
 						this.conversation.outputLanguage = languageValue;
 						this.conversation.theme = themeValue;
 						await this.onSave(this.conversation);

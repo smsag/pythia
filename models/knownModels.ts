@@ -105,6 +105,26 @@ export function getContextWindow(model: string): number {
 	return CONTEXT_WINDOW_MAP.get(model) ?? DEFAULT_CONTEXT_WINDOW;
 }
 
+/**
+ * Which sampling parameters a provider/model pair accepts. One rule, because
+ * the settings tab and the conversation modal each carried a copy of this
+ * switch, and a model added to one was a silent 400 in the other.
+ */
+export function parameterSupport(provider: Provider, model: string): { temperature: boolean; effort: boolean } {
+	switch (provider) {
+		case "anthropic":
+			return { temperature: supportsTemperature(model), effort: supportsEffort(model) };
+		case "openai":
+			return { temperature: !isReasoningModel(model), effort: isReasoningModel(model) };
+		case "mistral":
+			return { temperature: !isMistralReasoningModel(model), effort: true };
+		default: {
+			const exhaustiveCheck: never = provider;
+			throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
+		}
+	}
+}
+
 export function resolveDefaultModelForProvider(provider: Provider, settings: PythiaSettings): string {
 	switch (provider) {
 		case "anthropic":
