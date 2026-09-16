@@ -33,9 +33,20 @@ describe("the Pythia icon", () => {
 		expect(scale).toBeCloseTo(100 / 24, 3);
 	});
 
-	it("keeps Lucide's rules: 2-unit stroke, round caps and joins, stroke only", () => {
+	it("inherits Obsidian's stroke width rather than pinning its own (ADR-168)", () => {
+		// `.svg-icon` sets `stroke-width: var(--icon-stroke)` and a Lucide icon
+		// carries no attribute of its own. An attribute here would block that, and
+		// the group's scale() multiplies the stroke — a hardcoded 2 drew at 8.33%
+		// of the icon's width against core's 7.29%.
 		const g = render().firstElementChild!;
-		expect(g.getAttribute("stroke-width")).toBe("2");
+		expect(g.hasAttribute("stroke-width")).toBe(false);
+		for (const shape of Array.from(g.children)) {
+			expect(shape.hasAttribute("stroke-width")).toBe(false);
+		}
+	});
+
+	it("keeps Lucide's other rules: round caps and joins, stroke only", () => {
+		const g = render().firstElementChild!;
 		expect(g.getAttribute("stroke-linecap")).toBe("round");
 		expect(g.getAttribute("stroke-linejoin")).toBe("round");
 		expect(g.getAttribute("fill")).toBe("none");
