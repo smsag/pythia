@@ -1,4 +1,4 @@
-import type { Conversation, Provider, ToolCall, TokenUsage } from "../models/types";
+import type { Conversation, Provider, ToolCall, TokenUsage, StreamFinish } from "../models/types";
 import type { LLMProvider } from "./LLMProvider";
 import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
@@ -65,7 +65,7 @@ export class LLMRouter {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {

@@ -484,3 +484,18 @@ describe("OpenAIProvider — malformed tool arguments", () => {
 		expect(completed).toBe(true);
 	});
 });
+
+describe("OpenAIProvider — finish reason (ADR-162)", () => {
+	it("reports truncated when the stream finished with 'length'", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "cut" }, finish_reason: "length" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		let finish: { truncated: boolean } | undefined;
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, (_t, _u, f) => { finish = f; }, () => {});
+		expect(finish?.truncated).toBe(true);
+	});
+});

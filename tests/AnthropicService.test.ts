@@ -396,3 +396,29 @@ describe("AnthropicService — callUtility block handling", () => {
 		expect(await run([])).toBe("");
 	});
 });
+
+describe("AnthropicService — stop reason (ADR-162)", () => {
+	it("reports truncated when the stream stopped at max_tokens", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["cut"], {
+				content: [{ type: "text", text: "cut" }],
+				stop_reason: "max_tokens",
+				usage: { input_tokens: 5, output_tokens: 2 },
+			})
+		);
+		const provider = new AnthropicService({} as never, makeSettings(), "key");
+		let finish: { truncated: boolean } | undefined;
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, (_t, _u, f) => { finish = f; }, () => {});
+		expect(finish?.truncated).toBe(true);
+	});
+
+	it("reports not truncated on end_turn", async () => {
+		streamMock.mockReturnValueOnce(
+			makeFakeStream(["ok"], { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 2 } })
+		);
+		const provider = new AnthropicService({} as never, makeSettings(), "key");
+		let finish: { truncated: boolean } | undefined;
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, (_t, _u, f) => { finish = f; }, () => {});
+		expect(finish?.truncated).toBe(false);
+	});
+});

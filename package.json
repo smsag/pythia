@@ -1,6 +1,6 @@
 {
   "name": "pythia",
-  "version": "2.16.0",
+  "version": "2.17.0",
   "description": "AI conversations as first-class vault objects in Obsidian",
   "main": "main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "check:filesize": "node scripts/check-file-size.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "update:pricing": "node scripts/update-pricing.mjs"
   },
   "keywords": [],
   "author": "",

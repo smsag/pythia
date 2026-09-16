@@ -270,6 +270,7 @@ export class OpenAIProvider extends BaseProvider {
 
 		return {
 			action: finishReason === "tool_calls" && this.lastPendingCalls.length > 0 ? "tool_use" : "done",
+			truncated: finishReason === "length",
 			inputTokens,
 			outputTokens,
 			cacheReadTokens: 0,

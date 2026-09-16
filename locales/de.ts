@@ -7,7 +7,7 @@ const de: Strings = {
 	reasoningTag:           "Reasoning",
 	tapAgainToSelect:       "Zum Auswählen erneut tippen",
 	openConvSettings:       "Gesprächseinstellungen…",
-	sendMaxTokensHint:      "Max. Tokens ({{max}}) könnten für {{model}} zu niedrig sein — ein Reasoning-Modell verbraucht einen Teil davon für verborgenes Nachdenken, sodass die Antwort abgeschnitten werden kann. Empfohlen: mindestens {{recommended}}. Zum Anpassen klicken.",
+	sendMaxTokensHint:      "Max. Tokens ({{max}}) könnten für {{model}} zu niedrig sein — ein Reasoning-Modell verbraucht einen Teil davon für verborgenes Nachdenken, sodass die Antwort abgeschnitten werden kann. Empfohlen: mindestens {{recommended}}. Tippen öffnet die Gesprächseinstellungen.",
 	deleteConvTooltip:      "Gespräch löschen",
 	newConvTooltip:         "Neues Gespräch",
 	templateLabel:          "Vorlage: {{name}}",
@@ -46,7 +46,7 @@ const de: Strings = {
 	glossaryMigrateDone:     "{{migrated}} von {{total}} Begriffen migriert.",
 	glossaryMigrateFailed:   "Migration fehlgeschlagen: {{error}}",
 	convThemeLabel:          "Thema",
-	convThemeDesc:           "Thema, unter dem dieses Gespräch seine Begriffe ablegt. Leer lassen, um dem Gesprächsnamen zu folgen — dann folgt es auch Umbenennungen.",
+	convThemeDesc:           "Thema, unter dem Begriffe und Personen aus diesem Gespräch im Glossar abgelegt werden — als [[Link]] in jeder Begriffsnotiz, sodass die Thema-Notiz Backlinks sammelt. Leer: folgt dem Gesprächsnamen, auch nach einer Umbenennung. Eigener Wert: bleibt fest, auch wenn das Gespräch umbenannt wird. Bereits abgelegte Begriffe werden nicht verschoben.",
 	glossaryNoteName:          "Glossar-Notiz",
 	glossaryNoteDesc:          "Vault-Pfad der Einzel-Notiz aus älteren Versionen. Wird nur noch gelesen — Quelle für die Migration oben. Begriffe liegen jetzt als je eine Notiz im Glossar-Ordner.",
 	mergeAnchorLabel:           "VERKNÜPFUNG",
@@ -111,6 +111,11 @@ const de: Strings = {
 	favoriteSpanSingleMessage:  "Markiere Text innerhalb einer einzelnen Nachricht, um ihn zu favorisieren.",
 	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
+	// ── Kosten je Antwort (ADR-163) ────────────────────────────────────────
+	costEstimateTitle: "Schätzung, keine Abrechnung: Token-Zahlen × Listenpreise von models.dev (Stand {{date}}), die veraltet oder falsch sein können. Maßgeblich ist die Rechnung deines Anbieters. Web-Suchen werden separat abgerechnet.",
+	showCostName:      "Kosten je Antwort anzeigen",
+	showCostDesc:      "Ergänzt jede Antwort um einen geschätzten Preis (≈ $) und zeigt im Gesprächsverlauf eine laufende Summe je Gespräch. Eine Schätzung aus Token-Zahlen und models.dev-Listenpreisen (Stand {{date}}), keine Abrechnung.",
+	pricingDisclaimer: "Kostenangaben in Pythia sind Schätzungen, keine Abrechnung. Sie werden aus den vom Anbieter gemeldeten Token-Zahlen und Listenpreisen aus {{source}} berechnet, einem offenen, gemeinschaftlich gepflegten Katalog; Pythia aktualisiert sie mit jeder Version (dieser Build: Preise mit Stand {{date}}). Preise ändern sich, und jeder Wert kann veraltet oder für dein Konto, deine Region oder deinen Tarif falsch sein. Maßgeblich ist allein die Rechnung deines Anbieters. Web-Suchen werden separat abgerechnet und sind nicht enthalten.",
 
 	// ── Code block actions ────────────────────────────────────────────────────
 	copyCodeTooltip:       "Kopieren",
@@ -135,7 +140,6 @@ const de: Strings = {
 	addNoteInline: "+ Notiz",
 
 	// ── Context budget ────────────────────────────────────────────────────────
-	nextSendEstimate: "nächste {{n}}",
 	ctxBarTooltip:    "Kontext: {{used}} / {{total}} Token ({{pct}}%)",
 
 	// ── Context inspector ─────────────────────────────────────────────────────
@@ -373,7 +377,7 @@ const de: Strings = {
 	outputLanguageItalian:   "Italienisch",
 	outputLanguageSpanish:   "Spanisch",
 	convLanguageLabel:       "Sprache",
-	convLanguageDesc:        "Sprache, in der dieses Gespräch beantwortet wird. Standard folgt der Plugin-Einstellung.",
+	convLanguageDesc:        "Sprache der Antworten und aller erzeugten Texte in diesem Gespräch — auch Titel, Zusammenfassung und Begriffsdefinitionen. „Sprache des Gesprächsverlaufs“ antwortet in der Sprache, in der du schreibst. Standard folgt der Plugin-Einstellung. Bereits geschriebene Antworten werden nicht übersetzt.",
 	convLanguageDefault:     "Standard ({{v}})",
 	customInstructionsName:  "Eigene Anweisungen",
 	customInstructionsDesc:  "Dauerhafte Anweisungen, die zu jedem Gespräch zusätzlich zum System-Prompt hinzugefügt werden — z. B. Ton, Formatierung oder Dinge, die immer vermieden werden sollen. Gilt für alle Gespräche; leer lassen für keine.",
@@ -499,13 +503,30 @@ const de: Strings = {
 	// ── Conversation settings modal ────────────────────────────────────────────
 	convSettingsTitle: "Gesprächseinstellungen",
 	providerLabel:     "Anbieter",
+	providerDesc:      "Welcher Dienst dieses Gespräch ab der nächsten Nachricht beantwortet. Ein Wechsel setzt das Modell auf den Standard des neuen Anbieters. Bisherige Nachrichten bleiben und gehen dem neuen Modell als Verlauf mit.",
 	modelLabel:        "Modell",
+	modelDesc:         "Das Modell, das ab der nächsten Nachricht antwortet; frühere Antworten bleiben unverändert. Größere Modelle antworten gründlicher, aber langsamer und teurer pro Nachricht; kleinere schneller und günstiger. Reasoning-Modelle denken vor der Antwort und brauchen ein höheres Token-Limit.",
 	convTemperatureLabel: "Temperatur",
-	convTemperatureDesc:  "Überschreibt die Standardtemperatur (0–1) für dieses Gespräch.",
+	convTemperatureDesc:  "Wie weit das Modell vom naheliegendsten Wortlaut abweicht. Niedrig (0–0,3): sachlich und wiederholbar — dieselbe Frage ergibt fast dieselbe Antwort; gut für Zusammenfassungen, Fakten, Code. Hoch (0,7–1): abwechslungsreicher und kreativer, aber weniger vorhersehbar; gut für Brainstorming und Entwürfe. Hat keinen Einfluss auf Länge oder Kosten.",
 	convMaxTokensLabel:   "Token-Limit",
-	convMaxTokensDesc:    "Überschreibt das Standard-Token-Limit für dieses Gespräch. Leeren, um den Standardwert zu verwenden.",
+	convMaxTokensDesc:    "Obergrenze für die Länge einer einzelnen Antwort (grob 3–4 Zeichen pro Token; 4.000 Token ≈ 5–6 Seiten Text). Erreicht eine Antwort das Limit, bricht sie mitten im Satz ab. Höher: lange Texte und Notizen kommen vollständig an — bezahlt wird nur, was tatsächlich geschrieben wird. Niedriger: kappt ausufernde Antworten und deckelt die Kosten pro Nachricht. Bei Reasoning-Modellen zählt das Nachdenken mit — ein zu niedriges Limit ergibt dort eine abgebrochene oder leere Antwort. Leer: Standard des Modells.",
 	convEffortLabel:   "Effort",
-	convEffortDesc:    "Überschreibt den Standard-Effort für dieses Gespräch. Gilt nur für Modelle, die dies unterstützen.",
+	convEffortDesc:    "Wie viel das Modell nachdenkt, bevor es antwortet. Niedrig: schnellste und günstigste Antwort — für einfache Fragen und Umformulierungen. Hoch: gründlicher bei Analyse, Planung und mehrschrittigen Aufgaben, dafür spürbar langsamer und teurer; das Nachdenken zählt gegen das Token-Limit. Standard übernimmt die Plugin-Einstellung. Gilt nur für Modelle, die Effort unterstützen.",
+
+	// ── Token-Limit-Support (ADR-162) ──────────────────────────────────────
+	convTokensAdvice:          "Reasoning-Modell: {{max}} Token ergeben meist eine abgeschnittene oder leere Antwort, weil das Nachdenken aus diesem Budget bezahlt wird. Empfohlen: {{recommended}}.",
+	convTokensAdviceClearBtn:  "Standard verwenden ({{recommended}})",
+	convTokensAdvicePinBtn:    "{{recommended}} für dieses Gespräch setzen",
+	reasoningNeedsBudget:      "Denkt vor der Antwort — braucht ein Token-Limit von mindestens {{recommended}}",
+	truncLabel:                "ABGESCHNITTEN",
+	truncMeta:                 "Beim Token-Limit ({{max}}) gestoppt. Der Rest wurde nie geschrieben.",
+	truncReasoningNote:        "Bei einem Reasoning-Modell zählt das Nachdenken gegen dieses Limit.",
+	truncContinueBtn:          "→ Weiter",
+	truncContinuePrompt:       "Setze genau dort fort, wo du aufgehört hast, ohne bereits Geschriebenes zu wiederholen.",
+	truncRetryBtn:             "↑ Erneut mit {{n}}",
+	truncRetryNotice:          "Token-Limit für dieses Gespräch auf {{n}} gesetzt — der Prompt wird erneut gesendet",
+	emptyReply:                "Das Modell hat keinen Text zurückgegeben.",
+	emptyReplyTruncated:       "Das Modell hat keinen Text zurückgegeben: das Nachdenken hat das gesamte Token-Budget ({{max}}) verbraucht. Erhöhe das Token-Limit in den Gesprächseinstellungen.",
 	saveBtn:           "Speichern",
 	okBtn:             "OK",
 

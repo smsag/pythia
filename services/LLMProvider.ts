@@ -1,4 +1,4 @@
-import type { Conversation, ToolCall, TokenUsage } from "../models/types";
+import type { Conversation, ToolCall, TokenUsage, StreamFinish } from "../models/types";
 import type { PythiaSettings } from "../settings";
 
 export interface LLMProvider {
@@ -10,7 +10,7 @@ export interface LLMProvider {
 		newMessage: string,
 		attachedNotes: string[],
 		onToken: (text: string) => void,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
+		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void>;

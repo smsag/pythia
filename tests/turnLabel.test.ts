@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderTurnLabel, turnTemplateCaption, isFirstMessageOfDay } from "../ui/turnLabel";
+import { estimateCost, formatCost } from "../models/modelPricing";
 import type { Conversation, Message } from "../models/types";
 
 // Obsidian extends Element.prototype with these at runtime; happy-dom does not.
@@ -137,5 +138,46 @@ describe("turn labels — no role captions (ADR-129)", () => {
 		const row = document.createElement("div");
 		renderTurnLabel(row, conv.messages[0], conv);
 		expect(row.querySelector(".p-turn-label")?.textContent).toMatch(/2026/);
+	});
+});
+
+describe("turn labels — cost per answer (ADR-163)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+	const usage = { inputTokens: 1000, outputTokens: 600 };
+
+	it("appends an estimated price after the token counts when enabled", () => {
+		const row = document.createElement("div");
+		const msg = ai("a1", { tokenUsage: usage });
+		renderTurnLabel(row, msg, conversation({ messages: [msg] }), { showCost: true });
+		const cost = row.querySelector(".p-turn-cost");
+		// Expected from the table, never a literal: the table changes weekly.
+		expect(cost?.textContent).toBe(` · ≈ ${formatCost(estimateCost("claude-sonnet-4-6", usage)!)}`);
+		expect(cost?.getAttribute("title")).toContain("2026");
+		// The counts are still there, ahead of the price.
+		expect(row.querySelector(".p-turn-tokens")).not.toBeNull();
+	});
+
+	it("appends nothing when the setting is off, or the model has no price row", () => {
+		const off = document.createElement("div");
+		const msg = ai("a1", { tokenUsage: usage });
+		renderTurnLabel(off, msg, conversation({ messages: [msg] }));
+		expect(off.querySelector(".p-turn-cost")).toBeNull();
+
+		const custom = document.createElement("div");
+		const m2 = ai("a2", { tokenUsage: usage, model: "my-fine-tune" });
+		renderTurnLabel(custom, m2, conversation({ messages: [m2] }), { showCost: true });
+		expect(custom.querySelector(".p-turn-cost")).toBeNull();
+		expect(custom.querySelector(".p-turn-tokens")).not.toBeNull();
+	});
+});
+
+describe("turn labels — stored cost wins (ADR-163)", () => {
+	it("renders the snapshot and its date, not a live estimate", () => {
+		const row = document.createElement("div");
+		const msg = ai("a1", { tokenUsage: { inputTokens: 1000, outputTokens: 600 }, cost: { usd: 0.5, asOf: "2025-01-01" } });
+		renderTurnLabel(row, msg, conversation({ messages: [msg] }), { showCost: true });
+		const cost = row.querySelector(".p-turn-cost");
+		expect(cost?.textContent).toBe(" · ≈ $0.50");
+		expect(cost?.getAttribute("title")).toContain("2025-01-01");
 	});
 });

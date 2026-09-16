@@ -4,6 +4,7 @@ import type { Conversation, ComparisonCandidate, ToolCall } from "../models/type
 import type { ModelInfo } from "../models/knownModels";
 import { abbreviateModel } from "../models/knownModels";
 import { t } from "../i18n";
+import { estimateCost, formatCost } from "../models/modelPricing";
 import { formatClockTime } from "../services/messageUtils";
 import { parseCitations } from "../services/citations";
 import { describeErrorForLog } from "../services/redact";
@@ -194,7 +195,11 @@ export class ComparisonController {
 
 		const meta = card.createDiv({ cls: "p-compare-meta" });
 		const parts = [abbreviateModel(active.model).toUpperCase(), formatClockTime(active.timestamp)];
-		if (active.tokenUsage) parts.push(`↑${active.tokenUsage.inputTokens} ↓${active.tokenUsage.outputTokens}`);
+		if (active.tokenUsage) {
+			parts.push(`↑${active.tokenUsage.inputTokens} ↓${active.tokenUsage.outputTokens}`);
+			const cost = this.d.plugin.settings.showCost ? estimateCost(active.model, active.tokenUsage) : null;
+			if (cost !== null) parts.push(`≈ ${formatCost(cost)}`);
+		}
 		meta.setText(parts.filter(Boolean).join(" · "));
 
 		const actions = card.createDiv({ cls: "p-compare-actions" });
