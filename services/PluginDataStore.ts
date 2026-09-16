@@ -1,9 +1,10 @@
-import { Notice } from "obsidian";
+import { Notice, normalizePath } from "obsidian";
 import type PythiaPlugin from "../main";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 import { debugLog } from "./messageUtils";
+import { describeErrorForLog } from "./redact";
 import {
 	applySettingsMigrations,
 	mergeSettings,
@@ -95,15 +96,24 @@ export class PluginDataStore {
 			});
 		}
 
-		// getSecret() is async in Obsidian's current typings (truly async on iOS WebKit). (#18)
-		p.plaintextApiKey =
-			(await p.app.secretStorage.getSecret(p.settings.anthropicSecretName)) ?? "";
-		p.plaintextOpenAIKey =
-			(await p.app.secretStorage.getSecret(p.settings.openaiSecretName)) ?? "";
-		p.plaintextMistralKey =
-			(await p.app.secretStorage.getSecret(p.settings.mistralSecretName)) ?? "";
-		p.plaintextSearchKey =
-			(await p.app.secretStorage.getSecret(p.settings.searchSecretName)) ?? "";
+		// getSecret() is async in Obsidian's current typings (truly async on iOS
+		// WebKit, #18). The four reads are independent, so they run concurrently
+		// instead of serially on the startup path.
+		const secret = async (name: string): Promise<string> => {
+			try {
+				return (await p.app.secretStorage.getSecret(name)) ?? "";
+			} catch (e) {
+				console.warn(`[Pythia] secret "${name}" could not be read:`, describeErrorForLog(e));
+				return "";
+			}
+		};
+		[p.plaintextApiKey, p.plaintextOpenAIKey, p.plaintextMistralKey, p.plaintextSearchKey] =
+			await Promise.all([
+				secret(p.settings.anthropicSecretName),
+				secret(p.settings.openaiSecretName),
+				secret(p.settings.mistralSecretName),
+				secret(p.settings.searchSecretName),
+			]);
 
 		if (needsSave) {
 			await p.saveData({ settings: p.settings, conversations: p.conversations });
@@ -211,7 +221,11 @@ export class PluginDataStore {
 	 */
 	watchDataJson(): void {
 		const p = this.plugin;
-		const DATA_JSON_PATH = `.obsidian/plugins/${p.manifest.id}/data.json`;
+		// The plugin folder, not a hardcoded ".obsidian": the config directory is
+		// user-configurable, and a watcher pointed at the wrong path never fires —
+		// silently, since a missing stat is the "nothing to do" case below.
+		const pluginDir = p.manifest.dir ?? `${p.app.vault.configDir}/plugins/${p.manifest.id}`;
+		const DATA_JSON_PATH = normalizePath(`${pluginDir}/data.json`);
 		// Seeded from the clock and corrected on the first poll below. Using the
 		// file's own mtime as the baseline matters: data.json is routinely older
 		// than the moment the plugin loads, and seeding from the clock would let a
@@ -219,6 +233,9 @@ export class PluginDataStore {
 		let lastKnownMtime = 0;
 		let lastOwnWrite   = Date.now();
 		let seeded         = false;
+		// A reload can take longer than one poll interval (large data.json on a
+		// slow device), and two overlapping reloads would race each other's merge.
+		let reloading      = false;
 
 		// Record whenever WE write so we can ignore our own saves.
 		this.saveDataRecordTime = () => { lastOwnWrite = Date.now(); };
@@ -230,8 +247,10 @@ export class PluginDataStore {
 				if (!seeded) { seeded = true; lastKnownMtime = stat.mtime; return; }
 				// External write: mtime is newer than what we last saw AND
 				// we didn't write it ourselves within the last 3 seconds.
+				if (reloading) return;
 				if (stat.mtime > lastKnownMtime && Date.now() - lastOwnWrite > 3000) {
 					lastKnownMtime = stat.mtime;
+					reloading = true;
 					// Silent reload (notify: false). WORKAROUND for iCloud / Obsidian
 					// Sync vaults: those services rewrite data.json in the background
 					// very frequently (delivering another device's changes, or just
@@ -242,12 +261,21 @@ export class PluginDataStore {
 					// stays quiet; only the user-initiated manual reload (command hub)
 					// surfaces the confirmation toast. The reload itself still happens —
 					// conversations stay fresh — it just doesn't announce itself.
-					await this.reloadFromDisk({ notify: false });
+					try {
+						await this.reloadFromDisk({ notify: false });
+					} finally {
+						reloading = false;
+					}
 				} else {
 					// Keep mtime in sync even if we wrote it ourselves.
 					lastKnownMtime = Math.max(lastKnownMtime, stat.mtime);
 				}
-			} catch { /* adapter unavailable on some platforms */ }
+			} catch (e) {
+				// A failed poll is not silent: a reload that threw mid-merge is exactly
+				// the kind of error that otherwise shows up only as "my conversation
+				// rolled back".
+				console.warn("[Pythia] data.json watcher:", describeErrorForLog(e));
+			}
 		}, 5000);
 
 		p.register(() => window.clearInterval(handle));

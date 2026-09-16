@@ -180,3 +180,15 @@ describe("bestMatchSnippet", () => {
 		expect(snippet.endsWith("…")).toBe(true);
 	});
 });
+
+describe("rankConversations — recency order tolerates a missing updatedAt", () => {
+	it("keeps a deterministic order and sorts the undated conversation last", () => {
+		const convs = [
+			{ id: "old", name: "old", messages: [], updatedAt: "2026-01-01T00:00:00Z" },
+			{ id: "none", name: "none", messages: [] },
+			{ id: "new", name: "new", messages: [], updatedAt: "2026-02-01T00:00:00Z" },
+		] as unknown as Conversation[];
+		const ranked = rankConversations([], convs, convs.map(buildConversationHaystack));
+		expect(ranked.map((r) => r.conversation.id)).toEqual(["new", "old", "none"]);
+	});
+});

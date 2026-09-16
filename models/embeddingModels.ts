@@ -50,7 +50,11 @@ export const DEFAULT_EMBEDDING_MODEL_ID: EmbeddingModelId =
  *  the user never has to reason about raw cosine scores; mapped to a number in
  *  `services/embedding/relatedConversations.ts`. */
 export type RelatedSimilarity = "strict" | "balanced" | "loose";
+export const RELATED_SIMILARITY_PRESETS: readonly RelatedSimilarity[] = ["strict", "balanced", "loose"];
 export const DEFAULT_RELATED_SIMILARITY: RelatedSimilarity = "balanced";
+
+/** Every known model id, for validating a persisted setting. */
+export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBEDDING_MODELS) as EmbeddingModelId[];
 
 export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig {
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];

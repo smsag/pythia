@@ -80,3 +80,12 @@ describe("LLMRouter — vault-retriever hook", () => {
 		expect(a.calls[0]).toEqual(["Manual.md"]);
 	});
 });
+
+describe("LLMRouter — provider resolution", () => {
+	it("falls back to anthropic for an unknown provider string instead of throwing", async () => {
+		const { router, a } = makeRouter();
+		const odd = { id: "c2", provider: "gemini" } as unknown as Conversation;
+		await router.streamMessage(odd, "q", [], noop, noop, noop);
+		expect(a.provider.streamMessage).toHaveBeenCalledTimes(1);
+	});
+});

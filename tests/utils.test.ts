@@ -41,3 +41,35 @@ describe("estimateTokensFromText", () => {
 		expect(typeof estimateTokensFromText("hello world")).toBe("number");
 	});
 });
+
+// ── todayISO / withConversationBacklink ──────────────────────────────────────
+
+import { todayISO, withConversationBacklink } from "../utils";
+
+describe("todayISO", () => {
+	it("uses the local calendar date, not UTC", () => {
+		// 23:30 local on the 15th: toISOString() would already say the 16th east of UTC.
+		const local = new Date(2026, 8, 15, 23, 30);
+		expect(todayISO(local)).toBe("2026-09-15");
+	});
+
+	it("zero-pads month and day", () => {
+		expect(todayISO(new Date(2026, 0, 5))).toBe("2026-01-05");
+	});
+});
+
+describe("withConversationBacklink", () => {
+	it("appends a resume deep link with the vault and id encoded", () => {
+		const out = withConversationBacklink("text", { id: "a b", name: "Chat" }, "My Vault");
+		expect(out).toBe("text\n\n[↗ Chat](obsidian://pythia?vault=My%20Vault&cmd=resume&id=a%20b)");
+	});
+
+	it("escapes brackets in the name so the link text cannot close early", () => {
+		const out = withConversationBacklink("t", { id: "1", name: "A [b] c" }, "V");
+		expect(out).toContain("[↗ A \\[b\\] c](");
+	});
+
+	it("returns the text unchanged without a conversation", () => {
+		expect(withConversationBacklink("t", null, "V")).toBe("t");
+	});
+});
