@@ -111,6 +111,10 @@ const de: Strings = {
 	favoriteSpanSingleMessage:  "Markiere Text innerhalb einer einzelnen Nachricht, um ihn zu favorisieren.",
 	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
+	// ── Kosten je Antwort (ADR-163) ────────────────────────────────────────
+	costEstimateTitle: "Geschätzt aus Listenpreisen, Stand {{date}}. Web-Suchen werden separat abgerechnet und sind nicht enthalten.",
+	showCostName:      "Kosten je Antwort anzeigen",
+	showCostDesc:      "Ergänzt jede Antwort um einen geschätzten Preis (≈ $) und zeigt im Gesprächsverlauf eine laufende Summe je Gespräch. Geschätzt aus Listenpreisen, Stand {{date}}; Web-Suchen nicht enthalten.",
 
 	// ── Code block actions ────────────────────────────────────────────────────
 	copyCodeTooltip:       "Kopieren",
@@ -135,7 +139,6 @@ const de: Strings = {
 	addNoteInline: "+ Notiz",
 
 	// ── Context budget ────────────────────────────────────────────────────────
-	nextSendEstimate: "nächste {{n}}",
 	ctxBarTooltip:    "Kontext: {{used}} / {{total}} Token ({{pct}}%)",
 
 	// ── Context inspector ─────────────────────────────────────────────────────

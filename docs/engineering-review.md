@@ -14,6 +14,7 @@
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-062.*
 
+*Updated: 2026-09-16 — **#246–#247: cost per answer (ADR-163).** `≈ $` after the token counts on every assistant label, a running total per conversation in the history panel, priced from a date-stamped table with a completeness test; the next-send token estimate beside Send is removed. +11 tests (1008 across 64 files).*
 *Updated: 2026-09-16 — **#238–#245: token-limit support (ADR-162).** A reply cut at the token cap looked finished (the stop reason was dropped by all three providers); an empty reasoning reply vanished silently; the Send warning explained itself only in a tooltip; the modal said nothing when a pinned 2000 moved onto a reasoning model. One pure rule (`maxTokensAdvice`) now drives the modal advice line, the Send warning and a recovery card with Continue / Retry / Compare; model rows show speed · depth · cost. +30 tests (997 across 63 files).*
 *Updated: 2026-09-16 — **#237: conversation settings help texts state the effect.** Every row's description now says what raising or lowering the value changes, what it does not change, and what the default means; provider and model gained descriptions. Both locales; rule recorded in `docs/design.md` (modal section).*
 *Updated: 2026-09-16 — **second whole-codebase review (ADR-161): #181–#236, 56 fixes.** Read what the first pass skimmed: every `ui/` controller, both settings surfaces, the embedding/retrieval layer, the stylesheet, and the day-old comparison code. Three shapes the first three principles did not name — the second hand-rolled copy (five dismissers, four leaking), work proportional to the corpus rather than the keystroke (re-tokenizing every conversation per character; rewriting `data.json` per typed character), and a shown default being stored (the modal pinned untouched temperature/max-tokens). Three new principles in CLAUDE.md alongside ADR-159's; a lint rule now confines raw `document`/`window` listeners to an allow-list. +18 tests (967 across 60 files). Full list under "Second review (#181–#236)".*
@@ -225,6 +226,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-09-16 | #246–#247 cost per answer (ADR-163): `models/modelPricing.ts`, `.p-turn-cost` on the label, history-row total, comparison-tab cost, `showCost` setting; next-send estimate removed |
 | 2026-09-16 | #238–#245 token-limit support (ADR-162): stop reason surfaced, `Message.truncated`, recovery card (Continue / Retry with raised limit / Compare), one `maxTokensAdvice` rule behind the modal, the Send warning and the card; model profiles |
 | 2026-09-16 | #181–#236 second whole-codebase review (ADR-161): shared dismisser + lint guard, per-keystroke work cached/debounced, untouched overrides stay inherited, ADR-158 applied to four older paths, hover fills under `(hover: hover)`; three more principles |
 | 2026-09-16 | Model comparison on the last exchange (ADR-160): ⇄ Compare in the long-press bar, tabbed card, keep → forks, send blocked while pending; #179–#180 Tavily header + shared long-press |
@@ -1326,6 +1328,13 @@ Whole-codebase review, second pass (ADR-161), targeting what the first read leas
 | # | Item | Status |
 |---|---|---|
 | 237 | **Every conversation-settings description said "overrides the default" and nothing about the effect.** A user setting max tokens could not tell whether raising it costs more (it does not — only written tokens are billed) or what happens at the cap (the answer stops mid-sentence). All seven rows now state what changes when the value goes up or down, what does not change, and what the default means; provider and model rows, which had no description, gained one (`providerDesc`, `modelDesc`). Both locales. | Done |
+
+### Follow-up (same day) — cost per answer (ADR-163)
+
+| # | Item | Status |
+|---|---|---|
+| 246 | **The cost of an answer was computable from stored data and shown nowhere.** `models/modelPricing.ts` prices the four usage counts (input, output, cache read, cache write) from a date-stamped table; the turn label, the comparison tab and the history row show `≈ $`. Unknown model → nothing, never a wrong number; a test requires a row per catalog model. Prices entered from memory — verify before release. | Done |
+| 247 | **The next-send token estimate beside Send was a guess in the provider's unit on the panel's narrowest row.** Removed (`sendEstimateEl`, the `nextSendEstimate` string, three CSS rules); the label's actual cost replaces it. | Done |
 
 ### Follow-up (same day) — token-limit support (ADR-162)
 

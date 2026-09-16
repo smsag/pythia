@@ -10,7 +10,7 @@ import {
 } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
+import { estimateTokensFromBytes, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
 import { noteBasename, safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
@@ -88,7 +88,6 @@ export class PythiaSidebarView extends ItemView {
 	private ctxBarEl!: HTMLElement;
 	private ctxBarFillEl!: HTMLElement;
 	// Mono next-send token estimate shown left of the Send button.
-	private sendEstimateEl!: HTMLElement;
 	// Quick switcher (F9), history overlay (F10), and delete-with-confirm (ADR-103).
 	private historyController!: HistoryController;
 	// Web-search sources captured (deterministically) during the current send,
@@ -654,9 +653,6 @@ export class PythiaSidebarView extends ItemView {
 		setIcon(this.inputCollapseBtn, "arrow-down");
 		this.registerDomEvent(this.inputCollapseBtn, "click", () => this.toggleInputArea());
 
-		// Next-send token estimate (mono), sits left of the warning + Send.
-		this.sendEstimateEl = toolbar.createEl("span", { cls: "p-send-estimate" });
-
 		// Max-tokens warning, sits just left of Send (ADR-162: SendHintController).
 		this.sendHint = new SendHintController({
 			getConversation: () => this.activeConversation,
@@ -1069,7 +1065,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
-		renderTurnLabel(row, msg, this.activeConversation);
+		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost });
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
@@ -1638,7 +1634,7 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label) appendTokensToTurnLabel(label, tokenUsage);
+						if (label) appendTokensToTurnLabel(label, tokenUsage, this.plugin.settings.showCost ? conv.model : undefined);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
 				}
@@ -1714,24 +1710,6 @@ export class PythiaSidebarView extends ItemView {
 		// button label). The button reads just "Senden" / "Stopp".
 		this.sendBtn.setText(t("sendBtn"));
 		this.sendBtn.title = "";
-		const last = lastTokenUsageMessage(this.activeConversation?.messages ?? []);
-		if (last?.tokenUsage) {
-			// Estimate total input tokens for the NEXT send (#28):
-			//   previous inputTokens  = full context as of the last call
-			//   + last outputTokens   = assistant reply now added to history
-			//   + draft chars / 4     = the message currently being typed
-			const { inputTokens, outputTokens } = last.tokenUsage;
-			const draftTokens = estimateTokensFromText(this.inputEl?.value ?? "");
-			const estimate = inputTokens + outputTokens + draftTokens;
-			const fmt = estimate >= 1000
-				? `~${(estimate / 1000).toFixed(1)}k`
-				: `~${estimate}`;
-			this.sendEstimateEl.setText(t("nextSendEstimate", { n: fmt }));
-			this.sendEstimateEl.style.display = "";
-		} else {
-			this.sendEstimateEl.setText("");
-			this.sendEstimateEl.style.display = "none";
-		}
 		this.contextInspector.updateContextBar();
 	}
 

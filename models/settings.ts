@@ -46,6 +46,9 @@ export interface PythiaSettings {
 	 *  UI locale. Otherwise an ISO 639-1 locale code. See ADR-148. */
 	outputLanguage: OutputLanguage;
 	debugMode: boolean;
+	/** Show the estimated USD cost on every assistant turn label and a total per
+	 *  conversation in the history panel (ADR-163). */
+	showCost: boolean;
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
@@ -112,6 +115,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	glossaryFolder: "Glossary",
 	outputLanguage: "auto",
 	debugMode: false,
+	showCost: true,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
 	temperature: 0.7,

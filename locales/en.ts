@@ -107,6 +107,10 @@ const en = {
 	favoriteSpanSingleMessage:  "Select text within a single message to favorite it.",
 	tokenCount:         "↑{{input}} ↓{{output}}",
 	tokenCountTitle:    "Input: {{input}} tokens · Output: {{output}} tokens",
+	// ── Cost per answer (ADR-163) ──────────────────────────────────────────
+	costEstimateTitle: "Estimated from list prices as of {{date}}. Web search calls are billed separately and not included.",
+	showCostName:      "Show cost per answer",
+	showCostDesc:      "Adds an estimated price (≈ $) to every answer's label and a running total per conversation in the history panel. Estimated from list prices as of {{date}}; web search is not included.",
 
 	// ── Code block actions ────────────────────────────────────────────────────
 	copyCodeTooltip:       "Copy",
@@ -129,7 +133,6 @@ const en = {
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	addNoteInline: "+ Note",
-	nextSendEstimate: "next {{n}}",
 	ctxBarTooltip:    "Context: {{used}} / {{total}} tokens ({{pct}}%)",
 	ctxLabel:          "Context",
 	ctxHistoryRow:     "Conversation history ({{count}} msgs)",

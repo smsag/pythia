@@ -7,6 +7,7 @@ import { renderEmbeddingSettings } from "./ui/embeddingSettings";
 import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
+import { PRICING_AS_OF } from "./models/modelPricing";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -416,6 +417,18 @@ export class PythiaSettingTab extends PluginSettingTab {
 			);
 
 		containerEl.createEl("h3", { text: t("featuresSection") });
+
+		new Setting(containerEl)
+			.setName(t("showCostName"))
+			.setDesc(t("showCostDesc", { date: PRICING_AS_OF }))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showCost)
+					.onChange(async (value) => {
+						this.plugin.settings.showCost = value;
+						await this.plugin.saveSettings();
+					})
+			);
 
 		new Setting(containerEl)
 			.setName(t("injectActiveNoteOnTemplateName"))

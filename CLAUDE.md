@@ -17,6 +17,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   models/
     types.ts                  ← shared TypeScript interfaces (Conversation, Message, …)
     settings.ts               ← PythiaSettings interface + DEFAULT_SETTINGS (no Obsidian dependency)
+    modelPricing.ts           ← USD list prices per model + PRICING_AS_OF; estimateCost / formatCost / conversationCost (ADR-163)
   services/
     AnthropicService.ts       ← Anthropic streaming + utility calls
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
@@ -65,7 +66,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 997 tests across 63 files
+  tests/                      ← Vitest unit tests (npm test) — 1008 tests across 64 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -314,9 +315,11 @@ Order left→right (ADR-098): search · name (grows) · rename · link · delete
 ### Turn label (above each message)
 ```
 user:  [ 27 Aug 2026 · ] 22:19
-AI:    OPUS 4.8 · 22:20 · ↑151 ↓430
+AI:    OPUS 4.8 · 22:20 · ↑151 ↓430 · ≈ $0.012
 ```
 - `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
+- **The cost is an estimate computed at render time** (ADR-163) from `models/modelPricing.ts` — never stored on the message. A model with no price row adds nothing; never show a wrong number. Off via `settings.showCost`. Prices carry `PRICING_AS_OF`; update the date when you update a price
+- **No next-send estimate beside Send** (removed in ADR-163). Do not bring it back; the label answers the question after the fact
 - **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
 - **No template here** (ADR-140) — the template is a reference, not a fact about the generation; it rides the sources row under the answer. `turnTemplateCaption` still decides which turns carry it
 - No per-message star button — favoriting moved to text selection (ADR-085); favorites still surface in the `#` navigator under "Starred"

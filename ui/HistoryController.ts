@@ -2,6 +2,7 @@ import { Menu, Notice, Platform, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
+import { conversationCost, formatCost } from "../models/modelPricing";
 import { abbreviateModel } from "../models/knownModels";
 import { formatMonthYear } from "../services/messageUtils";
 import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
@@ -332,6 +333,12 @@ export class HistoryController {
 			if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
 			const favCount = conv.favorites?.length ?? 0;
 			if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
+			// Estimated spend so far (ADR-163). A "+" marks a floor: some answers
+			// came from a model with no price row.
+			if (this.d.plugin.settings.showCost) {
+				const { usd, priced, unpriced } = conversationCost(conv.messages);
+				if (priced) sub.createSpan({ cls: "p-history-cost", text: ` · ≈ ${formatCost(usd)}${unpriced ? "+" : ""}` });
+			}
 			return sub;
 		};
 
