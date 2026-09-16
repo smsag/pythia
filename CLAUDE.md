@@ -69,7 +69,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1029 tests across 66 files
+  tests/                      ← Vitest unit tests (npm test) — 1034 tests across 67 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -261,7 +261,7 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ## Hard rules — never violate
 
-1. **The panel fills its leaf flush** — no border-radius on the `.pythia-view` root, and **no inset on any side**. Obsidian's `.workspace-leaf-content` pads `.view-content`; `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` neutralizes it for our leaf only (ADR-147). `.p-history` is `inset: 0` on `.pythia-view`, so **opening the conversation panel is the quickest way to see the panel's true edges** — if it stops short of the leaf on any side, the container is inset, not the content.
+1. **The panel fills its leaf flush** — no border-radius on the `.pythia-view` root, and **no inset on any side**. Obsidian's `.workspace-leaf-content` pads `.view-content`; `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` neutralizes it for our leaf only (ADR-147). `.p-history` is `inset: 0` on `.pythia-view`, so **opening the conversation panel is the quickest way to see the panel's true edges** — if it stops short of the leaf on any side, the container is inset, not the content. **The inset is Obsidian's own padding on `.view-content`** (12px sides, `max(safe-area, 32px)` bottom, at (0,2,0)) — `.pythia-view { padding: 0 }` never out-ranked it; `.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0 }` does, the way core exempts its own views (ADR-165, measured in Obsidian). On a phone the drawer adds two more, neither ours: a theme may pad `.view-content` (Klartext 1.6.1: 52px), and `.is-floating-nav` paints a 48px sidebar-coloured fade at the foot of every drawer leaf; both are out-ranked for our leaf by specificity in `styles.css` — never `!important` on the view's padding, which would also silence the keyboard lift's inline padding.
 2. **No imported fonts.** Use `var(--font-interface)` and `var(--font-monospace)` only.
 3. **No custom background colors.** Every surface uses an Obsidian CSS variable. No hex codes on backgrounds.
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.

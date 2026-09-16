@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
+*Last updated: 2026-09-16 — ADR-165 (the strip under the composer, measured at last: Obsidian pads every `.view-content` at (0,2,0), a theme added a 52px drawer reserve on phones, and Obsidian's floating-nav fade painted the empty strip; all three out-ranked for our leaf by specificity, the way core exempts its own views).*
+
+*Previously: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
 
 *Previously: 2026-09-16 — ADR-163 (the cost of an answer is an estimate from a date-stamped table, shown where the tokens already are; addenda: the cost is snapshotted on the message at generation; prices come from models.dev through a weekly pull request, never a fetch; off by default; no price table and no per-user overrides in the settings — the toggle and a disclaimer naming models.dev). `≈ $0.012` follows the token counts on every assistant turn label, computed at render time from `models/modelPricing.ts`; a running total per conversation sits in the history panel; the next-send token estimate beside Send is removed. Off-switch in settings.*
 
@@ -2287,7 +2289,7 @@ Two attempts at conditional logic is the signal to ask whether the condition is 
 
 ### ADR-147 — The panel was inset from its own leaf
 
-**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146
+**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
 
 **Context:** Five attempts at the dead space below the composer, four of them shipped, none of them fixing it. Each looked at padding *inside* the panel — a height assignment, `env(safe-area-inset-bottom)`, a stale measurement of it, and finally removing it outright.
 
@@ -2785,3 +2787,32 @@ return block?.type === "text" ? block.text.trim() : "";
 **Guards.** `tests/pluginIcon.test.ts` checks the id, the registration, the markup (one group, a path and a circle), the 100/24 scale, the Lucide attributes, stroke-only shapes, no colour literal, and the geometry verbatim. `tests/mocks/obsidian.ts` gains a capturing `addIcon` so a test can see what was handed over. The `"bot"` string no longer appears in the codebase.
 
 **Consequences.** The sidebar tab, the ribbon and the palette all show one mark; a user who has enabled any of the three plugins recognises the others by it. `sidebar.ts` gained an import and paid for it by collapsing the multi-line `obsidian` import to one line (1759 → 1751, ratchet lowered). Nothing about the icon depends on a theme: it is `currentColor` on Obsidian's grid, so Klartext or any other theme colours it like the icons beside it. On GitHub's dark theme the README's `<img>` of the SVG renders `currentColor` as black — accepted rather than hard-coding a colour into the asset, which the icon rules forbid.
+
+---
+
+### ADR-165 — The strip under the composer, measured: core pads every view, the theme added a reserve, core's fade painted it
+
+**Date:** 2026-09-16
+**Status:** Accepted — closes the thread of ADR-132, 134, 135, 146, 147
+
+**Context.** ADR-147 ended with a promise: if any strip survived, "I will instrument rather than guess again." One survived. On the phone, with Klartext, Send hung about 56px above the drawer's tab selector with a lighter band across the space. This time Obsidian 1.13.7 was run under a virtual display with `--remote-debugging-port`, put into phone emulation (`app.emulateMobile(true)`, 393×852, `is-phone`), the vault carried the built plugin and the theme, and the drawer was measured with `getBoundingClientRect` and `getComputedStyle`, before and after every change, in the same tab.
+
+**What was there — three layers, none of them Pythia's.**
+
+1. **Obsidian pads every `.view-content`.** `app.css` has `.view-content { padding: 12px }` and `.workspace-leaf-content .view-content { padding-bottom: max(var(--safe-area-inset-bottom), var(--size-4-8)) }` at (0,2,0): 32px on a desktop, the home indicator's 34px on a phone. Measured under the default theme on the desktop: `.pythia-view` computed `12px 12px 32px`. **This is ADR-147's "8 left, 8 right, 34 bottom"** — the sides and the home-indicator number, from one core rule. `.pythia-view { padding: 0 }` is (0,1,0) and never won; ADR-147's `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` addressed an element whose padding was already 0. Core exempts its own views by data-type: `.workspace-leaf-content[data-type="markdown"] .view-content { padding: 0 }` at (0,3,0).
+2. **Klartext 1.6.1 reserved 52px on every phone-drawer view** — `body.is-phone .workspace-drawer .workspace-leaf-content > .view-content { padding-bottom: var(--touch-size-l) }` at (0,4,1) — "so the last row cannot end up under the floating selector". The selector does not float: `.workspace-drawer-inner` is a flex column, the tab container is `flex: 1`, `.workspace-drawer-tab-options` is `position: relative`, below the view in normal flow. Dead space, replacing core's 34 with 52.
+3. **Obsidian's floating-nav fade painted the empty strip.** `.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content::after`: 48px, `pointer-events: none`, `linear-gradient(to top, var(--mobile-sidebar-background), transparent)` — meant to fade a file list under floating nav buttons, applied to every drawer leaf. Over an empty reserve, with the sidebar #222 against our #1a1a1a panel, it is the band in the screenshot.
+
+**Decision.** Three rules beside the ADR-147 one, all scoped to our leaf by `data-type`:
+
+```css
+.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0; }                       /* core's own exemption shape, (0,3,0) */
+body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .view-content { padding-bottom: 0; }  /* (0,5,1) over a theme's (0,4,1) */
+.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content[data-type="pythia"]::after { display: none; }
+```
+
+Specificity, **deliberately never `!important`**: the keyboard lift (ADR-132) writes an inline `padding-bottom` on this element and must keep winning. The theme is fixed too (Klartext 1.6.2 removes its reserve), but the plugin does not depend on it: the shape any theme would use is what the plugin out-ranks. The fade is removed only for our leaf; the composer is not a scrolling list.
+
+**Verification, in the running app.** Phone emulation, Klartext 1.6.1, old stylesheet: `.pythia-view` padding-bottom 52px, fade `display: block`, Send 56px above the view's edge. New stylesheet, theme unchanged: 0px, `none`, Send 4px above the edge and 5px above the selector's hairline; the band gone. Klartext 1.6.2 with the old stylesheet: 34px (core's) and the fade back — which is why all three rules are the plugin's to carry. Default theme, new stylesheet: 0px, `none`, 5px. Desktop, old stylesheet: `12px 12px 32px`; new: `0px`. `tests/leafInset.test.ts` loads core-shaped rules, then `styles.css`, then a theme-shaped rule — Obsidian's order — into happy-dom and asserts the desktop and phone cascades, that another `data-type` keeps both core's and the theme's padding, that inline padding still wins, and that the `::after` rule is scoped by `data-type`. +5 tests; lint, file-size, build green.
+
+**The method, kept.** Five ADRs guessed at this strip from screenshots and reasoned about numbers; the sixth ran the app and read three stylesheets the plugin had never read, one of them Obsidian's own. The tooling is now known: the Linux build under Xvfb with `--remote-debugging-port`, `app.emulateMobile(true)` plus a device-metrics override for the phone, `Runtime.evaluate` for the measurements, `Page.captureScreenshot` for the proof. When a symptom is "on the device", the next step is a device, emulated if need be — not a sixth reading of the same picture.
