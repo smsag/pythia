@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
+*Last updated: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
+
+*Previously: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
 
 *Previously: 2026-09-16 — ADR-163 (the cost of an answer is an estimate from a date-stamped table, shown where the tokens already are; addenda: the cost is snapshotted on the message at generation; prices come from models.dev through a weekly pull request, never a fetch; off by default; no price table and no per-user overrides in the settings — the toggle and a disclaimer naming models.dev). `≈ $0.012` follows the token counts on every assistant turn label, computed at render time from `models/modelPricing.ts`; a running total per conversation sits in the history panel; the next-send token estimate beside Send is removed. Off-switch in settings.*
 
@@ -2785,3 +2787,28 @@ return block?.type === "text" ? block.text.trim() : "";
 **Guards.** `tests/pluginIcon.test.ts` checks the id, the registration, the markup (one group, a path and a circle), the 100/24 scale, the Lucide attributes, stroke-only shapes, no colour literal, and the geometry verbatim. `tests/mocks/obsidian.ts` gains a capturing `addIcon` so a test can see what was handed over. The `"bot"` string no longer appears in the codebase.
 
 **Consequences.** The sidebar tab, the ribbon and the palette all show one mark; a user who has enabled any of the three plugins recognises the others by it. `sidebar.ts` gained an import and paid for it by collapsing the multi-line `obsidian` import to one line (1759 → 1751, ratchet lowered). Nothing about the icon depends on a theme: it is `currentColor` on Obsidian's grid, so Klartext or any other theme colours it like the icons beside it. On GitHub's dark theme the README's `<img>` of the SVG renders `currentColor` as black — accepted rather than hard-coding a colour into the asset, which the icon rules forbid.
+
+---
+
+### ADR-165 — The header shows what every answer is sent with
+
+**Date:** 2026-09-16
+**Status:** Accepted — revises the header order of ADR-098
+
+**Context.** The header carried the conversation's name and the model's abbreviation. Effort and answer language — which change every answer as much as the model does — lived in the conversation settings dialog, reached through the model popover's footer: two taps, and nothing on screen said they existed. The language case was the sharpest. A fixed language, "Obsidian language" and "conversation language" send three different things to the model (an instruction naming the language, the same instruction with the UI locale filled in, and no instruction at all — ADR-148), and none of them was visible. Meanwhile rename, copy link and delete held three of seven header slots. A first design brief listed every conversation setting and asked for a status strip; the designs it produced repeated controls that already sit beside Send (template, web search, vault context) and redesigned the settings dialog, and missed the point. The brief was narrowed to three values (engineering-review #259/#260, `docs/briefs/conversation-controls.html`), and the header built from the resulting mock-up.
+
+**Decision.** The header row is `search · name · [ctx chip] · model | effort | language · ⌄ · delete · new`.
+
+1. **One bordered group, three tap targets.** Model opens the existing model popover. Effort and language each open a short picker for that value alone — anchored under the segment on desktop, the bottom action sheet on mobile, the same split as the Send menu. A choice applies at the tap: the header repaints before the save, with no Save button and no detour through the dialog.
+2. **Show what is sent, resolved.** The segment reads `Hoch`, `DE`, `AUTO` — never "Standard". `obsidian` shows the resolved locale code (unknown → `EN`, as the prompt falls back). `AUTO` is the one case with no instruction, and says so in the picker ("the model answers in the language you write in").
+3. **Tint means "set for this conversation".** A plain segment follows the plugin settings; a tinted one is pinned. Each picker's first row returns to the default and stores `undefined` — principle 6, with a test that fails if it stores today's value. The header repaints when the settings tab closes, so a changed default shows immediately.
+4. **A model without effort shows a dimmed dash**, and a tap says the model has no effort setting. A stored effort is kept for a later switch back but not tinted, because it is not an instruction now.
+5. **Temperature and token limit stay out.** They change less often, the token warning already sits beside Send, and a 300px leaf has room for three values, not five.
+6. **Rename, copy link and conversation settings move into a `⌄` menu.** Delete stays visible.
+7. **Every picker explains its options in a visible line**, not a tooltip — most use is on a phone.
+
+**Structure.** `ui/instructionState.ts` is the one resolution (conversation → setting → model support) and is pure; the header only paints it. `ui/choicePicker.ts` is the one picker (principle 4) and owns `placeBelow`, which the model popover now uses instead of its own copy. `ActionSheetItem` gained `detail` and `active` so the mobile sheet shows the same rows.
+
+**Rejected.** A status strip of every conversation setting (repeats the composer toolbar; it was what the first brief asked for, and the wrong ask). One combined control opening a three-part panel (two taps again for the value you want). Showing "Standard · Hoch" in the header (long, and "Standard" is the word that hid the value). Tinting by "an instruction is active" rather than "pinned" (would not tell a user why a value changed when the global setting did).
+
+**Consequences.** `HeaderController.updateModelBadge` → `updateInstructions`, `onModelBadgeClick` → `openConversationSettings`. The header's title truncates first on a narrow leaf; within the group only the model name may. The settings dialog is unchanged and still edits the same fields. +17 tests (1046 across 68 files): the two resolvers, and the header — resolved values, tint, picker writes, default → `undefined`, dimmed dash, repaint on a changed default, the menu.

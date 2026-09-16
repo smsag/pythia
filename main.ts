@@ -555,6 +555,12 @@ export default class PythiaPlugin extends Plugin {
 	saveSettings(): Promise<void> { return this.pluginDataStore.saveSettings(); }
 	/** Debounced settings save for typed fields; see PluginDataStore. */
 	saveSettingsSoon(): void { this.pluginDataStore.saveSettingsSoon(); }
+	/** The settings tab closed: persist the last typed value, and repaint the header,
+	 *  which shows the global effort and language defaults resolved (ADR-165). */
+	onSettingsTabClosed(): void {
+		this.pluginDataStore.flushSettingsSave();
+		this.viewManager.getSidebarView()?.refreshInstructions();
+	}
 	saveConversations(): Promise<void> { return this.pluginDataStore.saveConversations(); }
 
 	activateView(): Promise<PythiaSidebarView> { return this.viewManager.activateView(); }
