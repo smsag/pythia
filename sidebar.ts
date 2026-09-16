@@ -279,6 +279,9 @@ export class PythiaSidebarView extends ItemView {
 			(m) => m.role === "user" && !m.chapterName
 		);
 		if (missing.length === 0) return;
+		// No key for this provider → every call below would throw the same
+		// "key not configured" error, once per message, on every open.
+		if (!this.plugin.hasApiKeyFor(conversation.provider)) return;
 		if (this.backfillInFlight.has(conversation.id)) return;
 		this.backfillInFlight.add(conversation.id);
 		// Serial loop to avoid firing 40+ simultaneous API requests for
@@ -294,7 +297,11 @@ export class PythiaSidebarView extends ItemView {
 						);
 						if (name) msg.chapterName = name;
 					} catch (e) {
-						console.warn("[Pythia] chapter name backfill failed:", e);
+						// One failure (auth, network, quota) means the rest will fail the
+						// same way: stop here rather than log it N more times. The
+						// remaining messages are picked up on the next open.
+						console.warn("[Pythia] chapter name backfill stopped:", describeErrorForLog(e));
+						break;
 					}
 				}
 				if (missing.some((m) => m.chapterName)) {

@@ -91,3 +91,11 @@ describe("pathUtils", () => {
 		expect(yamlString('He said "hi": #1')).toBe('"He said \\"hi\\": #1"');
 	});
 });
+
+import { resumeDeepLink } from "../utils";
+
+describe("resumeDeepLink", () => {
+	it("always carries the vault name so the link opens the right vault", () => {
+		expect(resumeDeepLink("id 1", "Mein Vault")).toBe("obsidian://pythia?vault=Mein%20Vault&cmd=resume&id=id%201");
+	});
+});

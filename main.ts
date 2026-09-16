@@ -342,6 +342,8 @@ export default class PythiaPlugin extends Plugin {
 			deletedPaths.clear();
 			if (changed.length || deleted.length) void this.vaultRag.applyChanges(changed, deleted);
 		}, 2000);
+		// A flush still pending at unload would run against a torn-down provider.
+		this.register(() => flushChanges.cancel());
 		const markChanged = (file: TFile) => {
 			if (file.extension !== "md") return;
 			// Editing the glossary note by hand must take effect without a reload,

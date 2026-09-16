@@ -1,7 +1,7 @@
 import { App, TFile } from "obsidian";
 import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import { todayISO } from "../utils";
+import { todayISO, resumeDeepLink } from "../utils";
 import { stripCitationMarkers } from "./citations";
 import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
 
@@ -130,8 +130,7 @@ export class NoteWriter {
 
 	/** Deep link that reopens Pythia with the given conversation active when clicked. */
 	private resumeUri(conversationId: string): string {
-		const vaultName = encodeURIComponent(this.app.vault.getName());
-		return `obsidian://pythia?vault=${vaultName}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
+		return resumeDeepLink(conversationId, this.app.vault.getName());
 	}
 
 	async saveSummaryNote(
