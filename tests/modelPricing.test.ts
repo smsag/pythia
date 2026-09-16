@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MODEL_CATALOG } from "../models/knownModels";
-import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost } from "../models/modelPricing";
+import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost, resolvePricing, sanitizePriceOverrides } from "../models/modelPricing";
 import type { Message } from "../models/types";
 
 // ADR-163: the cost on a turn label is an estimate from a date-stamped table.
@@ -75,5 +75,48 @@ describe("conversationCost", () => {
 
 	it("is zero with nothing priced", () => {
 		expect(conversationCost([])).toEqual({ usd: 0, priced: 0, unpriced: 0 });
+	});
+});
+
+describe("price overrides (user corrections, ADR-163)", () => {
+	it("replaces only the fields given and keeps the built-in value for the rest", () => {
+		const p = resolvePricing("gpt-4o", { "gpt-4o": { output: 12 } });
+		expect(p).toEqual({ input: 2.5, output: 12 });
+	});
+
+	it("scales Anthropic cache prices with an overridden input price", () => {
+		// sonnet: input 3 → 6 doubles cache read 0.3 → 0.6 and cache write 3.75 → 7.5.
+		const p = resolvePricing("claude-sonnet-4-6", { "claude-sonnet-4-6": { input: 6 } });
+		expect(p).toEqual({ input: 6, output: 15, cacheRead: 0.6, cacheWrite: 7.5 });
+	});
+
+	it("never creates a row for a model that has none", () => {
+		expect(resolvePricing("my-fine-tune", { "my-fine-tune": { input: 1, output: 1 } })).toBeNull();
+	});
+
+	it("flows through estimateCost and conversationCost", () => {
+		const usage = { inputTokens: 1_000_000, outputTokens: 0 };
+		expect(estimateCost("gpt-4o", usage, { "gpt-4o": { input: 5 } })).toBeCloseTo(5, 6);
+		const msgs = [{ id: "a", role: "assistant" as const, content: "", timestamp: "", model: "gpt-4o", tokenUsage: usage }];
+		expect(conversationCost(msgs, { "gpt-4o": { input: 5 } }).usd).toBeCloseTo(5, 6);
+	});
+});
+
+describe("sanitizePriceOverrides (load-time guard)", () => {
+	it("keeps finite non-negative numbers for known models and drops everything else", () => {
+		const out = sanitizePriceOverrides({
+			"gpt-4o": { input: 3, output: "12" },
+			"claude-haiku-4-5": { input: NaN, output: -1 },
+			"o3": { output: 9 },
+			"unknown-model": { input: 1, output: 1 },
+			"gpt-4.1": "cheap",
+		});
+		expect(out).toEqual({ "gpt-4o": { input: 3 }, "o3": { output: 9 } });
+	});
+
+	it("returns an empty table for anything that is not an object", () => {
+		expect(sanitizePriceOverrides(null)).toEqual({});
+		expect(sanitizePriceOverrides([1, 2])).toEqual({});
+		expect(sanitizePriceOverrides("x")).toEqual({});
 	});
 });

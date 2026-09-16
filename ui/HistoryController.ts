@@ -336,7 +336,7 @@ export class HistoryController {
 			// Estimated spend so far (ADR-163). A "+" marks a floor: some answers
 			// came from a model with no price row.
 			if (this.d.plugin.settings.showCost) {
-				const { usd, priced, unpriced } = conversationCost(conv.messages);
+				const { usd, priced, unpriced } = conversationCost(conv.messages, this.d.plugin.settings.priceOverrides);
 				if (priced) sub.createSpan({ cls: "p-history-cost", text: ` · ≈ ${formatCost(usd)}${unpriced ? "+" : ""}` });
 			}
 			return sub;

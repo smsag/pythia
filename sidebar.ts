@@ -1065,7 +1065,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-msg-ai",
 			attr: { "data-msg-id": msg.id },
 		});
-		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost });
+		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost, priceOverrides: this.plugin.settings.priceOverrides });
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
 			await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
@@ -1634,7 +1634,7 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label) appendTokensToTurnLabel(label, tokenUsage, this.plugin.settings.showCost ? conv.model : undefined);
+						if (label) appendTokensToTurnLabel(label, tokenUsage, this.plugin.settings.showCost ? conv.model : undefined, this.plugin.settings.priceOverrides);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
 				}

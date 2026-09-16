@@ -197,7 +197,7 @@ export class ComparisonController {
 		const parts = [abbreviateModel(active.model).toUpperCase(), formatClockTime(active.timestamp)];
 		if (active.tokenUsage) {
 			parts.push(`↑${active.tokenUsage.inputTokens} ↓${active.tokenUsage.outputTokens}`);
-			const cost = this.d.plugin.settings.showCost ? estimateCost(active.model, active.tokenUsage) : null;
+			const cost = this.d.plugin.settings.showCost ? estimateCost(active.model, active.tokenUsage, this.d.plugin.settings.priceOverrides) : null;
 			if (cost !== null) parts.push(`≈ ${formatCost(cost)}`);
 		}
 		meta.setText(parts.filter(Boolean).join(" · "));

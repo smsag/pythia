@@ -34,6 +34,12 @@ describe("mergeSettings — sanitization", () => {
 		expect("apiKeyLeak" in result).toBe(false);
 	});
 
+	it("validates the price-override table instead of trusting any object (ADR-163)", () => {
+		const result = mergeSettings({ priceOverrides: { "gpt-4o": { input: NaN, output: 4 }, "nope": { input: 1 } } });
+		expect(result.priceOverrides).toEqual({ "gpt-4o": { output: 4 } });
+		expect(mergeSettings({ priceOverrides: "all free" }).priceOverrides).toEqual({});
+	});
+
 	it("rejects NaN and non-finite numbers", () => {
 		expect(mergeSettings({ maxConversations: NaN }).maxConversations).toBe(DEFAULT_SETTINGS.maxConversations);
 		expect(mergeSettings({ temperature: Infinity }).temperature).toBe(DEFAULT_SETTINGS.temperature);

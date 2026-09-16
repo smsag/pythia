@@ -7,7 +7,7 @@ import { renderEmbeddingSettings } from "./ui/embeddingSettings";
 import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
-import { PRICING_AS_OF } from "./models/modelPricing";
+import { renderPricingSettings } from "./ui/pricingSettings";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -391,7 +391,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h3", { text: t("featuresSection") });
 
-		this.addToggle(containerEl, t("showCostName"), t("showCostDesc", { date: PRICING_AS_OF }), "showCost");
+		renderPricingSettings(containerEl, this.plugin);
 
 		this.addToggle(containerEl, t("injectActiveNoteOnTemplateName"), t("injectActiveNoteOnTemplateDesc"), "injectActiveNoteOnTemplate");
 

@@ -3067,3 +3067,12 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 
 /* Estimated price after the token counts (ADR-163). */
 .pythia-view .p-turn-cost { color: var(--text-faint); }
+
+/* ── List prices in the settings tab (ADR-163) ──────────────────── */
+.p-pricing-disclaimer { font-size: var(--font-small); line-height: 1.45; }
+.p-pricing-group { font-size: var(--font-small); font-weight: 600; margin: var(--s3) 0 var(--s1); color: var(--text-muted); }
+.p-pricing-row .setting-item-control { gap: var(--s2); }
+.p-pricing-row .setting-item-name { font-size: var(--font-small); }
+.p-pricing-row .setting-item-description { font-family: var(--font-monospace); font-size: var(--font-smaller); }
+.p-pricing-field { width: 110px; font-family: var(--font-monospace); font-size: var(--font-small); }
+.p-pricing-field.p-field-invalid { border-color: var(--text-error, var(--color-red)); }

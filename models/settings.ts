@@ -1,3 +1,4 @@
+import type { PriceOverrides } from "./modelPricing";
 import type { Provider, EffortLevel, OutputLanguage } from "./types";
 import {
 	type EmbeddingModelId,
@@ -49,6 +50,9 @@ export interface PythiaSettings {
 	/** Show the estimated USD cost on every assistant turn label and a total per
 	 *  conversation in the history panel (ADR-163). */
 	showCost: boolean;
+	/** The user's corrections to the built-in list prices, per model id (ADR-163).
+	 *  Validated on load by `sanitizePriceOverrides`. */
+	priceOverrides: PriceOverrides;
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
@@ -116,6 +120,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	outputLanguage: "auto",
 	debugMode: false,
 	showCost: true,
+	priceOverrides: {},
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
 	temperature: 0.7,

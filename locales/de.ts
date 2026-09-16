@@ -112,9 +112,14 @@ const de: Strings = {
 	tokenCount:          "↑{{input}} ↓{{output}}",
 	tokenCountTitle:     "Eingabe: {{input}} Tokens · Ausgabe: {{output}} Tokens",
 	// ── Kosten je Antwort (ADR-163) ────────────────────────────────────────
-	costEstimateTitle: "Geschätzt aus Listenpreisen, Stand {{date}}. Web-Suchen werden separat abgerechnet und sind nicht enthalten.",
+	costEstimateTitle: "Schätzung, keine Abrechnung: Token-Zahlen × Listenpreise (Stand {{date}}), die veraltet oder falsch sein können. Maßgeblich ist die Rechnung deines Anbieters. Web-Suchen werden separat abgerechnet.",
 	showCostName:      "Kosten je Antwort anzeigen",
-	showCostDesc:      "Ergänzt jede Antwort um einen geschätzten Preis (≈ $) und zeigt im Gesprächsverlauf eine laufende Summe je Gespräch. Geschätzt aus Listenpreisen, Stand {{date}}; Web-Suchen nicht enthalten.",
+	showCostDesc:      "Ergänzt jede Antwort um einen geschätzten Preis (≈ $) und zeigt im Gesprächsverlauf eine laufende Summe je Gespräch. Eine Schätzung aus Token-Zahlen und den Listenpreisen unten (Stand {{date}}), keine Abrechnung.",
+	pricingSection:    "Listenpreise",
+	pricingDisclaimer: "Kostenangaben in Pythia sind Schätzungen, keine Abrechnung. Sie werden aus den vom Anbieter gemeldeten Token-Zahlen und den Listenpreisen in dieser Tabelle berechnet. Pythia liefert Listenpreise mit Stand {{date}} und versucht, sie aktuell zu halten; Preise ändern sich jedoch, und jeder Wert hier kann veraltet oder für dein Konto, deine Region oder deinen Tarif falsch sein. Maßgeblich ist allein die Rechnung deines Anbieters. Prüfe die Preise unten gegen die Preisseite deines Anbieters und korrigiere sie; ein leeres Feld verwendet den in Pythia hinterlegten Wert. Web-Suchen werden separat abgerechnet und sind nicht enthalten.",
+	pricingRowDesc:    "Hinterlegt: ${{input}} Eingabe · ${{output}} Ausgabe, je 1 Mio. Tokens",
+	pricingInputLabel: "Eingabe $/M",
+	pricingOutputLabel: "Ausgabe $/M",
 
 	// ── Code block actions ────────────────────────────────────────────────────
 	copyCodeTooltip:       "Kopieren",

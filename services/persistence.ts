@@ -1,3 +1,4 @@
+import { sanitizePriceOverrides } from "../models/modelPricing";
 import type { Conversation, Favorite, MergeLink, Message, Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
@@ -103,6 +104,9 @@ export function mergeSettings(saved: Record<string, unknown>): PythiaSettings {
 			if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
 			continue;
 		}
+		// The one object-valued setting: a plain `typeof` check would let any
+		// object through, and a NaN price would render as "$NaN" on every label.
+		if (key === "priceOverrides") { out[key] = sanitizePriceOverrides(value); continue; }
 		if (typeof value === typeof fallback) out[key] = value;
 	}
 	// Optional keys have no default to type against.
