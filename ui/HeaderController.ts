@@ -2,6 +2,7 @@ import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t, getLang } from "../i18n";
+import { resumeDeepLink } from "../utils";
 import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
 import { goodForModel } from "../models/modelGuidance";
@@ -419,8 +420,15 @@ export class HeaderController {
 	async onCopyConversationLink(): Promise<void> {
 		const conv = this.d.getConversation();
 		if (!conv) return;
-		const link = `obsidian://pythia?cmd=resume&id=${encodeURIComponent(conv.id)}`;
-		await navigator.clipboard.writeText(link);
+		const link = resumeDeepLink(conv.id, this.d.plugin.app.vault.getName());
+		try {
+			await navigator.clipboard.writeText(link);
+		} catch {
+			// Clipboard access is denied in some webviews and when the window is
+			// not focused; an unhandled rejection here told the user nothing.
+			new Notice(t("copyFailed"));
+			return;
+		}
 		// Brief visual feedback on the button
 		setIcon(this.copyLinkBtn, "check");
 		setTimeout(() => setIcon(this.copyLinkBtn, "link"), 1500);

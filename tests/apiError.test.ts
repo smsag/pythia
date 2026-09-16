@@ -14,6 +14,16 @@ describe("classifyApiError", () => {
 		expect(classifyApiError(42)).toBe("other");
 	});
 
+	it("returns 'other' for a TypeError that is a programming error, not a fetch failure", () => {
+		expect(classifyApiError(new TypeError("Cannot read properties of undefined (reading 'streamMessage')"))).toBe("other");
+	});
+
+	it("recognises the fetch failure messages of every engine as 'network'", () => {
+		for (const msg of ["Failed to fetch", "Load failed", "fetch failed", "NetworkError when attempting to fetch resource.", "Connection error."]) {
+			expect(classifyApiError(new TypeError(msg))).toBe("network");
+		}
+	});
+
 	it("returns 'network' for TypeError (fetch-level failure)", () => {
 		expect(classifyApiError(new TypeError("Failed to fetch"))).toBe("network");
 	});

@@ -378,3 +378,59 @@ describe("prependToInbox", () => {
 		expect(result.indexOf("new entry")).toBeLessThan(result.indexOf("old entry"));
 	});
 });
+
+// ── createNote / path normalization / folder race ────────────────────────────
+
+describe("createNote", () => {
+	it("creates a note that does not exist", async () => {
+		const file = await writer.createNote("body", "Notes/fresh.md");
+		expect(file.path).toBe("Notes/fresh.md");
+	});
+
+	it("refuses to overwrite an existing note", async () => {
+		vault.seed("Notes/keep.md", "precious");
+		await expect(writer.createNote("x", "Notes/keep.md")).rejects.toThrow(/already exists/);
+		expect(vault.content("Notes/keep.md")).toBe("precious");
+	});
+});
+
+describe("writeNote — path normalization", () => {
+	it("strips a leading slash and ./ segments", async () => {
+		const file = await writer.writeNote("b", "/./Notes//x.md");
+		expect(file.path).toBe("Notes/x.md");
+	});
+
+	it("rejects an empty path", async () => {
+		await expect(writer.writeNote("b", "/")).rejects.toThrow(/empty/);
+	});
+});
+
+describe("ensureFolder — concurrent creation", () => {
+	it("tolerates a folder that appeared between the check and createFolder", async () => {
+		const original = vault.createFolder.bind(vault);
+		let first = true;
+		vault.createFolder = async (path: string) => {
+			if (first) { first = false; await original(path); throw new Error("Folder already exists."); }
+			return original(path);
+		};
+		await expect(writer.ensureFolder("Race/Sub")).resolves.toBeUndefined();
+		expect(vault.hasFolder("Race")).toBe(true);
+		expect(vault.hasFolder("Race/Sub")).toBe(true);
+	});
+});
+
+describe("saveSummaryNote — YAML safety", () => {
+	it("quotes template ids and context paths so a colon or hash cannot break the frontmatter", async () => {
+		const conv = {
+			id: "c9", name: "Chat", createdAt: "", updatedAt: "",
+			systemPrompt: "", contextNotes: ["Notes/a: b.md", "Tags/#x.md"],
+			resumeMode: "full" as const, provider: "anthropic" as const, model: "m", messages: [],
+			templateId: 'Templates/Q: "A".md',
+		};
+		const path = await writer.saveSummaryNote(conv, "summary");
+		const content = vault.content(path);
+		expect(content).toContain('template: "Templates/Q: \\"A\\".md"');
+		expect(content).toContain('  - "Notes/a: b.md"');
+		expect(content).toContain('  - "Tags/#x.md"');
+	});
+});

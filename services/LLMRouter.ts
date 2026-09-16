@@ -43,7 +43,9 @@ export class LLMRouter {
 	 *  `this.providers[undefined]` would be undefined and throw at the call site
 	 *  (the failure was previously only swallowed by callers' catch blocks). */
 	private byProvider(provider: Provider | undefined): LLMProvider {
-		return this.providers[provider ?? "anthropic"];
+		// `??` alone still lets an unknown string from a hand-edited data.json
+		// reach `this.providers[x]` and return undefined.
+		return this.providers[provider ?? "anthropic"] ?? this.providers.anthropic;
 	}
 
 	updateSettings(settings: PythiaSettings): void {
@@ -51,7 +53,7 @@ export class LLMRouter {
 	}
 
 	updateApiKey(provider: Provider, key: string): void {
-		this.providers[provider].updateApiKey(key);
+		this.byProvider(provider).updateApiKey(key);
 	}
 
 	abort(): void {

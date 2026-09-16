@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-15 — ADR-158 (a response is a list of blocks, and "" is not a diagnosis). The favorites summary ran and showed no card. `AnthropicService.callUtility` read `response.content[0]` and returned `""` unless that one block was text — but **a response is a list, and with extended thinking the first block is `thinking`**. It hit the favorites summary because that is one of only three utility calls that run on the *conversation's* model rather than the fast model, and the reporter is on Opus 5 at high effort. It was invisible because `callUtility` returns `""` for both "no text" and "it failed", and the callers read `""` as "nothing to show" and said nothing. Now every text block is collected (same fix on Mistral, whose chunk-list case had the identical hole), and an empty result reports itself. **The bug is old; what changed is how often a thinking block leads.** +5 tests (880).
+*Last updated: 2026-09-16 — ADR-159 (validate at the boundary, and let the tooling say no). A whole-codebase quality and security review landed 55 fixes in five commits. The pattern behind most of them was the same: a value crossed a trust boundary — data.json, a template's frontmatter, a model's tool-call arguments, a file name — and was used as if it had been checked. `mergeSettings` and `parseConversations` now validate every field; `create_note` can no longer overwrite; malformed tool arguments go back to the model as an error instead of executing on `{}`; the SDKs' hidden retries are off; dates are local; deep links carry the vault. The second pattern was rules that lived only in prose: `strict`, `noUnusedLocals`, `eqeqeq`, and lint rules for `toLocaleDateString` and `innerHTML` now enforce what CLAUDE.md asks for. +46 tests (926 across 58 files).*
+
+*Previously: 2026-09-15 — ADR-158 (a response is a list of blocks, and "" is not a diagnosis). The favorites summary ran and showed no card. `AnthropicService.callUtility` read `response.content[0]` and returned `""` unless that one block was text — but **a response is a list, and with extended thinking the first block is `thinking`**. It hit the favorites summary because that is one of only three utility calls that run on the *conversation's* model rather than the fast model, and the reporter is on Opus 5 at high effort. It was invisible because `callUtility` returns `""` for both "no text" and "it failed", and the callers read `""` as "nothing to show" and said nothing. Now every text block is collected (same fix on Mistral, whose chunk-list case had the identical hole), and an empty result reports itself. **The bug is old; what changed is how often a thinking block leads.** +5 tests (880).
 
 *Previously, 2026-09-15 — ADR-157 (marks nest; the innermost one owns the tap). Only one direction was blocked: `findRange`/`paintRange` already ignore element boundaries, but `repaintTerms` skipped text inside `.p-highlight`/`.p-fork-origin`/`.p-merge-link`, so **favoriting a passage silently un-marked every term in it**. The exclusion's stated reason — overlapping wrappers to untangle — was wrong: terms paint last, so they *nest* inside, and each unwrapper targets its own class. Terms may now nest (only term-in-term is still refused), `normalize()` rejoins text split by an unwrap so a term straddling the seam still matches, and **the innermost mark owns the tap**, replacing a fixed type order that had never actually fired and left a visible term mark doing nothing inside a fork. Also fixes an ADR-151 bug: the tap lookup asked for `.p-term` only, so person marks were painted and dead. Resolution extracted to `ui/markTap.ts`. +19 tests (875).*
 
@@ -2629,3 +2631,42 @@ return block?.type === "text" ? block.text.trim() : "";
 **What this says about the earlier work.** The bug is old, not recent. What changed was the reporter's model and effort setting, which moved a leading `thinking` block from rare to routine. **"Recently introduced" describes when a latent bug became reachable at least as often as it describes a new one**, and the four things I checked first were all recent changes of mine, none of which were involved.
 
 **Consequence:** +5 tests (880 across 56 files). Build, lint, file-size and tests green. Not runtime-verified against a live Anthropic response.
+
+
+---
+
+### ADR-159 — Validate at the boundary, and let the tooling say no
+
+**Status:** Active — the outcome of the 2026-09-16 whole-codebase quality and security review (engineering-review #124–#178)
+
+**Context:** The review was asked for at least fifty fixes, with maintainability, usability, performance and observability weighted highest. It found them without difficulty, and that is the finding worth recording: the defects were not scattered oddities but a small number of *shapes*, each repeated wherever the same kind of value crossed the same kind of boundary.
+
+**Shape 1 — trusted input.** `mergeSettings` was `Object.assign({}, DEFAULT_SETTINGS, saved)`, so a `null`, a string where a number was expected, or an unknown provider from a sync conflict landed in `settings` and failed far away — as `vaultContextFolders.map is not a function` or an exhaustive-switch throw. `parseConversations` proved `id` and `messages` and nothing else; a record with `contextNotes: null` threw on first render. A template's `auto_prompt` was cast to string and sent verbatim. A model's tool-call arguments that failed to parse were executed as `{}`. The data.json watcher hardcoded `.obsidian` and never fired on a vault with a custom config directory — and never said so, because a missing file is its idle case.
+
+**Shape 2 — silent failure.** `create_note` on an existing path overwrote it, through `writeNote`'s create-or-modify convenience, with no confirmation naming the note. `todayISO()` was UTC, so a conversation started at 23:30 in Berlin was filed under yesterday. The header's copy-link built its own deep link and had dropped the `vault` parameter. A `TypeError` from a programming error was classified as a network failure, retried twice and shown as connectivity. `generateConversationTitle` returned `"New Conversation"` on an empty reply and the auto-title path renamed the dated conversation to that. A `sendMessage` failure before the provider ran left `isStreaming` true — input disabled, Send reading "Stop" — with an unhandled rejection as the only trace.
+
+**Shape 3 — rules in prose.** CLAUDE.md forbids `toLocaleDateString` (ADR-139) and HTML-string injection; nothing checked either. `tsconfig` had only `strictNullChecks`; `strict` passed with zero errors and `noUnusedLocals` found one dead field. The file-name sanitizer regex existed in three files, the deep-link builder in three, the default-model ternary in two.
+
+**Decision:**
+
+**Validate where the value enters, not where it is used.** `mergeSettings` type-checks every saved value against its default and rejects unknown enum values; `sanitizeConversationFields` repairs the scalars the app reads unguarded; `sanitizeMessages` drops a message without a usable role or id; `TemplateLoader` validates `auto_prompt` and integer `max_tokens`; `parseToolArguments` returns an `Error:` tool result the model can act on. Read-path guards further in stay as defense in depth, but they are no longer the only line.
+
+**A write that can destroy content is a distinct operation.** `NoteWriter.createNote` refuses an existing path; the `create_note` tool uses it. `writeNote`'s overwrite is for `rewrite_note`, which the user confirms by name. Paths are normalized once (`normalizeVaultPath`), `ensureFolder` tolerates the folder appearing under it, and every summary-note frontmatter scalar is YAML-quoted.
+
+**One retry policy, and it is visible.** The Anthropic and OpenAI clients are built with `maxRetries: 0`; `runStreamRound`'s two retries are the policy and they appear in the debug log. `streamMessage` logs one line per turn — duration, rounds, chars, tokens — and one on error, so a slowness or cost report can be answered from the console.
+
+**`""` and `undefined` are not diagnoses** (extending ADR-158). An empty generated title keeps the dated name; an empty summary on resume is refused with a notice; a clipboard denial says "copy failed"; the chapter-name backfill stops on the first failure instead of logging one warning per message, and does not start at all without a key.
+
+**Tooling encodes the rules.** `strict`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noUnusedLocals`, `noUnusedParameters` in `tsconfig.json`; `eqeqeq` (null-tolerant), `no-restricted-properties` for `toLocaleDateString`/`toLocaleTimeString`, and `no-restricted-syntax` for `innerHTML`/`outerHTML`/`insertAdjacentHTML` in ESLint. A rule the linter can state is a rule a future session cannot forget.
+
+**One builder per fact.** `safeNoteName`, `normalizeVaultPath`, `yamlString` (pathUtils), `resumeDeepLink` (utils), `EMBEDDING_MODEL_IDS` / `RELATED_SIMILARITY_PRESETS` (embeddingModels) replace their copies.
+
+**Three principles for what follows** (also in CLAUDE.md):
+
+1. **Every boundary validates.** A value from disk, a note, a template, a model or the clipboard is untrusted until a function with a test has said otherwise — and the fallback is the default, never the raw value.
+2. **Silence is a bug.** An empty result, a swallowed catch, a no-op on a missing file: each must either say something to the user, log something a report can quote, or be proven to be the idle case. `catch {}` needs a comment naming why silence is right.
+3. **If it is a rule, the tooling enforces it.** A convention worth writing into CLAUDE.md is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. Prose is for the reasoning; the guard is for the regression.
+
+**Verification:** each fix has a test that fails in the old direction where one can be written headlessly (+46: 926 across 58 files); the SDK retry change, the watcher path and the clipboard path are runtime-only and are documented as such. Build, lint, file-size (sidebar.ts 1891 → 1885 via `ui/emptyState.ts`) and tests green.
+
+**Consequence:** the review's target was fifty; fifty-five landed. Not done, and deliberately: a request timeout on utility calls (the SDK's ten minutes stands), a `Bearer` header for Tavily (the body field works and is tested), and the delete-exchange gesture's hand-rolled long-press (it needs `preventDefault` on `touchstart`, which the shared helper's passive listener cannot give).

@@ -41,3 +41,61 @@ describe("estimateTokensFromText", () => {
 		expect(typeof estimateTokensFromText("hello world")).toBe("number");
 	});
 });
+
+// ── todayISO / withConversationBacklink ──────────────────────────────────────
+
+import { todayISO, withConversationBacklink } from "../utils";
+
+describe("todayISO", () => {
+	it("uses the local calendar date, not UTC", () => {
+		// 23:30 local on the 15th: toISOString() would already say the 16th east of UTC.
+		const local = new Date(2026, 8, 15, 23, 30);
+		expect(todayISO(local)).toBe("2026-09-15");
+	});
+
+	it("zero-pads month and day", () => {
+		expect(todayISO(new Date(2026, 0, 5))).toBe("2026-01-05");
+	});
+});
+
+describe("withConversationBacklink", () => {
+	it("appends a resume deep link with the vault and id encoded", () => {
+		const out = withConversationBacklink("text", { id: "a b", name: "Chat" }, "My Vault");
+		expect(out).toBe("text\n\n[↗ Chat](obsidian://pythia?vault=My%20Vault&cmd=resume&id=a%20b)");
+	});
+
+	it("escapes brackets in the name so the link text cannot close early", () => {
+		const out = withConversationBacklink("t", { id: "1", name: "A [b] c" }, "V");
+		expect(out).toContain("[↗ A \\[b\\] c](");
+	});
+
+	it("returns the text unchanged without a conversation", () => {
+		expect(withConversationBacklink("t", null, "V")).toBe("t");
+	});
+});
+
+import { safeNoteName, normalizeVaultPath, yamlString } from "../services/pathUtils";
+
+describe("pathUtils", () => {
+	it("safeNoteName replaces illegal characters and never returns an empty name", () => {
+		expect(safeNoteName('a/b:c*d?e"f<g>h|i')).toBe("a-b-c-d-e-f-g-h-i");
+		expect(safeNoteName("   ")).toBe("Untitled");
+	});
+
+	it("normalizeVaultPath collapses slashes and dot segments but leaves .. for the writer to reject", () => {
+		expect(normalizeVaultPath("\\A\\.\\B\\\\c.md")).toBe("A/B/c.md");
+		expect(normalizeVaultPath("../x.md")).toBe("../x.md");
+	});
+
+	it("yamlString produces a valid double-quoted scalar", () => {
+		expect(yamlString('He said "hi": #1')).toBe('"He said \\"hi\\": #1"');
+	});
+});
+
+import { resumeDeepLink } from "../utils";
+
+describe("resumeDeepLink", () => {
+	it("always carries the vault name so the link opens the right vault", () => {
+		expect(resumeDeepLink("id 1", "Mein Vault")).toBe("obsidian://pythia?vault=Mein%20Vault&cmd=resume&id=id%201");
+	});
+});

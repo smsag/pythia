@@ -70,11 +70,9 @@ export function rankConversations(
 	if (queryTokens.length === 0) {
 		return [...conversations]
 			.map((conversation) => ({ conversation, score: 0 }))
-			.sort(
-				(a, b) =>
-					new Date(b.conversation.updatedAt).getTime() -
-					new Date(a.conversation.updatedAt).getTime()
-			);
+			// ISO 8601 compares as a string; `new Date(undefined).getTime()` is NaN,
+			// and a NaN comparator makes the sort order undefined for the whole list.
+			.sort((a, b) => (b.conversation.updatedAt ?? "").localeCompare(a.conversation.updatedAt ?? ""));
 	}
 
 	const n = haystacks.length;

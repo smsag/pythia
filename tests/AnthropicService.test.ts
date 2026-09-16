@@ -358,11 +358,12 @@ describe("AnthropicService — PDF attachments", () => {
 describe("AnthropicService — callUtility block handling", () => {
 	beforeEach(() => { createMock.mockReset(); });
 
-	/** callUtility is protected; generateChapterName is the thinnest public caller. */
+	/** callUtility is protected; summarizeNotes is the thinnest public caller
+	 *  that returns the text untouched (titles are tidied by cleanGeneratedTitle). */
 	const run = async (content: unknown[]): Promise<string> => {
 		createMock.mockResolvedValue({ content });
 		const provider = new AnthropicService({} as never, makeSettings(), "key");
-		return provider.generateChapterName("some message");
+		return provider.summarizeNotes("some message");
 	};
 
 	it("returns the text when it is the only block", async () => {

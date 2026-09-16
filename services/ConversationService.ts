@@ -1,8 +1,9 @@
 import { Notice, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, Provider, PythiaTemplate } from "../models/types";
+import type { Conversation, EffortLevel, Provider, PythiaTemplate } from "../models/types";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { todayISO } from "../utils";
+import { safeNoteName } from "./pathUtils";
 import { t } from "../i18n";
 import { effectiveTheme } from "./glossaryNotes";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
@@ -48,7 +49,7 @@ export class ConversationService {
 		if (!conv.savedNotePath) return;
 		const oldFile = p.app.vault.getAbstractFileByPath(conv.savedNotePath);
 		if (!(oldFile instanceof TFile)) return;
-		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
+		const safeName = safeNoteName(conv.name);
 		const dir = oldFile.parent?.path ?? "";
 		// Preserve date prefix (YYYY-MM-DD-) if the current filename has one
 		const datePrefix = oldFile.basename.match(/^(\d{4}-\d{2}-\d{2})-/)?.[1];
@@ -75,6 +76,9 @@ export class ConversationService {
 		outputFolder?: string;
 		resumeMode?: "full" | "summary" | "hybrid";
 		writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+		temperature?: number;
+		effort?: EffortLevel;
+		researchMode?: boolean;
 	}): Promise<Conversation> {
 		const p = this.plugin;
 		const resolvedProvider = opts.provider ?? p.settings.defaultProvider;
@@ -94,7 +98,9 @@ export class ConversationService {
 			maxTokens: opts.maxTokens,
 			outputFolder: opts.outputFolder,
 			writeMode: opts.writeMode,
-			researchMode: p.settings.webSearchDefault,
+			researchMode: opts.researchMode ?? p.settings.webSearchDefault,
+			...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+			...(opts.effort !== undefined ? { effort: opts.effort } : {}),
 			messages: [],
 		};
 		p.conversations.push(conv);
@@ -108,7 +114,9 @@ export class ConversationService {
 		contextNotes?: string[],
 		outputFolder?: string
 	): Promise<Conversation> {
-		const conv = await this.createConversation({
+		// Everything the template sets goes in at creation — one write to disk,
+		// and never a moment where the conversation exists without its settings.
+		return this.createConversation({
 			name: `${tpl.name} ${todayISO()}`,
 			systemPrompt: tpl.systemPrompt,
 			contextNotes: contextNotes ?? [...tpl.contextNotes],
@@ -117,14 +125,12 @@ export class ConversationService {
 			model: tpl.model,
 			maxTokens: tpl.maxTokens,
 			outputFolder: outputFolder ?? tpl.outputFolder,
+			resumeMode: tpl.resumeMode,
+			writeMode: tpl.writeMode,
+			researchMode: tpl.researchMode,
+			temperature: tpl.temperature,
+			effort: tpl.effort,
 		});
-		if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-		if (tpl.writeMode) conv.writeMode = tpl.writeMode;
-		if (tpl.researchMode !== undefined) conv.researchMode = tpl.researchMode;
-		if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-		if (tpl.effort !== undefined) conv.effort = tpl.effort;
-		await this.plugin.conversationStore.save(conv);
-		return conv;
 	}
 
 	resolveTemplateContext(
@@ -443,10 +449,16 @@ export class ConversationService {
 							}
 							const notice = new Notice(t("generatingConvSummary"), 0);
 							try {
-								conv.summaryText =
-									await p.llmRouter.generateSummary(conv);
-								conv.summaryUpdatedAt = new Date().toISOString();
+								const summary = await p.llmRouter.generateSummary(conv);
 								notice.hide();
+								// "" is not a summary (ADR-158): resuming in summary mode on an
+								// empty one would send the model no context at all, silently.
+								if (!summary) {
+									new Notice(t("summaryEmpty"), 8000);
+									return;
+								}
+								conv.summaryText = summary;
+								conv.summaryUpdatedAt = new Date().toISOString();
 							} catch (e) {
 								notice.hide();
 								new Notice(t("summaryGenerationFailed", { error: e instanceof Error ? e.message : String(e) }));

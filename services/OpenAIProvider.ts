@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
+import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
@@ -73,6 +73,8 @@ export class OpenAIProvider extends BaseProvider {
 			this.client = new OpenAI({
 				apiKey: this.apiKey,
 				dangerouslyAllowBrowser: true,
+				// One retry policy, ours (runStreamRound) — see AnthropicService.
+				maxRetries: 0,
 			});
 		}
 		return this.client;
@@ -262,7 +264,9 @@ export class OpenAIProvider extends BaseProvider {
 			}
 		}
 
-		this.lastPendingCalls = pendingCalls.filter(Boolean);
+		// A call that never received an id cannot be answered (the follow-up
+		// request would be rejected), so it is dropped rather than echoed back.
+		this.lastPendingCalls = pendingCalls.filter((c) => c && c.id);
 
 		return {
 			action: finishReason === "tool_calls" && this.lastPendingCalls.length > 0 ? "tool_use" : "done",
@@ -288,17 +292,13 @@ export class OpenAIProvider extends BaseProvider {
 			})),
 		});
 		for (const tc of calls) {
-			let parsedInput: Record<string, unknown>;
-			try {
-				parsedInput = JSON.parse(tc.arguments) as Record<string, unknown>;
-			} catch {
-				parsedInput = {};
-			}
-			const result = await onToolCall({
-				id: tc.id,
-				name: tc.name,
-				input: parsedInput,
-			});
+			const parsed = parseToolArguments(tc.arguments);
+			// Malformed JSON used to run the tool with `{}` — the model then saw a
+			// misleading "path must be a non-empty string" instead of the real
+			// problem, and a write tool ran on arguments it never sent.
+			const result = parsed.ok
+				? await onToolCall({ id: tc.id, name: tc.name, input: parsed.input })
+				: parsed.error;
 			this.loopMessages.push({
 				role: "tool" as const,
 				tool_call_id: tc.id,

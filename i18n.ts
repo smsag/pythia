@@ -36,7 +36,9 @@ export function getLang(): "en" | "de" {
 }
 
 export function t(key: keyof Strings, vars?: Record<string, string | number>): string {
-	let str: string = getLocale()[key];
+	// English, then the key itself: a string missing from one locale must never
+	// throw inside a render path, and the bare key is at least searchable.
+	let str: string = getLocale()[key] ?? en[key] ?? key;
 	if (vars) {
 		str = str.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ""));
 	}

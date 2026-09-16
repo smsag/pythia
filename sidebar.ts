@@ -12,7 +12,7 @@ import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
-import { noteBasename } from "./services/pathUtils";
+import { noteBasename, safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
@@ -35,6 +35,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
+import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -279,6 +280,9 @@ export class PythiaSidebarView extends ItemView {
 			(m) => m.role === "user" && !m.chapterName
 		);
 		if (missing.length === 0) return;
+		// No key for this provider → every call below would throw the same
+		// "key not configured" error, once per message, on every open.
+		if (!this.plugin.hasApiKeyFor(conversation.provider)) return;
 		if (this.backfillInFlight.has(conversation.id)) return;
 		this.backfillInFlight.add(conversation.id);
 		// Serial loop to avoid firing 40+ simultaneous API requests for
@@ -294,7 +298,11 @@ export class PythiaSidebarView extends ItemView {
 						);
 						if (name) msg.chapterName = name;
 					} catch (e) {
-						console.warn("[Pythia] chapter name backfill failed:", e);
+						// One failure (auth, network, quota) means the rest will fail the
+						// same way: stop here rather than log it N more times. The
+						// remaining messages are picked up on the next open.
+						console.warn("[Pythia] chapter name backfill stopped:", describeErrorForLog(e));
+						break;
 					}
 				}
 				if (missing.some((m) => m.chapterName)) {
@@ -744,32 +752,7 @@ export class PythiaSidebarView extends ItemView {
 
 	renderEmptyState(): void {
 		this.messagesEl.empty();
-		const empty = this.messagesEl.createDiv({ cls: "pythia-empty" });
-		empty.createEl("p", {
-			text: t("noActiveConversationHint"),
-		});
-		empty.createEl("p", {
-			text: t("startFromPaletteHint"),
-			cls: "pythia-empty-hint",
-		});
-	}
-
-	/** Minimal centered welcome for an empty conversation (F6): accent sparkle,
-	 *  a heading, and three mono keycap hints. */
-	private renderWelcome(container: HTMLElement): void {
-		const wrap = container.createDiv({ cls: "p-welcome" });
-		const spark = wrap.createDiv({ cls: "p-welcome-spark" });
-		setIcon(spark, "sparkles");
-		wrap.createDiv({ cls: "p-welcome-title", text: t("emptyHeading") });
-		const hints = wrap.createDiv({ cls: "p-welcome-hints" });
-		const addHint = (cap: string, label: string) => {
-			const row = hints.createDiv({ cls: "p-welcome-hint" });
-			row.createEl("span", { cls: "p-keycap", text: cap });
-			row.createEl("span", { text: label });
-		};
-		addHint("#", t("emptyHintAttach"));
-		addHint("⌘P", t("emptyHintCommands"));
-		addHint("⇧↵", t("emptyHintNewline"));
+		renderNoConversation(this.messagesEl);
 	}
 
 	private toggleInputArea(): void {
@@ -973,7 +956,7 @@ export class PythiaSidebarView extends ItemView {
 		this.summaryController.renderSummaryCards();
 
 		if (msgs.length === 0) {
-			this.renderWelcome(this.messagesEl);
+			renderWelcome(this.messagesEl);
 			return;
 		}
 		for (const msg of msgs) {
@@ -1351,7 +1334,7 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
+		const safeName = safeNoteName(conv.name);
 
 		let defaultFolder = this.plugin.settings.scratchFolder;
 		if (conv.templateId) {
@@ -1582,6 +1565,7 @@ export class PythiaSidebarView extends ItemView {
 				return result;
 		};
 
+		try {
 		await this.plugin.llmRouter.streamMessage(
 			// Pass an armed shallow clone for an auto-armed send so web_search is
 			// offered this turn. The clone shares conv.messages (read-only in the
@@ -1688,6 +1672,16 @@ export class PythiaSidebarView extends ItemView {
 			},
 			onToolCall
 		);
+		} catch (error) {
+			// The provider catches its own failures; this is for anything thrown
+			// before it runs (a retriever bug, a callback throwing). Without it the
+			// rejection was unhandled and `isStreaming` stayed true — the input
+			// disabled and Send reading "Stop" until the view was reopened.
+			console.error("[Pythia] send failed:", describeErrorForLog(error));
+			new Notice(t("sendFailed", { error: error instanceof Error ? error.message : String(error) }));
+			streamingRow.remove();
+			this.setStreamingState(false);
+		}
 	}
 
 	// ── Delete-last-exchange ─────────────────────────────────────
@@ -1838,7 +1832,7 @@ export class PythiaSidebarView extends ItemView {
 		new Notice(t("exchangeDeleted"));
 
 		if (conv.messages.length === 0) {
-			this.renderWelcome(this.messagesEl);
+			renderWelcome(this.messagesEl);
 		}
 
 		this.attachLastBubbleLongPress();

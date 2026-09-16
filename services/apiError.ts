@@ -30,11 +30,20 @@ export type ApiErrorClass =
  * fall into this same "network" bucket. `buildStreamErrorMessage()` below
  * is where that distinction actually matters for the user-facing message.
  */
+/** Chromium ("Failed to fetch"), WebKit ("Load failed"), Node undici ("fetch
+ *  failed"), Firefox ("NetworkError when attempting…"), plus the generic words
+ *  the SDKs' own connection wrappers use. */
+const NETWORK_TYPEERROR_RX = /fetch|network|load failed|connection|socket|ECONN|ENOTFOUND|EAI_AGAIN|timed? ?out/i;
+
 export function classifyApiError(error: unknown): ApiErrorClass {
 	if (!(error instanceof Error)) return "other";
 
-	// Network errors (fetch failed, DNS, timeout) — no HTTP status
-	if (error instanceof TypeError) return "network";
+	// Network errors (fetch failed, DNS, timeout) arrive as TypeError with no
+	// HTTP status. But so does a programming error ("Cannot read properties of
+	// undefined"), and calling that a connectivity problem hides the bug and
+	// retries it twice. Only the messages fetch implementations actually use
+	// count as network; any other TypeError is reported as what it says.
+	if (error instanceof TypeError) return NETWORK_TYPEERROR_RX.test(error.message) ? "network" : "other";
 
 	const errRecord = error as unknown as Record<string, unknown>;
 	const status = errRecord.status ?? errRecord.statusCode;

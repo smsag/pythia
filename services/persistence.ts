@@ -1,5 +1,29 @@
-import type { Conversation, Favorite, MergeLink, Message } from "../models/types";
+import type { Conversation, Favorite, MergeLink, Message, Provider } from "../models/types";
+import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
+import { EMBEDDING_MODEL_IDS, RELATED_SIMILARITY_PRESETS } from "../models/embeddingModels";
+
+const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
+const RESUME_MODES = ["full", "summary", "hybrid"] as const;
+const WRITE_MODES = ["update", "create", "none", "rewrite", "all"] as const;
+const PROMPT_FRAMEWORKS = ["none", "CO-STAR", "RACE", "RISEN"] as const;
+const EFFORTS = ["low", "medium", "high"] as const;
+
+/** Keys whose saved value must be one of a fixed set; anything else falls back
+ *  to the default rather than reaching a `switch` that throws on it. */
+const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
+	defaultProvider: PROVIDERS,
+	defaultResumeMode: RESUME_MODES,
+	defaultPromptFramework: PROMPT_FRAMEWORKS,
+	outputLanguage: OUTPUT_LANGUAGES,
+	effort: EFFORTS,
+	embeddingModelId: EMBEDDING_MODEL_IDS,
+	relatedSimilarity: RELATED_SIMILARITY_PRESETS,
+	vaultContextSimilarity: RELATED_SIMILARITY_PRESETS,
+};
+
+/** Keys that may legitimately be absent (the "use the API default" state). */
+const OPTIONAL_KEYS = new Set<keyof PythiaSettings>(["maxTokens", "temperature", "effort"]);
 
 /**
  * Apply one-time settings migrations to a raw saved-settings object.
@@ -44,9 +68,46 @@ export function applySettingsMigrations(saved: Record<string, unknown>): {
 	return { needsSave, legacyAnthropicCiphertext, legacyOpenAICiphertext };
 }
 
-/** Merge saved settings with plugin defaults to produce a complete PythiaSettings. */
+/**
+ * Merge saved settings with plugin defaults to produce a complete PythiaSettings.
+ *
+ * Every saved value is type-checked against its default before it is allowed to
+ * override it. A plain `Object.assign` let a `null`, a string where a number was
+ * expected, or an unknown enum value (from a hand edit, a sync conflict, or an
+ * older build) land in `settings` — and the failure showed up far away, as
+ * `vaultContextFolders.map is not a function` or an exhaustive-switch throw on
+ * `defaultProvider`. Unknown keys are dropped for the same reason: they are not
+ * settings, and carrying them forever only grows data.json.
+ */
 export function mergeSettings(saved: Record<string, unknown>): PythiaSettings {
-	return Object.assign({}, DEFAULT_SETTINGS, saved) as PythiaSettings;
+	const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+	for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof PythiaSettings)[]) {
+		if (!(key in saved)) continue;
+		const value = saved[key];
+		if (value === undefined || value === null) {
+			if (OPTIONAL_KEYS.has(key)) delete out[key];
+			continue;
+		}
+		const allowed = ENUM_KEYS[key];
+		if (allowed) {
+			if (typeof value === "string" && allowed.includes(value)) out[key] = value;
+			continue;
+		}
+		const fallback = DEFAULT_SETTINGS[key];
+		if (Array.isArray(fallback)) {
+			if (Array.isArray(value)) out[key] = value.filter((v): v is string => typeof v === "string");
+			continue;
+		}
+		if (typeof fallback === "number") {
+			if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+			continue;
+		}
+		if (typeof value === typeof fallback) out[key] = value;
+	}
+	// Optional keys have no default to type against.
+	if (typeof saved.maxTokens === "number" && saved.maxTokens > 0) out.maxTokens = saved.maxTokens;
+	if (typeof saved.temperature === "number" && Number.isFinite(saved.temperature)) out.temperature = saved.temperature;
+	return out as unknown as PythiaSettings;
 }
 
 /**
@@ -126,11 +187,40 @@ export function sanitizeMessages(conv: Conversation): void {
 		return;
 	}
 	conv.messages = conv.messages.filter(
-		(m): m is Message => m !== null && typeof m === "object"
+		(m): m is Message =>
+			m !== null && typeof m === "object" &&
+			// A message with no usable role cannot be sent to any provider, and a
+			// missing id cannot be rendered, scrolled to, or favorited.
+			((m as Message).role === "user" || (m as Message).role === "assistant") &&
+			typeof (m as Message).id === "string" && (m as Message).id.length > 0
 	);
 	for (const m of conv.messages) {
 		if (typeof m.content !== "string") m.content = m.content == null ? "" : String(m.content);
 	}
+}
+
+/**
+ * Repair the scalar fields the rest of the app reads without a guard
+ * (`contextNotes.length`, `provider` into an exhaustive switch, `name` into the
+ * header). `parseConversations` only proves `id` and `messages`; a truncated or
+ * hand-edited record can still carry `contextNotes: null` or `provider: "gemini"`,
+ * and each of those used to throw on the first render or send. Mutates in place.
+ */
+export function sanitizeConversationFields(conv: Conversation): void {
+	const c = conv as unknown as Record<string, unknown>;
+	if (typeof c.name !== "string" || !c.name.trim()) c.name = "Conversation";
+	if (typeof c.systemPrompt !== "string") c.systemPrompt = "";
+	if (typeof c.createdAt !== "string") c.createdAt = "";
+	if (typeof c.updatedAt !== "string") c.updatedAt = c.createdAt;
+	c.contextNotes = Array.isArray(c.contextNotes)
+		? c.contextNotes.filter((n): n is string => typeof n === "string" && n.length > 0)
+		: [];
+	if (!PROVIDERS.includes(c.provider as Provider)) c.provider = DEFAULT_SETTINGS.defaultProvider;
+	if (typeof c.model !== "string" || !c.model) delete c.model;
+	if (!(RESUME_MODES as readonly unknown[]).includes(c.resumeMode)) c.resumeMode = "full";
+	if (c.writeMode !== undefined && !(WRITE_MODES as readonly unknown[]).includes(c.writeMode)) delete c.writeMode;
+	if (c.outputLanguage !== undefined && !(OUTPUT_LANGUAGES as readonly unknown[]).includes(c.outputLanguage)) delete c.outputLanguage;
+	if (c.favorites !== undefined && !Array.isArray(c.favorites)) delete c.favorites;
 }
 
 /**
@@ -149,6 +239,7 @@ export function parseConversations(raw: unknown[]): {
 			Array.isArray((c as Record<string, unknown>).messages)
 	);
 	for (const conv of conversations) {
+		sanitizeConversationFields(conv);
 		sanitizeMessages(conv);
 		normalizeFavorites(conv);
 		normalizeMerges(conv);

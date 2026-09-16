@@ -31,7 +31,6 @@ export interface ActionSheetOptions {
 export class ActionSheet {
 	private host: HTMLElement;
 	private scrim: HTMLElement | null = null;
-	private sheet: HTMLElement | null = null;
 	private cleanup: (() => void) | null = null;
 
 	constructor(host: HTMLElement) {
@@ -101,7 +100,6 @@ export class ActionSheet {
 		const detachSwipe = this.attachSwipe(sheet);
 
 		this.scrim = scrim;
-		this.sheet = sheet;
 		this.cleanup = () => {
 			scrim.removeEventListener("pointerdown", onScrimDown);
 			document.removeEventListener("keydown", onKey);
@@ -115,7 +113,6 @@ export class ActionSheet {
 		const done = this.cleanup;
 		this.cleanup = null;
 		this.scrim = null;
-		this.sheet = null;
 		done();
 	}
 

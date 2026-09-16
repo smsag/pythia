@@ -183,3 +183,31 @@ describe("TemplateLoader", () => {
 		});
 	});
 });
+
+describe("TemplateLoader — field validation additions", () => {
+	it("drops a non-string auto_prompt", async () => {
+		const content = VALID_FRONTMATTER.replace("name: Test Template", "name: T\nauto_prompt: 42");
+		const loader = new TemplateLoader(makeApp([{ path: "templates/t.md", content }]) as never, makeSettings());
+		const [tpl] = await loader.loadTemplates();
+		expect(tpl.autoPrompt).toBeUndefined();
+	});
+
+	it("keeps a string auto_prompt", async () => {
+		const content = VALID_FRONTMATTER.replace("name: Test Template", "name: T\nauto_prompt: Summarize this");
+		const loader = new TemplateLoader(makeApp([{ path: "templates/t.md", content }]) as never, makeSettings());
+		const [tpl] = await loader.loadTemplates();
+		expect(tpl.autoPrompt).toBe("Summarize this");
+	});
+
+	it("finds templates when the folder setting carries a trailing slash", async () => {
+		const loader = new TemplateLoader(makeApp([{ path: "templates/t.md", content: VALID_FRONTMATTER }]) as never, makeSettings("templates/"));
+		expect(await loader.loadTemplates()).toHaveLength(1);
+	});
+
+	it("rejects a fractional max_tokens", async () => {
+		const content = VALID_FRONTMATTER.replace("max_tokens: 4096", "max_tokens: 40.5");
+		const loader = new TemplateLoader(makeApp([{ path: "templates/t.md", content }]) as never, makeSettings());
+		const [tpl] = await loader.loadTemplates();
+		expect(tpl.maxTokens).toBeUndefined();
+	});
+});

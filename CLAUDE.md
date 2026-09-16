@@ -22,7 +22,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     OpenAIProvider.ts         ← OpenAI streaming + utility calls
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
-    pathUtils.ts              ← noteBasename: display name for a vault path (last segment, .md stripped)
+    pathUtils.ts              ← noteBasename, safeNoteName, normalizeVaultPath, yamlString — the only file-name/path/YAML helpers (ADR-159)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
@@ -30,7 +30,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     TemplateLoader.ts         ← template discovery + frontmatter parsing
-    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings, parseConversations, mergeConversations, shouldRefuseLoad, evictConversations
+    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150)
@@ -55,8 +55,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
+    emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 880 tests across 56 files
+  tests/                      ← Vitest unit tests (npm test) — 926 tests across 58 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -70,6 +71,18 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
 ```
+
+---
+
+## Engineering principles (ADR-159)
+
+Three rules that every change is measured against. They came out of the 2026-09-16 whole-codebase review, where most of the 55 defects were one of three shapes.
+
+1. **Every boundary validates.** A value from disk (`data.json`), a note, a template's frontmatter, a model's reply or tool-call arguments, or the clipboard is untrusted until a function with a test has said otherwise. The fallback is the default, never the raw value. `mergeSettings`, `sanitizeConversationFields`, `TemplateLoader.loadTemplate` and `parseToolArguments` are the pattern: validate where the value enters, not where it is used.
+2. **Silence is a bug.** An empty result, a swallowed catch, a no-op on a missing file must either say something to the user (`Notice`), log something a report can quote (`describeErrorForLog`), or be proven to be the idle case. `catch {}` needs a comment naming why silence is right. `""` from a utility call is never "nothing happened" (ADR-158).
+3. **If it is a rule, the tooling enforces it.** A convention worth writing into this file is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. `tsconfig` is `strict`; ESLint bans `==`, `toLocaleDateString`/`toLocaleTimeString` and `innerHTML`; the file-size ratchet and CI run the same four steps you run locally (`lint`, `check:filesize`, `build`, `test`). Prose is for the reasoning; the guard is for the regression.
+
+Two corollaries: **a write that can destroy content is a distinct operation** (`createNote` refuses an existing path; only `rewrite_note`, confirmed by name, overwrites), and **one builder per fact** (`safeNoteName`, `resumeDeepLink`, `resolveDefaultModelForProvider` — never a second copy of a regex or a ternary).
 
 ---
 

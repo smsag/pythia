@@ -15,8 +15,24 @@ export function getFilesInFolder(folder: TFolder): TFile[] {
 	return results;
 }
 
-export function todayISO(): string {
-	return new Date().toISOString().slice(0, 10);
+/** Today's date as `YYYY-MM-DD` in the user's LOCAL time zone. `toISOString()`
+ *  reports UTC, so a conversation started at 23:30 in Berlin used to be named
+ *  and filed under the previous day. */
+/**
+ * The `obsidian://pythia` deep link that reopens a conversation. One builder,
+ * because the header's copy-link action, the inbox/insert backlinks and the
+ * summary-note frontmatter each had their own — and the header's had dropped
+ * the `vault` parameter, so its link opened whichever vault was active.
+ */
+export function resumeDeepLink(conversationId: string, vaultName: string): string {
+	return `obsidian://pythia?vault=${encodeURIComponent(vaultName)}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
+}
+
+export function todayISO(now: Date = new Date()): string {
+	const y = now.getFullYear();
+	const m = String(now.getMonth() + 1).padStart(2, "0");
+	const d = String(now.getDate()).padStart(2, "0");
+	return `${y}-${m}-${d}`;
 }
 
 /**
@@ -36,7 +52,9 @@ export function withConversationBacklink(
 	vaultName: string,
 ): string {
 	if (!conv) return text;
-	const vault = encodeURIComponent(vaultName);
-	const uri = `obsidian://pythia?vault=${vault}&cmd=resume&id=${encodeURIComponent(conv.id)}`;
-	return `${text}\n\n[↗ ${conv.name}](${uri})`;
+	const uri = resumeDeepLink(conv.id, vaultName);
+	// A `]` in the conversation name would close the link text early and leave
+	// the rest of the name — and the URI — as literal text.
+	const label = conv.name.replace(/[[\]]/g, "\\$&");
+	return `${text}\n\n[↗ ${label}](${uri})`;
 }

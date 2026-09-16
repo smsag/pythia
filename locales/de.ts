@@ -188,6 +188,7 @@ const de: Strings = {
 	nothingNewToSave:          "Nichts Neues seit dem letzten Speichern.",
 	savedToPath:               "Gespeichert unter {{path}}",
 	saveFailed:                "Speichern fehlgeschlagen: {{error}}",
+	sendFailed:                "Senden fehlgeschlagen: {{error}}",
 	noActiveConvToSend:        "Kein aktives Gespräch. Starte eines über die Befehlspalette.",
 	messageLimitReached:       "Nachrichtenlimit erreicht ({{cap}}). Starte ein neues Gespräch oder erhöhe das Limit in Einstellungen → Pythia.",
 	noMessagesToSummarize:     "Keine Nachrichten zum Zusammenfassen.",
