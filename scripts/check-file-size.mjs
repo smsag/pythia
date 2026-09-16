@@ -23,7 +23,7 @@ const CEILINGS = {
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// Settings tab monolith; grows one setting at a time (embedding model, related-
 	// similarity preset, …). TODO: split into grouped sections. Split later.
-	"settings.ts": 597,
+	"settings.ts": 565,
 	// tests/viewRender.test.ts dropped under DEFAULT_MAX once the mount fixture
 	// moved to tests/helpers/viewHarness.ts and the conversation-panel describes
 	// moved to tests/historyPanel.test.ts (ADR-143) — no ceiling needed.
