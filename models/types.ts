@@ -61,6 +61,33 @@ export interface Conversation {
 	researchMode?: boolean;           // when true, expose the web_search tool + inject recency context
 	vaultContext?: boolean;           // when true, auto-retrieve relevant vault notes per turn (ADR-116);
 	                                  // undefined → fall back to the global vaultContextEnabled default
+	/** A pending model comparison on the last exchange (ADR-160). While set, the
+	 *  conversation ends with the user turn — the answers live here, not in
+	 *  `messages` — and sending is blocked until one is kept. */
+	comparison?: Comparison;
+}
+
+/**
+ * One answer in a model comparison (ADR-160): the same prompt, run on one
+ * model. Candidate 0 is always the answer the conversation already had.
+ */
+export interface ComparisonCandidate {
+	id: string;               // becomes the Message id when kept (or the fork's assistant message id)
+	provider: Provider;
+	model: string;
+	content: string;
+	timestamp: string;        // ISO 8601
+	tokenUsage?: TokenUsage;
+	sources?: MessageSource[];
+	templateId?: string;
+}
+
+/** The pending comparison on a conversation's last exchange (ADR-160). */
+export interface Comparison {
+	id: string;
+	userMessageId: string;    // the prompt every candidate answered
+	candidates: ComparisonCandidate[];
+	createdAt: string;        // ISO 8601
 }
 
 export interface TokenUsage {

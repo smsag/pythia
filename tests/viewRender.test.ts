@@ -245,9 +245,14 @@ function deleteLastExchange(view: PythiaSidebarView, pane: () => Element): Promi
 	const aiRows = rows(pane, ".p-msg-ai");
 	const lastUser = userRows[userRows.length - 1];
 	const lastAi = aiRows[aiRows.length - 1];
-	return (view as unknown as { confirmDeleteLastExchange(u: HTMLElement, a: HTMLElement): Promise<void> })
-		.confirmDeleteLastExchange(lastUser, lastAi);
+	// The gesture and its bar live in ExchangeActionsController since ADR-160.
+	return (view as unknown as { exchangeActions: { confirmDelete(u: HTMLElement, a: HTMLElement): Promise<void> } })
+		.exchangeActions.confirmDelete(lastUser, lastAi);
 }
+
+type ComparisonHandle = { start(u: string, a: string): void; keep(id: string): Promise<void>; discard(): Promise<void> };
+const comparisonOf = (view: PythiaSidebarView): ComparisonHandle =>
+	(view as unknown as { comparisonController: ComparisonHandle }).comparisonController;
 
 describe("render paths — incremental append & delete (#125 Tier 2)", () => {
 	let plugin: InstanceType<typeof PythiaPlugin>;
@@ -327,5 +332,88 @@ describe("render paths — incremental append & delete (#125 Tier 2)", () => {
 		expect(rows(pane, ".p-msg-user")).toHaveLength(1);
 		expect(rows(pane, ".p-msg-ai")).toHaveLength(1);
 		expect(pane().querySelector('[data-msg-id="a2"]')).toBeNull();
+	});
+});
+
+describe("model comparison on the last exchange (ADR-160)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	it("starting a comparison removes the answer row and paints a card with one tab", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Compare me",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+
+		comparisonOf(view).start("u1", "a1");
+
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1"]);
+		expect(conv.comparison?.candidates.map((c) => c.id)).toEqual(["a1"]);
+		expect(pane().querySelector('[data-msg-id="a1"]')).toBeNull();
+		const card = pane().querySelector(".p-compare");
+		expect(card).not.toBeNull();
+		expect(card!.querySelectorAll(".p-compare-tab")).toHaveLength(1);
+		expect(card!.querySelector(".p-compare-tab.is-active")?.textContent).toBe("Sonnet 4.6");
+	});
+
+	it("blocks sending while a comparison is pending", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Blocked",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		comparisonOf(view).start("u1", "a1");
+
+		const input = pane().querySelector<HTMLTextAreaElement>(".p-textarea")!;
+		input.value = "another question";
+		await view.sendMessage();
+
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1"]); // nothing appended
+		expect(input.value).toBe("another question");           // draft untouched
+	});
+
+	it("keeping a candidate makes it the answer and forks the rest; the fork is a new conversation", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Keep B",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		comparisonOf(view).start("u1", "a1");
+		conv.comparison!.candidates.push({ id: "b1", provider: "openai", model: "gpt-4o", content: "r1 by B", timestamp: now() });
+
+		await comparisonOf(view).keep("b1");
+		await new Promise((r) => setTimeout(r, 0)); // rerender is fire-and-forget
+
+		expect(conv.comparison).toBeUndefined();
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1", "b1"]);
+		const fork = plugin.conversations.find((c) => c.forkedFromId === conv.id);
+		expect(fork).toBeDefined();
+		expect(fork!.name).toBe("Keep B · Sonnet 4.6");
+		expect(fork!.model).toBe("claude-sonnet-4-6");
+		expect(fork!.forkedFromMessageId).toBe("b1");
+		expect(fork!.messages.map((m) => m.id)).toEqual(["u1", "a1"]);
+		expect(pane().querySelector(".p-compare")).toBeNull();
+		expect(pane().querySelector('[data-msg-id="b1"]')).not.toBeNull();
+	});
+
+	it("discarding restores the original answer", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Discard",
+			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		comparisonOf(view).start("u1", "a1");
+		await comparisonOf(view).discard();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(conv.comparison).toBeUndefined();
+		expect(conv.messages.map((m) => m.id)).toEqual(["u1", "a1"]);
+		expect(pane().querySelector('[data-msg-id="a1"]')).not.toBeNull();
+		expect(plugin.conversations.filter((c) => c.forkedFromId === conv.id)).toHaveLength(0);
 	});
 });

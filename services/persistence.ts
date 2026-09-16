@@ -2,6 +2,7 @@ import type { Conversation, Favorite, MergeLink, Message, Provider } from "../mo
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
 import { EMBEDDING_MODEL_IDS, RELATED_SIMILARITY_PRESETS } from "../models/embeddingModels";
+import { normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
@@ -243,6 +244,7 @@ export function parseConversations(raw: unknown[]): {
 		sanitizeMessages(conv);
 		normalizeFavorites(conv);
 		normalizeMerges(conv);
+		normalizeComparison(conv);
 	}
 	return { conversations, dropped: raw.length - conversations.length };
 }

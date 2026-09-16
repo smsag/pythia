@@ -1847,6 +1847,114 @@
 }
 .p-del-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 
+/* Third action on the bar (ADR-160): re-run the prompt on another model. Accent
+   outline like the delete button's error outline — an action, not a dismissal. */
+.p-del-compare {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  color: var(--color-accent);
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  border: 1px solid var(--color-accent);
+  opacity: 0.75;
+  box-sizing: border-box;
+}
+@media (hover: hover) {
+  .p-del-compare:hover { opacity: 1; }
+}
+
+/* ── Model comparison card (ADR-160) ─────────────────────────── */
+/* Sits where the assistant turn would be. Same left rule as the fork anchor
+   (it is the same kind of card: a branch point), tabs instead of a title. */
+.pythia-view .p-compare {
+  border-left: 2px solid var(--color-accent);
+  padding: var(--s2) var(--s3);
+  margin: var(--s2) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.pythia-view .p-compare-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.pythia-view .p-compare-icon { display: inline-flex; color: var(--color-accent); }
+.pythia-view .p-compare-icon svg { width: 12px; height: 12px; stroke-width: 1.6; }
+.pythia-view .p-compare-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.pythia-view .p-compare-tab {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  padding: var(--s1) var(--s2);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  box-sizing: border-box;
+  min-height: 28px;
+}
+/* State, not decoration: no transition on the selected tab (ADR-155). */
+.pythia-view .p-compare-tab.is-active {
+  color: var(--text-normal);
+  font-weight: 600;
+  border-bottom-color: var(--color-accent);
+}
+@media (hover: hover) {
+  .pythia-view .p-compare-tab:hover { color: var(--text-normal); }
+}
+.pythia-view .p-compare-body { font-size: var(--font-small); }
+.pythia-view .p-compare-meta {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+.pythia-view .p-compare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+.pythia-view .p-compare-keep,
+.pythia-view .p-compare-add,
+.pythia-view .p-compare-discard {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  padding: 3px var(--s2);
+  border-radius: 3px;
+  box-sizing: border-box;
+  min-height: 24px;
+}
+.pythia-view .p-compare-keep {
+  background-color: var(--color-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+}
+.pythia-view .p-compare-add {
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+}
+.pythia-view .p-compare-discard { color: var(--text-faint); }
+@media (hover: hover) {
+  .pythia-view .p-compare-discard:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+}
+.pythia-view .p-compare-keep:disabled,
+.pythia-view .p-compare-add:disabled,
+.pythia-view .p-compare-discard:disabled { opacity: 0.4; cursor: default; }
+
 /* ── Selection toolbar ─────────────────────────────────────── */
 /* Frameless selection toolbar (ADR-066): no grey band — panel background with a
    top hairline only. Overflows horizontally as a carousel; the right-edge mask

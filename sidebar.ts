@@ -36,6 +36,8 @@ import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
 import { renderNoConversation, renderWelcome } from "./ui/emptyState";
+import { ExchangeActionsController } from "./ui/ExchangeActionsController";
+import { ComparisonController } from "./ui/ComparisonController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message, ToolCall } from "./models/types";
 import type PythiaPlugin from "./main";
@@ -69,13 +71,9 @@ export class PythiaSidebarView extends ItemView {
 	// can skip a full rebuild when the same conversation gains only new messages.
 	private renderedConvId: string | null = null;
 	private lastRenderedMsgId: string | null = null;
-	private longPressCleanup: (() => void) | null = null;
-	private activeDeletePreview: {
-		userRow: HTMLElement;
-		assistantRow: HTMLElement;
-		bar: HTMLElement;
-		outsideHandler: EventListener;
-	} | null = null;
+	// Long-press on the last bubble → delete / compare (ADR-160), and the comparison card.
+	private exchangeActions!: ExchangeActionsController;
+	private comparisonController!: ComparisonController;
 	private isScrolling = false;
 	// pendingAttachedNotes removed — all note attachments go to conv.contextNotes
 	private navigatorController!: NavigatorController;
@@ -446,6 +444,32 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getMessagesEl: () => this.messagesEl,
 			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+		});
+
+		this.exchangeActions = new ExchangeActionsController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getMessagesEl: () => this.messagesEl,
+			isStreaming: () => this.isStreaming,
+			onExchangeDeleted: () => {
+				const conv = this.activeConversation;
+				this.lastRenderedMsgId = conv?.messages.at(-1)?.id ?? null;
+				if (conv && conv.messages.length === 0) renderWelcome(this.messagesEl);
+				this.exchangeActions.attach();
+			},
+			startComparison: (userId, assistantId) => this.comparisonController.start(userId, assistantId),
+		});
+
+		this.comparisonController = new ComparisonController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			getMessagesEl: () => this.messagesEl,
+			isStreaming: () => this.isStreaming,
+			setStreamingState: (on) => this.setStreamingState(on),
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			onStarted: (userId) => { this.lastRenderedMsgId = userId; },
+			rerender: () => { this.renderedConvId = null; void this.renderMessages(); },
+			scrollToBottom: () => this.scrollToBottom(),
 		});
 
 		this.mergeController = new MergeController({
@@ -878,7 +902,7 @@ export class PythiaSidebarView extends ItemView {
 
 
 	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
-		this.hideDeletePreview();
+		this.exchangeActions.hidePreview();
 
 		if (!this.activeConversation) {
 			this.messagesEl.empty();
@@ -900,7 +924,7 @@ export class PythiaSidebarView extends ItemView {
 			} else {
 				this.scrollToBottom();
 			}
-			this.attachLastBubbleLongPress();
+			this.exchangeActions.attach();
 			return;
 		}
 
@@ -923,7 +947,7 @@ export class PythiaSidebarView extends ItemView {
 				} else {
 					this.scrollToBottom();
 				}
-				this.attachLastBubbleLongPress();
+				this.exchangeActions.attach();
 				return;
 			}
 			// anchor not found (e.g. delete-last-exchange removed the tracked message)
@@ -963,13 +987,15 @@ export class PythiaSidebarView extends ItemView {
 			await this.appendMessageBubble(msg);
 		}
 		this.lastRenderedMsgId = tailId;
+		// A pending comparison sits after the prompt it answers (ADR-160).
+		if (conv.comparison) this.comparisonController.render();
 
 		if (scrollTo === "top") {
 			this.scrollToTop();
 		} else {
 			this.scrollToBottom();
 		}
-		this.attachLastBubbleLongPress();
+		this.exchangeActions.attach();
 	}
 
 	/** Pick the on-accent label color that reads best on the user's accent.
@@ -1399,6 +1425,13 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
+		// A pending comparison must be resolved first: history never holds two
+		// answers to one prompt, and a new turn would have to choose one (ADR-160).
+		if (conv.comparison) {
+			new Notice(t("comparePending"));
+			return;
+		}
+
 		const text = this.inputEl.value.trim();
 		if (!text) return;
 
@@ -1619,7 +1652,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 				await this.plugin.conversationStore.save(conv);
 				if (this.activeConversation?.id === conv.id) {
-					this.attachLastBubbleLongPress();
+					this.exchangeActions.attach();
 				}
 
 				if (shouldGenerateTitle(conv)) {
@@ -1684,128 +1717,6 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	// ── Delete-last-exchange ─────────────────────────────────────
-
-	private attachLastBubbleLongPress(): void {
-		this.longPressCleanup?.();
-		this.longPressCleanup = null;
-
-		if (!this.activeConversation || this.isStreaming) return;
-
-		const userRows = Array.from(
-			this.messagesEl.querySelectorAll<HTMLElement>(".p-msg-user")
-		);
-		const lastUserRow = userRows[userRows.length - 1];
-		if (!lastUserRow) return;
-
-		const assistantRow = lastUserRow.nextElementSibling as HTMLElement | null;
-		if (!assistantRow?.classList.contains("p-msg-ai")) return;
-
-		const bubble = lastUserRow.querySelector<HTMLElement>(".p-bubble");
-		if (!bubble) return;
-
-		// The shared gesture (ui/longPress.ts), with preventTouchDefault so a long
-		// touch on the bubble opens the delete bar instead of iOS's magnifier. The
-		// bubble is rebuilt with the message list, so the direct-listener mode's
-		// cleanup is kept and re-run on every attach.
-		this.longPressCleanup = attachLongPress(
-			bubble,
-			() => { if (!this.activeDeletePreview) this.showDeletePreview(lastUserRow, assistantRow); },
-			{ preventTouchDefault: true },
-		);
-	}
-
-	private showDeletePreview(userRow: HTMLElement, assistantRow: HTMLElement): void {
-		this.hideDeletePreview();
-
-		userRow.addClass("p-del-preview");
-		assistantRow.addClass("p-del-preview");
-
-		const bar = createDiv({ cls: "p-del-bar" });
-		const confirmBtn = bar.createEl("button", { cls: "p-del-confirm", text: t("deleteExchangeBtn") });
-		const cancelBtn  = bar.createEl("button", { cls: "p-del-cancel",  text: t("cancelBtn") });
-
-		const doConfirm = (e: Event) => {
-			e.preventDefault(); e.stopPropagation();
-			void this.confirmDeleteLastExchange(userRow, assistantRow);
-		};
-		const doCancel = (e: Event) => {
-			e.preventDefault(); e.stopPropagation();
-			this.hideDeletePreview();
-		};
-
-		confirmBtn.addEventListener("mousedown",  doConfirm);
-		confirmBtn.addEventListener("touchstart", doConfirm, { passive: false });
-		cancelBtn.addEventListener("mousedown",   doCancel);
-		cancelBtn.addEventListener("touchstart",  doCancel, { passive: false });
-
-		assistantRow.insertAdjacentElement("beforebegin", bar);
-
-		const outsideHandler: EventListener = (e) => {
-			const t = (e as MouseEvent | TouchEvent).target as Node | null;
-			if (t && !bar.contains(t) && !userRow.contains(t) && !assistantRow.contains(t)) {
-				this.hideDeletePreview();
-			}
-		};
-		document.addEventListener("mousedown",  outsideHandler, { capture: true });
-		document.addEventListener("touchstart", outsideHandler, { capture: true });
-
-		this.activeDeletePreview = { userRow, assistantRow, bar, outsideHandler };
-	}
-
-	private hideDeletePreview(): void {
-		if (!this.activeDeletePreview) return;
-		const { userRow, assistantRow, bar, outsideHandler } = this.activeDeletePreview;
-		userRow.removeClass("p-del-preview");
-		assistantRow.removeClass("p-del-preview");
-		bar.remove();
-		document.removeEventListener("mousedown",  outsideHandler, { capture: true });
-		document.removeEventListener("touchstart", outsideHandler, { capture: true });
-		this.activeDeletePreview = null;
-	}
-
-	private async confirmDeleteLastExchange(
-		userRow: HTMLElement,
-		assistantRow: HTMLElement
-	): Promise<void> {
-		const conv = this.activeConversation;
-		if (!conv) return;
-
-		const userId      = userRow.getAttribute("data-msg-id");
-		const assistantId = assistantRow.getAttribute("data-msg-id");
-		if (!userId) return;
-
-		const userIdx = conv.messages.findIndex((m) => m.id === userId);
-		if (userIdx === -1) return;
-
-		const removeCount = assistantId ? 2 : 1;
-		conv.messages.splice(userIdx, removeCount);
-
-		// Keep the save-boundary accurate
-		if (conv.lastSavedMessageCount !== undefined && conv.lastSavedMessageCount > userIdx) {
-			conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
-		}
-
-		// Remove the starred entry for the deleted assistant message
-		if (assistantId && conv.favorites?.length) {
-			conv.favorites = conv.favorites.filter((f) => f.messageId !== assistantId);
-		}
-
-		this.hideDeletePreview();
-		userRow.remove();
-		assistantRow.remove();
-		this.lastRenderedMsgId = conv.messages.at(-1)?.id ?? null;
-
-		await this.plugin.conversationStore.save(conv);
-		new Notice(t("exchangeDeleted"));
-
-		if (conv.messages.length === 0) {
-			renderWelcome(this.messagesEl);
-		}
-
-		this.attachLastBubbleLongPress();
-	}
-
 	private updateSendBtnLabel(): void {
 		// The token estimate now lives in a mono label left of Send (not the
 		// button label). The button reads just "Senden" / "Stopp".
@@ -1839,8 +1750,7 @@ export class PythiaSidebarView extends ItemView {
 		// row ~60px exactly when the button label is at its widest.
 		this.inputAreaEl.toggleClass("streaming", streaming);
 		if (streaming) {
-			this.longPressCleanup?.();
-			this.longPressCleanup = null;
+			this.exchangeActions.detach();
 			this.autoScroll = true;
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");

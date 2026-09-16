@@ -438,6 +438,21 @@ const en = {
 	deleteBtn:         "Delete",
 	cancelBtn:         "Cancel",
 	deleteExchangeBtn: "✕ Delete",
+
+	// ── Model comparison (ADR-160) ────────────────────────────────────────────
+	compareBtn:            "⇄ Compare",
+	compareTitle:          "COMPARISON",
+	compareKeep:           "Keep this answer",
+	compareAddModel:       "+ Model",
+	compareDiscard:        "Discard comparison",
+	comparePending:        "Choose an answer to keep before sending the next message",
+	compareNoOtherModel:   "No other model has an API key configured",
+	compareKept:           "Kept {{model}} — {{n}} alternative(s) saved as forks",
+	compareFailed:         "{{model}} failed: {{error}}",
+	compareDiscarded:      "Comparison discarded — original answer restored",
+	compareBusy:           "Wait for the current answer to finish",
+	searchModels:          "Search models…",
+	instrRunModel:         "to run",
 	exchangeDeleted:   "Exchange deleted",
 
 	// ── Delete conversation modal ─────────────────────────────────────────────
