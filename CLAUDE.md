@@ -60,8 +60,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
+    pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 967 tests across 60 files
+  assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
+  tests/                      ← Vitest unit tests (npm test) — 973 tests across 61 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings

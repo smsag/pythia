@@ -1,17 +1,9 @@
-import {
-	ItemView,
-	MarkdownRenderer,
-	MarkdownView,
-	Notice,
-	Platform,
-	setIcon,
-	TFile,
-	WorkspaceLeaf,
-} from "obsidian";
+import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
+import { PYTHIA_ICON_ID } from "./ui/pluginIcon";
 import { noteBasename, safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
@@ -159,7 +151,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "bot";
+		return PYTHIA_ICON_ID;
 	}
 
 	async onOpen(): Promise<void> {

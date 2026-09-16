@@ -1,4 +1,4 @@
-# Pythia
+# <img src="assets/logo.svg" alt="" width="28"> Pythia
 
 An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropic and OpenAI) into your vault as first-class objects — with templates, context injection, streaming chat, summaries, and PKM-native storage.
 

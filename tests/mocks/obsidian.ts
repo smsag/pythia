@@ -109,6 +109,9 @@ export const Setting = cls();
 export const Platform = { isMobile: false, isDesktop: true, isIosApp: false, isAndroidApp: false };
 
 export const setIcon = noop;
+/** Icons the plugin registered, so a test can assert what was handed over. */
+export const registeredIcons = new Map<string, string>();
+export const addIcon = (id: string, svg: string): void => { registeredIcons.set(id, svg); };
 export const getIcon = (): null => null;
 // Immediate, but with the Debouncer surface (`run`/`cancel`) production code calls.
 export const debounce = <A extends unknown[]>(fn: (...args: A) => unknown) =>

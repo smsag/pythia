@@ -5,6 +5,7 @@ import { debugLog } from "./services/messageUtils";
 import type { Conversation, Provider, PythiaTemplate } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
+import { PYTHIA_ICON_ID, registerPythiaIcon } from "./ui/pluginIcon";
 import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ConversationStore } from "./services/ConversationStore";
@@ -226,6 +227,10 @@ export default class PythiaPlugin extends Plugin {
 			this.vaultRag.getRelevantNotes(conv, query, exclude)
 		);
 
+		// Before the view is registered: a leaf restored from workspace.json asks
+		// for its icon during layout-ready, and the ribbon and commands name it.
+		registerPythiaIcon();
+
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
 			(leaf) => new PythiaSidebarView(leaf, this)
@@ -238,27 +243,27 @@ export default class PythiaPlugin extends Plugin {
 		// When detected, reload from disk and refresh the sidebar.
 		this.pluginDataStore.watchDataJson();
 
-		this.addRibbonIcon("bot", "Pythia", () => this.activateView());
+		this.addRibbonIcon(PYTHIA_ICON_ID, "Pythia", () => this.activateView());
 		this.addSettingTab(new PythiaSettingTab(this.app, this));
 
 		this.addCommand({
 			id: "new-conversation",
 			name: t("cmdNewConversation"),
-			icon: "bot",
+			icon: PYTHIA_ICON_ID,
 			callback: () => this.cmdNewConversation(),
 		});
 
 		this.addCommand({
 			id: "resume-conversation",
 			name: t("cmdResumeConversation"),
-			icon: "bot",
+			icon: PYTHIA_ICON_ID,
 			callback: () => this.conversationService.cmdResumeConversation(),
 		});
 
 		this.addCommand({
 			id: "hub",
 			name: t("cmdHub"),
-			icon: "bot",
+			icon: PYTHIA_ICON_ID,
 			callback: () => new CommandHubModal(this.app, [
 				{
 					label: t("cmdNewConversationFromTemplate"),
@@ -306,14 +311,14 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "summarize-favorites",
 			name: t("cmdSummarizeFavorites"),
-			icon: "bot",
+			icon: "star",
 			callback: () => this.conversationService.cmdSummarizeFavorites(),
 		});
 
 		this.addCommand({
 			id: "toggle-vault-context",
 			name: t("cmdToggleVaultContext"),
-			icon: "bot",
+			icon: "library",
 			callback: async () => {
 				this.settings.vaultContextEnabled = !this.settings.vaultContextEnabled;
 				await this.saveSettings();
@@ -324,7 +329,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "reindex-vault-context",
 			name: t("cmdReindexVault"),
-			icon: "bot",
+			icon: "refresh-cw",
 			callback: () => void this.reindexVault(),
 		});
 
@@ -373,7 +378,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "send-selection-to-pythia",
 			name: t("sendSelectionToPythia"),
-			icon: "bot",
+			icon: PYTHIA_ICON_ID,
 			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
@@ -387,7 +392,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "send-selection-to-pythia-with-template",
 			name: t("sendSelectionToPythiaWithTemplate"),
-			icon: "bot",
+			icon: PYTHIA_ICON_ID,
 			editorCallback: async (editor: Editor) => {
 				const selection = editor.getSelection();
 				if (!selection) return;
@@ -414,7 +419,7 @@ export default class PythiaPlugin extends Plugin {
 						item
 							.setTitle(t("chatAboutNote"))
 							.setSection("open")
-							.setIcon("bot")
+							.setIcon(PYTHIA_ICON_ID)
 							.onClick(async () => {
 								const conv = await this.createConversation({
 									name: `${file.basename} ${todayISO()}`,
@@ -429,7 +434,7 @@ export default class PythiaPlugin extends Plugin {
 						item
 							.setTitle(t("chatAboutFolder"))
 							.setSection("open")
-							.setIcon("bot")
+							.setIcon(PYTHIA_ICON_ID)
 							.onClick(async () => {
 								const files = getFilesInFolder(file);
 								if (files.length === 0) {
