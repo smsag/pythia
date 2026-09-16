@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-166 (glossary definitions read in the conversation's language: translated on open, cached in the term note per language, invalidated by a hash of the definition; under AUTO new definitions follow the passage's language).*
+*Last updated: 2026-09-16 — ADR-167 (the strip under the composer, measured in the running app: Obsidian pads every `.view-content` at (0,2,0), a theme added a phone-drawer reserve, and Obsidian's floating-nav fade painted the result; plus the two things that exemption uncovered — the composer's desktop clearance and a keyboard lift that reads Obsidian's own `--keyboard-height`).*
+
+*Previously: 2026-09-16 — ADR-166 (glossary definitions read in the conversation's language: translated on open, cached in the term note per language, invalidated by a hash of the definition; under AUTO new definitions follow the passage's language).*
 
 *Previously: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
 
@@ -2291,7 +2293,7 @@ Two attempts at conditional logic is the signal to ask whether the condition is 
 
 ### ADR-147 — The panel was inset from its own leaf
 
-**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
+**Status:** Superseded in mechanism by ADR-167 — the inset was Obsidian's padding on `.view-content`, not on the leaf container; this rule is kept, and ADR-167 adds the one that works. Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
 
 **Context:** Five attempts at the dead space below the composer, four of them shipped, none of them fixing it. Each looked at padding *inside* the panel — a height assignment, `env(safe-area-inset-bottom)`, a stale measurement of it, and finally removing it outright.
 
@@ -2840,3 +2842,46 @@ return block?.type === "text" ? block.text.trim() : "";
 **Rejected.** A plugin-side cache file (does not sync, invisible to Bases, not editable). A body section per language (not a Base column; notes grow long). Obsidian's UI language as the AUTO target (predictable, but a German user reading an English conversation would get German definitions under English answers). A model call to detect the passage's language (latency on every open). Translating the stored definition in place (would destroy the original and make a second translation a translation of a translation).
 
 **Consequences.** A term note can carry `language`, `translated_from` and one `definition_<lang>` per language read. `GlossaryEntry` gains `language`, `definitionTranslations`, `translatedFrom`. `LLMProvider`/`LLMRouter` gain `translateDefinition`. +23 tests (1069 across 69 files): the detector (seven languages, the short-definition overlap, a quoted English phrase, refusal on short or mixed text), frontmatter read and write, cache validity by hash, stale-language clearing, the target rule, the merge, both prompts under AUTO and a named language, and the anchor's four states — translated and marked, same language with no call, failure falling back unmarked, placeholder while pending.
+
+---
+
+### ADR-167 — The strip under the composer, measured: core pads every view, a theme added a reserve, core's fade painted it
+
+**Date:** 2026-09-16
+**Status:** Accepted — closes the thread of ADR-132, 134, 135, 146, 147
+
+*(The three CSS rules and `tests/leafInset.test.ts` landed with the icon branch; the reasoning below was dropped by that merge and is restored here. Numbered 167 because 165 and 166 were taken while the branch was open.)*
+
+**Context.** ADR-147 ended with a promise: if any strip survived the leaf-container fix, "I will instrument rather than guess again." One survived. On the phone, with Klartext, Send hung about 56px above the drawer's tab selector with a lighter band across the space. This time Obsidian 1.13.7 was run under a virtual display with `--remote-debugging-port`, put into phone emulation (`app.emulateMobile(true)`, 393x852, `is-phone`), the vault carried the built plugin and the theme, and the drawer was measured with `getBoundingClientRect` and `getComputedStyle`, before and after every change, in the same tab.
+
+**What was there — three layers, none of them Pythia's.**
+
+1. **Obsidian pads every `.view-content`.** `app.css` has `.view-content { padding: 12px }` and `.workspace-leaf-content .view-content { padding-bottom: max(var(--safe-area-inset-bottom), var(--size-4-8)) }` at (0,2,0): 32px on a desktop, the home indicator's 34px on a phone. Measured under the default theme on the desktop: `.pythia-view` computed `12px 12px 32px`. **This is ADR-147's "8 left, 8 right, 34 bottom"** — the sides and the home-indicator number, from one core rule. `.pythia-view { padding: 0 }` is (0,1,0) and never won; ADR-147's `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` addressed an element whose padding was already 0. Core exempts its own views by data-type: `.workspace-leaf-content[data-type="markdown"] .view-content { padding: 0 }` at (0,3,0).
+2. **Klartext 1.6.1 reserved 52px on every phone-drawer view** — `body.is-phone .workspace-drawer .workspace-leaf-content > .view-content { padding-bottom: var(--touch-size-l) }` at (0,4,1) — "so the last row cannot end up under the floating selector". The selector does not float: `.workspace-drawer-inner` is a flex column, the tab container is `flex: 1`, `.workspace-drawer-tab-options` is `position: relative`, below the view in normal flow. Dead space, replacing core's 34 with 52.
+3. **Obsidian's floating-nav fade painted the empty strip.** `.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content::after`: 48px, `pointer-events: none`, `linear-gradient(to top, var(--mobile-sidebar-background), transparent)` — meant to fade a file list under floating nav buttons, applied to every drawer leaf. Over an empty reserve, with the sidebar #222 against our #1a1a1a panel, it is the band in the report.
+
+**Decision.** Three rules beside the ADR-147 one, all scoped to our leaf by `data-type`:
+
+```css
+.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0; }                       /* core's own exemption shape, (0,3,0) */
+body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .view-content { padding-bottom: 0; }  /* (0,5,1) over a theme's (0,4,1) */
+.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content[data-type="pythia"]::after { display: none; }
+```
+
+Specificity, **deliberately never `!important`**: the keyboard lift (ADR-132) writes an inline `padding-bottom` on this element and must keep winning. The theme is fixed too (Klartext 1.6.2 removes its reserve), but the plugin does not depend on it: the shape any theme would use is what the plugin out-ranks. The fade is removed only for our leaf; the composer is not a scrolling list.
+
+**Verification, in the running app.** Phone emulation, Klartext 1.6.1, old stylesheet: `.pythia-view` padding-bottom 52px, fade `display: block`, Send 56px above the view's edge. New stylesheet, theme unchanged: 0px, `none`, Send 4px above the edge and 5px above the selector's hairline; the band gone. Klartext 1.6.2 with the old stylesheet: 34px (core's) and the fade back — which is why all three rules are the plugin's to carry. Default theme, new stylesheet: 0px, `none`, 5px. Desktop, old stylesheet: `12px 12px 32px`; new: `0px`. `tests/leafInset.test.ts` loads core-shaped rules, then `styles.css`, then a theme-shaped rule — Obsidian's order — into happy-dom and asserts the desktop and phone cascades, that another `data-type` keeps both core's and the theme's padding, that inline padding still wins, and that the `::after` rule is scoped by `data-type`.
+
+**The method, kept.** Five ADRs guessed at this strip from screenshots and reasoned about numbers; the sixth ran the app and read three stylesheets the plugin had never read, one of them Obsidian's own. The tooling is now known: the Linux build under Xvfb with `--remote-debugging-port`, `app.emulateMobile(true)` plus a device-metrics override for the phone, `Runtime.evaluate` for the measurements, `Page.captureScreenshot` for the proof. When a symptom is "on the device", the next step is a device, emulated if need be — not a sixth reading of the same picture.
+
+#### ADR-167 addendum — what the exemption uncovered: desktop clearance, and the keyboard lift reads Obsidian's number
+
+**Date:** 2026-09-16
+
+Removing Obsidian's `.view-content` padding exposed two things it had been quietly doing.
+
+**Desktop clearance.** ADR-146 set the composer's bottom padding to 4px while core's 32px still sat below it, unseen. With that gone, Send stood 4px from the window's edge. The composer now carries `var(--s3)` (12px) at the bottom; in the phone drawer it keeps 4px, because the tab selector's pill with its own margin sits directly below. One rule, `body.is-phone .workspace-drawer .p-input-area { padding-bottom: var(--s1) }`, and a comment naming why.
+
+**The keyboard.** On the phone the keyboard began to cover the composer's bottom row. Measured in the emulator with Obsidian's `--keyboard-height` set: `.app-container` shrinks by the keyboard, but the drawer is `position: fixed; top: 0; bottom: 0` and does not — it stays full height, its own `padding-bottom: calc(max(safe-area, 16px) - keyboard-height)` clamps to 0, and the view *grows* by 34px toward the keyboard. So a composer in the drawer is under the keyboard unless lifted. Pythia's lift (ADR-132) measured the keyboard through `visualViewport`, and on iOS that estimate is short by roughly the home indicator; core's 34px of view padding had been covering the difference. Obsidian publishes the authoritative number: `--keyboard-height`, from the native keyboard frame, and draws its own editing toolbar at `100vh - keyboard-height`. `keyboardOverlap` now takes `keyboardHeight` too and lifts by the larger of the two estimates; it is 0 whenever no keyboard is open, so it can never pad the panel at rest (the ADR-132 invariant). `watchViewport` also listens to Obsidian's `keyboardWillShow` / `keyboardWillHide` window events (allow-listed in ESLint with the reason) and measures once more after the 300 ms animation, since the variable can land after the event. The conversation panel's list passes the same number through `readKeyboardHeight()`.
+
+**Verification.** Emulator, phone drawer, `--keyboard-height: 300px` and the event dispatched: the composer's bottom moves from 744 to the keyboard's top at 552, and back when the variable returns to 0. Desktop: Send 12px above the leaf's edge. The device numbers themselves — how far short the visual viewport falls on a given iPhone — are not known from here; what is known is that Obsidian's number is the one Obsidian trusts for its own toolbar.

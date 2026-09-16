@@ -70,6 +70,9 @@ export default tseslint.config(
 		files: [
 			"ui/outsideDismiss.ts",
 			"ui/dragToPan.ts",
+			// keyboardInset: Obsidian mobile's keyboardWillShow/Hide are window events
+			// with no Obsidian API; watchViewport() adds and removes them as a pair.
+			"ui/keyboardInset.ts",
 			"ui/ActionSheet.ts",
 			"ui/InlineSuggest.ts",
 			"ui/ExchangeActionsController.ts",

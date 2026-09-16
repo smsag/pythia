@@ -30,6 +30,15 @@ export interface ViewportMetrics {
 	visualHeight: number;
 	/** `visualViewport.offsetTop` — non-zero only while pinch-zoomed or scrolled. */
 	visualOffsetTop: number;
+	/**
+	 * Obsidian's own `--keyboard-height` (ADR-165 addendum), 0 when no keyboard is
+	 * open. Obsidian mobile sets it from the native keyboard frame and places its
+	 * own editing toolbar at `100vh - keyboard-height`, so it is the authoritative
+	 * keyboard top on the device. The visual viewport is the browser's estimate
+	 * and, on iOS, came up short by about the home indicator: the composer's
+	 * bottom row sat under the keyboard by that much once nothing else padded it.
+	 */
+	keyboardHeight?: number;
 }
 
 /**
@@ -46,9 +55,22 @@ export interface ViewportMetrics {
  */
 export function keyboardOverlap(m: ViewportMetrics): number {
 	const inset = m.layoutHeight - (m.visualHeight + m.visualOffsetTop);
-	if (inset < MIN_KEYBOARD_INSET) return 0;
 	const visibleBottom = m.visualOffsetTop + m.visualHeight;
-	return Math.max(0, Math.round(m.containerBottom - visibleBottom));
+	const byViewport = inset < MIN_KEYBOARD_INSET ? 0 : Math.max(0, m.containerBottom - visibleBottom);
+	// Obsidian's number wins when it is the larger: it is where Obsidian itself
+	// draws the keyboard's top edge (`.mobile-toolbar { top: calc(100vh -
+	// var(--keyboard-height) - …) }`), and it is 0 whenever no keyboard is open,
+	// so it can never pad the panel at rest.
+	const kb = m.keyboardHeight ?? 0;
+	const byKeyboard = kb > 0 ? Math.max(0, m.containerBottom - (m.layoutHeight - kb)) : 0;
+	return Math.round(Math.max(byViewport, byKeyboard));
+}
+
+/** Obsidian mobile's `--keyboard-height` in CSS px; 0 when unset, absent or not a number. */
+export function readKeyboardHeight(): number {
+	const raw = getComputedStyle(document.documentElement).getPropertyValue("--keyboard-height");
+	const px = parseFloat(raw);
+	return Number.isFinite(px) && px > 0 ? px : 0;
 }
 
 /**
@@ -67,13 +89,12 @@ export function updateViewportInsets(container: HTMLElement): void {
 	container.style.height = "";
 	container.style.removeProperty("--p-bottom-inset"); // left by builds ≤ 2.12.0
 	const vv = window.visualViewport;
-	if (!vv) return;
-
 	const overlap = keyboardOverlap({
 		containerBottom: container.getBoundingClientRect().bottom,
 		layoutHeight: window.innerHeight,
-		visualHeight: vv.height,
-		visualOffsetTop: vv.offsetTop,
+		visualHeight: vv?.height ?? window.innerHeight,
+		visualOffsetTop: vv?.offsetTop ?? 0,
+		keyboardHeight: readKeyboardHeight(),
 	});
 	// Padding, not height: the panel keeps filling and painting its leaf, so
 	// nothing is uncovered and `overflow: hidden` has nothing to crop.
@@ -99,17 +120,29 @@ export function updateViewportInsets(container: HTMLElement): void {
  */
 export function watchViewport(onChange: () => void): () => void {
 	const vv = window.visualViewport;
-	if (!vv) return () => { /* no viewport API: nothing to watch or dispose */ };
 	let live = true;
 	const handler = () => { if (live) onChange(); };
-	vv.addEventListener("resize", handler);
-	vv.addEventListener("scroll", handler);
+	vv?.addEventListener("resize", handler);
+	vv?.addEventListener("scroll", handler);
+	// Obsidian mobile announces the keyboard on `window` and updates
+	// `--keyboard-height` alongside; the second call catches a value written
+	// after the event, once the show/hide animation has settled (ADR-165 addendum).
+	const timers: number[] = [];
+	const onKeyboard = () => { handler(); timers.push(window.setTimeout(handler, KEYBOARD_SETTLE_MS)); };
+	window.addEventListener("keyboardWillShow", onKeyboard);
+	window.addEventListener("keyboardWillHide", onKeyboard);
 	// Guarded: a view closed within two frames of opening must not be measured
 	// after its disposer ran.
 	requestAnimationFrame(() => { handler(); requestAnimationFrame(handler); });
 	return () => {
 		live = false;
-		vv.removeEventListener("resize", handler);
-		vv.removeEventListener("scroll", handler);
+		for (const t of timers) window.clearTimeout(t);
+		vv?.removeEventListener("resize", handler);
+		vv?.removeEventListener("scroll", handler);
+		window.removeEventListener("keyboardWillShow", onKeyboard);
+		window.removeEventListener("keyboardWillHide", onKeyboard);
 	};
 }
+
+/** Obsidian animates the keyboard for 300 ms on iOS; measure again once it has landed. */
+export const KEYBOARD_SETTLE_MS = 350;
