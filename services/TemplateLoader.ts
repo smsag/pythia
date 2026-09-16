@@ -17,8 +17,10 @@ export class TemplateLoader {
 	}
 
 	async loadTemplates(): Promise<PythiaTemplate[]> {
-		const folder = this.settings.templatesFolder;
-		if (!folder || !folder.trim()) return [];
+		// Tolerate a trailing slash or leading "./" in the setting — a folder
+		// picked by hand as "Pythia/Templates/" used to match nothing at all.
+		const folder = (this.settings.templatesFolder ?? "").trim().replace(/^\.?\/+|\/+$/g, "");
+		if (!folder) return [];
 		const files = this.app.vault
 			.getMarkdownFiles()
 			.filter((f) => f.path.startsWith(folder + "/"));
@@ -94,8 +96,12 @@ export class TemplateLoader {
 
 			const validName = typeof fm.name === "string" ? fm.name : undefined;
 			const validModel = typeof fm.model === "string" ? fm.model : undefined;
-			const validMaxTokens = typeof fm.max_tokens === "number" && fm.max_tokens > 0
+			const validMaxTokens = typeof fm.max_tokens === "number" && Number.isInteger(fm.max_tokens) && fm.max_tokens > 0
 				? fm.max_tokens : undefined;
+			// A non-string auto_prompt (a YAML number or list) would be sent as a
+			// message verbatim, so it is validated like every other field.
+			const validAutoPrompt = typeof fm.auto_prompt === "string" && fm.auto_prompt.trim()
+				? fm.auto_prompt : undefined;
 
 			return {
 				id: file.path,
@@ -110,7 +116,7 @@ export class TemplateLoader {
 				outputFolder: validOutputFolder,
 				writeMode: validWriteMode,
 				researchMode: validResearchMode,
-				autoPrompt: fm.auto_prompt as string | undefined,
+				autoPrompt: validAutoPrompt,
 				systemPrompt: match[2].trim(),
 			};
 		} catch (err) {

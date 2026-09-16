@@ -3,6 +3,7 @@ import type PythiaPlugin from "../main";
 import type { PythiaSettings } from "../settings";
 import type { LLMRouter } from "./LLMRouter";
 import type { Provider } from "../models/types";
+import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { PromptInputModal } from "../suggest/PromptInputModal";
 import { OUTPUT_ONLY_INSTRUCTION, cleanOptimizedOutput } from "./promptOptimizerText";
 import { t } from "../i18n";
@@ -62,7 +63,8 @@ export class PromptOptimizerService {
 				const rawProvider = fm.provider;
 				const provider: Provider | undefined =
 					rawProvider === "anthropic" || rawProvider === "openai" || rawProvider === "mistral" ? rawProvider : undefined;
-				return { body: fmMatch[2].trim(), provider, model: fm.model as string | undefined };
+				const model = typeof fm.model === "string" && fm.model.trim() ? fm.model.trim() : undefined;
+				return { body: fmMatch[2].trim(), provider, model };
 			} catch {
 				return { body: fmMatch[2].trim() };
 			}
@@ -150,13 +152,7 @@ export class PromptOptimizerService {
 		let optimizedPrompt: string;
 		try {
 			const provider = template.provider ?? this.settings.defaultProvider;
-			const model = template.model ?? (
-				provider === "openai"
-					? this.settings.defaultOpenAIModel
-					: provider === "mistral"
-						? this.settings.defaultMistralModel
-						: this.settings.defaultAnthropicModel
-			);
+			const model = template.model ?? resolveDefaultModelForProvider(provider, this.settings);
 			optimizedPrompt = cleanOptimizedOutput(await this.llmRouter.optimizePrompt(
 				"",
 				userMessage,

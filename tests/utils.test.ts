@@ -73,3 +73,21 @@ describe("withConversationBacklink", () => {
 		expect(withConversationBacklink("t", null, "V")).toBe("t");
 	});
 });
+
+import { safeNoteName, normalizeVaultPath, yamlString } from "../services/pathUtils";
+
+describe("pathUtils", () => {
+	it("safeNoteName replaces illegal characters and never returns an empty name", () => {
+		expect(safeNoteName('a/b:c*d?e"f<g>h|i')).toBe("a-b-c-d-e-f-g-h-i");
+		expect(safeNoteName("   ")).toBe("Untitled");
+	});
+
+	it("normalizeVaultPath collapses slashes and dot segments but leaves .. for the writer to reject", () => {
+		expect(normalizeVaultPath("\\A\\.\\B\\\\c.md")).toBe("A/B/c.md");
+		expect(normalizeVaultPath("../x.md")).toBe("../x.md");
+	});
+
+	it("yamlString produces a valid double-quoted scalar", () => {
+		expect(yamlString('He said "hi": #1')).toBe('"He said \\"hi\\": #1"');
+	});
+});

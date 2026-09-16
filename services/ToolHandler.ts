@@ -175,7 +175,12 @@ export class ToolHandler {
 
 		if (call.name === "create_note" || call.name === "rewrite_note") {
 			try {
-				const file = await this.writer.writeNote(content, path);
+				// create_note never overwrites: an existing note is an error the
+				// model can recover from by choosing another path (or rewrite_note on
+				// a context note, which the user confirms by name).
+				const file = call.name === "create_note"
+					? await this.writer.createNote(content, path)
+					: await this.writer.writeNote(content, path);
 				return `Note written: ${file.path}`;
 			} catch (err) {
 				return `Error writing note: ${err instanceof Error ? err.message : String(err)}`;

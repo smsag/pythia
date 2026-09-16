@@ -3,6 +3,7 @@ import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { todayISO } from "../utils";
 import { stripCitationMarkers } from "./citations";
+import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
 
 export class NoteWriter {
 	private app: App;
@@ -17,9 +18,24 @@ export class NoteWriter {
 		this.settings = settings;
 	}
 
+	/** Create a note that must not exist yet. The model's `create_note` tool
+	 *  goes through here: a "create" that silently replaced an existing note was
+	 *  the one way a confused or prompt-injected model could destroy user
+	 *  content without a rewrite confirmation naming the note. */
+	async createNote(content: string, filePath: string): Promise<TFile> {
+		const normalized = normalizeVaultPath(filePath);
+		if (this.app.vault.getAbstractFileByPath(normalized)) {
+			throw new Error(`A note already exists at "${normalized}". Choose a different path, or use rewrite_note on a context note.`);
+		}
+		return this.writeNote(content, normalized);
+	}
+
 	async writeNote(content: string, filePath: string): Promise<TFile> {
 		// Reject path traversal attempts (e.g. "../../.obsidian/plugins/…")
-		const normalized = filePath.replace(/\\/g, "/");
+		const normalized = normalizeVaultPath(filePath);
+		if (!normalized) {
+			throw new Error(`Invalid file path: "${filePath}" is empty.`);
+		}
 		if (normalized.split("/").some((seg) => seg === "..")) {
 			throw new Error(`Invalid file path: "${filePath}" contains path traversal segments.`);
 		}
@@ -48,7 +64,7 @@ export class NoteWriter {
 	}
 
 	async prependWithSeparator(content: string, filePath: string): Promise<TFile> {
-		const normalized = filePath.replace(/\\/g, "/");
+		const normalized = normalizeVaultPath(filePath);
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const current =
 			existing instanceof TFile ? await this.app.vault.read(existing) : "";
@@ -123,12 +139,15 @@ export class NoteWriter {
 		summary: string,
 		outputPath?: string
 	): Promise<string> {
-		const safeName = conversation.name.replace(/[\\/:*?"<>|]/g, "-");
+		const safeName = safeNoteName(conversation.name);
 		const filePath = `${this.settings.conversationsFolder}/${todayISO()}-${safeName}.md`;
 
+		// Every scalar is YAML-quoted: a path or template name with `: `, `#` or
+		// a quote in it used to break the frontmatter block, and Obsidian then
+		// showed the whole header as body text.
 		const contextList =
 			conversation.contextNotes.length > 0
-				? conversation.contextNotes.map((n) => `  - ${n}`).join("\n")
+				? conversation.contextNotes.map((n) => `  - ${yamlString(n)}`).join("\n")
 				: "  []";
 
 		const outputSection = outputPath
@@ -137,7 +156,7 @@ export class NoteWriter {
 
 		const noteContent = `---
 type: "LLM Note"
-template: ${conversation.templateId ?? "none"}
+template: ${yamlString(conversation.templateId ?? "none")}
 created: ${todayISO()}
 source: "${this.resumeUri(conversation.id)}"
 context:
@@ -156,7 +175,7 @@ ${summary}${outputSection}
 		conversation: Conversation,
 		summary: string
 	): Promise<string> {
-		const safeName = conversation.name.replace(/[\\/:*?"<>|]/g, "-");
+		const safeName = safeNoteName(conversation.name);
 		const filePath = `${this.settings.conversationsFolder}/${todayISO()}-${safeName}-favorites.md`;
 
 		const noteContent = `---
@@ -184,7 +203,7 @@ ${summary}
 
 		const entry = `${timestamp}\n${text}\n\n---\n`;
 
-		const normalized = inboxPath.replace(/\\/g, "/");
+		const normalized = normalizeVaultPath(inboxPath);
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const currentContent =
 			existing instanceof TFile
@@ -210,7 +229,7 @@ ${summary}
 		}
 		const block = lines.join("\n").trimEnd();
 
-		const normalized = filePath.replace(/\\/g, "/");
+		const normalized = normalizeVaultPath(filePath);
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
 
@@ -230,9 +249,14 @@ ${summary}
 		let current = "";
 		for (const part of parts) {
 			current = current ? `${current}/${part}` : part;
-			const exists = this.app.vault.getAbstractFileByPath(current);
-			if (!exists) {
+			if (this.app.vault.getAbstractFileByPath(current)) continue;
+			try {
 				await this.app.vault.createFolder(current);
+			} catch (e) {
+				// Two writes racing into the same new folder (a tool call and a
+				// glossary save, say): the loser's createFolder throws "already
+				// exists". That is success for our purposes; anything else is not.
+				if (!this.app.vault.getAbstractFileByPath(current)) throw e;
 			}
 		}
 	}

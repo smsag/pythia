@@ -12,7 +12,7 @@ import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, estimateTokensFromText, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
-import { noteBasename } from "./services/pathUtils";
+import { noteBasename, safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
@@ -1351,7 +1351,7 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		const safeName = conv.name.replace(/[\\/:*?"<>|]/g, "-");
+		const safeName = safeNoteName(conv.name);
 
 		let defaultFolder = this.plugin.settings.scratchFolder;
 		if (conv.templateId) {

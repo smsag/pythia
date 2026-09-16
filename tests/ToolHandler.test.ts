@@ -12,8 +12,9 @@ import type { ToolCall } from "../models/types";
 
 // ── Minimal mock writer ───────────────────────────────────────────────────────
 
-const makeWriter = (overrides?: { writeNote?: () => Promise<{ path: string }>; prependWithSeparator?: () => Promise<{ path: string }> }): NoteWriter => ({
+const makeWriter = (overrides?: { writeNote?: () => Promise<{ path: string }>; createNote?: () => Promise<{ path: string }>; prependWithSeparator?: () => Promise<{ path: string }> }): NoteWriter => ({
 	writeNote:           vi.fn().mockResolvedValue({ path: "Notes/out.md" }),
+	createNote:          vi.fn().mockResolvedValue({ path: "Notes/out.md" }),
 	prependWithSeparator: vi.fn().mockResolvedValue({ path: "Notes/out.md" }),
 	...overrides,
 } as unknown as NoteWriter);
@@ -98,10 +99,17 @@ describe("ToolHandler — input validation", () => {
 // ── ToolHandler — create_note ─────────────────────────────────────────────────
 
 describe("ToolHandler — create_note", () => {
-	it("calls writer.writeNote with the correct arguments", async () => {
+	it("calls writer.createNote (never the overwriting writeNote) with the correct arguments", async () => {
 		const writer = makeWriter();
 		await new ToolHandler(writer).execute(call("create_note", { path: "Notes/new.md", content: "# Title" }));
-		expect(writer.writeNote).toHaveBeenCalledWith("# Title", "Notes/new.md");
+		expect(writer.createNote).toHaveBeenCalledWith("# Title", "Notes/new.md");
+		expect(writer.writeNote).not.toHaveBeenCalled();
+	});
+
+	it("reports an existing note as a recoverable error", async () => {
+		const result = await makeHandler({ createNote: vi.fn().mockRejectedValue(new Error('A note already exists at "Notes/x.md".')) })
+			.execute(call("create_note", { path: "Notes/x.md", content: "body" }));
+		expect(result).toMatch(/^Error writing note: A note already exists/);
 	});
 
 	it("returns a success message containing the written path", async () => {
@@ -110,7 +118,7 @@ describe("ToolHandler — create_note", () => {
 	});
 
 	it("returns an error string when writeNote throws", async () => {
-		const result = await makeHandler({ writeNote: vi.fn().mockRejectedValue(new Error("disk full")) })
+		const result = await makeHandler({ createNote: vi.fn().mockRejectedValue(new Error("disk full")) })
 			.execute(call("create_note", { path: "Notes/x.md", content: "body" }));
 		expect(result).toMatch(/error writing note.*disk full/i);
 	});
@@ -218,7 +226,7 @@ describe("ToolHandler — context-note allow-list", () => {
 			ctx,
 		);
 		expect(result).toMatch(/Note written/);
-		expect(writer.writeNote).toHaveBeenCalledWith("x", "Notes/brand-new.md");
+		expect(writer.createNote).toHaveBeenCalledWith("x", "Notes/brand-new.md");
 	});
 
 	it("does not enforce the allow-list when no context set is passed (back-compat)", async () => {
