@@ -67,11 +67,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 // END GENERATED PRICES
 
-/** Estimated USD for one reply, or null when the model has no price row. */
-export function estimateCost(model: string | undefined, usage: TokenUsage | undefined): number | null {
-	if (!model || !usage) return null;
-	const p = MODEL_PRICING[model];
-	if (!p) return null;
+/** The arithmetic, separate from the table so it can be tested on a synthetic
+ *  row: the table changes weekly, and a test that hard-codes a price breaks
+ *  the pricing workflow on the first real price change. */
+export function priceUsage(p: ModelPricing, usage: TokenUsage): number {
 	const per = 1_000_000;
 	return (
 		usage.inputTokens * p.input +
@@ -79,6 +78,13 @@ export function estimateCost(model: string | undefined, usage: TokenUsage | unde
 		(usage.cacheReadTokens ?? 0) * (p.cacheRead ?? p.input) +
 		(usage.cacheCreationTokens ?? 0) * (p.cacheWrite ?? p.input)
 	) / per;
+}
+
+/** Estimated USD for one reply, or null when the model has no price row. */
+export function estimateCost(model: string | undefined, usage: TokenUsage | undefined): number | null {
+	if (!model || !usage) return null;
+	const p = MODEL_PRICING[model];
+	return p ? priceUsage(p, usage) : null;
 }
 
 /** `$1.23` from a dollar up; below it two significant digits (`$0.012`,
