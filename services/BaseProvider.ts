@@ -11,6 +11,7 @@ import {
 	langSuffix,
 	debugLog,
 	buildFavoritesDigest,
+	cleanGeneratedTitle,
 } from "./messageUtils";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import {
@@ -199,6 +200,8 @@ export abstract class BaseProvider implements LLMProvider {
 		const signal = controller.signal;
 
 		let fullText = "";
+		const startedAt = Date.now();
+		let round = 0;
 
 		try {
 			const { userContent, systemPrompt, pdfAttachments } =
@@ -211,7 +214,6 @@ export abstract class BaseProvider implements LLMProvider {
 			let totalCacheReadTokens = 0;
 			let totalCacheCreationTokens = 0;
 			let receivedUsage = false;
-			let round = 0;
 
 			while (true) {
 				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
@@ -249,8 +251,22 @@ export abstract class BaseProvider implements LLMProvider {
 					...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
 				}
 				: undefined;
+			// One line per turn with everything a slowness or cost report needs.
+			debugLog(this.settings, `stream done (${Date.now() - startedAt}ms)`, {
+				provider: this.providerType,
+				model: conversation.model,
+				rounds: round,
+				chars: fullText.length,
+				...(tokenUsage ?? {}),
+			});
 			onComplete(fullText, tokenUsage);
 		} catch (error) {
+			debugLog(this.settings, `stream ended with error (${Date.now() - startedAt}ms)`, {
+				provider: this.providerType,
+				rounds: round,
+				streamedChars: fullText.length,
+				error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+			});
 			this.finishOrError(error, fullText, onComplete, onError);
 		} finally {
 			if (this.abortController === controller) this.abortController = null;
@@ -468,11 +484,11 @@ export abstract class BaseProvider implements LLMProvider {
 
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
 		const excerpt = content.slice(0, 500);
-		return this.callUtility(
+		return cleanGeneratedTitle(await this.callUtility(
 			this.fastModel,
 			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nMessage:\n${excerpt}`,
 			15
-		);
+		));
 	}
 
 	async generateConversationTitle(
@@ -482,13 +498,13 @@ export abstract class BaseProvider implements LLMProvider {
 	): Promise<string> {
 		const userExcerpt = userMessage.slice(0, 300);
 		const assistantExcerpt = assistantMessage.slice(0, 300);
-		return (
-			(await this.callUtility(
-				this.fastModel,
-				`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
-				20
-			)) || "New Conversation"
-		);
+		// "" on an empty reply, not a placeholder: the caller keeps the dated name
+		// it already has, which says more than "New Conversation" would.
+		return cleanGeneratedTitle(await this.callUtility(
+			this.fastModel,
+			`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
+			20
+		));
 	}
 
 	async generateFavoritesSummary(conversation: Conversation): Promise<string> {

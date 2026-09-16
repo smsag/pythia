@@ -445,3 +445,42 @@ describe("OpenAIProvider — bounded tool-call loop", () => {
 		expect(createMock.mock.calls.length).toBeLessThanOrEqual(26);
 	});
 });
+
+describe("OpenAIProvider — malformed tool arguments", () => {
+	it("returns a parse error to the model instead of running the tool on {}", async () => {
+		createMock
+			.mockImplementationOnce(async () =>
+				chunkStream([
+					{ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_bad", function: { name: "create_note", arguments: '{"path": ' } }] } }] },
+					{ choices: [{ finish_reason: "tool_calls" }] },
+				])
+			)
+			.mockImplementationOnce(async () =>
+				chunkStream([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }])
+			);
+		const onToolCall = vi.fn(async () => "should not run");
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => {}, () => {}, onToolCall);
+
+		expect(onToolCall).not.toHaveBeenCalled();
+		const second = createMock.mock.calls[1][0] as { messages: Array<{ role: string; content?: string }> };
+		const toolMsg = second.messages.find((m) => m.role === "tool");
+		expect(toolMsg?.content).toMatch(/^Error: tool arguments were not valid JSON/);
+	});
+
+	it("drops a tool call that never received an id", async () => {
+		createMock
+			.mockImplementationOnce(async () =>
+				chunkStream([
+					{ choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "create_note", arguments: "{}" } }] } }] },
+					{ choices: [{ finish_reason: "tool_calls" }] },
+				])
+			);
+		const onToolCall = vi.fn(async () => "x");
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		let completed = false;
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => { completed = true; }, () => {}, onToolCall);
+		expect(onToolCall).not.toHaveBeenCalled();
+		expect(completed).toBe(true);
+	});
+});

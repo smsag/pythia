@@ -177,6 +177,7 @@ const en = {
 	nothingNewToSave:          "Nothing new to save since last save.",
 	savedToPath:               "Saved to {{path}}",
 	saveFailed:                "Save failed: {{error}}",
+	sendFailed:                "Send failed: {{error}}",
 	noActiveConvToSend:        "No active conversation. Start one from the command palette.",
 	messageLimitReached:       "Message limit reached ({{cap}}). Start a new conversation or raise the limit in Settings → Pythia.",
 	noMessagesToSummarize:     "No messages to summarize.",

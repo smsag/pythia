@@ -551,3 +551,49 @@ describe("formatSummaryTimestamp", () => {
 		expect(formatSummaryTimestamp("2026-09-15T04:39:00")).toBe("15 Sep 2026 · 04:39");
 	});
 });
+
+// ── parseToolArguments ───────────────────────────────────────────────────────
+
+import { parseToolArguments, cleanGeneratedTitle } from "../services/messageUtils";
+
+describe("parseToolArguments", () => {
+	it("parses a JSON object", () => {
+		expect(parseToolArguments('{"path":"a.md"}')).toEqual({ ok: true, input: { path: "a.md" } });
+	});
+
+	it("treats an empty argument string as no arguments", () => {
+		expect(parseToolArguments("  ")).toEqual({ ok: true, input: {} });
+	});
+
+	it("returns an Error tool result for malformed JSON instead of an empty object", () => {
+		const r = parseToolArguments('{"path": "a.md"');
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.error).toMatch(/^Error: tool arguments were not valid JSON/);
+	});
+
+	it("rejects a JSON value that is not an object", () => {
+		expect(parseToolArguments("[1,2]").ok).toBe(false);
+		expect(parseToolArguments("null").ok).toBe(false);
+	});
+});
+
+describe("cleanGeneratedTitle", () => {
+	it("strips surrounding quotes and a trailing period", () => {
+		expect(cleanGeneratedTitle('"Kapitel über Zähler."')).toBe("Kapitel über Zähler");
+		expect(cleanGeneratedTitle("“Smart Quotes”")).toBe("Smart Quotes");
+	});
+
+	it("keeps only the first non-empty line and drops a Title: label", () => {
+		expect(cleanGeneratedTitle("\nTitle: Energy Markets\nSecond line")).toBe("Energy Markets");
+	});
+
+	it("removes markdown decoration a model adds despite instructions", () => {
+		expect(cleanGeneratedTitle("**Bold Title**")).toBe("Bold Title");
+		expect(cleanGeneratedTitle("# Heading")).toBe("Heading");
+	});
+
+	it("returns an empty string for an empty reply", () => {
+		expect(cleanGeneratedTitle("")).toBe("");
+		expect(cleanGeneratedTitle("  \n ")).toBe("");
+	});
+});

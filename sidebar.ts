@@ -1582,6 +1582,7 @@ export class PythiaSidebarView extends ItemView {
 				return result;
 		};
 
+		try {
 		await this.plugin.llmRouter.streamMessage(
 			// Pass an armed shallow clone for an auto-armed send so web_search is
 			// offered this turn. The clone shares conv.messages (read-only in the
@@ -1688,6 +1689,16 @@ export class PythiaSidebarView extends ItemView {
 			},
 			onToolCall
 		);
+		} catch (error) {
+			// The provider catches its own failures; this is for anything thrown
+			// before it runs (a retriever bug, a callback throwing). Without it the
+			// rejection was unhandled and `isStreaming` stayed true — the input
+			// disabled and Send reading "Stop" until the view was reopened.
+			console.error("[Pythia] send failed:", describeErrorForLog(error));
+			new Notice(t("sendFailed", { error: error instanceof Error ? error.message : String(error) }));
+			streamingRow.remove();
+			this.setStreamingState(false);
+		}
 	}
 
 	// ── Delete-last-exchange ─────────────────────────────────────

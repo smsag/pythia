@@ -86,6 +86,10 @@ export class AnthropicService extends BaseProvider {
 			this.client = new Anthropic({
 				apiKey: this.apiKey,
 				dangerouslyAllowBrowser: true,
+				// One retry policy, ours (runStreamRound): the SDK's default of two
+				// retries would stack with it into up to nine attempts, and its
+				// retries are invisible to the debug log.
+				maxRetries: 0,
 			});
 		}
 		return this.client;

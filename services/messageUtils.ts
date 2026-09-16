@@ -156,6 +156,49 @@ export function parseDefinitionReply(raw: string): {
 	return { definition, variants, translations, context: /^(none|keine|n\/a|-)$/i.test(context) ? "" : context };
 }
 
+// ── Tool-call arguments ───────────────────────────────────────────────────────
+
+/**
+ * Parse the JSON argument string a chat-completions tool call carries. Returns
+ * the object, or an "Error: …" tool result the model can read and recover from.
+ * Executing a tool on `{}` after a parse failure is never right: the model gets
+ * a validation error about a field it did send, and a write tool has run on
+ * arguments it never sent.
+ */
+export function parseToolArguments(
+	raw: string
+): { ok: true; input: Record<string, unknown> } | { ok: false; error: string } {
+	const text = raw.trim();
+	if (!text) return { ok: true, input: {} };
+	try {
+		const parsed: unknown = JSON.parse(text);
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return { ok: false, error: "Error: tool arguments must be a JSON object." };
+		}
+		return { ok: true, input: parsed as Record<string, unknown> };
+	} catch (e) {
+		return {
+			ok: false,
+			error: `Error: tool arguments were not valid JSON (${e instanceof Error ? e.message : String(e)}). Resend the call with a well-formed JSON object.`,
+		};
+	}
+}
+
+// ── Generated titles ──────────────────────────────────────────────────────────
+
+/**
+ * Tidy a one-line title the model produced (conversation title, chapter name):
+ * one line only, surrounding quotes and a trailing period removed, a leading
+ * "Title:" label stripped. Models add these despite being told not to, and the
+ * header shows the string verbatim.
+ */
+export function cleanGeneratedTitle(raw: string): string {
+	let s = (raw ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
+	s = s.replace(/^(?:title|titel)\s*:\s*/i, "");
+	s = s.replace(/^[\s"'\u201c\u201d\u2018\u2019*_#]+|[\s"'\u201c\u201d\u2018\u2019*_.]+$/g, "");
+	return s.trim();
+}
+
 // ── Message normalisation ─────────────────────────────────────────────────────
 
 /**
