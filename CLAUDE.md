@@ -67,7 +67,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 1015 tests across 64 files
+  tests/                      ← Vitest unit tests (npm test) — 1027 tests across 65 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -77,9 +77,11 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
+  scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
+  .github/workflows/update-pricing.yml ← Mondays: pull models.dev, open a PR when a price changed
 ```
 
 ---
@@ -319,7 +321,7 @@ user:  [ 27 Aug 2026 · ] 22:19
 AI:    OPUS 4.8 · 22:20 · ↑151 ↓430 · ≈ $0.012
 ```
 - `--font-monospace`, 9px, `--text-faint`; rendered by `ui/turnLabel.ts`
-- **The cost is an estimate computed at render time** (ADR-163) from `models/modelPricing.ts` — never stored on the message. A model with no price row adds nothing; never show a wrong number. Off via `settings.showCost`. Prices carry `PRICING_AS_OF`; update the date when you update a price. The user can correct any row under *List prices* (`settings.priceOverrides`, validated on load); **the disclaimer there is part of the feature** — estimate, not bill; the provider's invoice is authoritative — never shorten it into a footnote
+- **The cost is snapshotted on the message at generation** (`Message.cost { usd, asOf }`, ADR-163 addendum 2) with the prices in force then; the label prefers it and prices a legacy message live from `models/modelPricing.ts`. A later table update never rewrites a snapshot. A model with no price row adds nothing; never show a wrong number. **Off by default** (`settings.showCost`). **Prices are generated**: the block between the GENERATED markers is rewritten by `npm run update:pricing` from models.dev and a weekly workflow opens a PR — edit the mapping in `scripts/update-pricing.mjs`, not the rows by hand, and never fetch prices at build or run time. The user can correct any row under *List prices* (`settings.priceOverrides`, validated on load); **the disclaimer there is part of the feature** — estimate, not bill; the provider's invoice is authoritative — never shorten it into a footnote
 - **No next-send estimate beside Send** (removed in ADR-163). Do not bring it back; the label answers the question after the fact
 - **No role caption** — no `DU`/`PYTHIA` (ADR-129); the accent bubble vs. plain body distinguishes them
 - **No template here** (ADR-140) — the template is a reference, not a fact about the generation; it rides the sources row under the answer. `turnTemplateCaption` still decides which turns carry it

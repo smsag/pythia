@@ -98,3 +98,18 @@ describe("sanitizeMessages — truncated flag (ADR-162)", () => {
 		expect("truncated" in conv.messages[2]).toBe(false);
 	});
 });
+
+describe("sanitizeMessages — cost snapshot (ADR-163)", () => {
+	it("keeps a well-formed snapshot and drops a malformed one", () => {
+		const { conversations: [conv] } = parseConversations([{
+			id: "c", messages: [
+				{ id: "a", role: "assistant", content: "x", timestamp: "", cost: { usd: 0.01, asOf: "2026-09-16" } },
+				{ id: "b", role: "assistant", content: "y", timestamp: "", cost: { usd: NaN, asOf: "2026-09-16" } },
+				{ id: "c", role: "assistant", content: "z", timestamp: "", cost: "cheap" },
+			],
+		}]);
+		expect(conv.messages[0].cost).toEqual({ usd: 0.01, asOf: "2026-09-16" });
+		expect("cost" in conv.messages[1]).toBe(false);
+		expect("cost" in conv.messages[2]).toBe(false);
+	});
+});

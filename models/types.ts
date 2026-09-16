@@ -121,6 +121,17 @@ export interface Message {
 	/** The provider stopped at the max-tokens cap: the answer ends where the
 	 *  budget ended, not where the model did (ADR-162). Only ever `true`. */
 	truncated?: true;
+	/** The estimated price at generation time (ADR-163): the list prices in
+	 *  force when the call was made, which is the closest thing to the invoice.
+	 *  Later table updates never rewrite it; legacy messages without it are
+	 *  priced live from the current table. */
+	cost?: MessageCost;
+}
+
+/** A cost snapshot: USD and the as-of date of the table that priced it. */
+export interface MessageCost {
+	usd: number;
+	asOf: string;
 }
 
 /** How a stream ended, beyond its text (ADR-162). `truncated` is the one fact

@@ -1,0 +1,53 @@
+name: Update list prices
+
+# Weekly: pull models.dev into models/modelPricing.ts and open a pull request
+# when a price changed (ADR-163). The release build never fetches prices; a
+# human reads this diff, merges it, and the next release ships it.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" enabled
+# under Settings → Actions → General → Workflow permissions.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Fetch models.dev and open a PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update the price table
+        run: npm run update:pricing
+
+      - name: Check the table still passes its tests
+        run: npx vitest run tests/modelPricing.test.ts
+
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/update-pricing
+          delete-branch: true
+          commit-message: "Update list prices from models.dev"
+          title: "Update list prices (models.dev)"
+          body: |
+            Weekly price refresh from https://models.dev — `models/modelPricing.ts` rewritten by `npm run update:pricing`.
+
+            Review the diff line by line: these are the numbers every answer's `≈ $` estimate is built from. They are still an estimate, not a bill, and the plugin says so; but a wrong upstream value should stop here, not ship.
+
+            Merge to make the next release carry them. No other file changes.

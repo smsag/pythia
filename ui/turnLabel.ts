@@ -15,12 +15,16 @@
 import type { Conversation, Message, TokenUsage } from "../models/types";
 import { formatClockTime, formatDate } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
-import { estimateCost, formatCost, PRICING_AS_OF, type PriceOverrides } from "../models/modelPricing";
+import { formatCost, messageCost, type PriceOverrides } from "../models/modelPricing";
 import { t } from "../i18n";
 
 /** What a label may add beyond model and time. `showCost` is the user's
  *  setting; the model is needed to price the counts (ADR-163). */
 export interface TurnLabelOptions { showCost?: boolean; priceOverrides?: PriceOverrides }
+
+/** What prices a label's counts: the message (its stored snapshot, else its
+ *  model for a live estimate) and the user's price corrections. */
+export interface CostContext { msg: Pick<Message, "model" | "tokenUsage" | "cost">; overrides?: PriceOverrides }
 
 /** Render the micro-label as the first child of a message row. No role captions
  *  (ADR-129) — the accent bubble vs. the plain body already tells the two apart.
@@ -46,27 +50,29 @@ export function renderTurnLabel(row: HTMLElement, msg: Message, conv: Conversati
 	}
 	const label = row.createDiv({ cls: "p-turn-label", text: parts.join(" · ") });
 	if (msg.role === "assistant" && msg.tokenUsage) {
-		appendTokensToTurnLabel(label, msg.tokenUsage, opts.showCost ? (msg.model ?? conv?.model) : undefined, opts.priceOverrides);
+		appendTokensToTurnLabel(label, msg.tokenUsage, opts.showCost ? { msg: { ...msg, model: msg.model ?? conv?.model }, overrides: opts.priceOverrides } : undefined);
 	}
 }
 
 /** Append the input/output token counts inline to a turn label
- *  ("… · ↑7.028 ↓125"), replacing the old separate footer row. With
- *  `costModel` the estimated price follows ("… · ≈ $0.012", ADR-163); a model
- *  without a price row adds nothing rather than a wrong number. */
-export function appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage, costModel?: string, overrides?: PriceOverrides): void {
+ *  ("… · ↑7.028 ↓125"), replacing the old separate footer row. With a
+ *  `cost` context the price follows ("… · ≈ $0.012", ADR-163): the message's
+ *  stored snapshot, else a live estimate; a model without a price row adds
+ *  nothing rather than a wrong number. */
+export function appendTokensToTurnLabel(label: HTMLElement, usage: TokenUsage, cost?: CostContext): void {
 	const fmt = (n: number) => n.toLocaleString();
 	label.createSpan({
 		cls: "p-turn-tokens",
 		text: ` · ${t("tokenCount", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) })}`,
 		attr: { title: t("tokenCountTitle", { input: fmt(usage.inputTokens), output: fmt(usage.outputTokens) }) },
 	});
-	const cost = estimateCost(costModel, usage, overrides);
-	if (cost === null) return;
+	if (!cost) return;
+	const priced = messageCost(cost.msg, cost.overrides);
+	if (!priced) return;
 	label.createSpan({
 		cls: "p-turn-cost",
-		text: ` · ≈ ${formatCost(cost)}`,
-		attr: { title: t("costEstimateTitle", { date: PRICING_AS_OF }) },
+		text: ` · ≈ ${formatCost(priced.usd)}`,
+		attr: { title: t("costEstimateTitle", { date: priced.asOf }) },
 	});
 }
 

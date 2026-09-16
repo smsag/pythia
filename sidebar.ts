@@ -40,6 +40,7 @@ import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
 import { SendHintController } from "./ui/SendHintController";
+import { costSnapshot } from "./models/modelPricing";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message, ToolCall } from "./models/types";
@@ -1611,6 +1612,9 @@ export class PythiaSidebarView extends ItemView {
 				}
 
 				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
+				// Priced now, with the prices in force now (ADR-163) — a later table
+				// update must not re-price an answer that was already paid for.
+				const cost = costSnapshot(conv.model, tokenUsage, this.plugin.settings.priceOverrides);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
@@ -1621,6 +1625,7 @@ export class PythiaSidebarView extends ItemView {
 					...(conv.templateId ? { templateId: conv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
 					...(finish?.truncated ? { truncated: true as const } : {}),
+					...(cost ? { cost } : {}),
 				};
 				conv.messages.push(assistantMsg);
 				if (this.activeConversation?.id === conv.id) {
@@ -1634,7 +1639,8 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label) appendTokensToTurnLabel(label, tokenUsage, this.plugin.settings.showCost ? conv.model : undefined, this.plugin.settings.priceOverrides);
+						if (label && this.plugin.settings.showCost) appendTokensToTurnLabel(label, tokenUsage, { msg: assistantMsg, overrides: this.plugin.settings.priceOverrides });
+						else if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
 				}

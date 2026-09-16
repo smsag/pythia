@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MODEL_CATALOG } from "../models/knownModels";
-import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost, resolvePricing, sanitizePriceOverrides } from "../models/modelPricing";
+import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost, resolvePricing, sanitizePriceOverrides, costSnapshot, messageCost } from "../models/modelPricing";
 import type { Message } from "../models/types";
 
 // ADR-163: the cost on a turn label is an estimate from a date-stamped table.
@@ -118,5 +118,32 @@ describe("sanitizePriceOverrides (load-time guard)", () => {
 		expect(sanitizePriceOverrides(null)).toEqual({});
 		expect(sanitizePriceOverrides([1, 2])).toEqual({});
 		expect(sanitizePriceOverrides("x")).toEqual({});
+	});
+});
+
+describe("cost snapshot (stored at generation, ADR-163)", () => {
+	const usage = { inputTokens: 1_000_000, outputTokens: 0 };
+
+	it("stamps the estimate with the table date, and stays undefined for an unpriced model", () => {
+		expect(costSnapshot("gpt-4o", usage)).toEqual({ usd: 2.5, asOf: PRICING_AS_OF });
+		expect(costSnapshot("my-fine-tune", usage)).toBeUndefined();
+		expect(costSnapshot("gpt-4o", undefined)).toBeUndefined();
+	});
+
+	it("messageCost prefers the stored snapshot over a live estimate", () => {
+		const stored = { usd: 9.99, asOf: "2025-01-01" };
+		expect(messageCost({ model: "gpt-4o", tokenUsage: usage, cost: stored })).toEqual(stored);
+		expect(messageCost({ model: "gpt-4o", tokenUsage: usage })).toEqual({ usd: 2.5, asOf: PRICING_AS_OF });
+		// A user override applies to live estimates only; the snapshot is history.
+		expect(messageCost({ model: "gpt-4o", tokenUsage: usage, cost: stored }, { "gpt-4o": { input: 100 } })).toEqual(stored);
+	});
+
+	it("conversationCost sums stored snapshots and live estimates alike", () => {
+		const msgs = [
+			{ id: "a", role: "assistant" as const, content: "", timestamp: "", model: "gpt-4o", tokenUsage: usage, cost: { usd: 1, asOf: "2025-01-01" } },
+			{ id: "b", role: "assistant" as const, content: "", timestamp: "", model: "gpt-4o", tokenUsage: usage },
+			{ id: "c", role: "assistant" as const, content: "", timestamp: "", model: "gone-model", cost: { usd: 0.5, asOf: "2025-01-01" } },
+		];
+		expect(conversationCost(msgs)).toEqual({ usd: 4, priced: 3, unpriced: 0 });
 	});
 });

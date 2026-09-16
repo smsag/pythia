@@ -119,7 +119,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	glossaryFolder: "Glossary",
 	outputLanguage: "auto",
 	debugMode: false,
-	showCost: true,
+	showCost: false,
 	priceOverrides: {},
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",

@@ -168,3 +168,14 @@ describe("turn labels — cost per answer (ADR-163)", () => {
 		expect(custom.querySelector(".p-turn-tokens")).not.toBeNull();
 	});
 });
+
+describe("turn labels — stored cost wins (ADR-163)", () => {
+	it("renders the snapshot and its date, not a live estimate", () => {
+		const row = document.createElement("div");
+		const msg = ai("a1", { tokenUsage: { inputTokens: 1000, outputTokens: 600 }, cost: { usd: 0.5, asOf: "2025-01-01" } });
+		renderTurnLabel(row, msg, conversation({ messages: [msg] }), { showCost: true });
+		const cost = row.querySelector(".p-turn-cost");
+		expect(cost?.textContent).toBe(" · ≈ $0.50");
+		expect(cost?.getAttribute("title")).toContain("2025-01-01");
+	});
+});
