@@ -18,6 +18,33 @@
   padding: 0;
 }
 
+/* The strip under the composer, measured in Obsidian at last (ADR-165).
+   Obsidian pads EVERY `.view-content`: 12px at the sides and
+   `max(var(--safe-area-inset-bottom), var(--size-4-8))` at the foot — 32px on a
+   desktop, the home indicator's 34px on a phone — at (0,2,0), which
+   `.pythia-view { padding: 0 }` at (0,1,0) never out-ranked, on any platform or
+   theme. Core exempts its own views by data-type
+   (`[data-type="markdown"] .view-content { padding: 0 }`); this is the same
+   exemption for ours. Specificity, never `!important`: the keyboard lift
+   (ADR-132) writes an inline `padding-bottom` on this element and must keep
+   winning. */
+.workspace-leaf-content[data-type="pythia"] .view-content {
+  padding: 0;
+}
+
+/* The phone drawer adds two more, neither ours. A theme may reserve a strip on
+   every drawer view (Klartext 1.6.1: `--touch-size-l`, 52px, at (0,4,1)) for a
+   tab selector that is `position: relative` and never overlaps the view; and
+   Obsidian's `.is-floating-nav` paints a 48px fade, `.workspace-leaf-content::after`,
+   in the sidebar colour over whatever ends the leaf — here, that reserve. The
+   composer is not a scrolling list, so the fade has nothing to fade. */
+body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .view-content {
+  padding-bottom: 0;
+}
+.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content[data-type="pythia"]::after {
+  display: none;
+}
+
 .pythia-view {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
   /* Flush to the leaf on every side — hard rule 1 is about the same edges. */

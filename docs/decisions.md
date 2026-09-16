@@ -2289,7 +2289,7 @@ Two attempts at conditional logic is the signal to ask whether the condition is 
 
 ### ADR-147 — The panel was inset from its own leaf
 
-**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146
+**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
 
 **Context:** Five attempts at the dead space below the composer, four of them shipped, none of them fixing it. Each looked at padding *inside* the panel — a height assignment, `env(safe-area-inset-bottom)`, a stale measurement of it, and finally removing it outright.
 
