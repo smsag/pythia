@@ -12,6 +12,7 @@ import "./helpers/viewHarness";
 import { GlossaryController } from "../ui/GlossaryController";
 import type PythiaPlugin from "../main";
 import type { GlossaryEntry } from "../services/glossary";
+import { t } from "../i18n";
 
 const ENTRY: GlossaryEntry = {
 	term: "Zähler",
@@ -96,5 +97,70 @@ describe("glossary anchor placement (ADR-156)", () => {
 		await c.toggleAnchor("Zähler", mark);
 		await c.toggleAnchor("Zähler", mark);
 		expect(document.querySelector(".p-term-anchor")).toBeNull();
+	});
+});
+
+// ── Definitions in the conversation's language (ADR-166) ──────────────────────
+
+describe("glossary anchor language (ADR-166)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	function controllerFor(outputLanguage: string, translate: (e: GlossaryEntry, lang: string) => Promise<string | null>): GlossaryController {
+		const plugin = {
+			settings: { defaultAnthropicModel: "claude-sonnet-4-6", outputLanguage },
+			app: { workspace: { openLinkText: () => {} } },
+			glossaryService: {
+				all: async () => [ENTRY],
+				find: () => ENTRY,
+				hydrate: async (e: GlossaryEntry) => e,
+				translate,
+				pathFor: () => "Glossary/Terms/Zähler.md",
+			},
+		} as unknown as InstanceType<typeof PythiaPlugin>;
+		return new GlossaryController({
+			plugin,
+			getConversation: () => null,
+			getMessagesEl: () => document.body,
+			renderMarkdown: (md, el) => { el.textContent = md; },
+		});
+	}
+	const body = () => document.querySelector<HTMLElement>(".p-term-anchor-body")!;
+	const meta = () => document.querySelector<HTMLElement>(".p-term-anchor-meta")!.textContent ?? "";
+
+	it("shows the translation into the instructed language and says it is one", async () => {
+		const calls: string[] = [];
+		const c = controllerFor("en", async (_e, lang) => { calls.push(lang); return "A device that records discrete events."; });
+		await c.toggleAnchor("Zähler", paragraphWithMark());
+		expect(calls).toEqual(["en"]);
+		expect(body().textContent).toBe("A device that records discrete events.");
+		expect(meta()).toContain(t("glossaryTranslatedFrom", { code: "DE" }));
+	});
+
+	it("under AUTO a German answer shows the German definition without a call", async () => {
+		const calls: string[] = [];
+		const c = controllerFor("auto", async (_e, lang) => { calls.push(lang); return "x"; });
+		await c.toggleAnchor("Zähler", paragraphWithMark());
+		expect(calls).toEqual([]);
+		expect(body().textContent).toBe(ENTRY.definition);
+		expect(meta()).not.toContain(t("glossaryTranslated"));
+	});
+
+	it("falls back to the stored definition, unmarked, when no translation comes back", async () => {
+		const c = controllerFor("en", async () => null);
+		await c.toggleAnchor("Zähler", paragraphWithMark());
+		expect(body().textContent).toBe(ENTRY.definition);
+		expect(meta()).not.toContain(t("glossaryTranslated"));
+	});
+
+	it("shows a placeholder, never the untranslated text, while the translation runs", async () => {
+		let resolve!: (v: string) => void;
+		const c = controllerFor("en", () => new Promise<string>((r) => { resolve = r; }));
+		const opening = c.toggleAnchor("Zähler", paragraphWithMark());
+		await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+		expect(body().classList.contains("is-pending")).toBe(true);
+		expect(body().textContent).toBe(t("glossaryTranslating", { code: "EN" }));
+		resolve("A device.");
+		await opening;
+		expect(body().textContent).toBe("A device.");
 	});
 });

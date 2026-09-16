@@ -1,5 +1,6 @@
 import type { EntryKind, GlossaryEntry, Translation } from "./glossary";
 import type { Conversation } from "../models/types";
+import { detectLanguage } from "./languageDetect";
 
 /**
  * The glossary as a folder of notes (ADR-150).
@@ -73,6 +74,82 @@ export function translationKey(lang: string): string {
 	return `term_${lang.toLowerCase()}`;
 }
 
+/** `definition_de`, `definition_it` — a translated definition cached in the note
+ *  (ADR-166). Flat for the same reason as `term_<lang>`: a flat key is a column in
+ *  a Base. */
+export function definitionKey(lang: string): string {
+	return `definition_${lang.toLowerCase()}`;
+}
+
+/** The property recording which definition the cached translations were made from. */
+export const TRANSLATED_FROM_KEY = "translated_from";
+
+/**
+ * A short fingerprint of a definition (FNV-1a, 32 bit, hex). Stored beside the
+ * cached translations so an edit to the definition — by regenerate or by hand —
+ * makes them stale without anyone having to remember to clear them.
+ */
+export function definitionHash(definition: string): string {
+	let h = 0x811c9dc5;
+	for (const ch of definition.trim()) {
+		h ^= ch.codePointAt(0)!;
+		h = Math.imul(h, 0x01000193) >>> 0;
+	}
+	return h.toString(16).padStart(8, "0");
+}
+
+/** The cached translation of `entry`'s definition into `lang`, or null when there
+ *  is none or it was made from a definition that has since changed. */
+export function cachedTranslation(entry: GlossaryEntry, lang: string): string | null {
+	const text = entry.definitionTranslations?.[lang];
+	if (!text || !entry.definition.trim()) return null;
+	return entry.translatedFrom === definitionHash(entry.definition) ? text : null;
+}
+
+/**
+ * Write one translation into a note's frontmatter (ADR-166), for
+ * `processFrontMatter`. When the stored hash is not this definition's, every
+ * `definition_<lang>` there was made from an older text: all are dropped before
+ * the new one is set, so a stale language cannot survive beside a fresh one.
+ */
+export function applyTranslation(
+	fm: Record<string, unknown>,
+	lang: string,
+	text: string,
+	definition: string,
+	sourceLanguage: string | null,
+): void {
+	const hash = definitionHash(definition);
+	if (fm[TRANSLATED_FROM_KEY] !== hash) {
+		for (const k of Object.keys(fm)) if (/^definition_[a-z]{2,3}$/i.test(k)) delete fm[k];
+	}
+	fm[definitionKey(lang)] = text;
+	fm[TRANSLATED_FROM_KEY] = hash;
+	if (!fm.language && sourceLanguage) fm.language = sourceLanguage;
+}
+
+/** The language `entry`'s definition is written in: recorded, else detected. */
+export function definitionLanguageOf(entry: GlossaryEntry): string | null {
+	return entry.language ?? detectLanguage(entry.definition);
+}
+
+/**
+ * The language an anchor should show a definition in (ADR-166): the language
+ * the conversation instructs, or — under AUTO, which names none — the language
+ * of the passage the term was tapped in. Null when neither can be told.
+ */
+export function displayLanguage(state: { instructed: boolean; code: string }, passage: string): string | null {
+	return state.instructed ? state.code.toLowerCase() : detectLanguage(passage);
+}
+
+/** Whether showing `entry` in `target` needs a translation at all. An unknown
+ *  source language translates: the model returns the text as it is if it
+ *  already matches, and that answer is cached like any other. */
+export function needsTranslation(entry: GlossaryEntry, target: string | null): target is string {
+	if (!target || !entry.definition.trim()) return false;
+	return definitionLanguageOf(entry) !== target;
+}
+
 /** A wikilink to a theme note, as stored in a term's `theme` property. */
 export function themeLink(theme: string): string {
 	return `[[${sanitizeFileName(theme)}]]`;
@@ -107,6 +184,9 @@ export function entryFrontmatter(entry: GlossaryEntry): Record<string, unknown> 
 	fm.theme = (entry.theme ?? []).map(themeLink);
 	for (const t of entry.translations ?? []) fm[translationKey(t.lang)] = t.term;
 	fm.source = entry.source;
+	// Translations are written by `GlossaryService.saveTranslation` alone; this
+	// merge leaves them in place, and the hash marks them stale (ADR-166).
+	if (entry.language) fm.language = entry.language;
 	if (entry.updatedAt) fm.updated = entry.updatedAt;
 	if (entry.model) fm.model = entry.model;
 	return fm;
@@ -122,12 +202,17 @@ export function entryFromFrontmatter(
 ): GlossaryEntry {
 	const f = fm ?? {};
 	const translations: Translation[] = [];
+	const definitionTranslations: Record<string, string> = {};
 	for (const [key, value] of Object.entries(f)) {
+		if (typeof value !== "string" || !value.trim()) continue;
 		const lang = /^term_([a-z]{2,3})$/i.exec(key)?.[1];
-		if (lang && typeof value === "string" && value.trim()) {
-			translations.push({ lang: lang.toLowerCase(), term: value.trim() });
-		}
+		if (lang) translations.push({ lang: lang.toLowerCase(), term: value.trim() });
+		const defLang = /^definition_([a-z]{2,3})$/i.exec(key)?.[1];
+		if (defLang) definitionTranslations[defLang.toLowerCase()] = value.trim();
 	}
+	const language = typeof f.language === "string" && /^[a-z]{2,3}$/i.test(f.language.trim())
+		? f.language.trim().toLowerCase()
+		: undefined;
 	const aliases = toList(f.aliases);
 	const theme = toList(f.theme).map(themeName);
 	const realTerm = typeof f.term === "string" && f.term.trim() ? f.term.trim() : term;
@@ -142,6 +227,9 @@ export function entryFromFrontmatter(
 		translations: translations.length > 0 ? translations : undefined,
 		theme: theme.length > 0 ? theme : undefined,
 		contexts: body && body.contexts.length > 0 ? body.contexts : undefined,
+		language,
+		definitionTranslations: Object.keys(definitionTranslations).length > 0 ? definitionTranslations : undefined,
+		translatedFrom: typeof f[TRANSLATED_FROM_KEY] === "string" ? f[TRANSLATED_FROM_KEY] : undefined,
 	};
 }
 
@@ -220,6 +308,10 @@ export function mergeEntry(
 		source: keepDefinition ? existing.source : incoming.source,
 		updatedAt: keepDefinition ? existing.updatedAt : incoming.updatedAt,
 		model: keepDefinition ? existing.model : incoming.model,
+		// The language travels with the definition it describes.
+		language: keepDefinition ? existing.language : incoming.language,
+		definitionTranslations: existing.definitionTranslations,
+		translatedFrom: existing.translatedFrom,
 		aliases: union(existing.aliases, incoming.aliases),
 		translations: translations.length > 0 ? translations : undefined,
 		theme: union(existing.theme, incoming.theme),

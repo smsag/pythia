@@ -117,6 +117,16 @@ export interface GlossaryEntry {
 	 * several decks.
 	 */
 	theme?: string[];
+	/** ISO 639-1 code of the language `definition` is written in (ADR-166).
+	 *  Recorded on lookups since then; absent on older entries, where it is
+	 *  detected from the text when needed. */
+	language?: string;
+	/** The definition translated into other languages, keyed by ISO 639-1 code —
+	 *  the `definition_<lang>` properties (ADR-166). A cache, valid only while
+	 *  `translatedFrom` matches the current definition. */
+	definitionTranslations?: Record<string, string>;
+	/** `definitionHash` of the definition the cached translations were made from. */
+	translatedFrom?: string;
 }
 
 /** One cross-language equivalent: an ISO 639-1 code and the term in that language. */

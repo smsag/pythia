@@ -14,6 +14,12 @@ import {
 	stripFrontmatter,
 	mergeEntry,
 	effectiveTheme,
+	definitionKey,
+	definitionHash,
+	cachedTranslation,
+	applyTranslation,
+	displayLanguage,
+	needsTranslation,
 } from "../services/glossaryNotes";
 import type { GlossaryEntry } from "../services/glossary";
 import type { Conversation } from "../models/types";
@@ -296,5 +302,82 @@ describe("entryFrontmatter — the real term survives a sanitized file name", ()
 		expect(entryFrontmatter(entry({ term: "C#" })).term).toBe("C#");
 		expect(entryFromFrontmatter("C-", fm).term).toBe("C#");
 		expect(entryFromFrontmatter("Zähler", {}).term).toBe("Zähler");
+	});
+});
+
+// ── Translated definitions (ADR-166) ──────────────────────────────────────────
+
+describe("translated definitions", () => {
+	const def = "Ein Gerät, das diskrete Ereignisse erfasst.";
+
+	it("reads definition_<lang>, translated_from and language from the frontmatter", () => {
+		const e = entryFromFrontmatter("Zähler", {
+			type: "term", source: "model", language: "DE",
+			definition_en: "A device that records discrete events.", translated_from: "abc", definition_x1: "no",
+		});
+		expect(e.language).toBe("de");
+		expect(e.definitionTranslations).toEqual({ en: "A device that records discrete events." });
+		expect(e.translatedFrom).toBe("abc");
+	});
+
+	it("drops a language value that is not an ISO code", () => {
+		expect(entryFromFrontmatter("Zähler", { language: "German" }).language).toBeUndefined();
+	});
+
+	it("writes the language but never a translation — those are the cache's alone", () => {
+		const fm = entryFrontmatter(entry({ language: "de", definitionTranslations: { en: "x" }, translatedFrom: "h" }));
+		expect(fm.language).toBe("de");
+		expect(fm[definitionKey("en")]).toBeUndefined();
+		expect(fm.translated_from).toBeUndefined();
+	});
+
+	it("a translation is valid only for the definition it was made from", () => {
+		const e = entry({ definition: def, definitionTranslations: { en: "A device." }, translatedFrom: definitionHash(def) });
+		expect(cachedTranslation(e, "en")).toBe("A device.");
+		expect(cachedTranslation(e, "it")).toBeNull();
+		expect(cachedTranslation({ ...e, definition: "Ein anderes Gerät." }, "en")).toBeNull();
+	});
+
+	it("the hash ignores surrounding whitespace and changes with the text", () => {
+		expect(definitionHash(`  ${def}\n`)).toBe(definitionHash(def));
+		expect(definitionHash(def)).not.toBe(definitionHash(`${def} Neu.`));
+		expect(definitionHash(def)).toMatch(/^[0-9a-f]{8}$/);
+	});
+
+	it("applyTranslation sets the language and hash, and clears stale languages", () => {
+		const fm: Record<string, unknown> = { definition_it: "vecchio", translated_from: "stale", aliases: [] };
+		applyTranslation(fm, "en", "A device.", def, "de");
+		expect(fm).toEqual({ aliases: [], definition_en: "A device.", translated_from: definitionHash(def), language: "de" });
+	});
+
+	it("applyTranslation keeps fresh languages beside a new one", () => {
+		const fm: Record<string, unknown> = { definition_it: "Un dispositivo.", translated_from: definitionHash(def), language: "de" };
+		applyTranslation(fm, "en", "A device.", def, "de");
+		expect(fm.definition_it).toBe("Un dispositivo.");
+		expect(fm.definition_en).toBe("A device.");
+	});
+
+	it("shows the instructed language, or under AUTO the passage's", () => {
+		expect(displayLanguage({ instructed: true, code: "EN" }, "Der Zähler wird abgelesen und die Rechnung folgt.")).toBe("en");
+		expect(displayLanguage({ instructed: false, code: "AUTO" }, "Der Zähler wird abgelesen und die Rechnung folgt.")).toBe("de");
+		expect(displayLanguage({ instructed: false, code: "AUTO" }, "Zähler")).toBeNull();
+	});
+
+	it("translates only into a known language other than the definition's", () => {
+		expect(needsTranslation(entry({ definition: def }), "de")).toBe(false);
+		expect(needsTranslation(entry({ definition: def }), "en")).toBe(true);
+		expect(needsTranslation(entry({ definition: def }), null)).toBe(false);
+		expect(needsTranslation(entry({ definition: "" }), "en")).toBe(false);
+		// A recorded language wins over detection.
+		expect(needsTranslation(entry({ definition: def, language: "en" }), "en")).toBe(false);
+	});
+
+	it("merge: the language follows the definition that is kept; translations survive", () => {
+		const existing = entry({ source: "manual", language: "de", definitionTranslations: { en: "A device." }, translatedFrom: "h" });
+		const kept = mergeEntry(existing, entry({ definition: "The counter.", language: "en" }));
+		expect(kept.language).toBe("de");
+		expect(kept.definitionTranslations).toEqual({ en: "A device." });
+		const replaced = mergeEntry(existing, entry({ definition: "The counter.", language: "en" }), true);
+		expect(replaced.language).toBe("en");
 	});
 });
