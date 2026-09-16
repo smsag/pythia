@@ -1,8 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-165 addendum (the two things the exemption uncovered: the composer's desktop clearance, and the keyboard lift now reads Obsidian's own `--keyboard-height`, the number the phone drawer needs because it does not shrink with the keyboard).*
+*Last updated: 2026-09-16 — ADR-167 (the strip under the composer, measured in the running app: Obsidian pads every `.view-content` at (0,2,0), a theme added a phone-drawer reserve, and Obsidian's floating-nav fade painted the result; plus the two things that exemption uncovered — the composer's desktop clearance and a keyboard lift that reads Obsidian's own `--keyboard-height`).*
 
-*Previously: 2026-09-16 — ADR-165 (the strip under the composer, measured at last: Obsidian pads every `.view-content` at (0,2,0), a theme added a 52px drawer reserve on phones, and Obsidian's floating-nav fade painted the empty strip; all three out-ranked for our leaf by specificity, the way core exempts its own views).*
+*Previously: 2026-09-16 — ADR-166 (glossary definitions read in the conversation's language: translated on open, cached in the term note per language, invalidated by a hash of the definition; under AUTO new definitions follow the passage's language).*
+
+*Previously: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
 
 *Previously: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
 
@@ -2291,7 +2293,7 @@ Two attempts at conditional logic is the signal to ask whether the condition is 
 
 ### ADR-147 — The panel was inset from its own leaf
 
-**Status:** Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
+**Status:** Superseded in mechanism by ADR-167 — the inset was Obsidian's padding on `.view-content`, not on the leaf container; this rule is kept, and ADR-167 adds the one that works. Active — explains, and corrects the reasoning of, ADR-132, ADR-134, ADR-135 and ADR-146. **Its own mechanism was not the one either:** the inset was Obsidian's padding on `.view-content`, not on the leaf container — measured in the app in ADR-165, which keeps this rule and adds the one that works.
 
 **Context:** Five attempts at the dead space below the composer, four of them shipped, none of them fixing it. Each looked at padding *inside* the panel — a height assignment, `env(safe-area-inset-bottom)`, a stale measurement of it, and finally removing it outright.
 
@@ -2792,18 +2794,71 @@ return block?.type === "text" ? block.text.trim() : "";
 
 ---
 
-### ADR-165 — The strip under the composer, measured: core pads every view, the theme added a reserve, core's fade painted it
+### ADR-165 — The header shows what every answer is sent with
+
+**Date:** 2026-09-16
+**Status:** Accepted — revises the header order of ADR-098
+
+**Context.** The header carried the conversation's name and the model's abbreviation. Effort and answer language — which change every answer as much as the model does — lived in the conversation settings dialog, reached through the model popover's footer: two taps, and nothing on screen said they existed. The language case was the sharpest. A fixed language, "Obsidian language" and "conversation language" send three different things to the model (an instruction naming the language, the same instruction with the UI locale filled in, and no instruction at all — ADR-148), and none of them was visible. Meanwhile rename, copy link and delete held three of seven header slots. A first design brief listed every conversation setting and asked for a status strip; the designs it produced repeated controls that already sit beside Send (template, web search, vault context) and redesigned the settings dialog, and missed the point. The brief was narrowed to three values (engineering-review #259/#260, `docs/briefs/conversation-controls.html`), and the header built from the resulting mock-up.
+
+**Decision.** The header row is `search · name · [ctx chip] · model | effort | language · ⌄ · delete · new`.
+
+1. **One bordered group, three tap targets.** Model opens the existing model popover. Effort and language each open a short picker for that value alone — anchored under the segment on desktop, the bottom action sheet on mobile, the same split as the Send menu. A choice applies at the tap: the header repaints before the save, with no Save button and no detour through the dialog.
+2. **Show what is sent, resolved.** The segment reads `Hoch`, `DE`, `AUTO` — never "Standard". `obsidian` shows the resolved locale code (unknown → `EN`, as the prompt falls back). `AUTO` is the one case with no instruction, and says so in the picker ("the model answers in the language you write in").
+3. **Tint means "set for this conversation".** A plain segment follows the plugin settings; a tinted one is pinned. Each picker's first row returns to the default and stores `undefined` — principle 6, with a test that fails if it stores today's value. The header repaints when the settings tab closes, so a changed default shows immediately.
+4. **A model without effort shows a dimmed dash**, and a tap says the model has no effort setting. A stored effort is kept for a later switch back but not tinted, because it is not an instruction now.
+5. **Temperature and token limit stay out.** They change less often, the token warning already sits beside Send, and a 300px leaf has room for three values, not five.
+6. **Rename, copy link and conversation settings move into a `⌄` menu.** Delete stays visible.
+7. **Every picker explains its options in a visible line**, not a tooltip — most use is on a phone.
+
+**Structure.** `ui/instructionState.ts` is the one resolution (conversation → setting → model support) and is pure; the header only paints it. `ui/choicePicker.ts` is the one picker (principle 4) and owns `placeBelow`, which the model popover now uses instead of its own copy. `ActionSheetItem` gained `detail` and `active` so the mobile sheet shows the same rows.
+
+**Rejected.** A status strip of every conversation setting (repeats the composer toolbar; it was what the first brief asked for, and the wrong ask). One combined control opening a three-part panel (two taps again for the value you want). Showing "Standard · Hoch" in the header (long, and "Standard" is the word that hid the value). Tinting by "an instruction is active" rather than "pinned" (would not tell a user why a value changed when the global setting did).
+
+**Consequences.** `HeaderController.updateModelBadge` → `updateInstructions`, `onModelBadgeClick` → `openConversationSettings`. The header's title truncates first on a narrow leaf; within the group only the model name may. The settings dialog is unchanged and still edits the same fields. +17 tests (1046 across 68 files): the two resolvers, and the header — resolved values, tint, picker writes, default → `undefined`, dimmed dash, repaint on a changed default, the menu.
+
+---
+
+### ADR-166 — Glossary definitions read in the conversation's language
+
+**Date:** 2026-09-16
+**Status:** Accepted — narrows ADR-148's "AUTO adds no instruction" for two prompts
+
+**Context.** A term's definition is written once, at the first lookup, in whatever language that conversation resolved to, and the vault-first rule (ADR-136) then shows that text everywhere. Two things made this read as "the glossary is in English". First, the default language setting is AUTO, which adds no instruction; in a chat turn that lets the model follow the user, but `defineTerm`'s prompt is itself English, so the model answered in English even for a German passage — and the note kept it. Second, a term met later in a conversation of another language showed the stored text regardless. The expectation is that text follows the language setting.
+
+**Decision.** Four parts, each confirmed by the user against alternatives.
+
+1. **Translate at display, cache in the note.** When an anchor opens, the definition is shown in the conversation's language. If the stored definition is in another language, it is translated once (`BaseProvider.translateDefinition`, fast model) and written into the term note as `definition_<lang>`. The note stays the single source of truth; the cache syncs, is a column in a Base, and a wrong translation is corrected where the definition is.
+2. **Under AUTO, the target is the language of the answer the term was tapped in.** It is detected locally (`services/languageDetect.ts`, function words), because a model call per opened anchor would put latency on the one interaction that must be instant. When the text is too short or mixed to tell, detection returns `null` and nothing is translated — unknown is never a guess.
+3. **Hand-written definitions are translated too, and every translation says so** (`translated from DE` in the meta line). The user's own words are never silently replaced by the model's.
+4. **Fix the source as well.** Under AUTO, `defineTerm` and `describePerson` now instruct "write the definition in the language the passage is written in". This departs from ADR-148's rule on purpose and only here: the rule's reasoning — silence lets the model follow the conversation — does not hold for a prompt written in English. New entries record their `language`.
+
+**Cache validity.** `translated_from` holds an FNV-1a hash of the definition the translations were made from. A regenerate, or a hand edit of the body, changes the hash; every cached language is then stale, and the next translation deletes them all before writing the new one (`applyTranslation`), so a stale language cannot survive beside a fresh one. `mergeEntry` carries translations and the hash through a re-lookup untouched; `entryFrontmatter` never writes them — `GlossaryService.translate` is the only writer. Because Obsidian re-parses the written frontmatter asynchronously, the service also keeps this session's translations in memory, keyed by term, language and hash.
+
+**What is not translated.** The term title (it is the word as it appears in the text, and marks match it), the aliases, and the context quotes (verbatim attestations; a translated quote is no longer one).
+
+**Display.** The anchor never shows the stored text and then swaps it: while a translation runs, the body is a faint italic `Translating to EN…`. If the call fails or returns nothing, the stored definition is shown unmarked and a Notice says why (principle 2).
+
+**Rejected.** A plugin-side cache file (does not sync, invisible to Bases, not editable). A body section per language (not a Base column; notes grow long). Obsidian's UI language as the AUTO target (predictable, but a German user reading an English conversation would get German definitions under English answers). A model call to detect the passage's language (latency on every open). Translating the stored definition in place (would destroy the original and make a second translation a translation of a translation).
+
+**Consequences.** A term note can carry `language`, `translated_from` and one `definition_<lang>` per language read. `GlossaryEntry` gains `language`, `definitionTranslations`, `translatedFrom`. `LLMProvider`/`LLMRouter` gain `translateDefinition`. +23 tests (1069 across 69 files): the detector (seven languages, the short-definition overlap, a quoted English phrase, refusal on short or mixed text), frontmatter read and write, cache validity by hash, stale-language clearing, the target rule, the merge, both prompts under AUTO and a named language, and the anchor's four states — translated and marked, same language with no call, failure falling back unmarked, placeholder while pending.
+
+---
+
+### ADR-167 — The strip under the composer, measured: core pads every view, a theme added a reserve, core's fade painted it
 
 **Date:** 2026-09-16
 **Status:** Accepted — closes the thread of ADR-132, 134, 135, 146, 147
 
-**Context.** ADR-147 ended with a promise: if any strip survived, "I will instrument rather than guess again." One survived. On the phone, with Klartext, Send hung about 56px above the drawer's tab selector with a lighter band across the space. This time Obsidian 1.13.7 was run under a virtual display with `--remote-debugging-port`, put into phone emulation (`app.emulateMobile(true)`, 393×852, `is-phone`), the vault carried the built plugin and the theme, and the drawer was measured with `getBoundingClientRect` and `getComputedStyle`, before and after every change, in the same tab.
+*(The three CSS rules and `tests/leafInset.test.ts` landed with the icon branch; the reasoning below was dropped by that merge and is restored here. Numbered 167 because 165 and 166 were taken while the branch was open.)*
+
+**Context.** ADR-147 ended with a promise: if any strip survived the leaf-container fix, "I will instrument rather than guess again." One survived. On the phone, with Klartext, Send hung about 56px above the drawer's tab selector with a lighter band across the space. This time Obsidian 1.13.7 was run under a virtual display with `--remote-debugging-port`, put into phone emulation (`app.emulateMobile(true)`, 393x852, `is-phone`), the vault carried the built plugin and the theme, and the drawer was measured with `getBoundingClientRect` and `getComputedStyle`, before and after every change, in the same tab.
 
 **What was there — three layers, none of them Pythia's.**
 
 1. **Obsidian pads every `.view-content`.** `app.css` has `.view-content { padding: 12px }` and `.workspace-leaf-content .view-content { padding-bottom: max(var(--safe-area-inset-bottom), var(--size-4-8)) }` at (0,2,0): 32px on a desktop, the home indicator's 34px on a phone. Measured under the default theme on the desktop: `.pythia-view` computed `12px 12px 32px`. **This is ADR-147's "8 left, 8 right, 34 bottom"** — the sides and the home-indicator number, from one core rule. `.pythia-view { padding: 0 }` is (0,1,0) and never won; ADR-147's `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` addressed an element whose padding was already 0. Core exempts its own views by data-type: `.workspace-leaf-content[data-type="markdown"] .view-content { padding: 0 }` at (0,3,0).
 2. **Klartext 1.6.1 reserved 52px on every phone-drawer view** — `body.is-phone .workspace-drawer .workspace-leaf-content > .view-content { padding-bottom: var(--touch-size-l) }` at (0,4,1) — "so the last row cannot end up under the floating selector". The selector does not float: `.workspace-drawer-inner` is a flex column, the tab container is `flex: 1`, `.workspace-drawer-tab-options` is `position: relative`, below the view in normal flow. Dead space, replacing core's 34 with 52.
-3. **Obsidian's floating-nav fade painted the empty strip.** `.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content::after`: 48px, `pointer-events: none`, `linear-gradient(to top, var(--mobile-sidebar-background), transparent)` — meant to fade a file list under floating nav buttons, applied to every drawer leaf. Over an empty reserve, with the sidebar #222 against our #1a1a1a panel, it is the band in the screenshot.
+3. **Obsidian's floating-nav fade painted the empty strip.** `.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content::after`: 48px, `pointer-events: none`, `linear-gradient(to top, var(--mobile-sidebar-background), transparent)` — meant to fade a file list under floating nav buttons, applied to every drawer leaf. Over an empty reserve, with the sidebar #222 against our #1a1a1a panel, it is the band in the report.
 
 **Decision.** Three rules beside the ADR-147 one, all scoped to our leaf by `data-type`:
 
@@ -2815,11 +2870,11 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 
 Specificity, **deliberately never `!important`**: the keyboard lift (ADR-132) writes an inline `padding-bottom` on this element and must keep winning. The theme is fixed too (Klartext 1.6.2 removes its reserve), but the plugin does not depend on it: the shape any theme would use is what the plugin out-ranks. The fade is removed only for our leaf; the composer is not a scrolling list.
 
-**Verification, in the running app.** Phone emulation, Klartext 1.6.1, old stylesheet: `.pythia-view` padding-bottom 52px, fade `display: block`, Send 56px above the view's edge. New stylesheet, theme unchanged: 0px, `none`, Send 4px above the edge and 5px above the selector's hairline; the band gone. Klartext 1.6.2 with the old stylesheet: 34px (core's) and the fade back — which is why all three rules are the plugin's to carry. Default theme, new stylesheet: 0px, `none`, 5px. Desktop, old stylesheet: `12px 12px 32px`; new: `0px`. `tests/leafInset.test.ts` loads core-shaped rules, then `styles.css`, then a theme-shaped rule — Obsidian's order — into happy-dom and asserts the desktop and phone cascades, that another `data-type` keeps both core's and the theme's padding, that inline padding still wins, and that the `::after` rule is scoped by `data-type`. +5 tests; lint, file-size, build green.
+**Verification, in the running app.** Phone emulation, Klartext 1.6.1, old stylesheet: `.pythia-view` padding-bottom 52px, fade `display: block`, Send 56px above the view's edge. New stylesheet, theme unchanged: 0px, `none`, Send 4px above the edge and 5px above the selector's hairline; the band gone. Klartext 1.6.2 with the old stylesheet: 34px (core's) and the fade back — which is why all three rules are the plugin's to carry. Default theme, new stylesheet: 0px, `none`, 5px. Desktop, old stylesheet: `12px 12px 32px`; new: `0px`. `tests/leafInset.test.ts` loads core-shaped rules, then `styles.css`, then a theme-shaped rule — Obsidian's order — into happy-dom and asserts the desktop and phone cascades, that another `data-type` keeps both core's and the theme's padding, that inline padding still wins, and that the `::after` rule is scoped by `data-type`.
 
 **The method, kept.** Five ADRs guessed at this strip from screenshots and reasoned about numbers; the sixth ran the app and read three stylesheets the plugin had never read, one of them Obsidian's own. The tooling is now known: the Linux build under Xvfb with `--remote-debugging-port`, `app.emulateMobile(true)` plus a device-metrics override for the phone, `Runtime.evaluate` for the measurements, `Page.captureScreenshot` for the proof. When a symptom is "on the device", the next step is a device, emulated if need be — not a sixth reading of the same picture.
 
-#### ADR-165 addendum — what the exemption uncovered: desktop clearance, and the keyboard lift reads Obsidian's number
+#### ADR-167 addendum — what the exemption uncovered: desktop clearance, and the keyboard lift reads Obsidian's number
 
 **Date:** 2026-09-16
 
@@ -2827,6 +2882,6 @@ Removing Obsidian's `.view-content` padding exposed two things it had been quiet
 
 **Desktop clearance.** ADR-146 set the composer's bottom padding to 4px while core's 32px still sat below it, unseen. With that gone, Send stood 4px from the window's edge. The composer now carries `var(--s3)` (12px) at the bottom; in the phone drawer it keeps 4px, because the tab selector's pill with its own margin sits directly below. One rule, `body.is-phone .workspace-drawer .p-input-area { padding-bottom: var(--s1) }`, and a comment naming why.
 
-**The keyboard.** On the phone the keyboard began to cover the composer's bottom row. Measured in the emulator with Obsidian's `--keyboard-height` set: `.app-container` shrinks by the keyboard, but the drawer is `position: fixed; top: 0; bottom: 0` and does not — it stays full height, its own `padding-bottom: calc(max(safe-area, 16px) - keyboard-height)` clamps to 0, and the view *grows* by 34px toward the keyboard. So a composer in the drawer is under the keyboard unless lifted. Pythia's lift (ADR-132) measured the keyboard through `visualViewport`, and on iOS that estimate is short by roughly the home indicator; core's 34px of view padding had been covering the difference. Obsidian publishes the authoritative number: `--keyboard-height`, from the native keyboard frame, and draws its own editing toolbar at `100vh - keyboard-height`. `keyboardOverlap` now takes `keyboardHeight` too and lifts by the larger of the two estimates; it is 0 whenever no keyboard is open, so it can never pad the panel at rest (the ADR-132 invariant). `watchViewport` also listens to Obsidian's `keyboardWillShow` / `keyboardWillHide` window events (allow-listed in ESLint with the reason) and measures once more after the 300ms animation, since the variable can land after the event. The conversation panel's list passes the same number through `readKeyboardHeight()`.
+**The keyboard.** On the phone the keyboard began to cover the composer's bottom row. Measured in the emulator with Obsidian's `--keyboard-height` set: `.app-container` shrinks by the keyboard, but the drawer is `position: fixed; top: 0; bottom: 0` and does not — it stays full height, its own `padding-bottom: calc(max(safe-area, 16px) - keyboard-height)` clamps to 0, and the view *grows* by 34px toward the keyboard. So a composer in the drawer is under the keyboard unless lifted. Pythia's lift (ADR-132) measured the keyboard through `visualViewport`, and on iOS that estimate is short by roughly the home indicator; core's 34px of view padding had been covering the difference. Obsidian publishes the authoritative number: `--keyboard-height`, from the native keyboard frame, and draws its own editing toolbar at `100vh - keyboard-height`. `keyboardOverlap` now takes `keyboardHeight` too and lifts by the larger of the two estimates; it is 0 whenever no keyboard is open, so it can never pad the panel at rest (the ADR-132 invariant). `watchViewport` also listens to Obsidian's `keyboardWillShow` / `keyboardWillHide` window events (allow-listed in ESLint with the reason) and measures once more after the 300 ms animation, since the variable can land after the event. The conversation panel's list passes the same number through `readKeyboardHeight()`.
 
-**Verification.** Emulator, phone drawer, `--keyboard-height: 300px` and the event dispatched: the composer's bottom moves from 744 to the keyboard's top at 552, and back when the variable returns to 0. Desktop: Send 12px above the leaf's edge. +4 tests (1038 across 67 files). The device numbers themselves — how far short the visual viewport falls on a given iPhone — are not known from here; what is known is that Obsidian's number is the one Obsidian trusts for its own toolbar.
+**Verification.** Emulator, phone drawer, `--keyboard-height: 300px` and the event dispatched: the composer's bottom moves from 744 to the keyboard's top at 552, and back when the variable returns to 0. Desktop: Send 12px above the leaf's edge. The device numbers themselves — how far short the visual viewport falls on a given iPhone — are not known from here; what is known is that Obsidian's number is the one Obsidian trusts for its own toolbar.

@@ -3,8 +3,13 @@ import { setIcon } from "obsidian";
 /** One selectable row in a bottom action sheet. */
 export interface ActionSheetItem {
 	label: string;
-	/** Obsidian icon id (rendered via setIcon). */
+	/** Obsidian icon id (rendered via setIcon). Empty for a choice row, which
+	 *  shows a check when `active` instead (ADR-165). */
 	icon: string;
+	/** One-line explanation under the label — readable without hover. */
+	detail?: string;
+	/** The current choice: accent label and a check. */
+	active?: boolean;
 	disabled?: boolean;
 	onSelect: () => void;
 }
@@ -60,11 +65,14 @@ export class ActionSheet {
 		const list = sheet.createDiv({ cls: "p-sheet-list" });
 		for (const item of items) {
 			const row = list.createDiv({
-				cls: `p-sheet-item${item.disabled ? " p-sheet-item-disabled" : ""}`,
+				cls: `p-sheet-item${item.disabled ? " p-sheet-item-disabled" : ""}${item.active ? " is-active" : ""}`,
 			});
 			const ic = row.createSpan({ cls: "p-sheet-item-icon" });
-			setIcon(ic, item.icon);
-			row.createSpan({ cls: "p-sheet-item-label", text: item.label });
+			const glyph = item.icon || (item.active ? "check" : "");
+			if (glyph) setIcon(ic, glyph);
+			const text = row.createDiv({ cls: "p-sheet-item-text" });
+			text.createSpan({ cls: "p-sheet-item-label", text: item.label });
+			if (item.detail) text.createSpan({ cls: "p-sheet-item-detail", text: item.detail });
 			if (item.disabled) continue;
 			// pointerup fires for both touch and mouse and, unlike mousedown, lets a
 			// tap complete without stealing focus mid-gesture; preventDefault keeps a

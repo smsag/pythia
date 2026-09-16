@@ -240,7 +240,7 @@ export class PythiaSidebarView extends ItemView {
 		// would fire because autoScroll was still true.
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.headerController.renderHeader();
-		this.headerController.updateModelBadge();
+		this.headerController.updateInstructions();
 		this.updateResearchButton();
 		this.updateVaultButton();
 		this.renderReferencePills();
@@ -250,9 +250,10 @@ export class PythiaSidebarView extends ItemView {
 		this.backfillChapterNames(conversation);
 	}
 
-	getActiveConversation(): Conversation | null {
-		return this.activeConversation;
-	}
+	getActiveConversation(): Conversation | null { return this.activeConversation; }
+
+	/** Repaint the header's model | effort | language after a global default changed (ADR-165). */
+	refreshInstructions(): void { this.headerController?.updateInstructions(); }
 
 	attachNoteToInput(path: string): void {
 		const conv = this.activeConversation;
@@ -651,7 +652,7 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getGlobalMaxTokens: () => this.plugin.settings.maxTokens,
 			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
-			openSettings: () => this.headerController.onModelBadgeClick(),
+			openSettings: () => this.headerController.openConversationSettings(),
 		});
 		this.sendHint.mount(toolbar);
 
@@ -1168,16 +1169,14 @@ export class PythiaSidebarView extends ItemView {
 		this.mergeController.repaintMessage(messageId);
 	}
 
-	/** Scroll to a merge link's passage and open its inline summary anchor (ADR-130). */
 	/** Choose a conversation in the history panel (ADR-143). The view owns the
 	 *  controller, so plugin-level commands reach the picker through here. */
 	pickConversation(pick: HistoryPick): void {
 		this.historyController.openHistoryView(pick);
 	}
 
-	revealMergeLink(mergeId: string): void {
-		this.mergeController.revealMergeLink(mergeId);
-	}
+	/** Scroll to a merge link's passage and open its inline summary anchor (ADR-130). */
+	revealMergeLink(mergeId: string): void { this.mergeController.revealMergeLink(mergeId); }
 
 	scrollToMessage(messageId: string): void {
 		const row = this.messagesEl.querySelector(
@@ -1297,7 +1296,7 @@ export class PythiaSidebarView extends ItemView {
 			}
 
 			await this.plugin.conversationStore.save(conv);
-			this.headerController.updateModelBadge();
+			this.headerController.updateInstructions();
 			this.renderReferencePills();
 			new Notice(t("appliedTemplate", { name: tpl.name }));
 

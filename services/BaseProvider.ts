@@ -447,7 +447,7 @@ export abstract class BaseProvider implements LLMProvider {
 				`For the context: copy ONE short sentence or clause from the passage in which the term ` +
 				`actually appears, verbatim and unedited. Leave the line empty if no single sentence shows ` +
 				`it in use.` +
-				`${langInstruction(this.languageLabel(conversation))}\n\nPassage:\n${excerpt}`,
+				`${this.definitionLanguage(conversation)}\n\nPassage:\n${excerpt}`,
 			420
 		);
 	}
@@ -485,8 +485,43 @@ export abstract class BaseProvider implements LLMProvider {
 				`and never a name so common it would match unrelated sentences.\n` +
 				`For the context: copy ONE short sentence or clause from the passage naming this ` +
 				`person, verbatim. Leave the line empty if none does.` +
-				`${langInstruction(this.languageLabel(conversation))}\n\nPassage:\n${excerpt}`,
+				`${this.definitionLanguage(conversation)}\n\nPassage:\n${excerpt}`,
 			420
+		);
+	}
+
+	/**
+	 * The language line for a definition or person entry (ADR-166).
+	 *
+	 * A named language is instructed exactly as every utility prompt does. AUTO
+	 * is the one place this departs from ADR-148's "add no instruction": in a chat
+	 * turn silence lets the model follow the user, but this prompt is written in
+	 * English, so silence made the model answer in English whatever the passage
+	 * said — and the note kept that English for good. Naming the passage keeps
+	 * AUTO's meaning (follow the conversation) instead of inventing a language.
+	 */
+	private definitionLanguage(conversation?: Conversation): string {
+		const label = this.languageLabel(conversation);
+		return label
+			? langInstruction(label)
+			: "\n\nWrite the definition in the language the passage is written in.";
+	}
+
+	/**
+	 * Translate a stored glossary definition for display (ADR-166).
+	 *
+	 * Exempt from `languageLabel`, like the prompt optimizer: the target language
+	 * is the whole request. The result is cached in the term note by the caller,
+	 * so each definition is translated once per language.
+	 */
+	async translateDefinition(definition: string, language: string): Promise<string> {
+		return this.callUtility(
+			this.fastModel,
+			`Translate this glossary definition into ${language}. Keep its meaning and its precision: ` +
+				`use the established ${language} terminology, and keep proper names, code and Markdown as they are. ` +
+				`If it is already in ${language}, return it unchanged. ` +
+				`Reply with the translation only — no preamble, no quotation marks.\n\nDefinition:\n${definition.slice(0, 2000)}`,
+			500
 		);
 	}
 

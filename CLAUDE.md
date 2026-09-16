@@ -37,7 +37,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
-    GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150)
+    GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
+    languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -51,7 +52,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
-    keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/165
+    keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
     clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
@@ -65,11 +66,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
+    instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
+    choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1038 tests across 67 files
+  tests/                      ← Vitest unit tests (npm test) — 1078 tests across 70 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -79,6 +82,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
+    briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -261,14 +265,14 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ## Hard rules — never violate
 
-1. **The panel fills its leaf flush** — no border-radius on the `.pythia-view` root, and **no inset on any side**. Obsidian's `.workspace-leaf-content` pads `.view-content`; `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` neutralizes it for our leaf only (ADR-147). `.p-history` is `inset: 0` on `.pythia-view`, so **opening the conversation panel is the quickest way to see the panel's true edges** — if it stops short of the leaf on any side, the container is inset, not the content. **The inset is Obsidian's own padding on `.view-content`** (12px sides, `max(safe-area, 32px)` bottom, at (0,2,0)) — `.pythia-view { padding: 0 }` never out-ranked it; `.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0 }` does, the way core exempts its own views (ADR-165, measured in Obsidian). On a phone the drawer adds two more, neither ours: a theme may pad `.view-content` (Klartext 1.6.1: 52px), and `.is-floating-nav` paints a 48px sidebar-coloured fade at the foot of every drawer leaf; both are out-ranked for our leaf by specificity in `styles.css` — never `!important` on the view's padding, which would also silence the keyboard lift's inline padding.
+1. **The panel fills its leaf flush** — no border-radius on the `.pythia-view` root, and **no inset on any side**. Obsidian's `.workspace-leaf-content` pads `.view-content`; `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` neutralizes it for our leaf only (ADR-147). `.p-history` is `inset: 0` on `.pythia-view`, so **opening the conversation panel is the quickest way to see the panel's true edges** — if it stops short of the leaf on any side, the container is inset, not the content. **The inset is Obsidian's own padding on `.view-content`** (12px sides, `max(safe-area, 32px)` bottom, at (0,2,0)) — `.pythia-view { padding: 0 }` never out-ranked it; `.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0 }` does, the way core exempts its own views (ADR-167, measured in Obsidian). On a phone the drawer adds two more, neither ours: a theme may pad `.view-content` (Klartext 1.6.1: 52px), and `.is-floating-nav` paints a 48px sidebar-coloured fade at the foot of every drawer leaf; both are out-ranked for our leaf by specificity in `styles.css` — never `!important` on the view's padding, which would also silence the keyboard lift's inline padding.
 2. **No imported fonts.** Use `var(--font-interface)` and `var(--font-monospace)` only.
 3. **No custom background colors.** Every surface uses an Obsidian CSS variable. No hex codes on backgrounds.
 4. **No box-shadow on panels.** Flat surfaces only. Navigator popover is the single exception.
 5. **No emoji icons.** Design system icons are inline SVG, `stroke-width: 1.6`, `12×12px`. Obsidian chrome icons use `setIcon`.
 6. **Accent is always `var(--color-accent)`.** Never hardcode a hex accent value.
 6a. **Text on an accent fill is `var(--p-on-accent, var(--text-on-accent))`, and every such rule must ALSO set `-webkit-text-fill-color` to the same value** (ADR-154). These controls are `all: unset`; `all` resolves the inherited `-webkit-text-fill-color` to `inherit`, and **WebKit reads it in preference to `color`** — so a `color:` line alone silently loses on iOS and the label inherits `--text-normal`. `--p-on-accent` is always pure black or white; never let a theme token reach the label.
-7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is `padding: var(--s2) var(--s3) var(--s3)` — 12px at the bottom on a desktop, where the leaf's edge is the window's (ADR-165 addendum: ADR-146's 4px was chosen while core's 32px still sat unseen below it) — and `var(--s1)` in the phone drawer, where the tab selector's pill sits directly below. The keyboard lift reads Obsidian's `--keyboard-height` as well as `visualViewport` and takes the larger: the phone drawer does not shrink with the keyboard, and the viewport estimate falls short on iOS. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
+7. **No `env(safe-area-inset-bottom)` on the input area** (ADR-146 — this rule previously said the opposite). **The reasoning below is withdrawn by ADR-147**: the 34px was the *leaf container's* padding, not our `env()` inset. The rule itself stands (4px bottom padding, asked for), but the strip it was blamed for is fixed by `.workspace-leaf-content[data-type="pythia"] { padding: 0 }`. `env()` reports the device's inset wherever the element sits, so a sidebar leaf with anything below it reserved ~34px for a home indicator it was nowhere near. ADR-134's attempt to keep the inset and switch it off by measuring the panel's bottom edge did not fire on the reporter's device — measured at 42px below the send button where 8 was intended, i.e. 8 + exactly one home indicator. The input area is `padding: var(--s2) var(--s3) var(--s3)` — 12px at the bottom on a desktop, where the leaf's edge is the window's (ADR-167: ADR-146's 4px was chosen while core's 32px still sat unseen below it) — and `var(--s1)` in the phone drawer, where the tab selector's pill sits directly below. The keyboard lift reads Obsidian's `--keyboard-height` as well as `visualViewport` and takes the larger: the phone drawer does not shrink with the keyboard, and the viewport estimate falls short on iOS. Obsidian's own mobile chrome sits between a sidebar leaf and the screen edge. **`env(safe-area-inset-bottom)` is still correct for bottom sheets and modals** (`.pythia-modal`, the mobile action sheet) — those really do touch the screen edge.
 8. **Never touch `containerEl.children[0]`.** That is the Obsidian leaf header.
 8a. **Never replace `plugin.conversations` wholesale from disk.** Reconcile with `mergeConversations` so a stale data.json cannot roll a conversation back and lose its newest turn (ADR-133).
 8b. **Never set an explicit `height` on `containerEl.children[1]`.** It is `overflow: hidden`, so a height below the content silently crops the input area (including its mandated safe-area padding) and uncovers the background behind the panel. Move content with padding instead (ADR-132).
@@ -281,12 +285,17 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ### Header
 ```
-[ search ][ Title (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
+[ search ][ Title (grows) ][ Sonnet 5 | Hoch | DE ][ ⌄ ][ trash ][ plus ]
 ```
-Order left→right (ADR-098): search · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. **No template caption** — the template rides the assistant turn label instead (ADR-129). See `docs/design.md` for the full spec.
+Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx chip] · **model | effort | language** · menu · delete · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. **No template caption** — the template rides the assistant turn label instead (ADR-129). See `docs/design.md` for the full spec.
 - Search (far left, `search` loupe icon, ADR-107): opens the `.p-history` conversation panel with its search input focused. The single in-view conversation-search surface.
 - Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1. Plain, non-interactive text (ADR-107) — no click, no `▾`.
-- Model badge: `--font-monospace`, 10px, `--text-faint`
+- **Instructions `.p-inst`** (ADR-165): one bordered mono group of three segments, each its own tap target. **Model** opens the model popover; **effort** and **language** open a choice picker (`ui/choicePicker.ts` — anchored popover on desktop, bottom sheet on mobile). What they show comes from `ui/instructionState.ts` only — never re-derive the resolution in the header
+- **A segment shows what the send uses, resolved** (`Hoch`, `DE`, `AUTO`), never a bare "Standard". **Accent tint (`.is-pinned`) = set for this conversation; plain = follows the plugin settings.** Every picker's first row returns to the default and stores `undefined` (principle 6); a test fails if it stores the value
+- `AUTO` = no language instruction (ADR-148's `auto`). `obsidian` shows the resolved locale code. A model without effort shows a dimmed `—` (`.is-off`) and tapping says so; a stored effort on such a model is kept, not tinted
+- Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
+- **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
+- The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
 - Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
 
 ### Reference row
@@ -403,11 +412,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
+- **The anchor shows the definition in the conversation's language** (ADR-166): the instructed language, or under `auto` the language of the tapped answer (`displayLanguage`). The stored definition is never rewritten for this — a translation is cached in the note as `definition_<lang>`, valid while `translated_from` equals `definitionHash(definition)`; an edit or regenerate makes every cached language stale and the next translation clears them (`applyTranslation`). The anchor never shows the untranslated text first: a faint `Translating to EN…` placeholder, then the translation with `translated from DE` in the meta line — for a hand-written definition too. Term titles and context quotes are never translated: one is the word in the text, the other a verbatim attestation
+- Language detection is local and returns `null` rather than guess (`services/languageDetect.ts`, function words, winner needs ≥2 hits and 1.5× the runner-up). A new entry records `language`; an old one is detected when needed
 
 ### Output language (ADR-148)
 - **One setting, both halves.** `outputLanguage` instructs the chat answer *and* every utility prompt. Adding a new prompt anywhere means routing it through `BaseProvider.languageLabel(conversation?)` — a prompt that skips it is the bug ADR-148 fixed, reintroduced
 - Six values: `obsidian` · `auto` · `de` · `en` · `it` · `es`, listed once in `OUTPUT_LANGUAGES` (`models/types.ts`) and labelled once in `ui/languageOptions.ts`. **Never hand-write the option list a second time** — the global setting and the per-conversation override must name the same languages in the same order
 - **`auto` adds no instruction at all.** Do not "improve" it into a sentence like "respond in the conversation's language": a model with no language instruction already does that, and one holding a sentence about languages has something to reason about
+- **One exception: `defineTerm` and `describePerson`** (ADR-166). Their prompt is English, so silence made the model answer in English whatever the passage said, and the note kept it. Under `auto` they say "write the definition in the language the passage is written in" (`BaseProvider.definitionLanguage`). Do not extend the exception to chat or to other utility prompts without the same reason
 - `obsidian` follows Obsidian's UI locale into any of its ~30 languages, not just the four offered — `LANG_LABELS` is deliberately wider than the dropdown. An unknown locale falls back to English, never to `auto`
 - Resolution is conversation override → global setting; `Conversation.outputLanguage === undefined` means *inherit*, and the modal's `Standard` option must keep writing `undefined` rather than copying the global value in
 - The **prompt optimizer is exempt** — it rewrites the user's own prompt, and translating that would destroy what it was asked to improve
