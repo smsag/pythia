@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderTurnLabel, turnTemplateCaption, isFirstMessageOfDay } from "../ui/turnLabel";
+import { estimateCost, formatCost } from "../models/modelPricing";
 import type { Conversation, Message } from "../models/types";
 
 // Obsidian extends Element.prototype with these at runtime; happy-dom does not.
@@ -149,7 +150,8 @@ describe("turn labels — cost per answer (ADR-163)", () => {
 		const msg = ai("a1", { tokenUsage: usage });
 		renderTurnLabel(row, msg, conversation({ messages: [msg] }), { showCost: true });
 		const cost = row.querySelector(".p-turn-cost");
-		expect(cost?.textContent).toBe(" · ≈ $0.012"); // sonnet: 1000×3 + 600×15 per million
+		// Expected from the table, never a literal: the table changes weekly.
+		expect(cost?.textContent).toBe(` · ≈ ${formatCost(estimateCost("claude-sonnet-4-6", usage)!)}`);
 		expect(cost?.getAttribute("title")).toContain("2026");
 		// The counts are still there, ahead of the price.
 		expect(row.querySelector(".p-turn-tokens")).not.toBeNull();
