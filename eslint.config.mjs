@@ -34,13 +34,33 @@ export default tseslint.config(
 			"@typescript-eslint/no-empty-object-type": "off",
 			// Fire-and-forget async calls must use void operator to signal intent
 			"@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: true }],
+
+			// ── Project hard rules, enforced (ADR-159) ─────────────────────
+			// `==` hides type coercion; `== null` is the one idiom worth keeping.
+			"eqeqeq": ["error", "always", { null: "ignore" }],
+			// Locale date/time formatters differ in order, punctuation and width
+			// between locales; the UI draws a fixed mono rhythm (ADR-139). Use
+			// formatDate / formatClockTime from services/messageUtils.ts.
+			"no-restricted-properties": ["error",
+				{ property: "toLocaleDateString", message: "Use formatDate() from services/messageUtils.ts (ADR-139)." },
+				{ property: "toLocaleTimeString", message: "Use formatClockTime() from services/messageUtils.ts (ADR-139)." },
+			],
+			// HTML string injection is how model output would reach the DOM as
+			// markup. Build nodes with Obsidian's DOM helpers or MarkdownRenderer.
+			"no-restricted-syntax": ["error",
+				{ selector: "AssignmentExpression > MemberExpression.left[property.name='innerHTML']", message: "Never assign innerHTML — build DOM nodes or use MarkdownRenderer." },
+				{ selector: "AssignmentExpression > MemberExpression.left[property.name='outerHTML']", message: "Never assign outerHTML — build DOM nodes or use MarkdownRenderer." },
+				{ selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: "Never insert HTML strings — build DOM nodes or use MarkdownRenderer." },
+			],
 		},
 	},
-	// Test files may use console for debugging
+	// Test files may use console for debugging, and may build fixtures from
+	// HTML strings — the innerHTML rule guards the plugin's DOM, not test setup.
 	{
 		files: ["tests/**/*.ts"],
 		rules: {
 			"no-console": "off",
+			"no-restricted-syntax": "off",
 		},
 	}
 );

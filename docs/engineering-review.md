@@ -14,6 +14,8 @@
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-062.*
 
+*Updated: 2026-09-16 — **whole-codebase quality and security review (ADR-159): #124–#178, 55 fixes in five commits.** Asked for: at least fifty bugs or improvements with maintainability, usability, performance and observability weighted highest, and three principles to guide what follows. Found: the defects came in three shapes — values trusted at a boundary (settings, conversations, template frontmatter, tool-call arguments), failures that said nothing (create_note overwriting, UTC dates, a deep link without its vault, a `TypeError` misfiled as network, a stuck streaming state), and rules that lived only in prose (`toLocaleDateString`, `innerHTML`, `==`, unused locals). Each fix has a headless test where one can be written (+46 → 926 across 58 files); `sidebar.ts` shrank 1891 → 1885 through `ui/emptyState.ts` to pay for the send guard under the ADR-097 ratchet. The three principles are in ADR-159 and in CLAUDE.md. Full list under "Quality & security review (#124–#178)".*
+
 *Updated: 2026-09-10 — fork anchor always-current summary + visible regenerate (ADR-128). Ask: the fork summary shown in the origin conversation should always be the latest and keep a regenerate trigger. It already read the fork live (latest STORED summary) but gave no staleness cue and buried regenerate in a long-press. Added: a staleness check (fork's newest message > shown summary's timestamp) that appends an `outdated` marker + accent-tints a new visible one-tap refresh button (`rotate-cw`), which regenerates the displayed summary type (also creates a first summary); the long-press menu stays for conversation-vs-favorites. Explicit non-goal: no auto-LLM-call on preview-open (would spend tokens on every glance) — deferred as an opt-in. +i18n en/de, CSS. Build/lint/tests green.*
 
 *Updated: 2026-09-10 — CI red on the file-size ratchet, and the process gap behind it. The streaming-toolbar fix added 4 lines to `sidebar.ts` (2,024 → 2,028), which the ADR-097 guard rejects by design: the ratchet ceiling may only fall. Lint, build and tests were run locally on every change this session; `npm run check:filesize` — a separate CI step — was not, so the guard first spoke on GitHub. Paid for the addition rather than raising the ceiling: `lastTokenUsageMsg` left `sidebar.ts` for `services/messageUtils.ts` as the pure generic `lastTokenUsageMessage(messages)`, with 3 unit tests it could not have as a private view method (622 total). `sidebar.ts` 2,028 → 2,018, ceiling lowered to match. **Lesson:** the local verification loop for this repo is lint + `check:filesize` + build + test — the same four steps `.github/workflows/ci.yml` runs, in that order.*
@@ -217,6 +219,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-09-16 | #124–#178 whole-codebase quality & security review (ADR-159): boundary validation, no-overwrite create_note, one retry policy, tidy titles, strict tsconfig + rule-encoding lint; three principles recorded |
 | 2026-05-29 | Initial review at v1.10.2 |
 | 2026-05-30 | v1.11.0: #2, #3 partial, #7, #8, #9, #13, #16 resolved |
 | 2026-05-30 | #23–#28: autoSaveSummary, IME, autoScroll, navigator leak, stale guards, send-button |
@@ -1106,3 +1109,102 @@ Added `appContainer.ts` as the single composition root. Because `loadPluginData(
 **Files:** `scripts/check-file-size.mjs`, `.github/workflows/ci.yml`, `package.json`, `tests/*` — **Resolved (guard); ongoing (tests)**
 
 **Resolution (guard):** added `scripts/check-file-size.mjs` — a 600-line default budget for every `.ts`, with explicit grandfathered ceilings for `sidebar.ts` (3,735) and `main.ts` (951) that act as a ratchet (each #120/#121 extraction must lower the matching number, never raise it). Wired into CI as a `Check file-size budget` step ahead of the build, and exposed as `npm run check:filesize`. A new file over the default, or a grandfathered file grown past its ceiling, fails CI. **Ongoing:** each extracted controller (#120) becomes unit-testable in isolation for the first time — capture that as its cluster lands, bringing the UI surface toward the coverage the `services/` layer already has.
+
+
+---
+
+## Quality & security review (#124–#178) — 2026-09-16
+
+Whole-codebase review at v2.15.0 (ADR-159). Every item below is **resolved** in this session unless marked otherwise. Grouped by the quality attribute it serves; the number is the reference for future entries.
+
+### Data integrity & persistence
+
+| # | Finding | Fix |
+|---|---|---|
+| 124 | `mergeSettings` was `Object.assign` — a `null`, wrong-typed or unknown-enum saved value overrode the default and failed far away | Type-check each key against its default; enum keys validated; unknown keys dropped (`services/persistence.ts`) |
+| 125 | `null` for an optional setting (`maxTokens`, `temperature`) was stored as `null` | Read as "unset" |
+| 126 | `parseConversations` proved only `id`/`messages`; `contextNotes: null`, `provider: "gemini"`, a numeric `name` threw later | `sanitizeConversationFields` repairs name, systemPrompt, contextNotes, provider, model, resumeMode, writeMode, outputLanguage, favorites |
+| 127 | A message without `role`/`id` survived load and could not be sent or rendered | `sanitizeMessages` drops it |
+| 128 | data.json watcher hardcoded `.obsidian/plugins/…` — never fired on a custom config dir | Path from `manifest.dir`, `normalizePath` |
+| 129 | Watcher reload could overlap itself when a reload outlived the 5 s poll | In-flight guard |
+| 130 | Watcher errors swallowed by `catch {}` | Logged via `describeErrorForLog` |
+| 131 | Four `getSecret` awaits ran serially on startup; a throw aborted load | `Promise.all`, per-secret try/catch |
+| 132 | `todayISO()` used UTC — late-evening conversations named and filed under yesterday | Local calendar date |
+| 133 | Conversation-panel recency sort used `new Date(undefined).getTime()` → NaN comparator | ISO string compare |
+| 134 | `LLMRouter.byProvider` returned `undefined` for an unknown provider string | Falls back to anthropic; `updateApiKey` routed the same way |
+| 135 | Embedding model ids and similarity presets had no exported list to validate against | `EMBEDDING_MODEL_IDS`, `RELATED_SIMILARITY_PRESETS` |
+
+### Providers & network
+
+| # | Finding | Fix |
+|---|---|---|
+| 136 | Anthropic SDK's default 2 retries stacked with ours → up to 9 attempts, invisible to the log | `maxRetries: 0` |
+| 137 | Same on the OpenAI client | `maxRetries: 0` |
+| 138 | OpenAI: malformed tool-call JSON executed the tool on `{}` | `parseToolArguments` → `Error:` tool result, tool not run |
+| 139 | Mistral: same | Same |
+| 140 | A tool call that never received an `id` was echoed into a request the API rejects | Dropped |
+| 141 | `parseToolArguments` accepts only a JSON object (not `null`, arrays, scalars) | New helper + tests |
+| 142 | Any `TypeError` classified as network → programming errors retried and shown as connectivity | Only fetch-shaped messages count as network |
+| 143 | Generated conversation titles carried quotes, trailing periods, `Title:` labels, markdown | `cleanGeneratedTitle` |
+| 144 | Chapter names, same | Same |
+| 145 | Empty title reply became `"New Conversation"` and renamed the dated conversation | Returns `""`; the dated name stays |
+| 146 | No per-turn observability of duration / rounds / tokens | One debug line on completion, one on error |
+| 147 | A throw before the provider ran left `isStreaming` true — composer disabled, Send reading "Stop", unhandled rejection | `sendMessage` try/catch, notice, state reset |
+| 148 | `sendFailed` locale strings (en/de) | Added |
+
+### Vault writes & security
+
+| # | Finding | Fix |
+|---|---|---|
+| 149 | `create_note` silently overwrote an existing note (no rewrite confirmation) | `NoteWriter.createNote` refuses an existing path |
+| 150 | `ToolHandler` create path used the overwriting `writeNote` | Uses `createNote` |
+| 151 | Vault paths not normalized (leading `/`, `./`, `//`) | `normalizeVaultPath` |
+| 152 | An empty path after normalization reached `vault.create` | Rejected |
+| 153 | `ensureFolder` threw when two writes raced into the same new folder | Re-check after a failed `createFolder` |
+| 154 | Summary-note `template:` unquoted — a colon or quote broke the frontmatter | `yamlString` |
+| 155 | Context-note list items unquoted — same | `yamlString` |
+| 156 | File-name sanitizer regex copied in `NoteWriter`, `ConversationService`, `sidebar.ts` | `safeNoteName` in `pathUtils` |
+| 157 | `prependWithSeparator`/`prependToInbox`/`appendConversationSlice` normalized only backslashes | `normalizeVaultPath` |
+| 158 | `TemplateLoader` cast `auto_prompt` to string unvalidated | Validated |
+| 159 | `max_tokens` accepted fractions | Integer only |
+| 160 | Templates folder with a trailing slash matched nothing | Trimmed |
+| 161 | Prompt-optimizer template `model` cast unvalidated | Validated |
+| 162 | Prompt optimizer re-derived the default model with a ternary | `resolveDefaultModelForProvider` |
+| 163 | Template conversations were persisted twice (create, then patch) | `createConversation` takes temperature/effort/researchMode |
+| 164 | Resume-in-summary-mode stored an empty summary and sent the model no context | Refused with `summaryEmpty` notice (ADR-158) |
+
+### View & UX
+
+| # | Finding | Fix |
+|---|---|---|
+| 165 | Chapter-name backfill ran without an API key — one failing call per message on every open | Skipped without a key |
+| 166 | Backfill logged one warning per message after the first failure | Stops after the first |
+| 167 | Deep link built in three places; the header's lacked `vault=` | `resumeDeepLink` |
+| 168 | Clipboard denial in copy-link was an unhandled rejection | `copyFailed` notice |
+| 169 | `t()` threw on a missing locale key | Falls back to English, then the key |
+| 170 | Vault-index change flush could fire after unload | Cancelled on unload |
+| 171 | Backlink text with `]` in the conversation name broke the markdown link | Escaped |
+| 172 | `ActionSheet.sheet` written, never read | Removed |
+| 173 | Empty-state renderers lived in the view | `ui/emptyState.ts` (+2 tests); `sidebar.ts` 1891 → 1885 |
+
+### Guardrails
+
+| # | Finding | Fix |
+|---|---|---|
+| 174 | `tsconfig` had only `strictNullChecks` | `strict`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noUnusedLocals`, `noUnusedParameters` — zero errors |
+| 175 | `==` unguarded | `eqeqeq` (null-tolerant) |
+| 176 | ADR-139's `toLocaleDateString` ban existed only in prose | `no-restricted-properties` |
+| 177 | HTML-string injection unguarded | `no-restricted-syntax` on `innerHTML`/`outerHTML`/`insertAdjacentHTML` (tests exempt) |
+| 178 | `tests/persistence.test.ts` crossed the 600-line budget | Split into `tests/persistenceSanitize.test.ts` |
+
+### Three principles (ADR-159)
+
+1. **Every boundary validates.** A value from disk, a note, a template, a model or the clipboard is untrusted until a function with a test has said otherwise — and the fallback is the default, never the raw value.
+2. **Silence is a bug.** An empty result, a swallowed catch, a no-op on a missing file: each must either say something to the user, log something a report can quote, or be proven to be the idle case. `catch {}` needs a comment naming why silence is right.
+3. **If it is a rule, the tooling enforces it.** A convention worth writing into CLAUDE.md is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. Prose is for the reasoning; the guard is for the regression.
+
+### Deliberately not done
+
+- A request timeout on utility calls — the SDK's 10-minute default stands; a reasoning model's summary can legitimately run long.
+- `Authorization: Bearer` for Tavily — the body field works and is tested; a header change is a product/API decision.
+- Replacing the delete-exchange long-press with `ui/longPress.ts` — it needs `preventDefault` on `touchstart` (iOS magnifier), which the shared helper's passive listener cannot give.
