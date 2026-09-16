@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MODEL_CATALOG } from "../models/knownModels";
-import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost, costSnapshot, messageCost } from "../models/modelPricing";
+import { MODEL_PRICING, PRICING_AS_OF, estimateCost, formatCost, conversationCost, costSnapshot, messageCost, priceUsage } from "../models/modelPricing";
 import type { Message } from "../models/types";
 
 // ADR-163: the cost on a turn label is an estimate from a date-stamped table.
@@ -22,21 +22,30 @@ describe("MODEL_PRICING", () => {
 	});
 });
 
-describe("estimateCost", () => {
+// The table is rewritten from models.dev weekly, so no test below hard-codes
+// a price: arithmetic runs on synthetic rows, and anything that goes through
+// the real table computes its expectation from MODEL_PRICING.
+
+describe("priceUsage (arithmetic on a synthetic row)", () => {
 	it("prices input and output at their own rates", () => {
-		// gpt-4o: $2.50 in, $10 out per million.
-		expect(estimateCost("gpt-4o", { inputTokens: 1_000_000, outputTokens: 100_000 })).toBeCloseTo(2.5 + 1.0, 6);
+		expect(priceUsage({ input: 2.5, output: 10 }, { inputTokens: 1_000_000, outputTokens: 100_000 })).toBeCloseTo(2.5 + 1.0, 6);
 	});
 
-	it("prices Anthropic cache reads at the discount and writes at the premium", () => {
-		// sonnet: in 3, out 15, cache read 0.3, cache write 3.75 per million.
-		const usd = estimateCost("claude-sonnet-4-6", { inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 1_000_000, cacheCreationTokens: 1_000_000 });
+	it("prices cache reads at the discount and writes at the premium", () => {
+		const row = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+		const usd = priceUsage(row, { inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 1_000_000, cacheCreationTokens: 1_000_000 });
 		expect(usd).toBeCloseTo(0.003 + 0.015 + 0.3 + 3.75, 6);
 	});
 
 	it("bills cache counts at the input rate when the row has no cache prices", () => {
-		const usd = estimateCost("gpt-4o", { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 });
-		expect(usd).toBeCloseTo(2.5, 6);
+		expect(priceUsage({ input: 2.5, output: 10 }, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBeCloseTo(2.5, 6);
+	});
+});
+
+describe("estimateCost (through the real table)", () => {
+	it("prices a known model from its row", () => {
+		const p = MODEL_PRICING["gpt-4o"];
+		expect(estimateCost("gpt-4o", { inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeCloseTo(p.input + p.output, 6);
 	});
 
 	it("returns null for an unknown model or missing usage — never a wrong number", () => {
@@ -65,12 +74,15 @@ describe("conversationCost", () => {
 	it("sums priced answers and counts unpriced ones separately", () => {
 		const msgs: Message[] = [
 			{ id: "u", role: "user", content: "", timestamp: "" },
-			ai("a", "gpt-4o", { inputTokens: 1_000_000, outputTokens: 0 }),           // $2.50
+			ai("a", "gpt-4o", { inputTokens: 1_000_000, outputTokens: 0 }),           // one million input tokens
 			ai("b", "custom-x", { inputTokens: 1_000_000, outputTokens: 0 }),         // unpriced
-			ai("c", "claude-haiku-4-5", { inputTokens: 0, outputTokens: 1_000_000 }), // $5
+			ai("c", "claude-haiku-4-5", { inputTokens: 0, outputTokens: 1_000_000 }), // one million output tokens
 			ai("d", "gpt-4o"),                                                        // no usage: ignored
 		];
-		expect(conversationCost(msgs)).toEqual({ usd: 7.5, priced: 2, unpriced: 1 });
+		const expected = MODEL_PRICING["gpt-4o"].input + MODEL_PRICING["claude-haiku-4-5"].output;
+		const sum = conversationCost(msgs);
+		expect(sum.usd).toBeCloseTo(expected, 6);
+		expect(sum).toMatchObject({ priced: 2, unpriced: 1 });
 	});
 
 	it("is zero with nothing priced", () => {
@@ -80,9 +92,10 @@ describe("conversationCost", () => {
 
 describe("cost snapshot (stored at generation, ADR-163)", () => {
 	const usage = { inputTokens: 1_000_000, outputTokens: 0 };
+	const gpt4oIn = MODEL_PRICING["gpt-4o"].input;
 
 	it("stamps the estimate with the table date, and stays undefined for an unpriced model", () => {
-		expect(costSnapshot("gpt-4o", usage)).toEqual({ usd: 2.5, asOf: PRICING_AS_OF });
+		expect(costSnapshot("gpt-4o", usage)).toEqual({ usd: gpt4oIn, asOf: PRICING_AS_OF });
 		expect(costSnapshot("my-fine-tune", usage)).toBeUndefined();
 		expect(costSnapshot("gpt-4o", undefined)).toBeUndefined();
 	});
@@ -90,7 +103,7 @@ describe("cost snapshot (stored at generation, ADR-163)", () => {
 	it("messageCost prefers the stored snapshot over a live estimate", () => {
 		const stored = { usd: 9.99, asOf: "2025-01-01" };
 		expect(messageCost({ model: "gpt-4o", tokenUsage: usage, cost: stored })).toEqual(stored);
-		expect(messageCost({ model: "gpt-4o", tokenUsage: usage })).toEqual({ usd: 2.5, asOf: PRICING_AS_OF });
+		expect(messageCost({ model: "gpt-4o", tokenUsage: usage })).toEqual({ usd: gpt4oIn, asOf: PRICING_AS_OF });
 	});
 
 	it("conversationCost sums stored snapshots and live estimates alike", () => {
@@ -99,6 +112,6 @@ describe("cost snapshot (stored at generation, ADR-163)", () => {
 			{ id: "b", role: "assistant" as const, content: "", timestamp: "", model: "gpt-4o", tokenUsage: usage },
 			{ id: "c", role: "assistant" as const, content: "", timestamp: "", model: "gone-model", cost: { usd: 0.5, asOf: "2025-01-01" } },
 		];
-		expect(conversationCost(msgs)).toEqual({ usd: 4, priced: 3, unpriced: 0 });
+		expect(conversationCost(msgs)).toEqual({ usd: 1 + gpt4oIn + 0.5, priced: 3, unpriced: 0 });
 	});
 });

@@ -36,7 +36,7 @@ jobs:
         run: npm run update:pricing
 
       - name: Check the table still passes its tests
-        run: npx vitest run tests/modelPricing.test.ts
+        run: npx vitest run tests/modelPricing.test.ts tests/updatePricing.test.ts
 
       - name: Open a pull request
         uses: peter-evans/create-pull-request@v7
