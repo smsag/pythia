@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-16 — ADR-165 (CSS only): three leaf-scoped rules in `styles.css` and `tests/leafInset.test.ts`, a happy-dom cascade test that stacks core-shaped, plugin and theme-shaped sheets in Obsidian's order. +5 tests (1034 across 67 files).*
+*Last updated: 2026-09-16 — ADR-165 addendum: `ui/keyboardInset.ts` — `ViewportMetrics.keyboardHeight`, `readKeyboardHeight()` (Obsidian's `--keyboard-height`), `keyboardOverlap` takes the larger of the viewport and keyboard-height estimates, `watchViewport` also listens to Obsidian's `keyboardWillShow`/`keyboardWillHide` and re-measures after `KEYBOARD_SETTLE_MS`; `HistoryController` passes the same number. `ui/keyboardInset.ts` joins the ESLint window-listener allow-list. +4 tests (1038 across 67 files).*
+
+*Previously: 2026-09-16 — ADR-165 (CSS only): three leaf-scoped rules in `styles.css` and `tests/leafInset.test.ts`, a happy-dom cascade test that stacks core-shaped, plugin and theme-shaped sheets in Obsidian's order. +5 tests (1034 across 67 files).*
 
 *Previously: 2026-09-16 — the plugin's own icon (ADR-164). New `ui/pluginIcon.ts` (`PYTHIA_ICON_ID = "pythia-logo"`, `PYTHIA_ICON_SVG`, `registerPythiaIcon()`): the Delphic serpent, drawn on Lucide's 24-unit grid and scaled into `addIcon`'s 100-unit box. `main.ts` registers it before `registerView` (a restored leaf asks for its icon at layout-ready) and uses it for the ribbon, the five entry commands and the two file-menu entries; `sidebar.ts` returns it from `getIcon()`. The three task commands that also carried `bot` moved to descriptive Lucide icons (`star`, `library`, `refresh-cw`). `tests/mocks/obsidian.ts` gains a capturing `addIcon`. The same mark ships as `assets/logo.svg` for the README. `sidebar.ts` shrinks by eight lines (the `obsidian` import collapsed to one line to pay for the new import; ratchet lowered). +6 tests (1029 across 66 files).*
 

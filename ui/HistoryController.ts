@@ -12,7 +12,7 @@ import {
 	bestMatchSnippet,
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
-import { keyboardOverlap, watchViewport } from "./keyboardInset";
+import { keyboardOverlap, readKeyboardHeight, watchViewport } from "./keyboardInset";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 
@@ -206,6 +206,7 @@ export class HistoryController {
 				layoutHeight: window.innerHeight,
 				visualHeight: vv.height,
 				visualOffsetTop: vv.offsetTop,
+				keyboardHeight: readKeyboardHeight(),
 			});
 			listEl.style.paddingBottom = covered > 0 ? `${covered + 8}px` : "";
 		};

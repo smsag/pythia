@@ -2373,7 +2373,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
      which is 8 + exactly one 34pt home indicator. Two attempts at conditional
      logic is enough: Obsidian's own mobile chrome already sits between a sidebar
      leaf and the screen edge, so the inset was buying nothing here. */
-  padding: var(--s2) var(--s3) var(--s1);
+  padding: var(--s2) var(--s3) var(--s3);
   display: flex;
   flex-direction: column;
   gap: var(--s3);
@@ -2419,6 +2419,15 @@ body.is-mobile .p-textarea {
 .p-textarea:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* The composer's bottom clearance (ADR-165 addendum). 12px on a desktop,
+   where the leaf's edge is the window's; ADR-146's 4px was chosen while
+   Obsidian's own 32px padding still sat below it, unseen. In the phone
+   drawer the tab selector's pill sits directly below, with its own margin,
+   so 4px is the whole gap. */
+body.is-phone .workspace-drawer .p-input-area {
+  padding-bottom: var(--s1);
 }
 
 .p-toolbar {
