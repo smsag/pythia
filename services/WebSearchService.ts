@@ -83,8 +83,12 @@ export class WebSearchService {
 				url: TAVILY_ENDPOINT,
 				method: "POST",
 				contentType: "application/json",
+				// The key travels as a bearer header (Tavily's current contract), not
+				// in the JSON body: a body is what gets logged, echoed back in an error
+				// payload, or kept by a proxy; an Authorization header is what every
+				// layer already knows to strip.
+				headers: { Authorization: `Bearer ${this.apiKey}` },
 				body: JSON.stringify({
-					api_key: this.apiKey,
 					query: q,
 					max_results: maxResults,
 					search_depth: "basic",
@@ -94,6 +98,13 @@ export class WebSearchService {
 				// surface a readable error string to the model.
 				throw: false,
 			});
+			if (res.status === 401 || res.status === 403) {
+				// Say what it is: a rejected key is fixed in settings, not by retrying.
+				return `Error: web search key was rejected (HTTP ${res.status}). Ask the user to check the Tavily API key in Pythia settings.`;
+			}
+			if (res.status === 429) {
+				return "Error: web search rate limit reached (HTTP 429). Answer from what you already have, or try again later.";
+			}
 			if (res.status < 200 || res.status >= 300) {
 				const detail = typeof res.text === "string" ? redactSecrets(res.text.slice(0, 200)) : "";
 				return `Error: web search failed (HTTP ${res.status}). ${detail}`.trim();

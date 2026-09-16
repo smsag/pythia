@@ -29,6 +29,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
+    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
@@ -56,8 +57,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
+    ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
+    ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
-  tests/                      ← Vitest unit tests (npm test) — 926 tests across 58 files
+  tests/                      ← Vitest unit tests (npm test) — 949 tests across 59 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -396,6 +399,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
 - **Auto-focus the input on desktop only.** On mobile the soft keyboard overlays the webview, so focusing on open hides the last conversations behind it. `Platform.isMobile` gates it
 - Pad `.p-history-list` with `keyboardOverlap()` from `ui/keyboardInset.ts` — **never re-derive that arithmetic locally**. The copy that did dropped `MIN_KEYBOARD_INSET` and padded the list at rest (ADR-152)
+
+### Model comparison (ADR-160)
+- Entry point is the **long-press on the last user bubble**: the bar reads `✕ Delete · ⇄ Compare · Cancel`. There is no other entry point and it only ever re-runs the **last** user turn — never the input draft
+- **The invariant: while a comparison is pending, the conversation ends with the user turn.** `startComparison` moves the existing answer out of `messages` into candidate 0. Never add a "pending" flag to `Message` or filter history at send time — the send path works unchanged *because* the answer is not in `messages`
+- Candidates run **sequentially** through `llmRouter.streamMessage` on a `{ ...conv, provider, model, writeMode: "none" }` clone, using the view's normal streaming state (Stop works). Do not add parallel runs without giving `BaseProvider` a per-request abort controller first
+- **Keep** appends the chosen candidate (its id becomes the message id) and forks the rest via `keepCandidate` → `ConversationService.createComparisonFork`. Fork name is `forkNameFor(conv.name, model)`; branch point is the kept message; no `forkedFromSelection`. Favorites and merge links on a non-kept answer move into its fork — never delete them
+- **Send is blocked** while `conv.comparison` is set (`comparePending`). Discard restores candidate 0 verbatim
+- The card reuses the fork anchor's grammar (accent rule, mono caps label); the active tab's fill is state — no transition (ADR-155). Model picking uses `suggest/ModelSuggest.ts`, never the header popover, which would change the conversation's model
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

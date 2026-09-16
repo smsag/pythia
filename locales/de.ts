@@ -449,6 +449,21 @@ const de: Strings = {
 	deleteBtn:         "Löschen",
 	cancelBtn:         "Abbrechen",
 	deleteExchangeBtn: "✕ Löschen",
+
+	// ── Modellvergleich (ADR-160) ─────────────────────────────────────────────
+	compareBtn:            "⇄ Vergleichen",
+	compareTitle:          "VERGLEICH",
+	compareKeep:           "Diese Antwort übernehmen",
+	compareAddModel:       "+ Modell",
+	compareDiscard:        "Vergleich verwerfen",
+	comparePending:        "Wähle zuerst eine Antwort aus, bevor du die nächste Nachricht sendest",
+	compareNoOtherModel:   "Für kein anderes Modell ist ein API-Schlüssel hinterlegt",
+	compareKept:           "{{model}} übernommen — {{n}} Alternative(n) als Abzweigungen gespeichert",
+	compareFailed:         "{{model}} fehlgeschlagen: {{error}}",
+	compareDiscarded:      "Vergleich verworfen — ursprüngliche Antwort wiederhergestellt",
+	compareBusy:           "Warte, bis die aktuelle Antwort fertig ist",
+	searchModels:          "Modelle suchen…",
+	instrRunModel:         "ausführen",
 	exchangeDeleted:   "Austausch gelöscht",
 
 	// ── Delete conversation modal ─────────────────────────────────────────────

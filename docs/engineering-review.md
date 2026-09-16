@@ -14,6 +14,8 @@
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-062.*
 
+*Updated: 2026-09-16 — **compare models on the last exchange (ADR-160, new capability).** Long-press on the last user bubble → **⇄ Compare** → pick a model → the prompt re-runs into a card with one tab per model; **Keep this answer** makes that tab the turn and forks the rest as `<conversation> · <Model>`; sending is blocked while pending. Three product questions were asked and answered before building (last turn only; sequential tabs; forks + blocked send). The design rests on one invariant — the conversation ends with the user turn while a comparison is pending — which is why no provider changed and no message ever carries a "pending" flag. The long-press bar left `sidebar.ts` for `ui/ExchangeActionsController.ts` when it gained its third button (1853 → 1763). +26 tests (949 across 59 files).*
+
 *Updated: 2026-09-16 — **whole-codebase quality and security review (ADR-159): #124–#178, 55 fixes in five commits.** Asked for: at least fifty bugs or improvements with maintainability, usability, performance and observability weighted highest, and three principles to guide what follows. Found: the defects came in three shapes — values trusted at a boundary (settings, conversations, template frontmatter, tool-call arguments), failures that said nothing (create_note overwriting, UTC dates, a deep link without its vault, a `TypeError` misfiled as network, a stuck streaming state), and rules that lived only in prose (`toLocaleDateString`, `innerHTML`, `==`, unused locals). Each fix has a headless test where one can be written (+46 → 926 across 58 files); `sidebar.ts` shrank 1891 → 1885 through `ui/emptyState.ts` to pay for the send guard under the ADR-097 ratchet. The three principles are in ADR-159 and in CLAUDE.md. Full list under "Quality & security review (#124–#178)".*
 
 *Updated: 2026-09-10 — fork anchor always-current summary + visible regenerate (ADR-128). Ask: the fork summary shown in the origin conversation should always be the latest and keep a regenerate trigger. It already read the fork live (latest STORED summary) but gave no staleness cue and buried regenerate in a long-press. Added: a staleness check (fork's newest message > shown summary's timestamp) that appends an `outdated` marker + accent-tints a new visible one-tap refresh button (`rotate-cw`), which regenerates the displayed summary type (also creates a first summary); the long-press menu stays for conversation-vs-favorites. Explicit non-goal: no auto-LLM-call on preview-open (would spend tokens on every glance) — deferred as an opt-in. +i18n en/de, CSS. Build/lint/tests green.*
@@ -219,6 +221,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-09-16 | Model comparison on the last exchange (ADR-160): ⇄ Compare in the long-press bar, tabbed card, keep → forks, send blocked while pending; #179–#180 Tavily header + shared long-press |
 | 2026-09-16 | #124–#178 whole-codebase quality & security review (ADR-159): boundary validation, no-overwrite create_note, one retry policy, tidy titles, strict tsconfig + rule-encoding lint; three principles recorded |
 | 2026-05-29 | Initial review at v1.10.2 |
 | 2026-05-30 | v1.11.0: #2, #3 partial, #7, #8, #9, #13, #16 resolved |
@@ -1203,8 +1206,13 @@ Whole-codebase review at v2.15.0 (ADR-159). Every item below is **resolved** in 
 2. **Silence is a bug.** An empty result, a swallowed catch, a no-op on a missing file: each must either say something to the user, log something a report can quote, or be proven to be the idle case. `catch {}` needs a comment naming why silence is right.
 3. **If it is a rule, the tooling enforces it.** A convention worth writing into CLAUDE.md is worth a lint rule, a compiler flag, or a test that fails in the forbidden direction. Prose is for the reasoning; the guard is for the regression.
 
+### Follow-up (2026-09-16, same day)
+
+| # | Finding | Fix |
+|---|---|---|
+| 179 | Tavily key travelled in the JSON body — the part of a request that gets logged, echoed in error payloads and kept by proxies | `Authorization: Bearer` header; body carries no key. 401/403 and 429 now return a specific `Error:` the model can act on (ask for settings / stop retrying) |
+| 180 | The delete-exchange gesture was a fourth hand-rolled 450 ms long-press | `attachLongPress` gained `preventTouchDefault` (non-passive `touchstart`, `preventDefault` for the iOS magnifier); `sidebar.ts` 1885 → 1857 |
+
 ### Deliberately not done
 
 - A request timeout on utility calls — the SDK's 10-minute default stands; a reasoning model's summary can legitimately run long.
-- `Authorization: Bearer` for Tavily — the body field works and is tested; a header change is a product/API decision.
-- Replacing the delete-exchange long-press with `ui/longPress.ts` — it needs `preventDefault` on `touchstart` (iOS magnifier), which the shared helper's passive listener cannot give.

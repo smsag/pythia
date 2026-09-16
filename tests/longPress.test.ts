@@ -146,3 +146,24 @@ describe("attachLongPress", () => {
 		expect(removeSpy).not.toHaveBeenCalled();
 	});
 });
+
+describe("attachLongPress — preventTouchDefault", () => {
+	it("prevents the default touch action only when asked", () => {
+		vi.useFakeTimers();
+		const el = document.createElement("div");
+		const fired = vi.fn();
+		attachLongPress(el, fired, { preventTouchDefault: true });
+		const ev = new Event("touchstart", { cancelable: true });
+		el.dispatchEvent(ev);
+		expect(ev.defaultPrevented).toBe(true);
+		vi.advanceTimersByTime(450);
+		expect(fired).toHaveBeenCalledTimes(1);
+
+		const el2 = document.createElement("div");
+		attachLongPress(el2, vi.fn());
+		const ev2 = new Event("touchstart", { cancelable: true });
+		el2.dispatchEvent(ev2);
+		expect(ev2.defaultPrevented).toBe(false);
+		vi.useRealTimers();
+	});
+});
