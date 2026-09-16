@@ -1,7 +1,8 @@
 import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
-import { t, getLang } from "../i18n";
+import type { EffortLevel, OutputLanguage } from "../models/types";
+import { t, getLang, getObsidianLocale } from "../i18n";
 import { resumeDeepLink } from "../utils";
 import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
@@ -9,6 +10,10 @@ import { goodForModel, profileLine } from "../models/modelGuidance";
 import { DEFAULT_MAX_TOKENS_REASONING } from "../services/promptConstants";
 import { ConversationSettingsModal } from "../suggest/ConversationSettingsModal";
 import { attachOutsideDismiss } from "./outsideDismiss";
+import { ActionSheet } from "./ActionSheet";
+import { openChoicePicker, placeBelow, type ChoiceItem } from "./choicePicker";
+import { resolveEffortState, resolveLanguageState } from "./instructionState";
+import { languageOptions, languageOptionLabel } from "./languageOptions";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -36,43 +41,49 @@ export interface HeaderDeps {
 
 /**
  * The header chrome extracted from `PythiaSidebarView` (ADR-103,
- * engineering-review #120): the header row (history · name · rename · link ·
- * delete · [ctx chip] · model · new), the inline rename flow, the model badge +
- * anchored model popover, and the copy-deep-link action. `mount()` builds the
- * header; `renderHeader`/`updateModelBadge` refresh it; `getChipEl` exposes the
- * context chip other controllers need. Behaviour is identical to the inline
- * methods it replaced.
+ * engineering-review #120): the header row (search · name · [ctx chip] ·
+ * model | effort | language · menu · delete · new — ADR-165), the inline rename
+ * flow, the model popover, the effort and language pickers, and the menu
+ * (rename · copy link · conversation settings). `mount()` builds the header;
+ * `renderHeader`/`updateInstructions` refresh it; `getChipEl` exposes the
+ * context chip other controllers need.
  */
 export class HeaderController {
 	private convNameEl!: HTMLElement;
+	private instEl!: HTMLElement;
 	private modelBadgeEl!: HTMLButtonElement;
+	private effortEl!: HTMLButtonElement;
+	private langEl!: HTMLButtonElement;
+	private menuBtn!: HTMLButtonElement;
 	private deleteConvBtn!: HTMLButtonElement;
-	private copyLinkBtn!: HTMLButtonElement;
-	private renameBtn!: HTMLButtonElement;
 	private renameWrapEl!: HTMLElement;
 	private renameInputEl!: HTMLInputElement;
 	private renameLLMBtn!: HTMLButtonElement;
 	private ctxChipEl!: HTMLButtonElement;
 	private modelPopoverCleanup: (() => void) | null = null;
+	/** Close for the open effort/language picker or menu, if any. */
+	private pickerCleanup: (() => void) | null = null;
+	private sheet: ActionSheet | null = null;
 
 	constructor(private readonly d: HeaderDeps) {}
 
 	/** The context-budget percent chip (ContextInspectorController drives it). */
 	getChipEl(): HTMLButtonElement { return this.ctxChipEl; }
 
-	/** Close the model popover — view teardown/rebuild. */
+	/** Close the model popover and any picker — view teardown/rebuild. */
 	close(): void {
 		this.modelPopoverCleanup?.();
+		this.pickerCleanup?.();
+		this.sheet?.close();
 	}
 
 	mount(container: HTMLElement): void {
 		const header = container.createDiv({ cls: "p-header" });
 
-		// Header order, left → right (ADR-098): history · name (grows) · rename ·
-		// link · delete · [ctx chip] · model · new. The name group takes the flex
-		// space so the action cluster stays pinned to the right edge, and the "+"
-		// new-conversation button is always the last child so its position never
-		// shifts as other controls show/hide.
+		// Header order, left → right (ADR-165, revising ADR-098): search · name
+		// (grows) · [ctx chip] · model | effort | language · menu · delete · new.
+		// The name group takes the flex space so the cluster stays pinned to the
+		// right edge, and "+" is always the last child so it never shifts.
 
 		// ── Far left: conversation search ──────────────────────────────────────
 		// The loupe opens the full conversation panel (browse + content search) with
@@ -86,8 +97,7 @@ export class HeaderController {
 		this.d.registerDomEvent(historyBtn, "click", () => this.d.openHistoryView());
 
 		// ── Conversation name (grows; hosts the inline rename input) ───────────
-		// Plain, non-interactive text (ADR-107): the title used to open the quick
-		// switcher on click; that surface was folded into the search panel above.
+		// Plain, non-interactive text (ADR-107); rename is reached from the menu.
 		const titleGroup = header.createDiv({ cls: "p-title-group" });
 
 		this.convNameEl = titleGroup.createDiv({
@@ -119,22 +129,37 @@ export class HeaderController {
 		});
 		this.d.registerDomEvent(this.renameInputEl, "blur", () => this.exitRename(true));
 
-		// ── Right cluster: rename · link · delete · [ctx] · model · new ────────
-		this.renameBtn = header.createEl("button", {
-			cls: "p-hdr-btn p-rename-btn",
-			attr: { title: t("renameConvTooltip") },
-		});
-		setIcon(this.renameBtn, "pencil");
-		this.renameBtn.style.display = "none";
-		this.d.registerDomEvent(this.renameBtn, "click", () => this.enterRenameMode());
+		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
+		// Clicking it scrolls to the top and opens the context inspector.
+		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
+		this.ctxChipEl.style.display = "none";
+		this.d.registerDomEvent(this.ctxChipEl, "click", () => this.d.revealContextInspector());
 
-		this.copyLinkBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
-			attr: { title: t("copyConvLinkTooltip") },
+		// ── Instructions: model | effort | language (ADR-165) ──────────────────
+		// What every answer is sent with, readable and changeable in one tap each.
+		this.instEl = header.createDiv({ cls: "p-inst", attr: { role: "group" } });
+		this.instEl.style.display = "none";
+
+		this.modelBadgeEl = this.instEl.createEl("button", {
+			cls: "p-inst-seg p-inst-model",
+			attr: { title: t("changeModelTooltip") },
 		});
-		setIcon(this.copyLinkBtn, "link");
-		this.copyLinkBtn.style.display = "none";
-		this.d.registerDomEvent(this.copyLinkBtn, "click", () => this.onCopyConversationLink());
+		this.d.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
+
+		this.effortEl = this.instEl.createEl("button", { cls: "p-inst-seg p-inst-effort" });
+		this.d.registerDomEvent(this.effortEl, "click", () => this.openEffortPicker());
+
+		this.langEl = this.instEl.createEl("button", { cls: "p-inst-seg p-inst-lang" });
+		this.d.registerDomEvent(this.langEl, "click", () => this.openLanguagePicker());
+
+		// ── Menu: rename · copy link · conversation settings ───────────────────
+		this.menuBtn = header.createEl("button", {
+			cls: "p-hdr-btn p-hdr-menu",
+			attr: { title: t("convMenuTooltip") },
+		});
+		setIcon(this.menuBtn, "chevron-down");
+		this.menuBtn.style.display = "none";
+		this.d.registerDomEvent(this.menuBtn, "click", () => this.openMenu());
 
 		this.deleteConvBtn = header.createEl("button", {
 			cls: "p-hdr-btn",
@@ -143,20 +168,6 @@ export class HeaderController {
 		setIcon(this.deleteConvBtn, "trash");
 		this.deleteConvBtn.style.display = "none";
 		this.d.registerDomEvent(this.deleteConvBtn, "click", () => this.d.handleDeleteConversation());
-
-		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
-		// Clicking it scrolls to the top and opens the context inspector.
-		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
-		this.ctxChipEl.style.display = "none";
-		this.d.registerDomEvent(this.ctxChipEl, "click", () => this.d.revealContextInspector());
-
-		this.modelBadgeEl = header.createEl("button", {
-			cls: "p-model",
-			text: "",
-			attr: { title: t("changeModelTooltip") },
-		});
-		this.modelBadgeEl.style.display = "none";
-		this.d.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
 
 		// ── Far right: new conversation (always the last child) ────────────────
 		const newConvBtn = header.createEl("button", {
@@ -170,30 +181,152 @@ export class HeaderController {
 	renderHeader(): void {
 		const conv = this.d.getConversation();
 		if (!conv) {
-			// Empty state: only history, the name, and "+" are shown (ADR-098).
+			// Empty state: only search, the name, and "+" are shown (ADR-098).
 			this.convNameEl.setText(t("noConversation"));
-			this.copyLinkBtn.style.display = "none";
-			this.renameBtn.style.display = "none";
+			this.menuBtn.style.display = "none";
 			this.deleteConvBtn.style.display = "none";
 			return;
 		}
-		this.copyLinkBtn.style.display = "";
-		this.renameBtn.style.display = "";
+		this.menuBtn.style.display = "";
 		this.deleteConvBtn.style.display = "";
 		this.convNameEl.setText(conv.name);
 	}
 
-	updateModelBadge(): void {
+	/** Paint model | effort | language from the conversation and the settings
+	 *  (ADR-165). Call after anything that can change what a send is sent with. */
+	updateInstructions(): void {
 		const conv = this.d.getConversation();
 		if (!conv) {
-			this.modelBadgeEl.style.display = "none";
+			this.instEl.style.display = "none";
 			return;
 		}
-		const model = conv.model ?? "";
-		this.modelBadgeEl.setText(abbreviateModel(model));
-		this.modelBadgeEl.style.display = "";
+		const settings = this.d.plugin.settings;
+		this.modelBadgeEl.setText(abbreviateModel(conv.model ?? ""));
+
+		const effort = resolveEffortState(conv, settings.effort);
+		const effortText = effort.supported ? this.effortLabel(effort.level) : "—";
+		this.effortEl.setText(effortText);
+		this.effortEl.toggleClass("is-pinned", effort.pinned);
+		this.effortEl.toggleClass("is-off", !effort.supported);
+		this.effortEl.setAttr("title", !effort.supported
+			? t("effortUnsupportedNotice", { model: abbreviateModel(conv.model) })
+			: effort.pinned
+				? t("effortSegPinnedTooltip", { v: effortText })
+				: t("effortSegDefaultTooltip", { v: effortText }));
+
+		const lang = resolveLanguageState(conv.outputLanguage, settings.outputLanguage, getObsidianLocale());
+		this.langEl.setText(lang.code);
+		this.langEl.toggleClass("is-pinned", lang.pinned);
+		const langName = languageOptionLabel(lang.setting);
+		this.langEl.setAttr("title", lang.pinned
+			? t("langSegPinnedTooltip", { v: langName })
+			: t("langSegDefaultTooltip", { v: langName }));
+
+		this.instEl.style.display = "";
 		this.d.updateSendHint();
 		this.d.updateContextBar();
+	}
+
+	private effortLabel(level: EffortLevel | null): string {
+		if (level === "low") return t("effortLevelLow");
+		if (level === "medium") return t("effortLevelMedium");
+		if (level === "high") return t("effortLevelHigh");
+		return t("effortSegmentDefault");
+	}
+
+	private sheetFor(): ActionSheet {
+		return (this.sheet ??= new ActionSheet(this.d.getContainer()));
+	}
+
+	/** Open one picker at a time; a second tap on the same control closes it. */
+	private togglePicker(anchor: HTMLElement, title: string, items: ChoiceItem[]): void {
+		const wasOpen = anchor.hasClass("open");
+		this.pickerCleanup?.();
+		this.pickerCleanup = null;
+		this.modelPopoverCleanup?.();
+		if (wasOpen) return;
+		const close = openChoicePicker({
+			container: this.d.getContainer(), anchor, title, items, sheet: this.sheetFor(),
+		});
+		this.pickerCleanup = () => { close(); this.pickerCleanup = null; };
+	}
+
+	private async saveInstructions(): Promise<void> {
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		// Paint before the save: the segment must show the choice at the tap (ADR-155).
+		this.updateInstructions();
+		this.d.refreshContextInspector();
+		await this.d.plugin.conversationStore.save(conv);
+	}
+
+	private openEffortPicker(): void {
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		const effort = resolveEffortState(conv, this.d.plugin.settings.effort);
+		if (!effort.supported) {
+			new Notice(t("effortUnsupportedNotice", { model: abbreviateModel(conv.model) }));
+			return;
+		}
+		const globalEffort = this.d.plugin.settings.effort;
+		const choose = (value: EffortLevel | undefined) => () => {
+			// "Default" stores undefined, never today's default (principle 6).
+			conv.effort = value;
+			void this.saveInstructions();
+		};
+		const items: ChoiceItem[] = [
+			{
+				label: globalEffort
+					? t("effortSegmentDefaultWith", { v: this.effortLabel(globalEffort) })
+					: t("effortSegmentDefault"),
+				detail: t("pickerFollowsSettings"),
+				icon: "", active: conv.effort === undefined, onSelect: choose(undefined),
+			},
+			{ label: t("effortLevelLow"), detail: t("effortPickLowDetail"), icon: "", active: conv.effort === "low", onSelect: choose("low") },
+			{ label: t("effortLevelMedium"), detail: t("effortPickMediumDetail"), icon: "", active: conv.effort === "medium", onSelect: choose("medium") },
+			{ label: t("effortLevelHigh"), detail: t("effortPickHighDetail"), icon: "", active: conv.effort === "high", onSelect: choose("high") },
+		];
+		this.togglePicker(this.effortEl, t("convEffortLabel"), items);
+	}
+
+	private openLanguagePicker(): void {
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		const globalLanguage = this.d.plugin.settings.outputLanguage;
+		const choose = (value: OutputLanguage | undefined) => () => {
+			const before = resolveLanguageState(conv.outputLanguage, globalLanguage, getObsidianLocale()).code;
+			conv.outputLanguage = value;
+			const after = resolveLanguageState(value, globalLanguage, getObsidianLocale()).code;
+			// Existing answers stay as written — say so at the moment it matters.
+			if (before !== after && conv.messages.length > 0) new Notice(t("langChangedNotice"));
+			void this.saveInstructions();
+		};
+		const obsidianCode = resolveLanguageState("obsidian", globalLanguage, getObsidianLocale()).code;
+		const detailFor = (value: OutputLanguage): string | undefined =>
+			value === "auto" ? t("langPickAutoDetail")
+				: value === "obsidian" ? t("langPickObsidianDetail", { code: obsidianCode })
+					: undefined;
+		const items: ChoiceItem[] = [
+			{
+				label: t("convLanguageDefault", { v: languageOptionLabel(globalLanguage) }),
+				detail: t("pickerFollowsSettings"),
+				icon: "", active: conv.outputLanguage === undefined, onSelect: choose(undefined),
+			},
+			...languageOptions().map(([value, label]): ChoiceItem => ({
+				label, detail: detailFor(value), icon: "",
+				active: conv.outputLanguage === value, onSelect: choose(value),
+			})),
+		];
+		this.togglePicker(this.langEl, t("convLanguageLabel"), items);
+	}
+
+	private openMenu(): void {
+		if (!this.d.getConversation()) return;
+		this.togglePicker(this.menuBtn, "", [
+			{ label: t("renameConvTooltip"), icon: "pencil", onSelect: () => this.enterRenameMode() },
+			{ label: t("copyConvLinkTooltip"), icon: "link", onSelect: () => void this.onCopyConversationLink() },
+			{ label: t("openConvSettings"), icon: "sliders", onSelect: () => this.openConversationSettings() },
+		]);
 	}
 
 	/** Update just the title text (e.g. after an auto-generated title). */
@@ -217,25 +350,14 @@ export class HeaderController {
 		const conv = this.d.getConversation();
 		if (!conv) return;
 		if (this.modelPopoverCleanup) { this.modelPopoverCleanup(); return; } // toggle
+		this.pickerCleanup?.();
 
 		const container = this.d.getContainer();
 		const pop = container.createDiv({ cls: "p-model-pop" });
-		// Absolute within the (position:relative) view root — robust against an
-		// Obsidian ancestor that turns position:fixed into a clipped containing
-		// block. Height is capped to the space below the chip with internal scroll.
-		const cRect = container.getBoundingClientRect();
-		const rect = this.modelBadgeEl.getBoundingClientRect();
 		// Widen with the panel (phones and wide sidebars): 226 px was cramped for
 		// "GPT-4.1 nano" + Reasoning chip + context column on a phone.
-		const width = Math.round(Math.min(300, Math.max(226, cRect.width - 24)));
-		const top = rect.bottom - cRect.top + 4;
-		let left = rect.right - cRect.left - width;
-		left = Math.max(4, Math.min(left, cRect.width - width - 4));
-		pop.style.position = "absolute";
-		pop.style.top = `${top}px`;
-		pop.style.left = `${left}px`;
-		pop.style.width = `${width}px`;
-		pop.style.maxHeight = `${Math.max(120, cRect.height - top - 8)}px`;
+		const width = Math.round(Math.min(300, Math.max(226, container.getBoundingClientRect().width - 24)));
+		placeBelow(container, this.instEl, pop, width);
 		this.modelBadgeEl.addClass("open");
 
 		const closePop = () => {
@@ -336,7 +458,7 @@ export class HeaderController {
 		footer.addEventListener("mousedown", (e) => {
 			e.preventDefault(); e.stopPropagation();
 			closePop();
-			this.onModelBadgeClick();
+			this.openConversationSettings();
 		});
 
 	}
@@ -351,11 +473,11 @@ export class HeaderController {
 		// the model badge changed reads as a bug.
 		if (!this.d.plugin.hasApiKeyFor(m.provider)) new Notice(t("modelNoKeyNotice", { provider: m.provider }));
 		await this.d.plugin.conversationStore.save(conv);
-		this.updateModelBadge();
+		this.updateInstructions();
 		this.d.refreshContextInspector();
 	}
 
-	onModelBadgeClick(): void {
+	openConversationSettings(): void {
 		const conv = this.d.getConversation();
 		if (!conv) return;
 		new ConversationSettingsModal(
@@ -363,7 +485,7 @@ export class HeaderController {
 			conv,
 			async (updated) => {
 				await this.d.plugin.conversationStore.save(updated);
-				this.updateModelBadge();
+				this.updateInstructions();
 				this.d.refreshContextInspector();
 			},
 			this.d.plugin.settings.temperature,
@@ -377,7 +499,6 @@ export class HeaderController {
 		const conv = this.d.getConversation();
 		if (!conv) return;
 		this.convNameEl.style.display = "none";
-		this.renameBtn.style.display = "none";
 		this.renameWrapEl.style.display = "";
 		this.renameInputEl.value = conv.name;
 		requestAnimationFrame(() => {
@@ -391,7 +512,6 @@ export class HeaderController {
 		this.renameWrapEl.style.display = "none";
 		this.convNameEl.style.display = "";
 		const conv = this.d.getConversation();
-		this.renameBtn.style.display = conv ? "" : "none";
 		if (confirm && conv) {
 			const newName = this.renameInputEl.value.trim();
 			if (newName && newName !== conv.name) {
@@ -442,9 +562,6 @@ export class HeaderController {
 			new Notice(t("copyFailed"));
 			return;
 		}
-		// Brief visual feedback on the button
-		setIcon(this.copyLinkBtn, "check");
-		setTimeout(() => setIcon(this.copyLinkBtn, "link"), 1500);
 		new Notice(t("convLinkCopied"));
 	}
 }

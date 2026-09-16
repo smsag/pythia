@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-165 (the strip under the composer, measured at last: Obsidian pads every `.view-content` at (0,2,0), a theme added a 52px drawer reserve on phones, and Obsidian's floating-nav fade painted the empty strip; all three out-ranked for our leaf by specificity, the way core exempts its own views).*
+*Last updated: 2026-09-16 — ADR-165 (the header shows what every answer is sent with: model | effort | language, resolved, tinted when set for this conversation, each changeable in one tap; rename and copy link move into a menu).*
 
 *Previously: 2026-09-16 — ADR-164 (the plugin's own icon: one registered mark for every entry point, drawn to Lucide's rules so it reads as native; `bot` retired).*
 
@@ -2790,29 +2790,25 @@ return block?.type === "text" ? block.text.trim() : "";
 
 ---
 
-### ADR-165 — The strip under the composer, measured: core pads every view, the theme added a reserve, core's fade painted it
+### ADR-165 — The header shows what every answer is sent with
 
 **Date:** 2026-09-16
-**Status:** Accepted — closes the thread of ADR-132, 134, 135, 146, 147
+**Status:** Accepted — revises the header order of ADR-098
 
-**Context.** ADR-147 ended with a promise: if any strip survived, "I will instrument rather than guess again." One survived. On the phone, with Klartext, Send hung about 56px above the drawer's tab selector with a lighter band across the space. This time Obsidian 1.13.7 was run under a virtual display with `--remote-debugging-port`, put into phone emulation (`app.emulateMobile(true)`, 393×852, `is-phone`), the vault carried the built plugin and the theme, and the drawer was measured with `getBoundingClientRect` and `getComputedStyle`, before and after every change, in the same tab.
+**Context.** The header carried the conversation's name and the model's abbreviation. Effort and answer language — which change every answer as much as the model does — lived in the conversation settings dialog, reached through the model popover's footer: two taps, and nothing on screen said they existed. The language case was the sharpest. A fixed language, "Obsidian language" and "conversation language" send three different things to the model (an instruction naming the language, the same instruction with the UI locale filled in, and no instruction at all — ADR-148), and none of them was visible. Meanwhile rename, copy link and delete held three of seven header slots. A first design brief listed every conversation setting and asked for a status strip; the designs it produced repeated controls that already sit beside Send (template, web search, vault context) and redesigned the settings dialog, and missed the point. The brief was narrowed to three values (engineering-review #259/#260, `docs/briefs/conversation-controls.html`), and the header built from the resulting mock-up.
 
-**What was there — three layers, none of them Pythia's.**
+**Decision.** The header row is `search · name · [ctx chip] · model | effort | language · ⌄ · delete · new`.
 
-1. **Obsidian pads every `.view-content`.** `app.css` has `.view-content { padding: 12px }` and `.workspace-leaf-content .view-content { padding-bottom: max(var(--safe-area-inset-bottom), var(--size-4-8)) }` at (0,2,0): 32px on a desktop, the home indicator's 34px on a phone. Measured under the default theme on the desktop: `.pythia-view` computed `12px 12px 32px`. **This is ADR-147's "8 left, 8 right, 34 bottom"** — the sides and the home-indicator number, from one core rule. `.pythia-view { padding: 0 }` is (0,1,0) and never won; ADR-147's `.workspace-leaf-content[data-type="pythia"] { padding: 0 }` addressed an element whose padding was already 0. Core exempts its own views by data-type: `.workspace-leaf-content[data-type="markdown"] .view-content { padding: 0 }` at (0,3,0).
-2. **Klartext 1.6.1 reserved 52px on every phone-drawer view** — `body.is-phone .workspace-drawer .workspace-leaf-content > .view-content { padding-bottom: var(--touch-size-l) }` at (0,4,1) — "so the last row cannot end up under the floating selector". The selector does not float: `.workspace-drawer-inner` is a flex column, the tab container is `flex: 1`, `.workspace-drawer-tab-options` is `position: relative`, below the view in normal flow. Dead space, replacing core's 34 with 52.
-3. **Obsidian's floating-nav fade painted the empty strip.** `.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content::after`: 48px, `pointer-events: none`, `linear-gradient(to top, var(--mobile-sidebar-background), transparent)` — meant to fade a file list under floating nav buttons, applied to every drawer leaf. Over an empty reserve, with the sidebar #222 against our #1a1a1a panel, it is the band in the screenshot.
+1. **One bordered group, three tap targets.** Model opens the existing model popover. Effort and language each open a short picker for that value alone — anchored under the segment on desktop, the bottom action sheet on mobile, the same split as the Send menu. A choice applies at the tap: the header repaints before the save, with no Save button and no detour through the dialog.
+2. **Show what is sent, resolved.** The segment reads `Hoch`, `DE`, `AUTO` — never "Standard". `obsidian` shows the resolved locale code (unknown → `EN`, as the prompt falls back). `AUTO` is the one case with no instruction, and says so in the picker ("the model answers in the language you write in").
+3. **Tint means "set for this conversation".** A plain segment follows the plugin settings; a tinted one is pinned. Each picker's first row returns to the default and stores `undefined` — principle 6, with a test that fails if it stores today's value. The header repaints when the settings tab closes, so a changed default shows immediately.
+4. **A model without effort shows a dimmed dash**, and a tap says the model has no effort setting. A stored effort is kept for a later switch back but not tinted, because it is not an instruction now.
+5. **Temperature and token limit stay out.** They change less often, the token warning already sits beside Send, and a 300px leaf has room for three values, not five.
+6. **Rename, copy link and conversation settings move into a `⌄` menu.** Delete stays visible.
+7. **Every picker explains its options in a visible line**, not a tooltip — most use is on a phone.
 
-**Decision.** Three rules beside the ADR-147 one, all scoped to our leaf by `data-type`:
+**Structure.** `ui/instructionState.ts` is the one resolution (conversation → setting → model support) and is pure; the header only paints it. `ui/choicePicker.ts` is the one picker (principle 4) and owns `placeBelow`, which the model popover now uses instead of its own copy. `ActionSheetItem` gained `detail` and `active` so the mobile sheet shows the same rows.
 
-```css
-.workspace-leaf-content[data-type="pythia"] .view-content { padding: 0; }                       /* core's own exemption shape, (0,3,0) */
-body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .view-content { padding-bottom: 0; }  /* (0,5,1) over a theme's (0,4,1) */
-.is-mobile.is-floating-nav .workspace-drawer .workspace-leaf-content[data-type="pythia"]::after { display: none; }
-```
+**Rejected.** A status strip of every conversation setting (repeats the composer toolbar; it was what the first brief asked for, and the wrong ask). One combined control opening a three-part panel (two taps again for the value you want). Showing "Standard · Hoch" in the header (long, and "Standard" is the word that hid the value). Tinting by "an instruction is active" rather than "pinned" (would not tell a user why a value changed when the global setting did).
 
-Specificity, **deliberately never `!important`**: the keyboard lift (ADR-132) writes an inline `padding-bottom` on this element and must keep winning. The theme is fixed too (Klartext 1.6.2 removes its reserve), but the plugin does not depend on it: the shape any theme would use is what the plugin out-ranks. The fade is removed only for our leaf; the composer is not a scrolling list.
-
-**Verification, in the running app.** Phone emulation, Klartext 1.6.1, old stylesheet: `.pythia-view` padding-bottom 52px, fade `display: block`, Send 56px above the view's edge. New stylesheet, theme unchanged: 0px, `none`, Send 4px above the edge and 5px above the selector's hairline; the band gone. Klartext 1.6.2 with the old stylesheet: 34px (core's) and the fade back — which is why all three rules are the plugin's to carry. Default theme, new stylesheet: 0px, `none`, 5px. Desktop, old stylesheet: `12px 12px 32px`; new: `0px`. `tests/leafInset.test.ts` loads core-shaped rules, then `styles.css`, then a theme-shaped rule — Obsidian's order — into happy-dom and asserts the desktop and phone cascades, that another `data-type` keeps both core's and the theme's padding, that inline padding still wins, and that the `::after` rule is scoped by `data-type`. +5 tests; lint, file-size, build green.
-
-**The method, kept.** Five ADRs guessed at this strip from screenshots and reasoned about numbers; the sixth ran the app and read three stylesheets the plugin had never read, one of them Obsidian's own. The tooling is now known: the Linux build under Xvfb with `--remote-debugging-port`, `app.emulateMobile(true)` plus a device-metrics override for the phone, `Runtime.evaluate` for the measurements, `Page.captureScreenshot` for the proof. When a symptom is "on the device", the next step is a device, emulated if need be — not a sixth reading of the same picture.
+**Consequences.** `HeaderController.updateModelBadge` → `updateInstructions`, `onModelBadgeClick` → `openConversationSettings`. The header's title truncates first on a narrow leaf; within the group only the model name may. The settings dialog is unchanged and still edits the same fields. +17 tests (1046 across 68 files): the two resolvers, and the header — resolved values, tint, picker writes, default → `undefined`, dimmed dash, repaint on a changed default, the menu.

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Design brief v2 for the header redesign (#259/#260). Published copy: https://claude.ai/artifact/VgFxL3HjKfUf3PktFn1zXt (private). -->
+<title>Pythia Conversation Controls</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+:root{
+  --ground:#f6f5f9; --surface:#ffffff; --sunk:#efedf4;
+  --ink:#1f1d26; --muted:#5f5b6c; --faint:#8f8b9c; --rule:#e2dfea;
+  --accent:#7560d4; --accent-soft:#ece8fb; --on-accent:#ffffff;
+  --crit:#b3372f; --crit-soft:#fbe6e4;
+  --sans:"IBM Plex Sans",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#16151b; --surface:#1e1d24; --sunk:#26252d;
+    --ink:#ebe9f1; --muted:#aaa6b6; --faint:#77737f; --rule:#312f39;
+    --accent:#a293f2; --accent-soft:#2c2742; --on-accent:#16151b;
+    --crit:#ee8a80; --crit-soft:#3a2220;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#16151b; --surface:#1e1d24; --sunk:#26252d;
+  --ink:#ebe9f1; --muted:#aaa6b6; --faint:#77737f; --rule:#312f39;
+  --accent:#a293f2; --accent-soft:#2c2742; --on-accent:#16151b;
+  --crit:#ee8a80; --crit-soft:#3a2220;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.6 var(--sans);padding-inline:20px;padding-block:40px 80px;-webkit-font-smoothing:antialiased}
+main{max-width:880px;margin:0 auto;display:grid;gap:48px}
+section{display:grid;gap:16px}
+h1,h2,h3{margin:0;text-wrap:balance;line-height:1.2}
+h1{font-size:clamp(28px,5vw,36px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:21px;font-weight:600}
+h3{font-size:15px;font-weight:600}
+p{margin:0;max-width:68ch}
+ul,ol{margin:0;padding-left:1.2em;display:grid;gap:6px;max-width:72ch}
+.eyebrow{font:500 11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+.lede{font-size:17px;color:var(--muted);max-width:62ch}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 5px;border-radius:3px}
+.head{display:grid;gap:14px}
+.meta{font:12px/1.4 var(--mono);color:var(--faint)}
+
+.goal{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);padding:18px 20px;display:grid;gap:10px}
+.goal p.big{font-size:18px;font-weight:500;max-width:60ch}
+
+.not{background:var(--crit-soft);border-radius:8px;padding:16px 20px;display:grid;gap:8px}
+.not h3{color:var(--crit)}
+
+.pane{background:var(--surface);border:1px solid var(--rule);max-width:400px}
+.hdr{display:flex;align-items:center;gap:6px;padding:8px 10px;min-height:40px}
+.ic{width:20px;height:20px;display:grid;place-items:center;color:var(--faint);flex:none}
+.ic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ttl{flex:1;min-width:0;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font:11px var(--mono);color:var(--muted);white-space:nowrap}
+.track{height:3px;background:var(--sunk)}
+.track i{display:block;height:100%;width:3%;background:var(--accent)}
+.toolbar{display:flex;align-items:center;gap:4px;padding:8px 10px;border-top:1px solid var(--rule)}
+.toolbar .send{margin-left:auto;font:11px var(--mono);background:var(--accent);color:var(--on-accent);border-radius:3px;padding:4px 10px}
+.draft{padding:10px 10px 0;font:12px var(--mono);color:var(--faint)}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:24px;align-items:start}
+.pair .cap{font:500 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+
+.values{display:grid;gap:14px}
+.val{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:18px 20px;display:grid;gap:12px}
+.val-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.val-top h3{font-size:17px}
+.tag{font:600 10px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:4px 6px;border-radius:3px}
+.tag.always{background:var(--accent);color:var(--on-accent)}
+.tag.pinned{background:var(--accent-soft);color:var(--accent)}
+.val .q{color:var(--muted);font-size:14.5px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px;border-top:1px solid var(--rule)}
+thead th{border-top:0;font:500 10.5px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap;width:30%}
+td:nth-child(2){width:36%}
+td:last-child{color:var(--muted)}
+.val .note{font-size:14px;color:var(--muted)}
+.val .note b{color:var(--ink)}
+
+.rules{display:grid;gap:10px;counter-reset:r}
+.rules li{list-style:none;position:relative;padding-left:0}
+.rules{padding-left:0}
+.rules b{font-weight:600}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
+.box{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:16px 18px;display:grid;gap:10px;align-content:start}
+.box ul{font-size:14px}
+.box.dont{border-style:dashed}
+.box.dont h3{color:var(--crit)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+</head>
+<body>
+<main>
+
+<header class="head">
+  <div class="eyebrow">Design brief · v2 · replaces v1 of the same day</div>
+  <h1>Pythia conversation controls</h1>
+  <p class="lede">Make the instructions behind every answer readable and changeable from the header: which model answers, how much it reasons, and which language it has been told to write in.</p>
+  <div class="meta">Pythia for Obsidian 2.18.0 · 16 Sep 2026</div>
+</header>
+
+<section class="not">
+  <h3>Discard these parts of the v1 designs</h3>
+  <ul>
+    <li><b>The status strip / rail</b> with template, web, vault, notes and note writing (1a–1c). Template, web search and vault context already have controls in the toolbar next to <b>Senden</b>; repeating them in the header is noise.</li>
+    <li><b>The settings panel redesign</b> (1e). The conversation settings dialog is not part of this brief and stays as it is.</li>
+    <li><b>The state grammar sheet</b> (1d) as a general system for every chip. What's needed is narrower: for each value below, show whether it's the default or set for this conversation.</li>
+  </ul>
+</section>
+
+<section class="goal">
+  <div class="eyebrow">The one job</div>
+  <p class="big">Looking at the header, a user can say: “this conversation is answered by <u>Sonnet 5</u>, reasoning <u>High</u>, instructed to write in <u>German</u>.” And they can change any of the three with a tap on it.</p>
+  <p>Today only the model is visible. Reasoning and language sit in a dialog reached through the model popover's footer (two taps), so users don't know they exist. The language case is the sharpest: German, the Obsidian language, and “the conversation's language” produce very different instructions to the model, and nothing on screen tells them apart.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Today</div>
+  <h2>What's already on screen</h2>
+  <div class="pair">
+    <div>
+      <div class="cap">Header: the area to redesign</div>
+      <div class="pane">
+        <div class="hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
+          <span class="ttl">EZB Zinssatz aktuell</span>
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span>
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+          <span class="badge">Sonnet 5</span>
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+        </div>
+        <div class="track"><i></i></div>
+      </div>
+      <p style="font-size:13.5px;color:var(--muted);margin-top:8px">Search · name · rename · copy link · delete · model · new. The line underneath is context usage.</p>
+    </div>
+    <div>
+      <div class="cap">Composer toolbar: leave alone, don't duplicate</div>
+      <div class="pane">
+        <div class="draft">Nachricht…</div>
+        <div class="toolbar">
+          <span class="ic" title="Notiz anhängen"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></span>
+          <span class="ic" title="Antwort speichern"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></span>
+          <span class="ic" title="Template"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
+          <span class="ic" title="Web-Suche"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
+          <span class="ic" title="Vault-Kontext"><svg viewBox="0 0 24 24"><path d="M4 19V5M9 19V5M14 19l-3-14M19 19 16 5"/></svg></span>
+          <span class="ic" title="Eingabe minimieren"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></span>
+          <span class="send">Senden</span>
+        </div>
+      </div>
+      <p style="font-size:13.5px;color:var(--muted);margin-top:8px">Attach note · save response · template · web search · vault context · minimize · Senden. The token-limit warning also appears here, and long-pressing Senden offers summaries and prompt optimization.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Scope</div>
+  <h2>The values to surface</h2>
+  <p>Three are always visible. Two appear only when this conversation has its own value. UI labels are German first; the plugin also ships English.</p>
+
+  <div class="values">
+
+    <article class="val">
+      <div class="val-top"><h3>Model</h3><span class="tag always">Always</span></div>
+      <p class="q">Already in the header. Keep it, and keep its picker (provider groups, speed · depth · cost, context window). It's the anchor the other values attach to.</p>
+    </article>
+
+    <article class="val">
+      <div class="val-top"><h3>Reasoning <span style="font-weight:400;color:var(--faint)">(“Effort” in code and settings today)</span></h3><span class="tag always">Always</span></div>
+      <p class="q">How much the model thinks before answering. Higher means more thorough, slower and more expensive, and the thinking counts against the token limit.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Stored value</th><th>What to show</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>undefined (inherit)</td><td>The resolved level (global default is <b>Hoch</b>), marked as default</td><td>Must keep following the global setting if that changes later</td></tr>
+          <tr><td>low · medium · high</td><td>Niedrig · Mittel · Hoch, marked as set for this conversation</td><td>Choosing “Standard” again returns to inherit</td></tr>
+          <tr><td>model has no effort parameter</td><td>Visibly “not available for this model”, <b>not</b> “off” or “low”</td><td>Some Anthropic and OpenAI models don't accept it; the stored value is kept and applies again after switching back</td></tr>
+        </tbody>
+      </table></div>
+    </article>
+
+    <article class="val">
+      <div class="val-top"><h3>Language</h3><span class="tag always">Always</span></div>
+      <p class="q">The language the model is <i>instructed</i> to write in. It applies to the answer and to everything generated for the conversation: title, summary, glossary definitions.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Setting</th><th>What the model is told</th><th>What to show</th></tr></thead>
+        <tbody>
+          <tr><td>Deutsch · Englisch · Italienisch · Spanisch</td><td>“Always write your replies in German, even when the user writes in another language.”</td><td>The language name</td></tr>
+          <tr><td>Obsidian-Sprache</td><td>The same instruction, with Obsidian's UI language filled in (about 30 possible, not just the four above)</td><td>The <b>resolved</b> language name, e.g. Deutsch, plus a hint that it follows Obsidian</td></tr>
+          <tr><td>Sprache des Gesprächsverlaufs</td><td><b>No language instruction at all</b>. The model usually mirrors the language of your message.</td><td>Must read clearly as “not instructed / follows your message”, not as a language</td></tr>
+          <tr><td>undefined (inherit)</td><td>Whatever the global setting resolves to (default: Sprache des Gesprächsverlaufs)</td><td>The resolved value, marked as default</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Changing it doesn't translate answers already written. Say so at the moment of change, not in the header.</p>
+    </article>
+
+    <article class="val">
+      <div class="val-top"><h3>Temperature</h3><span class="tag pinned">Only when set for this conversation</span></div>
+      <p class="q">0–1. Low is factual and repeatable; high is varied. Global default is 0.7. Reasoning models ignore it; if one is pinned on such a model, show it as not applied.</p>
+    </article>
+
+    <article class="val">
+      <div class="val-top"><h3>Token limit</h3><span class="tag pinned">Only when set for this conversation</span></div>
+      <p class="q">Maximum length of one answer. The “too low for this reasoning model” warning already appears beside <b>Senden</b>, so don't repeat it in the header.</p>
+    </article>
+
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Rules</div>
+  <h2>How the values behave</h2>
+  <ul class="rules">
+    <li><b>Show what's sent, never just “Standard”.</b> A default value is displayed resolved (“Hoch”, “Deutsch”) with a quiet marker that it's the default, never the bare word “Standard”.</li>
+    <li><b>Default and “set for this conversation” look different</b>, and both are changeable. Every picker offers a way back to the default. Picking the default must not store today's default value, so the conversation keeps following the global setting when it changes.</li>
+    <li><b>Change in place.</b> Tapping a value opens a small picker for that value alone, anchored to it (a bottom sheet on mobile is fine). One tap to open, one to choose, applied immediately, no Save button, no detour through the settings dialog.</li>
+    <li><b>Understandable without hover.</b> Most use is on iPhone. Anything a tooltip would explain must be visible in the picker itself: one short line under each option is enough.</li>
+    <li><b>Fits a 300 px sidebar.</b> Show how it degrades at 300, 380 and 450 px. If space runs out, rename / copy link / delete may move into an overflow menu. The conversation name may truncate; the model, reasoning and language may not disappear.</li>
+  </ul>
+</section>
+
+<section class="two">
+  <div class="box">
+    <div class="eyebrow">Deliver</div>
+    <h3>Frames wanted</h3>
+    <ul>
+      <li>Header at 300 / 380 / 450 px and iPhone width, light and dark</li>
+      <li>States: everything default · language pinned · “Sprache des Gesprächsverlaufs” (no instruction) · Obsidian language resolved · reasoning on a model without effort · temperature pinned · temperature pinned on a reasoning model</li>
+      <li>The open picker for <b>language</b> and for <b>reasoning</b>, desktop and mobile</li>
+    </ul>
+  </div>
+  <div class="box dont">
+    <div class="eyebrow">Do not draw</div>
+    <h3>Out of scope</h3>
+    <ul>
+      <li>The conversation settings dialog</li>
+      <li>Template, attached notes, web search, vault context (their controls are at Senden)</li>
+      <li>Note-writing permission, history/resume mode, glossary theme, output folder (tracked separately)</li>
+      <li>Context usage (keep the existing line)</li>
+      <li>Anything below the header</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Constraints</div>
+  <h2>Native to Obsidian</h2>
+  <ul>
+    <li>Only Obsidian CSS variables (<code>--color-accent</code>, <code>--text-faint</code>, <code>--background-modifier-border</code>…). No custom background colours, no hardcoded accent, no shadows except on popovers.</li>
+    <li>4 px spacing grid. 11 / 12 px type. <code>--font-monospace</code> for values and labels, <code>--font-interface</code> for the name. No imported fonts, no emoji.</li>
+    <li>Icons are Lucide (Obsidian's set), 12–14 px, stroke 1.6. Text on an accent fill is pure black or white.</li>
+    <li>No hover-only states; <code>:hover</code> styles only for pointer devices. No animated transitions on fills that show state.</li>
+    <li>The panel fills its leaf flush: no radius, no outer padding.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">Open</div>
+  <h2>Questions for the designer to answer in the frames</h2>
+  <ol>
+    <li>What should “Effort” be called for users: <i>Reasoning</i>, <i>Denktiefe</i>, something else? The header, the picker and the settings dialog must use the same word.</li>
+    <li>How does “no language instruction” read in 60 px of header without sounding like an error?</li>
+    <li>One combined control (“Sonnet 5 · Hoch · DE”) opening three pickers, or three separately tappable values?</li>
+  </ol>
+</section>
+
+</main>
+</body>
+</html>

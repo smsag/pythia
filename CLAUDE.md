@@ -65,11 +65,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
+    instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
+    choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1034 tests across 67 files
+  tests/                      ← Vitest unit tests (npm test) — 1046 tests across 68 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -79,6 +81,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
+    briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -281,12 +284,17 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 
 ### Header
 ```
-[ search ][ Title (grows) ][ pencil ][ link ][ trash ][ model badge ][ plus ]
+[ search ][ Title (grows) ][ Sonnet 5 | Hoch | DE ][ ⌄ ][ trash ][ plus ]
 ```
-Order left→right (ADR-098): search · name (grows) · rename · link · delete · [ctx chip] · model · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. **No template caption** — the template rides the assistant turn label instead (ADR-129). See `docs/design.md` for the full spec.
+Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx chip] · **model | effort | language** · menu · delete · new. The name group is the only `flex: 1` region, so the "+" is always the last child and never shifts. **No template caption** — the template rides the assistant turn label instead (ADR-129). See `docs/design.md` for the full spec.
 - Search (far left, `search` loupe icon, ADR-107): opens the `.p-history` conversation panel with its search input focused. The single in-view conversation-search surface.
 - Title: 12px, `font-weight: 600`, truncated with ellipsis, flex: 1. Plain, non-interactive text (ADR-107) — no click, no `▾`.
-- Model badge: `--font-monospace`, 10px, `--text-faint`
+- **Instructions `.p-inst`** (ADR-165): one bordered mono group of three segments, each its own tap target. **Model** opens the model popover; **effort** and **language** open a choice picker (`ui/choicePicker.ts` — anchored popover on desktop, bottom sheet on mobile). What they show comes from `ui/instructionState.ts` only — never re-derive the resolution in the header
+- **A segment shows what the send uses, resolved** (`Hoch`, `DE`, `AUTO`), never a bare "Standard". **Accent tint (`.is-pinned`) = set for this conversation; plain = follows the plugin settings.** Every picker's first row returns to the default and stores `undefined` (principle 6); a test fails if it stores the value
+- `AUTO` = no language instruction (ADR-148's `auto`). `obsidian` shows the resolved locale code. A model without effort shows a dimmed `—` (`.is-off`) and tapping says so; a stored effort on such a model is kept, not tinted
+- Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
+- **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
+- The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
 - Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
 
 ### Reference row

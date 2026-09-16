@@ -39,8 +39,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 	}
 
 	hide(): void {
-		// Closing the tab must not lose a value typed in the last few hundred ms.
-		this.plugin.pluginDataStore.flushSettingsSave();
+		// Flush what was typed in the last few hundred ms; repaint the header's defaults (ADR-165).
+		this.plugin.onSettingsTabClosed();
 	}
 
 	display(): void {
