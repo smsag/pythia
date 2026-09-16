@@ -33,6 +33,8 @@ const historyRows = (pane: () => Element): HTMLElement[] =>
 	Array.from(pane().querySelectorAll<HTMLElement>(".p-history-row"));
 /** openHistoryView() focuses the input inside a 0 ms timeout — let it run. */
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+/** The search input rebuilds the list 60 ms after the last keystroke. */
+const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 90));
 
 describe("conversation search panel (ADR-107)", () => {
 	let plugin: InstanceType<typeof PythiaPlugin>;
@@ -109,6 +111,7 @@ describe("conversation search panel (ADR-107)", () => {
 		const input = panelInput(pane);
 		input.value = "seiko";
 		input.dispatchEvent(new Event("input", { bubbles: true }));
+		await settle();
 		expect(historyRows(pane)).toHaveLength(1);       // search narrowed it
 
 		clearBtn(pane).dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -132,6 +135,7 @@ describe("conversation search panel (ADR-107)", () => {
 		const input = panelInput(pane);
 		input.value = "seiko";
 		input.dispatchEvent(new Event("input"));
+		await settle();
 
 		expect(pane().querySelector(".p-history-group")).toBeNull(); // flat — no date buckets
 		expect(historyRows(pane)).toHaveLength(1);
@@ -237,6 +241,7 @@ describe("related conversations (ADR-109 M3)", () => {
 		const input = panelInput(pane);
 		input.value = "source";
 		input.dispatchEvent(new Event("input"));
+		await settle();
 		expect(pane().querySelector(".p-history-chip")).toBeNull(); // typing cleared related mode
 	});
 
@@ -330,6 +335,7 @@ describe("conversation picker (ADR-143)", () => {
 		const input = panelInput(pane);
 		input.value = "kayak";
 		input.dispatchEvent(new Event("input"));
+		await settle();
 
 		expect(historyRows(pane)).toHaveLength(1);
 		expect(historyRows(pane)[0].textContent).toContain("Kayak");

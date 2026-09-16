@@ -32,6 +32,9 @@ export interface GlossaryDeps {
  */
 export class GlossaryController {
 	private openAnchor: HTMLElement | null = null;
+	/** Bumped per toggle so a second tap during the async lookup below does not
+	 *  leave two anchors open. */
+	private openGeneration = 0;
 
 	constructor(private readonly d: GlossaryDeps) {}
 
@@ -101,6 +104,7 @@ export class GlossaryController {
 			return;
 		}
 		this.closeAnchor();
+		const generation = ++this.openGeneration;
 
 		const service = this.d.plugin.glossaryService;
 		const found = service.find(await service.all(), term);
@@ -108,6 +112,7 @@ export class GlossaryController {
 		// `all()` carries frontmatter only — the definition lives in the note body
 		// and is read for the one term actually being opened (ADR-150).
 		const entry = await service.hydrate(found);
+		if (generation !== this.openGeneration || !markEl.isConnected) return; // superseded
 
 		const isPerson = entry.kind === "person";
 		const anchor = createDiv({
@@ -208,8 +213,10 @@ export class GlossaryController {
 		});
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
-			// Open the term's own note now that each term is one (ADR-150).
-			void this.d.plugin.app.workspace.openLinkText(entry.term, "", true);
+			// The note's own path, not a link-text lookup by term: a person and a
+			// term can share a name, and a term whose file name was sanitized
+			// ("C#" → "C-") would not resolve by name at all.
+			void this.d.plugin.app.workspace.openLinkText(this.d.plugin.glossaryService.pathFor(entry), "", true);
 		});
 	}
 

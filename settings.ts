@@ -9,10 +9,7 @@ import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import {
 	KNOWN_MODELS,
-	supportsTemperature,
-	supportsEffort,
-	isReasoningModel,
-	isMistralReasoningModel,
+	parameterSupport,
 	resolveDefaultModelForProvider,
 } from "./models/knownModels";
 import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
@@ -28,10 +25,18 @@ const MISTRAL_MODELS = KNOWN_MODELS.mistral;
 
 export class PythiaSettingTab extends PluginSettingTab {
 	private plugin: PythiaPlugin;
+	/** Typed fields save a beat after the last keystroke (every save rewrites the
+	 *  whole data.json); toggles and dropdowns still save at once. */
+	private readonly saveSoon = (): void => this.plugin.saveSettingsSoon();
 
 	constructor(app: App, plugin: PythiaPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	hide(): void {
+		// Closing the tab must not lose a value typed in the last few hundred ms.
+		this.plugin.pluginDataStore.flushSettingsSave();
 	}
 
 	display(): void {
@@ -174,11 +179,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("5")
 					.setValue(String(this.plugin.settings.webSearchMaxResults))
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.webSearchMaxResults = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -231,9 +236,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("Pythia/Inbox.md")
 					.setValue(this.plugin.settings.inboxNote)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.inboxNote = value.trim();
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					})
 			);
 
@@ -266,17 +271,17 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(String(DEFAULT_MAX_TOKENS))
 					.setValue(this.plugin.settings.maxTokens?.toString() ?? "")
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const trimmed = value.trim();
 						if (trimmed === "") {
 							this.plugin.settings.maxTokens = undefined;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 							return;
 						}
 						const n = parseInt(trimmed, 10);
 						if (!isNaN(n) && n > 0) {
 							this.plugin.settings.maxTokens = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -288,17 +293,17 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("0.0 – 1.0")
 					.setValue(this.plugin.settings.temperature?.toString() ?? "")
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const trimmed = value.trim();
 						if (trimmed === "") {
 							this.plugin.settings.temperature = undefined;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 							return;
 						}
 						const n = parseFloat(trimmed);
 						if (!isNaN(n) && n >= 0 && n <= 1) {
 							this.plugin.settings.temperature = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -327,11 +332,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("100")
 					.setValue(String(this.plugin.settings.maxMessagesPerSession))
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.maxMessagesPerSession = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -343,11 +348,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("200")
 					.setValue(String(this.plugin.settings.maxConversations))
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.maxConversations = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -359,11 +364,11 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("8000")
 					.setValue(String(this.plugin.settings.maxAttachedNotesTokens))
-					.onChange(async (value) => {
+					.onChange((value) => {
 						const n = parseInt(value, 10);
 						if (!isNaN(n) && n >= 0) {
 							this.plugin.settings.maxAttachedNotesTokens = n;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}
 					})
 			);
@@ -390,9 +395,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(t("customInstructionsPlaceholder"))
 					.setValue(this.plugin.settings.customInstructions)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.customInstructions = value;
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					});
 				text.inputEl.rows = 4;
 				text.inputEl.addClass("pythia-settings-textarea");
@@ -439,9 +444,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 				textComponent = text;
 				text.setPlaceholder(t("promptOptimizerTemplateNone"))
 					.setValue(this.plugin.settings.promptOptimizerTemplateId ?? "")
-					.onChange(async (value) => {
-						this.plugin.settings.promptOptimizerTemplateId = value;
-						await this.plugin.saveSettings();
+					.onChange((value) => {
+						this.plugin.settings.promptOptimizerTemplateId = value.trim();
+						this.saveSoon();
 					});
 			})
 			.addButton((btn) => {
@@ -484,27 +489,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 	private updateTempEffortAvailability(temperatureSetting: Setting, effortSetting: Setting): void {
 		const provider = this.plugin.settings.defaultProvider;
 		const model = resolveDefaultModelForProvider(provider, this.plugin.settings);
-
-		let tempSupported: boolean;
-		let effortSupported: boolean;
-		switch (provider) {
-			case "anthropic":
-				tempSupported = supportsTemperature(model);
-				effortSupported = supportsEffort(model);
-				break;
-			case "openai":
-				tempSupported = !isReasoningModel(model);
-				effortSupported = isReasoningModel(model);
-				break;
-			case "mistral":
-				tempSupported = !isMistralReasoningModel(model);
-				effortSupported = true;
-				break;
-			default: {
-				const exhaustiveCheck: never = provider;
-				throw new Error(`Unknown provider: ${String(exhaustiveCheck)}`);
-			}
-		}
+		const { temperature: tempSupported, effort: effortSupported } = parameterSupport(provider, model);
 
 		temperatureSetting.setDisabled(!tempSupported);
 		temperatureSetting.setDesc(tempSupported ? t("temperatureDesc") : `${t("temperatureDesc")} ${t("paramUnsupportedSuffix")}`);
@@ -553,7 +538,10 @@ export class PythiaSettingTab extends PluginSettingTab {
 		customInput.value = isCustom ? currentValue : "";
 		customInput.style.display = isCustom ? "" : "none";
 		customInput.style.marginLeft = "8px";
-		this.plugin.registerDomEvent(customInput, "change", async () => {
+		// A direct listener: the input is discarded with the tab, whereas a
+		// plugin-level registerDomEvent held one dead listener per settings open
+		// until the plugin unloaded.
+		customInput.addEventListener("change", async () => {
 			if (customInput && customInput.value.trim()) {
 				await setValue(customInput.value.trim());
 				onAnyChange?.();

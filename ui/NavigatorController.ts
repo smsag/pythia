@@ -1,6 +1,7 @@
 import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
+import { attachOutsideDismiss } from "./outsideDismiss";
 
 export interface NavigatorDeps {
 	plugin: PythiaPlugin;
@@ -98,8 +99,7 @@ export class NavigatorController {
 		const hasTree = !!root && children.length > 0;
 
 		const openConv = (target: Conversation) => {
-			navigatorEl.removeClass("open");
-			document.removeEventListener("mousedown", onOutside, true);
+			this.close();
 			void this.d.setActiveConversation(target);
 		};
 
@@ -166,8 +166,7 @@ export class NavigatorController {
 						e.stopPropagation();
 						// Jump synchronously, then close — same order as Favorites/Chapters.
 						this.d.revealMergeLink(merge.id);
-						navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
+						this.close();
 					});
 					del.addEventListener("mousedown", (e) => {
 						e.preventDefault();
@@ -192,8 +191,7 @@ export class NavigatorController {
 		const favLabelLink = hasFavSummary
 			? {
 					onClick: () => {
-						navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
+						this.close();
 						this.d.goToFavoritesSummary();
 					},
 			  }
@@ -216,8 +214,7 @@ export class NavigatorController {
 						e.stopPropagation();
 						// Mirror the Chapters handler exactly: jump synchronously, then close.
 						this.d.scrollToFavorite(fav);
-						navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
+						this.close();
 					});
 					del.addEventListener("mousedown", (e) => {
 						e.preventDefault();
@@ -249,8 +246,7 @@ export class NavigatorController {
 						e.preventDefault();
 						e.stopPropagation();
 						this.d.scrollToMessage(msg.id);
-						navigatorEl.removeClass("open");
-						document.removeEventListener("mousedown", onOutside, true);
+						this.close();
 					});
 				}
 			}
@@ -264,22 +260,13 @@ export class NavigatorController {
 			chaptersSection.scrollIntoView({ block: "start", behavior: "instant" });
 		});
 
-		// Close on mousedown outside (capture phase so it fires before any Obsidian handlers).
-		// Stored in outsideCleanup so it can be removed if the view closes or conversation
-		// switches before the user clicks outside (#26).
+		// Close on a press outside (capture phase, so it fires before any Obsidian
+		// handler). Held in outsideCleanup so a view close or conversation switch
+		// before the user clicks outside still removes it (#26).
 		this.outsideCleanup?.();
-		const onOutside = (e: MouseEvent) => {
-			if (!navigatorEl.contains(e.target as Node) && e.target !== this.d.indexTriggerEl) {
-				navigatorEl.removeClass("open");
-				this.outsideCleanup?.();
-				this.outsideCleanup = null;
-			}
-		};
-		// Defer so the trigger's own mousedown doesn't immediately close it.
-		setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			this.outsideCleanup = () =>
-				document.removeEventListener("mousedown", onOutside, true);
-		}, 0);
+		this.outsideCleanup = attachOutsideDismiss(
+			(target) => navigatorEl.contains(target) || target === this.d.indexTriggerEl,
+			() => this.close(),
+		);
 	}
 }

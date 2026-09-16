@@ -31,6 +31,7 @@ import { MergeController } from "./ui/MergeController";
 import { GlossaryController } from "./ui/GlossaryController";
 import { paintCitations } from "./ui/citationPainter";
 import { attachLongPress } from "./ui/longPress";
+import { attachOutsideDismiss } from "./ui/outsideDismiss";
 import { SelectionController } from "./ui/SelectionController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
@@ -435,8 +436,6 @@ export class PythiaSidebarView extends ItemView {
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
 			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
 			runFavoritesSummary: (conv) => this.summaryController.runFavoritesSummary(conv),
-			registerDomEvent: (el, type, cb, opts) =>
-				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
 
 		this.glossaryController = new GlossaryController({
@@ -755,16 +754,13 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		// Outside-click / outside-touch dismissal (deferred so this gesture doesn't self-close).
-		const onOutside = (e: Event) => {
-			if (!this.sendMenuWrap.contains(e.target as Node)) this.closeSummaryMenu();
-		};
-		window.setTimeout(() => {
-			document.addEventListener("mousedown", onOutside, true);
-			document.addEventListener("touchstart", onOutside, true);
-		}, 0);
+		const detachOutside = attachOutsideDismiss(
+			(target) => this.sendMenuWrap.contains(target),
+			() => this.closeSummaryMenu(),
+			{ touch: true },
+		);
 		this.sendMenuCleanup = () => {
-			document.removeEventListener("mousedown", onOutside, true);
-			document.removeEventListener("touchstart", onOutside, true);
+			detachOutside();
 			menu.remove();
 		};
 	}

@@ -167,3 +167,32 @@ describe("attachLongPress — preventTouchDefault", () => {
 		vi.useRealTimers();
 	});
 });
+
+describe("attachLongPress — press point and touchOnly", () => {
+	it("hands the press position to onFire (touch) so a menu can open at the finger", () => {
+		vi.useFakeTimers();
+		const el = document.createElement("div");
+		const fired = vi.fn();
+		attachLongPress(el, fired);
+		const ev = new Event("touchstart") as Event & { touches: { clientX: number; clientY: number }[] };
+		Object.defineProperty(ev, "touches", { value: [{ clientX: 12, clientY: 34 }] });
+		el.dispatchEvent(ev);
+		vi.advanceTimersByTime(LONG_PRESS_MS);
+		expect(fired).toHaveBeenCalledWith({ x: 12, y: 34 });
+		vi.useRealTimers();
+	});
+
+	it("touchOnly never arms on a mouse press", () => {
+		vi.useFakeTimers();
+		const el = document.createElement("div");
+		const fired = vi.fn();
+		attachLongPress(el, fired, { touchOnly: true });
+		el.dispatchEvent(new MouseEvent("mousedown", { button: 0 }));
+		vi.advanceTimersByTime(LONG_PRESS_MS);
+		expect(fired).not.toHaveBeenCalled();
+		el.dispatchEvent(new Event("touchstart"));
+		vi.advanceTimersByTime(LONG_PRESS_MS);
+		expect(fired).toHaveBeenCalledTimes(1);
+		vi.useRealTimers();
+	});
+});

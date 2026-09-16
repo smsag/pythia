@@ -69,6 +69,11 @@ export class GlossaryService {
 		return `${this.root}/${PEOPLE_SUBFOLDER}`;
 	}
 
+	/** Vault path of an entry's note. */
+	pathFor(entry: Pick<GlossaryEntry, "term" | "kind">): string {
+		return termPath(this.root, entry.term, entry.kind);
+	}
+
 	/** The single-note glossary written by builds up to 2.13.x — read only, by
 	 *  the migration command. */
 	get legacyNotePath(): string {

@@ -93,3 +93,20 @@ describe("resolveDefaultModelForProvider", () => {
 		expect(resolveDefaultModelForProvider("mistral", settings)).toBe("mistral-large-latest");
 	});
 });
+
+import { parameterSupport } from "../models/knownModels";
+
+describe("parameterSupport (one rule for the settings tab and the conversation modal)", () => {
+	it("anthropic follows the catalog flags", () => {
+		expect(parameterSupport("anthropic", "claude-sonnet-5")).toEqual({ temperature: false, effort: true });
+		expect(parameterSupport("anthropic", "claude-haiku-4-5")).toEqual({ temperature: true, effort: false });
+	});
+	it("openai reasoning models swap temperature for effort", () => {
+		expect(parameterSupport("openai", "o3")).toEqual({ temperature: false, effort: true });
+		expect(parameterSupport("openai", "gpt-4o")).toEqual({ temperature: true, effort: false });
+	});
+	it("mistral always accepts effort; magistral rejects temperature", () => {
+		expect(parameterSupport("mistral", "magistral-medium-latest")).toEqual({ temperature: false, effort: true });
+		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: true });
+	});
+});

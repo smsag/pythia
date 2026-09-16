@@ -14,6 +14,8 @@
 *Updated: 2026-07-09 — response-quality audit: #42–#49 added and resolved (resumeMode data-loss bug, retry/backoff, Anthropic prompt caching, temperature, attached-notes token guard, system-prompt grounding, relevance-ranked note suggestions, note chunking). #50 (true semantic/embedding retrieval) added as backlog.*
 *Updated: 2026-08-24 — web search "research mode": closes the standing training-cutoff/recency gap (models could not reach anything after their cutoff). A client-executed `web_search` tool (`services/WebSearchService.ts`, Tavily via Obsidian `requestUrl`) runs through the existing agentic loop, so one `ToolDefinition` in `ToolHandler.getToolDefinitions` lights up all three providers; gated by a per-conversation `researchMode` toggle (independent of `writeMode`) with a `<recent_context>` date/grounding block injected by `ContextBuilder`. Never-throws error convention reused for search failures. New settings `searchSecretName`/`webSearchDefault`/`webSearchMaxResults`; new tests `tests/webSearch.test.ts` + `web_search` gating/execution cases in `tests/ToolHandler.test.ts` and a recency-block case in `tests/ContextBuilder.test.ts`. Not a bug fix — a new capability, not separately numbered (same convention as recent entries). See ADR-062.*
 
+*Updated: 2026-09-16 — **second whole-codebase review (ADR-161): #181–#236, 56 fixes.** Read what the first pass skimmed: every `ui/` controller, both settings surfaces, the embedding/retrieval layer, the stylesheet, and the day-old comparison code. Three shapes the first three principles did not name — the second hand-rolled copy (five dismissers, four leaking), work proportional to the corpus rather than the keystroke (re-tokenizing every conversation per character; rewriting `data.json` per typed character), and a shown default being stored (the modal pinned untouched temperature/max-tokens). Three new principles in CLAUDE.md alongside ADR-159's; a lint rule now confines raw `document`/`window` listeners to an allow-list. +18 tests (967 across 60 files). Full list under "Second review (#181–#236)".*
+
 *Updated: 2026-09-16 — **compare models on the last exchange (ADR-160, new capability).** Long-press on the last user bubble → **⇄ Compare** → pick a model → the prompt re-runs into a card with one tab per model; **Keep this answer** makes that tab the turn and forks the rest as `<conversation> · <Model>`; sending is blocked while pending. Three product questions were asked and answered before building (last turn only; sequential tabs; forks + blocked send). The design rests on one invariant — the conversation ends with the user turn while a comparison is pending — which is why no provider changed and no message ever carries a "pending" flag. The long-press bar left `sidebar.ts` for `ui/ExchangeActionsController.ts` when it gained its third button (1853 → 1763). +26 tests (949 across 59 files).*
 
 *Updated: 2026-09-16 — **whole-codebase quality and security review (ADR-159): #124–#178, 55 fixes in five commits.** Asked for: at least fifty bugs or improvements with maintainability, usability, performance and observability weighted highest, and three principles to guide what follows. Found: the defects came in three shapes — values trusted at a boundary (settings, conversations, template frontmatter, tool-call arguments), failures that said nothing (create_note overwriting, UTC dates, a deep link without its vault, a `TypeError` misfiled as network, a stuck streaming state), and rules that lived only in prose (`toLocaleDateString`, `innerHTML`, `==`, unused locals). Each fix has a headless test where one can be written (+46 → 926 across 58 files); `sidebar.ts` shrank 1891 → 1885 through `ui/emptyState.ts` to pay for the send guard under the ADR-097 ratchet. The three principles are in ADR-159 and in CLAUDE.md. Full list under "Quality & security review (#124–#178)".*
@@ -221,6 +223,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-09-16 | #181–#236 second whole-codebase review (ADR-161): shared dismisser + lint guard, per-keystroke work cached/debounced, untouched overrides stay inherited, ADR-158 applied to four older paths, hover fills under `(hover: hover)`; three more principles |
 | 2026-09-16 | Model comparison on the last exchange (ADR-160): ⇄ Compare in the long-press bar, tabbed card, keep → forks, send blocked while pending; #179–#180 Tavily header + shared long-press |
 | 2026-09-16 | #124–#178 whole-codebase quality & security review (ADR-159): boundary validation, no-overwrite create_note, one retry policy, tidy titles, strict tsconfig + rule-encoding lint; three principles recorded |
 | 2026-05-29 | Initial review at v1.10.2 |
@@ -1216,3 +1219,111 @@ Whole-codebase review at v2.15.0 (ADR-159). Every item below is **resolved** in 
 ### Deliberately not done
 
 - A request timeout on utility calls — the SDK's 10-minute default stands; a reasoning model's summary can legitimately run long.
+
+
+---
+
+## Second review (#181–#236) — 2026-09-16
+
+Whole-codebase review, second pass (ADR-161), targeting what the first read least. Every item is **resolved**.
+
+### Listener lifecycle & duplicated interactions (principle 4)
+
+| # | Finding | Fix |
+|---|---|---|
+| 181 | Five hand-rolled outside-press dismissers; four added their `document` listener a tick late and leaked it when closed before the tick | `ui/outsideDismiss.ts` (deferred, disposer-safe) |
+| 182 | `HeaderController` model popover: cleanup handle set only after the tick, so `close()` in the same tick found nothing | Handle set synchronously; helper |
+| 183 | `NavigatorController`: same leak, plus five manual `removeEventListener` sites bypassing `close()` | All routes through `close()`; helper |
+| 184 | `ForkController` menu: same leak | Helper |
+| 185 | Sidebar Send long-press menu: same leak | Helper |
+| 186 | `HistoryController` Escape listener registered in the focus timeout; a close before it leaked | Helper (`pointer: false`); focus timeout guarded on `overlay.isConnected` |
+| 187 | `ForkController` bound anchor long-press through the view's `registerDomEvent` — one dead listener set per anchor open until unload | Direct listeners (anchor is removed with `closeAnchor`); `registerDomEvent` dep removed |
+| 188 | History rows: a fifth hand-rolled 500 ms long-press | `attachLongPress` gained the press point and `touchOnly` |
+| 189 | `handleDeleteConversation` duplicated `deleteConversationWithConfirm` | Delegates |
+| 190 | Two parameter-support `switch`es (settings tab, conversation modal) | `parameterSupport()` in `models/knownModels.ts` |
+| 191 | Two code-block copy buttons: a denied clipboard was an unhandled rejection | `copyWithFeedback` + `copyFailed` notice |
+| 192 | Settings custom-model input registered via `plugin.registerDomEvent` — one dead listener per settings open until unload | Direct listener |
+| 193 | `keyboardInset.watchViewport` measured after dispose (two rAFs) | `live` guard |
+| 194 | `GlossaryController.toggleAnchor`: two quick taps during the async lookup left two anchors | Generation guard + `isConnected` |
+| 195 | ESLint: nothing stopped the next raw `document.addEventListener` | `no-restricted-syntax` with an allow-list of files that own both add and remove |
+
+### Work proportional to the corpus (principle 5)
+
+| # | Finding | Fix |
+|---|---|---|
+| 196 | Conversation panel re-tokenized every conversation's full text per keystroke | Token cache for the panel's life; `rankConversations` accepts token arrays |
+| 197 | `#` picker re-tokenized every vault file's haystack per keystroke | `scoreRelevanceTokenSets` + per-dropdown token cache |
+| 198 | History rows counted forks with a filter over all conversations per row (O(n²)) | One pass per build |
+| 199 | Search input rebuilt the whole list on every keystroke | 60 ms debounce |
+| 200 | `looksTimeSensitive` compiled ~100 `RegExp`s per send | Compiled once at module load |
+| 201 | Every typed settings character rewrote the whole `data.json` (settings + conversations + eviction) | `PluginDataStore.saveSettingsSoon()` (400 ms), flushed on tab close |
+| 202 | Glossary settings text fields: same | Debounced |
+| 203 | Embedding settings text fields: same; folder list kept trailing slashes | Debounced; trimmed |
+
+### Overrides & data integrity (principles 1, 6)
+
+| # | Finding | Fix |
+|---|---|---|
+| 204 | Conversation modal pinned the untouched temperature on Save (inherit → frozen) | `undefined` when untouched |
+| 205 | Same for max-tokens | Same |
+| 206 | `deserializeIndex` accepted a truncated file → short vectors → every later `cosine()` threw | Bounds checks on meta and vector blob; caller rebuilds |
+| 207 | A glossary term whose file name had to be sanitized (`C#`) lost its real name in the index and the anchor | `term` property written when it differs; read back in preference |
+| 208 | Glossary cache not invalidated on note delete/rename | Invalidated in both handlers |
+| 209 | Templates folder set to the vault root (`/`) found nothing | Root means every markdown file |
+| 210 | `promptOptimizerTemplateId` stored untrimmed | Trimmed |
+
+### Silence (principle 2, applied to older paths)
+
+| # | Finding | Fix |
+|---|---|---|
+| 211 | `generateConversationSummary` swallowed an empty summary | `summaryEmpty` notice |
+| 212 | Fork anchor regenerate: same | Same |
+| 213 | Merge anchor regenerate: same | Same |
+| 214 | LLM rename blanked the input on an empty title | Notice, field untouched |
+| 215 | Switching a conversation to a provider with no key failed only at the next send | `modelNoKeyNotice` at the switch |
+| 216 | Optimizer errors shown as `String(err)` (`Error: …` prefix) | `err.message` (two sites) |
+
+### View correctness
+
+| # | Finding | Fix |
+|---|---|---|
+| 217 | Person button stayed visible over user bubbles, where its handler silently declined | Hidden like Define |
+| 218 | Insert-into-note used a remembered editor whose leaf may be closed | Checks the leaf still exists |
+| 219 | Conversation picker modal showed a raw ISO date slice | `formatDate` (ADR-139) |
+| 220 | Diagram copy tooltip hardcoded in English | `copyDiagramTooltip` (en/de) |
+| 221 | `SummaryController` dead `void chevron` | Removed |
+| 222 | Test mock `debounce` lacked `run`/`cancel` | Debouncer surface |
+
+### Stylesheet (ADR-155 applied to the rest)
+
+| # | Finding | Fix |
+|---|---|---|
+| 223 | 22 hover rules with a background fill outside `@media (hover: hover)` — sticky on iOS after a tap | Wrapped |
+| 224 | `.p-tool-btn` transitioned `background`; `.is-active` is a state fill (research / vault toggles) | Colour-only transition |
+| 225 | Model popover shadow hardcoded `rgba(0,0,0,.18)` | `var(--shadow-l)` |
+
+### Tests added
+
+| # | Covers |
+|---|---|
+| 226 | `attachOutsideDismiss`: same-tick immunity, outside/inside, dispose-before-tick, dispose-after-arm, escape-only |
+| 227 | `attachLongPress`: press point, `touchOnly` |
+| 228 | `deserializeIndex`: truncated vectors, truncated meta |
+| 229 | `entryFrontmatter`/`entryFromFrontmatter`: `term` property round-trip |
+| 230 | `scoreRelevanceTokenSets` parity with the string form |
+| 231 | `rankConversations` with token arrays |
+| 232 | `parameterSupport` for all three providers |
+| 233 | Templates folder `/` |
+| 234 | History panel tests adapted to the debounced input |
+| 235 | `sidebar.ts` 1763 → 1759, ceiling lowered |
+| 236 | Docs: ADR-161, CLAUDE.md principles 4–6, architecture/design updates |
+
+### Three more principles (ADR-161) — compared with ADR-159's
+
+| New | Relation to the first three |
+|---|---|
+| **4. One implementation per interaction** | Extends ADR-159's "one builder per fact" corollary from *data* (a regex, a URL) to *behaviour* (a gesture, a dismissal). The leaks lived in the copies |
+| **5. Pay for the keystroke, not the corpus** | New. The first review had no performance principle; this one found five per-keystroke corpus walks |
+| **6. Inherited stays inherited** | Generalizes a rule CLAUDE.md already stated for `theme` and `outputLanguage` to every override, after two fields in the same modal broke it |
+
+"Silence is a bug" (principle 2) fired four more times — every time in code older than ADR-159 — which confirms it and says the older paths were never re-read against it. **Where they live:** the canonical list is CLAUDE.md's "Engineering principles" section (what every session reads first); the reasoning is the ADR; this file is the record of what each principle caught. Not a fourth document.

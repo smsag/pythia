@@ -440,6 +440,8 @@ const en = {
 	deleteExchangeBtn: "✕ Delete",
 
 	// ── Model comparison (ADR-160) ────────────────────────────────────────────
+	copyDiagramTooltip:    "Copy diagram source",
+	modelNoKeyNotice:      "No API key for {{provider}} yet — add one in Pythia settings before sending.",
 	compareBtn:            "⇄ Compare",
 	compareTitle:          "COMPARISON",
 	compareKeep:           "Keep this answer",

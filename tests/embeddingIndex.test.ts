@@ -71,3 +71,21 @@ describe("serializeIndex / deserializeIndex", () => {
 		expect(() => deserializeIndex(new ArrayBuffer(32))).toThrow(/magic/);
 	});
 });
+
+describe("deserializeIndex — truncated files", () => {
+	it("refuses a buffer cut short in the vector blob instead of yielding short vectors", () => {
+		const dim = 4;
+		const items = [
+			{ id: "a", contentHash: "h1", chunks: [new Int8Array([1, 2, 3, 4]), new Int8Array([5, 6, 7, 8])] },
+		];
+		const buf = serializeIndex(items, dim);
+		const cut = buf.slice(0, buf.byteLength - 3);
+		expect(() => deserializeIndex(cut)).toThrow(/truncated vectors/);
+	});
+
+	it("refuses a buffer cut short inside the meta block", () => {
+		const buf = serializeIndex([{ id: "a", contentHash: "h", chunks: [new Int8Array([1, 2])] }], 2);
+		const cut = buf.slice(0, 20);
+		expect(() => deserializeIndex(cut)).toThrow(/truncated meta/);
+	});
+});

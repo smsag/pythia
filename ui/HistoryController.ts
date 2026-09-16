@@ -12,6 +12,8 @@ import {
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
 import { keyboardOverlap, watchViewport } from "./keyboardInset";
+import { attachLongPress } from "./longPress";
+import { attachOutsideDismiss } from "./outsideDismiss";
 
 /**
  * Using the history panel to choose a conversation rather than switch to one
@@ -118,11 +120,14 @@ export class HistoryController {
 
 		const close = () => {
 			overlay.remove();
-			document.removeEventListener("keydown", onKey, true);
+			detachEscape();
 			detachKeyboardInset();
 			this.historyCleanup = null;
 		};
-		const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+		// Escape is bound a tick late so the keypress that opened the panel — if
+		// it was a keypress — cannot immediately close it again; the helper drops
+		// the registration if the panel is closed before that tick.
+		const detachEscape = attachOutsideDismiss(() => true, close, { escape: true, pointer: false });
 		// Registered synchronously, not in the focus timeout below: until this is
 		// set, the panel is open but the controller does not know it, so a second
 		// open in the same tick stacked a second overlay instead of toggling.
@@ -205,16 +210,18 @@ export class HistoryController {
 		};
 		const detachKeyboardInset = watchViewport(applyKeyboardInset);
 
-		// Searchable text per conversation, built once and memoized for the life of
-		// the panel so each keystroke only re-scores, never re-concatenates messages.
-		const haystackCache = new Map<string, string>();
-		const haystackFor = (conv: Conversation): string => {
-			let h = haystackCache.get(conv.id);
-			if (h === undefined) {
-				h = buildConversationHaystack(conv);
-				haystackCache.set(conv.id, h);
+		// Searchable tokens per conversation, built once and memoized for the life of
+		// the panel so each keystroke only re-scores — never re-concatenates the
+		// messages, and never re-tokenizes them, which on a 200-conversation vault
+		// was the cost that made typing lag.
+		const tokenCache = new Map<string, string[]>();
+		const tokensFor = (conv: Conversation): string[] => {
+			let toks = tokenCache.get(conv.id);
+			if (toks === undefined) {
+				toks = tokenize(buildConversationHaystack(conv));
+				tokenCache.set(conv.id, toks);
 			}
-			return h;
+			return toks;
 		};
 
 		// Keyboard selection over the rendered conversation rows (group headers are
@@ -305,6 +312,15 @@ export class HistoryController {
 			if (items > 0) menu.showAtPosition({ x, y });
 		};
 
+		// Fork counts once per build, not one filter over every conversation per row.
+		let forkCounts = new Map<string, number>();
+		const countForks = (): void => {
+			forkCounts = new Map();
+			for (const c of this.d.plugin.conversations) {
+				if (c.forkedFromId) forkCounts.set(c.forkedFromId, (forkCounts.get(c.forkedFromId) ?? 0) + 1);
+			}
+		};
+
 		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
@@ -312,7 +328,7 @@ export class HistoryController {
 				return sub;
 			}
 			sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
-			const forkCount = this.d.plugin.conversations.filter((c) => c.forkedFromId === conv.id).length;
+			const forkCount = forkCounts.get(conv.id) ?? 0;
 			if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
 			const favCount = conv.favorites?.length ?? 0;
 			if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
@@ -356,21 +372,12 @@ export class HistoryController {
 
 			// Long-press on touch → the row's context menu (show similar + delete),
 			// since the hover icons aren't reachable without a pointer. The ensuing
-			// click is suppressed so the row doesn't also open.
-			let lpTimer: ReturnType<typeof setTimeout> | null = null;
+			// click is suppressed so the row doesn't also open. The shared gesture
+			// (ui/longPress.ts) — touch only, because pointer users have the icons.
 			let lpFired = false;
-			const clearLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
-			row.addEventListener("touchstart", (e: TouchEvent) => {
-				const touch = e.touches[0];
-				const x = touch?.clientX ?? 0;
-				const y = touch?.clientY ?? 0;
-				lpFired = false;
-				if (pick) return;
-				lpTimer = setTimeout(() => { lpFired = true; showRowMenu(conv, x, y); }, 500);
-			}, { passive: true });
-			row.addEventListener("touchend", clearLp);
-			row.addEventListener("touchmove", clearLp);
-			row.addEventListener("touchcancel", clearLp);
+			if (!pick) {
+				attachLongPress(row, ({ x, y }) => { lpFired = true; showRowMenu(conv, x, y); }, { delayMs: 500, touchOnly: true });
+			}
 			row.addEventListener("click", () => { if (lpFired) { lpFired = false; return; } openConv(conv); });
 			rows.push({ conv, el: row });
 		};
@@ -382,13 +389,14 @@ export class HistoryController {
 			const q = query.toLowerCase().trim();
 			const all = this.d.plugin.conversations;
 			const byId = new Map(all.map((c) => [c.id, c]));
+			countForks();
 
 			// Active query → flat list ranked by content relevance (TF-IDF over
 			// title + summary + messages), best match first, with match snippets.
 			// The date-grouped/fork-indented layout resumes when the box is empty.
 			if (q) {
 				const queryTokens = tokenize(query);
-				const ranked = rankConversations(queryTokens, all, all.map(haystackFor));
+				const ranked = rankConversations(queryTokens, all, all.map(tokensFor));
 				for (const { conversation } of ranked) {
 					const isFork = !!conversation.forkedFromId && byId.has(conversation.forkedFromId);
 					makeRow(conversation, isFork, false, queryTokens);
@@ -422,10 +430,17 @@ export class HistoryController {
 			paintSelection();
 		};
 
+		// Rebuild a beat after the last keystroke, not on every one: with a large
+		// corpus each build re-scores every conversation and repaints the list.
+		let inputTimer: ReturnType<typeof setTimeout> | null = null;
 		input.addEventListener("input", () => {
 			if (related) { related = null; renderChip(); } // typing exits related mode
 			syncClear();
-			buildList(input.value);
+			if (inputTimer !== null) clearTimeout(inputTimer);
+			inputTimer = setTimeout(() => {
+				inputTimer = null;
+				if (overlay.isConnected) buildList(input.value);
+			}, 60);
 		});
 		input.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (e.key === "ArrowDown") { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, rows.length - 1); paintSelection(); }
@@ -435,9 +450,7 @@ export class HistoryController {
 
 		buildList("");
 		setTimeout(() => {
-			// Escape is bound a tick late so the keypress that opened the panel — if
-			// it was a keypress — cannot immediately close it again.
-			document.addEventListener("keydown", onKey, true);
+			if (!overlay.isConnected) return; // closed before the tick
 			// Desktop only (ADR-152). Auto-focus is a keyboard affordance: you open
 			// the switcher and type. On a phone it raises the on-screen keyboard
 			// unbidden, which covers the bottom of the very list the panel exists to
@@ -450,26 +463,11 @@ export class HistoryController {
 		}, 0);
 	}
 
+	/** The header's delete: the active conversation, through the same confirm
+	 *  flow the panel rows use (one copy of the after-delete rule). */
 	async handleDeleteConversation(): Promise<void> {
 		const active = this.d.getConversation();
 		if (!active) return;
-		if (this.d.isStreaming()) {
-			new Notice(t("cannotDeleteWhileStreaming"));
-			return;
-		}
-		const toDelete = active;
-
-		new DeleteConversationModal(this.d.plugin.app, toDelete, async () => {
-			await this.d.plugin.conversationStore.delete(toDelete.id);
-			new Notice(t("conversationDeleted"));
-
-			const remaining = this.d.plugin.conversations;
-			if (remaining.length > 0) {
-				const next = remaining[remaining.length - 1];
-				await this.d.setActiveConversation(next);
-			} else {
-				await this.d.plugin.cmdNewConversation();
-			}
-		}).open();
+		this.deleteConversationWithConfirm(active);
 	}
 }

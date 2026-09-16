@@ -103,7 +103,7 @@ export class SummaryController {
 			if (kind === "favorites") void this.summarizeFavorites();
 			else void this.generateConversationSummary();
 		});
-		const chevron = header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
+		header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
 		header.addEventListener("click", () =>
 			this.setSummaryCardOpen(card, !card.hasClass("open"))
 		);
@@ -127,7 +127,6 @@ export class SummaryController {
 			void this.onSaveSummaryToNote(kind, text);
 		});
 
-		void chevron; // chevron text is updated via setSummaryCardOpen
 		return card;
 	}
 
@@ -179,17 +178,16 @@ export class SummaryController {
 		const notice = new Notice(t("generatingSummary"), 0);
 		try {
 			const { title, summary } = await this.d.plugin.llmRouter.generateSummaryWithTitle(conv);
-			if (summary) {
-				conv.summaryText = summary;
-				conv.summaryUpdatedAt = new Date().toISOString();
-				if (title) await this.d.plugin.renameConversation(conv, title);
-				await this.d.plugin.conversationStore.save(conv);
-				// Only touch UI if the user hasn't switched conversations meanwhile.
-				if (this.d.getConversation()?.id === conv.id) {
-					if (title) this.d.renderHeader();
-					this.renderSummaryCards();
-					this.revealSummaryCard("conversation");
-				}
+			if (!summary) { new Notice(t("summaryEmpty")); return; } // ADR-158: "" is not a result
+			conv.summaryText = summary;
+			conv.summaryUpdatedAt = new Date().toISOString();
+			if (title) await this.d.plugin.renameConversation(conv, title);
+			await this.d.plugin.conversationStore.save(conv);
+			// Only touch UI if the user hasn't switched conversations meanwhile.
+			if (this.d.getConversation()?.id === conv.id) {
+				if (title) this.d.renderHeader();
+				this.renderSummaryCards();
+				this.revealSummaryCard("conversation");
 			}
 		} catch (e) {
 			new Notice(t("summaryFailed", { error: e instanceof Error ? e.message : String(e) }));

@@ -357,11 +357,14 @@ export default class PythiaPlugin extends Plugin {
 		this.registerEvent(this.app.vault.on("create", (f) => { if (f instanceof TFile) markChanged(f); }));
 		this.registerEvent(this.app.vault.on("delete", (f) => {
 			if (!(f instanceof TFile)) return;
+			// A deleted term note must stop marking its term now, not at the next edit.
+			if (this.glossaryService?.isGlossaryNote(f.path)) this.glossaryService.invalidate();
 			deletedPaths.add(f.path);
 			changedFiles.delete(f.path);
 			flushChanges();
 		}));
 		this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
+			if (this.glossaryService?.isGlossaryNote(oldPath)) this.glossaryService.invalidate();
 			deletedPaths.add(oldPath);
 			if (f instanceof TFile) markChanged(f);
 			else flushChanges();
@@ -545,6 +548,8 @@ export default class PythiaPlugin extends Plugin {
 	hasApiKeyFor(provider: Provider): boolean { return this.secretStore.hasApiKeyFor(provider); }
 
 	saveSettings(): Promise<void> { return this.pluginDataStore.saveSettings(); }
+	/** Debounced settings save for typed fields; see PluginDataStore. */
+	saveSettingsSoon(): void { this.pluginDataStore.saveSettingsSoon(); }
 	saveConversations(): Promise<void> { return this.pluginDataStore.saveConversations(); }
 
 	activateView(): Promise<PythiaSidebarView> { return this.viewManager.activateView(); }

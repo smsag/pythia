@@ -18,9 +18,9 @@ export function renderGlossarySettings(containerEl: HTMLElement, plugin: PythiaP
 			text
 				.setPlaceholder("Glossary")
 				.setValue(plugin.settings.glossaryFolder)
-				.onChange(async (value) => {
+				.onChange((value) => {
 					plugin.settings.glossaryFolder = value.trim();
-					await plugin.saveSettings();
+					plugin.saveSettingsSoon();
 					// The service caches entries read from the old folder.
 					plugin.glossaryService?.invalidate();
 				})
@@ -52,9 +52,9 @@ export function renderGlossarySettings(containerEl: HTMLElement, plugin: PythiaP
 			text
 				.setPlaceholder("Pythia/Glossary.md")
 				.setValue(plugin.settings.glossaryNote)
-				.onChange(async (value) => {
+				.onChange((value) => {
 					plugin.settings.glossaryNote = value.trim();
-					await plugin.saveSettings();
+					plugin.saveSettingsSoon();
 					plugin.glossaryService?.invalidate();
 				})
 		);

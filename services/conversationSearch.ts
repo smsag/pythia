@@ -65,7 +65,10 @@ function tokenMatches(candidateTokens: string[], queryToken: string): boolean {
 export function rankConversations(
 	queryTokens: string[],
 	conversations: Conversation[],
-	haystacks: string[]
+	/** Raw haystacks, or their token arrays when the caller caches them — the
+	 *  conversation panel scores the whole corpus on every keystroke, and
+	 *  tokenizing it each time was the expensive half. */
+	haystacks: (string | string[])[]
 ): RankedConversation[] {
 	if (queryTokens.length === 0) {
 		return [...conversations]
@@ -76,7 +79,7 @@ export function rankConversations(
 	}
 
 	const n = haystacks.length;
-	const docTokens = haystacks.map((h) => tokenize(h));
+	const docTokens = haystacks.map((h) => (typeof h === "string" ? tokenize(h) : h));
 	// Guard `c.name` — a malformed record may lack it, and tokenize() throws on
 	// a non-string (one bad conversation must not blank out all search).
 	const nameTokens = conversations.map((c) => tokenize(typeof c.name === "string" ? c.name : ""));

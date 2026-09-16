@@ -7,6 +7,7 @@ import {
 	bestMatchSnippet,
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
+import { formatDate } from "../services/messageUtils";
 
 export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	private conversations: Conversation[];
@@ -48,10 +49,11 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	renderSuggestion(conv: Conversation, el: HTMLElement): void {
 		el.addClass("pythia-conv-suggest-item");
 		const text = el.createDiv({ cls: "pythia-conv-suggest-text" });
-		const date = conv.updatedAt.slice(0, 10);
+		// The one UI date format (ADR-139), not a raw ISO slice.
+		const date = formatDate(conv.updatedAt);
 		text.createDiv({
 			cls: "pythia-conv-suggest-title",
-			text: `${conv.name}  [${date}]`,
+			text: date ? `${conv.name}  [${date}]` : conv.name,
 		});
 		const snippet = bestMatchSnippet(this.queryTokens, conv);
 		if (snippet) {

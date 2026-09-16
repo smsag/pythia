@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
-import { scoreRelevanceTokensWeighted, tokenize } from "../services/noteRelevance";
+import { scoreRelevanceTokenSets, tokenize } from "../services/noteRelevance";
 import { t } from "../i18n";
 
 // One row in the picker. Folders can be *drilled into* (ArrowRight / swipe-left /
@@ -34,6 +34,9 @@ export class InlineSuggest {
 	private context = "";
 	private touchStartX = 0;
 	private touchStartY = 0;
+	/** Tokenized note haystacks by path, kept for the life of one dropdown so a
+	 *  keystroke re-scores every candidate without re-tokenizing the vault. */
+	private tokenCache = new Map<string, Set<string>>();
 
 	constructor(
 		app: App,
@@ -99,6 +102,7 @@ export class InlineSuggest {
 		this.query = "";
 		this.context = "";
 		if (this.dropdown) { this.dropdown.remove(); this.dropdown = null; }
+		this.tokenCache.clear();
 		if (this.outsideHandler) {
 			document.removeEventListener("mousedown", this.outsideHandler);
 			this.outsideHandler = null;
@@ -111,6 +115,15 @@ export class InlineSuggest {
 		const headings = cache?.headings?.map((h) => h.heading).join(" ") ?? "";
 		const title = typeof cache?.frontmatter?.title === "string" ? cache.frontmatter.title : "";
 		return `${file.basename} ${title} ${headings}`;
+	}
+
+	private noteTokens(file: TFile): Set<string> {
+		let set = this.tokenCache.get(file.path);
+		if (!set) {
+			set = new Set(tokenize(this.noteHaystack(file)));
+			this.tokenCache.set(file.path, set);
+		}
+		return set;
 	}
 
 	/** Build the flat search view (no folder drilled into). */
@@ -134,7 +147,7 @@ export class InlineSuggest {
 		const candidates = this.app.vault.getFiles()
 			.filter((f) => f.extension === "md" || f.extension === "pdf")
 			.filter((f) => q === "" || f.path.toLowerCase().includes(q));
-		const scores = scoreRelevanceTokensWeighted(contextTokens, candidates.map((f) => this.noteHaystack(f)));
+		const scores = scoreRelevanceTokenSets(contextTokens, candidates.map((f) => this.noteTokens(f)));
 		const matchingFiles = candidates
 			.map((f, i) => ({
 				file: f,
