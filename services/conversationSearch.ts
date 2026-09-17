@@ -1,41 +1,116 @@
 import type { Conversation, Message } from "../models/types";
 import { tokenize } from "./noteRelevance";
+import { applyRelevanceFloor, matchStrength } from "./tokenMatch";
+import { parseScope, shouldWiden, type SearchScope } from "./searchScope";
 
 /** A message's textual content as a plain string, tolerating malformed records.
  *  Persistence only guarantees `messages` is an array (parseConversations) — not
  *  that each element is an object or that `content` is a string. An interrupted
  *  stream or a legacy entry can leave a null element or a non-string `content`;
- *  since the haystack is built for every conversation up front, a single such
+ *  since the fields are built for every conversation up front, a single such
  *  record would otherwise throw and take the entire search down with it. */
 function messageText(m: Message | null | undefined): string {
 	return typeof m?.content === "string" ? m.content : "";
 }
 
+/** One vault note this conversation touched, with its path tokenized once. */
+export interface NoteRef {
+	/** The vault path, for display and for telling the user WHY a row surfaced. */
+	ref: string;
+	tokens: string[];
+}
+
 /**
- * The searchable text for one conversation: its title, its LLM-generated summary
- * if present, and every message body. Folding the summary in is the cheap half of
- * "semantic" recall — the model's own paraphrasing ("automobile", "Fahrzeug")
- * already lives in the summary, so a lexical match can surface a conversation
- * whose messages never used the exact query word. Title matches are ranked higher
- * in rankConversations (not by repeating the title here — the tokenizer dedupes,
- * so repetition would be a no-op).
+ * The searchable text of one conversation, split into the fields that carry
+ * different amounts of signal (ADR-168). Splitting is what lets `note:` search
+ * one dimension without a second index, and what replaces the old "title hit ×3"
+ * special case with a weight per field.
+ */
+export interface ConversationFields {
+	title: string[];
+	/** The LLM-generated summary. The cheap half of "semantic" recall — the
+	 *  model's own paraphrasing ("automobile", "Fahrzeug") already lives here, so
+	 *  a lexical match can surface a conversation whose messages never used the
+	 *  exact query word. */
+	summary: string[];
+	body: string[];
+	notes: NoteRef[];
+}
+
+/** How much a hit in each field is worth, as a multiplier on the token's IDF.
  *
- * Defensive by design: it runs over the whole corpus on every query, so it must
- * never throw on a malformed conversation (missing name, absent/ragged messages,
- * non-string content) — one bad record must not blank out all search results.
+ *  `title` keeps the ×3 it has always had. `notes` is high for the same reason
+ *  a title is: a note name is a deliberate, curated label, not prose — and
+ *  unlike prose it was chosen by the user, not generated. */
+export const FIELD_WEIGHTS: Record<keyof ConversationFields, number> = {
+	title: 3,
+	notes: 2,
+	summary: 1,
+	body: 1,
+};
+
+/** Which fields a scope scores. `notes` alone is the `note:` query; `all` is
+ *  everything; the default is what search has always looked at. */
+export function scopeFields(scope: SearchScope): (keyof ConversationFields)[] {
+	if (scope === "notes") return ["notes"];
+	if (scope === "all") return ["title", "summary", "body", "notes"];
+	return ["title", "summary", "body"];
+}
+
+/**
+ * Every vault note this conversation touched: attached to a turn, cited by the
+ * model, or used as its template.
+ *
+ * All three are already persisted per message, so the note dimension costs no
+ * vault I/O at all — the paths are in `data.json`. Attachments and citations
+ * are weighted the same: a citation is at least as strong evidence that the
+ * conversation was ABOUT that note, since the model reached for it while
+ * answering rather than merely being handed it.
+ *
+ * Deduped: a note attached to thirty turns is one signal, not thirty.
+ */
+export function noteRefs(conv: Conversation): string[] {
+	const out = new Set<string>();
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	for (const m of messages) {
+		for (const p of m?.attachedNotes ?? []) if (typeof p === "string" && p) out.add(p);
+		for (const s of m?.sources ?? []) {
+			if (s?.kind === "vault" && typeof s.ref === "string" && s.ref) out.add(s.ref);
+		}
+		if (typeof m?.templateId === "string" && m.templateId) out.add(m.templateId);
+	}
+	return [...out];
+}
+
+/**
+ * Tokenize one conversation into its searchable fields.
+ *
+ * Defensive by design: it runs over the whole corpus, so it must never throw on
+ * a malformed conversation (missing name, absent/ragged messages, non-string
+ * content) — one bad record must not blank out all search results.
+ *
  * No embeddings, no vector store, no persisted index.
  */
-export function buildConversationHaystack(conv: Conversation): string {
-	const name = typeof conv.name === "string" ? conv.name : "";
-	const summary = typeof conv.summaryText === "string" ? conv.summaryText : "";
+export function buildConversationFields(conv: Conversation): ConversationFields {
 	const messages = Array.isArray(conv.messages) ? conv.messages : [];
-	const body = messages.map(messageText).join(" ");
-	return `${name} ${summary} ${body}`;
+	return {
+		title: tokenize(typeof conv.name === "string" ? conv.name : ""),
+		summary: tokenize(typeof conv.summaryText === "string" ? conv.summaryText : ""),
+		body: tokenize(messages.map(messageText).join(" ")),
+		// The extension is stripped before tokenizing, or every note would carry
+		// an "md" token and a search for "md" would return the whole vault. Folder
+		// segments are kept: they are how people file things.
+		notes: noteRefs(conv).map((ref) => ({ ref, tokens: tokenize(ref.replace(/\.md$/i, "")) })),
+	};
 }
 
 export interface RankedConversation {
 	conversation: Conversation;
 	score: number;
+	/** The note paths that matched, when the hit came through the note dimension.
+	 *  The UI shows these as the row's `via …` provenance: a conversation that
+	 *  surfaced without visibly containing the query has to be able to say why. */
+	matchedNotes: string[];
 }
 
 /** Smoothed inverse document frequency (matches `noteRelevance`): a token present
@@ -44,73 +119,147 @@ function idf(df: number, n: number): number {
 	return Math.log((n + 1) / (df + 1)) + 1;
 }
 
-/** A query token matches a candidate token by exact equality OR prefix, so a
- *  partial word typed as-you-type ("bound") still hits "boundaries". */
-function tokenMatches(candidateTokens: string[], queryToken: string): boolean {
-	return candidateTokens.some((t) => t === queryToken || t.startsWith(queryToken));
+/** The best weighted strength for one query token across the active fields, and
+ *  the note paths that produced a note-field hit. */
+function tokenScore(
+	fields: ConversationFields,
+	active: (keyof ConversationFields)[],
+	qt: string
+): { weighted: number; notes: string[] } {
+	let weighted = 0;
+	const notes: string[] = [];
+	for (const field of active) {
+		if (field === "notes") {
+			for (const note of fields.notes) {
+				const s = matchStrength(note.tokens, qt);
+				if (s <= 0) continue;
+				notes.push(note.ref);
+				weighted = Math.max(weighted, s * FIELD_WEIGHTS.notes);
+			}
+			continue;
+		}
+		const s = matchStrength(fields[field], qt);
+		if (s > 0) weighted = Math.max(weighted, s * FIELD_WEIGHTS[field]);
+	}
+	return { weighted, notes };
 }
 
 /**
- * Ranks conversations by lexical similarity to a free-text query.
+ * Ranks conversations by lexical similarity to a pre-tokenized query.
  *
  * - Empty query → recency order (most recently updated first), all included.
- * - Non-empty query → only conversations with at least one matched query token,
- *   sorted by score descending. Matching is **prefix-aware** (typing part of a
- *   word surfaces the conversation), IDF-weighted (rare words dominate), and a
- *   title match is boosted so it outranks a passing mention in a message.
+ * - Non-empty query → only conversations scoring within `RELEVANCE_FLOOR` of the
+ *   best one, sorted by score descending. Matching is graded (`matchStrength`),
+ *   IDF-weighted so rare words dominate, and weighted per field so a title or a
+ *   note name outranks a passing mention in a message.
  *
- * `haystacks` must be aligned by index to `conversations` (build once per open
- * via buildConversationHaystack).
+ * `fields` must be aligned by index to `conversations` (build once per panel
+ * open via `buildConversationFields` — the panel scores the whole corpus on
+ * every keystroke, and tokenizing it each time was the expensive half).
  */
 export function rankConversations(
 	queryTokens: string[],
 	conversations: Conversation[],
-	/** Raw haystacks, or their token arrays when the caller caches them — the
-	 *  conversation panel scores the whole corpus on every keystroke, and
-	 *  tokenizing it each time was the expensive half. */
-	haystacks: (string | string[])[]
+	fields: ConversationFields[],
+	scope: SearchScope = "conversations"
 ): RankedConversation[] {
 	if (queryTokens.length === 0) {
 		return [...conversations]
-			.map((conversation) => ({ conversation, score: 0 }))
+			.map((conversation) => ({ conversation, score: 0, matchedNotes: [] }))
 			// ISO 8601 compares as a string; `new Date(undefined).getTime()` is NaN,
 			// and a NaN comparator makes the sort order undefined for the whole list.
 			.sort((a, b) => (b.conversation.updatedAt ?? "").localeCompare(a.conversation.updatedAt ?? ""));
 	}
 
-	const n = haystacks.length;
-	const docTokens = haystacks.map((h) => (typeof h === "string" ? tokenize(h) : h));
-	// Guard `c.name` — a malformed record may lack it, and tokenize() throws on
-	// a non-string (one bad conversation must not blank out all search).
-	const nameTokens = conversations.map((c) => tokenize(typeof c.name === "string" ? c.name : ""));
+	const n = fields.length;
+	const active = scopeFields(scope);
 
-	// Document frequency by prefix-aware match, for IDF weighting.
-	const df = new Map<string, number>();
-	for (const qt of queryTokens) {
-		let count = 0;
-		for (const tokens of docTokens) if (tokenMatches(tokens, qt)) count++;
-		df.set(qt, count);
-	}
+	// Per (conversation, query token): the weighted strength and the notes behind
+	// it. Computed once — the document-frequency pass below needs the same answer
+	// the scoring pass does, and running `matchStrength` twice over the corpus is
+	// the kind of per-keystroke waste this panel has paid for before.
+	const cells = fields.map((f) => queryTokens.map((qt) => tokenScore(f, active, qt)));
 
-	return conversations
+	const df = queryTokens.map((_, qi) => cells.reduce((count, row) => count + (row[qi].weighted > 0 ? 1 : 0), 0));
+
+	const scored = conversations
 		.map((conversation, i) => {
 			let score = 0;
-			for (const qt of queryTokens) {
-				if (!tokenMatches(docTokens[i], qt)) continue;
-				let weight = idf(df.get(qt)!, n);
-				if (tokenMatches(nameTokens[i], qt)) weight *= 3; // title hit ranks higher
-				score += weight;
-			}
-			return { conversation, score };
+			const matched = new Set<string>();
+			queryTokens.forEach((_qt, qi) => {
+				const cell = cells[i][qi];
+				if (cell.weighted <= 0) return;
+				score += idf(df[qi], n) * cell.weighted;
+				for (const ref of cell.notes) matched.add(ref);
+			});
+			return { conversation, score, matchedNotes: [...matched] };
 		})
 		.filter((r) => r.score > 0)
 		.sort((a, b) => b.score - a.score);
+
+	return applyRelevanceFloor(scored);
+}
+
+/**
+ * The result of one query typed into the panel's box: what matched, and whether
+ * Pythia searched somewhere the user did not ask it to (ADR-168).
+ *
+ * The whole scope/widen decision lives here rather than in the controller, so
+ * the rule is unit-testable and the panel only renders what it is handed.
+ */
+export interface SearchOutcome {
+	scope: SearchScope;
+	/** The query with any scope prefix stripped — what the snippets highlight. */
+	queryTokens: string[];
+	primary: RankedConversation[];
+	/** Conversations that matched ONLY through the note dimension, found because
+	 *  the conversation-text search came back thin. Empty unless auto-widening
+	 *  fired — and when it is non-empty the user must be told (group header, a
+	 *  `via …` line per row, and the chip). */
+	widened: RankedConversation[];
+}
+
+/** Run one raw query string from the search box. */
+export function searchConversations(
+	raw: string,
+	conversations: Conversation[],
+	fields: ConversationFields[],
+	opts: { picking?: boolean } = {}
+): SearchOutcome {
+	const { scope, query, explicit } = parseScope(raw);
+	const queryTokens = tokenize(query);
+	const primary = rankConversations(queryTokens, conversations, fields, scope);
+
+	if (
+		!shouldWiden({
+			explicit,
+			queryTokenCount: queryTokens.length,
+			narrowCount: primary.length,
+			picking: opts.picking ?? false,
+		})
+	) {
+		return { scope, queryTokens, primary, widened: [] };
+	}
+
+	const seen = new Set(primary.map((r) => r.conversation.id));
+	// Only rows the narrow pass did not already have: by construction those
+	// matched through the note dimension alone, which is exactly what the `via …`
+	// provenance line claims about them.
+	const widened = rankConversations(queryTokens, conversations, fields, "all").filter(
+		(r) => !seen.has(r.conversation.id) && r.matchedNotes.length > 0
+	);
+	return { scope, queryTokens, primary, widened };
 }
 
 /**
  * The single message line that best matches the query, trimmed for display, or
- * null when no message line matches (e.g. the hit was only in the title or
- * summary). Used to show the user *why* a conversation surfaced.
+ * null when no message line matches (e.g. the hit was only in the title, the
+ * summary or an attached note). Used to show the user *why* a conversation
+ * surfaced.
+ *
+ * Uses the same `matchStrength` the ranking does — a row that surfaces on a
+ * compound or reverse hit and then shows no snippet is the "silence is a bug"
+ * shape, and it is what a second, stricter copy of the matching rule produces.
  */
 export function bestMatchSnippet(
 	queryTokens: string[],
@@ -118,25 +267,24 @@ export function bestMatchSnippet(
 	maxLen = 100
 ): string | null {
 	if (queryTokens.length === 0) return null;
-	const querySet = new Set(queryTokens);
 
 	let bestLine = "";
-	let bestHits = 0;
+	let bestScore = 0;
 	const messages = Array.isArray(conv.messages) ? conv.messages : [];
 	for (const msg of messages) {
 		for (const rawLine of messageText(msg).split("\n")) {
 			const line = rawLine.trim();
 			if (!line) continue;
 			const lineTokens = tokenize(line);
-			let hits = 0;
-			for (const tok of querySet) if (tokenMatches(lineTokens, tok)) hits++;
-			if (hits > bestHits) {
-				bestHits = hits;
+			let score = 0;
+			for (const tok of queryTokens) score += matchStrength(lineTokens, tok);
+			if (score > bestScore) {
+				bestScore = score;
 				bestLine = line;
 			}
 		}
 	}
 
-	if (bestHits === 0) return null;
+	if (bestScore === 0) return null;
 	return bestLine.length > maxLen ? `${bestLine.slice(0, maxLen).trimEnd()}…` : bestLine;
 }

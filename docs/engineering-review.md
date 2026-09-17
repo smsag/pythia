@@ -1392,3 +1392,17 @@ An audit of every per-conversation setting against what the panel actually shows
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 263 | **Glossary definitions read in whatever language the first lookup produced — usually English.** Under the default AUTO setting `defineTerm`'s English prompt carried no language line, so the model answered in English for a German passage, and vault-first showed that text in every later conversation. Fixed at both ends: under AUTO the define/person prompts name the passage's language, and the anchor translates a stored definition into the conversation's language (instructed, or detected from the answer under AUTO), caching it as `definition_<lang>` in the note behind a hash of the definition. | Medium | Done (ADR-166) |
+
+## Follow-up (#264, #265) — conversation search, 2026-09-17
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 264 | **Token matching was one-directional, so two everyday searches came back empty.** A candidate matched only by equality or prefix: typing `boundaries` never found a stored `bound`, and — the one that matters in a German-first vault — typing `Vertrag` never found `Mietvertrag`, because German compounds are head-final and a prefix rule cannot reach the head. Replaced by one graded rule (`services/tokenMatch.ts`) weighting exact > prefix > infix > reverse, with length floors so a stopword cannot reverse-match every long query, and a relative relevance floor so the loosened rule cannot return the whole corpus. `bestMatchSnippet` shares it, or a row would surface with no snippet to explain it. | Medium | Done (ADR-168) |
+| 265 | **Search ignored the notes a conversation was about.** `attachedNotes`, vault `sources` and `templateId` are all persisted per message and none were searchable, although "which conversation did I have about that note?" is how people remember a conversation. Added as a *field* of the conversation haystack rather than a second corpus — a result is still always a conversation, so pick mode, the keyboard model and IDF comparability are untouched, and it costs no vault I/O. Reachable as `note:`/`all:`, and automatically when the text search comes back thin — announced by a group header, a `via <note>` line per row and a chip. | Medium | Done (ADR-168) |
+
+**Open follow-ups from #264/#265** (deliberately out of scope, same keyword extends to them):
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 266 | **Note *bodies* are not searched** — only note names, paths and the template's name. The "I remember a phrase inside the note" case needs `cachedRead` over the union of attached paths, an async loading state and a lower field weight (borrowed text must not drown out the conversation's own words). Obsidian's own search serves it today. | Low | Open |
+| 267 | **No typo tolerance.** Edit distance was kept out of ADR-168 on purpose: it has its own noise budget and its own per-keystroke cost profile. | Low | Open |
