@@ -1,0 +1,42 @@
+version: 2
+
+# Pinning every action to a commit SHA (see the workflows) removes the risk that
+# a moved tag changes what runs with our token — but it also freezes the actions
+# at whatever was current the day they were pinned, security fixes included.
+# Dependabot is the other half of that bargain: it rewrites the SHA and the
+# trailing `# v4` comment together, so an upgrade arrives as a reviewable diff
+# rather than as something that happened silently upstream.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+    groups:
+      # One PR for the dev toolchain rather than five: these move together and
+      # are verified by the same `lint → check:filesize → build → test` run.
+      dev-tooling:
+        dependency-type: development
+        patterns: ["*"]
+    ignore:
+      # The embedding runtime is bundled into main.js and pinned against a
+      # measured model set (ADR-109/169); a major bump changes what ships to
+      # users and is a deliberate piece of work, not a dependency refresh.
+      - dependency-name: "@huggingface/transformers"
+        update-types: ["version-update:semver-major"]
