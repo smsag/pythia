@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-16 — ADR-167 (the strip under the composer, measured in the running app: Obsidian pads every `.view-content` at (0,2,0), a theme added a phone-drawer reserve, and Obsidian's floating-nav fade painted the result; plus the two things that exemption uncovered — the composer's desktop clearance and a keyboard lift that reads Obsidian's own `--keyboard-height`).*
+*Last updated: 2026-09-17 — ADR-168 (search matches by degree, and widens along the note dimension: one graded matching rule finds German compounds and longer-typed forms, a relevance floor keeps the loosened rule from returning the corpus, `note:` searches the notes a conversation attached or cited, and an automatic widening always says so).*
+
+*Previously: 2026-09-16 — ADR-167 (the strip under the composer, measured in the running app: Obsidian pads every `.view-content` at (0,2,0), a theme added a phone-drawer reserve, and Obsidian's floating-nav fade painted the result; plus the two things that exemption uncovered — the composer's desktop clearance and a keyboard lift that reads Obsidian's own `--keyboard-height`).*
 
 *Previously: 2026-09-16 — ADR-166 (glossary definitions read in the conversation's language: translated on open, cached in the term note per language, invalidated by a hash of the definition; under AUTO new definitions follow the passage's language).*
 
@@ -2885,3 +2887,61 @@ Removing Obsidian's `.view-content` padding exposed two things it had been quiet
 **The keyboard.** On the phone the keyboard began to cover the composer's bottom row. Measured in the emulator with Obsidian's `--keyboard-height` set: `.app-container` shrinks by the keyboard, but the drawer is `position: fixed; top: 0; bottom: 0` and does not — it stays full height, its own `padding-bottom: calc(max(safe-area, 16px) - keyboard-height)` clamps to 0, and the view *grows* by 34px toward the keyboard. So a composer in the drawer is under the keyboard unless lifted. Pythia's lift (ADR-132) measured the keyboard through `visualViewport`, and on iOS that estimate is short by roughly the home indicator; core's 34px of view padding had been covering the difference. Obsidian publishes the authoritative number: `--keyboard-height`, from the native keyboard frame, and draws its own editing toolbar at `100vh - keyboard-height`. `keyboardOverlap` now takes `keyboardHeight` too and lifts by the larger of the two estimates; it is 0 whenever no keyboard is open, so it can never pad the panel at rest (the ADR-132 invariant). `watchViewport` also listens to Obsidian's `keyboardWillShow` / `keyboardWillHide` window events (allow-listed in ESLint with the reason) and measures once more after the 300 ms animation, since the variable can land after the event. The conversation panel's list passes the same number through `readKeyboardHeight()`.
 
 **Verification.** Emulator, phone drawer, `--keyboard-height: 300px` and the event dispatched: the composer's bottom moves from 744 to the keyboard's top at 552, and back when the variable returns to 0. Desktop: Send 12px above the leaf's edge. The device numbers themselves — how far short the visual viewport falls on a given iPhone — are not known from here; what is known is that Obsidian's number is the one Obsidian trusts for its own toolbar.
+
+
+### ADR-168 — Search matches by degree, and widens along the note dimension
+
+**Date:** 2026-09-17
+**Status:** Accepted — revises ADR-107's ranking; leaves ADR-143's pick mode untouched
+
+**Context — two defects, one surface.**
+
+**1. Matching was one-directional.** `tokenMatches` accepted a candidate token only when it equalled the query token or **started** with it. That answers the as-you-type case ("kayak" → "kayaking") and nothing else, so two everyday searches came back empty with no way to tell they had:
+
+| Typed | Stored | Before |
+|---|---|---|
+| `bound` | `boundaries` | hit |
+| `boundaries` | `bound` | **miss** |
+| `Vertrag` | `Mietvertrag` | **miss** |
+
+The second row is the one that matters here. German compounds are **head-final** — the word being searched for sits at the *end* of the compound — so a prefix rule can never find them. Neither case is fixable by stemming: a stemmer is language-specific, lossy on compounds, and cannot be corrected by hand.
+
+**2. Search only ever looked at conversation text**, while the thing people actually remember about a conversation is often the note they had open in it. Those paths are already persisted — `Message.attachedNotes`, `Message.sources` (`kind: "vault"`), `Message.templateId` — and search ignored all three.
+
+**Decision 1 — one graded matching rule, in one place.** `services/tokenMatch.ts` returns a *strength*, not a boolean: exact `1`, prefix `0.9`, infix `0.6` (the compound case), reverse prefix/suffix `0.5`. The caller multiplies the token's IDF weight by it, so a compound hit is a real hit that still ranks below the word the user typed. Boolean matching could not express that — an infix hit on a rare token would outrank an exact hit on a common one.
+
+**The length floors are the whole safety story.** A 2–3 character stopword ("in", "der") reverse-matches every long query token; without `MIN_REVERSE_HEAD`/`MIN_REVERSE_TAIL`/`MIN_INFIX_QUERY` the result set becomes the corpus, which is the same as no search at all. The tail floor is higher than the head floor because a compound's tail is where the accidents live: "Mietvertrag" ends with "trag" as well as with "vertrag".
+
+**A loosened rule needs a floor at the other end too.** `score > 0` stopped being a sufficient filter the moment weak matches were possible, so `applyRelevanceFloor` drops anything below 15% of the best score. **Relative, not absolute**: IDF weights move with corpus size, and an absolute cut-off would mean different things in a 20- and a 2000-conversation vault.
+
+`bestMatchSnippet` goes through the same function. A second, stricter copy of the matching rule is how a row surfaces on a compound hit and then shows no snippet — silence where an explanation belongs.
+
+**No edit distance.** Typo tolerance is a separate decision with its own noise budget and its own cost profile; it is not smuggled in under this one.
+
+**Decision 2 — widen the *dimension*, not the corpus.** The tempting version was a second index: vault notes as their own result rows. It was rejected, and the reasons are the design:
+
+- **Pythia searches conversations; Obsidian searches notes.** Rebuilding vault search inside a sidebar competes with a better tool one keystroke away.
+- **Scores from two corpora are not comparable.** IDF is relative to the document set, so merging two ranked lists into one is silently arbitrary.
+- A second row kind would have to answer to pick mode (ADR-143), the keyboard model, the delete control and the fork indent — none of which mean anything for a note.
+
+So a result is always a conversation, and what widens is the **haystack**. `ConversationFields` splits the searchable text into `title` ×3 · `notes` ×2 · `summary` ×1 · `body` ×1, replacing ADR-107's hard-coded "title hit ×3" with a weight per field, and the scope selects which fields are scored. `notes` ranks near a title because a note name is a *curated* label — and unlike a summary it was written by the user, not generated.
+
+**Attached and cited notes weigh the same.** A citation is at least as strong evidence that the conversation was about that note: the model reached for it while answering rather than merely being handed it. The note dimension therefore costs **no vault I/O at all** — every path is already in `data.json`.
+
+**Note bodies are deliberately not in v1.** Matching note *content* needs `cachedRead` over the union of attached paths, an async loading state, and its own weight (a long note's borrowed text otherwise drowns out the conversation's own words). It is the "I remember a phrase from the note" case, which Obsidian's own search already serves. The same keyword extends to it later without new syntax.
+
+**Decision 3 — the scope is typed into the query, not added to the chrome.** `note:` · `conv:` · `all:` (with German aliases — this is a German-first plugin), parsed by `services/searchScope.ts`. No prefix means conversations, exactly as before. An **unknown** prefix is literal text, never a failed command, so "todo: rewrite the intro" stays a search. The panel has no chrome to spare, and a filter control would have to be built, translated, made keyboard-reachable and made to survive the mobile keyboard.
+
+**Decision 4 — an automatic widening is never silent.** Syntax nobody discovers is not a feature, so a query that returns **fewer than 3** conversation-text hits also searches the note dimension. But a widened row does not visibly contain the query anywhere, which makes it exactly the row a user cannot explain — so it is announced three ways, all reusing what the panel already has:
+
+- an `ALSO IN NOTES` group header (`.p-history-group`, the browse listing's own component) — widened rows never mix into the text hits;
+- **`via <note>` on every widened row**, a bare accent vault name in the existing sub-line, no brackets, as in the sources row (ADR-153);
+- the ADR-109 chip, which solved this identical problem once already: a mode the user did not type is active, here is a label and an ✕. On a phone, where the chip is easiest to miss, one `Notice` per panel open as well.
+
+**The rule, stated so a test can fail in the forbidden direction: the chip announces what the user did *not* ask for.** A typed `note:` gets the `via` line but no chip and no group header — explaining back a scope the user chose themselves is noise. Widening never fires on an empty query (that is the browse listing) and never while picking a conversation (ADR-143: the panel is naming a target, and an unexplainable row is worse there than a short list).
+
+**The chip's ✕ writes `conv: ` into the box** rather than flipping a hidden flag. The grammar is the control, so the undo is also where the user discovers the grammar exists.
+
+**Consequence.** `rankConversations` takes fields and a scope instead of haystacks; `buildConversationHaystack` is gone — one builder per fact. The command-palette modal (`ConversationSuggestModal`, which ADR-143 kept for entry points that can run with no view open) shares the same `searchConversations`, so the palette gained the scope grammar, the widening and the `via` line for free. The panel's per-keystroke cost is unchanged: fields are memoized for the life of the overlay exactly as tokens were (ADR-161's principle 5), and the second ranking pass runs only in the thin-result case. +50 tests (1128 across 72 files).
+
+**What this does not do.** It does not find a note never discussed; it does not tolerate typos; it does not match text inside a note. The first is Obsidian's job, and the other two are named above as later work behind the same keyword.

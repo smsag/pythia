@@ -24,6 +24,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename, safeNoteName, normalizeVaultPath, yamlString — the only file-name/path/YAML helpers (ADR-159)
+    tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) + applyRelevanceFloor (ADR-168)
+    searchScope.ts            ← pure: parseScope (note:/conv:/all:) + shouldWiden — the search box's grammar and the auto-widen rule (ADR-168)
+    conversationSearch.ts     ← pure: buildConversationFields (title ×3 · notes ×2 · summary · body), noteRefs, rankConversations, searchConversations, bestMatchSnippet (ADR-106/168)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
@@ -72,7 +75,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1078 tests across 70 files
+  tests/                      ← Vitest unit tests (npm test) — 1128 tests across 72 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -427,6 +430,16 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ### State fills on touch (ADR-155)
 - **Never `transition` a fill that communicates state** — a selected segment, an active toggle, a pressed control. It must be true at the moment of the tap; on iOS WebKit a transitioned `background-color` started from a class toggle in a touch handler may not paint until the next composite, and the user sees the old state until they scroll. Decorative transitions (opacity on a hover-revealed control) are fine
 - **`:hover` rules belong in `@media (hover: hover)`.** iOS keeps `:hover` on the last-tapped element, so a hover fill sticks to exactly the control the user just pressed — and `--background-modifier-hover` next to an accent selection reads as a second selection
+
+### Conversation search (ADR-168)
+
+- **One matching rule, in `services/tokenMatch.ts`.** `matchStrength` is graded (exact 1 · prefix .9 · infix .6 · reverse .5), never boolean — the caller multiplies IDF by it. The length floors are load-bearing: without them a 2-char stopword reverse-matches every long query and the result set becomes the corpus. **Never hand-roll a second comparison** — `bestMatchSnippet` shares it, or a row surfaces on a compound hit with no snippet to explain it
+- **A loosened rule needs `applyRelevanceFloor`.** `score > 0` is not a filter once weak matches exist. The floor is **relative** (15% of the best) — IDF moves with corpus size, so an absolute cut-off means different things in different vaults
+- **Results are always conversations.** Widening adds a *field* (`notes`), never a second corpus: scores from two corpora are not comparable, and a note row would have to answer to pick mode, the fork indent and the delete control. **Do not add vault notes, glossary entries or templates as result rows** — Obsidian's own search is one keystroke away
+- The note dimension is `attachedNotes` + vault `sources` + `templateId`, **deduped, attached and cited weighted the same**, and it costs **no vault I/O** — the paths are already in `data.json`. Note *bodies* are deliberately not searched (engineering-review #266)
+- **`Conversation.name` has no special case any more.** The old "title hit ×3" is `FIELD_WEIGHTS.title`; a new field is a weight, not an `if`
+- **The chip announces what the user did NOT ask for.** Auto-widening (< 3 hits, non-empty query, not picking, no typed scope) shows the group header, a `via <note>` line per row and the ADR-109 chip; a typed `note:` shows the `via` line only. Never widen silently — a widened row does not contain the query anywhere the user can see
+- An unknown `word:` prefix is **literal text, never a failed command** — a colon in ordinary search text must not become a silent filter
 
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
