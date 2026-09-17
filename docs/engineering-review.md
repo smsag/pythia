@@ -1457,12 +1457,33 @@ Found reviewing the workflows after a stacked PR turned out to have no checks at
 | 284 | **Every action was pinned to a mutable tag.** `@v4`, `@v5`, `@v2`, `@v7` — a moved tag changes what executes, and two of them (`softprops/action-gh-release`, `peter-evans/create-pull-request`) run with `contents: write`. All six now pinned to the commit SHA the tag resolved to, with the version in a trailing comment. `dependabot.yml` added so the freeze does not also freeze security fixes: it rewrites the SHA and the comment together, as a reviewable diff. | Medium | Done |
 | 285 | **`fmt()` in `update-pricing.mjs` emits non-finite numbers.** The generated-code path is otherwise well defended — model ids come from the local catalog, never upstream, and prices go through `Number.toFixed`, which throws on a string or object — but `fmt(NaN)` yields `NaN`, which is valid TypeScript and compiles into a shipped price table. Integrity, not execution. Guarded: `fmt` refuses a non-finite, negative or non-number value, and is exported (and declared in `update-pricing.d.mts`) so the guard is tested directly rather than only through a network call. | Low | Done |
 
-**Still open:**
+**Carried past the first pass, both now closed:**
 
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 286 | **`npm ci` ran install scripts in CI**, for the whole tree, in the same job as the token. Now `npm ci --ignore-scripts` in all three workflows. Measured on the post-bump tree rather than assumed: a clean install takes 10.8s, and `lint`, `check:filesize`, `build` and 1158 tests all pass with no hook having run — `@esbuild/linux-x64/bin/esbuild` and `onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node` are both plain files in their tarballs. The constraint this creates (no dependency may rely on an install hook, or it passes locally and fails in CI) is recorded in `AGENTS.md`, where someone adding a native dependency will meet it. | Medium | Done |
-| 287 | **`update-pricing` combines network input with `contents: write` + `pull-requests: write` in one job.** Splitting it — a fetch job with `permissions: {}` that uploads the rewritten file as an artifact, and a second job that opens the PR — would leave the job touching the internet with no write authority at all. | Low | Open |
+| 287 | **`update-pricing` combines network input with `contents: write` + `pull-requests: write` in one job.** The proposal was to split it: a fetch job with `permissions: {}` that uploads the rewritten file as an artifact, and a second job that opens the PR. | Low | **Deliberately not done** — see below |
+
+### Deliberately not done — #287, the fetch/write split
+
+Decided 2026-09-17, after #285 and #286 landed. Recorded rather than left open, because "we looked at this and chose not to" is a different state from "nobody has got to it yet", and only one of them should still be attracting attention.
+
+**The reasoning, in the order it decided the question:**
+
+1. **#286 removed the risk this was really about.** The untrusted code in that job was never the JSON — it was `npm ci` running install hooks for the entire transitive dependency tree while `contents: write` and `pull-requests: write` were in scope. That is gone. What #287 would isolate is what remains: one HTTPS GET of a public JSON document.
+
+2. **The fetch cannot reach code.** Model ids come from the local catalog (`m.id`), never from upstream; `asOf` is `new Date()`; and since #285 `fmt` refuses anything that is not a finite, non-negative number. A hostile models.dev response has no path into `models/modelPricing.ts` beyond values that are already validated on the way in.
+
+3. **The split relocates write authority rather than removing it.** The second job still needs both write scopes, and it commits whatever the first job handed it. The artifact boundary downgrades "code execution holding the token" to "content injection into a pull request" — a genuine reduction, but the residual is content that a human reads line by line before merging, which is the entire design of the weekly PR (ADR-163). We would be adding a boundary to defend the one step that is already defended by review.
+
+4. **It is not free.** Two jobs means a second checkout, a second install, artifact upload/download, and the `manifest`/`package`/`versions` agreement logic spanning a job boundary — permanent maintenance surface on a workflow that runs once a week.
+
+**Reopen this if either becomes true** — both would restore the risk the split addresses:
+
+- `update-pricing` gains a step that *executes* anything fetched at runtime (a schema tool, a codegen binary, a downloaded script), rather than only parsing data; or
+- the pull request it opens is ever auto-merged, removing the human read that point 3 relies on.
+
+No ADR: an ADR records a choice that shapes the code, and this one deliberately leaves the code alone. The condition above is the part worth finding again.
 
 ## Follow-up (#288–#289) — the first dependabot batch, 2026-09-17
 
