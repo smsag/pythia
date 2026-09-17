@@ -40,3 +40,13 @@ updates:
       # users and is a deliberate piece of work, not a dependency refresh.
       - dependency-name: "@huggingface/transformers"
         update-types: ["version-update:semver-major"]
+
+      # TypeScript majors are gated on typescript-eslint, not on us. Every
+      # published typescript-eslint (8.70.0 at time of writing) peer-requires
+      # `typescript >=4.8.4 <6.1.0`, so a TS 7 bump cannot install at all —
+      # `npm ci` fails at resolution and the group PR is red before a single
+      # test runs (that was PR #156). Grouping was not the problem: a TS 7 PR
+      # on its own would fail the same way. Lift this the day typescript-eslint
+      # ships a release that accepts the major, and bump them in one PR.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
