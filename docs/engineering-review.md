@@ -1463,3 +1463,14 @@ Found reviewing the workflows after a stacked PR turned out to have no checks at
 |---|---|---|---|
 | 286 | **`npm ci` runs install scripts in CI**, for the whole tree, in the same job as the token. Worth evaluating `--ignore-scripts`: `onnxruntime-node` ships its CPU binary in-package (and `.npmrc` already skips the CUDA fetch) and esbuild's binary arrives via its optional dependency, so it may just work — but that needs a CI run to confirm, not an assumption. | Medium | Open |
 | 287 | **`update-pricing` combines network input with `contents: write` + `pull-requests: write` in one job.** Splitting it — a fetch job with `permissions: {}` that uploads the rewritten file as an artifact, and a second job that opens the PR — would leave the job touching the internet with no write authority at all. | Low | Open |
+
+## Follow-up (#288–#289) — the first dependabot batch, 2026-09-17
+
+Dependabot's first run after #284 opened seven PRs. Two of them said something about this repository rather than about its dependencies.
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 288 | **`tsconfig` declared `lib: ES2018` while the code used `Array.prototype.at` (ES2022).** It type-checked only because `@types/node@20` pulled newer lib definitions in transitively; `@types/node@26` does not, and four call sites failed at once (`sidebar.ts` ×2, `ui/TruncationController.ts`, one test). Nothing shipped differently — `esbuild.config.mjs` targets `esnext` for the plugin bundle, so `.at()` has always reached users untouched — the compiler was simply describing a language level the codebase had already left. `lib` raised to `ES2022`, which makes the declaration match what is built and shipped. `target` left at `ES2018`: `tsc` runs `-noEmit` here, so it governs nothing. | Medium | Done |
+| 289 | **The `dev-tooling` group could not land while TypeScript 7 was in it.** Every published `typescript-eslint` (8.70.0) peer-requires `typescript >=4.8.4 <6.1.0`, so `npm ci` failed at resolution and the PR was red in six seconds, before a test ran. Splitting the group would not have helped — a standalone TS 7 bump fails identically. TypeScript majors are now ignored in `dependabot.yml`, with the reason and the lifting condition recorded there, following the `@huggingface/transformers` precedent. The other nine bumps in the group (vitest 4→5, both coverage providers, `@types/node` 20→26, `builtin-modules` 3→5, eslint, happy-dom, esbuild, typescript-eslint) were verified together and are green. | Medium | Done |
+
+**Noted, not acted on:** `npm audit` reports two high-severity transitive advisories on `main`. `brace-expansion` (via `eslint` → `minimatch`) is dev-only and lint-time. `form-data` arrives through `@anthropic-ai/sdk@0.40.1` → `@types/node-fetch`, a types-only chain that does not reach the bundle; the SDK bump in #159 drops the `node-fetch` dependency and with it the advisory.
