@@ -7,11 +7,12 @@ import { abbreviateModel } from "../models/knownModels";
 import { formatMonthYear } from "../services/messageUtils";
 import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
 import {
-	buildConversationHaystack,
-	rankConversations,
+	buildConversationFields,
+	searchConversations,
 	bestMatchSnippet,
+	type ConversationFields,
 } from "../services/conversationSearch";
-import { tokenize } from "../services/noteRelevance";
+import { noteBasename } from "../services/pathUtils";
 import { keyboardOverlap, readKeyboardHeight, watchViewport } from "./keyboardInset";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
@@ -212,18 +213,30 @@ export class HistoryController {
 		};
 		const detachKeyboardInset = watchViewport(applyKeyboardInset);
 
-		// Searchable tokens per conversation, built once and memoized for the life of
+		// Searchable fields per conversation, built once and memoized for the life of
 		// the panel so each keystroke only re-scores — never re-concatenates the
 		// messages, and never re-tokenizes them, which on a 200-conversation vault
 		// was the cost that made typing lag.
-		const tokenCache = new Map<string, string[]>();
-		const tokensFor = (conv: Conversation): string[] => {
-			let toks = tokenCache.get(conv.id);
-			if (toks === undefined) {
-				toks = tokenize(buildConversationHaystack(conv));
-				tokenCache.set(conv.id, toks);
+		const fieldsCache = new Map<string, ConversationFields>();
+		const fieldsFor = (conv: Conversation): ConversationFields => {
+			let f = fieldsCache.get(conv.id);
+			if (f === undefined) {
+				f = buildConversationFields(conv);
+				fieldsCache.set(conv.id, f);
 			}
-			return toks;
+			return f;
+		};
+
+		// Auto-widening into the note dimension (ADR-168) is something the user did
+		// not ask for, so it is never silent: a chip, a group header, a `via …` line
+		// on every widened row — and on a phone, where the chip is easiest to miss,
+		// one Notice per panel open.
+		let widenActive = false;
+		let widenAnnounced = false;
+		const announceWiden = (): void => {
+			if (!Platform.isMobile || widenAnnounced) return;
+			widenAnnounced = true;
+			new Notice(t("widenedNotice"));
 		};
 
 		// Keyboard selection over the rendered conversation rows (group headers are
@@ -236,14 +249,30 @@ export class HistoryController {
 		};
 
 		// ── Related mode (ADR-109) ────────────────────────────────────
+		const makeChip = (label: string, tooltip: string, onClear: () => void): void => {
+			const chip = chipEl.createDiv({ cls: "p-history-chip" });
+			chip.createSpan({ cls: "p-history-chip-label", text: label });
+			const clear = chip.createSpan({ cls: "p-history-chip-clear", attr: { title: tooltip } });
+			setIcon(clear, "x");
+			clear.addEventListener("click", () => onClear());
+		};
+
 		const renderChip = () => {
 			chipEl.empty();
-			if (!related) return;
-			const chip = chipEl.createDiv({ cls: "p-history-chip" });
-			chip.createSpan({ cls: "p-history-chip-label", text: t("relatedChip", { name: related.sourceName }) });
-			const clear = chip.createSpan({ cls: "p-history-chip-clear", attr: { title: t("relatedClearTooltip") } });
-			setIcon(clear, "x");
-			clear.addEventListener("click", () => exitRelated());
+			if (related) {
+				makeChip(t("relatedChip", { name: related.sourceName }), t("relatedClearTooltip"), () => exitRelated());
+				return;
+			}
+			// Undoing an automatic widening writes the scope into the box rather than
+			// flipping a hidden flag: the grammar is the control, so the ✕ is also
+			// where the user learns it exists.
+			if (widenActive) {
+				makeChip(t("widenedChip"), t("widenedClearTooltip"), () => {
+					input.value = `conv: ${input.value.trim()}`;
+					syncClear();
+					buildList(input.value);
+				});
+			}
 		};
 
 		const renderRelated = () => {
@@ -323,36 +352,52 @@ export class HistoryController {
 			}
 		};
 
-		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
+		const rowSub = (conv: Conversation, isFork: boolean, viaNotes?: string[]): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
 				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
-				return sub;
+			} else {
+				sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+				const forkCount = forkCounts.get(conv.id) ?? 0;
+				if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
+				const favCount = conv.favorites?.length ?? 0;
+				if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
+				// Estimated spend so far (ADR-163). A "+" marks a floor: some answers
+				// came from a model with no price row.
+				if (this.d.plugin.settings.showCost) {
+					const { usd, priced, unpriced } = conversationCost(conv.messages);
+					if (priced) sub.createSpan({ cls: "p-history-cost", text: ` · ≈ ${formatCost(usd)}${unpriced ? "+" : ""}` });
+				}
 			}
-			sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
-			const forkCount = forkCounts.get(conv.id) ?? 0;
-			if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
-			const favCount = conv.favorites?.length ?? 0;
-			if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
-			// Estimated spend so far (ADR-163). A "+" marks a floor: some answers
-			// came from a model with no price row.
-			if (this.d.plugin.settings.showCost) {
-				const { usd, priced, unpriced } = conversationCost(conv.messages);
-				if (priced) sub.createSpan({ cls: "p-history-cost", text: ` · ≈ ${formatCost(usd)}${unpriced ? "+" : ""}` });
+			// Why this row is here (ADR-168): the query was found in a note the
+			// conversation attached or cited, not in anything visible on the row. A
+			// bare vault name, no brackets, as in the sources row (ADR-153).
+			if (viaNotes?.length) {
+				const extra = viaNotes.length > 1 ? ` +${viaNotes.length - 1}` : "";
+				sub.createSpan({
+					cls: "p-history-via",
+					text: ` · ${t("viaNote", { name: noteBasename(viaNotes[0]) })}${extra}`,
+				});
 			}
 			return sub;
 		};
 
 		// Shared row body for browse and search rows. `snippetTokens` (search mode)
 		// appends the best-matching message line; browse rows keep the fork indent.
-		const makeRow = (conv: Conversation, isFork: boolean, indentFork: boolean, snippetTokens?: string[]): void => {
+		const makeRow = (
+			conv: Conversation,
+			isFork: boolean,
+			indentFork: boolean,
+			snippetTokens?: string[],
+			viaNotes?: string[]
+		): void => {
 			if (!selectable(conv)) return;
 			const row = listEl.createDiv({ cls: indentFork ? "p-history-row fork" : "p-history-row" });
 			if (conv.id === this.d.getConversation()?.id) row.addClass("active");
 			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
 			const main = row.createDiv({ cls: "p-history-main" });
 			main.createDiv({ cls: "p-history-row-title", text: conv.name });
-			main.appendChild(rowSub(conv, isFork));
+			main.appendChild(rowSub(conv, isFork, viaNotes));
 			if (snippetTokens) {
 				const snippet = bestMatchSnippet(snippetTokens, conv);
 				if (snippet) main.createDiv({ cls: "p-history-snippet", text: snippet });
@@ -400,14 +445,24 @@ export class HistoryController {
 			countForks();
 
 			// Active query → flat list ranked by content relevance (TF-IDF over
-			// title + summary + messages), best match first, with match snippets.
-			// The date-grouped/fork-indented layout resumes when the box is empty.
-			if (q) {
-				const queryTokens = tokenize(query);
-				const ranked = rankConversations(queryTokens, all, all.map(tokensFor));
-				for (const { conversation } of ranked) {
-					const isFork = !!conversation.forkedFromId && byId.has(conversation.forkedFromId);
-					makeRow(conversation, isFork, false, queryTokens);
+			// title + summary + messages, and over attached/cited note names when
+			// the scope asks for it), best match first, with match snippets. The
+			// date-grouped/fork-indented layout resumes when the box is empty — and
+			// a bare scope prefix ("note:") counts as empty until something is typed
+			// after it.
+			const outcome = q ? searchConversations(query, all, all.map(fieldsFor), { picking: !!pick }) : null;
+			widenActive = (outcome?.widened.length ?? 0) > 0;
+			if (outcome && outcome.queryTokens.length > 0) {
+				renderChip();
+				const addRow = (r: { conversation: Conversation; matchedNotes: string[] }) => {
+					const isFork = !!r.conversation.forkedFromId && byId.has(r.conversation.forkedFromId);
+					makeRow(r.conversation, isFork, false, outcome.queryTokens, r.matchedNotes);
+				};
+				for (const r of outcome.primary) addRow(r);
+				if (outcome.widened.length > 0) {
+					listEl.createDiv({ cls: "p-history-group", text: t("histNotesGroup") });
+					for (const r of outcome.widened) addRow(r);
+					announceWiden();
 				}
 				if (!listEl.hasChildNodes()) {
 					listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
@@ -415,6 +470,7 @@ export class HistoryController {
 				paintSelection();
 				return;
 			}
+			renderChip();
 
 			const sources = all
 				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))

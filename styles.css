@@ -288,6 +288,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .p-history-fork-count { color: var(--color-accent); }
 .p-history-fav-count { color: var(--color-yellow); }
+/* Provenance for a row that surfaced through an attached or cited note
+   (ADR-168): a bare accent-coloured vault name, no brackets, as in the
+   sources row (ADR-153) — the label already says what it is. */
+.p-history-via { color: var(--color-accent); }
 /* Match-snippet line shown under a result during content search. */
 .p-history-snippet {
   font-family: var(--font-monospace);

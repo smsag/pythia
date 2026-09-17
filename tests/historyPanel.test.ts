@@ -372,3 +372,109 @@ describe("conversation picker (ADR-143)", () => {
 		expect(panelInput(pane).placeholder).toBe("Link with conversation…");
 	});
 });
+
+// ── The note dimension and auto-widening (ADR-168) ───────────────────────────
+//
+// Search stays conversation-shaped: widening adds conversations that matched
+// through a note they attached or cited, never a second kind of row. Because
+// those rows do not visibly contain the query, the panel must say so — a group
+// header, a `via …` line per row, and a chip that undoes it.
+describe("note scope and auto-widening (ADR-168)", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	/** One conversation whose only link to "mietvertrag" is an attached note, plus
+	 *  two decoys so the browse list is not trivially short. */
+	async function seedWithNote(): Promise<void> {
+		await seedConversation(plugin, {
+			name: "Tuesday chat",
+			messages: [{ ...userMsg("n1", "what do you think about this"), attachedNotes: ["Recht/Mietvertrag.md"] }],
+		} as unknown as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Tax filing", messages: [userMsg("t1", "quarterly deadlines")] } as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Quartz watches", messages: [userMsg("q1", "the seiko astron")] } as Partial<Conversation>);
+	}
+
+	const open = (view: PythiaSidebarView): void =>
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+
+	async function search(pane: () => Element, text: string): Promise<void> {
+		const input = panelInput(pane);
+		input.value = text;
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		await settle();
+	}
+
+	it("a plain query does not reach into attached notes on its own merit", async () => {
+		// It surfaces only under the widened group — never silently mixed into the
+		// conversation-text hits.
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "mietvertrag");
+
+		expect(pane().querySelector(".p-history-group")?.textContent).toBe("ALSO IN NOTES");
+		expect(historyRows(pane)).toHaveLength(1);
+	});
+
+	it("tells the user why a widened row is there, and which note did it", async () => {
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "mietvertrag");
+
+		const via = pane().querySelector<HTMLElement>(".p-history-via");
+		expect(via).not.toBeNull();
+		expect(via!.textContent).toContain("Mietvertrag");   // the basename, no .md, no brackets
+		expect(pane().querySelector(".p-history-chip-label")?.textContent).toBe("Widened to notes");
+	});
+
+	it("the chip's ✕ writes the scope into the box — the grammar is the control", async () => {
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "mietvertrag");
+
+		pane().querySelector<HTMLElement>(".p-history-chip-clear")!
+			.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+		expect(panelInput(pane).value).toBe("conv: mietvertrag");
+		expect(historyRows(pane)).toHaveLength(0);           // conversations only, and none match
+		expect(pane().querySelector(".p-history-chip")).toBeNull();
+	});
+
+	it("an explicit note: query is not announced — the user asked for it", async () => {
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "note: mietvertrag");
+
+		expect(historyRows(pane)).toHaveLength(1);
+		expect(pane().querySelector(".p-history-chip")).toBeNull();      // no chip
+		expect(pane().querySelector(".p-history-group")).toBeNull();      // no widened group
+		expect(pane().querySelector(".p-history-via")).not.toBeNull();    // but still says which note
+	});
+
+	it("a bare scope prefix keeps browsing until something is typed after it", async () => {
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "note:");
+
+		expect(historyRows(pane)).toHaveLength(3);                        // the full browse list
+		expect(pane().querySelector(".p-history-group")?.textContent).not.toBe("ALSO IN NOTES");
+	});
+
+	it("never widens while picking a conversation (ADR-143)", async () => {
+		await seedWithNote();
+		const { view, pane } = await mountView(plugin);
+		view.pickConversation({ onPick: () => {}, placeholder: "Link with conversation…" });
+		await search(pane, "mietvertrag");
+
+		expect(historyRows(pane)).toHaveLength(0);
+		expect(pane().querySelector(".p-history-chip")).toBeNull();
+	});
+});
