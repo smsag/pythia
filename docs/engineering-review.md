@@ -1444,5 +1444,5 @@ An audit of every per-conversation setting against what the panel actually shows
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| 281 | **`openHistoryView` is a ~350-line function holding ~25 closures.** The file-size ratchet counts files, not functions, so nothing flags it. The natural seam is browse/search rendering vs. related mode — the split ADR-109 made conceptually and never structurally. | Medium | Open |
+| 281 | **`openHistoryView` is a ~350-line function holding ~25 closures.** The file-size ratchet counts files, not functions, so nothing flags it. The natural seam is browse/search rendering vs. related mode — the split ADR-109 made conceptually and never structurally. | Medium | Partly done — related mode extracted to `ui/RelatedMode.ts` and the shared chip to `ui/historyChip.ts` (HistoryController 559 → 507). The remaining function still holds list building, row rendering and keyboard nav, which share `rows`/`selectedIdx` and are a poorer seam. |
 | 282 | **`sync` can only abort between conversations.** `provider.embed(chunks)` embeds one conversation's chunks in a single uninterruptible call — fine at the measured ~23 chunks, unbounded in principle. | Low | Open |
