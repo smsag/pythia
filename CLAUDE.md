@@ -42,6 +42,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
+    embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
+    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own (ADR-169)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -75,7 +77,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1128 tests across 72 files
+  tests/                      ← Vitest unit tests (npm test) — 1144 tests across 73 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -86,6 +88,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
     briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
+  scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -430,6 +433,15 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ### State fills on touch (ADR-155)
 - **Never `transition` a fill that communicates state** — a selected segment, an active toggle, a pressed control. It must be true at the moment of the tap; on iOS WebKit a transitioned `background-color` started from a class toggle in a touch handler may not paint until the next composite, and the user sees the old state until they scroll. Decorative transitions (opacity on a hover-revealed control) are fine
 - **`:hover` rules belong in `@media (hover: hover)`.** iOS keeps `:hover` on the last-tapped element, so a hover fill sticks to exactly the control the user just pressed — and `--background-modifier-hover` next to an accent selection reads as a second selection
+
+### Related conversations (ADR-109/169)
+
+- **The floors are measured, not chosen.** They live on the model (`EMBEDDING_MODELS[...].relatedFloors`) because cosine distributions are a property of the model: the multilingual model scores every pair ~0.08 hotter than the English one. **Never share one constant across models** — that made "Balanced" mean 19 of 23 neighbours on one and 11 on the other. Re-measure with `scripts/measure-related.mjs` before changing a floor, and record the numbers
+- **Vault RAG is a different question and keeps its own constants.** `vaultRetrievalMinScore` (0.5 / 0.35 / 0.2) scores a query against note chunks; ADR-169 measured conversation pairs. **Do not merge the two maps** — a test fails if you do. Measure query-to-note retrieval separately first (engineering-review #273)
+- **A floor is a quality gate; `RELATED_RESULT_LIMIT` is the screenful.** The number of pairs clearing a fixed cosine grows linearly with the vault, so without the cap the list length tracks vault size rather than relevance
+- **`maxPairwiseCosine` stays max, not a mean of top-k.** Measured: the lead (title+summary) chunk decides only 2.2% of matches, and mean-of-top-3 changes the top neighbour for 0 of 24 conversations. The boilerplate argument for it was tested and refuted
+- **The warm never surprises**: desktop only, only when a `.bin` already exists (no unrequested ~100 MB model download at launch), ≥2 conversations, silent provider construction, fail-open into the debug log. Guards live in `warmIndex.ts` with tests, because `main.ts` has no coverage
+- **A cold sync is cancellable and commits partial progress before rethrowing** — a cancelled build must leave the next one less to do. The panel aborts on close, on leaving related mode and on the first keystroke; an abort is the panel's own doing and reports nothing
 
 ### Conversation search (ADR-168)
 

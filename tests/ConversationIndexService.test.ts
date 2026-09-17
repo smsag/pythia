@@ -117,3 +117,72 @@ describe("ConversationIndexService", () => {
 		expect(out.map((r) => r.id)).toEqual(["a2"]);
 	});
 });
+
+// ── Cancelling a cold build (ADR-169) ────────────────────────────────────────
+//
+// A first sync embeds the whole vault, which is minutes of work — on the iframe
+// fallback, minutes of UI thread. A user who closes the panel must be able to
+// stop paying for it, and must not have to start over next time.
+describe("ConversationIndexService — abort", () => {
+	/** Aborts partway through, after `afterN` conversations have been embedded. */
+	class AbortingProvider implements EmbeddingProvider {
+		readonly dim = 4;
+		calls = 0;
+		constructor(private readonly controller: AbortController, private readonly afterN: number) {}
+		async ready(): Promise<void> {}
+		async embed(texts: string[]): Promise<Float32Array[]> {
+			this.calls++;
+			if (this.calls >= this.afterN) this.controller.abort();
+			return texts.map(() => Float32Array.from([1, 0, 0, 0]));
+		}
+		unload(): void {}
+	}
+
+	const many = (n: number): Conversation[] =>
+		Array.from({ length: n }, (_, i) => conv({ id: `c${i}`, name: `conversation ${i}`, messages: [msg(`body ${i}`)] }));
+
+	it("rejects with AbortError when the signal fires mid-build", async () => {
+		const controller = new AbortController();
+		const svc = new ConversationIndexService(new AbortingProvider(controller, 2), new MemStore());
+		await expect(svc.sync(many(6), { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+	});
+
+	it("keeps and persists what it already embedded, so the next run resumes", async () => {
+		// Baseline: what a from-scratch build of the same vault costs, in chunks.
+		const control = new FakeProvider();
+		await new ConversationIndexService(control, new MemStore()).sync(many(8));
+		const fullBuildChunks = control.embedded.length;
+
+		const controller = new AbortController();
+		const store = new MemStore();
+		await new ConversationIndexService(new AbortingProvider(controller, 3), store)
+			.sync(many(8), { signal: controller.signal })
+			.catch(() => undefined);
+		expect(store.writes).toBe(1);            // partial progress was persisted
+
+		const resumedProvider = new FakeProvider();
+		await new ConversationIndexService(resumedProvider, store).sync(many(8));
+
+		// The resumed run pays for the remainder only — strictly less than a full
+		// build, which is the whole point of committing partial progress.
+		expect(resumedProvider.embedded.length).toBeGreaterThan(0);
+		expect(resumedProvider.embedded.length).toBeLessThan(fullBuildChunks);
+	});
+
+	it("does not leak an abort into a later, unrelated sync", async () => {
+		// The coalescing `await this.syncing` must not hand the previous caller's
+		// cancellation to the next one, which wants a fresh attempt.
+		const controller = new AbortController();
+		const store = new MemStore();
+		const svc = new ConversationIndexService(new AbortingProvider(controller, 2), store);
+		const aborted = svc.sync(many(5), { signal: controller.signal }).catch(() => "aborted");
+		const after = svc.sync(many(5));
+		await expect(aborted).resolves.toBe("aborted");
+		await expect(after).resolves.toBeUndefined();
+	});
+
+	it("is unaffected when no signal is passed", async () => {
+		const svc = new ConversationIndexService(new FakeProvider(), new MemStore());
+		await expect(svc.sync(many(3))).resolves.toBeUndefined();
+	});
+});

@@ -5,7 +5,7 @@ import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
-import { relatedMinScore } from "./embedding/relatedConversations";
+import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
 
@@ -98,7 +98,9 @@ export class VaultRagService {
 			return [];
 		}
 
-		const minScore = relatedMinScore(settings.vaultContextSimilarity);
+		// Vault RAG keeps the model-agnostic floors: ADR-169 measured conversation
+		// pairs, not query-to-note retrieval (vaultRetrievalMinScore names why).
+		const minScore = vaultRetrievalMinScore(settings.vaultContextSimilarity);
 		const limit = settings.vaultContextMaxNotes > 0 ? settings.vaultContextMaxNotes : 5;
 		const startedAt = Date.now();
 		const results = await svc.query(q, { minScore, limit, exclude });

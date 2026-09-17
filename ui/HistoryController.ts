@@ -37,8 +37,9 @@ export interface HistoryDeps {
 	setActiveConversation(conv: Conversation): Promise<void>;
 	renderHeader(): void;
 	/** Semantically related conversations for a source (ADR-109). When absent, the
-	 *  relate affordance is not shown. */
-	getRelated?(sourceId: string): Promise<{ id: string; score: number }[]>;
+	 *  relate affordance is not shown. `signal` aborts a cold index build the user
+	 *  has walked away from (ADR-169). */
+	getRelated?(sourceId: string, signal?: AbortSignal): Promise<{ id: string; score: number }[]>;
 }
 
 /**
@@ -121,6 +122,7 @@ export class HistoryController {
 		const overlay = container.createDiv({ cls: "p-history" });
 
 		const close = () => {
+			cancelRelated();
 			overlay.remove();
 			detachEscape();
 			detachKeyboardInset();
@@ -186,6 +188,15 @@ export class HistoryController {
 		// neighbours, behind a dismissible chip. null = normal browse/search.
 		const chipEl = overlay.createDiv({ cls: "p-history-chip-wrap" });
 		let related: { sourceId: string; sourceName: string; results: { id: string; score: number }[]; loading: boolean } | null = null;
+		// Aborts the in-flight related query. Cancelling matters because the query
+		// syncs the index first, and a cold build is minutes of embedding — on the
+		// iframe fallback, minutes of UI thread. Leaving related mode, typing, or
+		// closing the panel must stop paying for a result nobody will see.
+		let relatedRun: AbortController | null = null;
+		const cancelRelated = (): void => {
+			relatedRun?.abort();
+			relatedRun = null;
+		};
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
 
@@ -300,24 +311,33 @@ export class HistoryController {
 
 		const enterRelated = async (conv: Conversation) => {
 			if (!this.d.getRelated) return;
+			cancelRelated();
+			const run = new AbortController();
+			relatedRun = run;
 			related = { sourceId: conv.id, sourceName: conv.name, results: [], loading: true };
 			renderRelated();
 			try {
-				const results = await this.d.getRelated(conv.id);
+				const results = await this.d.getRelated(conv.id, run.signal);
 				if (related?.sourceId === conv.id) {
 					related.results = results;
 					related.loading = false;
 					renderRelated();
 				}
 			} catch (e) {
+				// An abort is this panel's own doing — the user left, and there is
+				// nothing to report. Anything else is a real failure and says so.
+				if (run.signal.aborted) return;
 				new Notice(t("relatedFailed", { error: e instanceof Error ? e.message : String(e) }));
 				related = null;
 				renderChip();
 				buildList(input.value);
+			} finally {
+				if (relatedRun === run) relatedRun = null;
 			}
 		};
 
 		const exitRelated = () => {
+			cancelRelated();
 			related = null;
 			renderChip();
 			buildList(input.value);
@@ -498,7 +518,7 @@ export class HistoryController {
 		// corpus each build re-scores every conversation and repaints the list.
 		let inputTimer: ReturnType<typeof setTimeout> | null = null;
 		input.addEventListener("input", () => {
-			if (related) { related = null; renderChip(); } // typing exits related mode
+			if (related) { cancelRelated(); related = null; renderChip(); } // typing exits related mode
 			syncClear();
 			if (inputTimer !== null) clearTimeout(inputTimer);
 			inputTimer = setTimeout(() => {

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-17 — ADR-168 (search matches by degree, and widens along the note dimension: one graded matching rule finds German compounds and longer-typed forms, a relevance floor keeps the loosened rule from returning the corpus, `note:` searches the notes a conversation attached or cited, and an automatic widening always says so).*
+*Last updated: 2026-09-17 — ADR-169 (the related-conversations floors are measured, per model, and the index warms in the background: the shipping 0.35 sat BELOW the median score of a random pair, two hypotheses were refuted by the measurement, and a cold first click costs ~19 minutes on a 200-conversation vault).*
+
+*Previously: 2026-09-17 — ADR-168 (search matches by degree, and widens along the note dimension: one graded matching rule finds German compounds and longer-typed forms, a relevance floor keeps the loosened rule from returning the corpus, `note:` searches the notes a conversation attached or cited, and an automatic widening always says so).*
 
 *Previously: 2026-09-16 — ADR-167 (the strip under the composer, measured in the running app: Obsidian pads every `.view-content` at (0,2,0), a theme added a phone-drawer reserve, and Obsidian's floating-nav fade painted the result; plus the two things that exemption uncovered — the composer's desktop clearance and a keyboard lift that reads Obsidian's own `--keyboard-height`).*
 
@@ -2945,3 +2947,46 @@ So a result is always a conversation, and what widens is the **haystack**. `Conv
 **Consequence.** `rankConversations` takes fields and a scope instead of haystacks; `buildConversationHaystack` is gone — one builder per fact. The command-palette modal (`ConversationSuggestModal`, which ADR-143 kept for entry points that can run with no view open) shares the same `searchConversations`, so the palette gained the scope grammar, the widening and the `via` line for free. The panel's per-keystroke cost is unchanged: fields are memoized for the life of the overlay exactly as tokens were (ADR-161's principle 5), and the second ranking pass runs only in the thin-result case. +50 tests (1128 across 72 files).
 
 **What this does not do.** It does not find a note never discussed; it does not tolerate typos; it does not match text inside a note. The first is Obsidian's job, and the other two are named above as later work behind the same keyword.
+
+
+### ADR-169 — The related-conversations floors are measured, per model; and the index warms in the background
+
+**Date:** 2026-09-17
+**Status:** Accepted — revises ADR-109's scoring constants; the tool is `scripts/measure-related.mjs` (PR #147)
+
+**Context.** Related conversations (ADR-109) ranked by max-pairwise cosine against three hard-coded floors — `strict 0.5` / `balanced 0.35` / `loose 0.2` — shared by two models whose score distributions had never been compared. Nobody could say what 0.35 *meant* on either model, which made every proposed change to the scoring a matter of taste. Three hypotheses were on the table: the floors are wrong; matches are driven by title+summary boilerplate; max-pairwise should become a mean of the top k.
+
+**So it was measured first.** `scripts/measure-related.mjs` reads a real `data.json`, embeds with `@huggingface/transformers` in Node, and imports the REAL `conversationChunks`, `quantize` and `cosine` from the TypeScript sources — a reimplementation of the chunker would have measured a different system. Run on a 24-conversation vault, 554 chunks, 276 pairs, against both models. **The decision rules were written down before the numbers were read**, which is the only reason the refutations below were accepted rather than explained away.
+
+**Finding 1 — the default floor was below the noise floor.**
+
+| | multi | en |
+|---|---|---|
+| p50 of ALL pair scores | 0.462 | 0.341 |
+| p90 | 0.643 | 0.567 |
+| best-neighbour p50 | 0.751 | 0.671 |
+| median results at `balanced` 0.35 | **19 of 23** | **11 of 23** |
+
+`balanced = 0.35` sits *below the median score of a randomly chosen pair* on the default model. It was not filtering; it was listing. Even `strict` returned a third of the vault.
+
+**Finding 2 — per-model floors are justified, by the pre-registered rule.** The rule was "a p90 gap above 0.05". It is **0.076** — and three independent estimators (p90, best-neighbour median, the floor calibrated for ~5 results) all put the offset at **~0.08**. The multilingual model scores every pair hotter, as paraphrase-multilingual models do. One shared constant therefore meant two different features depending on a dropdown in a different part of settings. The floors now live on the model (`EMBEDDING_MODELS[...].relatedFloors`), anchored to each model's own p75/p90/p95: **multi 0.55 / 0.65 / 0.75**, **en 0.45 / 0.57 / 0.67**.
+
+**Finding 3 — the boilerplate hypothesis was wrong.** Predicted: >30% of winning pairs would be lead-chunk-to-lead-chunk, because summaries share one generated register (ADR-141's `SUMMARY_RULES`). Measured: **2.2%** (multi) and **0.4%** (en). Max-pairwise is matching content, not prompt style.
+
+**Finding 4 — top-k mean was cancelled.** Its justification was Finding 3, which died. And independently: switching to mean-of-top-3 changes the #1 neighbour for **0 of 24** conversations on multi and 3 of 24 on en, with no evidence the reshuffle is an improvement. A change that is a no-op on one model and unexplained churn on the other does not get written.
+
+**Finding 5 — an unpredicted one: the cold first click.** 554 chunks took **135s** through onnxruntime-node (~4 chunks/second); the English model is **4.4× faster** at 30.5s. At 23 chunks per conversation, a 200-conversation vault is **~19 minutes** cold — and the app runs WASM, not the native runtime, so slower, and on the iframe fallback (ADR-126) that is the UI thread. The first click on a grown vault was not slow; it was unusable. This outranked the floors.
+
+**Decisions.**
+
+1. **Per-model floors, on the model.** `relatedMinScore(preset, modelId)`. A constant that describes a model belongs next to it, and a test requires a floor for every preset of every catalog entry — a model added without floors would silently inherit another's numbers, which is the bug this ADR exists to fix. The cross-model assertion is **directional** (multi > en at every preset), so a re-measurement that moves the numbers does not break the suite; only a re-measurement that reverses the relationship does.
+2. **Vault RAG keeps the old constants.** `VaultRagService` shared `relatedMinScore`, but it scores a query against note chunks, not a conversation against conversations — this ADR measured nothing about it. Retuning it on data that does not describe it would be guessing with extra steps, so `vaultRetrievalMinScore` keeps 0.5 / 0.35 / 0.2 and a test fails if the two are merged again. **Measure it separately before touching it.**
+3. **A result limit, which now matters more than the floor.** `getRelated` always accepted `limit` and nothing ever passed it. The number of pairs clearing a fixed cosine grows **linearly with vault size**, so without a cap the list length is a function of how big the vault is rather than of relevance. Floor is the quality gate; `RELATED_RESULT_LIMIT = 20` is the screenful.
+4. **Background warm at layout-ready**, in `services/embedding/warmIndex.ts`, so the first click is a ranking pass. Three guards, each load-bearing and each unit-tested because `main.ts` is excluded from coverage: **an index must already exist** (a missing `.bin` means the model was never downloaded, and a ~100 MB download nobody asked for at launch is not a warm), **desktop only** (the iframe fallback is the UI thread), and **two conversations minimum**. Fail-open and silent — the one catch in this codebase where silence is right, and it is logged rather than inferred (principle 2). The provider is built with `silent: true` so the "preparing the model" Notice does not fire for work the user did not request.
+5. **A cancellable sync.** `sync(conversations, { signal })` aborts between conversations, and **commits what it already embedded before rethrowing**, so a cancelled cold build leaves the next one less to do rather than starting over. The panel aborts on close, on leaving related mode, and on the first keystroke of a search; an abort is the panel's own doing, so it reports nothing. The coalescing `await this.syncing` swallows rejections — a waiter must not inherit the previous caller's cancellation.
+
+**What is NOT decided, deliberately.** Percentile-based floors — the striking part of the data is that the floors calibrated for ~5 results land at roughly the **p75–p78 of each model's own distribution**, i.e. the same *percentile* ports across models where the same *constant* does not. That is the better design, and it needs a second vault to confirm before it replaces three constants with a runtime computation. Engineering-review #269.
+
+**Scope of the evidence, stated plainly.** One vault, 24 conversations, 276 pairs. The p90 *gap* is a property of the models and generalises. The absolute constants are a first estimate from one corpus — which is exactly why the percentile idea stays open rather than being ruled out, and why the numbers are recorded here with the command that produced them.
+
+**Consequence.** `main.ts` crossed the 600-line ceiling and was split rather than grandfathered (`warmIndex.ts`, `host/workerBundleUrl.ts` — 590 → 599). +16 tests (1144 across 73 files).

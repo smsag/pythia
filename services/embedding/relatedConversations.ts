@@ -1,22 +1,47 @@
 import { maxPairwiseCosine } from "./vectorMath";
 import type { IndexedConversation } from "./embeddingIndex";
-import type { RelatedSimilarity } from "../../models/embeddingModels";
+import {
+	embeddingModelConfig,
+	DEFAULT_EMBEDDING_MODEL_ID,
+	type EmbeddingModelId,
+	type RelatedSimilarity,
+} from "../../models/embeddingModels";
 
-/** Default similarity floor for "sufficiently related" (= the "balanced" preset). */
-export const DEFAULT_MIN_SCORE = 0.35;
+/** Fallback floor when no model is known. Only reachable from `rankRelated`'s
+ *  own default; every production caller passes a model. */
+export const DEFAULT_MIN_SCORE = 0.5;
 
-/** Cosine-similarity floor for each user-facing preset. Higher = fewer, closer
- *  matches; lower = more, looser matches. Kept as named presets so users never
- *  reason about raw cosine scores. */
-export const RELATED_MIN_SCORES: Record<RelatedSimilarity, number> = {
+/**
+ * The cosine floor for one strictness preset on one model.
+ *
+ * The floors live on the model (`EMBEDDING_MODELS[...].relatedFloors`) because
+ * cosine distributions are a property of the model, not of the preset: measured
+ * over the same corpus, the multilingual model scores every pair ~0.08 higher
+ * than the English one (ADR-169). A single shared constant made "Balanced" mean
+ * 19 of 23 neighbours on one model and 11 on the other.
+ */
+export function relatedMinScore(
+	preset: RelatedSimilarity,
+	modelId: EmbeddingModelId = DEFAULT_EMBEDDING_MODEL_ID
+): number {
+	const floors = embeddingModelConfig(modelId).relatedFloors;
+	return floors[preset] ?? floors.balanced;
+}
+
+/** Vault-RAG retrieval (ADR-116) keeps the ORIGINAL model-agnostic floors.
+ *
+ *  It scores a query against note chunks, not a conversation against other
+ *  conversations, so ADR-169's measurements say nothing about it — and retuning
+ *  it on data that does not describe it would be guessing with extra steps.
+ *  Measure it separately before touching these. */
+export const VAULT_RETRIEVAL_MIN_SCORES: Record<RelatedSimilarity, number> = {
 	strict: 0.5,
-	balanced: DEFAULT_MIN_SCORE,
+	balanced: 0.35,
 	loose: 0.2,
 };
 
-/** Resolve a preset to its cosine floor (falls back to the balanced default). */
-export function relatedMinScore(preset: RelatedSimilarity): number {
-	return RELATED_MIN_SCORES[preset] ?? DEFAULT_MIN_SCORE;
+export function vaultRetrievalMinScore(preset: RelatedSimilarity): number {
+	return VAULT_RETRIEVAL_MIN_SCORES[preset] ?? VAULT_RETRIEVAL_MIN_SCORES.balanced;
 }
 
 export interface RelatedResult {
