@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
@@ -14,6 +16,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't leave the token in .git/config for the rest of the job.
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
