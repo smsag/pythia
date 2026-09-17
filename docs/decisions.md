@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-17 — ADR-169 (the related-conversations floors are measured, per model, and the index warms in the background: the shipping 0.35 sat BELOW the median score of a random pair, two hypotheses were refuted by the measurement, and a cold first click costs ~19 minutes on a 200-conversation vault).*
+*Last updated: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
+
+*Previously: 2026-09-17 — ADR-169 (the related-conversations floors are measured, per model, and the index warms in the background: the shipping 0.35 sat BELOW the median score of a random pair, two hypotheses were refuted by the measurement, and a cold first click costs ~19 minutes on a 200-conversation vault).*
 
 *Previously: 2026-09-17 — ADR-168 (search matches by degree, and widens along the note dimension: one graded matching rule finds German compounds and longer-typed forms, a relevance floor keeps the loosened rule from returning the corpus, `note:` searches the notes a conversation attached or cited, and an automatic widening always says so).*
 
@@ -2990,3 +2992,52 @@ So a result is always a conversation, and what widens is the **haystack**. `Conv
 **Scope of the evidence, stated plainly.** One vault, 24 conversations, 276 pairs. The p90 *gap* is a property of the models and generalises. The absolute constants are a first estimate from one corpus — which is exactly why the percentile idea stays open rather than being ruled out, and why the numbers are recorded here with the command that produced them.
 
 **Consequence.** `main.ts` crossed the 600-line ceiling and was split rather than grandfathered (`warmIndex.ts`, `host/workerBundleUrl.ts` — 590 → 599). +16 tests (1144 across 73 files).
+
+
+### ADR-170 — The search panel's cost stops scaling with the vault
+
+**Date:** 2026-09-17
+**Status:** Accepted — completes ADR-168; the benchmark is `scripts/bench-search.mjs`
+
+**Context.** ADR-168 shipped graded matching and the note dimension without measuring what a keystroke costs. ADR-169 then established the habit of measuring before tuning, so the same question was put to the search panel. Measured with the real functions on a synthetic corpus, one keystroke = rank + render:
+
+| Vault | Rank | Snippets | Total per keystroke |
+|---|---|---|---|
+| 24 conversations | 1.0 ms | 14.5 ms | 15.6 ms |
+| 200 | 0.4 ms | 84.8 ms | 85.2 ms |
+| 500 | 0.8 ms | **398.1 ms** | **398.9 ms** |
+
+**Ranking is free.** The graded `matchStrength`, the per-field scoring and even the second ranking pass when auto-widening cost under 1 ms together — the things most likely to be "optimized" on instinct were never the cost. `bestMatchSnippet` was 99% of it, through two compounding mistakes:
+
+1. **It re-tokenized every line of every message on every keystroke.** Lines do not change between keystrokes; only the query does.
+2. **The result list was uncapped**, so every match rendered a row, and every row ran a full snippet scan over its whole conversation.
+
+**Decision 1 — cache the line tokens, on the fields, lazily.** `ConversationFields.lines` is `null` until the first snippet request for that conversation. Eager construction was rejected: line tokens are by far the largest thing this module produces (every line keeps its own array *and* its text, where the scored fields are deduped token sets), and building them for the whole corpus on panel open would trade a per-keystroke cost for a permanent memory one on a device that may be a phone. Only conversations that actually render ever pay, and at most `SEARCH_RESULT_LIMIT` of them do.
+
+`bestMatchSnippet` therefore **requires** the conversation's fields rather than taking them optionally. An optional cache is a slow path that survives, and this is the call that runs once per rendered row per keystroke.
+
+**Decision 2 — cap the rendered rows at 20**, in the pure layer so the panel and the command-palette modal inherit it together. This is ADR-169's argument applied to the surface it was not applied to: *the number of conversations matching a short query grows with the corpus, so an uncapped list makes cost a function of vault size rather than of relevance.* The cap slices an already-sorted list, so the best rows survive it, and it is applied **after** the widen decision — which fires below `WIDEN_MIN_RESULTS`, far under the cap, so capping can never change it. A test asserts both.
+
+**Result**, from `scripts/bench-search.mjs`, worst keystroke while typing a word one character at a time:
+
+| Vault | Before | After | Rows |
+|---|---|---|---|
+| 24 | 15.6 ms | 19.4 ms | 20 |
+| 200 | 85.2 ms | 15.9 ms | 20 |
+| 500 | **398.9 ms** | **10.5 ms** | 20 |
+
+The point is not the multiple, it is the **shape**: the cost no longer grows with the vault. What remains is paid once on panel open (`fields`, 118 ms at 500 conversations) and on the first keystroke that renders a given conversation.
+
+**A type that stopped a future bug.** Adding `lines` to `ConversationFields` broke `Record<keyof ConversationFields, number>` for `FIELD_WEIGHTS` — the compiler correctly refusing to let a cache slot become a weighted field. Rather than widen the record, the scored keys got their own name: `ScoredField`. A new cache slot can now be added without the type system asking what its search weight is.
+
+#### ADR-170 addendum — three defects found reviewing ADR-169's own diff
+
+Reviewing the previous day's merge rather than trusting it turned up three, all in code written hours earlier:
+
+1. **The background warm read the entire index to ask whether it existed.** `VaultIndexStore.read()` does `exists()` then `readBinary()`; the warm used only the null check. On a large vault that is several megabytes decoded and discarded at every launch. `exists()` now answers the question it was asked.
+2. **The warm's timer outlived the plugin.** `window.setTimeout(...)` with nothing cancelling it: disabling the plugin inside the delay ran the warm against a torn-down instance. It is now registered for teardown — the convention the same file demonstrates a hundred lines below.
+3. **`warmIndex` stated its own guard twice** — an early return for the cheap half plus `shouldWarmIndex` for all of it. The cheap pre-check is right (it avoids a disk call on mobile), but a rule in two places drifts. Split into `canWarmBeforeIndexCheck`, which `shouldWarmIndex` composes, with a test asserting the two can never disagree.
+
+Also: `DEFAULT_MIN_SCORE` was exported and used nowhere outside its own module — now private, because an exported constant invites a second source of truth. And `tokenScore` allocated a notes array for every (conversation × query token) pair even under the default scope, which never scores notes; it is now allocated on first match.
+
+**The lesson worth keeping:** the ADR-169 diff was reviewed, tested and green, and it still carried a megabyte-per-launch read and a timer leak. Measuring the thing you changed does not review the thing you wrote.

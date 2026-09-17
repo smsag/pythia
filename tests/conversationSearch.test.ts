@@ -6,6 +6,8 @@ import {
 	rankConversations,
 	searchConversations,
 	bestMatchSnippet,
+	snippetLines,
+	SEARCH_RESULT_LIMIT,
 } from "../services/conversationSearch";
 import { tokenize } from "../services/noteRelevance";
 
@@ -119,8 +121,8 @@ describe("rankConversations", () => {
 			items.map(buildConversationFields)
 		);
 		expect(ranked.map((r) => r.conversation.name)).toEqual(["SSIG rollout"]);
-		expect(() => bestMatchSnippet(tokenize("ssig"), nullMsg)).not.toThrow();
-		expect(() => bestMatchSnippet(tokenize("ssig"), noMessages)).not.toThrow();
+		expect(() => bestMatchSnippet(tokenize("ssig"), nullMsg, buildConversationFields(nullMsg))).not.toThrow();
+		expect(() => bestMatchSnippet(tokenize("ssig"), noMessages, buildConversationFields(noMessages))).not.toThrow();
 	});
 
 	it("ranks a German umlaut query to the right conversation without umlaut cross-matches", () => {
@@ -152,12 +154,12 @@ describe("bestMatchSnippet", () => {
 			name: "notes",
 			messages: [msg("first line about nothing\nthe kayak trip was great\nfinal line")],
 		});
-		expect(bestMatchSnippet(tokenize("kayak"), c)).toBe("the kayak trip was great");
+		expect(bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c))).toBe("the kayak trip was great");
 	});
 
 	it("matches a message line by prefix", () => {
 		const c = conv({ name: "x", messages: [msg("the kayaking was great")] });
-		expect(bestMatchSnippet(tokenize("kayak"), c)).toBe("the kayaking was great");
+		expect(bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c))).toBe("the kayaking was great");
 	});
 
 	it("returns null when the hit is only in the title or summary", () => {
@@ -166,18 +168,18 @@ describe("bestMatchSnippet", () => {
 			summaryText: "about a kayak",
 			messages: [msg("no body match here")],
 		});
-		expect(bestMatchSnippet(tokenize("kayak"), c)).toBeNull();
+		expect(bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c))).toBeNull();
 	});
 
 	it("returns null for an empty query", () => {
 		const c = conv({ name: "x", messages: [msg("anything")] });
-		expect(bestMatchSnippet([], c)).toBeNull();
+		expect(bestMatchSnippet([], c, buildConversationFields(c))).toBeNull();
 	});
 
 	it("truncates a long matching line with an ellipsis", () => {
 		const long = `kayak ${"word ".repeat(60)}`.trim();
 		const c = conv({ name: "x", messages: [msg(long)] });
-		const snippet = bestMatchSnippet(tokenize("kayak"), c, 40)!;
+		const snippet = bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c), 40)!;
 		expect(snippet.length).toBeLessThanOrEqual(41);
 		expect(snippet.endsWith("…")).toBe(true);
 	});
@@ -382,5 +384,66 @@ describe("graded matching in search (ADR-168)", () => {
 		];
 		const ranked = rankConversations(tokenize("integration"), items, items.map(buildConversationFields));
 		expect(ranked.map((r) => r.conversation.name)).toEqual(["c"]);
+	});
+});
+
+describe("snippet line cache", () => {
+	it("tokenizes a conversation's lines once and reuses them", () => {
+		// The panel calls bestMatchSnippet once per rendered row per keystroke.
+		// Re-tokenizing every line each time was 99% of the typing cost.
+		const c = conv({ name: "x", messages: [msg("first line\nthe kayak trip\nlast line")] });
+		const fields = buildConversationFields(c);
+		expect(fields.lines).toBeNull();                 // not built up front
+
+		const first = snippetLines(c, fields);
+		expect(first).toHaveLength(3);
+		expect(fields.lines).toBe(first);                // cached on the fields
+		expect(snippetLines(c, fields)).toBe(first);     // and reused, not rebuilt
+	});
+
+	it("drops blank lines and keeps the text for display", () => {
+		const c = conv({ name: "x", messages: [msg("alpha\n\n   \nbeta")] });
+		const lines = snippetLines(c, buildConversationFields(c));
+		expect(lines.map((l) => l.text)).toEqual(["alpha", "beta"]);
+	});
+
+	it("survives a malformed conversation", () => {
+		const broken = conv({ name: "b", messages: [null as unknown as Message] });
+		expect(() => snippetLines(broken, buildConversationFields(broken))).not.toThrow();
+	});
+});
+
+describe("search results are capped (ADR-170)", () => {
+	const many = (n: number) =>
+		Array.from({ length: n }, (_, i) => conv({ id: `c${i}`, name: `kayak trip ${i}`, messages: [msg("we rented a kayak")] }));
+
+	it("renders at most SEARCH_RESULT_LIMIT rows however many match", () => {
+		const items = many(SEARCH_RESULT_LIMIT + 25);
+		const out = searchConversations("kayak", items, items.map(buildConversationFields));
+		expect(out.primary).toHaveLength(SEARCH_RESULT_LIMIT);
+	});
+
+	it("keeps the BEST rows, not the first N", () => {
+		// The decoys match in the BODY only; the last one matches in the title,
+		// which is worth 3x — so it must survive a cap that slices from the end.
+		const decoys = Array.from({ length: SEARCH_RESULT_LIMIT + 5 }, (_, i) =>
+			conv({ id: `d${i}`, name: `trip ${i}`, messages: [msg("we rented a kayak")] })
+		);
+		const items = [...decoys, conv({ id: "top", name: "kayak", messages: [msg("kayak kayak")] })];
+		const out = searchConversations("kayak", items, items.map(buildConversationFields));
+		// The cap slices an already-sorted list, so the top scorer must survive it.
+		expect(out.primary[0].score).toBeGreaterThanOrEqual(out.primary[out.primary.length - 1].score);
+		expect(out.primary.map((r) => r.conversation.id)).toContain("top");
+	});
+
+	it("does not let the cap change the auto-widen decision", () => {
+		// Widening fires below WIDEN_MIN_RESULTS, far under the cap, so capping
+		// after the decision can never alter it.
+		const noteHit = conv({
+			name: "Tuesday",
+			messages: [{ ...msg("unrelated"), attachedNotes: ["Recht/Mietvertrag.md"] }],
+		});
+		const out = searchConversations("mietvertrag", [noteHit], [buildConversationFields(noteHit)]);
+		expect(out.widened).toHaveLength(1);
 	});
 });

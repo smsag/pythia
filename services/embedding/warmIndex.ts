@@ -33,16 +33,26 @@ export function shouldWarmIndex(o: {
 	conversationCount: number;
 	hasIndex: boolean;
 }): boolean {
+	return canWarmBeforeIndexCheck(o) && o.hasIndex;
+}
+
+/** The half of the rule that can be answered WITHOUT touching the disk.
+ *
+ *  Split out rather than duplicated: `warmIndex` needs to bail before asking the
+ *  adapter whether an index exists, and a guard stated in two places is a guard
+ *  that drifts (one builder per fact). */
+export function canWarmBeforeIndexCheck(o: { isMobile: boolean; conversationCount: number }): boolean {
 	if (o.isMobile) return false;
-	if (!o.hasIndex) return false;
 	return o.conversationCount >= 2;
 }
 
 export interface WarmIndexDeps {
 	isMobile: boolean;
 	conversationCount: number;
-	/** The persisted index, or null when none has been built yet. */
-	readIndex(): Promise<ArrayBuffer | null>;
+	/** Whether an index has already been built. Deliberately a boolean rather than
+	 *  the index itself: reading several megabytes to answer a yes/no question was
+	 *  the first version's bug. */
+	hasIndex(): Promise<boolean>;
 	/** Bring the index in line with the current conversations. */
 	sync(): Promise<void>;
 	log(message: string, data?: Record<string, unknown>): void;
@@ -58,10 +68,10 @@ export interface WarmIndexDeps {
  * named here rather than left to be inferred (principle 2).
  */
 export async function warmIndex(d: WarmIndexDeps): Promise<void> {
-	if (d.isMobile || d.conversationCount < 2) return;
+	// The cheap half of the rule first, so a phone never touches the adapter.
+	if (!canWarmBeforeIndexCheck(d)) return;
 	try {
-		const hasIndex = (await d.readIndex()) !== null;
-		if (!shouldWarmIndex({ isMobile: d.isMobile, conversationCount: d.conversationCount, hasIndex })) {
+		if (!shouldWarmIndex({ ...d, hasIndex: await d.hasIndex() })) {
 			d.log("related: warm skipped (no index yet)");
 			return;
 		}
@@ -71,4 +81,27 @@ export async function warmIndex(d: WarmIndexDeps): Promise<void> {
 	} catch (e) {
 		d.log("related: warm failed", { error: e instanceof Error ? e.message : String(e) });
 	}
+}
+
+/** How long after layout-ready the warm starts. Long enough that it never sits
+ *  between the user and a drawn workspace; short enough to be done before a
+ *  first click. */
+export const WARM_DELAY_MS = 3000;
+
+/**
+ * Schedule the warm, and make sure it dies with the plugin.
+ *
+ * The timer is registered for teardown rather than left loose: a plugin disabled
+ * inside the delay would otherwise run the warm against a torn-down instance,
+ * reaching settings, the vault adapter and services that have already been
+ * nulled. Takes `register` rather than a Plugin so the module stays free of
+ * Obsidian and this stays testable.
+ */
+export function scheduleWarm(o: {
+	run: () => void;
+	register(cleanup: () => void): void;
+	delayMs?: number;
+}): void {
+	const id = setTimeout(o.run, o.delayMs ?? WARM_DELAY_MS);
+	o.register(() => clearTimeout(id));
 }

@@ -21,6 +21,16 @@ export class VaultIndexStore implements IndexStore {
 		this.path = normalizePath(`${this.dir}/${prefix}-${modelId}.bin`);
 	}
 
+	/** Whether an index has been built, WITHOUT reading it.
+	 *
+	 *  `read()` returns the whole binary — several megabytes on a large vault
+	 *  (one Int8 vector per chunk) — and the background warm only needs to know
+	 *  whether the file is there. Reading and discarding it at every launch was
+	 *  the cost this method exists to avoid. */
+	async exists(): Promise<boolean> {
+		return this.plugin.app.vault.adapter.exists(this.path);
+	}
+
 	async read(): Promise<ArrayBuffer | null> {
 		const adapter = this.plugin.app.vault.adapter;
 		if (!(await adapter.exists(this.path))) return null;

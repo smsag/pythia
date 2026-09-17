@@ -17,6 +17,9 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	/** Searchable fields per conversation, aligned by index to `conversations`.
 	 *  Built once here so each keystroke only re-scores, never re-concatenates. */
 	private fields: ConversationFields[];
+	/** Fields by conversation id — `renderSuggestion` receives a conversation, not
+	 *  an index, and the snippet needs that conversation's cached lines. */
+	private fieldsById: Map<string, ConversationFields>;
 	/** Query tokens from the latest getSuggestions call, reused to compute the
 	 *  match snippet while rendering each row. */
 	private queryTokens: string[] = [];
@@ -36,6 +39,7 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 		this.onChoose = onChoose;
 		this.onDelete = onDelete;
 		this.fields = conversations.map(buildConversationFields);
+		this.fieldsById = new Map(conversations.map((c, i) => [c.id, this.fields[i]]));
 		this.setPlaceholder(t("searchConversations"));
 		this.setInstructions([
 			{ command: "↑↓", purpose: t("instrNavigate") },
@@ -75,7 +79,8 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 				text: `${t("viaNote", { name: noteBasename(via[0]) })}${extra}`,
 			});
 		}
-		const snippet = bestMatchSnippet(this.queryTokens, conv);
+		const fields = this.fieldsById.get(conv.id);
+		const snippet = fields ? bestMatchSnippet(this.queryTokens, conv, fields) : null;
 		if (snippet) {
 			text.createDiv({ cls: "pythia-conv-suggest-snippet", text: snippet });
 		}
