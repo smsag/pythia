@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { readCatalog, buildTable, renderTable, spliceGenerated, readCommittedTable, NO_UPSTREAM, UPSTREAM_IDS } from "../scripts/update-pricing.mjs";
+import { readCatalog, buildTable, renderTable, spliceGenerated, readCommittedTable, fmt, NO_UPSTREAM, UPSTREAM_IDS } from "../scripts/update-pricing.mjs";
 import { MODEL_CATALOG } from "../models/knownModels";
 import { MODEL_PRICING, PRICING_AS_OF } from "../models/modelPricing";
 
@@ -76,5 +76,41 @@ describe("renderTable + spliceGenerated", () => {
 
 	it("refuses a file without markers", () => {
 		expect(() => spliceGenerated("export const x = 1;", "y")).toThrow(/markers/);
+	});
+});
+
+describe("fmt — the last gate before upstream numbers become source", () => {
+	it("formats an ordinary price to at most 4 decimals, without trailing zeros", () => {
+		expect(fmt(3)).toBe("3");
+		expect(fmt(2.5)).toBe("2.5");
+		expect(fmt(0.12345)).toBe("0.1235");
+		expect(fmt(0)).toBe("0");
+	});
+
+	it("never emits exponent notation for a very small price", () => {
+		// `String(0.000001)` is "0.000001", but `String(1e-7)` is "1e-7" — which
+		// would compile and then price nothing correctly.
+		expect(fmt(0.0000001)).not.toContain("e");
+	});
+
+	// The reason this function is exported: a hostile or broken upstream cannot
+	// reach it as a string (toFixed throws), but it CAN reach it as NaN, and
+	// `input: NaN` is valid TypeScript that compiles into a shipped price table.
+	it("refuses a non-finite number rather than emitting NaN into the source", () => {
+		expect(() => fmt(NaN)).toThrow(/not a usable number/);
+		expect(() => fmt(Infinity)).toThrow(/not a usable number/);
+		expect(() => fmt(-Infinity)).toThrow(/not a usable number/);
+	});
+
+	it("refuses a negative price", () => {
+		// No provider charges a negative rate; a negative here means the upstream
+		// schema moved and we are reading the wrong field.
+		expect(() => fmt(-1)).toThrow(/not a usable number/);
+	});
+
+	it("refuses a non-number outright", () => {
+		expect(() => fmt("2.5")).toThrow(/not a usable number/);
+		expect(() => fmt(null)).toThrow(/not a usable number/);
+		expect(() => fmt(undefined)).toThrow(/not a usable number/);
 	});
 });
