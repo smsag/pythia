@@ -11,5 +11,9 @@ export const NO_UPSTREAM: Set<string>;
 export function readCommittedTable(source: string): Record<string, TableRow>;
 export function readCatalog(source: string): CatalogRow[];
 export function buildTable(upstream: unknown, catalog: CatalogRow[], ids?: Record<string, string>, noUpstream?: Set<string>): Record<string, TableRow>;
+/** Formats one price for emission into the generated block, and refuses
+ *  anything that is not a usable number — `unknown` on purpose, because the
+ *  point of the guard is that the caller cannot promise what upstream sent. */
+export function fmt(n: unknown): string;
 export function renderTable(table: Record<string, TableRow>, catalog: CatalogRow[], asOf: string): string;
 export function spliceGenerated(source: string, block: string): string;

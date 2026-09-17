@@ -90,7 +90,18 @@ export function readCommittedTable(source) {
 
 const PROVIDER_HEADINGS = { anthropic: "Anthropic", openai: "OpenAI", mistral: "Mistral" };
 
-function fmt(n) {
+export function fmt(n) {
+	// The last gate between models.dev and shipped source. The path above is
+	// already narrow — model ids come from the LOCAL catalog, never upstream, and
+	// `toFixed` throws on a string or an object, so a hostile payload cannot reach
+	// this line as anything but a number. What it CAN reach as is NaN or Infinity,
+	// and `fmt(NaN)` emits `input: NaN`, which is valid TypeScript, compiles, and
+	// ships a price table nobody can read a number out of. Integrity rather than
+	// execution, but the fix is the same shape as every other boundary in this
+	// codebase: refuse, loudly, where the value enters (principle 1).
+	if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
+		throw new Error(`upstream price is not a usable number: ${JSON.stringify(n)}`);
+	}
 	// Up to 4 decimals, no trailing zeros, never exponent notation.
 	return Number(n.toFixed(4)).toString();
 }
