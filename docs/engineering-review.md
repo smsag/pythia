@@ -1461,7 +1461,7 @@ Found reviewing the workflows after a stacked PR turned out to have no checks at
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| 286 | **`npm ci` runs install scripts in CI**, for the whole tree, in the same job as the token. Worth evaluating `--ignore-scripts`: `onnxruntime-node` ships its CPU binary in-package (and `.npmrc` already skips the CUDA fetch) and esbuild's binary arrives via its optional dependency, so it may just work — but that needs a CI run to confirm, not an assumption. | Medium | Open |
+| 286 | **`npm ci` ran install scripts in CI**, for the whole tree, in the same job as the token. Now `npm ci --ignore-scripts` in all three workflows. Measured on the post-bump tree rather than assumed: a clean install takes 10.8s, and `lint`, `check:filesize`, `build` and 1158 tests all pass with no hook having run — `@esbuild/linux-x64/bin/esbuild` and `onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node` are both plain files in their tarballs. The constraint this creates (no dependency may rely on an install hook, or it passes locally and fails in CI) is recorded in `AGENTS.md`, where someone adding a native dependency will meet it. | Medium | Done |
 | 287 | **`update-pricing` combines network input with `contents: write` + `pull-requests: write` in one job.** Splitting it — a fetch job with `permissions: {}` that uploads the rewritten file as an artifact, and a second job that opens the PR — would leave the job touching the internet with no write authority at all. | Low | Open |
 
 ## Follow-up (#288–#289) — the first dependabot batch, 2026-09-17

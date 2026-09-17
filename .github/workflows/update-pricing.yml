@@ -30,7 +30,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # --ignore-scripts: no dependency's install hook runs in the same job as
+        # the token (engineering-review #286). Nothing here needs one — esbuild's
+        # binary arrives via its platform optional dependency and onnxruntime-node
+        # ships its CPU binary in-package, both as plain files in the tarball.
+        run: npm ci --ignore-scripts
 
       - name: Update the price table
         run: npm run update:pricing
