@@ -7,9 +7,10 @@ import {
 	type RelatedSimilarity,
 } from "../../models/embeddingModels";
 
-/** Fallback floor when no model is known. Only reachable from `rankRelated`'s
- *  own default; every production caller passes a model. */
-export const DEFAULT_MIN_SCORE = 0.5;
+/** Fallback floor when `rankRelated` is called without one. Module-private:
+ *  every production caller resolves a floor through `relatedMinScore`, and an
+ *  exported constant invites a second source of truth. */
+const DEFAULT_MIN_SCORE = 0.5;
 
 /**
  * The cosine floor for one strictness preset on one model.

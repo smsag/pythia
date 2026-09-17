@@ -1430,6 +1430,23 @@ An audit of every per-conversation setting against what the panel actually shows
 | 274 | **Show the matched chunk on each related row.** `maxPairwiseCosine` already knows which pair of chunks won and throws the indices away; the index does not persist chunk text. Related mode currently shows a bare conversation name with no score and no evidence — the failure ADR-168 legislated against for search. | Medium | Open |
 | 275 | **The settings copy undersells the speed difference.** "English is faster" is measured at **4.4×** (30.5s vs 135.2s for the same 554 chunks). A user on a large vault choosing the default multilingual model is choosing ~19 minutes over ~4. | Low | Open |
 
+## Follow-up (#276–#280) — search cost, and reviewing the previous diff, 2026-09-17
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 276 | **The match snippet was 99% of a keystroke, and it scaled with the vault.** `bestMatchSnippet` re-tokenized every line of every message for every rendered row, on every keystroke: 398ms at 500 conversations. Line tokens are now cached lazily on `ConversationFields`, and `bestMatchSnippet` requires the fields so the uncached path cannot survive. | High | Done (ADR-170) |
+| 277 | **Search results were uncapped.** ADR-169 capped related conversations on the argument that match count grows with the corpus; the same argument was never applied to search, which ADR-168 had shipped hours earlier. `SEARCH_RESULT_LIMIT = 20`, applied in the pure layer so the panel and the palette modal inherit it together. | High | Done (ADR-170) |
+| 278 | **The background warm read the entire index to test existence.** `read()` returns the whole binary — megabytes on a large vault — and the warm used only the null check, at every launch. `VaultIndexStore.exists()` added. | Medium | Done (ADR-170) |
+| 279 | **The warm's timer outlived the plugin.** A bare `window.setTimeout` in `onLayoutReady`: disabling the plugin inside the 3s delay ran the warm against a torn-down instance. Now registered for teardown, the convention the same file already uses. | Medium | Done (ADR-170) |
+| 280 | **`warmIndex` stated its guard twice** (a cheap early return plus `shouldWarmIndex`). Split into `canWarmBeforeIndexCheck`, composed by `shouldWarmIndex`, with a test asserting they cannot disagree. Also: `DEFAULT_MIN_SCORE` un-exported, and `tokenScore` no longer allocates a notes array per (conversation × token) under the default scope. | Low | Done (ADR-170) |
+
+**Still open from this pass:**
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 281 | **`openHistoryView` is a ~350-line function holding ~25 closures.** The file-size ratchet counts files, not functions, so nothing flags it. The natural seam is browse/search rendering vs. related mode — the split ADR-109 made conceptually and never structurally. | Medium | Open |
+| 282 | **`sync` can only abort between conversations.** `provider.embed(chunks)` embeds one conversation's chunks in a single uninterruptible call — fine at the measured ~23 chunks, unbounded in principle. | Low | Open |
+
 ## Follow-up (#283–#285) — CI and supply-chain hardening, 2026-09-17
 
 Found reviewing the workflows after a stacked PR turned out to have no checks at all — not failing, never triggered.

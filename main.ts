@@ -26,7 +26,7 @@ import { embeddingWorkerUrl } from "./services/embedding/host/workerBundleUrl";
 import type { EmbeddingProvider } from "./services/embedding/EmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
-import { warmIndex } from "./services/embedding/warmIndex";
+import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
@@ -34,8 +34,6 @@ import type { EmbeddingModelId } from "./models/embeddingModels";
 /** Related conversations shown at once. A cap, not a filter: the floor decides
  *  relevance, this decides how much of it fits on a screen (ADR-169). */
 const RELATED_RESULT_LIMIT = 20;
-/** How long after layout-ready the background index warm starts. */
-const RELATED_WARM_DELAY_MS = 3000;
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -181,7 +179,7 @@ export default class PythiaPlugin extends Plugin {
 		return warmIndex({
 			isMobile: Platform.isMobile,
 			conversationCount: this.conversations.length,
-			readIndex: () => new VaultIndexStore(this, this.settings.embeddingModelId).read(),
+			hasIndex: () => new VaultIndexStore(this, this.settings.embeddingModelId).exists(),
 			sync: () => this.ensureRelatedService({ silent: true }).sync(this.conversations),
 			log: (message, data) => debugLog(this.settings, message, data),
 		});
@@ -241,10 +239,8 @@ export default class PythiaPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			this.viewManager.initLeaf();
-			// After the workspace is up, not during it: the warm is incremental and
-			// usually near-instant, but it must never sit between the user and a
-			// drawn UI.
-			window.setTimeout(() => void this.warmRelatedIndex(), RELATED_WARM_DELAY_MS);
+			// After the workspace is up, not during it (ADR-169/170).
+			scheduleWarm({ run: () => void this.warmRelatedIndex(), register: (c) => this.register(c) });
 		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
