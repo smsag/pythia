@@ -16,6 +16,8 @@ import { noteBasename } from "../services/pathUtils";
 import { keyboardOverlap, readKeyboardHeight, watchViewport } from "./keyboardInset";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
+import { RelatedMode } from "./RelatedMode";
+import { renderHistoryChip } from "./historyChip";
 
 /**
  * Using the history panel to choose a conversation rather than switch to one
@@ -122,7 +124,11 @@ export class HistoryController {
 		const overlay = container.createDiv({ cls: "p-history" });
 
 		const close = () => {
-			cancelRelated();
+			// Forward reference, like `detachEscape` and `detachKeyboardInset` below:
+			// close is defined early so the Escape binding and `historyCleanup` can
+			// be registered synchronously, and nothing invokes it before the
+			// constructors further down have run.
+			related.cancel();
 			overlay.remove();
 			detachEscape();
 			detachKeyboardInset();
@@ -177,26 +183,16 @@ export class HistoryController {
 		clearBtn.addEventListener("click", () => {
 			input.value = "";
 			syncClear();
-			if (related) { related = null; renderChip(); }
+			if (related.isActive()) { related.clear(); renderChip(); }
 			buildList("");
 			// Only re-focus if the field already had it: tapping ✕ while the keyboard
 			// is up should keep it up, but it must not raise one that was down.
 			if (document.activeElement === input) input.focus();
 		});
 
-		// Related-conversations mode (ADR-109): a source conversation's semantic
-		// neighbours, behind a dismissible chip. null = normal browse/search.
+		// Related-conversations mode (ADR-109) lives in `ui/RelatedMode.ts`; it is
+		// wired up after the list element exists, below.
 		const chipEl = overlay.createDiv({ cls: "p-history-chip-wrap" });
-		let related: { sourceId: string; sourceName: string; results: { id: string; score: number }[]; loading: boolean } | null = null;
-		// Aborts the in-flight related query. Cancelling matters because the query
-		// syncs the index first, and a cold build is minutes of embedding — on the
-		// iframe fallback, minutes of UI thread. Leaving related mode, typing, or
-		// closing the panel must stop paying for a result nobody will see.
-		let relatedRun: AbortController | null = null;
-		const cancelRelated = (): void => {
-			relatedRun?.abort();
-			relatedRun = null;
-		};
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
 
@@ -259,92 +255,40 @@ export class HistoryController {
 			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
 		};
 
-		// ── Related mode (ADR-109) ────────────────────────────────────
-		const makeChip = (label: string, tooltip: string, onClear: () => void): void => {
-			const chip = chipEl.createDiv({ cls: "p-history-chip" });
-			chip.createSpan({ cls: "p-history-chip-label", text: label });
-			const clear = chip.createSpan({ cls: "p-history-chip-clear", attr: { title: tooltip } });
-			setIcon(clear, "x");
-			clear.addEventListener("click", () => onClear());
-		};
-
+		// ── Chips (ADR-109 related · ADR-168 widened) ─────────────────
 		const renderChip = () => {
 			chipEl.empty();
-			if (related) {
-				makeChip(t("relatedChip", { name: related.sourceName }), t("relatedClearTooltip"), () => exitRelated());
-				return;
-			}
+			if (related.renderChip()) return;
 			// Undoing an automatic widening writes the scope into the box rather than
 			// flipping a hidden flag: the grammar is the control, so the ✕ is also
 			// where the user learns it exists.
 			if (widenActive) {
-				makeChip(t("widenedChip"), t("widenedClearTooltip"), () => {
-					input.value = `conv: ${input.value.trim()}`;
-					syncClear();
-					buildList(input.value);
+				renderHistoryChip(chipEl, {
+					label: t("widenedChip"),
+					tooltip: t("widenedClearTooltip"),
+					onClear: () => {
+						input.value = `conv: ${input.value.trim()}`;
+						syncClear();
+						buildList(input.value);
+					},
 				});
 			}
 		};
 
-		const renderRelated = () => {
-			listEl.empty();
-			rows = [];
-			selectedIdx = 0;
-			renderChip();
-			if (!related) return;
-			if (related.loading) {
-				listEl.createDiv({ cls: "p-nav-empty", text: t("relatedLoading") });
-				return;
-			}
-			const byId = new Map(this.d.plugin.conversations.map((c) => [c.id, c]));
-			let shown = 0;
-			for (const r of related.results) {
-				const conv = byId.get(r.id);
-				if (!conv) continue; // deleted since the query ran
-				const isFork = !!conv.forkedFromId && byId.has(conv.forkedFromId);
-				makeRow(conv, isFork, false);
-				shown++;
-			}
-			if (shown === 0) listEl.createDiv({ cls: "p-nav-empty", text: t("relatedEmpty") });
-			paintSelection();
-		};
-
-		const enterRelated = async (conv: Conversation) => {
-			if (!this.d.getRelated) return;
-			cancelRelated();
-			const run = new AbortController();
-			relatedRun = run;
-			related = { sourceId: conv.id, sourceName: conv.name, results: [], loading: true };
-			renderRelated();
-			try {
-				const results = await this.d.getRelated(conv.id, run.signal);
-				if (related?.sourceId === conv.id) {
-					related.results = results;
-					related.loading = false;
-					renderRelated();
-				}
-			} catch (e) {
-				// An abort is this panel's own doing — the user left, and there is
-				// nothing to report. Anything else is a real failure and says so.
-				if (run.signal.aborted) return;
-				new Notice(t("relatedFailed", { error: e instanceof Error ? e.message : String(e) }));
-				related = null;
-				renderChip();
-				buildList(input.value);
-			} finally {
-				if (relatedRun === run) relatedRun = null;
-			}
-		};
-
-		const exitRelated = () => {
-			cancelRelated();
-			related = null;
-			renderChip();
-			buildList(input.value);
-		};
+		const related = new RelatedMode({
+			chipEl,
+			listEl,
+			getRelated: this.d.getRelated?.bind(this.d),
+			conversations: () => this.d.plugin.conversations,
+			makeRow: (conv, isFork) => makeRow(conv, isFork, false),
+			resetRows: () => { rows = []; selectedIdx = 0; },
+			paintSelection: () => paintSelection(),
+			renderChip: () => renderChip(),
+			showNormalList: () => buildList(input.value),
+		});
 
 		/** Re-render whichever mode is active (used after a row delete). */
-		const refreshList = () => (related ? renderRelated() : buildList(input.value));
+		const refreshList = () => (related.isActive() ? related.render() : buildList(input.value));
 
 		// Long-press menu (touch): the hover-only row actions aren't reachable without
 		// a pointer, so a long-press offers the same ones — show similar + delete
@@ -353,7 +297,7 @@ export class HistoryController {
 			const menu = new Menu();
 			let items = 0;
 			if (this.d.getRelated) {
-				menu.addItem((item) => item.setTitle(t("relatedTooltip")).setIcon("git-compare").onClick(() => void enterRelated(conv)));
+				menu.addItem((item) => item.setTitle(t("relatedTooltip")).setIcon("git-compare").onClick(() => void related.enter(conv)));
 				items++;
 			}
 			if (conv.id !== this.d.getConversation()?.id) {
@@ -429,7 +373,7 @@ export class HistoryController {
 			if (this.d.getRelated && !pick) {
 				const relate = row.createSpan({ cls: "p-history-relate", attr: { title: t("relatedTooltip") } });
 				setIcon(relate, "git-compare");
-				relate.addEventListener("click", (e) => { e.stopPropagation(); void enterRelated(conv); });
+				relate.addEventListener("click", (e) => { e.stopPropagation(); void related.enter(conv); });
 			}
 			if (conv.id === this.d.getConversation()?.id) {
 				row.createSpan({ cls: "p-history-active", text: t("navActiveTag") });
@@ -520,7 +464,7 @@ export class HistoryController {
 		// corpus each build re-scores every conversation and repaints the list.
 		let inputTimer: ReturnType<typeof setTimeout> | null = null;
 		input.addEventListener("input", () => {
-			if (related) { cancelRelated(); related = null; renderChip(); } // typing exits related mode
+			if (related.isActive()) { related.clear(); renderChip(); } // typing exits related mode
 			syncClear();
 			if (inputTimer !== null) clearTimeout(inputTimer);
 			inputTimer = setTimeout(() => {

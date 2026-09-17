@@ -68,6 +68,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
     outsideDismiss.ts         ← the one deferred outside-press / Escape dismisser for popovers and menus (ADR-161)
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
+    RelatedMode.ts            ← the ADR-109 related-conversations mode: source, in-flight query + abort, chip, loading/empty/results
+    historyChip.ts            ← renderHistoryChip — the ONE dismissible chip, shared by related (ADR-109) and widened (ADR-168)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
     ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
