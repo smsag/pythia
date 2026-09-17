@@ -19,6 +19,12 @@ npm run dev       # watch mode
 
 Always run `npm run build` after any TypeScript change to verify compilation.
 
+CI installs with `npm ci --ignore-scripts`, so **no dependency may rely on an
+install hook** (engineering-review #286). Adding one that does will pass locally
+and fail in CI. Today nothing needs one: esbuild's binary arrives through its
+platform optional dependency and `onnxruntime-node` ships its CPU binary in the
+package. Check a new native dependency against that before adding it.
+
 ## Architecture
 
 ```
