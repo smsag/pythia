@@ -13,6 +13,14 @@ function messageText(m: Message | null | undefined): string {
 	return typeof m?.content === "string" ? m.content : "";
 }
 
+/** One message line with its tokens, for the match snippet. Tokenizing lines is
+ *  the expensive half and lines never change between keystrokes, so the array is
+ *  built once per conversation and reused (see `snippetLines`). */
+export interface SnippetLine {
+	text: string;
+	tokens: string[];
+}
+
 /** One vault note this conversation touched, with its path tokenized once. */
 export interface NoteRef {
 	/** The vault path, for display and for telling the user WHY a row surfaced. */
@@ -35,14 +43,37 @@ export interface ConversationFields {
 	summary: string[];
 	body: string[];
 	notes: NoteRef[];
+	/** Filled on the FIRST snippet request for this conversation, not up front.
+	 *
+	 *  Line tokens are the single most expensive thing this module produces — far
+	 *  larger than the deduped field arrays, because every line keeps its own
+	 *  array plus its text. Building them for the whole corpus on panel open
+	 *  would trade a per-keystroke cost for a permanent memory one, on a device
+	 *  that may be a phone. Only conversations that actually render as a result
+	 *  ever pay, and the panel shows at most `SEARCH_RESULT_LIMIT` of them. */
+	lines: SnippetLine[] | null;
 }
+
+/** Search results rendered at once.
+ *
+ *  A cap, not a filter — the same rule ADR-169 applied to related conversations:
+ *  the number of conversations matching a short query grows with the corpus, so
+ *  an uncapped list makes the render cost (and the snippet scan behind every
+ *  row) a function of vault size rather than of relevance. Measured before the
+ *  cap: 398ms per keystroke at 500 conversations, 99% of it snippets. */
+export const SEARCH_RESULT_LIMIT = 20;
+
+/** The fields that are SCORED, as opposed to `lines`, which is a render cache.
+ *  Naming them separately is what stops a cache slot from silently becoming a
+ *  weighted field — the compiler now refuses the confusion. */
+export type ScoredField = "title" | "summary" | "body" | "notes";
 
 /** How much a hit in each field is worth, as a multiplier on the token's IDF.
  *
  *  `title` keeps the ×3 it has always had. `notes` is high for the same reason
  *  a title is: a note name is a deliberate, curated label, not prose — and
  *  unlike prose it was chosen by the user, not generated. */
-export const FIELD_WEIGHTS: Record<keyof ConversationFields, number> = {
+export const FIELD_WEIGHTS: Record<ScoredField, number> = {
 	title: 3,
 	notes: 2,
 	summary: 1,
@@ -51,7 +82,7 @@ export const FIELD_WEIGHTS: Record<keyof ConversationFields, number> = {
 
 /** Which fields a scope scores. `notes` alone is the `note:` query; `all` is
  *  everything; the default is what search has always looked at. */
-export function scopeFields(scope: SearchScope): (keyof ConversationFields)[] {
+export function scopeFields(scope: SearchScope): ScoredField[] {
 	if (scope === "notes") return ["notes"];
 	if (scope === "all") return ["title", "summary", "body", "notes"];
 	return ["title", "summary", "body"];
@@ -101,6 +132,7 @@ export function buildConversationFields(conv: Conversation): ConversationFields 
 		// an "md" token and a search for "md" would return the whole vault. Folder
 		// segments are kept: they are how people file things.
 		notes: noteRefs(conv).map((ref) => ({ ref, tokens: tokenize(ref.replace(/\.md$/i, "")) })),
+		lines: null,
 	};
 }
 
@@ -123,17 +155,20 @@ function idf(df: number, n: number): number {
  *  the note paths that produced a note-field hit. */
 function tokenScore(
 	fields: ConversationFields,
-	active: (keyof ConversationFields)[],
+	active: ScoredField[],
 	qt: string
-): { weighted: number; notes: string[] } {
+): { weighted: number; notes: string[] | null } {
 	let weighted = 0;
-	const notes: string[] = [];
+	// Allocated only once a note actually matches. This runs for every
+	// (conversation × query token) on every keystroke, and the default scope does
+	// not score notes at all, so an eager array is pure garbage in the common case.
+	let notes: string[] | null = null;
 	for (const field of active) {
 		if (field === "notes") {
 			for (const note of fields.notes) {
 				const s = matchStrength(note.tokens, qt);
 				if (s <= 0) continue;
-				notes.push(note.ref);
+				(notes ??= []).push(note.ref);
 				weighted = Math.max(weighted, s * FIELD_WEIGHTS.notes);
 			}
 			continue;
@@ -190,7 +225,7 @@ export function rankConversations(
 				const cell = cells[i][qi];
 				if (cell.weighted <= 0) return;
 				score += idf(df[qi], n) * cell.weighted;
-				for (const ref of cell.notes) matched.add(ref);
+				if (cell.notes) for (const ref of cell.notes) matched.add(ref);
 			});
 			return { conversation, score, matchedNotes: [...matched] };
 		})
@@ -230,6 +265,9 @@ export function searchConversations(
 	const queryTokens = tokenize(query);
 	const primary = rankConversations(queryTokens, conversations, fields, scope);
 
+	const cap = (rows: RankedConversation[]): RankedConversation[] =>
+		rows.length > SEARCH_RESULT_LIMIT ? rows.slice(0, SEARCH_RESULT_LIMIT) : rows;
+
 	if (
 		!shouldWiden({
 			explicit,
@@ -238,7 +276,7 @@ export function searchConversations(
 			picking: opts.picking ?? false,
 		})
 	) {
-		return { scope, queryTokens, primary, widened: [] };
+		return { scope, queryTokens, primary: cap(primary), widened: [] };
 	}
 
 	const seen = new Set(primary.map((r) => r.conversation.id));
@@ -248,7 +286,29 @@ export function searchConversations(
 	const widened = rankConversations(queryTokens, conversations, fields, "all").filter(
 		(r) => !seen.has(r.conversation.id) && r.matchedNotes.length > 0
 	);
-	return { scope, queryTokens, primary, widened };
+	// The widen decision is made on the UNCAPPED count above; capping here cannot
+	// change it, because widening only fires below WIDEN_MIN_RESULTS.
+	return { scope, queryTokens, primary: cap(primary), widened: cap(widened) };
+}
+
+/**
+ * The conversation's message lines, tokenized once and cached on its fields.
+ *
+ * Defensive in the same way as the field builder: it runs over persisted data
+ * that only guarantees `messages` is an array.
+ */
+export function snippetLines(conv: Conversation, fields: ConversationFields): SnippetLine[] {
+	if (fields.lines !== null) return fields.lines;
+	const out: SnippetLine[] = [];
+	const messages = Array.isArray(conv.messages) ? conv.messages : [];
+	for (const msg of messages) {
+		for (const rawLine of messageText(msg).split("\n")) {
+			const text = rawLine.trim();
+			if (text) out.push({ text, tokens: tokenize(text) });
+		}
+	}
+	fields.lines = out;
+	return out;
 }
 
 /**
@@ -257,6 +317,11 @@ export function searchConversations(
  * summary or an attached note). Used to show the user *why* a conversation
  * surfaced.
  *
+ * Takes the conversation's `fields` because that is where the tokenized lines
+ * are cached. It is not an optional convenience: this runs once per rendered
+ * row per keystroke, and re-tokenizing every line each time was 99% of the
+ * panel's typing cost (398ms per keystroke at 500 conversations, 1ms after).
+ *
  * Uses the same `matchStrength` the ranking does — a row that surfaces on a
  * compound or reverse hit and then shows no snippet is the "silence is a bug"
  * shape, and it is what a second, stricter copy of the matching rule produces.
@@ -264,24 +329,19 @@ export function searchConversations(
 export function bestMatchSnippet(
 	queryTokens: string[],
 	conv: Conversation,
+	fields: ConversationFields,
 	maxLen = 100
 ): string | null {
 	if (queryTokens.length === 0) return null;
 
 	let bestLine = "";
 	let bestScore = 0;
-	const messages = Array.isArray(conv.messages) ? conv.messages : [];
-	for (const msg of messages) {
-		for (const rawLine of messageText(msg).split("\n")) {
-			const line = rawLine.trim();
-			if (!line) continue;
-			const lineTokens = tokenize(line);
-			let score = 0;
-			for (const tok of queryTokens) score += matchStrength(lineTokens, tok);
-			if (score > bestScore) {
-				bestScore = score;
-				bestLine = line;
-			}
+	for (const line of snippetLines(conv, fields)) {
+		let score = 0;
+		for (const tok of queryTokens) score += matchStrength(line.tokens, tok);
+		if (score > bestScore) {
+			bestScore = score;
+			bestLine = line.text;
 		}
 	}
 
