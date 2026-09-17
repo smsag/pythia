@@ -1429,3 +1429,20 @@ An audit of every per-conversation setting against what the panel actually shows
 | 273 | **Vault-RAG retrieval floors are unmeasured.** ADR-169 measured conversation pairs; `vaultRetrievalMinScore` keeps 0.5 / 0.35 / 0.2 on faith. The equivalent probe for query-to-note retrieval does not exist yet. | Medium | Open |
 | 274 | **Show the matched chunk on each related row.** `maxPairwiseCosine` already knows which pair of chunks won and throws the indices away; the index does not persist chunk text. Related mode currently shows a bare conversation name with no score and no evidence — the failure ADR-168 legislated against for search. | Medium | Open |
 | 275 | **The settings copy undersells the speed difference.** "English is faster" is measured at **4.4×** (30.5s vs 135.2s for the same 554 chunks). A user on a large vault choosing the default multilingual model is choosing ~19 minutes over ~4. | Low | Open |
+
+## Follow-up (#283–#285) — CI and supply-chain hardening, 2026-09-17
+
+Found reviewing the workflows after a stacked PR turned out to have no checks at all — not failing, never triggered.
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 283 | **CI was silently skipped for any PR not targeting `main`.** `pull_request: branches: [main]` meant a stacked PR showed no checks, which on the PR page is indistinguishable from "nothing to report". Filter removed, and `Build & test` is now a required status check on `main`, so absent CI blocks a merge instead of reading as success. `ci.yml` also gained `permissions: contents: read` (it declared none, inheriting the repository default) and `persist-credentials: false` on checkout, which keeps the token out of `.git/config` for a job that runs `npm ci` with install scripts across the dependency tree. | Medium | Done |
+| 284 | **Every action was pinned to a mutable tag.** `@v4`, `@v5`, `@v2`, `@v7` — a moved tag changes what executes, and two of them (`softprops/action-gh-release`, `peter-evans/create-pull-request`) run with `contents: write`. All six now pinned to the commit SHA the tag resolved to, with the version in a trailing comment. `dependabot.yml` added so the freeze does not also freeze security fixes: it rewrites the SHA and the comment together, as a reviewable diff. | Medium | Done |
+| 285 | **`fmt()` in `update-pricing.mjs` emits non-finite numbers.** The generated-code path is otherwise well defended — model ids come from the local catalog, never upstream, and prices go through `Number.toFixed`, which throws on a string or object — but `fmt(NaN)` yields `NaN`, which is valid TypeScript and compiles into a shipped price table. Integrity, not execution. | Low | Open |
+
+**Still open:**
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 286 | **`npm ci` runs install scripts in CI**, for the whole tree, in the same job as the token. Worth evaluating `--ignore-scripts`: `onnxruntime-node` ships its CPU binary in-package (and `.npmrc` already skips the CUDA fetch) and esbuild's binary arrives via its optional dependency, so it may just work — but that needs a CI run to confirm, not an assumption. | Medium | Open |
+| 287 | **`update-pricing` combines network input with `contents: write` + `pull-requests: write` in one job.** Splitting it — a fetch job with `permissions: {}` that uploads the rewritten file as an artifact, and a second job that opens the PR — would leave the job touching the internet with no write authority at all. | Low | Open |
