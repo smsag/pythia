@@ -27,7 +27,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // ── Model registry (mirrors models/embeddingModels.ts) ───────────────────────
 const MODELS = {
@@ -363,7 +363,10 @@ async function main() {
 	if (opts.error) { process.stderr.write(`error: ${opts.error}\n${HELP}`); process.exitCode = 1; return; }
 	if (!existsSync(opts.dataPath)) { process.stderr.write(`error: no such file: ${opts.dataPath}\n`); process.exitCode = 1; return; }
 
-	const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+	// fileURLToPath, never `new URL(...).pathname`: the URL form is percent-encoded,
+	// so a checkout under "Mobile Documents" resolves to a "Mobile%20Documents"
+	// directory that does not exist and esbuild cannot resolve anything from it.
+	const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 	const core = await loadCore(repoRoot);
 
 	const parsed = JSON.parse(await readFile(opts.dataPath, "utf8"));
