@@ -52,10 +52,19 @@ export class ConversationIndexService {
 		this.loaded = true;
 	}
 
-	/** Bring the index in line with `conversations`; concurrent calls coalesce. */
-	async sync(conversations: Conversation[]): Promise<void> {
-		while (this.syncing) await this.syncing;
-		this.syncing = this.doSync(conversations);
+	/** Bring the index in line with `conversations`; concurrent calls coalesce.
+	 *
+	 *  `signal` aborts a long first build — embedding a cold vault takes minutes,
+	 *  and on the iframe fallback it runs on the UI thread, so a user who closes
+	 *  the panel must be able to stop paying for it. Whatever was embedded before
+	 *  the abort is kept and persisted, so the next attempt resumes rather than
+	 *  starting over. */
+	async sync(conversations: Conversation[], opts: { signal?: AbortSignal } = {}): Promise<void> {
+		// `.catch` rather than a bare await: an aborted sync rejects, and a waiter
+		// must not inherit that rejection — it wants a fresh attempt, not the
+		// previous caller's cancellation.
+		while (this.syncing) await this.syncing.catch(() => undefined);
+		this.syncing = this.doSync(conversations, opts.signal);
 		try {
 			await this.syncing;
 		} finally {
@@ -63,7 +72,7 @@ export class ConversationIndexService {
 		}
 	}
 
-	private async doSync(conversations: Conversation[]): Promise<void> {
+	private async doSync(conversations: Conversation[], signal?: AbortSignal): Promise<void> {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
 
@@ -81,27 +90,37 @@ export class ConversationIndexService {
 		const byId = new Map(this.items.map((i) => [i.id, i]));
 		for (const id of toDrop) byId.delete(id);
 
+		// Rebuild in desired (current-conversation) order, dropping any strays. Also
+		// run on abort: a conversation embedded before the stop is worth keeping,
+		// so a cancelled first build leaves the next one less to do.
+		const commit = async (): Promise<void> => {
+			this.items = desired
+				.map((d) => byId.get(d.id))
+				.filter((i): i is IndexedConversation => i !== undefined);
+			await this.store.write(serializeIndex(this.items, this.provider.dim));
+		};
+
 		const toEmbedSet = new Set(toEmbed);
 		for (const d of desired) {
 			if (!toEmbedSet.has(d.id)) continue;
+			if (signal?.aborted) {
+				await commit();
+				throw new DOMException("Embedding index sync aborted", "AbortError");
+			}
 			const raw = await this.provider.embed(d.chunks);
 			byId.set(d.id, { id: d.id, contentHash: d.contentHash, chunks: raw.map(quantize) });
 		}
 
-		// Rebuild in desired (current-conversation) order, dropping any strays.
-		this.items = desired
-			.map((d) => byId.get(d.id))
-			.filter((i): i is IndexedConversation => i !== undefined);
-		await this.store.write(serializeIndex(this.items, this.provider.dim));
+		await commit();
 	}
 
 	/** Conversations semantically related to `sourceId`, most-similar first. */
 	async getRelated(
 		sourceId: string,
 		conversations: Conversation[],
-		opts: { minScore?: number; limit?: number } = {}
+		opts: { minScore?: number; limit?: number; signal?: AbortSignal } = {}
 	): Promise<RelatedResult[]> {
-		await this.sync(conversations);
+		await this.sync(conversations, { signal: opts.signal });
 		return rankRelated(sourceId, this.items, opts);
 	}
 }

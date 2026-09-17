@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { rankRelated, relatedMinScore, RELATED_MIN_SCORES, DEFAULT_MIN_SCORE } from "../services/embedding/relatedConversations";
+import { rankRelated, relatedMinScore, vaultRetrievalMinScore, VAULT_RETRIEVAL_MIN_SCORES } from "../services/embedding/relatedConversations";
+import { EMBEDDING_MODELS, EMBEDDING_MODEL_IDS, RELATED_SIMILARITY_PRESETS } from "../models/embeddingModels";
 import { quantize } from "../services/embedding/vectorMath";
 import type { IndexedConversation } from "../services/embedding/embeddingIndex";
 
@@ -52,12 +53,51 @@ describe("rankRelated", () => {
 	});
 });
 
-describe("relatedMinScore", () => {
-	it("maps each preset to an ordered floor (strict > balanced > loose)", () => {
-		expect(relatedMinScore("strict")).toBeGreaterThan(relatedMinScore("balanced"));
-		expect(relatedMinScore("balanced")).toBeGreaterThan(relatedMinScore("loose"));
-		expect(relatedMinScore("balanced")).toBe(DEFAULT_MIN_SCORE);
-		expect(RELATED_MIN_SCORES.strict).toBeGreaterThan(0);
-		expect(RELATED_MIN_SCORES.loose).toBeGreaterThan(0);
+describe("relatedMinScore — per model (ADR-169)", () => {
+	it("orders the presets strict > balanced > loose for every model", () => {
+		for (const id of EMBEDDING_MODEL_IDS) {
+			expect(relatedMinScore("strict", id)).toBeGreaterThan(relatedMinScore("balanced", id));
+			expect(relatedMinScore("balanced", id)).toBeGreaterThan(relatedMinScore("loose", id));
+		}
+	});
+
+	it("gives every catalog model a floor for every preset", () => {
+		// A model added without floors would silently fall back to another model's
+		// numbers — the bug ADR-169 exists to stop.
+		for (const id of EMBEDDING_MODEL_IDS) {
+			for (const preset of RELATED_SIMILARITY_PRESETS) {
+				const floor = EMBEDDING_MODELS[id].relatedFloors[preset];
+				expect(typeof floor).toBe("number");
+				expect(floor).toBeGreaterThan(0);
+				expect(floor).toBeLessThan(1);
+			}
+		}
+	});
+
+	it("scores the multilingual model higher than the English one at every preset", () => {
+		// Measured, not assumed: over the same 554 chunks the multilingual model's
+		// pair scores run ~0.08 hotter throughout (ADR-169), so sharing one constant
+		// made "Balanced" mean 19 of 23 neighbours on one model and 11 on the other.
+		// The test is directional, not literal — it survives a re-measurement that
+		// moves the numbers but not the relationship.
+		for (const preset of RELATED_SIMILARITY_PRESETS) {
+			expect(relatedMinScore(preset, "xenova-paraphrase-multilingual-MiniLM-L12-v2")).toBeGreaterThan(
+				relatedMinScore(preset, "xenova-all-MiniLM-L6-v2")
+			);
+		}
+	});
+
+	it("falls back to the default model's floors for an unknown model id", () => {
+		const unknown = relatedMinScore("balanced", "not-a-model" as never);
+		expect(unknown).toBe(relatedMinScore("balanced"));
+	});
+
+	it("keeps vault-RAG retrieval on its own, unmeasured floors", () => {
+		// ADR-169 measured conversation pairs, not query-to-note retrieval. Retuning
+		// vault RAG on that data would be guessing with extra steps, so the two are
+		// deliberately separate constants — a test fails if they are merged again.
+		expect(vaultRetrievalMinScore("balanced")).toBe(0.35);
+		expect(VAULT_RETRIEVAL_MIN_SCORES.strict).toBe(0.5);
+		expect(VAULT_RETRIEVAL_MIN_SCORES.loose).toBe(0.2);
 	});
 });

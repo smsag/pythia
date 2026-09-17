@@ -21,7 +21,21 @@ export interface EmbeddingModelConfig {
 	maxTokens: number;
 	/** Pooling strategy for the feature-extraction pipeline. */
 	pooling: "mean" | "cls";
+	/** Cosine floors for "related conversations", per strictness preset.
+	 *
+	 *  Per MODEL, because cosine distributions are not comparable across models —
+	 *  measured, not assumed (ADR-169, `scripts/measure-related.mjs`): over the
+	 *  same 554 chunks, the multilingual model's p90 pair score is 0.643 and the
+	 *  English model's is 0.567, and its best-neighbour median is 0.08 higher
+	 *  throughout. One shared constant therefore meant two different features
+	 *  depending on which model the dropdown selected. */
+	relatedFloors: Record<RelatedSimilarity, number>;
 }
+
+/** How strict the "related conversations" similarity floor is. A named preset so
+ *  the user never has to reason about raw cosine scores; each model maps it to a
+ *  number in its own `relatedFloors`. */
+export type RelatedSimilarity = "strict" | "balanced" | "loose";
 
 export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = {
 	"xenova-all-MiniLM-L6-v2": {
@@ -31,6 +45,8 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 		dim: 384,
 		maxTokens: 256,
 		pooling: "mean",
+		// p75 / p90 / p95 of this model's own pair distribution (ADR-169).
+		relatedFloors: { loose: 0.45, balanced: 0.57, strict: 0.67 },
 	},
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2": {
 		id: "xenova-paraphrase-multilingual-MiniLM-L12-v2",
@@ -39,6 +55,9 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 		dim: 384,
 		maxTokens: 128,
 		pooling: "mean",
+		// The same percentiles, ~0.08 higher throughout — this model scores every
+		// pair hotter, which is exactly why the floors cannot be shared (ADR-169).
+		relatedFloors: { loose: 0.55, balanced: 0.65, strict: 0.75 },
 	},
 };
 
@@ -46,10 +65,6 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 export const DEFAULT_EMBEDDING_MODEL_ID: EmbeddingModelId =
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2";
 
-/** How strict the "related conversations" similarity floor is. A named preset so
- *  the user never has to reason about raw cosine scores; mapped to a number in
- *  `services/embedding/relatedConversations.ts`. */
-export type RelatedSimilarity = "strict" | "balanced" | "loose";
 export const RELATED_SIMILARITY_PRESETS: readonly RelatedSimilarity[] = ["strict", "balanced", "loose"];
 export const DEFAULT_RELATED_SIMILARITY: RelatedSimilarity = "balanced";
 

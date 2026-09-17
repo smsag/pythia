@@ -1412,3 +1412,20 @@ An audit of every per-conversation setting against what the panel actually shows
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 268 | **The release workflow never checked its own `version` input against the repo.** `release.yml` passes `inputs.version` straight to the tag and the release name, builds from whatever `main` happens to be, and attaches the result. Obsidian's installer reads `manifest.json`'s `version`, not the tag — so a dispatch with a typo, a `v` prefix, or against a `main` whose bump had not landed would publish the *wrong plugin version under the right name*, and the tag could not be reused without deleting the release. The tag-push trigger was already constrained by its `[0-9]+.[0-9]+.[0-9]+` pattern; the dispatch path AGENTS.md actually tells you to use (agent credentials cannot push tag refs) was free text. A guard step now fails before the build unless the version is `X.Y.Z` and agrees with `manifest.json`, `package.json` and `versions.json`, reporting every mismatch at once. Principle 3: a rule worth writing in AGENTS.md is worth a guard that fails in the forbidden direction. | Medium | Done |
+
+## Follow-up (#269–#272) — related conversations, measured, 2026-09-17
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 270 | **The similarity floors were taste, and the default was below the noise floor.** `balanced = 0.35` sat *below the median score of a random conversation pair* (0.462 on the default model), so "related" returned 19 of 23 neighbours — listing, not filtering. Measured with `scripts/measure-related.mjs`; floors are now per model and anchored to each model's own p75/p90/p95. | High | Done (ADR-169) |
+| 271 | **One constant served two models with different score distributions.** Measured p90 gap 0.076 against a pre-registered 0.05 threshold; three estimators agree on a ~0.08 offset. "Balanced" meant 19 of 23 neighbours on one model and 11 on the other. Floors moved onto `EMBEDDING_MODELS`, with a test requiring one per preset per catalog entry. | Medium | Done (ADR-169) |
+| 272 | **The first "related" click paid for the whole index, uncancellably.** 554 chunks took 135s natively (~19 minutes extrapolated to 200 conversations, slower under WASM, on the UI thread in the iframe fallback), `limit` was never passed so the list grew with the vault, and closing the panel did not stop the work. Now: `RELATED_RESULT_LIMIT = 20`, a guarded background warm at layout-ready, and an `AbortSignal` that commits partial progress before it rethrows. | High | Done (ADR-169) |
+
+**Open, from the same measurement:**
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 269 | **Percentile-based floors instead of constants.** The floors calibrated for ~5 results land at roughly the p75–p78 of each model's own distribution — the same *percentile* ports across models where the same *constant* does not, and it would self-calibrate as a vault grows. Needs a second vault to confirm before replacing three constants with a runtime computation; a tiny vault also needs an absolute sanity floor. | Medium | Open |
+| 273 | **Vault-RAG retrieval floors are unmeasured.** ADR-169 measured conversation pairs; `vaultRetrievalMinScore` keeps 0.5 / 0.35 / 0.2 on faith. The equivalent probe for query-to-note retrieval does not exist yet. | Medium | Open |
+| 274 | **Show the matched chunk on each related row.** `maxPairwiseCosine` already knows which pair of chunks won and throws the indices away; the index does not persist chunk text. Related mode currently shows a bare conversation name with no score and no evidence — the failure ADR-168 legislated against for search. | Medium | Open |
+| 275 | **The settings copy undersells the speed difference.** "English is faster" is measured at **4.4×** (30.5s vs 135.2s for the same 554 chunks). A user on a large vault choosing the default multilingual model is choosing ~19 minutes over ~4. | Low | Open |

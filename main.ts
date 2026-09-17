@@ -1,4 +1,4 @@
-import { debounce, Editor, Menu, Notice, normalizePath, Plugin, TFile, TFolder } from "obsidian";
+import { debounce, Editor, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -22,13 +22,20 @@ import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
 import { createEmbeddingProvider } from "./services/embedding/host/embeddingProviderFactory";
-import { getEmbeddingBundle } from "./services/embedding/host/embeddingBundle";
+import { embeddingWorkerUrl } from "./services/embedding/host/workerBundleUrl";
 import type { EmbeddingProvider } from "./services/embedding/EmbeddingProvider";
 import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
+import { warmIndex } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
+
+/** Related conversations shown at once. A cap, not a filter: the floor decides
+ *  relevance, this decides how much of it fits on a screen (ADR-169). */
+const RELATED_RESULT_LIMIT = 20;
+/** How long after layout-ready the background index warm starts. */
+const RELATED_WARM_DELAY_MS = 3000;
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -90,9 +97,9 @@ export default class PythiaPlugin extends Plugin {
 	 *   • "returned 0" with no error → the index built and ranking ran, but nothing
 	 *     cleared the minScore floor (raise the floor or the vault is too sparse);
 	 *   • "returned N" with per-id scores → the path works end to end. */
-	async getRelatedConversations(sourceId: string): Promise<RelatedResult[]> {
+	async getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
 		const startedAt = Date.now();
-		const minScore = relatedMinScore(this.settings.relatedSimilarity);
+		const minScore = relatedMinScore(this.settings.relatedSimilarity, this.settings.embeddingModelId);
 		debugLog(this.settings, "related: query start", {
 			sourceId,
 			model: this.settings.embeddingModelId,
@@ -103,6 +110,12 @@ export default class PythiaPlugin extends Plugin {
 		try {
 			const results = await this.ensureRelatedService().getRelated(sourceId, this.conversations, {
 				minScore,
+				// A screenful, not everything above the floor: the number of pairs
+				// clearing a fixed cosine grows linearly with the vault, so without a
+				// cap the list length is a function of vault size rather than of
+				// relevance (ADR-169).
+				limit: RELATED_RESULT_LIMIT,
+				signal,
 			});
 			debugLog(this.settings, `related: query ok (${Date.now() - startedAt}ms)`, {
 				returned: results.length,
@@ -122,13 +135,16 @@ export default class PythiaPlugin extends Plugin {
 	 *  next use rebuilds against the new model. The onProgress callback traces the
 	 *  model download/load (debug mode only) — the single hardest part to diagnose
 	 *  blind, since it happens inside the hidden iframe. */
-	private ensureEmbeddingProvider(): EmbeddingProvider {
+	private ensureEmbeddingProvider(opts: { silent?: boolean } = {}): EmbeddingProvider {
 		const modelId = this.settings.embeddingModelId;
 		if (this.embeddingProvider && this.embeddingModelId === modelId) return this.embeddingProvider;
 		this.embeddingProvider?.unload();
 		this.relatedService = null;
 		this.vaultRag?.reset();
-		new Notice(t("relatedFirstRun"));
+		// Silent for the background warm (warmRelatedIndex): that path runs without
+		// the user asking for anything, so a "preparing the model" Notice on every
+		// launch would be noise about work they did not request.
+		if (!opts.silent) new Notice(t("relatedFirstRun"));
 		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
 		// Worker (off the UI thread) with a blob→resource-path→iframe fallback chain
 		// (ADR-119/126). The resource-path URL lets the Worker start where blob: is blocked.
@@ -141,40 +157,14 @@ export default class PythiaPlugin extends Plugin {
 					loaded: p.loaded,
 					total: p.total,
 				}),
-			() => this.embeddingWorkerUrl(),
+			() => (this.embeddingWorkerUrlPromise ??= embeddingWorkerUrl(this)),
 		);
 		this.embeddingModelId = modelId;
 		return this.embeddingProvider;
 	}
 
-	/** Write the embedding worker bundle to the plugin folder (once per version) and
-	 *  return a same-origin resource-path URL for it — the blob-free way to start a
-	 *  Worker where `blob:` URLs are blocked (Obsidian mobile, capacitor:// desktop
-	 *  builds). Memoized; best-effort cleanup of stale older-version worker files.
-	 *  The bundle is the same one inlined in main.js (getEmbeddingBundle). */
-	private embeddingWorkerUrl(): Promise<string> {
-		if (this.embeddingWorkerUrlPromise) return this.embeddingWorkerUrlPromise;
-		this.embeddingWorkerUrlPromise = (async () => {
-			const adapter = this.app.vault.adapter;
-			const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
-			const path = normalizePath(`${dir}/embedding-worker-${this.manifest.version}.mjs`);
-			if (!(await adapter.exists(path))) {
-				await adapter.write(path, getEmbeddingBundle());
-				// Best-effort: drop stale worker bundles from older plugin versions.
-				try {
-					const listing = await adapter.list(dir);
-					for (const f of listing.files) {
-						if (/\/embedding-worker-.*\.mjs$/.test(f) && f !== path) await adapter.remove(f);
-					}
-				} catch { /* cleanup is best-effort */ }
-			}
-			return adapter.getResourcePath(path);
-		})();
-		return this.embeddingWorkerUrlPromise;
-	}
-
-	private ensureRelatedService(): ConversationIndexService {
-		const provider = this.ensureEmbeddingProvider();
+	private ensureRelatedService(opts: { silent?: boolean } = {}): ConversationIndexService {
+		const provider = this.ensureEmbeddingProvider(opts);
 		if (!this.relatedService) {
 			this.relatedService = new ConversationIndexService(
 				provider,
@@ -182,6 +172,19 @@ export default class PythiaPlugin extends Plugin {
 			);
 		}
 		return this.relatedService;
+	}
+
+	/** Warm the related index in the background so the first "related" click is a
+	 *  ranking pass rather than a cold build (ADR-169). Guards, deps and the
+	 *  reasoning live in `services/embedding/warmIndex.ts`. */
+	private warmRelatedIndex(): Promise<void> {
+		return warmIndex({
+			isMobile: Platform.isMobile,
+			conversationCount: this.conversations.length,
+			readIndex: () => new VaultIndexStore(this, this.settings.embeddingModelId).read(),
+			sync: () => this.ensureRelatedService({ silent: true }).sync(this.conversations),
+			log: (message, data) => debugLog(this.settings, message, data),
+		});
 	}
 
 	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background.
@@ -236,7 +239,13 @@ export default class PythiaPlugin extends Plugin {
 			(leaf) => new PythiaSidebarView(leaf, this)
 		);
 
-		this.app.workspace.onLayoutReady(() => this.viewManager.initLeaf());
+		this.app.workspace.onLayoutReady(() => {
+			this.viewManager.initLeaf();
+			// After the workspace is up, not during it: the warm is incremental and
+			// usually near-instant, but it must never sit between the user and a
+			// drawn UI.
+			window.setTimeout(() => void this.warmRelatedIndex(), RELATED_WARM_DELAY_MS);
+		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
 		// updates from another device while this instance is running).
