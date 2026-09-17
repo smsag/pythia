@@ -12,6 +12,17 @@ on:
     - cron: '0 6 * * 1'   # Mondays 06:00 UTC
   workflow_dispatch:
 
+# Both write scopes sit in the same job as the models.dev fetch. Splitting them
+# (a fetch job with `permissions: {}` handing the file over as an artifact) was
+# considered and deliberately not done — engineering-review #287 has the full
+# reasoning. In short: the fetch only parses data, `fmt` validates every value
+# on the way in (#285), `npm ci --ignore-scripts` removed the code that could
+# actually run here (#286), and a human reads this PR before it merges.
+#
+# Reopen that decision if either changes:
+#   - a step here starts EXECUTING something fetched at runtime, not just
+#     parsing it (a codegen tool, a downloaded script, a schema binary); or
+#   - this PR is ever auto-merged, removing the human read.
 permissions:
   contents: write
   pull-requests: write
