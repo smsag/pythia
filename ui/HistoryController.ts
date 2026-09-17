@@ -419,7 +419,9 @@ export class HistoryController {
 			main.createDiv({ cls: "p-history-row-title", text: conv.name });
 			main.appendChild(rowSub(conv, isFork, viaNotes));
 			if (snippetTokens) {
-				const snippet = bestMatchSnippet(snippetTokens, conv);
+				// fieldsFor is the panel-lifetime memo, so the line tokens behind the
+				// snippet are built once per conversation, not once per keystroke.
+				const snippet = bestMatchSnippet(snippetTokens, conv, fieldsFor(conv));
 				if (snippet) main.createDiv({ cls: "p-history-snippet", text: snippet });
 			}
 			// Relate affordance (ADR-109): a hover-revealed icon on desktop; a
