@@ -75,6 +75,7 @@ Cut a release from `main` in this order:
    - `versions.json` → add `"X.Y.Z": "<minAppVersion>"` (copy the current `minAppVersion` from `manifest.json`)
 2. Commit on `main` as `Release X.Y.Z` (summarize changes since the last release in the body).
 3. **Publish via the Release workflow, not a tag push.** Trigger `.github/workflows/release.yml` with `workflow_dispatch` and input `version=X.Y.Z`. It builds and creates the GitHub release (tag `X.Y.Z`, no `v` prefix) with `main.js`, `manifest.json`, `styles.css` attached — the files Obsidian's plugin installer fetches.
+   - The workflow **refuses to publish unless the version agrees with the repo**: `version` must be `X.Y.Z` (no `v`), and match `manifest.json`, `package.json` and a `versions.json` entry. Obsidian's installer reads the manifest rather than the tag, so a dispatch against a `main` that has not got step 1 yet fails in seconds instead of publishing a release whose manifest disagrees with its own tag — which cannot be corrected without deleting the release.
    - `release.yml` also fires on a pushed `[0-9]+.[0-9]+.[0-9]+` tag, **but agent git credentials are blocked from pushing tag refs (GitHub 403)** even when branch/`main` pushes succeed — so use `workflow_dispatch`. Dispatching on `main` tags the current `main` HEAD, so land the `Release X.Y.Z` commit first.
 4. Verify: `npm run build`, `npm run lint`, `npm run check:filesize`, `npm test` all green before step 2.
 

@@ -21,6 +21,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tag says one thing and the manifest says another — and Obsidian
+      # believes the manifest: its installer reads manifest.json's `version`,
+      # not the tag it downloaded from. A release published with the two out of
+      # step hands every user the WRONG version under the right name, and the
+      # tag cannot be reused without deleting the release first. So this fails
+      # before anything is built or published, never after.
+      #
+      # `workflow_dispatch` is the reason it is needed: the tag-push trigger is
+      # already constrained by the `[0-9]+.[0-9]+.[0-9]+` pattern, but a
+      # dispatched input is free text, and it is the path AGENTS.md tells you to
+      # use (agent credentials cannot push tag refs).
+      - name: Version agrees with the manifest
+        env:
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          fail=0
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not X.Y.Z — Obsidian matches the tag literally, and there is no 'v' prefix here"
+            fail=1
+          fi
+
+          manifest=$(jq -r '.version' manifest.json)
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "::error::releasing $VERSION, but manifest.json says $manifest — bump it and land the commit first"
+            fail=1
+          fi
+
+          package=$(jq -r '.version' package.json)
+          if [ "$package" != "$VERSION" ]; then
+            echo "::error::releasing $VERSION, but package.json says $package"
+            fail=1
+          fi
+
+          if [ "$(jq -r --arg v "$VERSION" 'has($v)' versions.json)" != "true" ]; then
+            echo "::error::versions.json has no entry for $VERSION"
+            fail=1
+          fi
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "manifest.json, package.json and versions.json all agree on $VERSION"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24

@@ -1406,3 +1406,9 @@ An audit of every per-conversation setting against what the panel actually shows
 |---|---|---|---|
 | 266 | **Note *bodies* are not searched** — only note names, paths and the template's name. The "I remember a phrase inside the note" case needs `cachedRead` over the union of attached paths, an async loading state and a lower field weight (borrowed text must not drown out the conversation's own words). Obsidian's own search serves it today. | Low | Open |
 | 267 | **No typo tolerance.** Edit distance was kept out of ADR-168 on purpose: it has its own noise budget and its own per-keystroke cost profile. | Low | Open |
+
+## Follow-up (#268) — release safety, 2026-09-17
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 268 | **The release workflow never checked its own `version` input against the repo.** `release.yml` passes `inputs.version` straight to the tag and the release name, builds from whatever `main` happens to be, and attaches the result. Obsidian's installer reads `manifest.json`'s `version`, not the tag — so a dispatch with a typo, a `v` prefix, or against a `main` whose bump had not landed would publish the *wrong plugin version under the right name*, and the tag could not be reused without deleting the release. The tag-push trigger was already constrained by its `[0-9]+.[0-9]+.[0-9]+` pattern; the dispatch path AGENTS.md actually tells you to use (agent credentials cannot push tag refs) was free text. A guard step now fails before the build unless the version is `X.Y.Z` and agrees with `manifest.json`, `package.json` and `versions.json`, reporting every mismatch at once. Principle 3: a rule worth writing in AGENTS.md is worth a guard that fails in the forbidden direction. | Medium | Done |
