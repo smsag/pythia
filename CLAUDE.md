@@ -77,7 +77,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1144 tests across 73 files
+  tests/                      ← Vitest unit tests (npm test) — 1153 tests across 73 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -88,6 +88,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
     briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
+  scripts/bench-search.mjs    ← per-keystroke cost of the search panel at three vault sizes (ADR-170)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
@@ -452,6 +453,9 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **`Conversation.name` has no special case any more.** The old "title hit ×3" is `FIELD_WEIGHTS.title`; a new field is a weight, not an `if`
 - **The chip announces what the user did NOT ask for.** Auto-widening (< 3 hits, non-empty query, not picking, no typed scope) shows the group header, a `via <note>` line per row and the ADR-109 chip; a typed `note:` shows the `via` line only. Never widen silently — a widened row does not contain the query anywhere the user can see
 - An unknown `word:` prefix is **literal text, never a failed command** — a colon in ordinary search text must not become a silent filter
+- **The snippet is the expensive part, not the ranking** (ADR-170, `scripts/bench-search.mjs`). Ranking the whole corpus costs <1ms; re-tokenizing message lines for every rendered row cost 398ms per keystroke at 500 conversations. Line tokens are cached lazily on `ConversationFields.lines`, and `bestMatchSnippet` **requires** the fields — never add an overload that takes only a conversation, or the uncached path survives
+- **`SEARCH_RESULT_LIMIT` caps rendered rows at 20**, applied in `searchConversations` so the panel and the palette modal inherit it together. A short query matches a share of the corpus, so an uncapped list makes cost a function of vault size. The cap is applied AFTER the widen decision and can never change it
+- **`ScoredField` names the keys that are scored**; `lines` is a cache and must never join `FIELD_WEIGHTS`. The compiler enforces it
 
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
