@@ -89,7 +89,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1246 tests across 83 files
+  tests/                      ← Vitest unit tests (npm test) — 1262 tests across 84 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -105,10 +105,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
+  scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
+  scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
   .github/workflows/update-pricing.yml ← Mondays: pull models.dev, open a PR when a price changed
+  .github/workflows/update-models.yml  ← Mondays: PR when a context window changed; issue "Model catalog: upstream changes" for new/deprecated models
 ```
 
 ---

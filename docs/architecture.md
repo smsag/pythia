@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-18 — rewriting a passage of a note from the conversation (ADR-178). New pure `services/rewriteTarget.ts` (`rangeText`, `targetState`, `replaceRange`, `targetLabel` — a captured range plus the text that was in it, verified exactly before any write), `ui/RewriteController.ts` (arm · decorate the send · attach the target to the answer · the proposal card · verified apply through the open editor), `ui/referenceEntries.ts` (which pills the reference row shows, as a pure rule) and `ui/editorSelectionEntries.ts` (all three selection entry points, lifted out of `main.ts`). `models/types.ts` gains `EditorPos`, `RewriteTarget`, `Conversation.pendingRewrite` and `Message.rewriteTarget`; `shouldAutoArmSearch` moves into `services/sendPolicy.ts`. `sidebar.ts` 1730 → 1716, `main.ts` 602 → 564, both ratcheted. +22 tests (1238 across 82 files).*
+*Last updated: 2026-09-18 — the model catalog is checked against models.dev (ADR-179). New `scripts/modelsDev.mjs` (`SOURCE_URL`, `UPSTREAM_PROVIDERS`, `UPSTREAM_IDS`, `NO_UPSTREAM`, `readCatalog`, `upstreamModels`, `upstreamId`, `nearbyIds`, `fetchUpstream` — shared with `update-pricing.mjs`, which re-exports them) and `scripts/update-models.mjs` (`readCatalogDetails`, `formatWindow`, `syncContextWindows`, `findNewModels`, `findDeprecated`, `suggestRow`, `renderReport`); `npm run update:models [-- --report <file>]`; `.github/workflows/update-models.yml` opens a PR for changed context windows and keeps one issue for new and deprecated models. `models/knownModels.ts`: five context windows updated from the first run. +16 tests (1262 across 84 files).*
+
+*Previously: 2026-09-18 — rewriting a passage of a note from the conversation (ADR-178). New pure `services/rewriteTarget.ts` (`rangeText`, `targetState`, `replaceRange`, `targetLabel` — a captured range plus the text that was in it, verified exactly before any write), `ui/RewriteController.ts` (arm · decorate the send · attach the target to the answer · the proposal card · verified apply through the open editor), `ui/referenceEntries.ts` (which pills the reference row shows, as a pure rule) and `ui/editorSelectionEntries.ts` (all three selection entry points, lifted out of `main.ts`). `models/types.ts` gains `EditorPos`, `RewriteTarget`, `Conversation.pendingRewrite` and `Message.rewriteTarget`; `shouldAutoArmSearch` moves into `services/sendPolicy.ts`. `sidebar.ts` 1730 → 1716, `main.ts` 602 → 564, both ratcheted. +22 tests (1238 across 82 files).*
 
 *Previously: 2026-09-18 — a template applied to a running conversation is a one-shot (ADR-177). New `Conversation.pendingTemplate` (a `PendingTemplate` snapshot) and pure `services/pendingTemplate.ts` (`armPendingTemplate`, `applyPendingTemplate` — the template's values layered over a clone, notes unioned, nothing written). `sidebar.ts`: the in-view apply arms instead of mutating nine fields, `sendMessage` resolves one `turnConv` for the send, the answer records the template that shaped it, and the spent layer clears on a committed reply; the reference row leads with a `.p-wikilink--template` pill whose ✕ disarms. `sanitizePendingTemplate` validates it on the read path. +13 tests (1216 across 80 files).*
 
@@ -301,6 +303,8 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
 | `scripts/check-file-size.mjs` | — | File-size ratchet guard (ADR-103): 600-line default for every `.ts`, grandfathered ceilings for `sidebar.ts`/`main.ts` that may only be lowered; run via `npm run check:filesize` |
+| `scripts/modelsDev.mjs` | — | What both models.dev scripts share: source URL, provider map, `UPSTREAM_IDS`, `NO_UPSTREAM`, `readCatalog`, the upstream lookup (ADR-179). |
+| `scripts/update-models.mjs` | — | Weekly catalog check (ADR-179): rewrites `contextWindow` values from models.dev; reports new and deprecated models as markdown for the standing issue, never applies them. |
 | `.github/workflows/ci.yml` | — | CI: lint → file-size budget → build → test on push/PR |
 
 ---
@@ -713,6 +717,7 @@ Anthropic-specific: system prompt and tool definitions are sent with `cache_cont
 
 ## Infrastructure
 
+- **Upstream data:** `.github/workflows/update-pricing.yml` (ADR-163) and `.github/workflows/update-models.yml` (ADR-179) run on Mondays against models.dev. Both only open PRs a human merges; the models workflow additionally keeps one issue, *Model catalog: upstream changes*, for new and deprecated models.
 - **CI:** `.github/workflows/ci.yml` — lint (`npm run lint`) → file-size budget (`npm run check:filesize`) → type-check + build (`npm run build`) → test (`npm test`). Triggers on push to `main`, PRs, and manual dispatch.
 - **ESLint:** `eslint.config.mjs` with `tseslint.configs.recommended`, typed linting (`projectService: true`). `no-console: warn`, `no-explicit-any: off`, `no-floating-promises: error` (with `ignoreVoid: true`). 0 errors, ~8 intentional warnings.
 - **Testing:** Vitest, 300 unit tests across 18 files, ~2 s. Coverage thresholds: statements/lines ≥ 90 %, branches ≥ 80 %, functions ≥ 95 %.

@@ -7,61 +7,31 @@
 //
 // Fails loudly (exit 1) on anything it cannot prove: an unexpected upstream
 // schema, or a catalog model with no upstream row. It never drops a row
-// silently — fix the mapping in UPSTREAM_IDS instead.
+// silently — fix the mapping in UPSTREAM_IDS (scripts/modelsDev.mjs) instead.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 
-export const SOURCE_URL = "https://models.dev/api.json";
+import { SOURCE_URL, UPSTREAM_PROVIDERS, UPSTREAM_IDS, NO_UPSTREAM, readCatalog, upstreamModels, upstreamId, nearbyIds, fetchUpstream } from "./modelsDev.mjs";
 
-/** Pythia provider key → models.dev provider id. */
-export const UPSTREAM_PROVIDERS = { anthropic: "anthropic", openai: "openai", mistral: "mistral" };
-
-/** Catalog model id → models.dev model id, where they differ. A model that is
- *  not listed here is looked up under its own id. */
-export const UPSTREAM_IDS = {
-	"magistral-small-latest": "magistral-small",
-};
-
-/** Catalog models models.dev does not list. Their committed row is kept as
- *  is and the run says so — the built-in value is an assumption (Opus-tier
- *  for the hidden Mythos entry), which the disclaimer already covers. A model
- *  belongs here only after a run has shown it missing upstream; it is never
- *  a way to silence a renamed id. */
-export const NO_UPSTREAM = new Set(["claude-mythos-5"]);
-
-/** The catalog: `{ id, provider }` per model — hidden ones included, since a
- *  conversation can still be on one — read from the source of truth so this
- *  script cannot drift from it. */
-export function readCatalog(source) {
-	const rows = [];
-	const re = /\{\s*id:\s*"([^"]+)",\s*provider:\s*"([^"]+)"/g;
-	for (const m of source.matchAll(re)) rows.push({ id: m[1], provider: m[2] });
-	if (rows.length === 0) throw new Error("readCatalog: no models found in knownModels.ts");
-	return rows;
-}
+// Shared with update-models.mjs (ADR-179); re-exported so the tests and any
+// caller that knew them here keep working.
+export { SOURCE_URL, UPSTREAM_PROVIDERS, UPSTREAM_IDS, NO_UPSTREAM, readCatalog };
 
 /** Pull `{ input, output, cacheRead?, cacheWrite? }` per catalog model from
  *  the upstream document. Throws with every unmapped model listed, plus
  *  nearby upstream ids as a hint, so one run tells you the whole fix. */
 export function buildTable(upstream, catalog, ids = UPSTREAM_IDS, noUpstream = NO_UPSTREAM) {
-	if (!upstream || typeof upstream !== "object") throw new Error("upstream is not an object");
 	const table = {};
 	const missing = [];
 	for (const { id, provider } of catalog) {
 		if (noUpstream.has(id)) continue;
-		const upProvider = upstream[UPSTREAM_PROVIDERS[provider]];
-		const models = upProvider?.models;
-		if (!models || typeof models !== "object") {
-			throw new Error(`upstream has no models for provider "${UPSTREAM_PROVIDERS[provider]}" — schema changed?`);
-		}
-		const upId = ids[id] ?? id;
-		const row = models[upId];
+		const models = upstreamModels(upstream, provider);
+		const row = models[upstreamId(id, ids)];
 		const cost = row?.cost;
 		if (!cost || typeof cost.input !== "number" || typeof cost.output !== "number") {
-			const stem = id.split(/[-.]/).filter((t) => t.length > 2)[0] ?? id;
-			const near = Object.keys(models).filter((k) => k.includes(stem)).slice(0, 6);
+			const near = nearbyIds(models, id);
 			missing.push(`${id} (${provider})${near.length ? ` — upstream has: ${near.join(", ")}` : ""}`);
 			continue;
 		}
@@ -71,7 +41,7 @@ export function buildTable(upstream, catalog, ids = UPSTREAM_IDS, noUpstream = N
 		table[id] = entry;
 	}
 	if (missing.length) {
-		throw new Error(`No upstream price for ${missing.length} catalog model(s). Add a mapping to UPSTREAM_IDS in scripts/update-pricing.mjs:\n  ${missing.join("\n  ")}`);
+		throw new Error(`No upstream price for ${missing.length} catalog model(s). Add a mapping to UPSTREAM_IDS in scripts/modelsDev.mjs:\n  ${missing.join("\n  ")}`);
 	}
 	return table;
 }
@@ -144,9 +114,7 @@ export function spliceGenerated(source, block) {
 async function main() {
 	const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 	const catalog = readCatalog(readFileSync(resolve(root, "models/knownModels.ts"), "utf8"));
-	const res = await fetch(SOURCE_URL);
-	if (!res.ok) throw new Error(`${SOURCE_URL} → HTTP ${res.status}`);
-	const upstream = await res.json();
+	const upstream = await fetchUpstream();
 	const table = buildTable(upstream, catalog);
 	const asOf = new Date().toISOString().slice(0, 10);
 	const file = resolve(root, "models/modelPricing.ts");

@@ -1,0 +1,82 @@
+name: Update model catalog
+
+# Weekly: check models/knownModels.ts against models.dev (ADR-179).
+#   - Context windows are facts: when one changed, open a pull request, exactly
+#     like update-pricing.yml. A human reads it before it merges.
+#   - New and deprecated models are decisions: they go into ONE standing issue,
+#     rewritten every run and closed when nothing is left. The script never adds,
+#     hides or removes a model — a catalog row carries curated fields (profile,
+#     localized guidance) that no upstream can supply.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" enabled
+# under Settings → Actions → General → Workflow permissions.
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'   # Mondays 06:30 UTC, after the price run
+  workflow_dispatch:
+
+# Same trust reasoning as update-pricing.yml (engineering-review #287): the
+# fetch is parsed, never executed; `formatWindow` validates every number on the
+# way into source; upstream model ids reach the issue only if they are plain ids;
+# `npm ci --ignore-scripts` keeps dependency hooks away from the token; and a
+# human reads both the PR and the issue. `issues: write` is the one addition.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update:
+    name: Check models.dev against the catalog
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Update context windows and write the decision report
+        run: npm run update:models -- --report "$RUNNER_TEMP/models-report.md"
+
+      - name: Check the catalog still passes its tests
+        run: npx vitest run tests/knownModels.test.ts tests/updateModels.test.ts tests/updatePricing.test.ts
+
+      - name: Open a pull request for changed context windows
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: chore/update-models
+          delete-branch: true
+          add-paths: models/knownModels.ts
+          commit-message: "Update context windows from models.dev"
+          title: "Update context windows (models.dev)"
+          body: |
+            Weekly catalog check from https://models.dev — `contextWindow` values in `models/knownModels.ts` rewritten by `npm run update:models`.
+
+            A context window sets how much history a send may carry (`trimHistoryToBudget`). A value larger than the account really gets makes long conversations fail at the provider; a smaller one trims history early. Check each change against the provider's docs.
+
+            New and deprecated models are not in this PR — they are in the *Model catalog: upstream changes* issue, because adding one takes curated fields no script can write.
+
+      - name: Update the standing issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/models-report.md
+          TITLE: "Model catalog: upstream changes"
+        run: |
+          number=$(gh issue list --state open --limit 100 --json number,title \
+            --jq "map(select(.title == env.TITLE)) | .[0].number // empty")
+          if [ -s "$REPORT" ]; then
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --body-file "$REPORT"
+            else
+              gh issue create --title "$TITLE" --body-file "$REPORT"
+            fi
+          elif [ -n "$number" ]; then
+            gh issue close "$number" --comment "Nothing left to decide: no new upstream model above the catalog's newest, and no offered model deprecated upstream."
+          fi

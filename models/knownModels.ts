@@ -30,9 +30,9 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "claude-haiku-4-5",  provider: "anthropic", abbreviation: "Haiku 4.5",  contextWindow: 200_000 },
 
 	// OpenAI
-	{ id: "gpt-4.1",      provider: "openai", abbreviation: "GPT-4.1",      contextWindow: 1_000_000 },
-	{ id: "gpt-4.1-mini", provider: "openai", abbreviation: "GPT-4.1 mini", contextWindow: 1_000_000 },
-	{ id: "gpt-4.1-nano", provider: "openai", abbreviation: "GPT-4.1 nano", contextWindow: 1_000_000 },
+	{ id: "gpt-4.1",      provider: "openai", abbreviation: "GPT-4.1",      contextWindow: 1_047_576 },
+	{ id: "gpt-4.1-mini", provider: "openai", abbreviation: "GPT-4.1 mini", contextWindow: 1_047_576 },
+	{ id: "gpt-4.1-nano", provider: "openai", abbreviation: "GPT-4.1 nano", contextWindow: 1_047_576 },
 	{ id: "gpt-4o",       provider: "openai", abbreviation: "GPT-4o",       contextWindow: 128_000 },
 	{ id: "gpt-4o-mini",  provider: "openai", abbreviation: "GPT-4o mini",  contextWindow: 128_000 },
 	{ id: "o3-pro",       provider: "openai", abbreviation: "o3 pro",       contextWindow: 200_000, isReasoning: true },
@@ -41,8 +41,8 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "o4-mini",      provider: "openai", abbreviation: "o4 mini",      contextWindow: 200_000, isReasoning: true },
 
 	// Mistral
-	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 128_000 },
-	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 128_000 },
+	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 262_144 },
+	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 256_000 },
 	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
 	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 128_000, isMistralReasoning: true },
 	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",   contextWindow: 128_000, isMistralReasoning: true },
