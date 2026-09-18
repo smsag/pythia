@@ -112,3 +112,14 @@ describe("parameterSupport (one rule for the settings tab and the conversation m
 		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: true });
 	});
 });
+
+describe("default models", () => {
+	// A default the picker cannot show is a default nobody can pick back after
+	// changing it. Hiding a deprecated model (ADR-179) must move the default first.
+	it("every provider's default model is a selectable catalog model", async () => {
+		const { DEFAULT_SETTINGS } = await import("../models/settings");
+		expect(KNOWN_MODELS.anthropic).toContain(DEFAULT_SETTINGS.defaultAnthropicModel);
+		expect(KNOWN_MODELS.openai).toContain(DEFAULT_SETTINGS.defaultOpenAIModel);
+		expect(KNOWN_MODELS.mistral).toContain(DEFAULT_SETTINGS.defaultMistralModel);
+	});
+});

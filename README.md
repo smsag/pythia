@@ -216,7 +216,7 @@ vault/
 | Tavily API key | — | Enables the `web_search` tool |
 | Default provider | `anthropic` | `anthropic`, `openai` or `mistral` |
 | Default Anthropic model | `claude-sonnet-5` | Overridden per template and per conversation |
-| Default OpenAI model | `gpt-4o` | " |
+| Default OpenAI model | `gpt-5.4-mini` | " |
 | Default Mistral model | `mistral-large-latest` | " |
 
 **Answers**
