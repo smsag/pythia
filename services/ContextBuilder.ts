@@ -185,8 +185,8 @@ export async function buildAttachedNotesContent(
 	/** Which paths were auto-retrieved: they get `AUTO_NOTE_BUDGET_CHARS` instead
 	 *  of the full note (ADR-180). */
 	autoNotes: ReadonlySet<string> = new Set()
-): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number }> {
-	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0 };
+): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number; manualTokens: number }> {
+	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0, manualTokens: 0 };
 	// Reads are independent of each other — parallelize, then assemble in the
 	// original attachedNotes order so prompt content stays deterministic.
 	const results = await Promise.all(
@@ -211,16 +211,24 @@ export async function buildAttachedNotesContent(
 		})
 	);
 	const parts: string[] = [];
+	const manualParts: string[] = [];
 	const missingNotes: string[] = [];
 	for (const r of results) {
-		if (r.part !== undefined) parts.push(r.part);
-		else missingNotes.push(r.notePath);
+		if (r.part !== undefined) {
+			parts.push(r.part);
+			if (!autoNotes.has(r.notePath)) manualParts.push(r.part);
+		} else missingNotes.push(r.notePath);
 	}
 	const content = parts.length > 0 ? "\n\n" + parts.join("\n\n") : "";
 	return {
 		content,
 		missingNotes,
 		estimatedTokens: estimateTokensFromText(content),
+		// Counted separately so the "these notes are large" warning can be about
+		// what the user actually attached (ADR-180/181). Auto-retrieved notes are
+		// already capped per note and their count is a setting; warning about them
+		// is telling someone off for a choice the plugin made.
+		manualTokens: estimateTokensFromText(manualParts.length > 0 ? "\n\n" + manualParts.join("\n\n") : ""),
 	};
 }
 

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-180 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
+*Last updated: 2026-09-18 — ADR-181 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
+
+*Previously: 2026-09-18 — ADR-180 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
 
 *Previously: 2026-09-18 — ADR-179 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
 
@@ -3411,3 +3413,30 @@ Two smaller ones: the rescue write in the catch now has its own guard, so a fail
 - The index shrinks for anyone using the opt-out, and the cap's membership stops churning — both mean re-embeds that used to repeat now happen once.
 - Verified by mutation: each of the ten behaviours above was broken in turn and a test failed for every one.
 - **Not done:** the embedding model itself. `paraphrase-multilingual-MiniLM` is a sentence-similarity model doing query-to-passage retrieval, which is the wrong model class and sits upstream of every floor question here. A retrieval model (e5, bge) needs asymmetric query/passage prefixes — a change to the provider interface, not a dropdown entry — and new measured floors. D-33.
+
+---
+
+## ADR-181 — An index records what it is, and whether it finished
+
+**Status:** Active. Closes five defects a review found in ADR-179/180.
+
+**Context.** ADR-179 made a build persist every 25 embeds so an interruption is resumable. That was right, and it invalidated an assumption three other places were quietly built on: **"the index file has rows in it" had meant "the vault is indexed"**, and from that commit it no longer did.
+
+**1. A partial index reported itself finished, permanently.**
+
+`refresh()` on the UI-thread backend hydrates the persisted index and returns early when `size() > 0` — ADR-125's rule, so the app is not re-frozen every session. ADR-179 also gated the whole of `refresh()` on `isReady()`, which `hydrateForQuery` sets. Together: a build interrupted once was never resumed, on any backend, and the settings tab said `Ready — N notes`. Retrieval answered from a fraction of the vault and nothing said so.
+
+**Decision: completeness is a property of the index, and it is persisted.** The binary format goes to **v2**, carrying `complete` and `scope`. `isComplete(scope)` is what decides whether to build; `isReady()` keeps its old meaning — *can answer a query*. A mid-build flush writes `complete: false`; only a build that reaches the end writes `true`. A v1 file is refused and rebuilt, which is free this release because ADR-179's chunk-size change invalidates every content hash anyway.
+
+**2. A scope change left the old notes retrievable.** Nothing invalidated the index when `vaultContextFolders` or the note cap changed, and after ADR-179 the rescan ran at most once per lifetime. Narrowing the folders for privacy left the excluded notes in the rows, still being inlined into prompts, until a manual rebuild. So `scope` — folders, skip folders, cap, model — is persisted with the rows, and an index built under a different one is not complete.
+
+**3. Edits during the first build were dropped for the session.** `applyChanges` no-ops until the index is ready, and the watcher has already cleared its own batch by then — so every edit made during a build (which is precisely when the user is still working) was lost until a restart. They are buffered and replayed once the build lands.
+
+**4. The live scope now wins over the index, at the point of use.** The index is a cache of a decision and can lag it: a note whose `pythia: false` was added on another device, or one left behind by a scope since narrowed, is in the rows until a rebuild. Retrieved paths are re-checked against today's folders and frontmatter before they are returned. A privacy control has to hold where the text would actually leave the vault, not only where the index was written. The check is total — a vault API that throws keeps the note (it is reported missing downstream anyway) rather than silently disabling retrieval.
+
+**5. The size warning still counted auto-retrieved notes.** ADR-180 ruled that the attached-note warnings are about what the user attached, but only filtered the missing-note one. A conversation with nothing attached could be told its attached notes were large, every turn. `buildAttachedNotesContent` now returns `manualTokens` and the warning reads that.
+
+**Consequences.**
+- One more forced rebuild, folded into the one ADR-179 already required.
+- A UI-thread build that cannot finish in one sitting now *resumes* each session instead of being served as complete — slower to settle, correct at rest, and the debug log says it is resuming.
+- Verified by mutation: twelve behaviours, each broken in turn. **Six of the first twelve survived, and all six were flaws in the new tests rather than the code** — a fake provider reporting the wrong backend, an assertion satisfied by the build instead of the replay, a plain object that was not `instanceof TFile`, and a "failed" build that ADR-179's own guard correctly treated as finished. A test that cannot fail is not evidence.

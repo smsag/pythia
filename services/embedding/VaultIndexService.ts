@@ -4,7 +4,9 @@ import {
 	conversationContentHash,
 	serializeIndex,
 	deserializeIndex,
+	EMPTY_INDEX_META,
 	type IndexedConversation,
+	type IndexMeta,
 } from "./embeddingIndex";
 import { quantize, cosine } from "./vectorMath";
 import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
@@ -78,6 +80,9 @@ export interface IndexableNote {
 export class VaultIndexService {
 	private items: IndexedConversation[] = [];
 	private loaded = false;
+	/** What the persisted index says about ITSELF (ADR-181) — whether the build
+	 *  that wrote it finished, and the scope its rows were selected under. */
+	private meta: IndexMeta = EMPTY_INDEX_META;
 	/** Serializes all mutations (sync / updateNote / removeNote / clear) so they
 	 *  never interleave — a targeted edit can't race a full build (ADR-121). */
 	private chain: Promise<unknown> = Promise.resolve();
@@ -109,8 +114,9 @@ export class VaultIndexService {
 		return this.enqueue(async () => {
 			this.items = [];
 			this.synced = false;
+			this.meta = EMPTY_INDEX_META;
 			this.loaded = true; // don't let a later load() repopulate from the old store
-			await this.store.write(serializeIndex([], this.provider.dim));
+			await this.store.write(serializeIndex([], this.provider.dim, EMPTY_INDEX_META));
 		});
 	}
 
@@ -122,17 +128,39 @@ export class VaultIndexService {
 		return this.synced;
 	}
 
+	/**
+	 * Whether a build has ever run to COMPLETION for `scope` (ADR-181).
+	 *
+	 * `isReady()` only says the index can answer a query — hydrating a persisted
+	 * file sets it, and since ADR-179 that file may be a fifth of a build that was
+	 * interrupted. Anything deciding whether to BUILD must ask this instead, or a
+	 * partial index reports itself finished and is never resumed.
+	 *
+	 * A scope that differs from the one the rows were selected under is also not
+	 * complete: narrowing the folders has to drop what is now outside them, and
+	 * only a rebuild does that.
+	 */
+	isComplete(scope: string): boolean {
+		return this.meta.complete && this.meta.scope === scope;
+	}
+
+	/** The scope the persisted rows were selected under, for diagnostics. */
+	indexedScope(): string {
+		return this.meta.scope;
+	}
+
 	private async load(): Promise<void> {
 		if (this.loaded) return;
 		const buf = await this.store.read();
 		if (buf) {
 			try {
-				const { items, dim } = deserializeIndex(buf);
+				const { items, dim, meta } = deserializeIndex(buf);
 				// A dim mismatch means a different model built the index — drop it and
 				// let the next sync rebuild from scratch.
-				if (dim === this.provider.dim) this.items = items;
+				if (dim === this.provider.dim) { this.items = items; this.meta = meta; }
 			} catch {
 				this.items = [];
+				this.meta = EMPTY_INDEX_META;
 			}
 		}
 		this.loaded = true;
@@ -147,8 +175,11 @@ export class VaultIndexService {
 		notes: IndexableNote[],
 		onProgress?: (processed: number, total: number) => void,
 		throttle: { yieldEveryNotes?: number; breatherMs?: number } = {},
+		/** The scope these notes were selected under, recorded so a later session
+		 *  can tell whether the index still matches the settings (ADR-181). */
+		scope = "",
 	): Promise<void> {
-		return this.enqueue(() => this.doSync(notes, onProgress, throttle));
+		return this.enqueue(() => this.doSync(notes, onProgress, throttle, scope));
 	}
 
 	/**
@@ -206,7 +237,10 @@ export class VaultIndexService {
 			dirty = (await this.updateInMemory(note, opts.cap)) || dirty;
 			if (++n % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
 		}
-		if (dirty) await this.store.write(serializeIndex(this.items, this.provider.dim)); // one write for the batch
+		// Targeted edits keep whatever the index already claims about itself: a
+		// watcher flush neither completes an unfinished build nor invalidates a
+		// finished one.
+		if (dirty) await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta)); // one write for the batch
 	}
 
 	/** Re-embed / add / drop a single note IN MEMORY (no persist). Returns whether
@@ -244,6 +278,7 @@ export class VaultIndexService {
 		notes: IndexableNote[],
 		onProgress?: (processed: number, total: number) => void,
 		throttle: { yieldEveryNotes?: number; breatherMs?: number } = {},
+		scope = "",
 	): Promise<void> {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
@@ -288,9 +323,13 @@ export class VaultIndexService {
 		// pre-sync list and re-embed everything the failed pass had just persisted.
 		// The resume only worked across a restart, which is exactly the case a unit
 		// test with a fresh service instance fails to notice.
-		const persist = async (items: IndexedConversation[]): Promise<void> => {
-			await this.store.write(serializeIndex(items, this.provider.dim));
+		// A mid-build write is explicitly INCOMPLETE. That is the whole point: the
+		// rows are worth keeping, and the next session must still know the build
+		// never finished, or it serves a fraction of the vault and calls it done.
+		const persist = async (items: IndexedConversation[], complete: boolean): Promise<void> => {
+			await this.store.write(serializeIndex(items, this.provider.dim, { complete, scope }));
 			this.items = items;
+			this.meta = { complete, scope };
 			persistedEmbeds = embedded;
 			lastPersistAt = Date.now();
 		};
@@ -346,7 +385,7 @@ export class VaultIndexService {
 					embedded - persistedEmbeds >= PERSIST_EVERY_EMBEDS &&
 					Date.now() - lastPersistAt >= persistIntervalMs
 				) {
-					await persist(snapshot());
+					await persist(snapshot(), false);
 				}
 				// Cooperative yield: on the UI-thread (iframe) backend, embedding runs on the
 				// renderer thread, so hand control back — finely, with a breather (ADR-125) —
@@ -360,7 +399,7 @@ export class VaultIndexService {
 			// cause with a duplicate of itself and lose the diagnosis.
 			if (embedded > persistedEmbeds) {
 				try {
-					await persist(snapshot());
+					await persist(snapshot(), false);
 				} catch (writeErr) {
 					console.warn("[Pythia] vault RAG: could not persist partial index", writeErr);
 				}
@@ -368,12 +407,16 @@ export class VaultIndexService {
 			throw e;
 		}
 
-		// Persist only when the index actually changed (an embed happened since the
-		// last flush, or a note present before is gone) — avoids rewriting a large
-		// .bin on a no-op sync.
+		// Persist when the index changed (an embed since the last flush, or a note
+		// present before is gone) — and ALSO when the file on disk does not yet say
+		// this scope is complete, because that flag is the whole answer to "must I
+		// build?" and a no-op sync is exactly when it is most likely to be wrong.
 		const dropped = [...existing.keys()].some((id) => !seen.has(id));
 		this.items = kept;
-		if (embedded > persistedEmbeds || dropped) await persist(this.items);
+		const changed = embedded > persistedEmbeds || dropped;
+		if (changed || !this.meta.complete || this.meta.scope !== scope) {
+			await persist(this.items, true);
+		}
 		this.synced = true;
 	}
 

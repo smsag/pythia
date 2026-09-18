@@ -294,7 +294,7 @@ describe("buildAttachedNotesContent", () => {
 		const vault = new MockVault();
 		const app = { vault } as unknown as import("obsidian").App;
 		const result = await buildAttachedNotesContent(app, []);
-		expect(result).toEqual({ content: "", missingNotes: [], estimatedTokens: 0 });
+		expect(result).toEqual({ content: "", missingNotes: [], estimatedTokens: 0, manualTokens: 0 });
 	});
 
 	it("inlines note content wrapped in an attached_note tag", async () => {

@@ -298,7 +298,7 @@ export abstract class BaseProvider implements LLMProvider {
 		const notePaths = attachedNotes.filter((p) => !p.toLowerCase().endsWith(".pdf"));
 
 		const [
-			{ content: attachedContent, missingNotes, estimatedTokens },
+			{ content: attachedContent, missingNotes, estimatedTokens, manualTokens },
 			{ pdfs, missingPdfs, oversizedPdfs },
 		] = await Promise.all([
 			buildAttachedNotesContent(this.app, notePaths, newMessage, autoNotes),
@@ -323,9 +323,16 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("oversizedPdfWarning", { count: oversizedPdfs.length }));
 		}
 
+		// Measured on MANUAL notes only (ADR-181). ADR-180 said the attached-note
+		// warnings are about what the user attached, but only the missing-note one
+		// was filtered — so a conversation with no attached notes at all could fire
+		// "attached notes are large" every turn, about notes it never chose.
 		const noteTokenLimit = this.settings.maxAttachedNotesTokens;
-		if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
-			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
+		if (noteTokenLimit > 0 && manualTokens > noteTokenLimit) {
+			new Notice(t("attachedNotesTokenWarning", { tokens: String(manualTokens) }));
+		}
+		if (estimatedTokens !== manualTokens) {
+			debugLog(this.settings, "vault RAG: auto-retrieved note tokens", { total: estimatedTokens, manual: manualTokens });
 		}
 
 		// Pass whether note text is actually being inlined (manual context notes OR
