@@ -6,6 +6,7 @@
 
 import { env, pipeline, type ProgressInfo } from "@huggingface/transformers";
 import type { EmbeddingModelConfig } from "../../../../models/embeddingModels";
+import { sliceBatch } from "./batchSlice";
 
 env.allowLocalModels = false;
 
@@ -19,14 +20,28 @@ env.allowLocalModels = false;
 // transformers import time, so `env.backends.onnx.wasm` already exists here.
 if (env.backends?.onnx?.wasm) {
 	env.backends.onnx.wasm.numThreads = 1;
+} else {
+	// NEVER silent (principle 2). This `if` guards the fix for a known HARD CRASH —
+	// multi-threaded WASM + SharedArrayBuffer reloads the whole Electron renderer
+	// (ADR-119) — so "the shape wasn't there" must be reportable, not inferred.
+	// It is reachable: when transformers resolves to the NODE backend, `onnx` is
+	// the node binding and has no `.wasm`, which is precisely the case ADR-182's
+	// worker prefix removes. If this line appears, the crash guard did not apply.
+	console.warn("[Pythia] embedding: onnx wasm backend absent — numThreads guard NOT applied");
 }
 
 // transformers.js's `pipeline()` overloads produce a union type too large for TS
 // to represent (TS2590), so we cast to these minimal local signatures.
+// `padding` is what makes a BATCH possible: without it transformers refuses a
+// multi-text call whose members tokenize to different lengths. Padding is
+// mathematically neutral for mean pooling — the attention mask excludes the pad
+// positions — so batching does not change a single vector, which is what lets it
+// ship without re-measuring ADR-169's floors.
+// `truncation` is deliberately NOT here: see EMBED_BATCH_SIZE's note.
 type FeaturePipeline = (
-	input: string,
-	opts: { pooling: "mean" | "cls"; normalize: boolean }
-) => Promise<{ data: Float32Array }>;
+	input: string | string[],
+	opts: { pooling: "mean" | "cls"; normalize: boolean; padding?: boolean }
+) => Promise<{ data: Float32Array; dims: number[] }>;
 type CreatePipeline = (
 	task: "feature-extraction",
 	model: string,
@@ -94,17 +109,34 @@ export class EmbeddingModel {
 		return this.#device;
 	}
 
-	/** Embed a single string, serialized behind the queue so calls never overlap. */
-	embed(input: string): Promise<Float32Array | null> {
+	/**
+	 * Embed a BATCH of strings in ONE inference, serialized behind the queue so
+	 * calls never overlap (ADR-182).
+	 *
+	 * Batch-of-one was the old shape, and it cost twice. Throughput: one ONNX
+	 * session run per chunk, so a 400-note vault paid several thousand round
+	 * trips. And memory: every call ran at its own sequence length, so
+	 * onnxruntime-web allocated a fresh execution plan and arena per distinct
+	 * shape, and WASM linear memory only ever grows — which is why a build
+	 * "started strong and deteriorated at roughly half" and eventually took the
+	 * renderer with it.
+	 *
+	 * Padding collapses a batch to ONE shape and cuts the number of distinct
+	 * shapes (and of calls) by the batch size. Returns one vector per input, in
+	 * input order.
+	 */
+	embedBatch(inputs: string[]): Promise<Float32Array[]> {
 		return new Promise((resolve, reject) => {
 			this.#queue = this.#queue.then(async () => {
 				try {
 					if (!this.#pipeline) return reject(new Error("pipeline not initialized"));
-					const result = await this.#pipeline(input, {
+					if (inputs.length === 0) return resolve([]);
+					const result = await this.#pipeline(inputs, {
 						pooling: this.config.pooling,
 						normalize: true,
+						padding: true,
 					});
-					resolve(result.data);
+					resolve(sliceBatch(result.data, result.dims, inputs.length));
 				} catch (err) {
 					reject(err instanceof Error ? err : new Error(String(err)));
 				}

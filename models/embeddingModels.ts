@@ -88,3 +88,29 @@ export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBE
 export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig {
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];
 }
+
+/** Conservative chars-per-token for sizing a chunk against a token window.
+ *
+ *  German through the XLM-R tokenizer runs ~3.3–3.6 chars/token and English ~4;
+ *  markdown (wikilinks, URLs, code) tokenizes worse than either. Sized to the
+ *  pessimistic end on purpose: undersizing costs a few extra chunks, oversizing
+ *  pushes text past the model's window where it contributes nothing. */
+const CHARS_PER_TOKEN = 3.3;
+
+/**
+ * How many characters of note text one embed chunk should carry, for `id`.
+ *
+ * Until ADR-182 `maxTokens` was declared on every model and read by nothing: both
+ * indexes chunked at a hardcoded 500 chars. That is ~150 tokens of German — over
+ * the default (multilingual) model's 128-token window, and only ~60% of the
+ * English model's 256. The window is a property of the model, so the chunk size
+ * has to be too.
+ *
+ * Used for the VAULT index only. The conversation index deliberately stays at its
+ * historical 500: ADR-169's `relatedFloors` were MEASURED at that chunk size, and
+ * changing it would move the cosine distribution the floors are calibrated
+ * against — re-measure with `scripts/measure-related.mjs` first (D-13/D-14).
+ */
+export function embedChunkChars(id: EmbeddingModelId): number {
+	return Math.floor(embeddingModelConfig(id).maxTokens * CHARS_PER_TOKEN);
+}

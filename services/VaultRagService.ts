@@ -4,8 +4,10 @@ import type { PythiaSettings } from "../settings";
 import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
+import { retrievalQuery, isIndexingOptedOut } from "./embedding/vaultRetrieval";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
+import { embedChunkChars } from "../models/embeddingModels";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
 
@@ -36,6 +38,13 @@ export class VaultRagService {
 	private capWarned = false;
 	/** One-time "indexing is throttled on this device" notice per session. */
 	private throttleNoticeShown = false;
+	/** Which embedding backend actually started, once known (ADR-182). */
+	private backend: string | null = null;
+	/** Edits that arrived while the index was still building (ADR-184). The
+	 *  watcher clears its own batch when it flushes, so without this they were
+	 *  dropped for the rest of the session — `applyChanges` no-ops until the index
+	 *  is ready, and the first build is exactly when it is not. */
+	private deferredChanges: { changed: Map<string, TFile>; deleted: Set<string> } | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -51,11 +60,38 @@ export class VaultRagService {
 		this.service = null;
 		this.status = "";
 		this.capWarned = false;
+		this.backend = null;
+		this.deferredChanges = null;
+	}
+
+	/**
+	 * What this index is an index OF (ADR-184): the folders, the skip folders, the
+	 * note cap and the model. Persisted with the rows, so a session that starts
+	 * with different settings can tell the file no longer matches them.
+	 *
+	 * Narrowing `vaultContextFolders` is the case that matters: until the index is
+	 * rebuilt it still holds notes that are now out of scope, and retrieval would
+	 * keep inlining them into prompts. That is a privacy decision the user made
+	 * and the index has to honour.
+	 */
+	private scopeSignature(): string {
+		const s = this.getSettings();
+		const folders = [...s.vaultContextFolders].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
+		const skip = [s.conversationsFolder, s.scratchFolder].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
+		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, s.embeddingModelId]);
 	}
 
 	private ensure(): VaultIndexService {
 		const provider = this.getProvider(); // also fixes the current model id for makeStore()
-		if (!this.service) this.service = new VaultIndexService(provider, this.makeStore());
+		if (!this.service) {
+			// Chunks sized to the MODEL's token window rather than a shared 500 chars
+			// (ADR-182) — the window is a property of the model, so the chunk is too.
+			// The conversation index keeps 500 on purpose: ADR-169's floors were
+			// measured there.
+			this.service = new VaultIndexService(provider, this.makeStore(), {
+				maxChars: embedChunkChars(this.getSettings().embeddingModelId),
+			});
+		}
 		return this.service;
 	}
 
@@ -64,9 +100,12 @@ export class VaultRagService {
 		return this.service?.isReady() ?? false;
 	}
 
-	/** Human-readable index status for the settings tab. */
+	/** Human-readable index status for the settings tab, with the embedding backend
+	 *  once it is known (ADR-182) — `iframe (UI thread)` there is the single fact
+	 *  that explains a slow build, and it used to be invisible. */
 	getStatus(): string {
-		return this.status || t("vaultIndexStatusIdle");
+		const status = this.status || t("vaultIndexStatusIdle");
+		return this.backend ? `${status} ${t("vaultIndexBackend", { backend: this.backend })}` : status;
 	}
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
@@ -87,10 +126,16 @@ export class VaultRagService {
 			this.lastAutoContext.delete(conversation.id);
 			return [];
 		}
-		const q = query.trim();
+		// The retrieval query is the message PLUS the head of the preceding answer
+		// (ADR-183) — a short follow-up otherwise embeds four tokens and retrieves
+		// noise, which is exactly the turn that needed the conversation's context.
+		const lastAnswer = [...(conversation.messages ?? [])]
+			.reverse()
+			.find((m) => m?.role === "assistant" && typeof m.content === "string");
+		const q = retrievalQuery(query, lastAnswer?.content ?? "");
 		if (!q) return [];
 
-		this.refresh(); // background build/refresh — never awaited
+		this.refresh(); // background FIRST build only — never awaited; no-op once ready
 
 		const svc = this.ensure();
 		if (!svc.isReady()) {
@@ -108,9 +153,33 @@ export class VaultRagService {
 			returned: results.length,
 			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
 		});
-		const paths = results.map((r) => r.id);
+		// Filter the RESULTS by the live scope and opt-out, not just the index
+		// (ADR-184). The index is a cache of a decision, and it can lag the decision:
+		// a note whose `pythia: false` was added on another device, or one left
+		// behind by a scope the user has since narrowed, is still in the rows until
+		// a rebuild. A privacy control has to hold at the point the text would
+		// actually leave the vault, which is here.
+		const paths = this.inScopeNow(results.map((r) => r.id));
 		this.lastAutoContext.set(conversation.id, paths);
 		return paths;
+	}
+
+	/** Drop retrieved paths that today's settings would not have indexed. */
+	private inScopeNow(paths: string[]): string[] {
+		const settings = this.getSettings();
+		const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
+		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
+		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
+		const kept = paths.filter((path) => {
+			if (!isPathInScope(path, include, skip)) return false;
+			return !this.optedOutPath(path);
+		});
+		if (kept.length !== paths.length) {
+			debugLog(settings, "vault RAG: dropped retrieved notes the current scope excludes", {
+				dropped: paths.filter((p) => !kept.includes(p)),
+			});
+		}
+		return kept;
 	}
 
 	/** Build/refresh the index in the background. Coalesced; failures logged only.
@@ -120,8 +189,20 @@ export class VaultRagService {
 	 *  THROTTLED (fine yields + a breather) so it never freezes the app, and an
 	 *  already-populated index is served as-is rather than re-embedded each session
 	 *  (ADR-125). Incremental edits keep it fresh via `applyChanges`. */
-	refresh(): void {
+	refresh(opts: { force?: boolean } = {}): void {
 		if (this.syncing) return;
+		// A COMPLETE index is kept fresh by the watcher's targeted `applyChanges`
+		// (ADR-121), so re-running a whole-corpus scan on every turn re-paid the
+		// exact cost that ADR removed: reading, chunking and hashing every in-scope
+		// note, on the host thread, per send — plus a "Building the vault index…"
+		// notice flashing each time. `reindex` passes `force`.
+		//
+		// COMPLETE, not ready (ADR-184). `isReady()` is true the moment a persisted
+		// file is hydrated, and since ADR-182 that file can be a fifth of an
+		// interrupted build — gating on it meant such a build was never resumed and
+		// reported itself finished. It is also false when the scope changed, so
+		// narrowing the folders rebuilds instead of leaving them retrievable.
+		if (!opts.force && this.service?.isComplete(this.scopeSignature())) return;
 		this.syncing = true;
 		void (async () => {
 			const startedAt = Date.now();
@@ -132,16 +213,29 @@ export class VaultRagService {
 				const provider = this.getProvider();
 				await provider.ready();
 				const offThread = provider.isOffThread?.() ?? false;
+				this.backend = provider.backend?.() ?? null;
 				const svc = this.ensure();
 
-				// UI-thread backend: don't re-embed a vault that's already indexed — that
+				const scope = this.scopeSignature();
+				// UI-thread backend: don't re-embed a vault that is already indexed — that
 				// would freeze the app every session. Hydrate the persisted index and, if
-				// it already has notes, serve queries against it without rebuilding.
+				// the build behind it FINISHED under this scope, serve queries against it
+				// without rebuilding.
+				//
+				// `size() > 0` was the old test and became wrong the moment ADR-182 made
+				// builds persist mid-flight: a partial file has rows, so an interrupted
+				// build was served forever as though complete (ADR-184). A partial or
+				// out-of-scope index now falls through and resumes, throttled.
 				if (!offThread) {
 					await svc.hydrateForQuery();
-					if (svc.size() > 0) {
+					if (svc.isComplete(scope)) {
 						this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
 						return;
+					}
+					if (svc.size() > 0) {
+						debugLog(this.getSettings(), "vault RAG: resuming an unfinished index on the UI thread", {
+							have: svc.size(), indexedScope: svc.indexedScope(), scope,
+						});
 					}
 				}
 
@@ -165,9 +259,10 @@ export class VaultRagService {
 				await svc.sync(notes, (done, tot) => {
 					notice?.setMessage(t("vaultIndexProgress", { done: String(done), total: String(tot) }));
 					this.status = t("vaultIndexStatusIndexing", { done: String(done), total: String(tot) });
-				}, throttle);
+				}, throttle, scope);
 				this.status = t("vaultIndexStatusReady", { count: String(notes.length) });
-				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped, offThread });
+				await this.flushDeferredChanges();
+				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped, offThread, backend: this.backend });
 			} catch (e) {
 				this.status = t("vaultIndexStatusFailed");
 				console.warn("[Pythia] vault RAG: index sync failed", e);
@@ -186,7 +281,16 @@ export class VaultRagService {
 	 * new additions.
 	 */
 	async applyChanges(changed: TFile[], deleted: string[]): Promise<void> {
-		if (!this.isReady()) return;
+		// Not ready yet — almost always the first build, which is exactly when the
+		// user is still editing. The watcher has already cleared its own batch, so
+		// returning here USED to drop these edits for the rest of the session
+		// (ADR-184). Hold them instead and replay once the build lands.
+		if (!this.isReady()) {
+			const buf = (this.deferredChanges ??= { changed: new Map(), deleted: new Set() });
+			for (const f of changed) { buf.changed.set(f.path, f); buf.deleted.delete(f.path); }
+			for (const path of deleted) { buf.deleted.add(path); buf.changed.delete(path); }
+			return;
+		}
 		const svc = this.ensure();
 		const settings = this.getSettings();
 		const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
@@ -196,7 +300,7 @@ export class VaultRagService {
 		const removes = [...deleted];
 		const updates: IndexableNote[] = [];
 		for (const file of changed) {
-			if (isPathInScope(file.path, include, skip)) {
+			if (isPathInScope(file.path, include, skip) && !this.optedOut(file)) {
 				updates.push({ path: file.path, load: () => this.app.vault.cachedRead(file) });
 			} else {
 				removes.push(file.path); // edited into an out-of-scope / skip folder
@@ -205,6 +309,20 @@ export class VaultRagService {
 		// One persist for the whole batch (ADR-122), not one per note.
 		await svc.applyBatch({ updates, removes }, { cap: settings.vaultContextMaxIndexedNotes });
 		this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
+	}
+
+	/** Replay the edits that arrived mid-build (ADR-184). Runs after a completed
+	 *  sync, which has already read every note from disk — so anything saved
+	 *  BEFORE the build reached it is already current, and this only costs an embed
+	 *  for the ones it did not. Cleared first, so a failure cannot replay forever. */
+	private async flushDeferredChanges(): Promise<void> {
+		const buf = this.deferredChanges;
+		this.deferredChanges = null;
+		if (!buf || (buf.changed.size === 0 && buf.deleted.size === 0)) return;
+		debugLog(this.getSettings(), "vault RAG: replaying edits made during the build", {
+			changed: buf.changed.size, deleted: buf.deleted.size,
+		});
+		await this.applyChanges([...buf.changed.values()], [...buf.deleted]);
 	}
 
 	/** Full reindex: clear the index, then rebuild in the background (throttled when
@@ -216,7 +334,37 @@ export class VaultRagService {
 		} catch (e) {
 			console.warn("[Pythia] vault RAG: clear failed", e);
 		}
-		this.refresh();
+		this.refresh({ force: true }); // an explicit rebuild is the one caller that always runs
+	}
+
+	/** Whether this note opts out of the index with `pythia: false` in its
+	 *  frontmatter (ADR-183). Read from the metadata cache, so it costs no file
+	 *  I/O; an uncached file reads as "not opted out", matching the helper's rule
+	 *  that only an explicit false excludes. */
+	private optedOutPath(path: string): boolean {
+		try {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			return file instanceof TFile && this.optedOut(file);
+		} catch {
+			// Same fail-open rule as `optedOut`, and for the same reason: a vault API
+			// that cannot resolve the path has not told us the note opted out. An
+			// unresolvable path is reported as a missing note downstream anyway,
+			// which is the honest outcome — silently dropping every retrieved note
+			// because a lookup threw would disable retrieval with no explanation.
+			return false;
+		}
+	}
+
+	private optedOut(file: TFile): boolean {
+		try {
+			return isIndexingOptedOut(this.app.metadataCache?.getFileCache(file)?.frontmatter);
+		} catch {
+			// Fail OPEN, deliberately. A cache that is not there yet, or throws, must
+			// not decide the scope — and it must certainly not take the whole build
+			// down from inside the file scan. Indexing a note is the status quo; the
+			// opt-out is an explicit `pythia: false`, which this could not read.
+			return false;
+		}
 	}
 
 	/** Notes to index as LAZY refs (path + content loader): the configured folders
@@ -229,7 +377,15 @@ export class VaultRagService {
 		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
 		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
 
-		const files = this.app.vault.getMarkdownFiles();
+		// Newest first, so a capped vault indexes the notes actually being worked in
+		// rather than whatever order the adapter happened to return (ADR-183). That
+		// order is not stable between sessions, which made the cap's membership
+		// churn — notes silently entering and leaving retrieval, and re-embedding
+		// each time they came back.
+		const files = this.app.vault
+			.getMarkdownFiles()
+			.filter((f) => !this.optedOut(f))
+			.sort((a, b) => (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0));
 		const byPath = new Map(files.map((f) => [f.path, f]));
 		const { paths, total, capped } = selectIndexPaths([...byPath.keys()], {
 			include,

@@ -165,13 +165,28 @@ export function buildSystemPrompt(
 	return parts.join("\n\n");
 }
 
+/**
+ * Excerpt budget for a note the vault-RAG hook retrieved, rather than one the
+ * user attached (ADR-183).
+ *
+ * A note the user chose deserves the room it needs; one a cosine picked does
+ * not. At the manual budget, five auto-retrieved notes could add ~60 000 chars
+ * (~15k tokens) to every turn silently — enough to bury the actual question and
+ * to change what the answer costs, for context nobody asked for. A quarter of
+ * the manual budget still carries several heading-sections of a note.
+ */
+export const AUTO_NOTE_BUDGET_CHARS = 3000;
+
 export async function buildAttachedNotesContent(
 	app: App,
 	attachedNotes: string[],
 	/** The user's in-progress message — used to pick the most relevant sections of long notes. */
-	query = ""
-): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number }> {
-	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0 };
+	query = "",
+	/** Which paths were auto-retrieved: they get `AUTO_NOTE_BUDGET_CHARS` instead
+	 *  of the full note (ADR-183). */
+	autoNotes: ReadonlySet<string> = new Set()
+): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number; manualTokens: number }> {
+	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0, manualTokens: 0 };
 	// Reads are independent of each other — parallelize, then assemble in the
 	// original attachedNotes order so prompt content stays deterministic.
 	const results = await Promise.all(
@@ -179,7 +194,9 @@ export async function buildAttachedNotesContent(
 			const file = app.vault.getAbstractFileByPath(notePath);
 			if (!(file instanceof TFile)) return { notePath };
 			const raw = await app.vault.read(file);
-			const { text, isExcerpt } = selectRelevantChunks(raw, query);
+			const { text, isExcerpt } = autoNotes.has(notePath)
+				? selectRelevantChunks(raw, query, AUTO_NOTE_BUDGET_CHARS)
+				: selectRelevantChunks(raw, query);
 			// Note bodies are untrusted: defang any Pythia control tags so a note
 			// cannot close its <attached_note> wrapper early and inject a forged
 			// <system_prompt> block (prompt-injection delimiter escape).
@@ -194,16 +211,24 @@ export async function buildAttachedNotesContent(
 		})
 	);
 	const parts: string[] = [];
+	const manualParts: string[] = [];
 	const missingNotes: string[] = [];
 	for (const r of results) {
-		if (r.part !== undefined) parts.push(r.part);
-		else missingNotes.push(r.notePath);
+		if (r.part !== undefined) {
+			parts.push(r.part);
+			if (!autoNotes.has(r.notePath)) manualParts.push(r.part);
+		} else missingNotes.push(r.notePath);
 	}
 	const content = parts.length > 0 ? "\n\n" + parts.join("\n\n") : "";
 	return {
 		content,
 		missingNotes,
 		estimatedTokens: estimateTokensFromText(content),
+		// Counted separately so the "these notes are large" warning can be about
+		// what the user actually attached (ADR-183/181). Auto-retrieved notes are
+		// already capped per note and their count is a setting; warning about them
+		// is telling someone off for a choice the plugin made.
+		manualTokens: estimateTokensFromText(manualParts.length > 0 ? "\n\n" + manualParts.join("\n\n") : ""),
 	};
 }
 

@@ -9,6 +9,12 @@ import {
 	resolveDefaultModelForProvider,
 } from "../models/knownModels";
 import type { PythiaSettings } from "../models/settings";
+import {
+	EMBEDDING_MODELS,
+	DEFAULT_EMBEDDING_MODEL_ID,
+	embedChunkChars,
+	type EmbeddingModelId,
+} from "../models/embeddingModels";
 
 describe("isReasoningModel", () => {
 	it("is true for every OpenAI o-series and GPT-5 model", () => {
@@ -144,5 +150,40 @@ describe("mistralReasoningEffort (#303)", () => {
 
 	it("sends nothing when no level is set", () => {
 		expect(mistralReasoningEffort("mistral-small-latest", undefined)).toBeUndefined();
+	});
+});
+
+// ── ADR-182: chunk size follows the model's token window ─────────────────────
+describe("embedChunkChars (ADR-182)", () => {
+	it("gives every model a chunk that fits its own token window", () => {
+		for (const m of Object.values(EMBEDDING_MODELS)) {
+			const chars = embedChunkChars(m.id);
+			expect(chars).toBeGreaterThan(0);
+			// The window is the contract: a chunk must not need more tokens than the
+			// model will read. 3.3 chars/token is the pessimistic end for German
+			// through XLM-R, so this is the floor, not an estimate of the average.
+			expect(chars).toBeLessThanOrEqual(m.maxTokens * 4);
+			expect(chars / m.maxTokens).toBeLessThanOrEqual(4);
+		}
+	});
+
+	it("reads maxTokens rather than a shared constant — the field is no longer dead", () => {
+		// Before ADR-182 both models chunked at a hardcoded 500 chars while declaring
+		// different windows. A model with a bigger window must now get a bigger chunk.
+		const en = embedChunkChars("xenova-all-MiniLM-L6-v2");
+		const multi = embedChunkChars("xenova-paraphrase-multilingual-MiniLM-L12-v2");
+		expect(EMBEDDING_MODELS["xenova-all-MiniLM-L6-v2"].maxTokens)
+			.toBeGreaterThan(EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].maxTokens);
+		expect(en).toBeGreaterThan(multi);
+	});
+
+	it("keeps the default model's chunk under the 500 chars that overran it", () => {
+		// 500 chars is ~150 tokens of German against a 128-token window.
+		expect(embedChunkChars(DEFAULT_EMBEDDING_MODEL_ID)).toBeLessThan(500);
+	});
+
+	it("falls back to the default model's window for an unknown id", () => {
+		expect(embedChunkChars("nope" as EmbeddingModelId))
+			.toBe(embedChunkChars(DEFAULT_EMBEDDING_MODEL_ID));
 	});
 });

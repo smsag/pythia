@@ -1,6 +1,7 @@
 import { normalizePath, type Plugin } from "obsidian";
 import { getEmbeddingBundle } from "./embeddingBundle";
 import { withWorkerPrelude } from "./workerPrelude";
+import { conversationContentHash } from "../embeddingIndex";
 
 /**
  * Write the embedding worker bundle to the plugin folder (once per version) and
@@ -16,11 +17,18 @@ import { withWorkerPrelude } from "./workerPrelude";
 export async function embeddingWorkerUrl(plugin: Plugin): Promise<string> {
 	const adapter = plugin.app.vault.adapter;
 	const dir = plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`;
-	// `-p1`: the file now carries the #306 prelude; a same-version file written
-	// before it must not be reused.
-	const path = normalizePath(`${dir}/embedding-worker-${plugin.manifest.version}-p1.mjs`);
+	const source = withWorkerPrelude(getEmbeddingBundle());
+	// Fingerprint the CONTENT, not the version and not a hand-bumped marker. The
+	// file is written only when absent, so a same-version rebuild would otherwise
+	// keep serving stale worker code. #306 used a `-p1` suffix for exactly this
+	// reason, and ADR-185 changes the prelude again — which is the second time a
+	// manual marker would have had to be remembered. A hash cannot be forgotten.
+	// `conversationContentHash` is a generic FNV-1a over strings despite its name;
+	// a second hash implementation here would be a second source of truth.
+	const fingerprint = conversationContentHash([source]);
+	const path = normalizePath(`${dir}/embedding-worker-${plugin.manifest.version}-${fingerprint}.mjs`);
 	if (!(await adapter.exists(path))) {
-		await adapter.write(path, withWorkerPrelude(getEmbeddingBundle()));
+		await adapter.write(path, source);
 		// Best-effort: drop stale worker bundles from older plugin versions. A
 		// failure here leaves a few dead files behind and nothing else, which is
 		// why it is the rare catch that may stay silent.
