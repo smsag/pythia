@@ -9,12 +9,14 @@ import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from ".
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
-import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { composerKeyAction, composerPlaceholder } from "./ui/composerKeys";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
+import { RewriteController } from "./ui/RewriteController";
+import { referenceEntries } from "./ui/referenceEntries";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController, type HistoryPick } from "./ui/HistoryController";
@@ -124,6 +126,8 @@ export class PythiaSidebarView extends ItemView {
 	private actionSheet: ActionSheet | null = null;
 	private sendHint!: SendHintController;
 	private truncation!: TruncationController;
+	/** Public: the editor entry point arms a target through it (ADR-178). */
+	rewrite!: RewriteController;
 
 	private inputAreaEl!: HTMLElement;
 	private inputCollapseBtn!: HTMLButtonElement;
@@ -453,6 +457,12 @@ export class PythiaSidebarView extends ItemView {
 			startComparison: (userId, assistantId) => this.comparisonController.start(userId, assistantId),
 		});
 
+		this.rewrite = new RewriteController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			focusInput: () => this.inputEl?.focus(),
+			refreshPills: () => this.renderReferencePills(),
+		});
 		this.truncation = new TruncationController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -806,33 +816,7 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		type RefEntry =
-			| { kind: "template"; path: string; label: string }
-			| { kind: "context"; path: string }
-			| { kind: "output"; path: string; clearField: () => void }
-			| { kind: "auto"; path: string };
-
-		const entries: RefEntry[] = [];
-
-		// The armed one-shot template leads the row; its ✕ disarms it (ADR-177).
-		const armed = conv.pendingTemplate;
-		if (armed) entries.push({ kind: "template", path: armed.id, label: armed.name });
-		for (const path of conv.contextNotes ?? []) {
-			entries.push({ kind: "context", path });
-		}
-		if (conv.savedNotePath) {
-			entries.push({ kind: "output", path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
-		}
-		if (conv.summaryNote) {
-			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
-		}
-		// Vault-RAG auto-retrieved notes for the last turn (ADR-116): shown as
-		// distinct, read-only pills so the user sees what was pulled in. Excludes
-		// paths already listed as manual context to avoid duplicates.
-		const manual = new Set(conv.contextNotes ?? []);
-		for (const path of this.plugin.getAutoContext(conv.id)) {
-			if (!manual.has(path)) entries.push({ kind: "auto", path });
-		}
+		const entries = referenceEntries(conv, this.plugin.getAutoContext(conv.id));
 
 		this.referenceRowHasEntries = entries.length > 0;
 		this.updateReferenceRowVisibility();
@@ -842,7 +826,7 @@ export class PythiaSidebarView extends ItemView {
 
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
-			const displayName = entry.kind === "template" ? entry.label : noteBasename(entry.path);
+			const displayName = "label" in entry ? entry.label : noteBasename(entry.path);
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
@@ -851,7 +835,7 @@ export class PythiaSidebarView extends ItemView {
 			// Auto-retrieved pills are read-only and visually distinct (no × — they
 			// are ephemeral per-turn context, not persistent conversation context).
 			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
-			if (entry.kind === "template") ref.addClass("p-wikilink--template");
+			if (entry.kind === "template" || entry.kind === "rewrite") ref.addClass("p-wikilink--template");
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
 			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
 			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
@@ -867,9 +851,10 @@ export class PythiaSidebarView extends ItemView {
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
 			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
-			if (entry.kind === "template" || entry.kind === "context") {
+			if (entry.kind !== "output") {
 				x.addEventListener("click", async () => {
 					if (entry.kind === "template") conv.pendingTemplate = undefined;
+					else if (entry.kind === "rewrite") conv.pendingRewrite = undefined;
 					else conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
@@ -879,7 +864,7 @@ export class PythiaSidebarView extends ItemView {
 					new DeleteFileModal(this.app, fileName, async () => {
 						const f = this.app.vault.getAbstractFileByPath(entry.path);
 						if (f instanceof TFile) await this.app.vault.trash(f, true);
-						entry.clearField();
+						conv[entry.field] = undefined;
 						await this.plugin.conversationStore.save(conv);
 						this.renderReferencePills();
 					}).open();
@@ -1087,6 +1072,7 @@ export class PythiaSidebarView extends ItemView {
 		// applying, never repeated down the transcript.
 		renderSourcesRow(this.app, row, sources, turnTemplateCaption(msg, this.activeConversation));
 		this.truncation.paint(row, msg);
+		this.rewrite.paint(row, msg);
 
 		return aiBody;
 	}
@@ -1434,15 +1420,13 @@ export class PythiaSidebarView extends ItemView {
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
 
-		// Auto-arm web search for THIS send when the message reads as time-sensitive
-		// and research mode isn't already on (ADR-099). We offer the tool for this
-		// turn only — never flipping or persisting conv.researchMode — so search can
-		// fire when the user expects it without their having to toggle the globe.
-		const autoArmedSearch =
-			!conv.researchMode &&
-			this.plugin.settings.webSearchAutoArm &&
-			this.plugin.webSearchService.hasApiKey() &&
-			looksTimeSensitive(text, new Date().getFullYear());
+		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
+		const autoArmedSearch = shouldAutoArmSearch({
+			researchMode: conv.researchMode,
+			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
+			hasApiKey: this.plugin.webSearchService.hasApiKey(),
+			timeSensitive: looksTimeSensitive(text, new Date().getFullYear()),
+		});
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
@@ -1579,7 +1563,7 @@ export class PythiaSidebarView extends ItemView {
 			// provider) and is never persisted — sidebar's own callbacks below save
 			// the original `conv`, so the toggle stays off after the turn.
 			autoArmedSearch ? { ...turnConv, researchMode: true } : turnConv,
-			text,
+			this.rewrite.decorate(text, conv),
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage, finish) => {
@@ -1615,6 +1599,7 @@ export class PythiaSidebarView extends ItemView {
 					...(finish?.truncated ? { truncated: true as const } : {}),
 					...(cost ? { cost } : {}),
 				};
+				this.rewrite.attach(conv, assistantMsg);
 				conv.messages.push(assistantMsg);
 				// Spent. Cleared on a committed answer, not at send start, so an
 				// errored or empty reply leaves it armed for the retry (ADR-177).
@@ -1634,6 +1619,7 @@ export class PythiaSidebarView extends ItemView {
 						else if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
+					this.rewrite.paint(lastRow, assistantMsg);
 				}
 				await this.plugin.conversationStore.save(conv);
 				if (this.activeConversation?.id === conv.id) {

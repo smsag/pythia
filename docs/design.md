@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-18 — the armed template is a pill in the reference row (ADR-177). `.p-wikilink--template` leads the row when a template is applied to a running conversation: the name at weight 600, **no `[[ ]]` brackets** — every other pill is a vault note in context, this one is the thing shaping the next answer — and an ✕ that disarms it without sending. It is gone once the answer lands.*
+*Last updated: 2026-09-18 — the proposed-rewrite card, and a second pill kind (ADR-178). `.p-rewrite` is the third card in the family after `.p-trunc` and `.p-compare` and follows their grammar exactly: accent left rule, 9px mono caps label, the note's path as `.p-rewrite-meta`, and `.p-rewrite-actions` with one accent button (*Replace in note*) beside two quiet ones (*Copy*, *Discard*). Buttons are 8×12px under `pointer: coarse`. The armed passage shows in the reference row with the same `.p-wikilink--template` treatment as the armed template — both are "the thing shaping the next answer", not a note in context, so both drop the `[[ ]]` brackets.*
+
+*Previously: 2026-09-18 — the armed template is a pill in the reference row (ADR-177). `.p-wikilink--template` leads the row when a template is applied to a running conversation: the name at weight 600, **no `[[ ]]` brackets** — every other pill is a vault note in context, this one is the thing shaping the next answer — and an ✕ that disarms it without sending. It is gone once the answer lands.*
 
 *Previously: 2026-09-18 — the composer's Enter writes a line break (ADR-175). Cmd/Ctrl+Enter sends; the placeholder reads `Type a message… (Cmd/Ctrl+Enter to send)` on desktop and plain `Type a message…` on a phone, where there is no modifier key and the Send button is a thumb away. The Send button is now the primary send on both platforms.*
 

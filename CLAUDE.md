@@ -39,6 +39,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
     storageSize.ts            ← pure: storageLevel + formatBytes — MEASURED data.json thresholds (warn 25 MB · high 50 MB), ADR-174
+    rewriteTarget.ts          ← pure: rangeText · targetState · replaceRange · targetLabel — a captured range PLUS its text, verified exactly before any write (ADR-178)
     pendingTemplate.ts        ← pure: armPendingTemplate + applyPendingTemplate — a template applied to a RUNNING conversation is a one-shot layer, never a write (ADR-177)
     conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
@@ -79,13 +80,16 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175)
+    RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
+    referenceEntries.ts       ← pure: which pills the reference row shows and in what order (ADR-178)
+    editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1224 tests across 81 files
+  tests/                      ← Vitest unit tests (npm test) — 1246 tests across 83 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -514,6 +518,15 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Cleared on a committed answer, not at send start** — an errored or empty reply leaves it armed so the retry is the same shape
 - `resume_mode` deliberately does **not** apply on this path: history selection is a property of the conversation, not of one answer
 - The armed template is visible as the leading `.p-wikilink--template` pill, and `Message.templateId` records the template that actually shaped that answer — which is what the field always claimed to mean
+
+### Rewriting a passage (ADR-178)
+
+- **The user picks the target, never the model.** There is no `rewrite_selection` tool and there must not be one: a tool means re-finding the passage by its text at write time, which is how the wrong paragraph gets overwritten. The range is captured from the editor when armed
+- **A target is a range PLUS the text that was in it**, and `targetState` compares them **exactly** — no trimming, no whitespace normalization. `stale` and `gone` refuse the write and say which; the answer stays on screen to paste by hand
+- **The answer is a proposal.** Nothing is written when it arrives; *Replace in note* is a separate press. A write that can destroy content is its own operation, and here it would destroy the user's own prose
+- **Write through the open editor when possible** — `editor.replaceRange` is one undo step, and undo is the real safety net. A closed note is opened first, never written blind
+- **Armed until applied or dismissed**, unlike ADR-177's one-shot template: a rewrite is iterated ("shorter"), so every answer while it is armed is another proposal for the same passage
+- The passage rides in the **message**, not the system prompt, so a follow-up turn can still see what is being rewritten
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

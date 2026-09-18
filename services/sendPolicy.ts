@@ -29,3 +29,22 @@ export function shouldGenerateTitle(conv: Conversation): boolean {
 export function shouldGenerateChapterName(userMsg: Message): boolean {
 	return !userMsg.chapterName;
 }
+
+/**
+ * True when web search should be offered for THIS send although the
+ * conversation's globe is off (ADR-099): the setting allows it, a key exists,
+ * and the message reads as time-sensitive.
+ *
+ * Lifted out of `sendMessage` under ADR-178's line budget, and it belongs here
+ * anyway: it is a four-term rule with no DOM in it, and the only place it was
+ * written could not be tested. Never persists `researchMode` — the caller arms
+ * a clone for one turn.
+ */
+export function shouldAutoArmSearch(opts: {
+	researchMode: boolean | undefined;
+	autoArmEnabled: boolean;
+	hasApiKey: boolean;
+	timeSensitive: boolean;
+}): boolean {
+	return !opts.researchMode && opts.autoArmEnabled && opts.hasApiKey && opts.timeSensitive;
+}

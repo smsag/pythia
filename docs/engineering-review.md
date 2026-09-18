@@ -95,6 +95,7 @@
 *Updated: 2026-08-23 — favorite highlights feature (#100): span-level favorites with persistent `mark.p-highlight`, `ui/HighlightPainter.ts`, legacy migration, new happy-dom DOM tests.*
 *Updated: 2026-09-18 — #299: Enter in the composer writes a line break (ADR-175); found on the way, `i18n.getLocale` threw for any headless caller of `t()` instead of falling back to English.*
 *Updated: 2026-09-18 — #300 open: archived conversations are indexed by vault context, and whether they should be is a product call, not a bug. Parked with the argument on both sides.*
+*Updated: 2026-09-18 — #301 opened: the locale tables crossed the 600-line budget and are grandfathered rather than split.*
 
 *Updated: 2026-08-28 — durable root-cause fix + release hardening for the search/related "no results" family. Added `sanitizeMessages` in services/persistence.ts, run inside `parseConversations` (the single load path, `PluginDataStore.loadPluginData`, also used by the data.json watch-reload): it drops null/non-object message elements and coerces a non-string `content` to "" (preserving count/position, which the provider send-path relies on). This fixes the data at the source — the type system promised `Message.content: string` and each element an object, but persistence only ever checked `Array.isArray(messages)`, so an interrupted stream or a legacy entry could leave a null element / undefined content that took down every full-corpus reader. The read-path guards (`buildConversationHaystack`/`bestMatchSnippet`/`conversationChunks`) stay as defense-in-depth. Verified runtime message mutation is `splice`-only (no code assigns null/holes into a live conversation), so post-sanitizer no malformed message can reach the view or the corpus scans. Integration-tested the REAL related-conversations orchestration (`ConversationIndexService` sync→embed→rank) with malformed conversations mixed into the set. Full release pipeline green: eslint (0 errors), file-size guard, `tsc -skipLibCheck` + esbuild production build (main.js emitted, iframe bootstrap inlined, transformers.js runtime + Unicode tokenizer present in the bundle), 519 tests. NOT verifiable in CI/headless: the transformers.js embedding model actually loading in a live Obsidian window (needs a real window; unit tests use a fake provider by design) — if related still shows nothing in-app after this, the remaining suspects are model load failure (surfaces as a Notice) or the 0.35 minScore floor.*
 
@@ -1611,3 +1612,14 @@ Found while checking a README claim, first called a regression, then argued down
 3. **A setting** — "Include archived conversations in vault context", default off. Honest about there being two right answers, but a new setting for a question a default could answer; hold it until someone asks.
 
 **When to come back.** Whichever way this goes, decide it before the archive has had time to fill on a real vault — a decision made after someone has 500 transcripts indexed is a migration, not a default. The trigger to revisit: the first vault where the archive folder is large enough to notice in retrieval results, or #294 landing (a size readout makes the volume visible and the question concrete). Until then the behaviour is documented, not silently wrong.
+### #301 — The locale tables outgrew the line budget (open, 2026-09-18)
+
+`locales/en.ts` and `locales/de.ts` crossed `DEFAULT_MAX` (600) while ADR-178 was adding twelve strings, and are grandfathered at 620 in `scripts/check-file-size.mjs` rather than split.
+
+The reasoning for grandfathering: a line in a string table is **one user-visible string**, so the budget there measures vocabulary, not the structural discipline ADR-097 exists to bound. A 600-line controller is a controller doing too much; a 600-line string table is a plugin with 600 strings.
+
+The reasoning against leaving it: the file is now hard to read, a new string lands wherever the alphabet or the diff puts it, and the German table drifting out of step with the English one is invisible except to the parity test.
+
+**The fix when it is worth doing:** split per feature area — `locales/en/chat.ts`, `settings.ts`, `glossary.ts`, … composed into one object, with `Strings` still derived from the English composition so the compiler keeps enforcing parity. Mechanical, touches every string, worth one focused pass rather than a corner of a feature PR.
+
+**Revisit when:** the tables pass ~700 lines, or the next time someone has to hunt for where a string lives.
