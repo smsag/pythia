@@ -29,13 +29,27 @@ export interface EmbeddingModelConfig {
 	 *  English model's is 0.567, and its best-neighbour median is 0.08 higher
 	 *  throughout. One shared constant therefore meant two different features
 	 *  depending on which model the dropdown selected. */
-	relatedFloors: Record<RelatedSimilarity, number>;
+	relatedFloors: Record<SimilarityPreset, number>;
 }
 
 /** How strict the "related conversations" similarity floor is. A named preset so
  *  the user never has to reason about raw cosine scores; each model maps it to a
  *  number in its own `relatedFloors`. */
-export type RelatedSimilarity = "strict" | "balanced" | "loose";
+/**
+ * The three strictness labels a similarity floor can be set to (ADR-176).
+ *
+ * Named for what it is — a label — and NOT for either of the two questions it
+ * labels, because those two are not the same question and do not share numbers:
+ *
+ * - **Related conversations** resolves it through `relatedMinScore(preset, modelId)`,
+ *   against floors **measured** per embedding model (ADR-169).
+ * - **Vault retrieval** resolves it through `vaultRetrievalMinScore(preset)`,
+ *   against three constants that have never been measured (engineering-review #273).
+ *
+ * It was called `RelatedSimilarity` and used for both, which read as though the
+ * measured floors also governed vault retrieval. They never did.
+ */
+export type SimilarityPreset = "strict" | "balanced" | "loose";
 
 export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = {
 	"xenova-all-MiniLM-L6-v2": {
@@ -65,8 +79,8 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 export const DEFAULT_EMBEDDING_MODEL_ID: EmbeddingModelId =
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2";
 
-export const RELATED_SIMILARITY_PRESETS: readonly RelatedSimilarity[] = ["strict", "balanced", "loose"];
-export const DEFAULT_RELATED_SIMILARITY: RelatedSimilarity = "balanced";
+export const SIMILARITY_PRESETS: readonly SimilarityPreset[] = ["strict", "balanced", "loose"];
+export const DEFAULT_SIMILARITY_PRESET: SimilarityPreset = "balanced";
 
 /** Every known model id, for validating a persisted setting. */
 export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBEDDING_MODELS) as EmbeddingModelId[];

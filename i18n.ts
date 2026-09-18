@@ -8,10 +8,10 @@ let locale: Strings | null = null;
 
 function getLocale(): Strings {
 	if (!locale) {
-		const lang = ((window as unknown as { moment?: { locale?: () => string } })
-			.moment?.locale?.() ?? "en")
-			.split("-")[0];
-		locale = locales[lang] ?? en;
+		// Through the guarded reader below, not a second copy of it: this one threw
+		// on a missing `window`, so any headless caller of `t()` crashed rather than
+		// falling back to English.
+		locale = locales[getObsidianLocale().split("-")[0]] ?? en;
 	}
 	return locale;
 }

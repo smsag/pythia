@@ -13,6 +13,7 @@ import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendP
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
+import { composerKeyAction, composerPlaceholder } from "./ui/composerKeys";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
@@ -531,7 +532,7 @@ export class PythiaSidebarView extends ItemView {
 
 		this.inputEl = inputArea.createEl("textarea", {
 			cls: "p-textarea",
-			attr: { placeholder: t("inputPlaceholder"), rows: "2" },
+			attr: { placeholder: composerPlaceholder(Platform.isMobile), rows: "2" },
 		});
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
@@ -552,10 +553,9 @@ export class PythiaSidebarView extends ItemView {
 		);
 		this.registerDomEvent(this.inputEl, "keydown", (e: KeyboardEvent) => {
 			if (this.inlineSuggest.handleKeydown(e)) return;
-			if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-				e.preventDefault();
-				void this.sendMessage();
-			}
+			if (composerKeyAction(e) !== "send") return;   // Enter is a line break (ADR-175)
+			e.preventDefault();
+			void this.sendMessage();
 		});
 		{
 			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
