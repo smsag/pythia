@@ -29,8 +29,16 @@ export interface PythiaSettings {
 	defaultResumeMode: "full" | "summary" | "hybrid";
 	/** Soft cap on messages per conversation session. 0 = unlimited. */
 	maxMessagesPerSession: number;
-	/** Maximum conversations kept in data.json. Oldest non-starred are evicted. 0 = unlimited. */
+	/** Maximum conversations kept in data.json. Oldest non-starred are evicted.
+	 *  0 = no limit — the settings field shows an EMPTY box for it (ADR-172), so
+	 *  "no limit" is the absence of a number rather than a magic one. */
 	maxConversations: number;
+	/** Write a conversation to a vault note before the history limit deletes it
+	 *  (ADR-172). On by default: the vault is the durable store, and an eviction
+	 *  the user never asked for must not be the end of the content. */
+	archiveBeforeEviction: boolean;
+	/** Folder the archive notes are written to. */
+	archiveFolder: string;
 	/** When true, the currently active note is injected as context when starting from a template. */
 	injectActiveNoteOnTemplate: boolean;
 	/** Vault path for the inbox note used by the "Save to inbox" selection action. */
@@ -108,7 +116,9 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	scratchFolder: "Pythia/Scratch",
 	defaultResumeMode: "full",
 	maxMessagesPerSession: 100,
-	maxConversations: 200,
+	maxConversations: 450,
+	archiveBeforeEviction: true,
+	archiveFolder: "Pythia/Archive",
 	injectActiveNoteOnTemplate: false,
 	inboxNote: "Pythia/Inbox.md",
 	glossaryNote: "Pythia/Glossary.md",

@@ -6,6 +6,8 @@ import { todayISO } from "../utils";
 import { safeNoteName } from "./pathUtils";
 import { t } from "../i18n";
 import { effectiveTheme } from "./glossaryNotes";
+import { archiveFolderOf } from "./conversationArchive";
+import { describeErrorForLog } from "./redact";
 import type { ForkSpec } from "./comparison";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
@@ -419,6 +421,26 @@ export class ConversationService {
 		view.repaintMergeMessage(messageId);
 		view.revealMergeLink(link.id);
 		new Notice(t("mergeLinked", { name: target.name }));
+	}
+
+	/**
+	 * Write one conversation to the archive folder, on the user's say-so (ADR-173).
+	 *
+	 * Returns false when the note could not be written — the caller must then
+	 * NOT delete. Same rule as the automatic archive before an eviction
+	 * (ADR-172): the copy exists before the original goes, or the original stays.
+	 */
+	async archiveConversation(conv: Conversation): Promise<boolean> {
+		const p = this.plugin;
+		try {
+			const path = await p.noteWriter.archiveConversationNote(conv, archiveFolderOf(p.settings));
+			new Notice(t("archivedOneNotice", { path }), 6000);
+			return true;
+		} catch (e) {
+			console.warn(`[Pythia] could not archive "${conv.name}":`, describeErrorForLog(e));
+			new Notice(t("archiveOneFailedNotice", { name: conv.name }), 10000);
+			return false;
+		}
 	}
 
 	async cmdBrowseConversations(): Promise<void> {

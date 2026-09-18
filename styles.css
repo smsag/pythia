@@ -216,6 +216,28 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   letter-spacing: 0.08em;
   color: var(--text-faint);
 }
+/* "Show more" at the foot of the paged browse listing (ADR-174). A row, not a
+   button: it sits in the list's rhythm and is tapped like the rows around it. */
+.p-history-more {
+  padding: 8px;
+  margin-top: 2px;
+  text-align: center;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .p-history-more:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+}
+@media (pointer: coarse) {
+  .p-history-more { padding: 12px 8px; }
+}
+
 .p-history-row {
   display: flex;
   align-items: center;
@@ -2810,11 +2832,27 @@ body.is-phone .workspace-drawer .p-input-area {
   margin-bottom: 16px;
 }
 
+/* The data.json size under the history limit (ADR-174): the number that decides
+   when one-file storage starts to hurt. A warning tint, never a red box — it is
+   information about a vault that has grown, not an error. */
+.pythia-storage-line {
+  margin-top: 6px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+}
+.pythia-storage-line.mod-warning {
+  color: var(--text-warning, var(--text-muted));
+}
+
 .pythia-modal-buttons {
   display: flex;
   gap: 8px;
   margin-top: 16px;
   justify-content: flex-end;
+  /* Three buttons since ADR-173 (Archive · Delete · Cancel): on a narrow phone
+     they wrap instead of squeezing the labels to an unreadable width. */
+  flex-wrap: wrap;
 }
 
 .pythia-modal-hint {

@@ -4,6 +4,7 @@ import type { PythiaSettings } from "../settings";
 import { todayISO, resumeDeepLink } from "../utils";
 import { stripCitationMarkers } from "./citations";
 import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
+import { archiveNoteContent, archiveNotePath } from "./conversationArchive";
 
 export class NoteWriter {
 	private app: App;
@@ -188,6 +189,25 @@ ${summary}
 `;
 
 		const file = await this.writeNote(noteContent, filePath);
+		return file.path;
+	}
+
+	/**
+	 * Write a conversation to the archive folder as a note, before the history
+	 * limit deletes it from `data.json` (ADR-172). Returns the note's path.
+	 *
+	 * Uses `createNote`, not `writeNote`: the path is chosen to be free, so an
+	 * existing file there means something raced us, and overwriting it would
+	 * destroy content in the one operation whose whole purpose is to preserve it.
+	 * Throwing is correct — the caller keeps the conversation rather than
+	 * deleting an unarchived one.
+	 */
+	async archiveConversationNote(conversation: Conversation, folder: string): Promise<string> {
+		const path = archiveNotePath(folder, conversation, (p) => this.app.vault.getAbstractFileByPath(p) !== null);
+		const file = await this.createNote(
+			archiveNoteContent(conversation, this.resumeUri(conversation.id)),
+			path,
+		);
 		return file.path;
 	}
 

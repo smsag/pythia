@@ -1,17 +1,21 @@
 import { Notice, debounce, normalizePath } from "obsidian";
 import type PythiaPlugin from "../main";
+import type { Conversation } from "../models/types";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 import { debugLog } from "./messageUtils";
 import { describeErrorForLog } from "./redact";
+import { archiveFolderOf } from "./conversationArchive";
+import { formatBytes, storageLevel } from "./storageSize";
 import {
 	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
 	shouldRefuseLoad,
 	mergeConversations,
-	evictConversations,
+	partitionEvictions,
+	countEvictions,
 } from "./persistence";
 
 /**
@@ -124,6 +128,8 @@ export class PluginDataStore {
 		if (needsSave) {
 			await p.saveData({ settings: p.settings, conversations: p.conversations });
 		}
+
+		void this.warnIfStoreIsLarge();
 	}
 
 	async saveSettings(): Promise<void> {
@@ -147,26 +153,98 @@ export class PluginDataStore {
 	}
 
 	async saveConversations(): Promise<void> {
-		await this.persist();
+		await this.persist({ evict: true });
 	}
 
-	async persist(): Promise<void> {
+	/**
+	 * Conversations open in a Pythia leaf right now. They are protected from
+	 * eviction even without a starred message — evicting the conversation being
+	 * written in would silently lose its newest turns (#17). Pythia's view can be
+	 * opened in more than one leaf, so every leaf's conversation counts.
+	 */
+	private activeConversationIds(): string[] {
+		return this.plugin.app.workspace
+			.getLeavesOfType(PYTHIA_VIEW_TYPE)
+			.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
+			.filter((id): id is string => id !== null);
+	}
+
+	/** How many conversations lowering the cap to `cap` would delete. The settings
+	 *  tab names this number and asks before storing such a value (ADR-171). */
+	pendingEvictionCount(cap: number): number {
+		return countEvictions(this.plugin.conversations, cap, this.activeConversationIds());
+	}
+
+	/** One eviction at a time: `persist` can be re-entered while the archive is
+	 *  writing, and a second pass would archive the same conversation twice. */
+	private evicting = false;
+
+	/**
+	 * Apply the conversation cap, archiving what it removes (ADR-172).
+	 *
+	 * The order is the whole point: **a conversation is dropped only once its
+	 * note exists.** A failed write keeps it in `data.json` — the list stays over
+	 * the cap until the vault can be written, which is the right way round for a
+	 * limit whose only job is to save space. Either outcome says so out loud; the
+	 * silent version of this is what deleted a user's conversations (ADR-171).
+	 */
+	private async applyCap(): Promise<Conversation[]> {
+		const p = this.plugin;
+		const { kept, removed } = partitionEvictions(
+			p.conversations,
+			p.settings.maxConversations,
+			this.activeConversationIds(),
+		);
+		if (removed.length === 0) return kept;
+		if (this.evicting) return p.conversations;
+		this.evicting = true;
+		try {
+			if (!p.settings.archiveBeforeEviction) {
+				new Notice(t("evictedNotice", { count: String(removed.length) }), 8000);
+				return kept;
+			}
+			const folder = archiveFolderOf(p.settings);
+			const failed: Conversation[] = [];
+			for (const conv of removed) {
+				try {
+					await p.noteWriter.archiveConversationNote(conv, folder);
+				} catch (e) {
+					console.warn(`[Pythia] could not archive "${conv.name}":`, describeErrorForLog(e));
+					failed.push(conv);
+				}
+			}
+			const archived = removed.length - failed.length;
+			if (archived > 0) {
+				new Notice(t("archivedNotice", { count: String(archived), folder }), 8000);
+			}
+			if (failed.length > 0) {
+				// Kept, not deleted. The next persist tries again.
+				new Notice(t("archiveFailedNotice", { count: String(failed.length) }), 10000);
+				const failedIds = new Set(failed.map((c) => c.id));
+				return p.conversations.filter((c) => kept.includes(c) || failedIds.has(c.id));
+			}
+			return kept;
+		} finally {
+			this.evicting = false;
+		}
+	}
+
+	/**
+	 * Write settings + conversations to data.json.
+	 *
+	 * `evict` defaults to OFF: applying the conversation cap deletes conversations
+	 * permanently, so it belongs to a conversation write (`saveConversations`),
+	 * never to a settings or secret write (ADR-171). It used to run on every
+	 * persist, which made each keystroke in the cap field a deletion — typing
+	 * "0" over "200" passes through 20 and 2, and the debounced save behind it
+	 * evicted everything without a favorite down to that transient number.
+	 */
+	async persist({ evict = false }: { evict?: boolean } = {}): Promise<void> {
 		const p = this.plugin;
 		try {
-			// Evict oldest non-starred conversations beyond the cap (#3).
-			// Always protect every currently-open conversation, even if it has no
-			// starred messages — evicting an active conversation would silently
-			// lose new turns (#17). Pythia's view can be opened in more than one
-			// leaf, so every leaf's active conversation is protected, not just one.
-			const activeIds = p.app.workspace
-				.getLeavesOfType(PYTHIA_VIEW_TYPE)
-				.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
-				.filter((id): id is string => id !== null);
-			p.conversations = evictConversations(
-				p.conversations,
-				p.settings.maxConversations,
-				activeIds,
-			);
+			// Evict oldest non-starred conversations beyond the cap (#3), archiving
+			// each to a vault note first when the setting asks for it (ADR-172).
+			if (evict) p.conversations = await this.applyCap();
 
 			const snapshot = p.conversationStore?.snapshotDirty();
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire
@@ -226,6 +304,44 @@ export class PluginDataStore {
 		if (notify) new Notice(t("reloadComplete"));
 	}
 
+	/** The plugin's own data.json. The config directory is user-configurable, so
+	 *  this is derived from the manifest, never a hardcoded ".obsidian". */
+	private dataJsonPath(): string {
+		const p = this.plugin;
+		const pluginDir = p.manifest.dir ?? `${p.app.vault.configDir}/plugins/${p.manifest.id}`;
+		return normalizePath(`${pluginDir}/data.json`);
+	}
+
+	/** Size of data.json in bytes, or null when it cannot be read (ADR-174). The
+	 *  settings tab shows it: it is the number that decides when this design
+	 *  starts to hurt, and nothing else in the app exposes it. */
+	async dataFileBytes(): Promise<number | null> {
+		try {
+			const stat = await this.plugin.app.vault.adapter.stat(this.dataJsonPath());
+			return stat?.size ?? null;
+		} catch (e) {
+			console.warn("[Pythia] could not stat data.json:", describeErrorForLog(e));
+			return null;
+		}
+	}
+
+	/**
+	 * Say once per load when data.json has grown past the point where every
+	 * message pays for the whole file (ADR-174). Only at `high`: the settings
+	 * readout carries `warn`, and a Notice the user cannot act on twice is noise.
+	 */
+	private async warnIfStoreIsLarge(): Promise<void> {
+		const bytes = await this.dataFileBytes();
+		if (bytes === null || storageLevel(bytes) !== "high") return;
+		new Notice(
+			t("storageHighNotice", {
+				size: formatBytes(bytes),
+				count: String(this.plugin.conversations.length),
+			}),
+			12000,
+		);
+	}
+
 	/**
 	 * Poll data.json for external modifications every 5 seconds.
 	 * vault.on("modify") does not fire for .obsidian/ system files, so
@@ -240,8 +356,7 @@ export class PluginDataStore {
 		// The plugin folder, not a hardcoded ".obsidian": the config directory is
 		// user-configurable, and a watcher pointed at the wrong path never fires —
 		// silently, since a missing stat is the "nothing to do" case below.
-		const pluginDir = p.manifest.dir ?? `${p.app.vault.configDir}/plugins/${p.manifest.id}`;
-		const DATA_JSON_PATH = normalizePath(`${pluginDir}/data.json`);
+		const DATA_JSON_PATH = this.dataJsonPath();
 		// Seeded from the clock and corrected on the first poll below. Using the
 		// file's own mtime as the baseline matters: data.json is routinely older
 		// than the moment the plugin loads, and seeding from the clock would let a

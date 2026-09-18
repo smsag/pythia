@@ -8,6 +8,8 @@ import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import { renderPricingSettings } from "./ui/pricingSettings";
+import { bindNumberSetting } from "./ui/numberSetting";
+import { renderConversationCapSetting } from "./ui/conversationCapSetting";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -19,6 +21,9 @@ import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
 // that service modules can import them without pulling in the Obsidian UI layer.
 export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
 import type { PythiaSettings } from "./models/settings";
+
+/** The settings a folder picker can set. */
+type FolderSettingKey = "templatesFolder" | "conversationsFolder" | "scratchFolder" | "archiveFolder";
 
 /** The settings a plain on/off toggle can flip. */
 type BooleanSettingKey = { [K in keyof PythiaSettings]-?: PythiaSettings[K] extends boolean ? K : never }[keyof PythiaSettings];
@@ -32,6 +37,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 	/** Typed fields save a beat after the last keystroke (every save rewrites the
 	 *  whole data.json); toggles and dropdowns still save at once. */
 	private readonly saveSoon = (): void => this.plugin.saveSettingsSoon();
+	/** Commit functions of the numeric fields on screen (ADR-171). They fire on
+	 *  blur, which closing the tab never gives them — `hide()` runs them instead. */
+	private numberCommits: (() => void)[] = [];
 
 	constructor(app: App, plugin: PythiaPlugin) {
 		super(app, plugin);
@@ -39,13 +47,16 @@ export class PythiaSettingTab extends PluginSettingTab {
 	}
 
 	hide(): void {
-		// Flush what was typed in the last few hundred ms; repaint the header's defaults (ADR-165).
+		// Commit the number field the user is still standing in, then flush what was
+		// typed in the last few hundred ms and repaint the header's defaults (ADR-165).
+		for (const commit of this.numberCommits) commit();
 		this.plugin.onSettingsTabClosed();
 	}
 
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.numberCommits = [];
 		containerEl.createEl("h2", { text: t("settingsTitle") });
 
 		containerEl.createEl("h3", { text: t("anthropicSection") });
@@ -159,18 +170,12 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("webSearchMaxResultsName"))
 			.setDesc(t("webSearchMaxResultsDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("5")
-					.setValue(String(this.plugin.settings.webSearchMaxResults))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.webSearchMaxResults = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("5");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.webSearchMaxResults,
+					write: (n) => { this.plugin.settings.webSearchMaxResults = n; this.saveSoon(); } }));
+			});
 
 		containerEl.createEl("h3", { text: t("defaultsSection") });
 
@@ -251,46 +256,22 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("maxTokensName"))
 			.setDesc(t("maxTokensDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_MAX_TOKENS))
-					.setValue(this.plugin.settings.maxTokens?.toString() ?? "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							this.plugin.settings.maxTokens = undefined;
-							this.saveSoon();
-							return;
-						}
-						const n = parseInt(trimmed, 10);
-						if (!isNaN(n) && n > 0) {
-							this.plugin.settings.maxTokens = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder(String(DEFAULT_MAX_TOKENS));
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 1, allowEmpty: true },
+					read: () => this.plugin.settings.maxTokens,
+					write: (n) => { this.plugin.settings.maxTokens = n; this.saveSoon(); } }));
+			});
 
 		temperatureSetting = new Setting(containerEl)
 			.setName(t("temperatureName"))
 			.setDesc(t("temperatureDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("0.0 – 1.0")
-					.setValue(this.plugin.settings.temperature?.toString() ?? "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							this.plugin.settings.temperature = undefined;
-							this.saveSoon();
-							return;
-						}
-						const n = parseFloat(trimmed);
-						if (!isNaN(n) && n >= 0 && n <= 1) {
-							this.plugin.settings.temperature = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("0.0 – 1.0");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0, max: 1, decimal: true, allowEmpty: true },
+					read: () => this.plugin.settings.temperature,
+					write: (n) => { this.plugin.settings.temperature = n; this.saveSoon(); } }));
+			});
 
 		effortSetting = new Setting(containerEl)
 			.setName(t("effortName"))
@@ -312,50 +293,31 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("messageCapName"))
 			.setDesc(t("messageCapDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("100")
-					.setValue(String(this.plugin.settings.maxMessagesPerSession))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxMessagesPerSession = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				// Empty = no limit, like the conversation cap below it (ADR-172).
+				text.setPlaceholder(t("noLimitPlaceholder"));
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0, allowEmpty: true },
+					read: () => (this.plugin.settings.maxMessagesPerSession > 0 ? this.plugin.settings.maxMessagesPerSession : undefined),
+					write: (n) => { this.plugin.settings.maxMessagesPerSession = n ?? 0; this.saveSoon(); } }));
+			});
 
-		new Setting(containerEl)
-			.setName(t("maxConversationsName"))
-			.setDesc(t("maxConversationsDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("200")
-					.setValue(String(this.plugin.settings.maxConversations))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxConversations = n;
-							this.saveSoon();
-						}
-					})
-			);
+		renderConversationCapSetting(containerEl, this.plugin, {
+			register: (commit) => this.numberCommits.push(commit),
+			saveSoon: this.saveSoon,
+		});
+
+		this.addToggle(containerEl, t("archiveBeforeEvictionName"), t("archiveBeforeEvictionDesc"), "archiveBeforeEviction");
+		this.addFolderSetting(containerEl, t("archiveFolderName"), t("archiveFolderDesc"), "archiveFolder");
 
 		new Setting(containerEl)
 			.setName(t("maxAttachedNotesTokensName"))
 			.setDesc(t("maxAttachedNotesTokensDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("8000")
-					.setValue(String(this.plugin.settings.maxAttachedNotesTokens))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxAttachedNotesTokens = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("8000");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.maxAttachedNotesTokens,
+					write: (n) => { this.plugin.settings.maxAttachedNotesTokens = n; this.saveSoon(); } }));
+			});
 
 		new Setting(containerEl)
 			.setName(t("outputLanguageName"))
@@ -519,7 +481,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl: HTMLElement,
 		name: string,
 		desc: string,
-		key: "templatesFolder" | "conversationsFolder" | "scratchFolder"
+		key: FolderSettingKey
 	): void {
 		// eslint-disable-next-line prefer-const -- forward reference: assigned after the Setting that closes over it
 		let displayEl: HTMLSpanElement;
@@ -551,6 +513,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 	/** One boolean setting: name, description, the settings key it flips. Five
 	 *  toggles used to spell out the same eleven lines each (ADR-097 ratchet). */
+
 	private addToggle(containerEl: HTMLElement, name: string, desc: string, key: BooleanSettingKey): void {
 		new Setting(containerEl)
 			.setName(name)

@@ -26,6 +26,9 @@ const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
 /** Keys that may legitimately be absent (the "use the API default" state). */
 const OPTIONAL_KEYS = new Set<keyof PythiaSettings>(["maxTokens", "temperature", "effort"]);
 
+/** The conversation cap shipped up to 2.20.x. See the migration below. */
+const LEGACY_DEFAULT_MAX_CONVERSATIONS = 200;
+
 /**
  * Apply one-time settings migrations to a raw saved-settings object.
  * Mutates `saved` in place (same semantics as the original inline code).
@@ -60,6 +63,15 @@ export function applySettingsMigrations(saved: Record<string, unknown>): {
 	if (saved.encryptedOpenAIKey) {
 		legacyOpenAICiphertext = saved.encryptedOpenAIKey as string;
 		delete saved.encryptedOpenAIKey;
+		needsSave = true;
+	}
+
+	// The old 200 was never a measured number (ADR-174): at ~22 KB per
+	// conversation it capped data.json around 4.5 MB, well below where anything
+	// gets slow. A vault still sitting on it is one that never touched the field,
+	// so it moves to the new default. Raising a cap can only ever keep more.
+	if (saved.maxConversations === LEGACY_DEFAULT_MAX_CONVERSATIONS) {
+		saved.maxConversations = DEFAULT_SETTINGS.maxConversations;
 		needsSave = true;
 	}
 
@@ -364,7 +376,21 @@ export function evictConversations(
 	cap: number,
 	activeIds: string[],
 ): Conversation[] {
-	if (cap <= 0 || conversations.length <= cap) return conversations;
+	return partitionEvictions(conversations, cap, activeIds).kept;
+}
+
+/**
+ * The same decision, with the losers named (ADR-172). The archive has to write
+ * the conversations before they are dropped, and the confirmation dialog has to
+ * count them — both read this rather than re-deriving which ones go, because a
+ * second copy of the protection rules is a second answer to the same question.
+ */
+export function partitionEvictions(
+	conversations: Conversation[],
+	cap: number,
+	activeIds: string[],
+): { kept: Conversation[]; removed: Conversation[] } {
+	if (cap <= 0 || conversations.length <= cap) return { kept: conversations, removed: [] };
 
 	const activeIdSet = new Set(activeIds);
 	const mergeTargetIds = new Set(
@@ -380,5 +406,26 @@ export function evictConversations(
 	const slots = Math.max(0, cap - protectedCount);
 	const keptPlainIds = new Set(plainNewestFirst.slice(0, slots).map((c) => c.id));
 
-	return conversations.filter((c) => isProtected(c) || keptPlainIds.has(c.id));
+	const survives = (c: Conversation): boolean => isProtected(c) || keptPlainIds.has(c.id);
+	return {
+		kept: conversations.filter(survives),
+		removed: conversations.filter((c) => !survives(c)),
+	};
+}
+
+/**
+ * How many conversations `evictConversations` would delete at this cap (ADR-171).
+ *
+ * Lowering the cap is the only settings value that destroys content, so the
+ * settings tab names the number and asks before applying it. The count comes
+ * from the eviction itself rather than from a second copy of its protection
+ * rules — otherwise the dialog would promise one number and the write perform
+ * another the first time a rule changes.
+ */
+export function countEvictions(
+	conversations: Conversation[],
+	cap: number,
+	activeIds: string[],
+): number {
+	return partitionEvictions(conversations, cap, activeIds).removed.length;
 }

@@ -1,6 +1,14 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
+*Last updated: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
+
+*Previously: 2026-09-18 — ADR-173 (the delete dialog offers the archive: Archive · Delete · Cancel, a choice at the one moment anyone knows whether this conversation mattered, fail-closed like the automatic archive).*
+
+*Previously: 2026-09-18 — ADR-172 (the limit archives before it deletes, and "no limit" is an empty box: eviction now writes each conversation to a vault note first and keeps any whose note fails, and the magic 0 leaves the settings field).*
+
+*Previously: 2026-09-18 — ADR-171 (a number being typed is not a setting, and lowering the conversation cap is a deletion: per-keystroke commits meant lowering the limit from 200 to 0 stored 20 and then 2 on the way, and `persist()` evicted on every write — so a settings keystroke deleted every conversation without a favorite).*
+
+*Previously: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
 
 *Previously: 2026-09-17 — ADR-169 (the related-conversations floors are measured, per model, and the index warms in the background: the shipping 0.35 sat BELOW the median score of a random pair, two hypotheses were refuted by the measurement, and a cold first click costs ~19 minutes on a 200-conversation vault).*
 
@@ -3041,3 +3049,121 @@ Reviewing the previous day's merge rather than trusting it turned up three, all 
 Also: `DEFAULT_MIN_SCORE` was exported and used nowhere outside its own module — now private, because an exported constant invites a second source of truth. And `tokenScore` allocated a notes array for every (conversation × query token) pair even under the default scope, which never scores notes; it is now allocated on first match.
 
 **The lesson worth keeping:** the ADR-169 diff was reviewed, tested and green, and it still carried a megabyte-per-launch read and a timer leak. Measuring the thing you changed does not review the thing you wrote.
+
+---
+
+### ADR-171 — A number being typed is not a setting, and lowering the cap is a deletion
+
+**Context.** A user set the conversation history limit ("Gesprächsverlauf-Limit", `maxConversations`) to 0 — documented in both locales as *unlimited* — and was left with only the conversations that held a starred passage.
+
+`evictConversations` is not the bug: `cap <= 0` returns the input unchanged, with a test that says so. The path to the data loss was the field, and the save behind it:
+
+1. `settings.ts` bound every numeric field with `TextComponent.onChange`, which fires **per keystroke**, and stored any value that parsed and cleared the floor. Lowering "200" to "0" is four events — `20`, `2`, `""` (rejected), `0` — and the two intermediate ones are valid caps.
+2. `saveSoon()` behind it is a 400 ms debounce. It resets on each keystroke, so it only fires mid-edit when the user pauses — deleting three digits and thinking for half a second is enough.
+3. `PluginDataStore.persist()` evicted on **every** write, settings and secrets included. So a transient `2` deleted every conversation without a favorite, an open leaf or an inbound merge link, and then wrote data.json. No prompt, no notice, no undo — and the final `0` that the user actually intended arrived at an already-emptied list.
+
+The failure needed all three, but each is wrong on its own terms. Eviction is a destructive write reached through a control that looked like a preference; the engineering principle "a write that can destroy content is a distinct operation" (ADR-159) was never applied to it, because from `persist`'s side it is one line about a cap.
+
+**Decision.**
+
+**A field being typed in is not a setting.** `ui/numberSetting.ts` holds the one rule: `parseNumberSetting` (pure — floor, optional ceiling, integer or decimal, and whether an empty field means *unset* rather than *invalid*) and `bindNumberSetting`, which shows the stored value and commits **on blur or Enter**. A rejected entry restores the stored value instead of clamping to something the user never typed. All six numeric settings fields go through it; `settings.ts` holds no `parseInt` any more. Closing the settings tab destroys the input before `blur` fires, so the binder returns its commit function and `PythiaSettingTab.hide()` runs the pending ones before flushing the debounced save.
+
+**Only a conversation write applies the cap.** `persist({ evict })` now defaults to **off**; `saveConversations()` is the single caller passing `true`. A settings save and a secret save cannot delete a conversation at all — which is what makes the transient value harmless even if one is committed.
+
+**Lowering the limit names what it deletes and asks.** `countEvictions` (pure, in `persistence.ts`) reports how many conversations a cap would remove, derived from `evictConversations` itself rather than from a second copy of its protection rules — a dialog that promises one number while the write performs another is worse than no dialog. Above zero, `ConversationCapModal` states the count and what survives (starred, open, merge target); Escape and the outside press count as no, and a cancelled dialog puts the stored limit back in the field. Only a confirmation writes, through `saveConversations` — the one save that evicts.
+
+**Both settings descriptions say "deleted permanently"** and name the three protections. The old wording, "oldest non-starred conversations are removed when the limit is reached", reads like a cache eviction.
+
+**Consequences.**
+- The cap no longer applies the instant it is lowered by a settings write; it applies on the next conversation save, or immediately when the user confirms the dialog. That is the point — deletion follows a decision, not a keystroke.
+- A conversation count above the cap can now persist for a while (between a confirmed lowering and the next conversation write). Nothing reads the cap except the eviction, so nothing else notices.
+- `parseNumberSetting` rejects rather than clamps, so a field that is temporarily out of range simply snaps back on blur. Rejecting with no message is acceptable here only because the stored value reappears in the field — the user sees that the entry did not take (principle 2: silence is a bug).
+- Not done, deliberately: **the default limit is still 200 and eviction is still silent when reached through normal use.** A conversation deleted because the 201st arrived gets no more warning today than it did before. The honest options are a much higher default, an archive-to-note step before deleting, or unlimited by default with a size warning — a product decision, recorded as engineering-review #291, not smuggled in with a bug fix.
+
+
+---
+
+### ADR-172 — The limit archives before it deletes, and "no limit" is an empty box
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #292, which ADR-171 deliberately left open
+
+**Context.** ADR-171 stopped the conversation cap from deleting while a number was being typed. It did not change what the cap *is*: at 200 conversations, the 201st still deleted the oldest unstarred one, permanently, with nothing said and nothing left. Two things were wrong with that, and one with how the limit was expressed.
+
+**Decision 1 — a conversation is written to the vault before it is dropped.**
+`archiveBeforeEviction` (**on by default**) and `archiveFolder` (`Pythia/Archive`). `NoteWriter.archiveConversationNote` writes one note per conversation: frontmatter Obsidian can query (`type`, `conversation`, `created`, `updated`, `provider`, `model`, `messages`, `archived`, `source` deep link, `context`) and the full transcript under `## You` / `## Pythia` headings, citation markers stripped. The builders are pure (`services/conversationArchive.ts`) and tested.
+
+The vault is the durable store; `data.json` is a working file. Making eviction a **move** rather than a loss is what turns the cap back into a housekeeping setting — and it is why the default is on. A user who never opens the settings is exactly the user this protects.
+
+**The order is the decision.** `applyCap` archives first and drops only what was written:
+
+- a failed write **keeps** the conversation (`data.json` stays over the cap until the vault can be written — the right way round for a limit whose only job is to save space),
+- `archiveConversationNote` goes through `createNote`, which refuses an existing path, and `archiveNotePath` suffixes until the path is free: two conversations may share a name and a day, and overwriting one with the other would destroy exactly what the archive exists to preserve,
+- **both outcomes speak.** Archived, deleted-because-archiving-is-off, and could-not-archive each raise a `Notice`. Silent eviction is the bug this pair of ADRs is about (principle 2).
+- One eviction at a time (`evicting` flag): `persist` can be re-entered while the archive is writing, and the second pass would archive the same conversation twice.
+
+`partitionEvictions` returns `{ kept, removed }` and is now the one rule — `evictConversations` and `countEvictions` are both expressed through it, so the archive writes exactly the conversations the dialog counted and the eviction drops.
+
+**Decision 2 — "no limit" is an empty field, not the number 0.** `maxConversations === 0` remains the stored form (no migration, and `evictConversations` already treats `cap <= 0` as unlimited), but the settings field shows **an empty box** for it, with a `no limit` placeholder. A value the user has to know means "unlimited" is a magic number: the reporter in ADR-171 typed exactly that, correctly, and lost their conversations on the way to it. The two representations meet in one place — `capFieldValue` and the field's `read` in `ui/conversationCapSetting.ts` — and nowhere else. The message cap gets the same treatment, because two "unlimited" conventions in one settings pane would be worse than either.
+
+**Consequences.**
+- The cap now costs vault I/O when it fires. It fires rarely (once per conversation past the limit), and the write is one note.
+- The archive folder grows without bound by design. That is the point: it is Obsidian's problem now, in a format Obsidian can search, and it is the user's to prune.
+- Typing `0` still parses and still means no limit; the field normalizes itself to empty on commit, so the magic number cannot be *read back* even when it can be typed.
+- `settings.ts` crossed its ceiling twice during this change and was extracted twice: `ui/conversationCapSetting.ts` now owns the field, its dialog and the empty-box rule. 565 → 528 lines across ADR-171/172.
+- Not done: **an explicit delete is still an explicit delete.** `DeleteConversationModal` does not archive — the user asked for that one, and filling the vault with notes for deliberate deletions is a different feature with a different default.
+
+---
+
+### ADR-173 — The delete dialog offers the archive
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #293
+
+**Context.** ADR-172 made the *automatic* eviction archive first. That left `DeleteConversationModal` as the only remaining path that destroys a conversation with no copy anywhere — and ADR-172 argued for leaving it alone, on the grounds that a deliberate delete is intent and that filling the vault with notes for deliberate deletions is a different feature.
+
+Half of that still holds: it should not be automatic. The other half was wrong. "The user meant it" answers whether to ask; it does not answer *what to offer*. The moment of deleting is the only moment anyone knows whether this particular conversation mattered, and that is exactly when the cheapest possible save is worth one button.
+
+**Decision.** Three buttons: **Archive** (`mod-cta`, leading) · **Delete** (`mod-warning`) · **Cancel**, with a hint line naming the folder. Archive writes the note and then removes the conversation; Delete removes it as before.
+
+- **It is a choice, not a setting.** `archiveBeforeEviction` governs the automatic path, where nobody is present to be asked. Here somebody is, so the dialog asks rather than remembering a preference the user set months ago for a different conversation.
+- **Both are one tap.** A safe option that costs an extra step (a checkbox to tick first, a second confirmation) is one people learn to skip, which would leave the dialog's safe path unused and the appearance of safety in its place.
+- **Fail-closed, the same rule as the eviction.** `ConversationService.archiveConversation` returns `false` when the note could not be written, having already said why; the caller then does not delete. The conversation stays, which is the only acceptable outcome when the copy does not exist.
+- **`archiveFolderOf(settings)`** now resolves the folder for all three callers (the eviction, the limit's dialog, this one). It was written out twice during ADR-172 and would have been three times here — the fallback for a cleared setting is one fact.
+
+**Consequences.**
+- Deleting is now a two-option decision, so the dialog is a beat slower to read. Acceptable: it is the one dialog in the plugin whose wrong answer cannot be undone.
+- The archive folder can now grow from deliberate deletions too. Still Obsidian's problem to search and the user's to prune (engineering-review #294 is the readout that would make its size visible).
+- No new setting. If "always archive on delete" turns out to be what people want, the dialog's own usage is the evidence for it, and a remembered default can be added later without changing the two actions.
+
+---
+
+### ADR-174 — The limit is measured in bytes, and the list is paged
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #295–#297; the design it defers is #298
+
+**Context.** ADR-171 to ADR-173 made the conversation cap safe. None of them asked whether its number was right, or what it was protecting against. Measured with the new `scripts/bench-store.mjs` (real functions, synthetic ~22 KB conversations; Node on a dev machine, so Obsidian mobile is several times slower):
+
+| vault | data.json | rewrite per turn | startup parse |
+|---|---|---|---|
+| 200 | 4.5 MB | 19 ms | 12 ms |
+| 450 | 10 MB | 45 ms | 23 ms |
+| 1 000 | 22 MB | 87 ms | 66 ms |
+| 2 000 | 45 MB | 179 ms | 133 ms |
+
+**Decision 1 — the default cap is 450, and a vault still on 200 moves to it.** 200 capped `data.json` around 4.5 MB, an order of magnitude below where anything is felt: the default was deleting conversations for no gain. A saved 200 is migrated because it is the fingerprint of never having touched the field, and raising a cap can only ever keep more. Any other stored value, including `0`, is the user's.
+
+**Decision 2 — the warning is a size, because the cost is a size.** The limit counts conversations; the price is bytes, since the whole file is rewritten after every message and a synced vault moves all of it again. A hundred long research conversations outweigh a thousand short ones, so a conversation count cannot be the trigger. `services/storageSize.ts` (pure, tested) holds `warn` at 25 MB and `high` at 50 MB, both read off that table — where a turn starts costing tens of milliseconds, and where that has roughly doubled and the startup parse is felt.
+
+It surfaces twice, deliberately unequal: the settings tab **always** prints `Storage: 23.4 MB in data.json, 1 040 conversation(s)` under the limit — the number is the reason the setting exists and nothing else in the app exposes it — and a `Notice` fires once per load only at `high`. A warning the user has already acted on, repeated every launch, is how people learn to dismiss warnings. A size that cannot be read prints nothing rather than a zero: an invented number here would read as reassurance.
+
+**Decision 3 — the browse listing is paged, and forks are indexed once.** Search has been capped at `SEARCH_RESULT_LIMIT` since ADR-170; the empty-query listing had no cap, so opening the panel built a row, a sub-line and three listeners for **every conversation in the vault**. Worse, it looked up each source's forks with `all.filter(…)` inside the loop over sources — quadratic, 28 ms of pure filtering at 2 000 conversations and 528 ms at 5 000, next to a `forkCounts` map built two lines above for the ⑂ badge.
+
+Now `forksBySource` is built once per list build and both readers share it — the badge is `…get(id)?.length`, so the count and the rows cannot disagree — and `BROWSE_PAGE_ROWS = 50` draws a page with the rest behind a `show more` row that **appends** rather than rebuilds. 50 rather than 20 because the page has to fill a desktop panel, or the control appears before the user has scrolled. A source and its forks are always drawn together, so a page may overshoot: the fork indent means nothing once its parent is on the other side of a page break.
+
+**Consequences.**
+- At the new default the numbers are comfortable (10 MB, 45 ms per turn) and the readout stays quiet until roughly 1 100 conversations.
+- The thresholds are constants read off one measurement on one machine. They are in a pure module with tests and a documented table so the next person can re-measure with the script rather than argue about the number.
+- Paging changes what ↑/↓ can reach: keyboard selection covers the rendered rows, so a conversation past the page needs `show more` first. Search — which reaches everything, capped and ranked — is the way to find a distant conversation, and it is one keystroke away in the same panel.
+- **None of this is the fix.** Every message still pays for the whole corpus. `scripts/bench-store.mjs` and `storageSize.ts` exist so that the point where that stops being acceptable announces itself instead of being discovered. The fix is engineering-review **#298** — an index plus one file per conversation — designed there in full, deliberately not scheduled: its real cost is not the storage layer but making `plugin.conversations` a loader rather than a live array, and nothing in a vault at today's sizes has earned that yet.
