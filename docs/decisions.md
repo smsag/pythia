@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
+*Last updated: 2026-09-18 — ADR-175 (Enter writes a line break in the composer; Cmd/Ctrl+Enter sends: a prompt is a draft, and the unmodified key now carries the recoverable outcome).*
+
+*Previously: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
 
 *Previously: 2026-09-18 — ADR-173 (the delete dialog offers the archive: Archive · Delete · Cancel, a choice at the one moment anyone knows whether this conversation mattered, fail-closed like the automatic archive).*
 
@@ -3167,3 +3169,29 @@ Now `forksBySource` is built once per list build and both readers share it — t
 - The thresholds are constants read off one measurement on one machine. They are in a pure module with tests and a documented table so the next person can re-measure with the script rather than argue about the number.
 - Paging changes what ↑/↓ can reach: keyboard selection covers the rendered rows, so a conversation past the page needs `show more` first. Search — which reaches everything, capped and ranked — is the way to find a distant conversation, and it is one keystroke away in the same panel.
 - **None of this is the fix.** Every message still pays for the whole corpus. `scripts/bench-store.mjs` and `storageSize.ts` exist so that the point where that stops being acceptable announces itself instead of being discovered. The fix is engineering-review **#298** — an index plus one file per conversation — designed there in full, deliberately not scheduled: its real cost is not the storage layer but making `plugin.conversations` a loader rather than a live array, and nothing in a vault at today's sizes has earned that yet.
+
+---
+
+### ADR-175 — Enter writes a line break; Cmd/Ctrl+Enter sends
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+**Context.** The composer sent on Enter and wrote a newline on Shift+Enter — the chat-app convention. It is the wrong one here. What is being written is a *prompt*: a paragraph, a pasted list, a constraint added after a second thought. Enter-to-send makes the most-pressed key in the textarea the irreversible one, and hides the key you actually want behind a modifier that is announced once, in a placeholder, that disappears the moment you start typing.
+
+The asymmetry decides it. A stray line break costs nothing — you carry on typing. A stray send costs an API call, a half-written prompt in the transcript and a delete to clean up (and until ADR-160's compare bar existed, a fork to recover from). The recoverable outcome belongs on the unmodified key.
+
+**Decision.** `composerKeyAction` (`ui/composerKeys.ts`, pure and tested):
+
+- **Enter → line break.** Shift+Enter too; there is no second send modifier to remember.
+- **Cmd/Ctrl+Enter → send.** Kept because a keyboard user needs some send that is not the mouse, and it is the shortcut every editor-shaped composer uses for "commit this block".
+- **An IME's Enter is never a send**, with or without the modifier: it commits a candidate, and sending there would fire mid-word with the composition uncommitted. `isComposing` guarded the old send and still guards this one.
+- The rule is a pure function rather than three conditions in a keydown handler, because it is a rule: `sidebar.ts` only wires it, and the IME and modifier cases are asserted without a DOM.
+
+**The placeholder names the shortcut only where one exists.** `composerPlaceholder(isMobile)` drops the hint on a phone — there is no modifier key there, and the send button is a thumb away — and the desktop string lost its "Shift+Enter for new line" half, which now describes the default rather than an escape hatch.
+
+**Consequences.**
+- Muscle memory built on every other chat app now inserts a newline instead of sending. That is the intended cost, paid once; the failure is visible and free to undo, which is the opposite of the one it replaces.
+- The Send button becomes the primary send on both platforms, which is what it already was on mobile.
+- Not changed: `PromptInputModal` still confirms on Enter. It is a modal with one field and a confirm button, where Enter-confirms is the platform convention and the text is short by construction.
+- A per-user "Enter sends" setting was considered and rejected for now: it doubles the send path, and the question this ADR answers is which behaviour is correct, not which is popular. If it comes back it will come back as a setting with a stated default, not as a toggle to avoid deciding.
