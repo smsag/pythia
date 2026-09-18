@@ -11,6 +11,7 @@
 export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	// ── Anthropic ────────────────────────────────────────────────────────────
 	"claude-opus-5":     { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
+	"claude-fable-5-1":  { en: "Demanding analysis, long multi-step tasks",            de: "Anspruchsvolle Analysen, lange mehrstufige Aufgaben" },
 	"claude-fable-5":    { en: "Stories, creative writing, brainstorming ideas",       de: "Geschichten, kreatives Schreiben, Ideen sammeln" },
 	"claude-mythos-5":   { en: "Complex tasks, in-depth analysis",                     de: "Komplexe Aufgaben, tiefe Analyse" },
 	"claude-opus-4-8":   { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
@@ -21,6 +22,9 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	"claude-haiku-4-5":  { en: "Quick facts, short rewrites, simple asks",              de: "Schnelle Fakten, kurze Umformulierungen, Einfaches" },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
+	"gpt-5.6":      { en: "Complex work, careful analysis, hard problems", de: "Komplexe Aufgaben, sorgfältige Analyse, schwere Probleme" },
+	"gpt-5.4-mini": { en: "Everyday questions and analysis, lower cost",   de: "Alltagsfragen und Analysen, günstiger" },
+	"gpt-5.4-nano": { en: "Quick, simple tasks, very low cost",            de: "Schnelle, einfache Aufgaben, sehr günstig" },
 	"gpt-4.1":      { en: "Everyday questions, very long documents",       de: "Alltagsfragen, sehr lange Dokumente" },
 	"gpt-4.1-mini": { en: "Quick everyday tasks at lower cost",            de: "Schnelle Alltagsaufgaben, günstiger" },
 	"gpt-4.1-nano": { en: "Very quick, simple tasks",                      de: "Sehr schnelle, einfache Aufgaben" },
@@ -33,6 +37,7 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 
 	// ── Mistral ──────────────────────────────────────────────────────────────
 	"mistral-large-latest":    { en: "Everyday questions, general tasks",   de: "Alltagsfragen, allgemeine Aufgaben" },
+	"mistral-medium-latest":   { en: "Everyday questions, multilingual work", de: "Alltagsfragen, mehrsprachige Aufgaben" },
 	"mistral-small-latest":    { en: "Quick, simple tasks, low cost",       de: "Schnelle, einfache Aufgaben, günstig" },
 	"codestral-latest":        { en: "Writing and explaining code",         de: "Code schreiben und erklären" },
 	"magistral-medium-latest": { en: "Step-by-step reasoning problems",     de: "Schritt-für-Schritt-Denkaufgaben" },
@@ -61,6 +66,7 @@ export interface ModelProfile { speed: Tier; depth: Tier; cost: Tier }
 export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	// ── Anthropic ────────────────────────────────────────────────────────────
 	"claude-opus-5":     { speed: 1, depth: 3, cost: 3 },
+	"claude-fable-5-1":  { speed: 1, depth: 3, cost: 3 },
 	"claude-fable-5":    { speed: 1, depth: 3, cost: 3 },
 	"claude-mythos-5":   { speed: 1, depth: 3, cost: 3 },
 	"claude-opus-4-8":   { speed: 1, depth: 3, cost: 3 },
@@ -71,6 +77,9 @@ export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	"claude-haiku-4-5":  { speed: 3, depth: 1, cost: 1 },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
+	"gpt-5.6":      { speed: 1, depth: 3, cost: 3 },
+	"gpt-5.4-mini": { speed: 2, depth: 2, cost: 2 },
+	"gpt-5.4-nano": { speed: 3, depth: 1, cost: 1 },
 	"gpt-4.1":      { speed: 2, depth: 2, cost: 2 },
 	"gpt-4.1-mini": { speed: 3, depth: 1, cost: 1 },
 	"gpt-4.1-nano": { speed: 3, depth: 1, cost: 1 },
@@ -83,6 +92,7 @@ export const MODEL_PROFILE: Record<string, ModelProfile> = {
 
 	// ── Mistral ──────────────────────────────────────────────────────────────
 	"mistral-large-latest":    { speed: 2, depth: 2, cost: 2 },
+	"mistral-medium-latest":   { speed: 2, depth: 2, cost: 2 },
 	"mistral-small-latest":    { speed: 3, depth: 1, cost: 1 },
 	"codestral-latest":        { speed: 3, depth: 2, cost: 1 },
 	"magistral-medium-latest": { speed: 1, depth: 3, cost: 2 },

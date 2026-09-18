@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { readCatalogDetails, formatWindow, syncContextWindows, findDeprecated, findNewModels, suggestRow, renderReport } from "../scripts/update-models.mjs";
+import { readCatalogDetails, formatWindow, upstreamWindow, syncContextWindows, findDeprecated, findNewModels, suggestRow, renderReport } from "../scripts/update-models.mjs";
 import type { CatalogDetail } from "../scripts/update-models.mjs";
 import { MODEL_CATALOG } from "../models/knownModels";
 
@@ -38,6 +38,17 @@ describe("formatWindow — the gate before an upstream number becomes source", (
 		for (const bad of [NaN, Infinity, 0, -1, 1.5, "128000", null, undefined]) {
 			expect(() => formatWindow(bad), String(bad)).toThrow(/not a usable number/);
 		}
+	});
+});
+
+describe("upstreamWindow", () => {
+	it("prefers the input-side limit: trimming budgets what a request sends", () => {
+		expect(upstreamWindow({ limit: { context: 400_000, input: 272_000, output: 128_000 } })).toBe(272_000);
+		expect(upstreamWindow({ limit: { context: 262_144, output: 262_144 } })).toBe(262_144);
+	});
+
+	it("passes a broken input limit on to formatWindow rather than falling back to context", () => {
+		expect(() => formatWindow(upstreamWindow({ limit: { context: 400_000, input: "272k" } }))).toThrow(/not a usable number/);
 	});
 });
 

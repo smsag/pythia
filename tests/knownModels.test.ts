@@ -11,8 +11,8 @@ import {
 import type { PythiaSettings } from "../models/settings";
 
 describe("isReasoningModel", () => {
-	it("is true for every OpenAI o-series model", () => {
-		for (const model of ["o3", "o3-mini", "o4-mini"]) {
+	it("is true for every OpenAI o-series and GPT-5 model", () => {
+		for (const model of ["o3", "o3-mini", "o4-mini", "gpt-5.6", "gpt-5.4-mini", "gpt-5.4-nano"]) {
 			expect(isReasoningModel(model)).toBe(true);
 		}
 	});
@@ -26,8 +26,10 @@ describe("isReasoningModel", () => {
 	it("every OpenAI model selectable in KNOWN_MODELS agrees with REASONING_MODELS", () => {
 		// Regression guard for the exact bug this module fixes: a model listed as
 		// selectable but missing from the reasoning-model set (e.g. o4-mini).
+		// GPT-5 and later reason too: they reject temperature and max_tokens the
+		// same way the o-series does (ADR-179).
 		for (const model of KNOWN_MODELS.openai) {
-			const looksLikeReasoningModel = /^o\d/.test(model);
+			const looksLikeReasoningModel = /^(o\d|gpt-([5-9]|\d\d))/.test(model);
 			expect(REASONING_MODELS.has(model)).toBe(looksLikeReasoningModel);
 		}
 	});
@@ -36,7 +38,7 @@ describe("isReasoningModel", () => {
 describe("supportsEffort", () => {
 	it("is true for every model in the effort allow-list", () => {
 		for (const model of [
-			"claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7",
+			"claude-fable-5-1", "claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7",
 			"claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6",
 		]) {
 			expect(supportsEffort(model)).toBe(true);
