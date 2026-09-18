@@ -14,9 +14,14 @@ import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddi
  * Implements EmbeddingProvider itself so callers (ConversationIndexService /
  * VaultIndexService) are unaware of which backend is live.
  */
+/** Which backend is running the model. The label a report can quote (#306):
+ *  a silent fall back to the UI thread is what hid that the Worker never ran. */
+export type EmbeddingBackend = "worker (blob)" | "worker (resource)" | "iframe (UI thread)";
+
 export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	readonly dim: number;
 	private active: EmbeddingProvider | null = null;
+	private activeBackend: EmbeddingBackend | null = null;
 	private readyPromise: Promise<void> | null = null;
 
 	constructor(
@@ -40,8 +45,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		const blobWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
 		try {
 			await blobWorker.ready();
-			this.active = blobWorker;
-			return;
+			return this.engage(blobWorker, "worker (blob)");
 		} catch (err) {
 			blobWorker.unload();
 			console.warn("[Pythia] embedding: blob worker unavailable", err);
@@ -52,8 +56,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 			const resWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress, this.resourceWorkerUrl);
 			try {
 				await resWorker.ready();
-				this.active = resWorker;
-				return;
+				return this.engage(resWorker, "worker (resource)");
 			} catch (err) {
 				resWorker.unload();
 				console.warn("[Pythia] embedding: resource-path worker unavailable — falling back to iframe (UI thread)", err);
@@ -62,7 +65,22 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		// 3. Same-origin iframe (LAST resort; runs on the UI thread — throttled by callers).
 		const iframe = new IframeEmbeddingProvider(this.modelId, this.onProgress);
 		await iframe.ready();
-		this.active = iframe;
+		this.engage(iframe, "iframe (UI thread)");
+	}
+
+	private engage(provider: EmbeddingProvider, backend: EmbeddingBackend): void {
+		this.active = provider;
+		this.activeBackend = backend;
+		// Once per model load, at info level: which backend is live is the first
+		// thing a performance report needs, and it used to be visible only as the
+		// absence of a warning.
+		// eslint-disable-next-line no-console
+		console.info(`[Pythia] embedding: ${backend}`);
+	}
+
+	/** The backend that initialized, or null before `ready()` resolves. */
+	backend(): EmbeddingBackend | null {
+		return this.activeBackend;
 	}
 
 	async embed(texts: string[]): Promise<Float32Array[]> {
@@ -81,6 +99,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	unload(): void {
 		this.active?.unload();
 		this.active = null;
+		this.activeBackend = null;
 		this.readyPromise = null;
 	}
 }
