@@ -90,8 +90,8 @@ describe("deserializeIndex — truncated files", () => {
 	});
 });
 
-// ── ADR-181: an index records what it is, and whether it finished ────────────
-describe("index self-description (ADR-181)", () => {
+// ── ADR-184: an index records what it is, and whether it finished ────────────
+describe("index self-description (ADR-184)", () => {
 	const vec = (n: number) => Int8Array.from(Array.from({ length: 4 }, () => n));
 	const items = [{ id: "a.md", contentHash: "h1", chunks: [vec(1)] }];
 
@@ -103,7 +103,7 @@ describe("index self-description (ADR-181)", () => {
 	});
 
 	it("round-trips an INCOMPLETE index — the case that matters", () => {
-		// A mid-build flush (ADR-179) writes rows AND the fact that the build is
+		// A mid-build flush (ADR-182) writes rows AND the fact that the build is
 		// unfinished. Losing the second half is how a fifth of a vault got served
 		// as though it were the whole thing.
 		const out = deserializeIndex(serializeIndex(items, 4, { complete: false, scope: "S" }));

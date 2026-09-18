@@ -305,7 +305,7 @@ export abstract class BaseProvider implements LLMProvider {
 			buildAttachedPdfs(this.app, pdfPaths),
 		]);
 
-		// Only ever warn about notes the USER attached (ADR-180). A vault-RAG path
+		// Only ever warn about notes the USER attached (ADR-183). A vault-RAG path
 		// can go missing because the index outlived the note — the user never chose
 		// it, cannot remove it, and a warning about it is noise they can only ignore.
 		const missingManual = missingNotes.filter((p) => !autoNotes.has(p));
@@ -323,7 +323,7 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("oversizedPdfWarning", { count: oversizedPdfs.length }));
 		}
 
-		// Measured on MANUAL notes only (ADR-181). ADR-180 said the attached-note
+		// Measured on MANUAL notes only (ADR-184). ADR-183 said the attached-note
 		// warnings are about what the user attached, but only the missing-note one
 		// was filtered — so a conversation with no attached notes at all could fire
 		// "attached notes are large" every turn, about notes it never chose.

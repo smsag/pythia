@@ -25,7 +25,7 @@ if (env.backends?.onnx?.wasm) {
 	// multi-threaded WASM + SharedArrayBuffer reloads the whole Electron renderer
 	// (ADR-119) — so "the shape wasn't there" must be reportable, not inferred.
 	// It is reachable: when transformers resolves to the NODE backend, `onnx` is
-	// the node binding and has no `.wasm`, which is precisely the case ADR-179's
+	// the node binding and has no `.wasm`, which is precisely the case ADR-182's
 	// worker prefix removes. If this line appears, the crash guard did not apply.
 	console.warn("[Pythia] embedding: onnx wasm backend absent — numThreads guard NOT applied");
 }
@@ -111,7 +111,7 @@ export class EmbeddingModel {
 
 	/**
 	 * Embed a BATCH of strings in ONE inference, serialized behind the queue so
-	 * calls never overlap (ADR-179).
+	 * calls never overlap (ADR-182).
 	 *
 	 * Batch-of-one was the old shape, and it cost twice. Throughput: one ONNX
 	 * session run per chunk, so a 400-note vault paid several thousand round

@@ -1,6 +1,6 @@
 // The BUILD half of VaultIndexService: what happens when a build is interrupted,
 // how often it writes, when it gives up on a note, and what the persisted index
-// says about itself (ADR-179/181). Split from VaultIndexService.test.ts, which
+// says about itself (ADR-182/181). Split from VaultIndexService.test.ts, which
 // keeps the sync/query behaviour, when that file outgrew the size ratchet.
 import { describe, it, expect } from "vitest";
 import { VaultIndexService, type IndexableNote } from "../services/embedding/VaultIndexService";
@@ -37,8 +37,8 @@ const alpha = note("Notes/alpha.md", "all about alpha topics");
 const beta = note("Notes/beta.md", "all about beta topics");
 const gamma = note("Notes/gamma.md", "unrelated gamma material");
 
-// ── ADR-179: a build must survive being interrupted ──────────────────────────
-describe("VaultIndexService — crash-safe build (ADR-179)", () => {
+// ── ADR-182: a build must survive being interrupted ──────────────────────────
+describe("VaultIndexService — crash-safe build (ADR-182)", () => {
 	/** Fails on one specific note, the way an embed timeout does on a huge one. */
 	class FlakyProvider extends FakeProvider {
 		constructor(private readonly poison: string) { super(); }
@@ -111,7 +111,7 @@ describe("VaultIndexService — crash-safe build (ADR-179)", () => {
 		const p = new FlakyProvider("beta");
 		const s = new VaultIndexService(p, store, { persistIntervalMs: 0 });
 		await s.sync([alpha, beta, gamma]);
-		// The build COMPLETED — before ADR-179 one bad note threw out of doSync, so
+		// The build COMPLETED — before ADR-182 one bad note threw out of doSync, so
 		// the index never became ready and every retry failed identically.
 		expect(s.isReady()).toBe(true);
 		expect(s.size()).toBe(2); // alpha + gamma; beta dropped
@@ -145,8 +145,8 @@ describe("VaultIndexService — crash-safe build (ADR-179)", () => {
 	});
 });
 
-// ── ADR-179: the write rate is bounded, not just the loss window ─────────────
-describe("VaultIndexService — persist throttling (ADR-179)", () => {
+// ── ADR-182: the write rate is bounded, not just the loss window ─────────────
+describe("VaultIndexService — persist throttling (ADR-182)", () => {
 	const many = (n: number): IndexableNote[] =>
 		Array.from({ length: n }, (_, i) => note(`Notes/t${i}.md`, `note ${i} about alpha`));
 
@@ -183,7 +183,7 @@ describe("VaultIndexService — persist throttling (ADR-179)", () => {
 	});
 });
 
-describe("VaultIndexService — failure streak (ADR-179)", () => {
+describe("VaultIndexService — failure streak (ADR-182)", () => {
 	class PoisonProvider extends FakeProvider {
 		constructor(private readonly poison: string) { super(); }
 		async embed(texts: string[]): Promise<Float32Array[]> {
@@ -222,8 +222,8 @@ describe("VaultIndexService — failure streak (ADR-179)", () => {
 	});
 });
 
-// ── ADR-181: the index knows whether it finished, and what it indexed ────────
-describe("VaultIndexService — completeness (ADR-181)", () => {
+// ── ADR-184: the index knows whether it finished, and what it indexed ────────
+describe("VaultIndexService — completeness (ADR-184)", () => {
 	const many = (n: number): IndexableNote[] =>
 		Array.from({ length: n }, (_, i) => note(`Notes/c${i}.md`, `note ${i} alpha`));
 
@@ -236,7 +236,7 @@ describe("VaultIndexService — completeness (ADR-181)", () => {
 	});
 
 	it("an INTERRUPTED build leaves the index incomplete, rows and all", async () => {
-		// This is the bug ADR-179 created and ADR-181 closes: partial persistence
+		// This is the bug ADR-182 created and ADR-184 closes: partial persistence
 		// made "has rows" stop meaning "is built", and every reader that asked
 		// size() > 0 started calling a fraction of a vault done.
 		const store = new MemStore();
@@ -311,7 +311,7 @@ describe("VaultIndexService — completeness (ADR-181)", () => {
 	});
 });
 
-describe("VaultIndexService — every mid-build write says it is unfinished (ADR-181)", () => {
+describe("VaultIndexService — every mid-build write says it is unfinished (ADR-184)", () => {
 	/** Records what each write CLAIMED about itself, not just that it happened. */
 	class RecordingStore implements IndexStore {
 		buf: ArrayBuffer | null = null;

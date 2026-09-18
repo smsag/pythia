@@ -3,7 +3,7 @@ import { sliceBatch } from "../services/embedding/host/frame/batchSlice";
 
 const flat = (rows: number[][]): Float32Array => Float32Array.from(rows.flat());
 
-describe("sliceBatch (ADR-179)", () => {
+describe("sliceBatch (ADR-182)", () => {
 	it("splits a [batch, dim] result into one vector per input, in order", () => {
 		const out = sliceBatch(flat([[1, 2], [3, 4], [5, 6]]), [3, 2], 3);
 		expect(out.map((v) => [...v])).toEqual([[1, 2], [3, 4], [5, 6]]);

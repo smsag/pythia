@@ -7,6 +7,7 @@ import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { PromptInputModal } from "../suggest/PromptInputModal";
 import { OUTPUT_ONLY_INSTRUCTION, cleanOptimizedOutput } from "./promptOptimizerText";
 import { t } from "../i18n";
+import { DIFFICULTY_INSTRUCTION, parseDifficulty, type Difficulty } from "./modelRecommendation";
 
 const FRAMEWORK_INSTRUCTIONS: Record<string, string> = {
 	"CO-STAR":
@@ -73,15 +74,21 @@ export class PromptOptimizerService {
 	}
 
 	/**
-	 * Optimize `rawText` and return the result string.
+	 * Optimize `rawText` and return the result.
 	 * Used by the inline optimizer in the sidebar (no UI side-effects).
+	 *
+	 * With `rateDifficulty`, the same call also asks for a `DIFFICULTY:` line
+	 * (ADR-181) — one request, no second round trip — which is parsed off
+	 * before the prompt is cleaned. `difficulty` is null when it was not asked
+	 * for or the model left it out.
 	 */
 	async optimizeText(
 		rawText: string,
 		framework: string,
 		provider: Provider,
 		model: string,
-	): Promise<string> {
+		rateDifficulty = false,
+	): Promise<{ prompt: string; difficulty: Difficulty | null }> {
 		if (!this.settings.promptOptimizerTemplateId) {
 			throw new Error("no-template");
 		}
@@ -99,8 +106,12 @@ export class PromptOptimizerService {
 			if (instruction) userMessage += "\n\n" + instruction;
 		}
 		userMessage += "\n\n" + OUTPUT_ONLY_INSTRUCTION;
+		if (rateDifficulty) userMessage += "\n\n" + DIFFICULTY_INSTRUCTION;
 
-		return cleanOptimizedOutput(await this.llmRouter.optimizePrompt("", userMessage, provider, model));
+		const reply = await this.llmRouter.optimizePrompt("", userMessage, provider, model);
+		if (!rateDifficulty) return { prompt: cleanOptimizedOutput(reply), difficulty: null };
+		const { prompt, difficulty } = parseDifficulty(reply);
+		return { prompt: cleanOptimizedOutput(prompt), difficulty };
 	}
 
 	async run(): Promise<void> {

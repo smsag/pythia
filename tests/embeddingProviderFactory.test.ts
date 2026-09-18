@@ -56,7 +56,7 @@ beforeEach(() => {
 	vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
-describe("FallbackEmbeddingProvider — which backend started (ADR-179)", () => {
+describe("FallbackEmbeddingProvider — which backend started (ADR-182)", () => {
 	it("reports the blob Worker when it starts, and never builds the others", async () => {
 		const { provider, seen } = make();
 		await provider.ready();
@@ -114,7 +114,7 @@ describe("FallbackEmbeddingProvider — which backend started (ADR-179)", () => 
 	});
 });
 
-describe("FallbackEmbeddingProvider — why the others failed (ADR-182)", () => {
+describe("FallbackEmbeddingProvider — why the others failed (ADR-185)", () => {
 	it("reports each failure REASON, not just that it fell back", async () => {
 		// "Unsupported device: wasm" and "Not allowed to load local resource: blob:"
 		// are different bugs with different fixes. The chain knew which and threw it

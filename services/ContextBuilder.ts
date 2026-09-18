@@ -167,7 +167,7 @@ export function buildSystemPrompt(
 
 /**
  * Excerpt budget for a note the vault-RAG hook retrieved, rather than one the
- * user attached (ADR-180).
+ * user attached (ADR-183).
  *
  * A note the user chose deserves the room it needs; one a cosine picked does
  * not. At the manual budget, five auto-retrieved notes could add ~60 000 chars
@@ -183,7 +183,7 @@ export async function buildAttachedNotesContent(
 	/** The user's in-progress message — used to pick the most relevant sections of long notes. */
 	query = "",
 	/** Which paths were auto-retrieved: they get `AUTO_NOTE_BUDGET_CHARS` instead
-	 *  of the full note (ADR-180). */
+	 *  of the full note (ADR-183). */
 	autoNotes: ReadonlySet<string> = new Set()
 ): Promise<{ content: string; missingNotes: string[]; estimatedTokens: number; manualTokens: number }> {
 	if (attachedNotes.length === 0) return { content: "", missingNotes: [], estimatedTokens: 0, manualTokens: 0 };
@@ -225,7 +225,7 @@ export async function buildAttachedNotesContent(
 		missingNotes,
 		estimatedTokens: estimateTokensFromText(content),
 		// Counted separately so the "these notes are large" warning can be about
-		// what the user actually attached (ADR-180/181). Auto-retrieved notes are
+		// what the user actually attached (ADR-183/181). Auto-retrieved notes are
 		// already capped per note and their count is a setting; warning about them
 		// is telling someone off for a choice the plugin made.
 		manualTokens: estimateTokensFromText(manualParts.length > 0 ? "\n\n" + manualParts.join("\n\n") : ""),

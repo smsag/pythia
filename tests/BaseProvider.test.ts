@@ -57,7 +57,7 @@ class TestProvider extends BaseProvider {
 		return this.languageLabel(conversation);
 	}
 
-	/** `resolveUserContent` is protected; expose it so the ADR-180 warning rules
+	/** `resolveUserContent` is protected; expose it so the ADR-183 warning rules
 	 *  can be exercised without a real stream. */
 	resolve(conv: Conversation, notes: string[], msg: string, auto?: ReadonlySet<string>) {
 		return this.resolveUserContent(conv, notes, msg, auto);
@@ -195,7 +195,7 @@ describe("glossary prompts follow the passage under AUTO", () => {
 	});
 });
 
-// ── ADR-180: warnings are about notes the USER attached ─────────────────────
+// ── ADR-183: warnings are about notes the USER attached ─────────────────────
 describe("BaseProvider.resolveUserContent — auto-retrieved notes stay quiet", () => {
 	beforeEach(() => { noticeMessages.length = 0; });
 
@@ -222,7 +222,7 @@ describe("BaseProvider.resolveUserContent — auto-retrieved notes stay quiet", 
 	});
 });
 
-// ── ADR-181: the size warning is about what the user attached ───────────────
+// ── ADR-184: the size warning is about what the user attached ───────────────
 describe("BaseProvider.resolveUserContent — the token warning is manual-only", () => {
 	beforeEach(() => { noticeMessages.length = 0; });
 
@@ -247,7 +247,7 @@ describe("BaseProvider.resolveUserContent — the token warning is manual-only",
 	});
 
 	it("does NOT warn about size when every note was auto-retrieved", async () => {
-		// ADR-180 said the attached-note warnings are manual-only, but only the
+		// ADR-183 said the attached-note warnings are manual-only, but only the
 		// missing-note one was filtered — so a conversation with nothing attached
 		// could be told its attached notes were large, every turn.
 		await provider(big).resolve(c, ["Auto/big.md"], "hi", new Set(["Auto/big.md"]));

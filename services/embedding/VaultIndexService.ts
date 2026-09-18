@@ -16,7 +16,7 @@ const YIELD_EVERY_NOTES = 8;
 /** Items scored between cooperative yields during a query rank (ADR-120). */
 const RANK_YIELD_EVERY = 2000;
 /**
- * Notes EMBEDDED between persists during a build (ADR-179).
+ * Notes EMBEDDED between persists during a build (ADR-182).
  *
  * Before this, `doSync` wrote ONCE, after the last note. Anything that stopped a
  * build — a quit, a plugin reload, a renderer crash, one note throwing — threw
@@ -30,7 +30,7 @@ const RANK_YIELD_EVERY = 2000;
 const PERSIST_EVERY_EMBEDS = 25;
 /**
  * Floor on how often a build may rewrite the index, whatever the embed count
- * says (ADR-179).
+ * says (ADR-182).
  *
  * Every persist serializes the WHOLE index — ~19 MB at the 5 000-note cap — which
  * is the cost ADR-122 exists to avoid paying per note. Embeds alone would mean
@@ -39,12 +39,12 @@ const PERSIST_EVERY_EMBEDS = 25;
  * whichever is scarcer: on a slow build that is the embed count, on a fast one
  * the clock. Either way the loss window stays ~30s of work, and the write rate
  * stays under 2/min. The real answer is an append-only index that does not
- * rewrite what has not changed — see D-32.
+ * rewrite what has not changed — see D-35.
  */
 const MIN_PERSIST_INTERVAL_MS = 30_000;
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
- * bad (ADR-179).
+ * bad (ADR-182).
  *
  * Skipping a note whose embed fails is what stops a single huge note from
  * costing the whole build — but applied blindly it turns an unloaded provider or
@@ -80,7 +80,7 @@ export interface IndexableNote {
 export class VaultIndexService {
 	private items: IndexedConversation[] = [];
 	private loaded = false;
-	/** What the persisted index says about ITSELF (ADR-181) — whether the build
+	/** What the persisted index says about ITSELF (ADR-184) — whether the build
 	 *  that wrote it finished, and the scope its rows were selected under. */
 	private meta: IndexMeta = EMPTY_INDEX_META;
 	/** Serializes all mutations (sync / updateNote / removeNote / clear) so they
@@ -129,10 +129,10 @@ export class VaultIndexService {
 	}
 
 	/**
-	 * Whether a build has ever run to COMPLETION for `scope` (ADR-181).
+	 * Whether a build has ever run to COMPLETION for `scope` (ADR-184).
 	 *
 	 * `isReady()` only says the index can answer a query — hydrating a persisted
-	 * file sets it, and since ADR-179 that file may be a fifth of a build that was
+	 * file sets it, and since ADR-182 that file may be a fifth of a build that was
 	 * interrupted. Anything deciding whether to BUILD must ask this instead, or a
 	 * partial index reports itself finished and is never resumed.
 	 *
@@ -176,7 +176,7 @@ export class VaultIndexService {
 		onProgress?: (processed: number, total: number) => void,
 		throttle: { yieldEveryNotes?: number; breatherMs?: number } = {},
 		/** The scope these notes were selected under, recorded so a later session
-		 *  can tell whether the index still matches the settings (ADR-181). */
+		 *  can tell whether the index still matches the settings (ADR-184). */
 		scope = "",
 	): Promise<void> {
 		return this.enqueue(() => this.doSync(notes, onProgress, throttle, scope));
@@ -365,7 +365,7 @@ export class VaultIndexService {
 						embedded++;
 						failedInARow = 0;
 					} catch (e) {
-						// ONE note must not cost the build. Before ADR-179 this threw
+						// ONE note must not cost the build. Before ADR-182 this threw
 						// straight out of `doSync`, so a single note the backend choked on
 						// (an embed timeout on a very long one) discarded the whole pass and
 						// did it again on every retry — the index could never become ready.
@@ -377,7 +377,7 @@ export class VaultIndexService {
 				}
 				onProgress?.(processed, total);
 				// Flush what is embedded so far, so an interruption costs at most the
-				// last few notes instead of the entire build (ADR-179). Counted in
+				// last few notes instead of the entire build (ADR-182). Counted in
 				// EMBEDS, not notes processed: the `continue` paths above (unreadable,
 				// empty) jump past this check, so a modulus on `processed` could stride
 				// over the flush point and skip it.

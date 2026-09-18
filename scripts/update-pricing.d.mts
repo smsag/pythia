@@ -2,14 +2,11 @@
 export interface UpstreamCost { input: number; output: number; cache_read?: number; cache_write?: number }
 export interface UpstreamModel { cost?: UpstreamCost }
 export type Upstream = Record<string, { models?: Record<string, UpstreamModel> }>;
-export interface CatalogRow { id: string; provider: string }
+import type { CatalogRow } from "./modelsDev.mjs";
+export type { CatalogRow };
 export interface TableRow { input: number; output: number; cacheRead?: number; cacheWrite?: number }
-export const SOURCE_URL: string;
-export const UPSTREAM_PROVIDERS: Record<string, string>;
-export const UPSTREAM_IDS: Record<string, string>;
-export const NO_UPSTREAM: Set<string>;
+export { SOURCE_URL, UPSTREAM_PROVIDERS, UPSTREAM_IDS, NO_UPSTREAM, readCatalog } from "./modelsDev.mjs";
 export function readCommittedTable(source: string): Record<string, TableRow>;
-export function readCatalog(source: string): CatalogRow[];
 export function buildTable(upstream: unknown, catalog: CatalogRow[], ids?: Record<string, string>, noUpstream?: Set<string>): Record<string, TableRow>;
 /** Formats one price for emission into the generated block, and refuses
  *  anything that is not a usable number — `unknown` on purpose, because the

@@ -59,7 +59,7 @@ const settle = async (): Promise<void> => {
 	for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-describe("VaultRagService — chunk sizing (ADR-179)", () => {
+describe("VaultRagService — chunk sizing (ADR-182)", () => {
 	it("chunks vault notes to the MODEL's window, not a shared 500", async () => {
 		const provider = new FakeProvider();
 		// One 2 000-char paragraph, no headings: chunking is pure width.
@@ -83,7 +83,7 @@ describe("VaultRagService — chunk sizing (ADR-179)", () => {
 	});
 });
 
-describe("VaultRagService — backend visibility (ADR-179)", () => {
+describe("VaultRagService — backend visibility (ADR-182)", () => {
 	it("names the backend in the status line once a build has run", async () => {
 		const svc = new VaultRagService(
 			fakeApp("hello world") as never,
@@ -124,7 +124,7 @@ describe("VaultRagService — backend visibility (ADR-179)", () => {
 	});
 });
 
-describe("VaultRagService — the send path stops rescanning the vault (ADR-179)", () => {
+describe("VaultRagService — the send path stops rescanning the vault (ADR-182)", () => {
 	/** Counts whole-corpus scans: `getMarkdownFiles` is the first thing a full
 	 *  build does, and the thing the watcher exists to avoid repeating. */
 	const countingApp = (body: string) => {
@@ -180,7 +180,7 @@ describe("VaultRagService — the send path stops rescanning the vault (ADR-179)
 	});
 });
 
-describe("VaultRagService — privacy and scope (ADR-180)", () => {
+describe("VaultRagService — privacy and scope (ADR-183)", () => {
 	const vaultOf = (files: { path: string; mtime?: number; frontmatter?: unknown }[], body = "alpha") => {
 		const seen: string[] = [];
 		return {
@@ -247,7 +247,7 @@ describe("VaultRagService — privacy and scope (ADR-180)", () => {
 	});
 });
 
-describe("VaultRagService — the retrieval query (ADR-180)", () => {
+describe("VaultRagService — the retrieval query (ADR-183)", () => {
 	it("carries the previous answer into a short follow-up", async () => {
 		const provider = new FakeProvider();
 		const svc = new VaultRagService(
@@ -294,7 +294,7 @@ describe("VaultRagService — the retrieval query (ADR-180)", () => {
 	});
 });
 
-describe("VaultRagService.applyChanges — the opt-out holds on edits too (ADR-180)", () => {
+describe("VaultRagService.applyChanges — the opt-out holds on edits too (ADR-183)", () => {
 	const withCache = (frontmatter: Record<string, unknown> | undefined) => ({
 		vault: {
 			getMarkdownFiles: () => [{ path: "Notes/seed.md", stat: { mtime: 1 } }],
@@ -332,7 +332,7 @@ describe("VaultRagService.applyChanges — the opt-out holds on edits too (ADR-1
 	});
 });
 
-// ── ADR-181 ─────────────────────────────────────────────────────────────────
+// ── ADR-184 ─────────────────────────────────────────────────────────────────
 /** A provider that reports the UI-thread backend, so the hydrate short-circuit
  *  in `refresh()` is actually exercised. */
 class UiThreadProvider extends FakeProvider {
@@ -355,9 +355,9 @@ const countingVault = (paths: string[]) => {
 	};
 };
 
-describe("VaultRagService — an unfinished index is not a finished one (ADR-181)", () => {
+describe("VaultRagService — an unfinished index is not a finished one (ADR-184)", () => {
 	/** Dies for good after one embed. Enough notes follow that the failure streak
-	 *  trips ADR-179's dead-backend guard and the build really throws — a single
+	 *  trips ADR-182's dead-backend guard and the build really throws — a single
 	 *  skipped note is a COMPLETED build, which is the whole point of that guard. */
 	class DyingProvider extends FakeProvider {
 		async embed(texts: string[]): Promise<Float32Array[]> {
@@ -386,7 +386,7 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-181
 
 	it("resumes it on the UI-THREAD backend too, where the short-circuit lives", async () => {
 		// ADR-125 skips the rebuild when the persisted index "has notes", so the app
-		// is not frozen every session. ADR-179's partial persistence made that test
+		// is not frozen every session. ADR-182's partial persistence made that test
 		// true for a fragment — so on this backend an interrupted build was served
 		// as complete, permanently. Only `isComplete` distinguishes them.
 		const store = new MemStore();
@@ -451,7 +451,7 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-181
 	});
 });
 
-describe("VaultRagService — the live scope wins over the index (ADR-181)", () => {
+describe("VaultRagService — the live scope wins over the index (ADR-184)", () => {
 	/** The index keeps its rows; only the frontmatter changes, which is NOT part of
 	 *  the scope signature — so no rebuild is triggered and the query-time filter
 	 *  is the only thing that can drop the note. */
@@ -516,7 +516,7 @@ describe("VaultRagService — the live scope wins over the index (ADR-181)", () 
 	});
 });
 
-describe("VaultRagService — edits during the first build are not lost (ADR-181)", () => {
+describe("VaultRagService — edits during the first build are not lost (ADR-184)", () => {
 	it("replays a mid-build edit once the index lands", async () => {
 		// Asserts on content ONLY the replay can produce: the build never reads
 		// `Notes/edited.md`, so its text can only reach the provider via the replay.

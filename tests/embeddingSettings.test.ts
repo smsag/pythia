@@ -66,7 +66,7 @@ const fakePlugin = () => ({
 
 beforeEach(() => { inputs.length = 0; });
 
-describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-179 fix)", () => {
+describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-182 fix)", () => {
 	const render = () => {
 		const plugin = fakePlugin();
 		const commits: (() => void)[] = [];

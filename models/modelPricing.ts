@@ -33,11 +33,12 @@ export interface ModelPricing {
 }
 
 // BEGIN GENERATED PRICES — rewritten by `npm run update:pricing` (scripts/update-pricing.mjs)
-export const PRICING_AS_OF = "2026-09-16";
+export const PRICING_AS_OF = "2026-09-18";
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
 	// ── Anthropic ─────────────────────────────────────────────────────────────
 	"claude-opus-5":     { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+	"claude-fable-5-1":  { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
 	"claude-fable-5":    { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 	"claude-mythos-5":   { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
 	"claude-opus-4-8":   { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
@@ -48,6 +49,9 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 	"claude-haiku-4-5":  { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 
 	// ── OpenAI ────────────────────────────────────────────────────────────────
+	"gpt-5.6":      { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 },
+	"gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075 },
+	"gpt-5.4-nano": { input: 0.2, output: 1.25, cacheRead: 0.02 },
 	"gpt-4.1":      { input: 2, output: 8, cacheRead: 0.5 },
 	"gpt-4.1-mini": { input: 0.4, output: 1.6, cacheRead: 0.1 },
 	"gpt-4.1-nano": { input: 0.1, output: 0.4, cacheRead: 0.025 },
@@ -60,6 +64,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
 	// ── Mistral ───────────────────────────────────────────────────────────────
 	"mistral-large-latest":    { input: 0.5, output: 1.5 },
+	"mistral-medium-latest":   { input: 1.5, output: 7.5 },
 	"mistral-small-latest":    { input: 0.15, output: 0.6 },
 	"codestral-latest":        { input: 0.3, output: 0.9 },
 	"magistral-medium-latest": { input: 2, output: 5 },

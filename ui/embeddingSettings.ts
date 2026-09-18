@@ -79,7 +79,7 @@ export function renderEmbeddingSettings(
 
 	// The ONE numeric field that still committed per keystroke, with a rejected
 	// entry falling back to 0 — which here means UNLIMITED. Clearing the box to
-	// retype therefore uncapped the index (ADR-171's rule, ADR-179's fix).
+	// retype therefore uncapped the index (ADR-171's rule, ADR-182's fix).
 	new Setting(containerEl)
 		.setName(t("vaultContextMaxNotesName"))
 		.setDesc(t("vaultContextMaxNotesDesc"))
@@ -94,7 +94,7 @@ export function renderEmbeddingSettings(
 			}));
 		});
 
-	// How many retrieved notes reach a turn. Exposed in ADR-180; the strictness
+	// How many retrieved notes reach a turn. Exposed in ADR-183; the strictness
 	// preset beside it deliberately is NOT, because `vaultRetrievalMinScore`'s
 	// three constants have never been measured (D-13) — a control over a number
 	// nobody can justify is worse than no control.

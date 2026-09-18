@@ -438,8 +438,8 @@ describe("buildAttachedPdfs", () => {
 	});
 });
 
-// ── ADR-180: an auto-retrieved note is not an attached one ───────────────────
-describe("buildAttachedNotesContent — auto-retrieved budget (ADR-180)", () => {
+// ── ADR-183: an auto-retrieved note is not an attached one ───────────────────
+describe("buildAttachedNotesContent — auto-retrieved budget (ADR-183)", () => {
 	const longBody = Array.from({ length: 60 }, (_, i) => `## Section ${i}\n\n${"word ".repeat(200)}`).join("\n\n");
 
 	const appWith = (body: string) => ({

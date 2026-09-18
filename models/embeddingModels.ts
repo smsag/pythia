@@ -100,7 +100,7 @@ const CHARS_PER_TOKEN = 3.3;
 /**
  * How many characters of note text one embed chunk should carry, for `id`.
  *
- * Until ADR-179 `maxTokens` was declared on every model and read by nothing: both
+ * Until ADR-182 `maxTokens` was declared on every model and read by nothing: both
  * indexes chunked at a hardcoded 500 chars. That is ~150 tokens of German — over
  * the default (multilingual) model's 128-token window, and only ~60% of the
  * English model's 256. The window is a property of the model, so the chunk size

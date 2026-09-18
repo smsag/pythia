@@ -157,7 +157,7 @@ export default class PythiaPlugin extends Plugin {
 					total: p.total,
 				}),
 			() => (this.embeddingWorkerUrlPromise ??= embeddingWorkerUrl(this)),
-			// Which backend actually started (ADR-179). The chain was silent on the
+			// Which backend actually started (ADR-182). The chain was silent on the
 			// happy path, so a desktop-wide fallback to the UI-thread iframe looked
 			// exactly like a working Worker until someone read the source.
 			(backend, failures) => debugLog(this.settings, "embedding: backend resolved", { backend, modelId, failures }),

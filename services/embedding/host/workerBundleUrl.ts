@@ -1,5 +1,6 @@
 import { normalizePath, type Plugin } from "obsidian";
-import { workerSource } from "./embeddingBundle";
+import { getEmbeddingBundle } from "./embeddingBundle";
+import { withWorkerPrelude } from "./workerPrelude";
 import { conversationContentHash } from "../embeddingIndex";
 
 /**
@@ -7,7 +8,8 @@ import { conversationContentHash } from "../embeddingIndex";
  * return a same-origin resource-path URL for it — the blob-free way to start a
  * Worker where `blob:` URLs are blocked (Obsidian mobile, capacitor:// desktop
  * builds; ADR-126). The bundle is the same one inlined in main.js
- * (`getEmbeddingBundle`), so the worker and the iframe never diverge.
+ * (`getEmbeddingBundle`), so the worker and the iframe never diverge — with the
+ * Worker prelude in front of it, as for the blob Worker (#306).
  *
  * Memoize the returned promise at the call site: writing the file is idempotent
  * but pointless to repeat.
@@ -15,11 +17,12 @@ import { conversationContentHash } from "../embeddingIndex";
 export async function embeddingWorkerUrl(plugin: Plugin): Promise<string> {
 	const adapter = plugin.app.vault.adapter;
 	const dir = plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`;
-	const source = workerSource();
-	// Fingerprint the CONTENT, not just the version: the file is only written when
-	// it is absent, so a same-version rebuild (every dev iteration, and any hotfix
-	// that ships under an unchanged version) would otherwise keep serving stale
-	// worker code — including a build from before the ADR-179 prefix existed.
+	const source = withWorkerPrelude(getEmbeddingBundle());
+	// Fingerprint the CONTENT, not the version and not a hand-bumped marker. The
+	// file is written only when absent, so a same-version rebuild would otherwise
+	// keep serving stale worker code. #306 used a `-p1` suffix for exactly this
+	// reason, and ADR-185 changes the prelude again — which is the second time a
+	// manual marker would have had to be remembered. A hash cannot be forgotten.
 	// `conversationContentHash` is a generic FNV-1a over strings despite its name;
 	// a second hash implementation here would be a second source of truth.
 	const fingerprint = conversationContentHash([source]);

@@ -1,12 +1,20 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-182 (the Worker still did not start: `process` is shadowed lexically as well, because `defineProperty` is silently defeated by a non-configurable global — and the chain now reports WHY each backend failed, not only which one won).*
+*Last updated: 2026-09-18 — ADR-185 (hiding `process` was not enough, and the chain would not say why: the Worker prelude gains a lexical `const process = void 0` beside its two property operations, which a locked-down global defeats through their own `catch` — and the fallback chain now reports WHY each backend failed, not only which one won).*
 
-*Previously: 2026-09-18 — ADR-181 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
+*Previously: 2026-09-18 — ADR-184 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
 
-*Previously: 2026-09-18 — ADR-180 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
+*Previously: 2026-09-18 — ADR-183 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
 
-*Previously: 2026-09-18 — ADR-179 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
+*Previously: 2026-09-18 — ADR-182 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
+
+*Previously: 2026-09-18 — ADR-181 (the prompt optimizer suggests a model: the model rates the task, Pythia picks the cheapest adequate model of the preferred provider, offered as a chip beside Send and applied to one send only).*
+
+*Previously: 2026-09-18 — ADR-180 (what each provider is sent is decided by the model, not by the SDK's types: Mistral gets `reasoning_effort` only on adjustable-reasoning models and only as `none`/`high`; OpenAI reasoning models get a real system message).*
+
+*Previously: 2026-09-18 — ADR-179 addendum (the first curation from the catalog issue: three deprecated OpenAI models hidden, five models added; `contextWindow` is the input-side limit where the provider caps the prompt separately).*
+
+*Previously: 2026-09-18 — ADR-179 (the model catalog is checked against models.dev weekly: context windows are rewritten for a PR like prices; new and deprecated models are reported in one standing issue and never applied by the script).*
 
 *Previously: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
@@ -3311,9 +3319,86 @@ So the target is captured, not found:
 - Applying is once: the card's affordance is spent and the target disarmed. Re-arm to apply again.
 - Not built: multi-selection rewrites, and a diff view of what would change. The card shows the proposal as the answer already renders it; a real diff is a bigger piece and wants its own decision.
 
----
+### ADR-179 — The model catalog is checked against models.dev: facts by PR, decisions by issue
 
-## ADR-179 — Embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing
+**Status:** Accepted — 2026-09-18
+
+**Context.** ADR-163 gave prices an update path: a weekly workflow pulls models.dev and opens a PR. The catalog those prices hang off (`MODEL_CATALOG` in `models/knownModels.ts`) had none. It only changed when someone remembered, and the first comparison against models.dev showed what that costs: `mistral-large-latest` and `mistral-small-latest` were still at 128K where upstream says 262K and 256K, three offered OpenAI models (`gpt-4.1-nano`, `o3-mini`, `o4-mini`) are deprecated upstream, and the OpenAI list stops at o3-pro while upstream carries the whole GPT-5 line.
+
+The obvious copy of ADR-163 — regenerate the catalog from upstream — is wrong, because a catalog row is not data about a model. Besides the id and window it carries an abbreviation, a `MODEL_PROFILE`, a localized `MODEL_GOOD_FOR` line, and flags (`isReasoning`, `isMistralReasoning`, `noTemperature`, `supportsEffort`) that decide what the *code* sends to the provider. None of that can be generated, and the tests already refuse a catalog model without its profile, guidance and price.
+
+**Decision — split what the script may write from what it may only say.**
+
+1. **Facts are rewritten, through a PR.** `contextWindow` is the provider's number and involves no judgement. `scripts/update-models.mjs` rewrites each differing value in place on its catalog line; `.github/workflows/update-models.yml` opens a PR (`chore/update-models`, `add-paths: models/knownModels.ts`). `formatWindow` is the gate: anything but a positive safe integer throws, because `contextWindow: NaN` compiles. A catalog model with no upstream row fails the run, exactly as in the price script.
+2. **Decisions are reported, in one standing issue.** New upstream models and deprecated offered models go into *Model catalog: upstream changes*, rewritten each run and closed when empty. The script never adds, hides or removes a model. For each new model it suggests a catalog row with the flags read from upstream, marked as a starting point to check.
+3. **"New" means newer than what we carry.** A candidate is an upstream chat model (text in, text only out, tool calls), not deprecated, not a dated snapshot of an alias, released on or after the newest release date among the provider's catalog models. Same-day siblings count, since a family ships together. The trade-off is deliberate: adding the newest model moves the line past older candidates, so those drop out of the issue — but only after the maintainer has looked at them in the same list. The alternative, a committed list of declined ids, is a second file to maintain for every model nobody wants.
+4. **Deprecated means *hide*, never delete.** The issue says `hidden: true`: a conversation on a retired model keeps its label, its price and its context window.
+5. **One module for the shared facts.** `scripts/modelsDev.mjs` holds the source URL, the provider map, `UPSTREAM_IDS`, `NO_UPSTREAM`, `readCatalog` and the lookup; `update-pricing.mjs` imports and re-exports them. A renamed upstream id is now fixed once, for both.
+
+**The first run, applied in this change.** Five windows updated: `gpt-4.1`/`-mini`/`-nano` 1M → 1,047,576, `mistral-large-latest` 128K → 262,144, `mistral-small-latest` 128K → 256,000. The report listed 24 new models and the three deprecated ones; they are left to the issue.
+
+**Consequences.**
+- A larger window lets `trimHistoryToBudget` send more history. That is the point, but it also means a wrong upstream value makes long conversations fail at the provider, which is why the PR body tells the reviewer to check the provider's docs.
+- Upstream strings reach the issue only as ids matching `^[a-z0-9][a-z0-9._-]{0,63}$`; model names and descriptions are never copied. Same trust reasoning as engineering-review #287, plus `issues: write`.
+- Not built: the script does not check other flags (`noTemperature`, reasoning) of existing models against upstream. The OpenAI o-series shows why — upstream says `temperature: false`, our row has no `noTemperature`, and that is correct, because `isReasoning` is what drops temperature for OpenAI. The flags mean what the code does with them, not what upstream calls them.
+
+**Addendum (same day) — the first curation, and what `contextWindow` means.** Issue #173 was worked the same day. Two things came out of it.
+
+*The window is the input-side limit.* For GPT-5 models models.dev reports `limit.context` 400K with `limit.input` 272K (1.05M / 922K for the larger ones): the provider caps the prompt separately, and `context` is prompt plus answer. `trimHistoryToBudget` budgets history as `contextWindow − output budget − system prompt`, so a 400K window with a 16K budget would let a long conversation send 384K into a 272K limit and fail at the provider. `upstreamWindow` now prefers `limit.input` where upstream gives one, for the sync, the suggested rows and the report alike. No committed model had an input limit, so no existing window changed. The cost is conservative: the budget subtracts the output from a number that already excludes it, which trims a little early. That is the right direction to be wrong in.
+
+*The selection.* Hidden, not deleted: `gpt-4.1-nano`, `o3-mini`, `o4-mini`. Added: `claude-fable-5-1`, `gpt-5.6`, `gpt-5.4-mini`, `gpt-5.4-nano`, `mistral-medium-latest`, each with profile, guidance and a price row from `update:pricing`. Not added, and left in the issue: the `-pro` and `-codex` variants, `gpt-5.6-luna`/`-sol`/`-terra` (flagged experimental upstream, with nothing saying what distinguishes them), `gpt-6-astra`, and the GLM models on Mistral. Adding `gpt-5.6` moved the OpenAI cut-off to 2026-07-09, so the 24 candidates are now 6.
+
+*The flags, checked against what the providers are sent rather than copied from upstream.*
+- GPT-5 gets `isReasoning`: it rejects `temperature` and `max_tokens` exactly like the o-series, and takes `reasoning_effort`. The o-series guard test now reads `/^(o\d|gpt-([5-9]|\d\d))/`.
+- `mistral-medium-latest` does **not** get `isMistralReasoning`, although upstream says `reasoning: true`. Its reasoning options (`none` · `high`) and its temperature support are those of `mistral-small-latest`, which has never had the flag. The flag means *Magistral-like*: no temperature and the reasoning token budget. Medium is neither.
+
+*The OpenAI default.* `DEFAULT_SETTINGS.defaultOpenAIModel` moves from `gpt-4o` to `gpt-5.4-mini`, the cheap GPT-5 tier added above. A default is a starting value, not a migration: a saved `defaultOpenAIModel` is the user's, so an existing vault keeps whatever it stored. A new test requires every provider's default to be a selectable (non-hidden) catalog model, so hiding a model can never strand the default.
+
+### ADR-180 — What a provider is sent follows the model, not the SDK's types
+
+**Status:** Accepted — 2026-09-18 (engineering-review #303, #304)
+
+**Context.** Two request-shaping rules had outlived the models they were written for. Both came to light while curating the catalog (ADR-179 addendum).
+
+- *Mistral effort.* `MistralService` sent `reasoningEffort` whenever a level was set, on every model, because "the installed SDK's types" allow it. They allow six values on any model. Mistral's documentation allows two, `none` and `high`, and only on the adjustable-reasoning models (Small, Medium). Magistral always reasons and takes no effort parameter. Pythia's `EffortLevel` is `low` · `medium` · `high`, so two of the three levels were never valid values, and on Large and Codestral none of them were. `parameterSupport` claimed `effort: true` for every Mistral model, so the header offered a control that meant nothing there.
+- *OpenAI system role.* `noSystemRole = isReasoningModel(model)` folded the system prompt into a `[System instructions]` user turn for every reasoning model. That was right for o1-mini, the one model that lacked a system role. Every reasoning model in the catalog now (o3, o3-pro, o4-mini, GPT-5) accepts a system message, which OpenAI treats as a developer message. A prompt folded into a user turn carries less weight than one in that role. The same flag also chose `max_completion_tokens`, tying two unrelated facts together.
+
+**Decision.**
+
+1. **One function decides what Mistral is sent: `mistralReasoningEffort(model, level)`** in `models/knownModels.ts`. It returns `"none"` for `low`, `"high"` for `medium` and `high`, and `undefined` on any model without `supportsEffort`. `MistralService` sends what it returns and nothing else. `supportsEffort` now marks Mistral's adjustable models too (Small, Medium), so one catalog flag answers "does this model take an effort parameter" for both Anthropic and Mistral, and `parameterSupport("mistral", …)` reads it. A test runs every Mistral catalog model through every level and fails if anything outside `none` · `high` · nothing comes out. A second test fails if the header and the wire disagree about which models take effort.
+2. **`medium` folds up, not down.** Asking for medium effort and getting none would silently turn reasoning off. Getting high costs more tokens but keeps the behaviour the user asked for.
+3. **`noSystemRole` is removed.** A reasoning model's request starts with `role: "system"`, as for any other model. `max_completion_tokens` is chosen by `isReasoningModel` directly.
+4. **`update-models` suggests the right Mistral flag.** A reasoning model with an effort option suggests `supportsEffort`. One without suggests `isMistralReasoning`, which is the Magistral case.
+
+**Consequences.**
+- The header shows the level the user chose (`Niedrig`), while Mistral receives `none`. That is intended: the segment shows the instruction, and this function translates it. The alternative, a provider-specific set of levels, would break ADR-048's rule that one `EffortLevel` is valid for every provider.
+- A pinned effort on a Mistral Large conversation is kept but shown as `—`, like an effort on Haiku (ADR-165).
+- Neither change has been run against the live APIs. The Mistral mapping follows the documentation, and the system role follows OpenAI's documented behaviour for reasoning models.
+
+### ADR-181 — The prompt optimizer suggests a model: the model rates, Pythia picks
+
+**Status:** Accepted — 2026-09-18
+
+**Context.** The optimizer rewrites a prompt before it is sent, and at that moment the user has already asked for help with the send. The idea was to have it also pick the model, for cost. There were three ways to do it wrong. The model could name a model: it does not know this catalog, these prices or which keys the user has, and it invents ids. The pick could be applied silently: nothing this plugin does to a send is hidden, and the turn label would be the only trace. Or the pick could be written onto the conversation: "follows the default" would then turn into "frozen at whatever the optimizer liked once", which is principle 6 broken.
+
+**Decision.**
+
+1. **One call, two answers.** When `optimizerSuggestsModel` is on, the optimizer request asks for one extra final line, `DIFFICULTY: light | standard | deep`, in the same call. There is no second round trip and no extra cost. `parseDifficulty` removes the line before `cleanOptimizedOutput` runs. It only reads the *last* line, so a prompt that happens to mention "difficulty:" is never cut. A missing or unknown rating means no chip, with a debug-log line. The prompt was still optimized, so there is nothing to tell the user.
+2. **Pythia picks, by rule** (`services/modelRecommendation.ts`, pure). The rating is mapped to a `MODEL_PROFILE` depth, one tier higher with research mode or ≥ 3 notes, because the prompt alone does not show the material. Candidates are the visible models of the **user's preferred provider** (`settings.defaultProvider`, which needs a key), deep enough, and with a window larger than 1.2× the history. They are sorted by cost tier, then list price (`MODEL_PRICING`), then catalog order, which lists the newest model of a family first.
+3. **It says nothing when there is nothing worth saying:** a template armed for the next send names a model (the template wins, as in ADR-177); a PDF is attached and the provider is Mistral; the current model is already adequate and not dearer, which also means no churn between siblings at one price; or a downgrade would cost more than staying. The last case is measured, not guessed. `sendCost` prices one send as the history plus `TYPICAL_ANSWER_TOKENS` of output. Staying is priced at the cache-read rate, switching at the cold input rate. With current prices, an Opus conversation of 150K tokens gets no Haiku suggestion, because re-reading the history cold costs more than the cheaper answer saves. An **upgrade** skips the check: it is suggested for quality, not price.
+4. **Offered, never applied.** `.p-model-hint` sits beside Send and reads `→ GPT-5.4 mini ●●○`: the name and the cost as a tier, never dollars (ADR-163 removed the next-send estimate). One tap accepts it (accent fill), a second tap withdraws it. Sending without accepting drops the offer, because it was about that prompt.
+5. **One send, never written.** `ModelSuggestionController.layer(conv)` returns a clone with the suggested provider and model, and `applyPendingTemplate` runs over it, so a template's own model wins. The accepted model is spent when the answer commits, and stays for a retry after an error or an empty reply, exactly like ADR-177. The offer lives in view memory, not on the conversation: it belongs to the text in the box and does not survive a conversation switch or a reload.
+6. **On by default, one toggle** in the optimizer section: *Suggest a model*. The chip only suggests, so having it on costs nothing, and a user who never opens the settings is the one who benefits from it.
+
+**Found on the way, fixed here.** The assistant message recorded `conv.model` and priced its cost snapshot with it, even when an armed template had moved that one turn to another model (ADR-177). Such a turn's label and cost named the wrong model. Both now use `turnConv.model`, the model that actually answered, and so does the stream-error message. This fix was a precondition: a one-send model is only honest if the answer says which model it was.
+
+**Consequences.**
+- The optimizer runs on the conversation's model, so the rating costs whatever that model costs, but it is the same single call, so the extra cost is one line of output.
+- Recommendations follow the preferred provider even when the conversation is on another one. That is the user's instruction and changes the provider for one send. Provider-specific context then does not carry over; a PDF on Mistral is excluded because it would fail.
+- Deferred: suggesting on every send, not only on an optimize (D-28), and a *compare with* link on an answer that came from a suggested model (D-30). Out of scope: ever applying a suggestion automatically (D-29).
+- `sidebar.ts` stays at its ceiling of 1716: the two inline-SVG toolbar icons moved to `ui/toolbarIcons.ts` to pay for the wiring.
+
+### ADR-182 — Embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing
 
 **Status:** Active. Supersedes part of ADR-125/126's root-cause analysis.
 
@@ -3332,9 +3417,11 @@ const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
 
 and on that branch `src/backends/onnx.js` binds onnxruntime-**node**, whose `supportedDevices` on macOS is `['cpu']` — so `device: "wasm"`, which this plugin always passes, is rejected outright (`Unsupported device: "wasm". Should be one of: cpu.`). The Worker never became ready. The resource-path Worker is cross-origin on desktop and fails for its own reason. **Every desktop fell through to the iframe**, which is the UI thread. The iframe worked only because Electron gives subframes no Node access — the accident that made the slowest path the only functioning one.
 
-**Decision:** hide `process` from the Worker before transformers is imported. `WORKER_ENV_PREFIX` is prepended to the bundle at the two Worker construction sites and nowhere else; the iframe gets the bundle unchanged.
+**Decision:** hide `process` from the Worker before transformers is imported. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and nowhere else; the iframe gets the bundle unchanged.
 
-It cannot live in `frame/entry.ts`: an ES `import` is hoisted, so any statement there runs *after* transformers' module body has read `process`. The esbuild pass emits a self-contained ESM bundle with no remaining top-level imports (asserted), so a textual prefix genuinely runs first. It uses `Object.defineProperty` inside a `try`, not an assignment: the bundle is a module and therefore strict, where assigning to a non-writable global throws — which would kill the Worker at statement zero and look exactly like the bug being fixed. A non-configurable `process` makes `defineProperty` throw too, and is caught, so the chain still falls through to the iframe. **The fix can only move embedding off the UI thread; it cannot take it down.**
+It cannot live in `frame/entry.ts`: an ES `import` is hoisted, so any statement there runs *after* transformers' module body has read `process`. The esbuild pass emits a self-contained ESM bundle with no remaining top-level imports (asserted), so a textual prefix genuinely runs first. The prelude tries `delete globalThis.process` and then, if the property is still there, an assignment — each inside its own `try`, because the bundle is a module and therefore strict, where either operation on a locked-down global throws, and a throw at statement zero would kill the Worker and look exactly like the bug being fixed. Where neither works the chain still falls through to the iframe. **The fix can only move embedding off the UI thread; it cannot take it down.** (That it does nothing *silently* in that case is the hole ADR-185 closes.)
+
+**This half was reached twice.** It shipped on `main` as engineering-review **#312** while this branch was open, with the same reasoning and the same two property operations; `workerPrelude.ts` is that implementation, and this branch's own prefix was dropped rather than merged. The two differences kept from here: the resource-path worker file is fingerprinted by its **content** rather than a hand-typed `-p1` marker — the file is written only when absent, so the name is the whole cache key, and the prelude has now changed twice — and the failure reasons of ADR-185.
 
 **2. The build degraded because nothing bounded the WASM heap.**
 
@@ -3356,7 +3443,7 @@ Both indexes chunked at a hardcoded 500 chars — ~150 tokens of German against 
 
 **Decision:** persist every 25 **embeds**, and on the way out of a failure before rethrowing. A mid-build snapshot is what the pass has rebuilt *plus* the not-yet-reached notes whose vectors are still valid — persisting only the former would make every interrupted build delete the tail of its own index.
 
-Counted in embeds rather than notes processed because the `continue` paths (unreadable, empty) jump past the flush check, so a modulus on a processed counter can stride over the flush point and skip it. Gated additionally on **30 s since the last write**: every persist serializes the *whole* index — ~19 MB at the 5 000-note cap, which is the per-note cost ADR-122 exists to avoid — so the embed count alone would mean ~200 full rewrites on a cold build at that size, and 200 sync events on a synced vault. Both conditions must hold, so the binding one is whichever is scarcer: the embed count on a slow build, the clock on a fast one. The rescue write on failure is deliberately *not* throttled — by then there is no later to defer to. The real answer is an index format that does not rewrite what has not changed (D-32).
+Counted in embeds rather than notes processed because the `continue` paths (unreadable, empty) jump past the flush check, so a modulus on a processed counter can stride over the flush point and skip it. Gated additionally on **30 s since the last write**: every persist serializes the *whole* index — ~19 MB at the 5 000-note cap, which is the per-note cost ADR-122 exists to avoid — so the embed count alone would mean ~200 full rewrites on a cold build at that size, and 200 sync events on a synced vault. Both conditions must hold, so the binding one is whichever is scarcer: the embed count on a slow build, the clock on a fast one. The rescue write on failure is deliberately *not* throttled — by then there is no later to defer to. The real answer is an index format that does not rewrite what has not changed (D-35).
 
 `persist` assigns `this.items` as well as writing. Without that the two diverge the moment a build is interrupted: `load()` is a no-op once `loaded` is set, so the next sync on the same instance rebuilds `existing` from the stale pre-sync list and re-embeds everything the failed pass just saved. The resume then worked only across a restart — and a unit test that constructs a fresh service to check the resume cannot see it. Retrying in place is the common case (the vault refresh runs again on the next turn), so it is the one that had to work. `snapshot()` reads the `existing` map captured before the loop rather than the live `this.items`. **Correction:** an earlier draft of this ADR said the live field would duplicate every note. It would not — everything in `kept` is also in `handled`, so the filter drops it either way, and mutation testing confirmed the two are behaviourally identical. The immutable map is clarity, not a fix.
 
@@ -3386,9 +3473,7 @@ Two smaller ones: the rescue write in the catch now has its own guard, so a fail
 - **Not verifiable headlessly.** The prefix's position, its strict-mode and non-configurable behaviour, the crash-safe persistence and the chunk sizing are unit-tested; that transformers then actually runs its WASM runtime inside a Node-enabled desktop Worker needs Obsidian. If it does not, the iframe still catches it and the new log line says so.
 - **Deferred:** recycling the backend every N notes as a hard ceiling on the heap (ADR-125 named it and left it). Batching should make it unnecessary; the log line and a heap measurement are the evidence that would justify it.
 
----
-
-## ADR-180 — An auto-retrieved note is not an attached one
+### ADR-183 — An auto-retrieved note is not an attached one
 
 **Status:** Active. Builds on ADR-116/117's retrieval path.
 
@@ -3414,64 +3499,62 @@ Two smaller ones: the rescue write in the catch now has its own guard, so a fail
 - Auto-retrieved context is now materially cheaper per turn, and a conversation that also has manual notes is unaffected.
 - The index shrinks for anyone using the opt-out, and the cap's membership stops churning — both mean re-embeds that used to repeat now happen once.
 - Verified by mutation: each of the ten behaviours above was broken in turn and a test failed for every one.
-- **Not done:** the embedding model itself. `paraphrase-multilingual-MiniLM` is a sentence-similarity model doing query-to-passage retrieval, which is the wrong model class and sits upstream of every floor question here. A retrieval model (e5, bge) needs asymmetric query/passage prefixes — a change to the provider interface, not a dropdown entry — and new measured floors. D-33.
+- **Not done:** the embedding model itself. `paraphrase-multilingual-MiniLM` is a sentence-similarity model doing query-to-passage retrieval, which is the wrong model class and sits upstream of every floor question here. A retrieval model (e5, bge) needs asymmetric query/passage prefixes — a change to the provider interface, not a dropdown entry — and new measured floors. D-36.
 
----
+### ADR-184 — An index records what it is, and whether it finished
 
-## ADR-181 — An index records what it is, and whether it finished
+**Status:** Active. Closes five defects a review found in ADR-182/180.
 
-**Status:** Active. Closes five defects a review found in ADR-179/180.
-
-**Context.** ADR-179 made a build persist every 25 embeds so an interruption is resumable. That was right, and it invalidated an assumption three other places were quietly built on: **"the index file has rows in it" had meant "the vault is indexed"**, and from that commit it no longer did.
+**Context.** ADR-182 made a build persist every 25 embeds so an interruption is resumable. That was right, and it invalidated an assumption three other places were quietly built on: **"the index file has rows in it" had meant "the vault is indexed"**, and from that commit it no longer did.
 
 **1. A partial index reported itself finished, permanently.**
 
-`refresh()` on the UI-thread backend hydrates the persisted index and returns early when `size() > 0` — ADR-125's rule, so the app is not re-frozen every session. ADR-179 also gated the whole of `refresh()` on `isReady()`, which `hydrateForQuery` sets. Together: a build interrupted once was never resumed, on any backend, and the settings tab said `Ready — N notes`. Retrieval answered from a fraction of the vault and nothing said so.
+`refresh()` on the UI-thread backend hydrates the persisted index and returns early when `size() > 0` — ADR-125's rule, so the app is not re-frozen every session. ADR-182 also gated the whole of `refresh()` on `isReady()`, which `hydrateForQuery` sets. Together: a build interrupted once was never resumed, on any backend, and the settings tab said `Ready — N notes`. Retrieval answered from a fraction of the vault and nothing said so.
 
-**Decision: completeness is a property of the index, and it is persisted.** The binary format goes to **v2**, carrying `complete` and `scope`. `isComplete(scope)` is what decides whether to build; `isReady()` keeps its old meaning — *can answer a query*. A mid-build flush writes `complete: false`; only a build that reaches the end writes `true`. A v1 file is refused and rebuilt, which is free this release because ADR-179's chunk-size change invalidates every content hash anyway.
+**Decision: completeness is a property of the index, and it is persisted.** The binary format goes to **v2**, carrying `complete` and `scope`. `isComplete(scope)` is what decides whether to build; `isReady()` keeps its old meaning — *can answer a query*. A mid-build flush writes `complete: false`; only a build that reaches the end writes `true`. A v1 file is refused and rebuilt, which is free this release because ADR-182's chunk-size change invalidates every content hash anyway.
 
-**2. A scope change left the old notes retrievable.** Nothing invalidated the index when `vaultContextFolders` or the note cap changed, and after ADR-179 the rescan ran at most once per lifetime. Narrowing the folders for privacy left the excluded notes in the rows, still being inlined into prompts, until a manual rebuild. So `scope` — folders, skip folders, cap, model — is persisted with the rows, and an index built under a different one is not complete.
+**2. A scope change left the old notes retrievable.** Nothing invalidated the index when `vaultContextFolders` or the note cap changed, and after ADR-182 the rescan ran at most once per lifetime. Narrowing the folders for privacy left the excluded notes in the rows, still being inlined into prompts, until a manual rebuild. So `scope` — folders, skip folders, cap, model — is persisted with the rows, and an index built under a different one is not complete.
 
 **3. Edits during the first build were dropped for the session.** `applyChanges` no-ops until the index is ready, and the watcher has already cleared its own batch by then — so every edit made during a build (which is precisely when the user is still working) was lost until a restart. They are buffered and replayed once the build lands.
 
 **4. The live scope now wins over the index, at the point of use.** The index is a cache of a decision and can lag it: a note whose `pythia: false` was added on another device, or one left behind by a scope since narrowed, is in the rows until a rebuild. Retrieved paths are re-checked against today's folders and frontmatter before they are returned. A privacy control has to hold where the text would actually leave the vault, not only where the index was written. The check is total — a vault API that throws keeps the note (it is reported missing downstream anyway) rather than silently disabling retrieval.
 
-**5. The size warning still counted auto-retrieved notes.** ADR-180 ruled that the attached-note warnings are about what the user attached, but only filtered the missing-note one. A conversation with nothing attached could be told its attached notes were large, every turn. `buildAttachedNotesContent` now returns `manualTokens` and the warning reads that.
+**5. The size warning still counted auto-retrieved notes.** ADR-183 ruled that the attached-note warnings are about what the user attached, but only filtered the missing-note one. A conversation with nothing attached could be told its attached notes were large, every turn. `buildAttachedNotesContent` now returns `manualTokens` and the warning reads that.
 
 **Consequences.**
-- One more forced rebuild, folded into the one ADR-179 already required.
+- One more forced rebuild, folded into the one ADR-182 already required.
 - A UI-thread build that cannot finish in one sitting now *resumes* each session instead of being served as complete — slower to settle, correct at rest, and the debug log says it is resuming.
-- Verified by mutation: twelve behaviours, each broken in turn. **Six of the first twelve survived, and all six were flaws in the new tests rather than the code** — a fake provider reporting the wrong backend, an assertion satisfied by the build instead of the replay, a plain object that was not `instanceof TFile`, and a "failed" build that ADR-179's own guard correctly treated as finished. A test that cannot fail is not evidence.
+- Verified by mutation: twelve behaviours, each broken in turn. **Six of the first twelve survived, and all six were flaws in the new tests rather than the code** — a fake provider reporting the wrong backend, an assertion satisfied by the build instead of the replay, a plain object that was not `instanceof TFile`, and a "failed" build that ADR-182's own guard correctly treated as finished. A test that cannot fail is not evidence.
 
----
+### ADR-185 — Hiding `process` was not enough, and the chain would not say why
 
-## ADR-182 — Hiding `process` was not enough, and the chain would not say why
+**Status:** Active. Partly falsifies ADR-182's central claim.
 
-**Status:** Active. Partly falsifies ADR-179's central claim.
-
-**Context.** ADR-179 hid `process` from the embedding Worker so transformers.js would stop binding onnxruntime-node and accept the `wasm` device. The reasoning was verified against the installed source, the prefix's position was asserted against the real bundle, and the whole thing was unit-tested. On the reporting machine — the M2 Air this began with — the settings line still reads **`iframe (UI thread)`**. The Worker did not start.
+**Context.** ADR-182 hid `process` from the embedding Worker so transformers.js would stop binding onnxruntime-node and accept the `wasm` device. The reasoning was verified against the installed source, the prefix's position was asserted against the real bundle, and the whole thing was unit-tested. On the reporting machine — the M2 Air this began with — the settings line still reads **`iframe (UI thread)`**. The Worker did not start.
 
 That is the value of having shipped the backend readout first: the claim was falsifiable, and it was falsified in one glance instead of another round of theory.
 
 **Two things were wrong, and only one of them is about `process`.**
 
-**1. The chain knew why each backend failed and threw it away.** `console.warn` is not a report. `Unsupported device: "wasm"` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and the difference decides everything about what to do next — yet the only thing reaching the user was *which backend won*. ADR-179 fixed the silence one level up and left it one level down.
+**1. The chain knew why each backend failed and threw it away.** `console.warn` is not a report. `Unsupported device: "wasm"` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and the difference decides everything about what to do next — yet the only thing reaching the user was *which backend won*. ADR-182 fixed the silence one level up and left it one level down.
 
-**Decision:** `FallbackEmbeddingProvider` records each attempt's failure reason and hands them to the `onBackend` callback and a `backendFailures()` accessor; `main.ts` logs them beside the winner. Principle 2, applied to the layer that ADR-179's own fix depended on.
+**Decision:** `FallbackEmbeddingProvider` records each attempt's failure reason and hands them to the `onBackend` callback and a `backendFailures()` accessor; `main.ts` logs them beside the winner. Principle 2, applied to the layer that ADR-182's own fix depended on.
 
-**2. `Object.defineProperty` is silently defeated by a non-configurable global.** ADR-179 used it instead of a plain assignment because the bundle is strict-mode and an assignment to a non-writable global throws. But a **non-configurable** `process` makes `defineProperty` throw too — and the `try/catch` that keeps that from killing the Worker also means the fix does nothing, with no trace. Whether Electron's Worker exposes `process` that way is not something this repo can determine from here; it is a live suspect, and it costs nothing to close.
+**2. Both halves of the prelude are property operations, and a locked-down global defeats both — silently.** `delete globalThis.process` fails on a **non-configurable** property; the assignment that follows fails on a **non-writable** one. Each is wrapped in its own `try`, so that a throw at statement zero cannot kill the Worker — which also means that where `process` is locked down the prelude does nothing at all, with no trace. Whether Electron's Worker exposes `process` that way is not something this repo can determine from here; it is a live suspect, and it costs nothing to close.
 
-**Decision:** shadow `process` **lexically** as well — `const process = void 0` at the top of the worker source, alongside the `defineProperty`. A module-scope binding cannot be defeated by any property descriptor, and the bundle's ~38 bare `process` reads all resolve to it.
+**Decision:** shadow `process` **lexically** as well — `const process = void 0` as the prelude's last statement, beside the two property operations. A module-scope binding cannot be defeated by any property descriptor, and the bundle's bare `process` reads — which is what `env.js:38-39` uses — all resolve to it.
+
+The `const` is **unconditional**, outside the `typeof window === "undefined"` guard that gates the property half, because a `const` inside a block shadows only that block. Nothing is lost by that: the iframe is rendered from the bare bundle and never sees the prelude at all.
 
 Verified rather than assumed:
 
-- the bundle declares no top-level `process`, so there is no redeclaration;
-- `node --check` parses the real 2 MB worker source, prefix included, as a module;
-- with a **non-configurable** global `process`, a module carrying the prefix evaluates transformers' exact guard (`env.js:38-39`) to `IS_NODE_ENV === false` while `globalThis.process` is untouched.
+- the bundle declares no top-level `process`, so there is no redeclaration, and nothing above the `const` names `process` bare, so its temporal dead zone is never entered;
+- `node --check` parses the real worker source — the 0.87 MB minified bundle with the prelude in front of it — as a module, and esbuild leaves no top-level `import` in it, so the prelude genuinely runs first;
+- with a `process` that is neither configurable nor writable, transformers' exact guard (`env.js:38-39`) evaluates to `IS_NODE_ENV === false` while `globalThis.process` is untouched — the case `tests/embeddingWorker.test.ts` pins, and the one where the two property operations do nothing at all.
 
-The `const` is safe **only** because this is a module — in a classic script it would collide with that same non-configurable global and throw at parse time. That is not an assumption: the bundle uses `import.meta` twelve times, which is a SyntaxError outside a module, so it cannot be loaded any other way, and both Worker paths pass `{ type: "module" }`. Both halves stay: the lexical binding cannot be defeated, and `defineProperty` still covers code that reads `globalThis.process` explicitly, which a shadow does not intercept.
+The `const` is safe **only** because this is a module — in a classic script it would collide with that same non-configurable global and throw at parse time. That is not an assumption: the bundle uses `import.meta` twelve times, which is a SyntaxError outside a module, so it cannot be loaded any other way, and both Worker paths pass `{ type: "module" }`. All three stay: the lexical binding cannot be defeated, and `delete`/assignment still cover code that reads `globalThis.process` explicitly, which a shadow does not intercept.
 
 **Consequences.**
-- If the reported failure turns out to be `Unsupported device`, this closes it. If it is a blocked `blob:` plus a cross-origin resource path, this changes nothing and **ADR-179's premise was wrong for this machine** — the failure reasons now in the log say which, without another round-trip.
-- The iframe path is unaffected either way, and ADR-181 means a UI-thread build now resumes across sessions rather than restarting, so the feature works while this is settled — slowly.
-- **Still not verified in Obsidian.** The mechanism is proven in Node under module semantics with the hostile descriptor; that the Electron Worker then loads the WASM runtime is not. D-28 stays open.
+- If the reported failure turns out to be `Unsupported device`, this closes it. If it is a blocked `blob:` plus a cross-origin resource path, this changes nothing and **ADR-182's premise was wrong for this machine** — the failure reasons now in the log say which, without another round-trip.
+- The iframe path is unaffected either way, and ADR-184 means a UI-thread build now resumes across sessions rather than restarting, so the feature works while this is settled — slowly.
+- **Still not verified in Obsidian.** The mechanism is proven in Node under module semantics with the hostile descriptor; that the Electron Worker then loads the WASM runtime is not. D-31 stays open.

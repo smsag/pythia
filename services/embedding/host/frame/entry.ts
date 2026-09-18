@@ -16,7 +16,7 @@ import type { EmbeddingModelConfig } from "../../../../models/embeddingModels";
 let model: EmbeddingModel | null = null;
 
 /**
- * Chunks per inference call (ADR-179). 16 matches `scripts/measure-related.mjs`,
+ * Chunks per inference call (ADR-182). 16 matches `scripts/measure-related.mjs`,
  * so in-app throughput is finally comparable with the number ADR-169 measured.
  *
  * NOT paired with `truncation: true`, deliberately. Truncating to the tokenizer's

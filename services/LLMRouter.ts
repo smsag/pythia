@@ -73,7 +73,7 @@ export class LLMRouter {
 		// block the turn, so fall back to just the manually-attached notes.
 		let notes = attachedNotes;
 		// Which paths RAG added, so the provider can give them their own budget and
-		// keep the attach-a-note warnings off them (ADR-180).
+		// keep the attach-a-note warnings off them (ADR-183).
 		let autoNotes: ReadonlySet<string> = new Set<string>();
 		if (this.vaultRetriever) {
 			try {

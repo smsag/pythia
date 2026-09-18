@@ -4,12 +4,12 @@
 //   • noteEmbedChunks — split a note's markdown into the text chunks that get
 //     embedded (heading-aware, then windowed to a char budget), mirroring how
 //     conversationChunks feeds the conversation index.
-//   • retrievalQuery — the text actually embedded for a turn (ADR-180).
-//   • isIndexingOptedOut — the per-note `pythia: false` escape hatch (ADR-180).
+//   • retrievalQuery — the text actually embedded for a turn (ADR-183).
+//   • isIndexingOptedOut — the per-note `pythia: false` escape hatch (ADR-183).
 //
 // Scoring lives in `VaultIndexService.query`, which yields cooperatively over a
 // large index. A second, non-yielding copy (`rankByQuery`) existed here until
-// ADR-180 and had already drifted — it never learned about `exclude`.
+// ADR-183 and had already drifted — it never learned about `exclude`.
 
 import { chunkByHeadings } from "../noteChunking";
 
@@ -50,13 +50,13 @@ export function noteEmbedChunks(content: string, maxChars = 500): string[] {
 	return chunks;
 }
 
-/** How much of the preceding answer joins the retrieval query (ADR-180). */
+/** How much of the preceding answer joins the retrieval query (ADR-183). */
 const CARRY_OVER_CHARS = 200;
 
 /**
  * The text actually embedded to retrieve notes for a turn.
  *
- * The bare user message was the query until ADR-180, which makes a follow-up
+ * The bare user message was the query until ADR-183, which makes a follow-up
  * ("and the second one?") a four-token query that retrieves noise or nothing —
  * the turns most in need of the conversation's context were the ones with none.
  * The head of the preceding answer is appended as carry-over: enough to keep the
@@ -78,7 +78,7 @@ export function retrievalQuery(message: string, previousAnswer = ""): string {
 }
 
 /**
- * Whether a note's frontmatter opts it out of the vault index (ADR-180).
+ * Whether a note's frontmatter opts it out of the vault index (ADR-183).
  *
  * `pythia: false` keeps a note out of the index entirely, so its text never
  * reaches a cloud model as auto-retrieved context. Folder scope already answers

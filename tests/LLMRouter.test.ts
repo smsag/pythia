@@ -90,7 +90,7 @@ describe("LLMRouter — provider resolution", () => {
 	});
 });
 
-// ── ADR-180: the provider must be told which notes RAG added ─────────────────
+// ── ADR-183: the provider must be told which notes RAG added ─────────────────
 describe("LLMRouter — marking auto-retrieved notes", () => {
 	const conv = { id: "c", provider: "anthropic", messages: [] } as unknown as Conversation;
 	const noop = () => {};

@@ -34,7 +34,7 @@ describe("noteEmbedChunks", () => {
 	});
 });
 
-// ── retrievalQuery (ADR-180) ─────────────────────────────────────────────────
+// ── retrievalQuery (ADR-183) ─────────────────────────────────────────────────
 describe("retrievalQuery", () => {
 	it("carries the previous answer into a SHORT follow-up", () => {
 		// "and the second one?" is four tokens — on its own it retrieves noise.
@@ -68,7 +68,7 @@ describe("retrievalQuery", () => {
 	});
 });
 
-// ── isIndexingOptedOut (ADR-180) ─────────────────────────────────────────────
+// ── isIndexingOptedOut (ADR-183) ─────────────────────────────────────────────
 describe("isIndexingOptedOut", () => {
 	it("opts out on an explicit false", () => {
 		expect(isIndexingOptedOut({ pythia: false })).toBe(true);

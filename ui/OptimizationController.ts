@@ -1,6 +1,7 @@
 import { Notice } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
+import type { Difficulty } from "../services/modelRecommendation";
 import { t } from "../i18n";
 
 export interface OptimizationDeps {
@@ -12,6 +13,9 @@ export interface OptimizationDeps {
 	autoResizeTextarea(): void;
 	/** Restores the Send button's normal label after the busy state clears. */
 	updateSendBtnLabel(): void;
+	/** The optimizer's difficulty rating, when the model-suggestion setting asked
+	 *  for one (ADR-181). Null: not asked, or the model left the line out. */
+	onRated(difficulty: Difficulty | null): void;
 }
 
 /**
@@ -51,15 +55,17 @@ export class OptimizationController {
 		const myGen = ++this.generation;
 		this.setBusy(true);
 		try {
+			const rate = this.d.plugin.settings.optimizerSuggestsModel;
 			const result = await this.d.plugin.promptOptimizerService.optimizeText(
-				text, framework, conv.provider, conv.model,
+				text, framework, conv.provider, conv.model, rate,
 			);
 			if (myGen !== this.generation) return; // superseded (view torn down / conversation switched)
 			// Clear the busy state BEFORE replacing: execCommand needs the textarea
 			// enabled and focusable.
 			this.setBusy(false);
-			const optimized = result?.trim();
+			const optimized = result.prompt.trim();
 			if (optimized) this.replaceInput(optimized);
+			if (rate) this.d.onRated(optimized ? result.difficulty : null);
 		} catch (err) {
 			if (myGen !== this.generation) return;
 			this.setBusy(false);

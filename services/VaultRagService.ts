@@ -38,9 +38,9 @@ export class VaultRagService {
 	private capWarned = false;
 	/** One-time "indexing is throttled on this device" notice per session. */
 	private throttleNoticeShown = false;
-	/** Which embedding backend actually started, once known (ADR-179). */
+	/** Which embedding backend actually started, once known (ADR-182). */
 	private backend: string | null = null;
-	/** Edits that arrived while the index was still building (ADR-181). The
+	/** Edits that arrived while the index was still building (ADR-184). The
 	 *  watcher clears its own batch when it flushes, so without this they were
 	 *  dropped for the rest of the session — `applyChanges` no-ops until the index
 	 *  is ready, and the first build is exactly when it is not. */
@@ -65,7 +65,7 @@ export class VaultRagService {
 	}
 
 	/**
-	 * What this index is an index OF (ADR-181): the folders, the skip folders, the
+	 * What this index is an index OF (ADR-184): the folders, the skip folders, the
 	 * note cap and the model. Persisted with the rows, so a session that starts
 	 * with different settings can tell the file no longer matches them.
 	 *
@@ -85,7 +85,7 @@ export class VaultRagService {
 		const provider = this.getProvider(); // also fixes the current model id for makeStore()
 		if (!this.service) {
 			// Chunks sized to the MODEL's token window rather than a shared 500 chars
-			// (ADR-179) — the window is a property of the model, so the chunk is too.
+			// (ADR-182) — the window is a property of the model, so the chunk is too.
 			// The conversation index keeps 500 on purpose: ADR-169's floors were
 			// measured there.
 			this.service = new VaultIndexService(provider, this.makeStore(), {
@@ -101,7 +101,7 @@ export class VaultRagService {
 	}
 
 	/** Human-readable index status for the settings tab, with the embedding backend
-	 *  once it is known (ADR-179) — `iframe (UI thread)` there is the single fact
+	 *  once it is known (ADR-182) — `iframe (UI thread)` there is the single fact
 	 *  that explains a slow build, and it used to be invisible. */
 	getStatus(): string {
 		const status = this.status || t("vaultIndexStatusIdle");
@@ -127,7 +127,7 @@ export class VaultRagService {
 			return [];
 		}
 		// The retrieval query is the message PLUS the head of the preceding answer
-		// (ADR-180) — a short follow-up otherwise embeds four tokens and retrieves
+		// (ADR-183) — a short follow-up otherwise embeds four tokens and retrieves
 		// noise, which is exactly the turn that needed the conversation's context.
 		const lastAnswer = [...(conversation.messages ?? [])]
 			.reverse()
@@ -154,7 +154,7 @@ export class VaultRagService {
 			top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
 		});
 		// Filter the RESULTS by the live scope and opt-out, not just the index
-		// (ADR-181). The index is a cache of a decision, and it can lag the decision:
+		// (ADR-184). The index is a cache of a decision, and it can lag the decision:
 		// a note whose `pythia: false` was added on another device, or one left
 		// behind by a scope the user has since narrowed, is still in the rows until
 		// a rebuild. A privacy control has to hold at the point the text would
@@ -197,8 +197,8 @@ export class VaultRagService {
 		// note, on the host thread, per send — plus a "Building the vault index…"
 		// notice flashing each time. `reindex` passes `force`.
 		//
-		// COMPLETE, not ready (ADR-181). `isReady()` is true the moment a persisted
-		// file is hydrated, and since ADR-179 that file can be a fifth of an
+		// COMPLETE, not ready (ADR-184). `isReady()` is true the moment a persisted
+		// file is hydrated, and since ADR-182 that file can be a fifth of an
 		// interrupted build — gating on it meant such a build was never resumed and
 		// reported itself finished. It is also false when the scope changed, so
 		// narrowing the folders rebuilds instead of leaving them retrievable.
@@ -222,9 +222,9 @@ export class VaultRagService {
 				// the build behind it FINISHED under this scope, serve queries against it
 				// without rebuilding.
 				//
-				// `size() > 0` was the old test and became wrong the moment ADR-179 made
+				// `size() > 0` was the old test and became wrong the moment ADR-182 made
 				// builds persist mid-flight: a partial file has rows, so an interrupted
-				// build was served forever as though complete (ADR-181). A partial or
+				// build was served forever as though complete (ADR-184). A partial or
 				// out-of-scope index now falls through and resumes, throttled.
 				if (!offThread) {
 					await svc.hydrateForQuery();
@@ -284,7 +284,7 @@ export class VaultRagService {
 		// Not ready yet — almost always the first build, which is exactly when the
 		// user is still editing. The watcher has already cleared its own batch, so
 		// returning here USED to drop these edits for the rest of the session
-		// (ADR-181). Hold them instead and replay once the build lands.
+		// (ADR-184). Hold them instead and replay once the build lands.
 		if (!this.isReady()) {
 			const buf = (this.deferredChanges ??= { changed: new Map(), deleted: new Set() });
 			for (const f of changed) { buf.changed.set(f.path, f); buf.deleted.delete(f.path); }
@@ -311,7 +311,7 @@ export class VaultRagService {
 		this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
 	}
 
-	/** Replay the edits that arrived mid-build (ADR-181). Runs after a completed
+	/** Replay the edits that arrived mid-build (ADR-184). Runs after a completed
 	 *  sync, which has already read every note from disk — so anything saved
 	 *  BEFORE the build reached it is already current, and this only costs an embed
 	 *  for the ones it did not. Cleared first, so a failure cannot replay forever. */
@@ -338,7 +338,7 @@ export class VaultRagService {
 	}
 
 	/** Whether this note opts out of the index with `pythia: false` in its
-	 *  frontmatter (ADR-180). Read from the metadata cache, so it costs no file
+	 *  frontmatter (ADR-183). Read from the metadata cache, so it costs no file
 	 *  I/O; an uncached file reads as "not opted out", matching the helper's rule
 	 *  that only an explicit false excludes. */
 	private optedOutPath(path: string): boolean {
@@ -378,7 +378,7 @@ export class VaultRagService {
 		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
 
 		// Newest first, so a capped vault indexes the notes actually being worked in
-		// rather than whatever order the adapter happened to return (ADR-180). That
+		// rather than whatever order the adapter happened to return (ADR-183). That
 		// order is not stable between sessions, which made the cap's membership
 		// churn — notes silently entering and leaving retrieval, and re-embedding
 		// each time they came back.

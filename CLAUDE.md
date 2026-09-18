@@ -34,6 +34,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
@@ -48,6 +49,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
+    embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
+    embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
+    embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -85,11 +89,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
+    ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1350 tests across 89 files
+  tests/                      ← Vitest unit tests (npm test) — 1411 tests across 92 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -105,10 +111,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
+  scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
+  scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
   .github/workflows/update-pricing.yml ← Mondays: pull models.dev, open a PR when a price changed
+  .github/workflows/update-models.yml  ← Mondays: PR when a context window changed; issue "Model catalog: upstream changes" for new/deprecated models
 ```
 
 ---
@@ -460,6 +469,20 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **The warm never surprises**: desktop only, only when a `.bin` already exists (no unrequested ~100 MB model download at launch), ≥2 conversations, silent provider construction, fail-open into the debug log. Guards live in `warmIndex.ts` with tests, because `main.ts` has no coverage
 - **A cold sync is cancellable and commits partial progress before rethrowing** — a cancelled build must leave the next one less to do. The panel aborts on close, on leaving related mode and on the first keystroke; an abort is the panel's own doing and reports nothing
 
+### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
+
+- **The Worker must see a browser, not Node.** Obsidian gives desktop Workers Node access, so transformers.js reads `process.release.name === "node"`, binds onnxruntime-**node** (macOS device list: `['cpu']`) and rejects the `wasm` device Pythia always passes — which is why every desktop silently ran embedding on the UI-thread iframe for three ADRs. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and **nowhere else**; the iframe gets the bare bundle
+- **The prelude has three statements and needs all three.** `delete globalThis.process`, then an assignment, then `const process = void 0`. The first two are *property* operations that a non-configurable / non-writable global defeats through their own `catch`; the `const` binds the identifier, which is what `env.js:38-39` reads, and no descriptor can defeat it. The `const` is unconditional (a `const` inside the guard block would shadow only that block) and safe **only because the bundle is a module** — `import.meta` appears in it, so it cannot load any other way
+- **It cannot live in `frame/entry.ts`.** An ES `import` is hoisted, so any statement there runs after transformers has already read `process`. A textual prefix is the only position that is actually first
+- **The worker file on disk is named by its content hash**, not by version and never by a hand-typed marker. It is written only when absent, so the name is the whole cache key — a `-p1` marker had to be remembered twice and would be missed a third time
+- **A backend that loses says why.** `FallbackEmbeddingProvider` records each failure reason, exposes `backendFailures()` and passes them to `onBackend`; the winner goes to the debug log and the vault-index status line. `Unsupported device: wasm` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and `console.warn` is not a report (principle 2)
+- **An index records what it is and whether it finished** (ADR-184). Format v2 carries `complete` and `scope`; a v1 file is refused and rebuilt. Since ADR-182 persists every 25 embeds, **`size() > 0` stopped meaning "the vault is indexed"** — read `isComplete(scope)`. A scope change (folders · skip · cap · model) invalidates the index; edits during a build are buffered in `deferredChanges` and replayed
+- **Persist mid-build, and persist the whole picture.** A snapshot is what the pass rebuilt *plus* the not-yet-reached notes whose vectors are still valid — the former alone would delete the tail of the index on every interruption. `persist` assigns `this.items` as well as writing, or an in-place retry re-embeds everything the failed pass just saved. Count **embeds**, not notes processed: the `continue` paths stride past a modulus on a processed counter
+- **A failing note is skipped; five in a row rethrow.** Skipping blindly turns a dead backend into a "successful" build that indexed nothing and then reported itself ready. The streak resets on a *reused* note too, or five bad notes scattered through an unchanged vault abort the build forever
+- **An auto-retrieved note is not an attached one** (ADR-183). It gets `AUTO_NOTE_BUDGET_CHARS`, not the manual budget, and none of the attach-a-note warnings — the user cannot remove a path they never added. `pythia: false` in a note's frontmatter opts it out, read **fail-open**, and re-checked at the point the text would leave the vault
+- **Chunk size follows the model's own window** (`embedChunkChars`, vault index only). The conversation index stays at 500 chars because ADR-169's floors were measured there
+- **`truncation: true` is deliberately not set** on the embed call: it would change every vector longer than the window and silently invalidate those measured floors. Padding with an attention mask is neutral for mean pooling, which is what let batching ship without re-measuring
+
 ### Conversation search (ADR-168)
 
 - **One matching rule, in `services/tokenMatch.ts`.** `matchStrength` is graded (exact 1 · prefix .9 · infix .6 · reverse .5), never boolean — the caller multiplies IDF by it. The length floors are load-bearing: without them a 2-char stopword reverse-matches every long query and the result set becomes the corpus. **Never hand-roll a second comparison** — `bestMatchSnippet` shares it, or a row surfaces on a compound hit with no snippet to explain it
@@ -527,6 +550,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Write through the open editor when possible** — `editor.replaceRange` is one undo step, and undo is the real safety net. A closed note is opened first, never written blind
 - **Armed until applied or dismissed**, unlike ADR-177's one-shot template: a rewrite is iterated ("shorter"), so every answer while it is armed is another proposal for the same passage
 - The passage rides in the **message**, not the system prompt, so a follow-up turn can still see what is being rewritten
+
+### Model suggestion (ADR-181)
+
+- **The model rates, Pythia picks.** The optimizer reply ends with `DIFFICULTY: light | standard | deep` (same call, no second request); `recommendModel` maps it to the cheapest adequate model of `settings.defaultProvider` by `MODEL_PROFILE` + `MODEL_PRICING`. **Never let a model name a model** — it does not know the catalog, the prices or the keys
+- **Offered, never applied; one send, never written.** `.p-model-hint` beside Send; tap accepts, tap again withdraws. `layer(conv)` clones for the next send and `applyPendingTemplate` runs over it, so a template's model wins. Spent on a committed answer, like ADR-177. Never assign the suggestion to `conv.model`
+- **Cost as a tier, never dollars** (ADR-163) — the chip carries `tierDots`, not `≈ $`
+- **No suggestion** when a template pins the model, a PDF meets Mistral, the current model is adequate and not dearer, or a downgrade's cold send costs more than staying on the cached model (`sendCost`) — measured from the price table, not guessed
+- **The answer names the model that answered**: `turnConv.model`, never `conv.model`, for the message, its cost snapshot and a stream error (#305)
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input
