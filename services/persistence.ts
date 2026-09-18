@@ -1,7 +1,7 @@
 import type { Conversation, Favorite, MergeLink, Message, Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
-import { EMBEDDING_MODEL_IDS, RELATED_SIMILARITY_PRESETS } from "../models/embeddingModels";
+import { EMBEDDING_MODEL_IDS, SIMILARITY_PRESETS } from "../models/embeddingModels";
 import { normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
@@ -19,8 +19,8 @@ const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
 	outputLanguage: OUTPUT_LANGUAGES,
 	effort: EFFORTS,
 	embeddingModelId: EMBEDDING_MODEL_IDS,
-	relatedSimilarity: RELATED_SIMILARITY_PRESETS,
-	vaultContextSimilarity: RELATED_SIMILARITY_PRESETS,
+	relatedSimilarity: SIMILARITY_PRESETS,
+	vaultContextSimilarity: SIMILARITY_PRESETS,
 };
 
 /** Keys that may legitimately be absent (the "use the API default" state). */
