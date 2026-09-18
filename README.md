@@ -152,9 +152,11 @@ Obsidian renders this as a clickable link in the note's **Properties** panel —
 
 | Key | Action |
 |---|---|
-| `Enter` | Send message |
-| `Shift+Enter` | Insert new line |
+| `Enter` | Insert a line break |
+| `Cmd/Ctrl+Enter` | Send message |
 | `#query` | Fuzzy-search vault notes; `↑↓` to navigate, `↵` to attach, `Esc` to dismiss |
+
+The composer holds a prompt, not a chat line, so `Enter` writes a line break and sending takes a modifier — a stray line break costs nothing, a stray send costs an answer you have to delete. The **Send** button does the same thing and is the primary send on mobile, where there is no modifier key.
 
 ## Reference row
 
