@@ -2,7 +2,11 @@
 
 *Last updated: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
-*Previously: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently). ADR-175 and ADR-176 are in flight on their own branches.*
+*Previously: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently).*
+
+*Previously: 2026-09-18 — ADR-176 (a shared label is not a shared number: the strict/balanced/loose type is renamed `SimilarityPreset`, so nothing implies the measured related-conversation floors also govern the unmeasured vault-retrieval ones).*
+
+*Previously: 2026-09-18 — ADR-175 (Enter writes a line break in the composer; Cmd/Ctrl+Enter sends: a prompt is a draft, and the unmodified key now carries the recoverable outcome).*
 
 *Previously: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
 
@@ -3171,6 +3175,56 @@ Now `forksBySource` is built once per list build and both readers share it — t
 - The thresholds are constants read off one measurement on one machine. They are in a pure module with tests and a documented table so the next person can re-measure with the script rather than argue about the number.
 - Paging changes what ↑/↓ can reach: keyboard selection covers the rendered rows, so a conversation past the page needs `show more` first. Search — which reaches everything, capped and ranked — is the way to find a distant conversation, and it is one keystroke away in the same panel.
 - **None of this is the fix.** Every message still pays for the whole corpus. `scripts/bench-store.mjs` and `storageSize.ts` exist so that the point where that stops being acceptable announces itself instead of being discovered. The fix is engineering-review **#298** — an index plus one file per conversation — designed there in full, deliberately not scheduled: its real cost is not the storage layer but making `plugin.conversations` a loader rather than a live array, and nothing in a vault at today's sizes has earned that yet.
+
+---
+
+### ADR-175 — Enter writes a line break; Cmd/Ctrl+Enter sends
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+**Context.** The composer sent on Enter and wrote a newline on Shift+Enter — the chat-app convention. It is the wrong one here. What is being written is a *prompt*: a paragraph, a pasted list, a constraint added after a second thought. Enter-to-send makes the most-pressed key in the textarea the irreversible one, and hides the key you actually want behind a modifier that is announced once, in a placeholder, that disappears the moment you start typing.
+
+The asymmetry decides it. A stray line break costs nothing — you carry on typing. A stray send costs an API call, a half-written prompt in the transcript and a delete to clean up (and until ADR-160's compare bar existed, a fork to recover from). The recoverable outcome belongs on the unmodified key.
+
+**Decision.** `composerKeyAction` (`ui/composerKeys.ts`, pure and tested):
+
+- **Enter → line break.** Shift+Enter too; there is no second send modifier to remember.
+- **Cmd/Ctrl+Enter → send.** Kept because a keyboard user needs some send that is not the mouse, and it is the shortcut every editor-shaped composer uses for "commit this block".
+- **An IME's Enter is never a send**, with or without the modifier: it commits a candidate, and sending there would fire mid-word with the composition uncommitted. `isComposing` guarded the old send and still guards this one.
+- The rule is a pure function rather than three conditions in a keydown handler, because it is a rule: `sidebar.ts` only wires it, and the IME and modifier cases are asserted without a DOM.
+
+**The placeholder names the shortcut only where one exists.** `composerPlaceholder(isMobile)` drops the hint on a phone — there is no modifier key there, and the send button is a thumb away — and the desktop string lost its "Shift+Enter for new line" half, which now describes the default rather than an escape hatch.
+
+**Consequences.**
+- Muscle memory built on every other chat app now inserts a newline instead of sending. That is the intended cost, paid once; the failure is visible and free to undo, which is the opposite of the one it replaces.
+- The Send button becomes the primary send on both platforms, which is what it already was on mobile.
+- Not changed: `PromptInputModal` still confirms on Enter. It is a modal with one field and a confirm button, where Enter-confirms is the platform convention and the text is short by construction.
+- A per-user "Enter sends" setting was considered and rejected for now: it doubles the send path, and the question this ADR answers is which behaviour is correct, not which is popular. If it comes back it will come back as a setting with a stated default, not as a toggle to avoid deciding.
+
+---
+
+### ADR-176 — A shared label is not a shared number
+
+**Date:** 2026-09-18
+**Status:** Accepted — the naming half of engineering-review #273; the measurement stays open
+
+**Context.** Two settings offer the same three words, `strict` / `balanced` / `loose`, and both were typed `RelatedSimilarity`:
+
+- `relatedSimilarity` — how close two **conversations** must be to appear under "Show similar". Resolved by `relatedMinScore(preset, modelId)` against floors **measured per embedding model** (ADR-169), because the multilingual model scores every pair ~0.08 hotter than the English one.
+- `vaultContextSimilarity` — how close a **note chunk** must be to the question to enter the prompt. Resolved by `vaultRetrievalMinScore(preset)` against 0.5 / 0.35 / 0.2 — three constants nobody has ever measured.
+
+The code already kept the two maps apart, with a test that fails if they are merged (ADR-169). The **name** said the opposite: a type called `RelatedSimilarity` sitting on the vault-context field reads as though the measured related floors govern vault retrieval too. They never did, and only one of the two has evidence behind it.
+
+**Decision.** The type is named for what it is — a label, not a question. `RelatedSimilarity` → **`SimilarityPreset`**; `RELATED_SIMILARITY_PRESETS` → `SIMILARITY_PRESETS`; `DEFAULT_RELATED_SIMILARITY` → `DEFAULT_SIMILARITY_PRESET`. The two resolvers keep their specific names (`relatedMinScore`, `vaultRetrievalMinScore`) — those are correct, and they are where the difference lives. `relatedFloors` stays on the embedding model: those floors really are related-specific.
+
+Both settings fields now say in one line which they are and what backs them, so the unmeasured one is unmeasured *in the place someone would change it*.
+
+The settings label gains the question rather than the jargon: **"Related conversations — how close a match counts"**. The vault-retrieval preset has no settings-tab control at all (`data.json` only), which is the right way round while it is the unproven one — a control implies a calibration that does not exist yet.
+
+**Consequences.**
+- Pure rename plus comments; no behaviour, no persisted key, no migration. Settings keys (`relatedSimilarity`, `vaultContextSimilarity`) are untouched on purpose — renaming those would mean a data migration for a readability fix.
+- The measurement question is **not** answered here. `vaultRetrievalMinScore` still rests on three chosen numbers; engineering-review #273 stays open and wants its own probe, like `scripts/measure-related.mjs` did for conversation pairs. This ADR only stops the names from claiming otherwise.
 
 ---
 

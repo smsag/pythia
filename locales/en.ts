@@ -106,7 +106,7 @@ const en = {
 	relatedFailed:             "Related conversations failed: {{error}}",
 	embeddingModelName:        "Related-conversations model",
 	embeddingModelDesc:        "On-device model for finding related conversations. Multilingual handles German + English; English is faster. Downloads on first use.",
-	relatedSimilarityName:     "Related-conversations strictness",
+	relatedSimilarityName:     "Related conversations — how close a match counts",
 	relatedSimilarityDesc:     "How similar a conversation must be to appear under \"Show similar\". Strict shows only very close matches; Loose includes weaker ones.",
 	relatedSimilarityStrict:   "Strict (fewer, closer)",
 	relatedSimilarityBalanced: "Balanced",
@@ -190,7 +190,8 @@ const en = {
 	unfavoriteBtn: "Unfavorite",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
-	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",
+	inputPlaceholder:    "Type a message… (Cmd/Ctrl+Enter to send)",
+	inputPlaceholderMobile: "Type a message…",
 	sendBtn:             "Send",
 	stopBtn:             "Stop",
 	attachNoteTooltip:   "Attach note",

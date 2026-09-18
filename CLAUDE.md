@@ -47,7 +47,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
-    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own (ADR-169)
+    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -79,6 +79,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
+    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175)
     RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
     referenceEntries.ts       ← pure: which pills the reference row shows and in what order (ADR-178)
     editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
@@ -88,12 +89,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1238 tests across 82 files
+  tests/                      ← Vitest unit tests (npm test) — 1246 tests across 83 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
   docs/
+    pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
@@ -141,6 +143,8 @@ The canonical list lives here, because this file is what every session reads fir
 | UI components, CSS tokens, design rules | `docs/design.md` |
 | Architectural choice or trade-off | `docs/decisions.md` (append a new ADR) |
 | Bug found / suggestion resolved / new suggestion | `docs/engineering-review.md` |
+| **A decision postponed, parked or deliberately not done** | `docs/pythia-spec.md` → Deferred & postponed decisions (a `D-n` row, with what would make it worth revisiting) |
+| A new surface, or a renamed class | `docs/pythia-spec.md` → UI architecture (the map is the shared vocabulary; a surface missing from it cannot be asked for by name) |
 
 Keep the "Last updated" line at the top of each doc current. Commit docs changes in the same commit as the code change where possible.
 
@@ -536,6 +540,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 [ textarea auto-expand 1→72px max ]
 [ attach ][ save ] ______________ [ Senden ]
 ```
+- **Enter writes a line break; Cmd/Ctrl+Enter sends** (ADR-175). The rule lives once, in `ui/composerKeys.ts` — never re-derive it in a keydown handler, and never let a send fire while `isComposing` is true. The placeholder names the shortcut on desktop only
 - Textarea: transparent, no border, `--font-monospace`, 12px
 - Toolbar icons: inline SVG, 22×22px hit area
 - Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
