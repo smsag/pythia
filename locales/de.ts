@@ -189,7 +189,8 @@ const de: Strings = {
 	favoriteBtn: "Favorisieren",
 	unfavoriteBtn: "Defavorisieren",
 	// ── Input toolbar ─────────────────────────────────────────────────────────
-	inputPlaceholder:    "Nachricht eingeben… (Enter zum Senden, Shift+Enter für neue Zeile)",
+	inputPlaceholder:    "Nachricht eingeben… (Cmd/Strg+Enter zum Senden)",
+	inputPlaceholderMobile: "Nachricht eingeben…",
 	sendBtn:             "Senden",
 	stopBtn:             "Stopp",
 	attachNoteTooltip:   "Notiz anhängen",

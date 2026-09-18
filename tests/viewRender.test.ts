@@ -13,7 +13,7 @@
 // Add a scenario here whenever a new surface must render on open/switch. The
 // mount fixture lives in `tests/helpers/viewHarness.ts`.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makePlugin, mountView, seedConversation, userMsg, aiMsg, now } from "./helpers/viewHarness";
 import PythiaPlugin from "../main";
 import { PythiaSidebarView } from "../sidebar";
@@ -172,6 +172,33 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 		const { view, pane } = await mountView(plugin);
 		return { view, pane, conv };
 	}
+
+	// ADR-175: Enter is a line break in the composer; Cmd/Ctrl+Enter sends.
+	it("does not send on a bare Enter, and leaves the key to the textarea", async () => {
+		const { view, pane } = await openBlank();
+		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
+		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+
+		const plain = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+		input.dispatchEvent(plain);
+
+		expect(send).not.toHaveBeenCalled();
+		// Not prevented, so the browser inserts the newline itself.
+		expect(plain.defaultPrevented).toBe(false);
+		send.mockRestore();
+	});
+
+	it("sends on Cmd+Enter and on Ctrl+Enter", async () => {
+		const { view, pane } = await openBlank();
+		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
+		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true }));
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+
+		expect(send).toHaveBeenCalledTimes(2);
+		send.mockRestore();
+	});
 
 	it("completes: renders and persists the assistant reply", async () => {
 		const { view, pane, conv } = await openBlank();
