@@ -1,5 +1,7 @@
 # Engineering Review — Pythia
 
+*Updated: 2026-09-18 — **#301–#306: the vault index never built (ADR-179).** A 400-note vault on an M2 Air: indexing degraded at ~half and no index ever completed. Five compounding defects, four of them in code three prior ADRs had already "fixed". #301 — every desktop fell back to the UI-thread iframe, not because `blob:` was refused (ADR-125/126's theory) but because Obsidian gives desktop Workers Node access, so transformers.js binds onnxruntime-node, whose macOS device list is `['cpu']` and rejects our `wasm`. #302 — batch-of-one inference at unbounded sequence lengths grew the WASM heap monotonically, which is what "deteriorates at half" was. #303 — `EmbeddingModelConfig.maxTokens` was declared on both models and read by nothing; both indexes chunked at 500 chars, over the default model's 128-token window. #304 — `doSync` persisted once at the end, so any interruption discarded the entire pass; a build that could not finish in one sitting produced nothing, ever. #305 — one note's embed failure threw out of the build and did so identically on every retry. #306 — the provider chain never said which backend it landed on, which is why #301 survived three ADRs; the `numThreads = 1` crash guard likewise had a silent `if` with no `else`. +16 tests (1262 across 84 files).*
+
 *Initial review: 2026-05-29 at v1.10.2.*
 *Updated: 2026-05-30 — v1.10.2 session fixes.*
 *Updated: 2026-05-30 — v1.11.0 batch: #2, #3 (partial), #7, #8, #9, #13, #16 resolved.*

@@ -281,6 +281,7 @@ const en = {
 	vaultIndexStatusFailed:            "Indexing failed — see the developer console.",
 	vaultIndexCapped:                  "Vault is large: indexing {{indexed}} of {{total}} notes. Scope to folders in Settings, or raise the cap.",
 	vaultIndexThrottled:               "This device runs the embedding model on the UI thread (no background worker available), so indexing is throttled to keep the app responsive — it may take a while. It runs once; edits update incrementally.",
+	vaultIndexBackend:                 "· Engine: {{backend}}",
 	cmdReindexVault:                   "Rebuild vault context index",
 	vaultContextSectionName:           "Vault context (semantic RAG)",
 	vaultContextEnabledName:           "Enable by default",

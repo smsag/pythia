@@ -1,4 +1,4 @@
-import type { EmbeddingProvider } from "../EmbeddingProvider";
+import type { EmbeddingProvider, EmbeddingBackend } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import { WorkerEmbeddingProvider } from "./workerEmbeddingProvider";
 import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddingProvider";
@@ -17,6 +17,7 @@ import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddi
 export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	readonly dim: number;
 	private active: EmbeddingProvider | null = null;
+	private activeBackend: EmbeddingBackend | null = null;
 	private readyPromise: Promise<void> | null = null;
 
 	constructor(
@@ -25,9 +26,19 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		/** Optional: resolve a same-origin resource-path URL for the worker script, so
 		 *  a Worker can start where `blob:` Workers are blocked (ADR-126). When it
 		 *  yields a working Worker, inference stays OFF the UI thread. */
-		private readonly resourceWorkerUrl?: () => Promise<string>
+		private readonly resourceWorkerUrl?: () => Promise<string>,
+		/** Called ONCE, with the backend that actually started (ADR-179). The chain
+		 *  is silent by design on the happy path, and that silence is what let a
+		 *  desktop-wide fallback to the UI thread go unnoticed. */
+		private readonly onBackend?: (backend: EmbeddingBackend) => void
 	) {
 		this.dim = embeddingModelConfig(modelId).dim;
+	}
+
+	private settle(provider: EmbeddingProvider, backend: EmbeddingBackend): void {
+		this.active = provider;
+		this.activeBackend = backend;
+		this.onBackend?.(backend);
 	}
 
 	ready(): Promise<void> {
@@ -40,7 +51,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		const blobWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
 		try {
 			await blobWorker.ready();
-			this.active = blobWorker;
+			this.settle(blobWorker, "worker (blob)");
 			return;
 		} catch (err) {
 			blobWorker.unload();
@@ -52,7 +63,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 			const resWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress, this.resourceWorkerUrl);
 			try {
 				await resWorker.ready();
-				this.active = resWorker;
+				this.settle(resWorker, "worker (resource)");
 				return;
 			} catch (err) {
 				resWorker.unload();
@@ -62,7 +73,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		// 3. Same-origin iframe (LAST resort; runs on the UI thread — throttled by callers).
 		const iframe = new IframeEmbeddingProvider(this.modelId, this.onProgress);
 		await iframe.ready();
-		this.active = iframe;
+		this.settle(iframe, "iframe (UI thread)");
 	}
 
 	async embed(texts: string[]): Promise<Float32Array[]> {
@@ -78,9 +89,15 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		return this.active?.isOffThread?.() ?? false;
 	}
 
+	/** Which backend won the chain — `null` until `ready()` resolves (ADR-179). */
+	backend(): EmbeddingBackend | null {
+		return this.activeBackend;
+	}
+
 	unload(): void {
 		this.active?.unload();
 		this.active = null;
+		this.activeBackend = null;
 		this.readyPromise = null;
 	}
 }
@@ -91,7 +108,8 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 export function createEmbeddingProvider(
 	modelId: EmbeddingModelId,
 	onProgress?: (p: ModelLoadProgress) => void,
-	resourceWorkerUrl?: () => Promise<string>
+	resourceWorkerUrl?: () => Promise<string>,
+	onBackend?: (backend: EmbeddingBackend) => void
 ): EmbeddingProvider {
-	return new FallbackEmbeddingProvider(modelId, onProgress, resourceWorkerUrl);
+	return new FallbackEmbeddingProvider(modelId, onProgress, resourceWorkerUrl, onBackend);
 }

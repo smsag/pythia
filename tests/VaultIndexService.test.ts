@@ -305,3 +305,83 @@ describe("VaultIndexService", () => {
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 });
+
+// ── ADR-179: a build must survive being interrupted ──────────────────────────
+describe("VaultIndexService — crash-safe build (ADR-179)", () => {
+	/** Fails on one specific note, the way an embed timeout does on a huge one. */
+	class FlakyProvider extends FakeProvider {
+		constructor(private readonly poison: string) { super(); }
+		async embed(texts: string[]): Promise<Float32Array[]> {
+			if (texts.some((t) => t.includes(this.poison))) throw new Error("embed failed");
+			return super.embed(texts);
+		}
+	}
+
+	const many = (n: number): IndexableNote[] =>
+		Array.from({ length: n }, (_, i) => note(`Notes/n${i}.md`, `note ${i} about alpha`));
+
+	it("persists partway through a long build, not only at the end", async () => {
+		const store = new MemStore();
+		const svc = new VaultIndexService(new FakeProvider(), store);
+		await svc.sync(many(60));
+		// 60 notes past a 25-note flush interval: two mid-build writes plus the final.
+		expect(store.writes).toBeGreaterThan(1);
+	});
+
+	it("commits what it embedded when the provider dies mid-build, then rethrows", async () => {
+		const store = new MemStore();
+		// Dies for good partway through — an unloaded provider, not one bad note.
+		class DyingProvider extends FakeProvider {
+			async embed(texts: string[]): Promise<Float32Array[]> {
+				if (this.embedded.length >= 30) throw new Error("Embedding provider unloaded");
+				return super.embed(texts);
+			}
+		}
+		const s = new VaultIndexService(new DyingProvider(), store);
+		await expect(s.sync(many(60))).rejects.toThrow();
+		expect(store.buf).not.toBeNull(); // the ~30 embedded notes survived the failure
+
+		// And the next attempt resumes from them rather than starting over.
+		const p2 = new FakeProvider();
+		await new VaultIndexService(p2, store).sync(many(60));
+		expect(p2.embedded.length).toBeLessThan(60);
+	});
+
+	it("drops a note whose embed fails instead of discarding the whole build", async () => {
+		const store = new MemStore();
+		const p = new FlakyProvider("beta");
+		const s = new VaultIndexService(p, store);
+		await s.sync([alpha, beta, gamma]);
+		// The build COMPLETED — before ADR-179 one bad note threw out of doSync, so
+		// the index never became ready and every retry failed identically.
+		expect(s.isReady()).toBe(true);
+		expect(s.size()).toBe(2); // alpha + gamma; beta dropped
+		expect(await s.query("alpha", { minScore: 0.5 })).toHaveLength(1);
+	});
+
+	it("a resumed build re-embeds only what the interrupted one did not reach", async () => {
+		const store = new MemStore();
+		const first = new VaultIndexService(new FlakyProvider("gamma"), store);
+		await first.sync([alpha, beta, gamma]); // gamma dropped, alpha+beta persisted
+
+		const p2 = new FakeProvider();
+		await new VaultIndexService(p2, store).sync([alpha, beta, gamma]);
+		// alpha and beta came back from disk; only gamma cost an embed this time.
+		expect(p2.embedded.some((t) => t.includes("gamma"))).toBe(true);
+		expect(p2.embedded.some((t) => t.includes("alpha"))).toBe(false);
+	});
+
+	it("a mid-build flush never drops notes the pass has not reached yet", async () => {
+		const store = new MemStore();
+		const notes = many(60);
+		await new VaultIndexService(new FakeProvider(), store).sync(notes);
+
+		// Re-sync with one note changed: the flush snapshots must carry the other 59
+		// unchanged vectors, not just the handful rebuilt so far.
+		const changed = [...notes];
+		changed[5] = note("Notes/n5.md", "now about beta instead");
+		const s2 = new VaultIndexService(new FakeProvider(), store);
+		await s2.sync(changed);
+		expect(s2.size()).toBe(60);
+	});
+});

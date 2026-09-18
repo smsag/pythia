@@ -13,6 +13,29 @@ import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
 const YIELD_EVERY_NOTES = 8;
 /** Items scored between cooperative yields during a query rank (ADR-120). */
 const RANK_YIELD_EVERY = 2000;
+/**
+ * Notes embedded between persists during a build (ADR-179).
+ *
+ * Before this, `doSync` wrote ONCE, after the last note. Anything that stopped a
+ * build — a quit, a plugin reload, a renderer crash, one note throwing — threw
+ * away every vector computed in that pass, so a vault whose build could not
+ * finish in a single sitting never got an index at all, no matter how many times
+ * it was attempted. `ConversationIndexService` commits on abort, but a crash is
+ * not an abort, so "resumable" has to mean "already on disk", not "flushed on the
+ * way out". 25 notes is a few seconds of work against a multi-MB write.
+ */
+const PERSIST_EVERY_NOTES = 25;
+/**
+ * Consecutive embed failures that mean the BACKEND is gone, not that one note is
+ * bad (ADR-179).
+ *
+ * Skipping a note whose embed fails is what stops a single huge note from
+ * costing the whole build — but applied blindly it turns an unloaded provider or
+ * a crashed worker into a "successful" build that silently indexed almost
+ * nothing and then reported itself ready. One note failing is data; five in a row
+ * is the runtime. The run stops, keeps what it has, and rethrows.
+ */
+const MAX_CONSECUTIVE_EMBED_FAILURES = 5;
 
 /** A vault note to index: its path (the index id) and a LAZY content loader.
  *  Content is loaded one note at a time during sync and released immediately, so
@@ -215,43 +238,88 @@ export class VaultIndexService {
 		const existing = new Map(this.items.map((i) => [i.id, i]));
 		const kept: IndexedConversation[] = [];
 		const seen = new Set<string>();
+		/** Every note this pass has finished with, INCLUDING ones it skipped or
+		 *  dropped — `seen` holds only survivors, and a mid-build snapshot must not
+		 *  resurrect a note we just decided to drop. */
+		const handled = new Set<string>();
+		const desired = new Set(notes.map((n) => n.path));
 		const total = notes.length;
 		let embedded = 0;
 		let processed = 0;
+		let persistedEmbeds = 0;
+		let failedInARow = 0;
 
-		for (const note of notes) {
-			processed++;
-			let chunks: string[];
-			try {
-				chunks = noteEmbedChunks(await note.load(), maxChars);
-			} catch {
+		// A mid-build snapshot = what this pass has rebuilt so far, PLUS the notes it
+		// has not reached yet whose vectors are still valid. Persisting only `kept`
+		// would make every interrupted build delete the tail of its own index.
+		const snapshot = (): IndexedConversation[] => [
+			...kept,
+			...this.items.filter((i) => !handled.has(i.id) && desired.has(i.id)),
+		];
+		const persist = async (items: IndexedConversation[]): Promise<void> => {
+			await this.store.write(serializeIndex(items, this.provider.dim));
+			persistedEmbeds = embedded;
+		};
+
+		try {
+			for (const note of notes) {
+				processed++;
+				handled.add(note.path);
+				let chunks: string[];
+				try {
+					chunks = noteEmbedChunks(await note.load(), maxChars);
+				} catch {
+					onProgress?.(processed, total);
+					continue; // unreadable note — skip (drops it from the index if it was there)
+				}
+				if (chunks.length === 0) { onProgress?.(processed, total); continue; } // empty note
+
+				const hash = conversationContentHash(chunks);
+				const prev = existing.get(note.path);
+				if (prev && prev.contentHash === hash) {
+					kept.push(prev); // unchanged — reuse vectors, no re-embed
+					seen.add(note.path);
+				} else {
+					try {
+						const raw = await this.provider.embed(chunks);
+						kept.push({ id: note.path, contentHash: hash, chunks: raw.map(quantize) });
+						seen.add(note.path);
+						embedded++;
+						failedInARow = 0;
+					} catch (e) {
+						// ONE note must not cost the build. Before ADR-179 this threw
+						// straight out of `doSync`, so a single note the backend choked on
+						// (an embed timeout on a very long one) discarded the whole pass and
+						// did it again on every retry — the index could never become ready.
+						// Drop it, say so, carry on — until it stops looking like one bad
+						// note and starts looking like a dead backend.
+						console.warn(`[Pythia] vault RAG: skipping "${note.path}" — embed failed`, e);
+						if (++failedInARow >= MAX_CONSECUTIVE_EMBED_FAILURES) throw e;
+					}
+				}
 				onProgress?.(processed, total);
-				continue; // unreadable note — skip (drops it from the index if it was there)
+				// Flush what is embedded so far, so an interruption costs at most the
+				// last few notes instead of the entire build (ADR-179).
+				if (embedded > persistedEmbeds && processed % PERSIST_EVERY_NOTES === 0) {
+					await persist(snapshot());
+				}
+				// Cooperative yield: on the UI-thread (iframe) backend, embedding runs on the
+				// renderer thread, so hand control back — finely, with a breather (ADR-125) —
+				// so a large build never freezes the app. Off-thread, the coarse default is fine.
+				if (processed % yieldEvery === 0) await new Promise((r) => setTimeout(r, breatherMs));
 			}
-			if (chunks.length === 0) { onProgress?.(processed, total); continue; } // empty note
-
-			const hash = conversationContentHash(chunks);
-			const prev = existing.get(note.path);
-			if (prev && prev.contentHash === hash) {
-				kept.push(prev); // unchanged — reuse vectors, no re-embed
-			} else {
-				const raw = await this.provider.embed(chunks);
-				kept.push({ id: note.path, contentHash: hash, chunks: raw.map(quantize) });
-				embedded++;
-			}
-			seen.add(note.path);
-			onProgress?.(processed, total);
-			// Cooperative yield: on the UI-thread (iframe) backend, embedding runs on the
-			// renderer thread, so hand control back — finely, with a breather (ADR-125) —
-			// so a large build never freezes the app. Off-thread, the coarse default is fine.
-			if (processed % yieldEvery === 0) await new Promise((r) => setTimeout(r, breatherMs));
+		} catch (e) {
+			// Abort, unload, anything else: keep the work rather than the tidiness.
+			if (embedded > persistedEmbeds) await persist(snapshot());
+			throw e;
 		}
 
-		// Persist only when the index actually changed (an embed happened, or a note
-		// present before is gone) — avoids rewriting a large .bin on a no-op sync.
+		// Persist only when the index actually changed (an embed happened since the
+		// last flush, or a note present before is gone) — avoids rewriting a large
+		// .bin on a no-op sync.
 		const dropped = [...existing.keys()].some((id) => !seen.has(id));
 		this.items = kept;
-		if (embedded > 0 || dropped) await this.store.write(serializeIndex(this.items, this.provider.dim));
+		if (embedded > persistedEmbeds || dropped) await persist(this.items);
 		this.synced = true;
 	}
 

@@ -1,5 +1,6 @@
 import { normalizePath, type Plugin } from "obsidian";
-import { getEmbeddingBundle } from "./embeddingBundle";
+import { workerSource } from "./embeddingBundle";
+import { conversationContentHash } from "../embeddingIndex";
 
 /**
  * Write the embedding worker bundle to the plugin folder (once per version) and
@@ -14,9 +15,17 @@ import { getEmbeddingBundle } from "./embeddingBundle";
 export async function embeddingWorkerUrl(plugin: Plugin): Promise<string> {
 	const adapter = plugin.app.vault.adapter;
 	const dir = plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`;
-	const path = normalizePath(`${dir}/embedding-worker-${plugin.manifest.version}.mjs`);
+	const source = workerSource();
+	// Fingerprint the CONTENT, not just the version: the file is only written when
+	// it is absent, so a same-version rebuild (every dev iteration, and any hotfix
+	// that ships under an unchanged version) would otherwise keep serving stale
+	// worker code — including a build from before the ADR-179 prefix existed.
+	// `conversationContentHash` is a generic FNV-1a over strings despite its name;
+	// a second hash implementation here would be a second source of truth.
+	const fingerprint = conversationContentHash([source]);
+	const path = normalizePath(`${dir}/embedding-worker-${plugin.manifest.version}-${fingerprint}.mjs`);
 	if (!(await adapter.exists(path))) {
-		await adapter.write(path, getEmbeddingBundle());
+		await adapter.write(path, source);
 		// Best-effort: drop stale worker bundles from older plugin versions. A
 		// failure here leaves a few dead files behind and nothing else, which is
 		// why it is the rare catch that may stay silent.

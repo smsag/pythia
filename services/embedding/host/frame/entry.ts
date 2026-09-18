@@ -15,6 +15,18 @@ import type { EmbeddingModelConfig } from "../../../../models/embeddingModels";
 
 let model: EmbeddingModel | null = null;
 
+/**
+ * Chunks per inference call (ADR-179). 16 matches `scripts/measure-related.mjs`,
+ * so in-app throughput is finally comparable with the number ADR-169 measured.
+ *
+ * NOT paired with `truncation: true`, deliberately. Truncating to the tokenizer's
+ * `model_max_length` would change every vector longer than that window — which
+ * would silently invalidate ADR-169's MEASURED `relatedFloors` and quietly drop
+ * text that is embedded today. Chunks are sized to fit the window instead
+ * (`embedChunkChars`), which is the non-destructive half of the same fix.
+ */
+const EMBED_BATCH_SIZE = 16;
+
 function makeModel(config: EmbeddingModelConfig, reply: (m: unknown) => void): void {
 	model = new EmbeddingModel(config, (p) =>
 		reply({ type: "model-load-progress", progress: p.progress, file: p.file, loaded: p.loaded, total: p.total })
@@ -38,10 +50,11 @@ async function handle(data: { requestId?: number; texts?: string[]; ping?: boole
 			reply({ requestId, vectors: [], ready: true });
 			return;
 		}
+		const all = texts ?? [];
 		const vectors: number[][] = [];
-		for (const text of texts ?? []) {
-			const d = await model.embed(text);
-			vectors.push(d ? Array.from(d) : []);
+		for (let i = 0; i < all.length; i += EMBED_BATCH_SIZE) {
+			const batch = await model.embedBatch(all.slice(i, i + EMBED_BATCH_SIZE));
+			for (const v of batch) vectors.push(Array.from(v));
 		}
 		reply({ requestId, vectors });
 	} catch (error) {

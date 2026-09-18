@@ -6,6 +6,7 @@ import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
+import { embedChunkChars } from "../models/embeddingModels";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
 
@@ -36,6 +37,8 @@ export class VaultRagService {
 	private capWarned = false;
 	/** One-time "indexing is throttled on this device" notice per session. */
 	private throttleNoticeShown = false;
+	/** Which embedding backend actually started, once known (ADR-179). */
+	private backend: string | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -51,11 +54,20 @@ export class VaultRagService {
 		this.service = null;
 		this.status = "";
 		this.capWarned = false;
+		this.backend = null;
 	}
 
 	private ensure(): VaultIndexService {
 		const provider = this.getProvider(); // also fixes the current model id for makeStore()
-		if (!this.service) this.service = new VaultIndexService(provider, this.makeStore());
+		if (!this.service) {
+			// Chunks sized to the MODEL's token window rather than a shared 500 chars
+			// (ADR-179) — the window is a property of the model, so the chunk is too.
+			// The conversation index keeps 500 on purpose: ADR-169's floors were
+			// measured there.
+			this.service = new VaultIndexService(provider, this.makeStore(), {
+				maxChars: embedChunkChars(this.getSettings().embeddingModelId),
+			});
+		}
 		return this.service;
 	}
 
@@ -64,9 +76,12 @@ export class VaultRagService {
 		return this.service?.isReady() ?? false;
 	}
 
-	/** Human-readable index status for the settings tab. */
+	/** Human-readable index status for the settings tab, with the embedding backend
+	 *  once it is known (ADR-179) — `iframe (UI thread)` there is the single fact
+	 *  that explains a slow build, and it used to be invisible. */
 	getStatus(): string {
-		return this.status || t("vaultIndexStatusIdle");
+		const status = this.status || t("vaultIndexStatusIdle");
+		return this.backend ? `${status} ${t("vaultIndexBackend", { backend: this.backend })}` : status;
 	}
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
@@ -132,6 +147,7 @@ export class VaultRagService {
 				const provider = this.getProvider();
 				await provider.ready();
 				const offThread = provider.isOffThread?.() ?? false;
+				this.backend = provider.backend?.() ?? null;
 				const svc = this.ensure();
 
 				// UI-thread backend: don't re-embed a vault that's already indexed — that
@@ -167,7 +183,7 @@ export class VaultRagService {
 					this.status = t("vaultIndexStatusIndexing", { done: String(done), total: String(tot) });
 				}, throttle);
 				this.status = t("vaultIndexStatusReady", { count: String(notes.length) });
-				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped, offThread });
+				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped, offThread, backend: this.backend });
 			} catch (e) {
 				this.status = t("vaultIndexStatusFailed");
 				console.warn("[Pythia] vault RAG: index sync failed", e);

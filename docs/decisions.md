@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
+*Last updated: 2026-09-18 — ADR-179 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
+
+*Previously: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
 *Previously: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently).*
 
@@ -3302,3 +3304,61 @@ So the target is captured, not found:
 - A stale refusal will happen on a synced vault, and the message says which of the two reasons it was, because "nothing happened" is the failure this plugin has already been bitten by (principle 2).
 - Applying is once: the card's affordance is spent and the target disarmed. Re-arm to apply again.
 - Not built: multi-selection rewrites, and a diff view of what would change. The card shows the proposal as the answer already renders it; a real diff is a bigger piece and wants its own decision.
+
+---
+
+## ADR-179 — Embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing
+
+**Status:** Active. Supersedes part of ADR-125/126's root-cause analysis.
+
+**Context.** A field report: a 400-note vault on a MacBook Air M2, indexing "starts strong, deteriorates at roughly half," and no index was *ever* successfully built. This is the same shape as ADR-124's 311-note report, which ADR-125 and ADR-126 had each already claimed to fix. Three separate defects were compounding.
+
+**1. The Worker never started — on any desktop, for a reason nobody had looked for.**
+
+ADR-119 added a Web Worker so inference would leave the renderer thread. ADR-125 found it falling back to the UI-thread iframe and blamed `blob:` being refused on `capacitor://` origins; ADR-126 added a second, blob-free Worker started from a plugin resource path. Neither was the desktop cause.
+
+Obsidian gives desktop Workers Node access, so `process` is defined there. transformers.js 3.8.1 reads exactly this (`src/env.js:38-39`):
+
+```js
+const IS_PROCESS_AVAILABLE = typeof process !== 'undefined';
+const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
+```
+
+and on that branch `src/backends/onnx.js` binds onnxruntime-**node**, whose `supportedDevices` on macOS is `['cpu']` — so `device: "wasm"`, which this plugin always passes, is rejected outright (`Unsupported device: "wasm". Should be one of: cpu.`). The Worker never became ready. The resource-path Worker is cross-origin on desktop and fails for its own reason. **Every desktop fell through to the iframe**, which is the UI thread. The iframe worked only because Electron gives subframes no Node access — the accident that made the slowest path the only functioning one.
+
+**Decision:** hide `process` from the Worker before transformers is imported. `WORKER_ENV_PREFIX` is prepended to the bundle at the two Worker construction sites and nowhere else; the iframe gets the bundle unchanged.
+
+It cannot live in `frame/entry.ts`: an ES `import` is hoisted, so any statement there runs *after* transformers' module body has read `process`. The esbuild pass emits a self-contained ESM bundle with no remaining top-level imports (asserted), so a textual prefix genuinely runs first. It uses `Object.defineProperty` inside a `try`, not an assignment: the bundle is a module and therefore strict, where assigning to a non-writable global throws — which would kill the Worker at statement zero and look exactly like the bug being fixed. A non-configurable `process` makes `defineProperty` throw too, and is caught, so the chain still falls through to the iframe. **The fix can only move embedding off the UI thread; it cannot take it down.**
+
+**2. The build degraded because nothing bounded the WASM heap.**
+
+Every chunk was embedded in its own inference call at its own sequence length. onnxruntime-web allocates an execution plan and arena per distinct shape, and WASM linear memory only ever grows, so each `memory.grow` copied a larger heap than the last — a progressive slowdown, not a cliff, which is what "deteriorates at roughly half" describes.
+
+**Decision:** embed in batches of 16 with `padding: true`. Padding collapses a batch to one shape and cuts both the distinct-shape count and the number of calls by the batch size. 16 matches `scripts/measure-related.mjs`, so in-app throughput is finally comparable with ADR-169's measured ~4 chunks/s — which was measured *batched*, while production was not, so the real cold-build cost was always worse than the number that already read as "unusable".
+
+**`truncation: true` was deliberately NOT taken**, though it would bound the shape space harder. It would change every vector longer than the tokenizer's window, which would silently invalidate ADR-169's **measured** `relatedFloors` and drop text that is embedded today. Chunks are sized to fit the window instead (below) — the non-destructive half of the same fix. Padding with an attention mask is mathematically neutral for mean pooling, so batching changes no vector, which is what let it ship without re-measuring.
+
+**3. `maxTokens` was declared on every model and read by nothing.**
+
+Both indexes chunked at a hardcoded 500 chars — ~150 tokens of German against the default multilingual model's 128-token window, and only ~60% of the English model's 256.
+
+**Decision:** `embedChunkChars(id)` derives the chunk from `maxTokens` at a pessimistic 3.3 chars/token. Applied to the **vault index only**. The conversation index stays at 500 on purpose: ADR-169's floors were measured at that chunk size, and moving it moves the distribution they are calibrated against (D-13/D-14).
+
+**4. The build persisted once, after the last note.**
+
+`doSync` wrote a single time, at the end. Anything that stopped a build — a quit, a plugin reload, a renderer crash, one note throwing — discarded every vector computed in that pass. Combined with a build that could no longer finish, this is the whole of "no index was ever successful": not slow progress across sessions, but zero progress, forever. `ConversationIndexService` commits on abort, but a crash is not an abort, so "resumable" has to mean *already on disk*.
+
+**Decision:** persist every 25 notes, and on the way out of a failure before rethrowing. A mid-build snapshot is what the pass has rebuilt *plus* the not-yet-reached notes whose vectors are still valid — persisting only the former would make every interrupted build delete the tail of its own index.
+
+A failing note is also skipped rather than fatal, so one huge note can no longer cost the build. **But five consecutive failures rethrow**: skipping blindly turns an unloaded provider into a "successful" build that indexed almost nothing and then reported itself ready. One note failing is data; five in a row is the runtime.
+
+**5. The chain was silent about which backend it landed on.**
+
+This is why a desktop-wide fallback to the UI thread survived three ADRs. `FallbackEmbeddingProvider` now reports the backend that actually started — `worker (blob)` · `worker (resource)` · `iframe (UI thread)` — once, to the debug log and to the vault-index status line in settings. The `numThreads = 1` guard in `model.ts`, which is the fix for a known hard renderer crash (ADR-119), gained the `else` it never had: if `env.backends.onnx.wasm` is absent the guard did not apply, and that must be reportable rather than inferred. It is reachable exactly when transformers resolves to the Node backend — the case this ADR removes.
+
+**Consequences.**
+- **The vault index rebuilds once**, because the chunk size changed and content hashes with it. Free for anyone whose build never completed; a one-time cost otherwise. The conversation index is untouched.
+- The resource-path worker file is now fingerprinted by content, not just plugin version, so a same-version rebuild can no longer serve stale worker code.
+- ADR-125's UI-thread throttle and `hydrateForQuery` stay. They are still correct where the iframe really is the only option, and this change is not the moment to delete a fallback.
+- **Not verifiable headlessly.** The prefix's position, its strict-mode and non-configurable behaviour, the crash-safe persistence and the chunk sizing are unit-tested; that transformers then actually runs its WASM runtime inside a Node-enabled desktop Worker needs Obsidian. If it does not, the iframe still catches it and the new log line says so.
+- **Deferred:** recycling the backend every N notes as a hard ceiling on the heap (ADR-125 named it and left it). Batching should make it unnecessary; the log line and a heap measurement are the evidence that would justify it.

@@ -17,4 +17,16 @@ export interface EmbeddingProvider {
 	 *  on some desktop builds). Meaningful only after `ready()` resolves; callers that
 	 *  can't await treat `undefined`/absent as "not off-thread" and throttle. */
 	isOffThread?(): boolean;
+	/** Which backend actually started, once `ready()` has resolved (ADR-179).
+	 *
+	 *  `isOffThread()` answers yes/no; this answers WHICH, because "no" has two very
+	 *  different causes (blob refused vs. the Worker runtime rejecting `wasm`) and a
+	 *  silent fallback is what hid ADR-179's bug for three ADRs. `null` before the
+	 *  chain has resolved. */
+	backend?(): EmbeddingBackend | null;
 }
+
+/** The three backends `FallbackEmbeddingProvider` can land on, in the order it
+ *  tries them. Diagnostic identifiers, deliberately readable as-is so a debug log
+ *  and a settings line can both print them without a translation table. */
+export type EmbeddingBackend = "worker (blob)" | "worker (resource)" | "iframe (UI thread)";
