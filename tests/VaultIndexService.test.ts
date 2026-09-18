@@ -451,3 +451,42 @@ describe("VaultIndexService — persist throttling (ADR-179)", () => {
 		expect(svc.size()).toBeGreaterThan(0);
 	});
 });
+
+describe("VaultIndexService — failure streak (ADR-179)", () => {
+	class PoisonProvider extends FakeProvider {
+		constructor(private readonly poison: string) { super(); }
+		async embed(texts: string[]): Promise<Float32Array[]> {
+			if (texts.some((t) => t.includes(this.poison))) throw new Error("embed failed");
+			return super.embed(texts);
+		}
+	}
+
+	it("five bad notes SCATTERED through an unchanged vault do not abort the build", async () => {
+		// The streak must reset on a note whose vectors are REUSED, not only on a
+		// successful embed. Otherwise five bad notes anywhere in a mostly-unchanged
+		// vault trip the dead-backend guard and the build never completes — which is
+		// the original bug, reinstated by its own safety valve.
+		const store = new MemStore();
+		const settled = Array.from({ length: 20 }, (_, i) => note(`Notes/s${i}.md`, `settled ${i} alpha`));
+		await new VaultIndexService(new FakeProvider(), store, { persistIntervalMs: 0 }).sync(settled);
+
+		// Interleave 5 notes that always fail among the 20 unchanged ones.
+		const withPoison: IndexableNote[] = [];
+		settled.forEach((n, i) => {
+			withPoison.push(n);
+			if (i % 4 === 0) withPoison.push(note(`Notes/bad${i}.md`, "poison content"));
+		});
+		const svc = new VaultIndexService(new PoisonProvider("poison"), store, { persistIntervalMs: 0 });
+		await expect(svc.sync(withPoison)).resolves.toBeUndefined();
+		expect(svc.isReady()).toBe(true);
+		expect(svc.size()).toBe(20); // the 20 good notes kept, the 5 bad ones dropped
+	});
+
+	it("but five bad notes IN A ROW still stop the build", async () => {
+		const store = new MemStore();
+		const notes = Array.from({ length: 8 }, (_, i) => note(`Notes/b${i}.md`, "poison content"));
+		const svc = new VaultIndexService(new PoisonProvider("poison"), store, { persistIntervalMs: 0 });
+		await expect(svc.sync(notes)).rejects.toThrow();
+		expect(svc.isReady()).toBe(false);
+	});
+});

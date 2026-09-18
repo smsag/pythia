@@ -332,7 +332,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					});
 			});
 
-		renderEmbeddingSettings(containerEl, this.plugin);
+		renderEmbeddingSettings(containerEl, this.plugin, (commit) => this.numberCommits.push(commit));
 
 		new Setting(containerEl)
 			.setName(t("customInstructionsName"))

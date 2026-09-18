@@ -105,7 +105,7 @@ export class VaultRagService {
 		const q = query.trim();
 		if (!q) return [];
 
-		this.refresh(); // background build/refresh — never awaited
+		this.refresh(); // background FIRST build only — never awaited; no-op once ready
 
 		const svc = this.ensure();
 		if (!svc.isReady()) {
@@ -135,8 +135,14 @@ export class VaultRagService {
 	 *  THROTTLED (fine yields + a breather) so it never freezes the app, and an
 	 *  already-populated index is served as-is rather than re-embedded each session
 	 *  (ADR-125). Incremental edits keep it fresh via `applyChanges`. */
-	refresh(): void {
+	refresh(opts: { force?: boolean } = {}): void {
 		if (this.syncing) return;
+		// A BUILT index is kept fresh by the watcher's targeted `applyChanges`
+		// (ADR-121), so re-running a whole-corpus scan on every turn re-paid the
+		// exact cost that ADR removed: reading, chunking and hashing every in-scope
+		// note, on the host thread, per send — plus a "Building the vault index…"
+		// notice flashing each time. `reindex` passes `force`.
+		if (!opts.force && this.isReady()) return;
 		this.syncing = true;
 		void (async () => {
 			const startedAt = Date.now();
@@ -232,7 +238,7 @@ export class VaultRagService {
 		} catch (e) {
 			console.warn("[Pythia] vault RAG: clear failed", e);
 		}
-		this.refresh();
+		this.refresh({ force: true }); // an explicit rebuild is the one caller that always runs
 	}
 
 	/** Notes to index as LAZY refs (path + content loader): the configured folders

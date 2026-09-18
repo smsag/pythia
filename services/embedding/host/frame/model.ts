@@ -6,6 +6,7 @@
 
 import { env, pipeline, type ProgressInfo } from "@huggingface/transformers";
 import type { EmbeddingModelConfig } from "../../../../models/embeddingModels";
+import { sliceBatch } from "./batchSlice";
 
 env.allowLocalModels = false;
 
@@ -135,19 +136,7 @@ export class EmbeddingModel {
 						normalize: true,
 						padding: true,
 					});
-					// A pooled batch is [batch, dim]; a single input may come back as
-					// [dim] or [1, dim]. Read the dim off the tail either way.
-					const dim = result.dims[result.dims.length - 1];
-					// Fail HERE if the batch came back short. Slicing past the end yields
-					// zero-length vectors, which survive all the way to `serializeIndex`
-					// and surface as "chunk dim 0 != 384" — an error that names neither
-					// the batch nor the model (principle 2).
-					if (!dim || result.data.length < inputs.length * dim) {
-						throw new Error(
-							`embed: batch of ${inputs.length} returned ${result.data.length} values at dim ${dim}`
-						);
-					}
-					resolve(inputs.map((_, i) => result.data.slice(i * dim, (i + 1) * dim)));
+					resolve(sliceBatch(result.data, result.dims, inputs.length));
 				} catch (err) {
 					reject(err instanceof Error ? err : new Error(String(err)));
 				}

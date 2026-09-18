@@ -273,9 +273,11 @@ export class VaultIndexService {
 		// has not reached yet whose vectors are still valid. Persisting only `kept`
 		// would make every interrupted build delete the tail of its own index.
 		//
-		// Reads `existing` — captured once, before the loop — and NOT `this.items`,
-		// which `persist` reassigns. Reading the live field would make each snapshot
-		// include the previous one's `kept` and duplicate every note.
+		// Reads `existing` — captured once, before the loop — rather than `this.items`,
+		// which `persist` reassigns. The two are equivalent today (everything in
+		// `kept` is also in `handled`, so the filter drops it either way); `existing`
+		// is immutable for the length of the build, so the snapshot cannot depend on
+		// what `persist` happens to do to the live field. Belt and braces, not a fix.
 		const snapshot = (): IndexedConversation[] => [
 			...kept,
 			...[...existing.values()].filter((i) => !handled.has(i.id) && desired.has(i.id)),
