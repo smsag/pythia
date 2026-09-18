@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-172 (the limit archives before it deletes, and "no limit" is an empty box: eviction now writes each conversation to a vault note first and keeps any whose note fails, and the magic 0 leaves the settings field).*
+*Last updated: 2026-09-18 — ADR-173 (the delete dialog offers the archive: Archive · Delete · Cancel, a choice at the one moment anyone knows whether this conversation mattered, fail-closed like the automatic archive).*
+
+*Previously: 2026-09-18 — ADR-172 (the limit archives before it deletes, and "no limit" is an empty box: eviction now writes each conversation to a vault note first and keeps any whose note fails, and the magic 0 leaves the settings field).*
 
 *Previously: 2026-09-18 — ADR-171 (a number being typed is not a setting, and lowering the conversation cap is a deletion: per-keystroke commits meant lowering the limit from 200 to 0 stored 20 and then 2 on the way, and `persist()` evicted on every write — so a settings keystroke deleted every conversation without a favorite).*
 
@@ -3108,3 +3110,26 @@ The vault is the durable store; `data.json` is a working file. Making eviction a
 - Typing `0` still parses and still means no limit; the field normalizes itself to empty on commit, so the magic number cannot be *read back* even when it can be typed.
 - `settings.ts` crossed its ceiling twice during this change and was extracted twice: `ui/conversationCapSetting.ts` now owns the field, its dialog and the empty-box rule. 565 → 528 lines across ADR-171/172.
 - Not done: **an explicit delete is still an explicit delete.** `DeleteConversationModal` does not archive — the user asked for that one, and filling the vault with notes for deliberate deletions is a different feature with a different default.
+
+---
+
+### ADR-173 — The delete dialog offers the archive
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #293
+
+**Context.** ADR-172 made the *automatic* eviction archive first. That left `DeleteConversationModal` as the only remaining path that destroys a conversation with no copy anywhere — and ADR-172 argued for leaving it alone, on the grounds that a deliberate delete is intent and that filling the vault with notes for deliberate deletions is a different feature.
+
+Half of that still holds: it should not be automatic. The other half was wrong. "The user meant it" answers whether to ask; it does not answer *what to offer*. The moment of deleting is the only moment anyone knows whether this particular conversation mattered, and that is exactly when the cheapest possible save is worth one button.
+
+**Decision.** Three buttons: **Archive** (`mod-cta`, leading) · **Delete** (`mod-warning`) · **Cancel**, with a hint line naming the folder. Archive writes the note and then removes the conversation; Delete removes it as before.
+
+- **It is a choice, not a setting.** `archiveBeforeEviction` governs the automatic path, where nobody is present to be asked. Here somebody is, so the dialog asks rather than remembering a preference the user set months ago for a different conversation.
+- **Both are one tap.** A safe option that costs an extra step (a checkbox to tick first, a second confirmation) is one people learn to skip, which would leave the dialog's safe path unused and the appearance of safety in its place.
+- **Fail-closed, the same rule as the eviction.** `ConversationService.archiveConversation` returns `false` when the note could not be written, having already said why; the caller then does not delete. The conversation stays, which is the only acceptable outcome when the copy does not exist.
+- **`archiveFolderOf(settings)`** now resolves the folder for all three callers (the eviction, the limit's dialog, this one). It was written out twice during ADR-172 and would have been three times here — the fallback for a cleared setting is one fact.
+
+**Consequences.**
+- Deleting is now a two-option decision, so the dialog is a beat slower to read. Acceptable: it is the one dialog in the plugin whose wrong answer cannot be undone.
+- The archive folder can now grow from deliberate deletions too. Still Obsidian's problem to search and the user's to prune (engineering-review #294 is the readout that would make its size visible).
+- No new setting. If "always archive on delete" turns out to be what people want, the dialog's own usage is the evidence for it, and a remembered default can be added later without changing the two actions.

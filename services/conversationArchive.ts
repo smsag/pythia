@@ -1,4 +1,6 @@
 import type { Conversation } from "../models/types";
+import type { PythiaSettings } from "../models/settings";
+import { DEFAULT_SETTINGS } from "../models/settings";
 import { stripCitationMarkers } from "./citations";
 import { formatDate, formatClockTime } from "./messageUtils";
 import { safeNoteName, yamlString } from "./pathUtils";
@@ -13,6 +15,13 @@ import { safeNoteName, yamlString } from "./pathUtils";
  * (ADR-171) — the vault is where the content survives once `data.json` no
  * longer holds it.
  */
+
+/** The folder archives are written to, with the default standing in for a
+ *  cleared setting. Three callers read it (the eviction, the limit's dialog and
+ *  the delete dialog) and none of them owns the fallback. */
+export function archiveFolderOf(settings: PythiaSettings): string {
+	return settings.archiveFolder || DEFAULT_SETTINGS.archiveFolder;
+}
 
 /** ISO date (YYYY-MM-DD) for the note's file name and frontmatter. */
 function isoDate(iso: string | undefined): string {

@@ -1,6 +1,6 @@
 import { Setting, TextComponent } from "obsidian";
 import type PythiaPlugin from "../main";
-import { DEFAULT_SETTINGS } from "../models/settings";
+import { archiveFolderOf } from "../services/conversationArchive";
 import { ConversationCapModal } from "../suggest/ConversationCapModal";
 import { bindNumberSetting } from "./numberSetting";
 import { t } from "../i18n";
@@ -58,9 +58,7 @@ function applyCap(plugin: PythiaPlugin, deps: CapSettingDeps, cap: number, text:
 		text.setValue(capFieldValue(cap));
 		return;
 	}
-	const folder = plugin.settings.archiveBeforeEviction
-		? (plugin.settings.archiveFolder || DEFAULT_SETTINGS.archiveFolder)
-		: null;
+	const folder = plugin.settings.archiveBeforeEviction ? archiveFolderOf(plugin.settings) : null;
 	new ConversationCapModal(
 		plugin.app,
 		doomed,

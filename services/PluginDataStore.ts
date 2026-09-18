@@ -6,6 +6,7 @@ import { t } from "../i18n";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 import { debugLog } from "./messageUtils";
 import { describeErrorForLog } from "./redact";
+import { archiveFolderOf } from "./conversationArchive";
 import {
 	applySettingsMigrations,
 	mergeSettings,
@@ -199,7 +200,7 @@ export class PluginDataStore {
 				new Notice(t("evictedNotice", { count: String(removed.length) }), 8000);
 				return kept;
 			}
-			const folder = p.settings.archiveFolder || DEFAULT_SETTINGS.archiveFolder;
+			const folder = archiveFolderOf(p.settings);
 			const failed: Conversation[] = [];
 			for (const conv of removed) {
 				try {

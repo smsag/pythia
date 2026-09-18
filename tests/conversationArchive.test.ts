@@ -96,3 +96,12 @@ describe("archiveNoteContent", () => {
 		expect(note).toContain("# Mietvertrag: Nebenkosten");
 	});
 });
+
+describe("archiveFolderOf", () => {
+	it("uses the setting, and the default when it was cleared", async () => {
+		const { archiveFolderOf } = await import("../services/conversationArchive");
+		const { DEFAULT_SETTINGS } = await import("../models/settings");
+		expect(archiveFolderOf({ ...DEFAULT_SETTINGS, archiveFolder: "Archiv" })).toBe("Archiv");
+		expect(archiveFolderOf({ ...DEFAULT_SETTINGS, archiveFolder: "" })).toBe(DEFAULT_SETTINGS.archiveFolder);
+	});
+});

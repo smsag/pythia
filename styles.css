@@ -2815,6 +2815,9 @@ body.is-phone .workspace-drawer .p-input-area {
   gap: 8px;
   margin-top: 16px;
   justify-content: flex-end;
+  /* Three buttons since ADR-173 (Archive · Delete · Cancel): on a narrow phone
+     they wrap instead of squeezing the labels to an unreadable width. */
+  flex-wrap: wrap;
 }
 
 .pythia-modal-hint {

@@ -38,7 +38,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
-    conversationArchive.ts    ← pure: archiveNotePath (never a taken path) + archiveNoteContent — a conversation as a vault note, written before the limit removes it (ADR-172)
+    conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
@@ -82,7 +82,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1188 tests across 76 files
+  tests/                      ← Vitest unit tests (npm test) — 1192 tests across 77 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -487,6 +487,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 
 - **The limit archives before it deletes, and the order is the rule** (ADR-172). `applyCap` writes each removed conversation to a note through `NoteWriter.archiveConversationNote`, and drops **only what was written** — a failed write keeps the conversation and leaves the list over the cap. Never reorder this into drop-then-archive, and never let a failure fall through to the delete
 - **`archiveBeforeEviction` is ON by default.** The user this protects is the one who never opens the settings. `createNote` (which refuses an existing path) plus `archiveNotePath`'s suffixing means the archive can never overwrite a note — two conversations may share a name and a day
+- **The delete dialog offers it too** (ADR-173): `Archive` (`mod-cta`, leading) · `Delete` · `Cancel`, both one tap. A choice in the dialog, never a remembered setting — `archiveBeforeEviction` is for the automatic path, where nobody is present to be asked. `ConversationService.archiveConversation` returns false when the note could not be written, and the caller then does **not** delete
 - **Every eviction outcome speaks**: archived · removed-because-archiving-is-off · could-not-archive, each a `Notice`. Silent eviction is the bug these two ADRs are about
 - **"No limit" is an empty field, not 0** (ADR-172). `0` stays the stored form; `capFieldValue` and the field's `read` in `ui/conversationCapSetting.ts` are the only two places that know it. The message cap follows the same convention — never let one pane carry two "unlimited" spellings
 - **`maxConversations` deletes conversations. It is not a cache size.** Only `saveConversations()` applies it: `persist({ evict })` defaults to **off**, so a settings write or a secret write can never evict. Never flip that default back

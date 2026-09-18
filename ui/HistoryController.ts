@@ -6,6 +6,7 @@ import { conversationCost, formatCost } from "../models/modelPricing";
 import { abbreviateModel } from "../models/knownModels";
 import { formatMonthYear } from "../services/messageUtils";
 import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
+import { archiveFolderOf } from "../services/conversationArchive";
 import {
 	buildConversationFields,
 	searchConversations,
@@ -72,7 +73,7 @@ export class HistoryController {
 			new Notice(t("cannotDeleteWhileStreaming"));
 			return;
 		}
-		new DeleteConversationModal(this.d.plugin.app, conv, async () => {
+		const remove = async (): Promise<void> => {
 			await this.d.plugin.conversationStore.delete(conv.id);
 			new Notice(t("conversationDeleted"));
 			if (this.d.getConversation()?.id === conv.id) {
@@ -84,6 +85,15 @@ export class HistoryController {
 				}
 			}
 			onDone?.();
+		};
+		new DeleteConversationModal(this.d.plugin.app, conv, {
+			onDelete: () => void remove(),
+			// The note first: a failed write leaves the conversation where it is,
+			// and `archiveConversation` has already said why (ADR-173).
+			onArchive: () => void (async () => {
+				if (await this.d.plugin.archiveConversation(conv)) await remove();
+			})(),
+			archiveFolder: archiveFolderOf(this.d.plugin.settings),
 		}).open();
 	}
 

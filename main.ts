@@ -567,6 +567,8 @@ export default class PythiaPlugin extends Plugin {
 		this.viewManager.getSidebarView()?.refreshInstructions();
 	}
 	saveConversations(): Promise<void> { return this.pluginDataStore.saveConversations(); }
+	/** Archive one conversation; false = not written, so do not delete it (ADR-173). */
+	archiveConversation(conv: Conversation): Promise<boolean> { return this.conversationService.archiveConversation(conv); }
 	/** How many conversations a lower history limit would delete (ADR-171). */
 	pendingEvictionCount(cap: number): number { return this.pluginDataStore.pendingEvictionCount(cap); }
 
