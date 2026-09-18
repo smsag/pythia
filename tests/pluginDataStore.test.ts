@@ -22,15 +22,20 @@ const makeConv = (id: string, updatedAt = "2026-01-01T00:00:00.000Z"): Conversat
 	favorites: [],
 });
 
-const makePlugin = (cap: number) => ({
+const makePlugin = (cap: number, over: Record<string, unknown> = {}) => ({
 	conversations: [
 		makeConv("a", "2026-01-01T00:00:00.000Z"),
 		makeConv("b", "2026-02-01T00:00:00.000Z"),
 		makeConv("c", "2026-03-01T00:00:00.000Z"),
 	],
-	settings: { maxConversations: cap },
+	settings: { maxConversations: cap, archiveBeforeEviction: false, archiveFolder: "Pythia/Archive" },
 	saveData: vi.fn().mockResolvedValue(undefined),
+	noteWriter: {
+		archiveConversationNote: vi.fn().mockResolvedValue("Pythia/Archive/x.md"),
+		updateSettings: vi.fn(),
+	},
 	app: { workspace: { getLeavesOfType: () => [] } },
+	...over,
 });
 
 let plugin: ReturnType<typeof makePlugin>;
@@ -73,6 +78,61 @@ describe("PluginDataStore.pendingEvictionCount", () => {
 		expect(store.pendingEvictionCount(3)).toBe(0);
 		expect(store.pendingEvictionCount(0)).toBe(0);
 		// Reading the count must not itself delete anything.
+		expect(plugin.conversations).toHaveLength(3);
+	});
+});
+
+// ── the archive (ADR-172) ─────────────────────────────────────────────────────
+
+describe("PluginDataStore — archive before eviction", () => {
+	it("writes a note for every conversation it removes", async () => {
+		plugin = makePlugin(1);
+		plugin.settings.archiveBeforeEviction = true;
+		store = new PluginDataStore(plugin as never);
+
+		await store.saveConversations();
+
+		expect(plugin.noteWriter.archiveConversationNote).toHaveBeenCalledTimes(2);
+		const archived = plugin.noteWriter.archiveConversationNote.mock.calls.map((c) => c[0].id);
+		expect(archived.sort()).toEqual(["a", "b"]);
+		expect(plugin.noteWriter.archiveConversationNote.mock.calls[0][1]).toBe("Pythia/Archive");
+		expect(plugin.conversations.map((c) => c.id)).toEqual(["c"]);
+	});
+
+	it("KEEPS a conversation whose note could not be written", async () => {
+		// The whole point of the archive: a failed write must never become a
+		// deletion. The list stays over the cap until the vault can be written.
+		plugin = makePlugin(1);
+		plugin.settings.archiveBeforeEviction = true;
+		plugin.noteWriter.archiveConversationNote = vi.fn()
+			.mockRejectedValueOnce(new Error("vault is read-only"))
+			.mockResolvedValue("Pythia/Archive/b.md");
+		store = new PluginDataStore(plugin as never);
+
+		await store.saveConversations();
+
+		expect(plugin.conversations.map((c) => c.id)).toEqual(["a", "c"]);
+		expect(plugin.saveData).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not write notes when the setting is off", async () => {
+		plugin = makePlugin(1);
+		store = new PluginDataStore(plugin as never);
+
+		await store.saveConversations();
+
+		expect(plugin.noteWriter.archiveConversationNote).not.toHaveBeenCalled();
+		expect(plugin.conversations.map((c) => c.id)).toEqual(["c"]);
+	});
+
+	it("archives nothing when the cap is not exceeded, and nothing at no limit", async () => {
+		plugin = makePlugin(0);
+		plugin.settings.archiveBeforeEviction = true;
+		store = new PluginDataStore(plugin as never);
+
+		await store.saveConversations();
+
+		expect(plugin.noteWriter.archiveConversationNote).not.toHaveBeenCalled();
 		expect(plugin.conversations).toHaveLength(3);
 	});
 });

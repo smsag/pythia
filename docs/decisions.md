@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-171 (a number being typed is not a setting, and lowering the conversation cap is a deletion: per-keystroke commits meant lowering the limit from 200 to 0 stored 20 and then 2 on the way, and `persist()` evicted on every write — so a settings keystroke deleted every conversation without a favorite).*
+*Last updated: 2026-09-18 — ADR-172 (the limit archives before it deletes, and "no limit" is an empty box: eviction now writes each conversation to a vault note first and keeps any whose note fails, and the magic 0 leaves the settings field).*
+
+*Previously: 2026-09-18 — ADR-171 (a number being typed is not a setting, and lowering the conversation cap is a deletion: per-keystroke commits meant lowering the limit from 200 to 0 stored 20 and then 2 on the way, and `persist()` evicted on every write — so a settings keystroke deleted every conversation without a favorite).*
 
 *Previously: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
 
@@ -3074,3 +3076,35 @@ The failure needed all three, but each is wrong on its own terms. Eviction is a 
 - `parseNumberSetting` rejects rather than clamps, so a field that is temporarily out of range simply snaps back on blur. Rejecting with no message is acceptable here only because the stored value reappears in the field — the user sees that the entry did not take (principle 2: silence is a bug).
 - Not done, deliberately: **the default limit is still 200 and eviction is still silent when reached through normal use.** A conversation deleted because the 201st arrived gets no more warning today than it did before. The honest options are a much higher default, an archive-to-note step before deleting, or unlimited by default with a size warning — a product decision, recorded as engineering-review #291, not smuggled in with a bug fix.
 
+
+---
+
+### ADR-172 — The limit archives before it deletes, and "no limit" is an empty box
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #292, which ADR-171 deliberately left open
+
+**Context.** ADR-171 stopped the conversation cap from deleting while a number was being typed. It did not change what the cap *is*: at 200 conversations, the 201st still deleted the oldest unstarred one, permanently, with nothing said and nothing left. Two things were wrong with that, and one with how the limit was expressed.
+
+**Decision 1 — a conversation is written to the vault before it is dropped.**
+`archiveBeforeEviction` (**on by default**) and `archiveFolder` (`Pythia/Archive`). `NoteWriter.archiveConversationNote` writes one note per conversation: frontmatter Obsidian can query (`type`, `conversation`, `created`, `updated`, `provider`, `model`, `messages`, `archived`, `source` deep link, `context`) and the full transcript under `## You` / `## Pythia` headings, citation markers stripped. The builders are pure (`services/conversationArchive.ts`) and tested.
+
+The vault is the durable store; `data.json` is a working file. Making eviction a **move** rather than a loss is what turns the cap back into a housekeeping setting — and it is why the default is on. A user who never opens the settings is exactly the user this protects.
+
+**The order is the decision.** `applyCap` archives first and drops only what was written:
+
+- a failed write **keeps** the conversation (`data.json` stays over the cap until the vault can be written — the right way round for a limit whose only job is to save space),
+- `archiveConversationNote` goes through `createNote`, which refuses an existing path, and `archiveNotePath` suffixes until the path is free: two conversations may share a name and a day, and overwriting one with the other would destroy exactly what the archive exists to preserve,
+- **both outcomes speak.** Archived, deleted-because-archiving-is-off, and could-not-archive each raise a `Notice`. Silent eviction is the bug this pair of ADRs is about (principle 2).
+- One eviction at a time (`evicting` flag): `persist` can be re-entered while the archive is writing, and the second pass would archive the same conversation twice.
+
+`partitionEvictions` returns `{ kept, removed }` and is now the one rule — `evictConversations` and `countEvictions` are both expressed through it, so the archive writes exactly the conversations the dialog counted and the eviction drops.
+
+**Decision 2 — "no limit" is an empty field, not the number 0.** `maxConversations === 0` remains the stored form (no migration, and `evictConversations` already treats `cap <= 0` as unlimited), but the settings field shows **an empty box** for it, with a `no limit` placeholder. A value the user has to know means "unlimited" is a magic number: the reporter in ADR-171 typed exactly that, correctly, and lost their conversations on the way to it. The two representations meet in one place — `capFieldValue` and the field's `read` in `ui/conversationCapSetting.ts` — and nowhere else. The message cap gets the same treatment, because two "unlimited" conventions in one settings pane would be worse than either.
+
+**Consequences.**
+- The cap now costs vault I/O when it fires. It fires rarely (once per conversation past the limit), and the write is one note.
+- The archive folder grows without bound by design. That is the point: it is Obsidian's problem now, in a format Obsidian can search, and it is the user's to prune.
+- Typing `0` still parses and still means no limit; the field normalizes itself to empty on commit, so the magic number cannot be *read back* even when it can be typed.
+- `settings.ts` crossed its ceiling twice during this change and was extracted twice: `ui/conversationCapSetting.ts` now owns the field, its dialog and the empty-box rule. 565 → 528 lines across ADR-171/172.
+- Not done: **an explicit delete is still an explicit delete.** `DeleteConversationModal` does not archive — the user asked for that one, and filling the vault with notes for deliberate deletions is a different feature with a different default.

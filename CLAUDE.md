@@ -37,7 +37,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
-    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, evictConversations, countEvictions (ADR-171)
+    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
+    conversationArchive.ts    ← pure: archiveNotePath (never a taken path) + archiveNoteContent — a conversation as a vault note, written before the limit removes it (ADR-172)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
@@ -76,11 +77,12 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
+    conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1174 tests across 75 files
+  tests/                      ← Vitest unit tests (npm test) — 1188 tests across 76 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -481,8 +483,12 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **An empty reply always says something** (`noticeEmptyReply`). An empty *truncated* reply names the budget — that is the reasoning-model case
 - Model rows show `MODEL_PROFILE` tiers (speed · depth · cost, 1–3) — tiers, not prices; the test requires one per catalog entry
 
-### The conversation history limit (ADR-171)
+### The conversation history limit (ADR-171/172)
 
+- **The limit archives before it deletes, and the order is the rule** (ADR-172). `applyCap` writes each removed conversation to a note through `NoteWriter.archiveConversationNote`, and drops **only what was written** — a failed write keeps the conversation and leaves the list over the cap. Never reorder this into drop-then-archive, and never let a failure fall through to the delete
+- **`archiveBeforeEviction` is ON by default.** The user this protects is the one who never opens the settings. `createNote` (which refuses an existing path) plus `archiveNotePath`'s suffixing means the archive can never overwrite a note — two conversations may share a name and a day
+- **Every eviction outcome speaks**: archived · removed-because-archiving-is-off · could-not-archive, each a `Notice`. Silent eviction is the bug these two ADRs are about
+- **"No limit" is an empty field, not 0** (ADR-172). `0` stays the stored form; `capFieldValue` and the field's `read` in `ui/conversationCapSetting.ts` are the only two places that know it. The message cap follows the same convention — never let one pane carry two "unlimited" spellings
 - **`maxConversations` deletes conversations. It is not a cache size.** Only `saveConversations()` applies it: `persist({ evict })` defaults to **off**, so a settings write or a secret write can never evict. Never flip that default back
 - **Lowering the limit asks first.** `ConversationCapModal` names the count from `countEvictions` — read from `evictConversations` itself, never a second copy of its protection rules — and what survives (starred · open in a leaf · merge target). Escape and the outside press are "no"; a cancelled dialog restores the stored number in the field
 - **No numeric settings field commits per keystroke.** `onChange` fires per character, so lowering "200" to "0" passes through 20 and 2 — that is what deleted a vault's conversations. Every numeric field goes through `bindNumberSetting` (`ui/numberSetting.ts`), which commits on blur or Enter and restores the stored value on a rejected entry; `PythiaSettingTab.hide()` flushes the field the user is standing in, because closing the tab destroys the input before `blur` fires. `settings.ts` holds no `parseInt`, and a new field is a rule object, not another hand-rolled parse

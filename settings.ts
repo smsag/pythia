@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, SecretComponent, Setting, TextComponent, TFolder } from "obsidian";
+import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidian";
 import type PythiaPlugin from "./main";
 import type { Provider, EffortLevel, OutputLanguage } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
@@ -9,7 +9,7 @@ import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import { renderPricingSettings } from "./ui/pricingSettings";
 import { bindNumberSetting } from "./ui/numberSetting";
-import { ConversationCapModal } from "./suggest/ConversationCapModal";
+import { renderConversationCapSetting } from "./ui/conversationCapSetting";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -21,6 +21,9 @@ import { DEFAULT_MAX_TOKENS } from "./services/promptConstants";
 // that service modules can import them without pulling in the Obsidian UI layer.
 export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
 import type { PythiaSettings } from "./models/settings";
+
+/** The settings a folder picker can set. */
+type FolderSettingKey = "templatesFolder" | "conversationsFolder" | "scratchFolder" | "archiveFolder";
 
 /** The settings a plain on/off toggle can flip. */
 type BooleanSettingKey = { [K in keyof PythiaSettings]-?: PythiaSettings[K] extends boolean ? K : never }[keyof PythiaSettings];
@@ -291,21 +294,20 @@ export class PythiaSettingTab extends PluginSettingTab {
 			.setName(t("messageCapName"))
 			.setDesc(t("messageCapDesc"))
 			.addText((text) => {
-				text.setPlaceholder("100");
-				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
-					read: () => this.plugin.settings.maxMessagesPerSession,
-					write: (n) => { this.plugin.settings.maxMessagesPerSession = n; this.saveSoon(); } }));
+				// Empty = no limit, like the conversation cap below it (ADR-172).
+				text.setPlaceholder(t("noLimitPlaceholder"));
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0, allowEmpty: true },
+					read: () => (this.plugin.settings.maxMessagesPerSession > 0 ? this.plugin.settings.maxMessagesPerSession : undefined),
+					write: (n) => { this.plugin.settings.maxMessagesPerSession = n ?? 0; this.saveSoon(); } }));
 			});
 
-		new Setting(containerEl)
-			.setName(t("maxConversationsName"))
-			.setDesc(t("maxConversationsDesc"))
-			.addText((text) => {
-				text.setPlaceholder("200");
-				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
-					read: () => this.plugin.settings.maxConversations,
-					write: (n) => this.applyConversationCap(n, text) }));
-			});
+		renderConversationCapSetting(containerEl, this.plugin, {
+			register: (commit) => this.numberCommits.push(commit),
+			saveSoon: this.saveSoon,
+		});
+
+		this.addToggle(containerEl, t("archiveBeforeEvictionName"), t("archiveBeforeEvictionDesc"), "archiveBeforeEviction");
+		this.addFolderSetting(containerEl, t("archiveFolderName"), t("archiveFolderDesc"), "archiveFolder");
 
 		new Setting(containerEl)
 			.setName(t("maxAttachedNotesTokensName"))
@@ -479,7 +481,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl: HTMLElement,
 		name: string,
 		desc: string,
-		key: "templatesFolder" | "conversationsFolder" | "scratchFolder"
+		key: FolderSettingKey
 	): void {
 		// eslint-disable-next-line prefer-const -- forward reference: assigned after the Setting that closes over it
 		let displayEl: HTMLSpanElement;
@@ -511,30 +513,6 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 	/** One boolean setting: name, description, the settings key it flips. Five
 	 *  toggles used to spell out the same eleven lines each (ADR-097 ratchet). */
-	/**
-	 * The conversation cap is the one setting whose new value deletes content, so
-	 * a value that would evict names the number and asks first (ADR-171). Cancel
-	 * puts the stored limit back in the field; confirming writes through
-	 * `saveConversations`, the only save that applies the cap.
-	 */
-	private applyConversationCap(cap: number, text: TextComponent): void {
-		const doomed = this.plugin.pendingEvictionCount(cap);
-		if (doomed === 0) {
-			this.plugin.settings.maxConversations = cap;
-			this.saveSoon();
-			return;
-		}
-		new ConversationCapModal(
-			this.app,
-			doomed,
-			cap,
-			() => {
-				this.plugin.settings.maxConversations = cap;
-				void this.plugin.saveConversations();
-			},
-			() => text.setValue(String(this.plugin.settings.maxConversations)),
-		).open();
-	}
 
 	private addToggle(containerEl: HTMLElement, name: string, desc: string, key: BooleanSettingKey): void {
 		new Setting(containerEl)

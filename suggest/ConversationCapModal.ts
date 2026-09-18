@@ -17,6 +17,9 @@ export class ConversationCapModal extends Modal {
 		app: App,
 		private readonly count: number,
 		private readonly cap: number,
+		/** The archive folder when archiving is on, `null` when it is off — the
+		 *  difference between "removed from storage" and "deleted" (ADR-172). */
+		private readonly archiveFolder: string | null,
 		private readonly onConfirm: () => void,
 		private readonly onCancel: () => void,
 	) {
@@ -26,9 +29,18 @@ export class ConversationCapModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("capConfirmTitle") });
+		const archiving = this.archiveFolder !== null;
+		contentEl.createEl("h2", {
+			text: archiving ? t("capConfirmTitleArchive") : t("capConfirmTitle"),
+		});
 		contentEl.createEl("p", {
-			text: t("capConfirmBody", { count: String(this.count), cap: String(this.cap) }),
+			text: archiving
+				? t("capConfirmBodyArchive", {
+					count: String(this.count),
+					cap: String(this.cap),
+					folder: this.archiveFolder ?? "",
+				})
+				: t("capConfirmBody", { count: String(this.count), cap: String(this.cap) }),
 			cls: "pythia-modal-desc",
 		});
 		contentEl.createEl("p", { text: t("capConfirmKept"), cls: "pythia-modal-desc" });
@@ -36,8 +48,10 @@ export class ConversationCapModal extends Modal {
 		const buttons = contentEl.createDiv({ cls: "pythia-modal-buttons" });
 
 		const removeBtn = buttons.createEl("button", {
-			text: t("capConfirmRemove", { count: String(this.count) }),
-			cls: "mod-warning",
+			text: archiving
+				? t("capConfirmArchiveBtn", { count: String(this.count) })
+				: t("capConfirmRemove", { count: String(this.count) }),
+			cls: archiving ? "mod-cta" : "mod-warning",
 		});
 		removeBtn.addEventListener("click", () => {
 			this.confirmed = true;

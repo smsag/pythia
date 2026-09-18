@@ -364,7 +364,21 @@ export function evictConversations(
 	cap: number,
 	activeIds: string[],
 ): Conversation[] {
-	if (cap <= 0 || conversations.length <= cap) return conversations;
+	return partitionEvictions(conversations, cap, activeIds).kept;
+}
+
+/**
+ * The same decision, with the losers named (ADR-172). The archive has to write
+ * the conversations before they are dropped, and the confirmation dialog has to
+ * count them — both read this rather than re-deriving which ones go, because a
+ * second copy of the protection rules is a second answer to the same question.
+ */
+export function partitionEvictions(
+	conversations: Conversation[],
+	cap: number,
+	activeIds: string[],
+): { kept: Conversation[]; removed: Conversation[] } {
+	if (cap <= 0 || conversations.length <= cap) return { kept: conversations, removed: [] };
 
 	const activeIdSet = new Set(activeIds);
 	const mergeTargetIds = new Set(
@@ -380,7 +394,11 @@ export function evictConversations(
 	const slots = Math.max(0, cap - protectedCount);
 	const keptPlainIds = new Set(plainNewestFirst.slice(0, slots).map((c) => c.id));
 
-	return conversations.filter((c) => isProtected(c) || keptPlainIds.has(c.id));
+	const survives = (c: Conversation): boolean => isProtected(c) || keptPlainIds.has(c.id);
+	return {
+		kept: conversations.filter(survives),
+		removed: conversations.filter((c) => !survives(c)),
+	};
 }
 
 /**
@@ -397,5 +415,5 @@ export function countEvictions(
 	cap: number,
 	activeIds: string[],
 ): number {
-	return conversations.length - evictConversations(conversations, cap, activeIds).length;
+	return partitionEvictions(conversations, cap, activeIds).removed.length;
 }

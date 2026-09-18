@@ -1,5 +1,6 @@
 import { Notice, debounce, normalizePath } from "obsidian";
 import type PythiaPlugin from "../main";
+import type { Conversation } from "../models/types";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
@@ -11,7 +12,7 @@ import {
 	parseConversations,
 	shouldRefuseLoad,
 	mergeConversations,
-	evictConversations,
+	partitionEvictions,
 	countEvictions,
 } from "./persistence";
 
@@ -170,6 +171,60 @@ export class PluginDataStore {
 		return countEvictions(this.plugin.conversations, cap, this.activeConversationIds());
 	}
 
+	/** One eviction at a time: `persist` can be re-entered while the archive is
+	 *  writing, and a second pass would archive the same conversation twice. */
+	private evicting = false;
+
+	/**
+	 * Apply the conversation cap, archiving what it removes (ADR-172).
+	 *
+	 * The order is the whole point: **a conversation is dropped only once its
+	 * note exists.** A failed write keeps it in `data.json` — the list stays over
+	 * the cap until the vault can be written, which is the right way round for a
+	 * limit whose only job is to save space. Either outcome says so out loud; the
+	 * silent version of this is what deleted a user's conversations (ADR-171).
+	 */
+	private async applyCap(): Promise<Conversation[]> {
+		const p = this.plugin;
+		const { kept, removed } = partitionEvictions(
+			p.conversations,
+			p.settings.maxConversations,
+			this.activeConversationIds(),
+		);
+		if (removed.length === 0) return kept;
+		if (this.evicting) return p.conversations;
+		this.evicting = true;
+		try {
+			if (!p.settings.archiveBeforeEviction) {
+				new Notice(t("evictedNotice", { count: String(removed.length) }), 8000);
+				return kept;
+			}
+			const folder = p.settings.archiveFolder || DEFAULT_SETTINGS.archiveFolder;
+			const failed: Conversation[] = [];
+			for (const conv of removed) {
+				try {
+					await p.noteWriter.archiveConversationNote(conv, folder);
+				} catch (e) {
+					console.warn(`[Pythia] could not archive "${conv.name}":`, describeErrorForLog(e));
+					failed.push(conv);
+				}
+			}
+			const archived = removed.length - failed.length;
+			if (archived > 0) {
+				new Notice(t("archivedNotice", { count: String(archived), folder }), 8000);
+			}
+			if (failed.length > 0) {
+				// Kept, not deleted. The next persist tries again.
+				new Notice(t("archiveFailedNotice", { count: String(failed.length) }), 10000);
+				const failedIds = new Set(failed.map((c) => c.id));
+				return p.conversations.filter((c) => kept.includes(c) || failedIds.has(c.id));
+			}
+			return kept;
+		} finally {
+			this.evicting = false;
+		}
+	}
+
 	/**
 	 * Write settings + conversations to data.json.
 	 *
@@ -183,14 +238,9 @@ export class PluginDataStore {
 	async persist({ evict = false }: { evict?: boolean } = {}): Promise<void> {
 		const p = this.plugin;
 		try {
-			// Evict oldest non-starred conversations beyond the cap (#3).
-			if (evict) {
-				p.conversations = evictConversations(
-					p.conversations,
-					p.settings.maxConversations,
-					this.activeConversationIds(),
-				);
-			}
+			// Evict oldest non-starred conversations beyond the cap (#3), archiving
+			// each to a vault note first when the setting asks for it (ADR-172).
+			if (evict) p.conversations = await this.applyCap();
 
 			const snapshot = p.conversationStore?.snapshotDirty();
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire

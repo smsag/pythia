@@ -40,3 +40,13 @@ describe("parseNumberSetting", () => {
 		expect(parseNumberSetting("0.7", { min: 0 })).toEqual({ ok: true, value: 0 });
 	});
 });
+
+// The conversation cap's two representations meet in exactly one place (ADR-172).
+describe("capFieldValue", () => {
+	it("shows a limit as its number and no limit as an empty box", async () => {
+		const { capFieldValue } = await import("../ui/conversationCapSetting");
+		expect(capFieldValue(200)).toBe("200");
+		expect(capFieldValue(1)).toBe("1");
+		expect(capFieldValue(0)).toBe("");
+	});
+});
