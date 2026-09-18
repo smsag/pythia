@@ -74,7 +74,7 @@ Do not add internal refactors or bug fixes to the README.
 
 Cut a release from `main` in this order:
 
-0. **Prices** (ADR-163): merge the open *Update list prices* PR if the weekly workflow (`.github/workflows/update-pricing.yml`) left one, or run `npm run update:pricing` and review the diff of `models/modelPricing.ts` — every price a release ships has been read by a human. The script fails on a catalog model it cannot map to models.dev; fix the mapping in the script, never by deleting the row.
+0. **Prices** (ADR-163): merge the open *Update list prices* PR if the weekly workflow (`.github/workflows/update-pricing.yml`) left one, or run `npm run update:pricing` and review the diff of `models/modelPricing.ts` — every price a release ships has been read by a human. The script fails on a catalog model it cannot map to models.dev; fix the mapping in `scripts/modelsDev.mjs`, never by deleting the row. Likewise merge an open *Update context windows* PR (`.github/workflows/update-models.yml`, ADR-179) or run `npm run update:models`; the *Model catalog: upstream changes* issue is a list of decisions, not a release blocker. Both scripts share their id mapping in `scripts/modelsDev.mjs`.
 1. **Bump the version in all three files** (they must agree):
    - `manifest.json` → `version`
    - `package.json` → `version`

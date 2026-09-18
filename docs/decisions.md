@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
+*Last updated: 2026-09-18 — ADR-179 (the model catalog is checked against models.dev weekly: context windows are rewritten for a PR like prices; new and deprecated models are reported in one standing issue and never applied by the script).*
+
+*Previously: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
 *Previously: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently).*
 
@@ -3302,3 +3304,27 @@ So the target is captured, not found:
 - A stale refusal will happen on a synced vault, and the message says which of the two reasons it was, because "nothing happened" is the failure this plugin has already been bitten by (principle 2).
 - Applying is once: the card's affordance is spent and the target disarmed. Re-arm to apply again.
 - Not built: multi-selection rewrites, and a diff view of what would change. The card shows the proposal as the answer already renders it; a real diff is a bigger piece and wants its own decision.
+
+### ADR-179 — The model catalog is checked against models.dev: facts by PR, decisions by issue
+
+**Status:** Accepted — 2026-09-18
+
+**Context.** ADR-163 gave prices an update path: a weekly workflow pulls models.dev and opens a PR. The catalog those prices hang off (`MODEL_CATALOG` in `models/knownModels.ts`) had none. It only changed when someone remembered, and the first comparison against models.dev showed what that costs: `mistral-large-latest` and `mistral-small-latest` were still at 128K where upstream says 262K and 256K, three offered OpenAI models (`gpt-4.1-nano`, `o3-mini`, `o4-mini`) are deprecated upstream, and the OpenAI list stops at o3-pro while upstream carries the whole GPT-5 line.
+
+The obvious copy of ADR-163 — regenerate the catalog from upstream — is wrong, because a catalog row is not data about a model. Besides the id and window it carries an abbreviation, a `MODEL_PROFILE`, a localized `MODEL_GOOD_FOR` line, and flags (`isReasoning`, `isMistralReasoning`, `noTemperature`, `supportsEffort`) that decide what the *code* sends to the provider. None of that can be generated, and the tests already refuse a catalog model without its profile, guidance and price.
+
+**Decision — split what the script may write from what it may only say.**
+
+1. **Facts are rewritten, through a PR.** `contextWindow` is the provider's number and involves no judgement. `scripts/update-models.mjs` rewrites each differing value in place on its catalog line; `.github/workflows/update-models.yml` opens a PR (`chore/update-models`, `add-paths: models/knownModels.ts`). `formatWindow` is the gate: anything but a positive safe integer throws, because `contextWindow: NaN` compiles. A catalog model with no upstream row fails the run, exactly as in the price script.
+2. **Decisions are reported, in one standing issue.** New upstream models and deprecated offered models go into *Model catalog: upstream changes*, rewritten each run and closed when empty. The script never adds, hides or removes a model. For each new model it suggests a catalog row with the flags read from upstream, marked as a starting point to check.
+3. **"New" means newer than what we carry.** A candidate is an upstream chat model (text in, text only out, tool calls), not deprecated, not a dated snapshot of an alias, released on or after the newest release date among the provider's catalog models. Same-day siblings count, since a family ships together. The trade-off is deliberate: adding the newest model moves the line past older candidates, so those drop out of the issue — but only after the maintainer has looked at them in the same list. The alternative, a committed list of declined ids, is a second file to maintain for every model nobody wants.
+4. **Deprecated means *hide*, never delete.** The issue says `hidden: true`: a conversation on a retired model keeps its label, its price and its context window.
+5. **One module for the shared facts.** `scripts/modelsDev.mjs` holds the source URL, the provider map, `UPSTREAM_IDS`, `NO_UPSTREAM`, `readCatalog` and the lookup; `update-pricing.mjs` imports and re-exports them. A renamed upstream id is now fixed once, for both.
+
+**The first run, applied in this change.** Five windows updated: `gpt-4.1`/`-mini`/`-nano` 1M → 1,047,576, `mistral-large-latest` 128K → 262,144, `mistral-small-latest` 128K → 256,000. The report listed 24 new models and the three deprecated ones; they are left to the issue.
+
+**Consequences.**
+- A larger window lets `trimHistoryToBudget` send more history. That is the point, but it also means a wrong upstream value makes long conversations fail at the provider, which is why the PR body tells the reviewer to check the provider's docs.
+- Upstream strings reach the issue only as ids matching `^[a-z0-9][a-z0-9._-]{0,63}$`; model names and descriptions are never copied. Same trust reasoning as engineering-review #287, plus `issues: write`.
+- Not built: the script does not check other flags (`noTemperature`, reasoning) of existing models against upstream. The OpenAI o-series shows why — upstream says `temperature: false`, our row has no `noTemperature`, and that is correct, because `isReasoning` is what drops temperature for OpenAI. The flags mean what the code does with them, not what upstream calls them.
+
