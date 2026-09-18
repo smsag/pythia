@@ -12,6 +12,7 @@ import {
 	shouldRefuseLoad,
 	mergeConversations,
 	evictConversations,
+	countEvictions,
 } from "./persistence";
 
 /**
@@ -147,26 +148,49 @@ export class PluginDataStore {
 	}
 
 	async saveConversations(): Promise<void> {
-		await this.persist();
+		await this.persist({ evict: true });
 	}
 
-	async persist(): Promise<void> {
+	/**
+	 * Conversations open in a Pythia leaf right now. They are protected from
+	 * eviction even without a starred message — evicting the conversation being
+	 * written in would silently lose its newest turns (#17). Pythia's view can be
+	 * opened in more than one leaf, so every leaf's conversation counts.
+	 */
+	private activeConversationIds(): string[] {
+		return this.plugin.app.workspace
+			.getLeavesOfType(PYTHIA_VIEW_TYPE)
+			.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
+			.filter((id): id is string => id !== null);
+	}
+
+	/** How many conversations lowering the cap to `cap` would delete. The settings
+	 *  tab names this number and asks before storing such a value (ADR-171). */
+	pendingEvictionCount(cap: number): number {
+		return countEvictions(this.plugin.conversations, cap, this.activeConversationIds());
+	}
+
+	/**
+	 * Write settings + conversations to data.json.
+	 *
+	 * `evict` defaults to OFF: applying the conversation cap deletes conversations
+	 * permanently, so it belongs to a conversation write (`saveConversations`),
+	 * never to a settings or secret write (ADR-171). It used to run on every
+	 * persist, which made each keystroke in the cap field a deletion — typing
+	 * "0" over "200" passes through 20 and 2, and the debounced save behind it
+	 * evicted everything without a favorite down to that transient number.
+	 */
+	async persist({ evict = false }: { evict?: boolean } = {}): Promise<void> {
 		const p = this.plugin;
 		try {
 			// Evict oldest non-starred conversations beyond the cap (#3).
-			// Always protect every currently-open conversation, even if it has no
-			// starred messages — evicting an active conversation would silently
-			// lose new turns (#17). Pythia's view can be opened in more than one
-			// leaf, so every leaf's active conversation is protected, not just one.
-			const activeIds = p.app.workspace
-				.getLeavesOfType(PYTHIA_VIEW_TYPE)
-				.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
-				.filter((id): id is string => id !== null);
-			p.conversations = evictConversations(
-				p.conversations,
-				p.settings.maxConversations,
-				activeIds,
-			);
+			if (evict) {
+				p.conversations = evictConversations(
+					p.conversations,
+					p.settings.maxConversations,
+					this.activeConversationIds(),
+				);
+			}
 
 			const snapshot = p.conversationStore?.snapshotDirty();
 			this.saveDataRecordTime?.();   // stamp own-write time before the watcher can fire

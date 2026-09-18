@@ -8,6 +8,7 @@ import {
 	normalizeMerges,
 	shouldRefuseLoad,
 	evictConversations,
+	countEvictions,
 } from "../services/persistence";
 import { DEFAULT_SETTINGS } from "../models/settings";
 import type { Conversation } from "../models/types";
@@ -541,5 +542,36 @@ describe("evictConversations", () => {
 		expect(ids).toContain("leaf1-active");
 		expect(ids).toContain("leaf2-active");
 		expect(ids).not.toContain("plain-old");
+	});
+});
+
+// ── countEvictions ────────────────────────────────────────────────────────────
+
+describe("countEvictions", () => {
+	it("counts nothing for the unlimited cap, whatever the corpus", () => {
+		const convs = Array.from({ length: 10 }, (_, i) => makeConv(String(i)));
+		expect(countEvictions(convs, 0, [])).toBe(0);
+	});
+
+	it("counts nothing while the corpus fits under the cap", () => {
+		expect(countEvictions([makeConv("a"), makeConv("b")], 5, [])).toBe(0);
+	});
+
+	it("counts what a lower cap would delete", () => {
+		const convs = Array.from({ length: 10 }, (_, i) => makeConv(String(i)));
+		expect(countEvictions(convs, 3, [])).toBe(7);
+	});
+
+	it("does not count the protected conversations the eviction keeps", () => {
+		// A cap of 1 against three conversations looks like two deletions until the
+		// star and the open conversation are accounted for — the dialog must name
+		// the number the write will actually perform, so the count comes from the
+		// eviction itself.
+		const convs = [
+			makeConv("starred", "2026-01-01T00:00:00.000Z", [{ messageId: "m1", name: "fav" }]),
+			makeConv("open",    "2026-06-01T00:00:00.000Z"),
+			makeConv("plain",   "2026-12-01T00:00:00.000Z"),
+		];
+		expect(countEvictions(convs, 1, ["open"])).toBe(1);
 	});
 });

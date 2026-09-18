@@ -382,3 +382,20 @@ export function evictConversations(
 
 	return conversations.filter((c) => isProtected(c) || keptPlainIds.has(c.id));
 }
+
+/**
+ * How many conversations `evictConversations` would delete at this cap (ADR-171).
+ *
+ * Lowering the cap is the only settings value that destroys content, so the
+ * settings tab names the number and asks before applying it. The count comes
+ * from the eviction itself rather than from a second copy of its protection
+ * rules — otherwise the dialog would promise one number and the write perform
+ * another the first time a rule changes.
+ */
+export function countEvictions(
+	conversations: Conversation[],
+	cap: number,
+	activeIds: string[],
+): number {
+	return conversations.length - evictConversations(conversations, cap, activeIds).length;
+}

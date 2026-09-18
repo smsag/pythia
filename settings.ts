@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, SecretComponent, Setting, TFolder } from "obsidian";
+import { App, PluginSettingTab, SecretComponent, Setting, TextComponent, TFolder } from "obsidian";
 import type PythiaPlugin from "./main";
 import type { Provider, EffortLevel, OutputLanguage } from "./models/types";
 import { FolderSuggestModal } from "./suggest/FolderSuggest";
@@ -8,6 +8,8 @@ import { renderGlossarySettings } from "./ui/glossarySettings";
 import { languageOptions } from "./ui/languageOptions";
 import { t } from "./i18n";
 import { renderPricingSettings } from "./ui/pricingSettings";
+import { bindNumberSetting } from "./ui/numberSetting";
+import { ConversationCapModal } from "./suggest/ConversationCapModal";
 import {
 	KNOWN_MODELS,
 	parameterSupport,
@@ -32,6 +34,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 	/** Typed fields save a beat after the last keystroke (every save rewrites the
 	 *  whole data.json); toggles and dropdowns still save at once. */
 	private readonly saveSoon = (): void => this.plugin.saveSettingsSoon();
+	/** Commit functions of the numeric fields on screen (ADR-171). They fire on
+	 *  blur, which closing the tab never gives them — `hide()` runs them instead. */
+	private numberCommits: (() => void)[] = [];
 
 	constructor(app: App, plugin: PythiaPlugin) {
 		super(app, plugin);
@@ -39,13 +44,16 @@ export class PythiaSettingTab extends PluginSettingTab {
 	}
 
 	hide(): void {
-		// Flush what was typed in the last few hundred ms; repaint the header's defaults (ADR-165).
+		// Commit the number field the user is still standing in, then flush what was
+		// typed in the last few hundred ms and repaint the header's defaults (ADR-165).
+		for (const commit of this.numberCommits) commit();
 		this.plugin.onSettingsTabClosed();
 	}
 
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.numberCommits = [];
 		containerEl.createEl("h2", { text: t("settingsTitle") });
 
 		containerEl.createEl("h3", { text: t("anthropicSection") });
@@ -159,18 +167,12 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("webSearchMaxResultsName"))
 			.setDesc(t("webSearchMaxResultsDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("5")
-					.setValue(String(this.plugin.settings.webSearchMaxResults))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.webSearchMaxResults = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("5");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.webSearchMaxResults,
+					write: (n) => { this.plugin.settings.webSearchMaxResults = n; this.saveSoon(); } }));
+			});
 
 		containerEl.createEl("h3", { text: t("defaultsSection") });
 
@@ -251,46 +253,22 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("maxTokensName"))
 			.setDesc(t("maxTokensDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_MAX_TOKENS))
-					.setValue(this.plugin.settings.maxTokens?.toString() ?? "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							this.plugin.settings.maxTokens = undefined;
-							this.saveSoon();
-							return;
-						}
-						const n = parseInt(trimmed, 10);
-						if (!isNaN(n) && n > 0) {
-							this.plugin.settings.maxTokens = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder(String(DEFAULT_MAX_TOKENS));
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 1, allowEmpty: true },
+					read: () => this.plugin.settings.maxTokens,
+					write: (n) => { this.plugin.settings.maxTokens = n; this.saveSoon(); } }));
+			});
 
 		temperatureSetting = new Setting(containerEl)
 			.setName(t("temperatureName"))
 			.setDesc(t("temperatureDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("0.0 – 1.0")
-					.setValue(this.plugin.settings.temperature?.toString() ?? "")
-					.onChange((value) => {
-						const trimmed = value.trim();
-						if (trimmed === "") {
-							this.plugin.settings.temperature = undefined;
-							this.saveSoon();
-							return;
-						}
-						const n = parseFloat(trimmed);
-						if (!isNaN(n) && n >= 0 && n <= 1) {
-							this.plugin.settings.temperature = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("0.0 – 1.0");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0, max: 1, decimal: true, allowEmpty: true },
+					read: () => this.plugin.settings.temperature,
+					write: (n) => { this.plugin.settings.temperature = n; this.saveSoon(); } }));
+			});
 
 		effortSetting = new Setting(containerEl)
 			.setName(t("effortName"))
@@ -312,50 +290,32 @@ export class PythiaSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("messageCapName"))
 			.setDesc(t("messageCapDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("100")
-					.setValue(String(this.plugin.settings.maxMessagesPerSession))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxMessagesPerSession = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("100");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.maxMessagesPerSession,
+					write: (n) => { this.plugin.settings.maxMessagesPerSession = n; this.saveSoon(); } }));
+			});
 
 		new Setting(containerEl)
 			.setName(t("maxConversationsName"))
 			.setDesc(t("maxConversationsDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("200")
-					.setValue(String(this.plugin.settings.maxConversations))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxConversations = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("200");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.maxConversations,
+					write: (n) => this.applyConversationCap(n, text) }));
+			});
 
 		new Setting(containerEl)
 			.setName(t("maxAttachedNotesTokensName"))
 			.setDesc(t("maxAttachedNotesTokensDesc"))
-			.addText((text) =>
-				text
-					.setPlaceholder("8000")
-					.setValue(String(this.plugin.settings.maxAttachedNotesTokens))
-					.onChange((value) => {
-						const n = parseInt(value, 10);
-						if (!isNaN(n) && n >= 0) {
-							this.plugin.settings.maxAttachedNotesTokens = n;
-							this.saveSoon();
-						}
-					})
-			);
+			.addText((text) => {
+				text.setPlaceholder("8000");
+				this.numberCommits.push(bindNumberSetting(text, { rule: { min: 0 },
+					read: () => this.plugin.settings.maxAttachedNotesTokens,
+					write: (n) => { this.plugin.settings.maxAttachedNotesTokens = n; this.saveSoon(); } }));
+			});
 
 		new Setting(containerEl)
 			.setName(t("outputLanguageName"))
@@ -551,6 +511,31 @@ export class PythiaSettingTab extends PluginSettingTab {
 
 	/** One boolean setting: name, description, the settings key it flips. Five
 	 *  toggles used to spell out the same eleven lines each (ADR-097 ratchet). */
+	/**
+	 * The conversation cap is the one setting whose new value deletes content, so
+	 * a value that would evict names the number and asks first (ADR-171). Cancel
+	 * puts the stored limit back in the field; confirming writes through
+	 * `saveConversations`, the only save that applies the cap.
+	 */
+	private applyConversationCap(cap: number, text: TextComponent): void {
+		const doomed = this.plugin.pendingEvictionCount(cap);
+		if (doomed === 0) {
+			this.plugin.settings.maxConversations = cap;
+			this.saveSoon();
+			return;
+		}
+		new ConversationCapModal(
+			this.app,
+			doomed,
+			cap,
+			() => {
+				this.plugin.settings.maxConversations = cap;
+				void this.plugin.saveConversations();
+			},
+			() => text.setValue(String(this.plugin.settings.maxConversations)),
+		).open();
+	}
+
 	private addToggle(containerEl: HTMLElement, name: string, desc: string, key: BooleanSettingKey): void {
 		new Setting(containerEl)
 			.setName(name)

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
+*Last updated: 2026-09-18 — ADR-171 (a number being typed is not a setting, and lowering the conversation cap is a deletion: per-keystroke commits meant lowering the limit from 200 to 0 stored 20 and then 2 on the way, and `persist()` evicted on every write — so a settings keystroke deleted every conversation without a favorite).*
+
+*Previously: 2026-09-17 — ADR-170 (the search panel's cost stops scaling with the vault: the match snippet was 99% of a keystroke — 398ms at 500 conversations — because it re-tokenized every line for every rendered row, and the result list was uncapped; plus three defects found reviewing ADR-169's own diff).*
 
 *Previously: 2026-09-17 — ADR-169 (the related-conversations floors are measured, per model, and the index warms in the background: the shipping 0.35 sat BELOW the median score of a random pair, two hypotheses were refuted by the measurement, and a cold first click costs ~19 minutes on a 200-conversation vault).*
 
@@ -3041,3 +3043,34 @@ Reviewing the previous day's merge rather than trusting it turned up three, all 
 Also: `DEFAULT_MIN_SCORE` was exported and used nowhere outside its own module — now private, because an exported constant invites a second source of truth. And `tokenScore` allocated a notes array for every (conversation × query token) pair even under the default scope, which never scores notes; it is now allocated on first match.
 
 **The lesson worth keeping:** the ADR-169 diff was reviewed, tested and green, and it still carried a megabyte-per-launch read and a timer leak. Measuring the thing you changed does not review the thing you wrote.
+
+---
+
+### ADR-171 — A number being typed is not a setting, and lowering the cap is a deletion
+
+**Context.** A user set the conversation history limit ("Gesprächsverlauf-Limit", `maxConversations`) to 0 — documented in both locales as *unlimited* — and was left with only the conversations that held a starred passage.
+
+`evictConversations` is not the bug: `cap <= 0` returns the input unchanged, with a test that says so. The path to the data loss was the field, and the save behind it:
+
+1. `settings.ts` bound every numeric field with `TextComponent.onChange`, which fires **per keystroke**, and stored any value that parsed and cleared the floor. Lowering "200" to "0" is four events — `20`, `2`, `""` (rejected), `0` — and the two intermediate ones are valid caps.
+2. `saveSoon()` behind it is a 400 ms debounce. It resets on each keystroke, so it only fires mid-edit when the user pauses — deleting three digits and thinking for half a second is enough.
+3. `PluginDataStore.persist()` evicted on **every** write, settings and secrets included. So a transient `2` deleted every conversation without a favorite, an open leaf or an inbound merge link, and then wrote data.json. No prompt, no notice, no undo — and the final `0` that the user actually intended arrived at an already-emptied list.
+
+The failure needed all three, but each is wrong on its own terms. Eviction is a destructive write reached through a control that looked like a preference; the engineering principle "a write that can destroy content is a distinct operation" (ADR-159) was never applied to it, because from `persist`'s side it is one line about a cap.
+
+**Decision.**
+
+**A field being typed in is not a setting.** `ui/numberSetting.ts` holds the one rule: `parseNumberSetting` (pure — floor, optional ceiling, integer or decimal, and whether an empty field means *unset* rather than *invalid*) and `bindNumberSetting`, which shows the stored value and commits **on blur or Enter**. A rejected entry restores the stored value instead of clamping to something the user never typed. All six numeric settings fields go through it; `settings.ts` holds no `parseInt` any more. Closing the settings tab destroys the input before `blur` fires, so the binder returns its commit function and `PythiaSettingTab.hide()` runs the pending ones before flushing the debounced save.
+
+**Only a conversation write applies the cap.** `persist({ evict })` now defaults to **off**; `saveConversations()` is the single caller passing `true`. A settings save and a secret save cannot delete a conversation at all — which is what makes the transient value harmless even if one is committed.
+
+**Lowering the limit names what it deletes and asks.** `countEvictions` (pure, in `persistence.ts`) reports how many conversations a cap would remove, derived from `evictConversations` itself rather than from a second copy of its protection rules — a dialog that promises one number while the write performs another is worse than no dialog. Above zero, `ConversationCapModal` states the count and what survives (starred, open, merge target); Escape and the outside press count as no, and a cancelled dialog puts the stored limit back in the field. Only a confirmation writes, through `saveConversations` — the one save that evicts.
+
+**Both settings descriptions say "deleted permanently"** and name the three protections. The old wording, "oldest non-starred conversations are removed when the limit is reached", reads like a cache eviction.
+
+**Consequences.**
+- The cap no longer applies the instant it is lowered by a settings write; it applies on the next conversation save, or immediately when the user confirms the dialog. That is the point — deletion follows a decision, not a keystroke.
+- A conversation count above the cap can now persist for a while (between a confirmed lowering and the next conversation write). Nothing reads the cap except the eviction, so nothing else notices.
+- `parseNumberSetting` rejects rather than clamps, so a field that is temporarily out of range simply snaps back on blur. Rejecting with no message is acceptable here only because the stored value reappears in the field — the user sees that the entry did not take (principle 2: silence is a bug).
+- Not done, deliberately: **the default limit is still 200 and eviction is still silent when reached through normal use.** A conversation deleted because the 201st arrived gets no more warning today than it did before. The honest options are a much higher default, an archive-to-note step before deleting, or unlimited by default with a size warning — a product decision, recorded as engineering-review #291, not smuggled in with a bug fix.
+

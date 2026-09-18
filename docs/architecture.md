@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-17 — related mode extracted from the conversation panel (engineering-review #281). New `ui/RelatedMode.ts` (the ADR-109 mode as a class: active source, in-flight query + cancellation, chip, and the loading/empty/results states; borrows the panel's list element and row renderer through `RelatedModeDeps`) and `ui/historyChip.ts` (`renderHistoryChip`, shared by the related and widened chips so they cannot drift). `HistoryController` 559 → 507 lines. Behaviour-neutral.*
+*Last updated: 2026-09-18 — the conversation cap stops deleting on a keystroke (ADR-171). `PluginDataStore.persist({ evict })` defaults to NOT evicting: only `saveConversations()` applies the cap, so a settings or secret write can no longer delete conversations; `activeConversationIds()` extracted, new `pendingEvictionCount(cap)` (plugin facade of the same name). New pure `countEvictions` in `services/persistence.ts`. New `ui/numberSetting.ts` (`parseNumberSetting` + `bindNumberSetting`: every numeric settings field commits on blur/Enter instead of per keystroke, and `PythiaSettingTab.hide()` flushes the field the user is standing in) and `suggest/ConversationCapModal.ts` (lowering the limit names how many conversations it deletes and asks first). `settings.ts` 565 → 550 lines, ceiling ratcheted. +21 tests (1174 across 75 files).*
+
+*Previously: 2026-09-17 — related mode extracted from the conversation panel (engineering-review #281). New `ui/RelatedMode.ts` (the ADR-109 mode as a class: active source, in-flight query + cancellation, chip, and the loading/empty/results states; borrows the panel's list element and row renderer through `RelatedModeDeps`) and `ui/historyChip.ts` (`renderHistoryChip`, shared by the related and widened chips so they cannot drift). `HistoryController` 559 → 507 lines. Behaviour-neutral.*
 
 *Previously: 2026-09-17 — the search panel's per-keystroke cost (ADR-170). `conversationSearch.ts`: `SnippetLine`, `ConversationFields.lines` (lazily filled line-token cache), `snippetLines(conv, fields)`, `SEARCH_RESULT_LIMIT = 20` applied in `searchConversations`, and the new `ScoredField` type separating scored keys from the cache slot; `bestMatchSnippet` now REQUIRES the conversation's fields. `VaultIndexStore.exists()` (the warm no longer reads the whole index to test existence). `warmIndex.ts` gains `canWarmBeforeIndexCheck` and takes `hasIndex(): Promise<boolean>`. `main.ts` registers the warm timer for teardown. New `scripts/bench-search.mjs`. +9 tests (1153 across 73 files).*
 
@@ -241,9 +243,9 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `appContainer.ts` | 75 | Composition root (ADR-104 / #122): `AppContainer.create(plugin)` async factory constructs every service in dependency order after `loadPluginData`; the plugin exposes each via a getter (`plugin.llmRouter` etc.) so no call site changed |
 | `services/ConversationStore.ts` | ~85 | **Owns** the conversation list (`_conversations`, ADR-104 / #122) — `getAll()` returns the live array, `setAll()` replaces it; `plugin.conversations` is a read/write accessor delegating here. In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` + `markDirty`/`clearDirty`) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
 | `services/PromptOptimizerService.ts` | 211 | `run()` command flow + `optimizeText()` (inline review) |
-| `services/persistence.ts` | 355 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings` (validates every saved value against its default — ADR-159), `parseConversations` (+ `sanitizeConversationFields`), `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`, and returns survivors in their original insertion order so "most recent = last element" holds — ADR-088) |
+| `services/persistence.ts` | 401 | Pure functions extracted from `main.ts`: `applySettingsMigrations`, `mergeSettings` (validates every saved value against its default — ADR-159), `parseConversations` (+ `sanitizeConversationFields`), `shouldRefuseLoad`, `evictConversations` (protects every open leaf's active conversation, tolerates malformed `updatedAt`, and returns survivors in their original insertion order so "most recent = last element" holds — ADR-088), `countEvictions` (what a lower cap would delete, read from the eviction itself — ADR-171) |
 | `services/SecretStore.ts` | 65 | API-key management extracted from the plugin (ADR-103 / #121): `setApiKey`/`setOpenAIKey`/`setMistralKey`/`setSearchKey` (update secret-name setting → refresh in-memory plaintext key → push to router/web-search) + `hasApiKeyFor` |
-| `services/PluginDataStore.ts` | ~245 | data.json I/O extracted from the plugin (ADR-103 / #121): `loadPluginData` (migrations + iCloud-eviction guard), `persist` (eviction + own-write stamp), `saveSettings`/`saveConversations`, the `watchDataJson` cross-device poller, `reloadFromDisk`. Owns `saveDataRecordTime` + the `legacyDecrypt` migration helper; wraps the pure `persistence.ts` |
+| `services/PluginDataStore.ts` | ~355 | data.json I/O extracted from the plugin (ADR-103 / #121): `loadPluginData` (migrations + iCloud-eviction guard), `persist({ evict })` (own-write stamp; eviction only when a conversation write asks for it — ADR-171), `saveSettings`/`saveConversations`, `pendingEvictionCount`, the `watchDataJson` cross-device poller, `reloadFromDisk`. Owns `saveDataRecordTime` + the `legacyDecrypt` migration helper; wraps the pure `persistence.ts` |
 | `services/ConversationService.ts` | ~340 | Conversation creation + commands extracted from the plugin (ADR-103 / #121): `createConversation`/`createConversationFromTemplate`/`resolveTemplateContext`/`renameConversationFile` and every `cmd*` flow (new/from-template/with-note/from-clipboard/fork/browse/resume/summarize) |
 | `services/ViewManager.ts` | 62 | Sidebar leaf/view lifecycle extracted from the plugin (ADR-103 / #121): `initLeaf` (hot-reload-safe dedupe), `activateView`, `getSidebarView` |
 | `services/apiError.ts` | 37 | HTTP error classification, incl. `server_error` (5xx/529) |
@@ -607,9 +609,11 @@ ConversationStore.save(conv)
 onunload()
   → conversationStore.flush() ← cancels debounce, writes immediately
 
-persistData()
+persistData()  ← persist({ evict })
   → stamp own-write time (for watchDataJson grace window)
-  → evict oldest non-starred, non-active conversations beyond maxConversations cap
+  → evict === true (saveConversations only): evict oldest non-starred, non-active,
+    non-merge-target conversations beyond the maxConversations cap
+    ← a settings or secret write passes evict === false: it must never delete (ADR-171)
   → saveData({ settings, conversations })
 ```
 
