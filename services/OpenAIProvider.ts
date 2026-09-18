@@ -29,7 +29,6 @@ export class OpenAIProvider extends BaseProvider {
 	private streamMaxTokens!: number;
 	private streamTemperature: number | undefined;
 	private streamReasoningEffort: EffortLevel | undefined;
-	private noSystemRole!: boolean;
 	private lastPendingCalls: Array<{ id: string; name: string; arguments: string }> = [];
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
@@ -88,9 +87,9 @@ export class OpenAIProvider extends BaseProvider {
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
 		this.streamModel = this.resolveModel(conversation.model);
-		this.noSystemRole = isReasoningModel(this.streamModel);
-		// Reasoning models (o1/o3/o4 family) reject a custom temperature — same model set
-		// that also can't take a system-role message or `max_tokens`.
+		// Reasoning models (o-series, GPT-5) reject a custom temperature and
+		// `max_tokens`. They DO take a system message — OpenAI treats it as a
+		// developer message; only o1-mini, long retired, had no system role (#304).
 		this.streamTemperature = isReasoningModel(this.streamModel)
 			? undefined
 			: conversation.temperature ?? this.settings.temperature;
@@ -120,13 +119,7 @@ export class OpenAIProvider extends BaseProvider {
 		// OpenAI allows "system" at position 0; only drop leading "assistant" turns.
 		const oaiPred = (role: string) => role === "assistant";
 
-		if (systemPrompt && this.noSystemRole) {
-			apiMessages = normalizeMessages<OAIMessage>([
-				{ role: "user", content: `[System instructions]\n${systemPrompt}` },
-				...historyMessages,
-				{ role: "user", content: userContent },
-			], oaiPred);
-		} else if (systemPrompt) {
+		if (systemPrompt) {
 			apiMessages = [
 				{ role: "system", content: systemPrompt },
 				...normalizeMessages<OAIMessage>([
@@ -150,7 +143,6 @@ export class OpenAIProvider extends BaseProvider {
 				pdfAttachments: pdfAttachments.length,
 				messages: apiMessages.length,
 				systemPromptChars: systemPrompt.length,
-				noSystemRole: this.noSystemRole,
 				tools: !!onToolCall,
 				resumeMode: conversation.resumeMode ?? "full",
 				historySkipped: conversation.resumeMode === "summary",
@@ -198,7 +190,7 @@ export class OpenAIProvider extends BaseProvider {
 				stream = await this.getClient().chat.completions.create(
 					{
 						model: this.streamModel,
-						...(this.noSystemRole
+						...(isReasoningModel(this.streamModel)
 							? { max_completion_tokens: this.streamMaxTokens }
 							: { max_tokens: this.streamMaxTokens }),
 						...(this.streamTemperature !== undefined ? { temperature: this.streamTemperature } : {}),

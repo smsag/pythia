@@ -143,31 +143,31 @@ describe("MistralService — streaming happy path", () => {
 });
 
 describe("MistralService — temperature / reasoningEffort / maxTokens request shaping", () => {
-	it("sends temperature and reasoningEffort when set", async () => {
+	// #303: the API takes reasoning_effort only on its adjustable-reasoning
+	// models, and only `none` or `high`.
+	async function sentFor(model: string, effort: "low" | "medium" | "high") {
 		chatStreamMock.mockReturnValueOnce(
 			okStream([{ choices: [{ delta: { content: "hi" }, finishReason: "stop" }] }])
 		);
+		const provider = new MistralService({} as never, makeSettings({ temperature: 0.5, effort }), "key");
+		await provider.streamMessage(makeConv({ model }), "hi", [], () => {}, () => {}, () => {});
+		return chatStreamMock.mock.calls[chatStreamMock.mock.calls.length - 1][1] as Record<string, unknown>;
+	}
 
-		const provider = new MistralService({} as never, makeSettings({ temperature: 0.5, effort: "high" }), "key");
-		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => {}, () => {});
-
-		const args = chatStreamMock.mock.calls[0][1] as Record<string, unknown>;
+	it("sends temperature, and high effort as `high`, on an adjustable-reasoning model", async () => {
+		const args = await sentFor("mistral-small-latest", "high");
 		expect(args.temperature).toBe(0.5);
 		expect(args.reasoningEffort).toBe("high");
 	});
 
-	it("sends reasoningEffort even for a non-Magistral model (no per-model gating)", async () => {
-		chatStreamMock.mockReturnValueOnce(
-			okStream([{ choices: [{ delta: { content: "hi" }, finishReason: "stop" }] }])
-		);
+	it("folds low to `none` and medium to `high` — never a value the API does not list", async () => {
+		expect((await sentFor("mistral-medium-latest", "low")).reasoningEffort).toBe("none");
+		expect((await sentFor("mistral-medium-latest", "medium")).reasoningEffort).toBe("high");
+	});
 
-		const provider = new MistralService({} as never, makeSettings({ effort: "low" }), "key");
-		await provider.streamMessage(
-			makeConv({ model: "mistral-large-latest" }), "hi", [], () => {}, () => {}, () => {}
-		);
-
-		const args = chatStreamMock.mock.calls[0][1] as Record<string, unknown>;
-		expect(args.reasoningEffort).toBe("low");
+	it("sends no effort at all to a model without adjustable reasoning", async () => {
+		expect(await sentFor("mistral-large-latest", "low")).not.toHaveProperty("reasoningEffort");
+		expect(await sentFor("magistral-medium-latest", "high")).not.toHaveProperty("reasoningEffort");
 	});
 });
 

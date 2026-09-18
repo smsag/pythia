@@ -19,7 +19,7 @@ import type { EventStream } from "@mistralai/mistralai/lib/event-streams";
 import { App } from "obsidian";
 import { Notice } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, EffortLevel } from "../models/types";
+import type { Conversation, ToolCall } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
 import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
@@ -27,7 +27,7 @@ import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { resolveDefaultMaxTokens } from "./promptConstants";
-import { getContextWindow } from "../models/knownModels";
+import { getContextWindow, mistralReasoningEffort } from "../models/knownModels";
 
 type MistralMessage = { role: "system" | "user" | "assistant"; content: string };
 
@@ -45,7 +45,7 @@ export class MistralService extends BaseProvider {
 	private streamModel!: string;
 	private streamMaxTokens!: number;
 	private streamTemperature: number | undefined;
-	private streamReasoningEffort: EffortLevel | undefined;
+	private streamReasoningEffort: "none" | "high" | undefined;
 	private lastPendingCalls: Array<{ id: string; name: string; arguments: string }> = [];
 
 	constructor(app: App, settings: PythiaSettings, apiKey: string) {
@@ -114,10 +114,9 @@ export class MistralService extends BaseProvider {
 
 		this.streamModel = this.resolveModel(conversation.model);
 		this.streamTemperature = conversation.temperature ?? this.settings.temperature;
-		// Mistral's reasoningEffort has no per-model restriction in the installed
-		// SDK's types (unlike OpenAI's reasoning_effort, genuinely rejected outside
-		// the o-series) — sent whenever requested, on any model.
-		this.streamReasoningEffort = conversation.effort ?? this.settings.effort;
+		// The SDK's types accept any effort string on any model; the API does not
+		// (#303). mistralReasoningEffort is the one place that decides what is sent.
+		this.streamReasoningEffort = mistralReasoningEffort(this.streamModel, conversation.effort ?? this.settings.effort);
 		this.streamMaxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(this.streamModel);
 
 		// Exclude the last message — already pushed by the caller; sending it

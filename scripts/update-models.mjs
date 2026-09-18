@@ -163,7 +163,11 @@ export function suggestRow({ id, provider, row }) {
 	} else if (provider === "openai") {
 		if (row.reasoning === true) fields.push("isReasoning: true");
 	} else if (provider === "mistral") {
-		if (row.reasoning === true) fields.push("isMistralReasoning: true");
+		// Adjustable reasoning (an effort option) is Small/Medium-like: temperature
+		// and `reasoning_effort` both apply. Reasoning with no option is
+		// Magistral-like: always on, no temperature (#303).
+		if (effort) fields.push("supportsEffort: true");
+		else if (row.reasoning === true) fields.push("isMistralReasoning: true");
 	}
 	return `{ ${fields.join(", ")} },`;
 }

@@ -96,7 +96,8 @@ describe("resolveDefaultModelForProvider", () => {
 	});
 });
 
-import { parameterSupport } from "../models/knownModels";
+import { parameterSupport, mistralReasoningEffort, MODEL_CATALOG } from "../models/knownModels";
+import { EFFORT_LEVELS } from "../models/types";
 
 describe("parameterSupport (one rule for the settings tab and the conversation modal)", () => {
 	it("anthropic follows the catalog flags", () => {
@@ -107,9 +108,11 @@ describe("parameterSupport (one rule for the settings tab and the conversation m
 		expect(parameterSupport("openai", "o3")).toEqual({ temperature: false, effort: true });
 		expect(parameterSupport("openai", "gpt-4o")).toEqual({ temperature: true, effort: false });
 	});
-	it("mistral always accepts effort; magistral rejects temperature", () => {
-		expect(parameterSupport("mistral", "magistral-medium-latest")).toEqual({ temperature: false, effort: true });
-		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: true });
+	it("mistral takes effort only on the adjustable-reasoning models; magistral rejects temperature (#303)", () => {
+		expect(parameterSupport("mistral", "magistral-medium-latest")).toEqual({ temperature: false, effort: false });
+		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: false });
+		expect(parameterSupport("mistral", "mistral-small-latest")).toEqual({ temperature: true, effort: true });
+		expect(parameterSupport("mistral", "mistral-medium-latest")).toEqual({ temperature: true, effort: true });
 	});
 });
 
@@ -121,5 +124,25 @@ describe("default models", () => {
 		expect(KNOWN_MODELS.anthropic).toContain(DEFAULT_SETTINGS.defaultAnthropicModel);
 		expect(KNOWN_MODELS.openai).toContain(DEFAULT_SETTINGS.defaultOpenAIModel);
 		expect(KNOWN_MODELS.mistral).toContain(DEFAULT_SETTINGS.defaultMistralModel);
+	});
+});
+
+describe("mistralReasoningEffort (#303)", () => {
+	it("never produces a value the Mistral API does not list, for any catalog model and level", () => {
+		for (const m of MODEL_CATALOG.filter((x) => x.provider === "mistral")) {
+			for (const level of EFFORT_LEVELS) {
+				expect([undefined, "none", "high"], `${m.id} ${level}`).toContain(mistralReasoningEffort(m.id, level));
+			}
+		}
+	});
+
+	it("sends something exactly where the header says effort applies", () => {
+		for (const m of MODEL_CATALOG.filter((x) => x.provider === "mistral")) {
+			expect(mistralReasoningEffort(m.id, "high") !== undefined, m.id).toBe(parameterSupport("mistral", m.id).effort);
+		}
+	});
+
+	it("sends nothing when no level is set", () => {
+		expect(mistralReasoningEffort("mistral-small-latest", undefined)).toBeUndefined();
 	});
 });

@@ -84,7 +84,7 @@ beforeEach(() => {
 });
 
 describe("OpenAIProvider — reasoning-model request shaping (regression for the o4-mini bug)", () => {
-	it("omits temperature, uses max_completion_tokens, and injects the system prompt as a user message for o4-mini", async () => {
+	it("omits temperature, uses max_completion_tokens, and sends the system prompt as a system message for o4-mini", async () => {
 		createMock.mockImplementation(async () =>
 			chunkStream([
 				{ choices: [{ delta: { content: "hello" }, finish_reason: "stop" }] },
@@ -111,7 +111,30 @@ describe("OpenAIProvider — reasoning-model request shaping (regression for the
 		expect(args.temperature).toBeUndefined();
 		expect(args.max_tokens).toBeUndefined();
 		expect(args.max_completion_tokens).toBeDefined();
-		expect(JSON.stringify(args.messages)).toContain("[System instructions]");
+		// #304: reasoning models take a system message; the old fold into a
+		// `[System instructions]` user turn was written for o1-mini.
+		const messages = args.messages as { role: string; content: string }[];
+		expect(messages[0].role).toBe("system");
+		expect(JSON.stringify(messages)).not.toContain("[System instructions]");
+	});
+
+	it("shapes a GPT-5 request like the o-series: no temperature, max_completion_tokens, a system message", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "hello" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+
+		const provider = new OpenAIProvider({} as never, makeSettings({ defaultOpenAIModel: "gpt-5.4-mini", effort: "medium" }), "key");
+		await provider.streamMessage(makeConv({ model: "gpt-5.4-mini", temperature: 0.7 }), "hi", [], () => {}, () => {}, () => {});
+
+		const args = createMock.mock.calls[0][0] as Record<string, unknown>;
+		expect(args.temperature).toBeUndefined();
+		expect(args.max_tokens).toBeUndefined();
+		expect(args.max_completion_tokens).toBeDefined();
+		expect(args.reasoning_effort).toBe("medium");
+		expect((args.messages as { role: string }[])[0].role).toBe("system");
 	});
 
 	it("keeps temperature and max_tokens (not max_completion_tokens) for a non-reasoning model", async () => {

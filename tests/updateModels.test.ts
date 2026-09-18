@@ -143,7 +143,11 @@ describe("suggestRow", () => {
 		expect(suggestRow({ id: "claude-x", provider: "anthropic", releaseDate: "", row: chat({ temperature: false, reasoning_options: [{ type: "effort" }], limit: { context: 1_000_000 } }) }))
 			.toBe(`{ id: "claude-x", provider: "anthropic", abbreviation: "TODO", contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },`);
 		expect(suggestRow({ id: "gpt-x", provider: "openai", releaseDate: "", row: chat({ reasoning: true }) })).toContain("isReasoning: true");
+		// Mistral: always-on reasoning is Magistral-like; an effort option is Small/Medium-like (#303).
 		expect(suggestRow({ id: "m-x", provider: "mistral", releaseDate: "", row: chat({ reasoning: true }) })).toContain("isMistralReasoning: true");
+		const adjustable = suggestRow({ id: "m-y", provider: "mistral", releaseDate: "", row: chat({ reasoning: true, reasoning_options: [{ type: "effort", values: ["none", "high"] }] }) });
+		expect(adjustable).toContain("supportsEffort: true");
+		expect(adjustable).not.toContain("isMistralReasoning");
 	});
 
 	it("never emits a broken window, it marks it", () => {
