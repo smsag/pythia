@@ -76,4 +76,26 @@ describe("worker env prefix (ADR-179)", () => {
 	it("is a single statement with no newline, so it cannot shift the bundle's first line", () => {
 		expect(WORKER_ENV_PREFIX).not.toContain("\n");
 	});
+
+	it("shadows `process` LEXICALLY, which a non-configurable global cannot defeat", () => {
+		// The hole in the original prefix: `defineProperty` throws on a
+		// non-configurable `process`, the catch swallows it, and the fix silently
+		// does nothing — a live suspect for the M2 Air still reporting
+		// `iframe (UI thread)` after ADR-179. A lexical binding has no such hole.
+		const probe = new Function("globalThis", `${WORKER_ENV_PREFIX} return [typeof process, process?.release?.name];`);
+		const stubborn = {};
+		Object.defineProperty(stubborn, "process", {
+			value: { release: { name: "node" } }, configurable: false, writable: false,
+		});
+		// Exactly what transformers.js env.js:38-39 reads.
+		expect(probe(stubborn)).toEqual(["undefined", undefined]);
+	});
+
+	it("keeps the globalThis half, for code that reads the property explicitly", () => {
+		// A lexical shadow does not intercept `globalThis.process`; both halves earn
+		// their place.
+		const fake: { process?: unknown } = { process: { release: { name: "node" } } };
+		runPrefix(fake);
+		expect(fake.process).toBeUndefined();
+	});
 });

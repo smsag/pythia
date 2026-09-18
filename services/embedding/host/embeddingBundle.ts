@@ -35,15 +35,35 @@ export function getEmbeddingBundle(): string {
  * has already read `process`. The esbuild pass emits a self-contained ESM bundle
  * with no remaining top-level imports, so a textual prefix does run first.
  *
- * `defineProperty` rather than assignment: the bundle is an ES module and so is
- * strict, where assigning to a non-writable global throws — that would kill the
- * Worker at statement one and look exactly like the bug it fixes. Wrapped in
- * try/catch because a NON-CONFIGURABLE `process` makes defineProperty throw too;
- * there we simply fall through to the iframe as before. The fix can only move
- * embedding off the UI thread; it cannot take it down.
+ * TWO mechanisms, because either alone has a hole (ADR-182):
+ *
+ *  • `const process = void 0` shadows the identifier for the whole module, so
+ *    every one of the bundle's ~38 bare `process` reads resolves to it no matter
+ *    what the global is. This is the one that cannot be defeated: a
+ *    NON-CONFIGURABLE `process` makes `defineProperty` throw, and the original
+ *    prefix then silently did nothing — which is a live suspect for why an M2
+ *    Air still reported `iframe (UI thread)` after ADR-179.
+ *  • `defineProperty` on `globalThis` stays for code that reads
+ *    `globalThis.process` explicitly, which a lexical shadow does not intercept.
+ *
+ * The `const` is safe as a top-level statement, and safe ONLY because this is a
+ * module: a top-level `const` in a module is a module-scope binding, while in a
+ * classic script it would collide with a non-configurable global `process` and
+ * throw at parse time. That is not an assumption — the bundle uses `import.meta`
+ * twelve times, which is a SyntaxError outside a module, so it cannot be loaded
+ * any other way, and both Worker paths pass `{ type: "module" }`. It must also
+ * not be wrapped in a function, for the same `import.meta` reason. The bundle
+ * declares no top-level `process`, so there is no redeclaration, and nothing runs
+ * before line one, so the temporal dead zone is never entered.
+ *
+ * `defineProperty` rather than a plain assignment: the bundle is an ES module and
+ * so is strict, where assigning to a non-writable global throws — that would kill
+ * the Worker at statement one and look exactly like the bug it fixes. Both are
+ * guarded. The fix can only move embedding off the UI thread; it cannot take it
+ * down.
  */
 export const WORKER_ENV_PREFIX =
-	'try{Object.defineProperty(globalThis,"process",{value:undefined,writable:true,configurable:true})}catch{}';
+	'try{Object.defineProperty(globalThis,"process",{value:undefined,writable:true,configurable:true})}catch{};const process=void 0;';
 
 /** The embedding bundle as the Web Worker must see it. The ONE place the prefix
  *  is applied — both worker paths (blob URL and resource path) go through it, and

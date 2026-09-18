@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-181 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
+*Last updated: 2026-09-18 — ADR-182 (the Worker still did not start: `process` is shadowed lexically as well, because `defineProperty` is silently defeated by a non-configurable global — and the chain now reports WHY each backend failed, not only which one won).*
+
+*Previously: 2026-09-18 — ADR-181 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
 
 *Previously: 2026-09-18 — ADR-180 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
 
@@ -3440,3 +3442,36 @@ Two smaller ones: the rescue write in the catch now has its own guard, so a fail
 - One more forced rebuild, folded into the one ADR-179 already required.
 - A UI-thread build that cannot finish in one sitting now *resumes* each session instead of being served as complete — slower to settle, correct at rest, and the debug log says it is resuming.
 - Verified by mutation: twelve behaviours, each broken in turn. **Six of the first twelve survived, and all six were flaws in the new tests rather than the code** — a fake provider reporting the wrong backend, an assertion satisfied by the build instead of the replay, a plain object that was not `instanceof TFile`, and a "failed" build that ADR-179's own guard correctly treated as finished. A test that cannot fail is not evidence.
+
+---
+
+## ADR-182 — Hiding `process` was not enough, and the chain would not say why
+
+**Status:** Active. Partly falsifies ADR-179's central claim.
+
+**Context.** ADR-179 hid `process` from the embedding Worker so transformers.js would stop binding onnxruntime-node and accept the `wasm` device. The reasoning was verified against the installed source, the prefix's position was asserted against the real bundle, and the whole thing was unit-tested. On the reporting machine — the M2 Air this began with — the settings line still reads **`iframe (UI thread)`**. The Worker did not start.
+
+That is the value of having shipped the backend readout first: the claim was falsifiable, and it was falsified in one glance instead of another round of theory.
+
+**Two things were wrong, and only one of them is about `process`.**
+
+**1. The chain knew why each backend failed and threw it away.** `console.warn` is not a report. `Unsupported device: "wasm"` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and the difference decides everything about what to do next — yet the only thing reaching the user was *which backend won*. ADR-179 fixed the silence one level up and left it one level down.
+
+**Decision:** `FallbackEmbeddingProvider` records each attempt's failure reason and hands them to the `onBackend` callback and a `backendFailures()` accessor; `main.ts` logs them beside the winner. Principle 2, applied to the layer that ADR-179's own fix depended on.
+
+**2. `Object.defineProperty` is silently defeated by a non-configurable global.** ADR-179 used it instead of a plain assignment because the bundle is strict-mode and an assignment to a non-writable global throws. But a **non-configurable** `process` makes `defineProperty` throw too — and the `try/catch` that keeps that from killing the Worker also means the fix does nothing, with no trace. Whether Electron's Worker exposes `process` that way is not something this repo can determine from here; it is a live suspect, and it costs nothing to close.
+
+**Decision:** shadow `process` **lexically** as well — `const process = void 0` at the top of the worker source, alongside the `defineProperty`. A module-scope binding cannot be defeated by any property descriptor, and the bundle's ~38 bare `process` reads all resolve to it.
+
+Verified rather than assumed:
+
+- the bundle declares no top-level `process`, so there is no redeclaration;
+- `node --check` parses the real 2 MB worker source, prefix included, as a module;
+- with a **non-configurable** global `process`, a module carrying the prefix evaluates transformers' exact guard (`env.js:38-39`) to `IS_NODE_ENV === false` while `globalThis.process` is untouched.
+
+The `const` is safe **only** because this is a module — in a classic script it would collide with that same non-configurable global and throw at parse time. That is not an assumption: the bundle uses `import.meta` twelve times, which is a SyntaxError outside a module, so it cannot be loaded any other way, and both Worker paths pass `{ type: "module" }`. Both halves stay: the lexical binding cannot be defeated, and `defineProperty` still covers code that reads `globalThis.process` explicitly, which a shadow does not intercept.
+
+**Consequences.**
+- If the reported failure turns out to be `Unsupported device`, this closes it. If it is a blocked `blob:` plus a cross-origin resource path, this changes nothing and **ADR-179's premise was wrong for this machine** — the failure reasons now in the log say which, without another round-trip.
+- The iframe path is unaffected either way, and ADR-181 means a UI-thread build now resumes across sessions rather than restarting, so the feature works while this is settled — slowly.
+- **Still not verified in Obsidian.** The mechanism is proven in Node under module semantics with the hostile descriptor; that the Electron Worker then loads the WASM runtime is not. D-28 stays open.

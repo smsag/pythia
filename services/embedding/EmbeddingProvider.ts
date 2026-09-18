@@ -24,6 +24,9 @@ export interface EmbeddingProvider {
 	 *  silent fallback is what hid ADR-179's bug for three ADRs. `null` before the
 	 *  chain has resolved. */
 	backend?(): EmbeddingBackend | null;
+	/** Why the backends ahead of the active one did not start (ADR-182) — the
+	 *  reason, not just the fact. Empty when the first choice won. */
+	backendFailures?(): string[];
 }
 
 /** The three backends `FallbackEmbeddingProvider` can land on, in the order it

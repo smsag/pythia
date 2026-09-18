@@ -113,3 +113,50 @@ describe("FallbackEmbeddingProvider — which backend started (ADR-179)", () => 
 		expect(provider.backend?.()).toBeNull();
 	});
 });
+
+describe("FallbackEmbeddingProvider — why the others failed (ADR-182)", () => {
+	it("reports each failure REASON, not just that it fell back", async () => {
+		// "Unsupported device: wasm" and "Not allowed to load local resource: blob:"
+		// are different bugs with different fixes. The chain knew which and threw it
+		// into console.warn, where nobody looks until asked.
+		fail.blobWorker = true;
+		fail.resourceWorker = true;
+		const { provider, seen } = make();
+		await provider.ready();
+		expect(seen).toEqual(["iframe (UI thread)"]);
+		const failures = provider.backendFailures?.() ?? [];
+		expect(failures).toHaveLength(2);
+		expect(failures[0]).toContain("worker (blob)");
+		expect(failures[0]).toContain("blobWorker unavailable");
+		expect(failures[1]).toContain("worker (resource)");
+	});
+
+	it("hands the reasons to the callback alongside the winner", async () => {
+		fail.blobWorker = true;
+		const seen: { backend: string; failures: string[] }[] = [];
+		const provider = createEmbeddingProvider(
+			DEFAULT_EMBEDDING_MODEL_ID,
+			undefined,
+			async () => "app://resource/worker.mjs",
+			(backend, failures) => seen.push({ backend, failures }),
+		);
+		await provider.ready();
+		expect(seen[0].backend).toBe("worker (resource)");
+		expect(seen[0].failures).toHaveLength(1);
+	});
+
+	it("reports nothing when the first choice won", async () => {
+		const { provider } = make();
+		await provider.ready();
+		expect(provider.backendFailures?.()).toEqual([]);
+	});
+
+	it("forgets the reasons on unload, so a retry cannot inherit stale ones", async () => {
+		fail.blobWorker = true;
+		const { provider } = make();
+		await provider.ready();
+		expect(provider.backendFailures?.()).toHaveLength(1);
+		provider.unload();
+		expect(provider.backendFailures?.()).toEqual([]);
+	});
+});
