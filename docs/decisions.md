@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-179 addendum (the first curation from the catalog issue: three deprecated OpenAI models hidden, five models added; `contextWindow` is the input-side limit where the provider caps the prompt separately).*
+*Last updated: 2026-09-18 — ADR-180 (what each provider is sent is decided by the model, not by the SDK's types: Mistral gets `reasoning_effort` only on adjustable-reasoning models and only as `none`/`high`; OpenAI reasoning models get a real system message).*
+
+*Previously: 2026-09-18 — ADR-179 addendum (the first curation from the catalog issue: three deprecated OpenAI models hidden, five models added; `contextWindow` is the input-side limit where the provider caps the prompt separately).*
 
 *Previously: 2026-09-18 — ADR-179 (the model catalog is checked against models.dev weekly: context windows are rewritten for a PR like prices; new and deprecated models are reported in one standing issue and never applied by the script).*
 
@@ -3341,3 +3343,25 @@ The obvious copy of ADR-163 — regenerate the catalog from upstream — is wron
 - `mistral-medium-latest` does **not** get `isMistralReasoning`, although upstream says `reasoning: true`. Its reasoning options (`none` · `high`) and its temperature support are those of `mistral-small-latest`, which has never had the flag. The flag means *Magistral-like*: no temperature and the reasoning token budget. Medium is neither.
 
 *The OpenAI default.* `DEFAULT_SETTINGS.defaultOpenAIModel` moves from `gpt-4o` to `gpt-5.4-mini`, the cheap GPT-5 tier added above. A default is a starting value, not a migration: a saved `defaultOpenAIModel` is the user's, so an existing vault keeps whatever it stored. A new test requires every provider's default to be a selectable (non-hidden) catalog model, so hiding a model can never strand the default.
+
+### ADR-180 — What a provider is sent follows the model, not the SDK's types
+
+**Status:** Accepted — 2026-09-18 (engineering-review #303, #304)
+
+**Context.** Two request-shaping rules had outlived the models they were written for. Both came to light while curating the catalog (ADR-179 addendum).
+
+- *Mistral effort.* `MistralService` sent `reasoningEffort` whenever a level was set, on every model, because "the installed SDK's types" allow it. They allow six values on any model. Mistral's documentation allows two, `none` and `high`, and only on the adjustable-reasoning models (Small, Medium). Magistral always reasons and takes no effort parameter. Pythia's `EffortLevel` is `low` · `medium` · `high`, so two of the three levels were never valid values, and on Large and Codestral none of them were. `parameterSupport` claimed `effort: true` for every Mistral model, so the header offered a control that meant nothing there.
+- *OpenAI system role.* `noSystemRole = isReasoningModel(model)` folded the system prompt into a `[System instructions]` user turn for every reasoning model. That was right for o1-mini, the one model that lacked a system role. Every reasoning model in the catalog now (o3, o3-pro, o4-mini, GPT-5) accepts a system message, which OpenAI treats as a developer message. A prompt folded into a user turn carries less weight than one in that role. The same flag also chose `max_completion_tokens`, tying two unrelated facts together.
+
+**Decision.**
+
+1. **One function decides what Mistral is sent: `mistralReasoningEffort(model, level)`** in `models/knownModels.ts`. It returns `"none"` for `low`, `"high"` for `medium` and `high`, and `undefined` on any model without `supportsEffort`. `MistralService` sends what it returns and nothing else. `supportsEffort` now marks Mistral's adjustable models too (Small, Medium), so one catalog flag answers "does this model take an effort parameter" for both Anthropic and Mistral, and `parameterSupport("mistral", …)` reads it. A test runs every Mistral catalog model through every level and fails if anything outside `none` · `high` · nothing comes out. A second test fails if the header and the wire disagree about which models take effort.
+2. **`medium` folds up, not down.** Asking for medium effort and getting none would silently turn reasoning off. Getting high costs more tokens but keeps the behaviour the user asked for.
+3. **`noSystemRole` is removed.** A reasoning model's request starts with `role: "system"`, as for any other model. `max_completion_tokens` is chosen by `isReasoningModel` directly.
+4. **`update-models` suggests the right Mistral flag.** A reasoning model with an effort option suggests `supportsEffort`. One without suggests `isMistralReasoning`, which is the Magistral case.
+
+**Consequences.**
+- The header shows the level the user chose (`Niedrig`), while Mistral receives `none`. That is intended: the segment shows the instruction, and this function translates it. The alternative, a provider-specific set of levels, would break ADR-048's rule that one `EffortLevel` is valid for every provider.
+- A pinned effort on a Mistral Large conversation is kept but shown as `—`, like an effort on Haiku (ADR-165).
+- Neither change has been run against the live APIs. The Mistral mapping follows the documentation, and the system role follows OpenAI's documented behaviour for reasoning models.
+
