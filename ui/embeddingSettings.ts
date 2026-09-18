@@ -1,7 +1,7 @@
 import { Setting } from "obsidian";
 import type PythiaPlugin from "../main";
 import { t } from "../i18n";
-import { EMBEDDING_MODELS, type EmbeddingModelId, type RelatedSimilarity } from "../models/embeddingModels";
+import { EMBEDDING_MODELS, type EmbeddingModelId, type SimilarityPreset } from "../models/embeddingModels";
 
 /**
  * On-device embedding settings, extracted from the settings tab (ADR-119): the
@@ -34,7 +34,7 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 				.addOption("loose", t("relatedSimilarityLoose"))
 				.setValue(plugin.settings.relatedSimilarity)
 				.onChange(async (value) => {
-					plugin.settings.relatedSimilarity = value as RelatedSimilarity;
+					plugin.settings.relatedSimilarity = value as SimilarityPreset;
 					await plugin.saveSettings();
 				})
 		);

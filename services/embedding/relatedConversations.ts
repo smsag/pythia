@@ -4,7 +4,7 @@ import {
 	embeddingModelConfig,
 	DEFAULT_EMBEDDING_MODEL_ID,
 	type EmbeddingModelId,
-	type RelatedSimilarity,
+	type SimilarityPreset,
 } from "../../models/embeddingModels";
 
 /** Fallback floor when `rankRelated` is called without one. Module-private:
@@ -22,7 +22,7 @@ const DEFAULT_MIN_SCORE = 0.5;
  * 19 of 23 neighbours on one model and 11 on the other.
  */
 export function relatedMinScore(
-	preset: RelatedSimilarity,
+	preset: SimilarityPreset,
 	modelId: EmbeddingModelId = DEFAULT_EMBEDDING_MODEL_ID
 ): number {
 	const floors = embeddingModelConfig(modelId).relatedFloors;
@@ -35,13 +35,13 @@ export function relatedMinScore(
  *  conversations, so ADR-169's measurements say nothing about it — and retuning
  *  it on data that does not describe it would be guessing with extra steps.
  *  Measure it separately before touching these. */
-export const VAULT_RETRIEVAL_MIN_SCORES: Record<RelatedSimilarity, number> = {
+export const VAULT_RETRIEVAL_MIN_SCORES: Record<SimilarityPreset, number> = {
 	strict: 0.5,
 	balanced: 0.35,
 	loose: 0.2,
 };
 
-export function vaultRetrievalMinScore(preset: RelatedSimilarity): number {
+export function vaultRetrievalMinScore(preset: SimilarityPreset): number {
 	return VAULT_RETRIEVAL_MIN_SCORES[preset] ?? VAULT_RETRIEVAL_MIN_SCORES.balanced;
 }
 
