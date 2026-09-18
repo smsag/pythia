@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeSettings, parseConversations } from "../services/persistence";
+import { mergeSettings, parseConversations, sanitizeConversationFields } from "../services/persistence";
 import { DEFAULT_SETTINGS } from "../models/settings";
 
 // ── mergeSettings — sanitization ─────────────────────────────────────────────
@@ -105,5 +105,62 @@ describe("sanitizeMessages — cost snapshot (ADR-163)", () => {
 		expect(conv.messages[0].cost).toEqual({ usd: 0.01, asOf: "2026-09-16" });
 		expect("cost" in conv.messages[1]).toBe(false);
 		expect("cost" in conv.messages[2]).toBe(false);
+	});
+});
+
+// ── the one-shot template on the read path (ADR-177) ──────────────────────────
+//
+// It reaches the send path directly: its systemPrompt becomes the prompt and
+// its writeMode decides which tools the model gets. So it validates where it
+// enters, and anything malformed is dropped rather than repaired.
+
+describe("sanitizeConversationFields — pendingTemplate", () => {
+	const base = () => ({
+		id: "c1", name: "Chat", createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z", systemPrompt: "", contextNotes: [],
+		resumeMode: "full", provider: "anthropic", model: "m", messages: [],
+	}) as unknown as Parameters<typeof sanitizeConversationFields>[0];
+
+	const sanitize = (pendingTemplate: unknown) => {
+		const conv = Object.assign(base(), { pendingTemplate });
+		sanitizeConversationFields(conv);
+		return (conv as unknown as Record<string, unknown>).pendingTemplate as Record<string, unknown> | undefined;
+	};
+
+	it("keeps a well-formed one", () => {
+		const kept = sanitize({ id: "T.md", name: "Term Note", systemPrompt: "Write terms.", model: "claude-haiku-4-5" });
+		expect(kept).toMatchObject({ id: "T.md", name: "Term Note", model: "claude-haiku-4-5" });
+	});
+
+	it("drops one without the two fields a send cannot do without", () => {
+		expect(sanitize({ name: "No id", systemPrompt: "x" })).toBeUndefined();
+		expect(sanitize({ id: "T.md", name: "No prompt" })).toBeUndefined();
+		expect(sanitize("a string")).toBeUndefined();
+		expect(sanitize(null)).toBeUndefined();
+	});
+
+	it("drops individual fields that are the wrong shape, keeping the rest", () => {
+		const kept = sanitize({
+			id: "T.md", systemPrompt: "x",
+			provider: "wrongProvider", effort: "extreme", writeMode: "destroy",
+			maxTokens: -5, temperature: "warm", outputFolder: 42,
+		});
+		expect(kept).toBeDefined();
+		expect(kept?.provider).toBeUndefined();
+		expect(kept?.effort).toBeUndefined();
+		expect(kept?.writeMode).toBeUndefined();
+		expect(kept?.maxTokens).toBeUndefined();
+		expect(kept?.temperature).toBeUndefined();
+		expect(kept?.outputFolder).toBeUndefined();
+	});
+
+	it("falls back to the path when the name is missing, and filters the note list", () => {
+		const kept = sanitize({ id: "T.md", systemPrompt: "x", contextNotes: ["A.md", "", 7, null] });
+		expect(kept?.name).toBe("T.md");
+		expect(kept?.contextNotes).toEqual(["A.md"]);
+	});
+
+	it("leaves a conversation with none alone", () => {
+		expect(sanitize(undefined)).toBeUndefined();
 	});
 });

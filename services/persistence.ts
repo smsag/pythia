@@ -244,6 +244,37 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	if (c.writeMode !== undefined && !(WRITE_MODES as readonly unknown[]).includes(c.writeMode)) delete c.writeMode;
 	if (c.outputLanguage !== undefined && !(OUTPUT_LANGUAGES as readonly unknown[]).includes(c.outputLanguage)) delete c.outputLanguage;
 	if (c.favorites !== undefined && !Array.isArray(c.favorites)) delete c.favorites;
+	sanitizePendingTemplate(c);
+}
+
+/**
+ * A one-shot template read back from disk (ADR-177). It reaches the send path
+ * directly — its `systemPrompt` becomes the prompt and its `writeMode` decides
+ * which tools the model is given — so it is validated where it enters, like
+ * every other boundary (principle 1). Anything malformed is dropped: losing an
+ * armed template costs one re-apply, and re-arming is the whole gesture.
+ */
+function sanitizePendingTemplate(c: Record<string, unknown>): void {
+	const raw = c.pendingTemplate;
+	if (raw === undefined) return;
+	if (raw === null || typeof raw !== "object") { delete c.pendingTemplate; return; }
+	const t = raw as Record<string, unknown>;
+	if (typeof t.id !== "string" || !t.id || typeof t.systemPrompt !== "string") {
+		delete c.pendingTemplate;
+		return;
+	}
+	if (typeof t.name !== "string" || !t.name.trim()) t.name = t.id;
+	if (!PROVIDERS.includes(t.provider as Provider)) delete t.provider;
+	if (typeof t.model !== "string" || !t.model) delete t.model;
+	if (typeof t.maxTokens !== "number" || !Number.isFinite(t.maxTokens) || t.maxTokens <= 0) delete t.maxTokens;
+	if (typeof t.temperature !== "number" || !Number.isFinite(t.temperature)) delete t.temperature;
+	if (!(EFFORTS as readonly unknown[]).includes(t.effort)) delete t.effort;
+	if (!(WRITE_MODES as readonly unknown[]).includes(t.writeMode)) delete t.writeMode;
+	if (typeof t.outputFolder !== "string") delete t.outputFolder;
+	t.contextNotes = Array.isArray(t.contextNotes)
+		? t.contextNotes.filter((n): n is string => typeof n === "string" && n.length > 0)
+		: undefined;
+	if (!(t.contextNotes as string[] | undefined)?.length) delete t.contextNotes;
 }
 
 /**

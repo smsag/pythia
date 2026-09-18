@@ -39,6 +39,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
     storageSize.ts            ← pure: storageLevel + formatBytes — MEASURED data.json thresholds (warn 25 MB · high 50 MB), ADR-174
+    pendingTemplate.ts        ← pure: armPendingTemplate + applyPendingTemplate — a template applied to a RUNNING conversation is a one-shot layer, never a write (ADR-177)
     conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
@@ -84,7 +85,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1211 tests across 80 files
+  tests/                      ← Vitest unit tests (npm test) — 1224 tests across 81 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -504,6 +505,15 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Lowering the limit asks first.** `ConversationCapModal` names the count from `countEvictions` — read from `evictConversations` itself, never a second copy of its protection rules — and what survives (starred · open in a leaf · merge target). Escape and the outside press are "no"; a cancelled dialog restores the stored number in the field
 - **No numeric settings field commits per keystroke.** `onChange` fires per character, so lowering "200" to "0" passes through 20 and 2 — that is what deleted a vault's conversations. Every numeric field goes through `bindNumberSetting` (`ui/numberSetting.ts`), which commits on blur or Enter and restores the stored value on a rejected entry; `PythiaSettingTab.hide()` flushes the field the user is standing in, because closing the tab destroys the input before `blur` fires. `settings.ts` holds no `parseInt`, and a new field is a rule object, not another hand-rolled parse
 - A rejected entry never clamps. Storing a number the user did not type is how "0 means unlimited" became "2"
+
+### Templates (ADR-177)
+
+- **Creating a conversation from a template writes its fields onto the conversation** — that conversation *is* the template. Unchanged, and correct
+- **Applying a template to a conversation that is already running writes NOTHING.** `armPendingTemplate` snapshots it onto `conv.pendingTemplate`; `applyPendingTemplate` layers it over a clone for one send; the layer clears on a committed answer. Never go back to assigning `conv.model`/`conv.systemPrompt`/… on this path — nine permanent fields for a one-turn instruction is the bug this ADR fixed
+- **A snapshot, not the template's path**: an edit to the template file between arming and sending must not change the turn (same reasoning as ADR-163's cost snapshot)
+- **Cleared on a committed answer, not at send start** — an errored or empty reply leaves it armed so the retry is the same shape
+- `resume_mode` deliberately does **not** apply on this path: history selection is a property of the conversation, not of one answer
+- The armed template is visible as the leading `.p-wikilink--template` pill, and `Message.templateId` records the template that actually shaped that answer — which is what the field always claimed to mean
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

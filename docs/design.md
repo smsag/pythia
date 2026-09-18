@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-18 — the composer's Enter writes a line break (ADR-175). Cmd/Ctrl+Enter sends; the placeholder reads `Type a message… (Cmd/Ctrl+Enter to send)` on desktop and plain `Type a message…` on a phone, where there is no modifier key and the Send button is a thumb away. The Send button is now the primary send on both platforms.*
+*Last updated: 2026-09-18 — the armed template is a pill in the reference row (ADR-177). `.p-wikilink--template` leads the row when a template is applied to a running conversation: the name at weight 600, **no `[[ ]]` brackets** — every other pill is a vault note in context, this one is the thing shaping the next answer — and an ✕ that disarms it without sending. It is gone once the answer lands.*
+
+*Previously: 2026-09-18 — the composer's Enter writes a line break (ADR-175). Cmd/Ctrl+Enter sends; the placeholder reads `Type a message… (Cmd/Ctrl+Enter to send)` on desktop and plain `Type a message…` on a phone, where there is no modifier key and the Send button is a thumb away. The Send button is now the primary send on both platforms.*
 
 *Previously: 2026-09-18 — the browse listing pages, and the settings name a size (ADR-174). `.p-history-more` is a row, not a button — list rhythm, mono `--font-smaller`, `--text-muted`, hover fill inside `@media (hover: hover)`, 12px padding under `pointer: coarse` — reading `Show more (70 left)`; it appends the next 50 rows rather than rebuilding the list, and removes itself when nothing is left. `.pythia-storage-line` under the history limit prints `Storage: 23.4 MB in data.json, 1 040 conversation(s)` in mono `--text-faint`, switching to `--text-warning` past 25 MB — a tint, never a red box: a vault that has grown is information, not an error.*
 

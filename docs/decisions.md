@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-176 (a shared label is not a shared number: the strict/balanced/loose type is renamed `SimilarityPreset`, so nothing implies the measured related-conversation floors also govern the unmeasured vault-retrieval ones).*
+*Last updated: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently).*
+
+*Previously: 2026-09-18 — ADR-176 (a shared label is not a shared number: the strict/balanced/loose type is renamed `SimilarityPreset`, so nothing implies the measured related-conversation floors also govern the unmeasured vault-retrieval ones).*
 
 *Previously: 2026-09-18 — ADR-175 (Enter writes a line break in the composer; Cmd/Ctrl+Enter sends: a prompt is a draft, and the unmodified key now carries the recoverable outcome).*
 
@@ -3221,3 +3223,42 @@ The settings label gains the question rather than the jargon: **"Related convers
 **Consequences.**
 - Pure rename plus comments; no behaviour, no persisted key, no migration. Settings keys (`relatedSimilarity`, `vaultContextSimilarity`) are untouched on purpose — renaming those would mean a data migration for a readability fix.
 - The measurement question is **not** answered here. `vaultRetrievalMinScore` still rests on three chosen numbers; engineering-review #273 stays open and wants its own probe, like `scripts/measure-related.mjs` did for conversation pairs. This ADR only stops the names from claiming otherwise.
+
+---
+
+### ADR-177 — A template applied to a running conversation is a one-shot
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+**Context.** One verb did two jobs. Creating a conversation *from* a template means "this conversation is this template" — the fields belong to it, permanently, and that is right. Applying a template *to* a conversation already running means "do this one thing now" — and it did the same permanent thing:
+
+```ts
+conv.systemPrompt = tpl.systemPrompt;   // and templateId, provider, model,
+conv.maxTokens    = tpl.maxTokens;      // maxTokens, temperature, effort,
+conv.writeMode    = tpl.writeMode;      // resumeMode, writeMode, contextNotes
+```
+
+Nine fields overwritten, no record of what they were, no way back. Applying a "Term Note" template to write one glossary entry left the conversation on that template's cheap model with its 2 000-token cap **for every later answer** — a truncation three turns later with no visible cause. It also silently dropped `output_folder`, which is only read when a template *creates* a conversation, so the one field the user set to control where notes land did not apply on this path at all.
+
+Two smaller things fell out of the same confusion: the settings a template changed were invisible (engineering-review #258), and `Message.templateId` — documented as "the template active when this answer was produced" — could only ever mirror the conversation's.
+
+**Decision — the applied template is a layer, not a write.**
+
+`Conversation.pendingTemplate` holds a **snapshot** of what the template contributes, armed when it is applied and spent on the next committed answer. `services/pendingTemplate.ts` is pure and does both halves: `armPendingTemplate` takes the snapshot, `applyPendingTemplate` returns the conversation as *this turn* should be sent — the template's values over a clone, the conversation's own for everything it does not set, notes unioned with the user's first.
+
+- **Nothing is stored.** This is engineering principle 6 — inherited stays inherited — applied to a whole template rather than one override. The resolution chain gains a layer: `pendingTemplate ?? conversation ?? settings ?? model default`.
+- **A snapshot, not the path.** An edit to the template file between arming and sending must not change the turn under the user — the same reasoning as ADR-163's per-message cost.
+- **Sent as a clone**, the way a comparison candidate already is (ADR-160) and an auto-armed web search already is (ADR-099). No provider changes: they receive a conversation and read it.
+- **Cleared on a committed answer, not at send start.** An errored or empty reply leaves it armed, so the retry is the same shape.
+- **One-shot, re-armed by hand.** "Applied until removed" was the alternative and is a two-line change in the clear step; the user asked for re-adding, and a template that expires cannot outlive the reason it was applied.
+- **`templateId` on the answer becomes true**: it records the template that actually shaped that turn, so the sources row under the answer needed no change and now reports something the conversation's own field could not.
+- **Visible while armed**: a pill leading the reference row, `Term Note ✕`, with no `[[ ]]` brackets — it is not a note in context, it is the thing shaping the turn — and its ✕ is how you disarm without sending.
+- **Validated on the read path** (`sanitizePendingTemplate`). It reaches the send path directly: its `systemPrompt` becomes the prompt and its `writeMode` decides which tools the model gets. A malformed one is dropped, not repaired — losing an armed template costs one re-apply, and re-arming is the whole gesture.
+
+**Consequences.**
+- Creating from a template is unchanged: those fields still belong to the conversation.
+- `resume_mode` in a template no longer applies on this path. It is the one field with no per-turn meaning — history selection is a property of the conversation, not of one answer — and silently pinning it was part of the bug.
+- A conversation that had a template applied before this change keeps those fields; they were written and this ADR does not unwind them. New applications write nothing.
+- The armed template survives a reload, because it is on the conversation and persisted. That is intended: arming is a deliberate act and the pill is on screen to say so.
+- Engineering-review #258 shrinks again: the template's effect is visible *before* the send as a pill, and *after* it on the answer. What remains is reading the prompt text itself.
