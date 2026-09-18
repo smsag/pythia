@@ -1,6 +1,6 @@
 # Pythia — Product Spec
 
-**Version:** 2.20.x
+**Version:** 2.22.x
 **Status:** Living document — rewritten 2026-09-18 from the 0.1 MVP draft ("Claude Vault Assistant"), which described a plugin that no longer exists
 **Owner:** Steffen
 
