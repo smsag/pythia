@@ -178,7 +178,8 @@ const en = {
 	unfavoriteBtn: "Unfavorite",
 
 	// ── Input toolbar ─────────────────────────────────────────────────────────
-	inputPlaceholder:    "Type a message… (Enter to send, Shift+Enter for new line)",
+	inputPlaceholder:    "Type a message… (Cmd/Ctrl+Enter to send)",
+	inputPlaceholderMobile: "Type a message…",
 	sendBtn:             "Send",
 	stopBtn:             "Stop",
 	attachNoteTooltip:   "Attach note",

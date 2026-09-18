@@ -77,13 +77,14 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
+    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1203 tests across 79 files
+  tests/                      ← Vitest unit tests (npm test) — 1211 tests across 80 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -513,6 +514,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 [ textarea auto-expand 1→72px max ]
 [ attach ][ save ] ______________ [ Senden ]
 ```
+- **Enter writes a line break; Cmd/Ctrl+Enter sends** (ADR-175). The rule lives once, in `ui/composerKeys.ts` — never re-derive it in a keydown handler, and never let a send fire while `isComposing` is true. The placeholder names the shortcut on desktop only
 - Textarea: transparent, no border, `--font-monospace`, 12px
 - Toolbar icons: inline SVG, 22×22px hit area
 - Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
