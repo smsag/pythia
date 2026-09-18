@@ -88,6 +88,7 @@
 
 *Updated: 2026-08-23 — fork branch-back (#105): forked snippets accent-highlighted in the source, tap-to-expand inline fork summary + open/return links, source summary decoupled into `forkedFromSummary`.*
 *Updated: 2026-08-23 — saved-summary frontmatter (#104): `type: "LLM Note"` (was `pythia-conversation`/`pythia-favorites`), a clickable `conversation:` resume deep link, and no `tags: [pythia]` (`NoteWriter`).*
+*Updated: 2026-09-18 — #295/#296/#297 done (paged browse listing + fork index, cap default 450, a data.json size readout and warning); #298 records the split-storage design, to evaluate when the readout says it is needed.*
 *Updated: 2026-08-23 — summary UX rework (#103): top-of-conversation "Speisekarte" cards, long-press Send menu as sole generator, removed pinned panel / sparkle / favorites modal / auto-generation paths.*
 *Updated: 2026-08-23 — highlight-favorite interaction fixes (#102): tap-to-unfavorite, surgical removal (no color loss), single-tap navigator jump, toolbar reorder.*
 *Updated: 2026-08-23 — summarize-favorites feature (#101): per-conversation favorites synthesis (Key learnings + Action items) via `buildFavoritesDigest` + `generateFavoritesSummary`, modal preview, navigator ✦ + command triggers.*
@@ -1530,3 +1531,51 @@ Reported from a vault: the conversation history limit was set to **0 — documen
 | 293 | **The deliberate delete was the only remaining path that destroyed a conversation with no copy.** ADR-172 left it alone on the grounds that a delete is intent — true for whether to *ask*, not for what to *offer*. `DeleteConversationModal` now carries **Archive · Delete · Cancel**, Archive leading as `mod-cta`, with a hint naming the folder. A choice in the dialog rather than a setting: `archiveBeforeEviction` governs the path where nobody is present to be asked, this one has somebody. Fail-closed like the eviction — `ConversationService.archiveConversation` returns false when the note could not be written and the conversation is kept. `archiveFolderOf` became the one folder resolution across all three callers rather than a third copy. | Medium | Done |
 
 **Still open (#294)** — the archive folder has no size readout anywhere, and it now also grows from deliberate deletions. A count beside the folder picker answers it without Pythia owning a retention policy.
+
+## Follow-up (#295–#297 done, #298 designed) — the cost of one file, 2026-09-18
+
+Measured with the new `scripts/bench-store.mjs` (real functions, synthetic ~22 KB conversations; Node on a dev machine — Obsidian mobile is a webview on a phone CPU and several times slower):
+
+| vault | data.json | rewrite per turn | startup parse |
+|---|---|---|---|
+| 200 | 4.5 MB | 19 ms | 12 ms |
+| 450 | 10 MB | 45 ms | 23 ms |
+| 1 000 | 22 MB | 87 ms | 66 ms |
+| 2 000 | 45 MB | 179 ms | 133 ms |
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 295 | **The browse listing drew a row per conversation, and looked up forks with a filter per row.** Search has been capped at 20 rows since ADR-170; the empty-query listing had no cap at all, so opening the panel built ~8 DOM nodes and three listeners per conversation in the vault — and `all.filter(c => c.forkedFromId === src.id)` inside the loop made it **O(n²)**: 28 ms of pure filtering at 2 000 conversations, 528 ms at 5 000. Now one `forksBySource` index per build (the ⑂ count reads its length, so the two readers cannot disagree) and 50 rows per page behind a `show more` row that appends rather than rebuilds. A source and its forks always land on the same page — the indent means nothing across a page break. | High | Done |
+| 296 | **The conversation cap defaulted to 200, which was never a measured number.** At ~22 KB per conversation that capped data.json around 4.5 MB, an order of magnitude below where anything is felt, so the default itself was deleting conversations for no gain. Raised to **450** (~10 MB, 45 ms per turn), with a migration moving vaults still sitting on the old 200 — raising a cap can only ever keep more. | Medium | Done |
+| 297 | **Nothing showed the number that actually matters.** The limit is expressed in conversations; the cost is in bytes, because the whole file is rewritten after every message and a synced vault moves all of it again. `services/storageSize.ts` (pure, tested) holds the thresholds — `warn` at 25 MB, `high` at 50 MB, both from the table above — and the settings tab prints `Storage: 23.4 MB in data.json, 1 040 conversation(s)` under the history limit, turning into a warning past `warn`. One `Notice` per load at `high`, where the user cannot see the cause any other way. | Medium | Done |
+
+### #298 — Split storage: an index plus one file per conversation (designed, not scheduled)
+
+**The problem, stated once.** `data.json` holds settings *and* every conversation, and `saveData` writes the whole file. So the cost of sending one message is a function of the entire corpus, in three places at once: the serialize (87 ms at 1 000 conversations), the disk write, and — on an iCloud or Obsidian Sync vault — moving the whole file again, per message. Everything in #295–#297 is mitigation. This is the fix.
+
+**Shape.**
+
+```
+.obsidian/plugins/pythia/
+  data.json                 ← settings only; small, written when settings change
+  conversations/
+    index.json              ← one row per conversation: id, name, updatedAt, model,
+                              provider, messageCount, summaryText, favorites count,
+                              forkedFromId, attachedNotes, templateId, merges
+    <id>.json               ← the messages, written only when THAT conversation changes
+```
+
+The split is chosen by what the app reads: the conversation panel, the `#` navigator, the header and search all read **metadata plus the note/title/summary fields** — which is exactly what ADR-168's `ConversationFields` already builds — while the message bodies are read only by the conversation being displayed, the context builder, and the embedding index. `index.json` at 1 000 conversations is roughly 300 KB, so the startup parse and the per-keystroke work stay where they are today at 24 conversations.
+
+**What it buys.** Sending a message rewrites one conversation file (tens of KB) and one index row instead of the corpus. The startup parse becomes the index. Sync moves what changed. The conversation cap stops being load-bearing — eviction becomes a genuine preference rather than the thing standing between the user and a slow vault.
+
+**What it costs, honestly.**
+1. **Migration, one-way, over a file the user cannot afford to lose.** Write the new tree, verify every conversation reads back, and only then shrink `data.json` — keeping a `data.json.bak` until the next clean load. ADR-133's `mergeConversations` exists because a stale copy of this file has already rolled a conversation back once.
+2. **Multi-device sync gets more interesting, not less.** Today one file arrives whole or not at all. Split, a device can see an index row whose conversation file has not landed yet. The index must be treated as a hint and a missing file as "not yet here", never as a deletion — and `shouldRefuseLoad`'s iCloud guard needs its per-file equivalent.
+3. **The atomicity that `saveData` gives for free disappears.** Index and conversation are two writes; a crash between them leaves a row pointing at a stale file. Writing the conversation first and the index second makes the failure mode "the index is a beat behind", which is recoverable; the reverse is not.
+4. **`ConversationStore` becomes a loader, not a list.** `plugin.conversations` is a live array today and the whole UI holds references into it (ADR-104/#122). Lazy loading means a conversation can exist as a row with no messages in memory, and every `conv.messages` reader would have to say when it needs them. This is the expensive part of the work, and it is a refactor, not a storage change.
+5. **Obsidian's `saveData`/`loadData` are no longer the interface** — it becomes direct `vault.adapter` I/O in the plugin's own folder, which is supported but hand-rolled, including the own-write stamping the watcher depends on.
+
+**Rough size:** the storage layer and migration are a few days; item 4 is the real scope and touches `ConversationStore`, `sidebar.ts`, `HistoryController` and `ContextBuilder`.
+
+**When to evaluate — a trigger, not a date.** Do it when **either** the storage readout lands in `warn` (25 MB) on a real user's vault and lowering the limit is not an acceptable answer, **or** a second feature needs partial loading anyway (a full-text index of message bodies — see #266 — would). Until one of those happens, #295–#297 keep the single file comfortable to ~1 000 conversations, and this entry is the design that gets picked up rather than re-derived.

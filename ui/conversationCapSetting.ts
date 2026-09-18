@@ -3,6 +3,7 @@ import type PythiaPlugin from "../main";
 import { archiveFolderOf } from "../services/conversationArchive";
 import { ConversationCapModal } from "../suggest/ConversationCapModal";
 import { bindNumberSetting } from "./numberSetting";
+import { formatBytes, storageLevel } from "../services/storageSize";
 import { t } from "../i18n";
 
 /**
@@ -36,7 +37,7 @@ export function renderConversationCapSetting(
 	plugin: PythiaPlugin,
 	deps: CapSettingDeps,
 ): void {
-	new Setting(containerEl)
+	const setting = new Setting(containerEl)
 		.setName(t("maxConversationsName"))
 		.setDesc(t("maxConversationsDesc"))
 		.addText((text) => {
@@ -47,6 +48,31 @@ export function renderConversationCapSetting(
 				write: (n) => applyCap(plugin, deps, n ?? 0, text),
 			}));
 		});
+
+	renderStorageReadout(setting, plugin);
+}
+
+/**
+ * What the limit is actually for, in the one number nothing else shows: the size
+ * of `data.json` (ADR-174). Pythia rewrites the whole file after every message,
+ * so this — not the conversation count — is what decides when the design starts
+ * to hurt. Always shown; it turns into a warning past `STORAGE_WARN_BYTES`.
+ *
+ * `stat` is async and the settings tab renders synchronously, so the line is
+ * appended when the answer arrives. A size that cannot be read prints nothing
+ * rather than a zero: an invented number here would be read as reassurance.
+ */
+function renderStorageReadout(setting: Setting, plugin: PythiaPlugin): void {
+	void (async () => {
+		const bytes = await plugin.pluginDataStore.dataFileBytes();
+		if (bytes === null || !setting.descEl.isConnected) return;
+		const level = storageLevel(bytes);
+		const vars = { size: formatBytes(bytes), count: String(plugin.conversations.length) };
+		setting.descEl.createDiv({
+			cls: level === "ok" ? "pythia-storage-line" : "pythia-storage-line mod-warning",
+			text: level === "ok" ? t("storageSizeLine", vars) : t("storageWarnLine", vars),
+		});
+	})();
 }
 
 function applyCap(plugin: PythiaPlugin, deps: CapSettingDeps, cap: number, text: TextComponent): void {

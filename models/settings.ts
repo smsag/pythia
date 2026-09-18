@@ -116,7 +116,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	scratchFolder: "Pythia/Scratch",
 	defaultResumeMode: "full",
 	maxMessagesPerSession: 100,
-	maxConversations: 200,
+	maxConversations: 450,
 	archiveBeforeEviction: true,
 	archiveFolder: "Pythia/Archive",
 	injectActiveNoteOnTemplate: false,

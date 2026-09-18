@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-173 (the delete dialog offers the archive: Archive · Delete · Cancel, a choice at the one moment anyone knows whether this conversation mattered, fail-closed like the automatic archive).*
+*Last updated: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
+
+*Previously: 2026-09-18 — ADR-173 (the delete dialog offers the archive: Archive · Delete · Cancel, a choice at the one moment anyone knows whether this conversation mattered, fail-closed like the automatic archive).*
 
 *Previously: 2026-09-18 — ADR-172 (the limit archives before it deletes, and "no limit" is an empty box: eviction now writes each conversation to a vault note first and keeps any whose note fails, and the magic 0 leaves the settings field).*
 
@@ -3133,3 +3135,35 @@ Half of that still holds: it should not be automatic. The other half was wrong. 
 - Deleting is now a two-option decision, so the dialog is a beat slower to read. Acceptable: it is the one dialog in the plugin whose wrong answer cannot be undone.
 - The archive folder can now grow from deliberate deletions too. Still Obsidian's problem to search and the user's to prune (engineering-review #294 is the readout that would make its size visible).
 - No new setting. If "always archive on delete" turns out to be what people want, the dialog's own usage is the evidence for it, and a remembered default can be added later without changing the two actions.
+
+---
+
+### ADR-174 — The limit is measured in bytes, and the list is paged
+
+**Date:** 2026-09-18
+**Status:** Accepted — closes engineering-review #295–#297; the design it defers is #298
+
+**Context.** ADR-171 to ADR-173 made the conversation cap safe. None of them asked whether its number was right, or what it was protecting against. Measured with the new `scripts/bench-store.mjs` (real functions, synthetic ~22 KB conversations; Node on a dev machine, so Obsidian mobile is several times slower):
+
+| vault | data.json | rewrite per turn | startup parse |
+|---|---|---|---|
+| 200 | 4.5 MB | 19 ms | 12 ms |
+| 450 | 10 MB | 45 ms | 23 ms |
+| 1 000 | 22 MB | 87 ms | 66 ms |
+| 2 000 | 45 MB | 179 ms | 133 ms |
+
+**Decision 1 — the default cap is 450, and a vault still on 200 moves to it.** 200 capped `data.json` around 4.5 MB, an order of magnitude below where anything is felt: the default was deleting conversations for no gain. A saved 200 is migrated because it is the fingerprint of never having touched the field, and raising a cap can only ever keep more. Any other stored value, including `0`, is the user's.
+
+**Decision 2 — the warning is a size, because the cost is a size.** The limit counts conversations; the price is bytes, since the whole file is rewritten after every message and a synced vault moves all of it again. A hundred long research conversations outweigh a thousand short ones, so a conversation count cannot be the trigger. `services/storageSize.ts` (pure, tested) holds `warn` at 25 MB and `high` at 50 MB, both read off that table — where a turn starts costing tens of milliseconds, and where that has roughly doubled and the startup parse is felt.
+
+It surfaces twice, deliberately unequal: the settings tab **always** prints `Storage: 23.4 MB in data.json, 1 040 conversation(s)` under the limit — the number is the reason the setting exists and nothing else in the app exposes it — and a `Notice` fires once per load only at `high`. A warning the user has already acted on, repeated every launch, is how people learn to dismiss warnings. A size that cannot be read prints nothing rather than a zero: an invented number here would read as reassurance.
+
+**Decision 3 — the browse listing is paged, and forks are indexed once.** Search has been capped at `SEARCH_RESULT_LIMIT` since ADR-170; the empty-query listing had no cap, so opening the panel built a row, a sub-line and three listeners for **every conversation in the vault**. Worse, it looked up each source's forks with `all.filter(…)` inside the loop over sources — quadratic, 28 ms of pure filtering at 2 000 conversations and 528 ms at 5 000, next to a `forkCounts` map built two lines above for the ⑂ badge.
+
+Now `forksBySource` is built once per list build and both readers share it — the badge is `…get(id)?.length`, so the count and the rows cannot disagree — and `BROWSE_PAGE_ROWS = 50` draws a page with the rest behind a `show more` row that **appends** rather than rebuilds. 50 rather than 20 because the page has to fill a desktop panel, or the control appears before the user has scrolled. A source and its forks are always drawn together, so a page may overshoot: the fork indent means nothing once its parent is on the other side of a page break.
+
+**Consequences.**
+- At the new default the numbers are comfortable (10 MB, 45 ms per turn) and the readout stays quiet until roughly 1 100 conversations.
+- The thresholds are constants read off one measurement on one machine. They are in a pure module with tests and a documented table so the next person can re-measure with the script rather than argue about the number.
+- Paging changes what ↑/↓ can reach: keyboard selection covers the rendered rows, so a conversation past the page needs `show more` first. Search — which reaches everything, capped and ranked — is the way to find a distant conversation, and it is one keystroke away in the same panel.
+- **None of this is the fix.** Every message still pays for the whole corpus. `scripts/bench-store.mjs` and `storageSize.ts` exist so that the point where that stops being acceptable announces itself instead of being discovered. The fix is engineering-review **#298** — an index plus one file per conversation — designed there in full, deliberately not scheduled: its real cost is not the storage layer but making `plugin.conversations` a loader rather than a live array, and nothing in a vault at today's sizes has earned that yet.

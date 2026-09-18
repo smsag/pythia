@@ -21,6 +21,20 @@ import { RelatedMode } from "./RelatedMode";
 import { renderHistoryChip } from "./historyChip";
 
 /**
+ * Conversation rows drawn per page of the browse listing (ADR-174). A source
+ * and its forks are always drawn together, so a page can overshoot slightly.
+ *
+ * 50, not 20: the page has to fill a desktop panel or the control appears
+ * before the user has scrolled, and each row is ~8 nodes and three listeners —
+ * the cost is the corpus behind it, not the page.
+ */
+const BROWSE_PAGE_ROWS = 50;
+
+/** Newest first, tolerating a missing or malformed `updatedAt`. */
+const byUpdatedAtDesc = (a: Conversation, b: Conversation): number =>
+	(b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
+
+/**
  * Using the history panel to choose a conversation rather than switch to one
  * (ADR-143). The destructive row controls are hidden while picking, and
  * `excludeId` drops the conversation the choice is being made from.
@@ -317,13 +331,21 @@ export class HistoryController {
 			if (items > 0) menu.showAtPosition({ x, y });
 		};
 
-		// Fork counts once per build, not one filter over every conversation per row.
-		let forkCounts = new Map<string, number>();
-		const countForks = (): void => {
-			forkCounts = new Map();
+		// The forks of every source, indexed once per build (ADR-174). Both readers
+		// used to walk the whole corpus per row — `rowSub` for the ⑂ count and the
+		// browse listing for the rows themselves — which made drawing the list
+		// quadratic in the number of conversations: 28ms of pure filtering at 2,000,
+		// 528ms at 5,000. One pass, and the count is the list's length.
+		let forksBySource = new Map<string, Conversation[]>();
+		const indexForks = (): void => {
+			forksBySource = new Map();
 			for (const c of this.d.plugin.conversations) {
-				if (c.forkedFromId) forkCounts.set(c.forkedFromId, (forkCounts.get(c.forkedFromId) ?? 0) + 1);
+				if (!c.forkedFromId) continue;
+				const siblings = forksBySource.get(c.forkedFromId);
+				if (siblings) siblings.push(c);
+				else forksBySource.set(c.forkedFromId, [c]);
 			}
+			for (const siblings of forksBySource.values()) siblings.sort(byUpdatedAtDesc);
 		};
 
 		const rowSub = (conv: Conversation, isFork: boolean, viaNotes?: string[]): HTMLElement => {
@@ -332,7 +354,7 @@ export class HistoryController {
 				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
 			} else {
 				sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
-				const forkCount = forkCounts.get(conv.id) ?? 0;
+				const forkCount = forksBySource.get(conv.id)?.length ?? 0;
 				if (forkCount) sub.createSpan({ cls: "p-history-fork-count", text: ` ⑂ ${forkCount}` });
 				const favCount = conv.favorites?.length ?? 0;
 				if (favCount) sub.createSpan({ cls: "p-history-fav-count", text: ` ★ ${favCount}` });
@@ -418,7 +440,7 @@ export class HistoryController {
 			const q = query.toLowerCase().trim();
 			const all = this.d.plugin.conversations;
 			const byId = new Map(all.map((c) => [c.id, c]));
-			countForks();
+			indexForks();
 
 			// Active query → flat list ranked by content relevance (TF-IDF over
 			// title + summary + messages, and over attached/cited note names when
@@ -450,20 +472,40 @@ export class HistoryController {
 
 			const sources = all
 				.filter((c) => !c.forkedFromId || !byId.has(c.forkedFromId))
-				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+				.sort(byUpdatedAtDesc);
+
+			// Paged (ADR-174). The browse listing is the one surface whose length was
+			// the whole corpus — search has capped at SEARCH_RESULT_LIMIT since
+			// ADR-170 — so opening the panel built a row, its sub-line and three
+			// listeners for every conversation in the vault. A page is drawn; the
+			// rest waits behind "show more", which appends rather than rebuilds.
+			let nextSource = 0;
 			let currentBucket = "";
-			for (const src of sources) {
-				const forks = all
-					.filter((c) => c.forkedFromId === src.id)
-					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-				const bucket = this.historyBucket(src.updatedAt);
-				if (bucket !== currentBucket) {
-					currentBucket = bucket;
-					listEl.createDiv({ cls: "p-history-group", text: bucket });
+			let moreEl: HTMLElement | null = null;
+			const renderPage = (): void => {
+				moreEl?.remove();
+				moreEl = null;
+				const startedAt = rows.length;
+				while (nextSource < sources.length && rows.length - startedAt < BROWSE_PAGE_ROWS) {
+					const src = sources[nextSource++];
+					const bucket = this.historyBucket(src.updatedAt);
+					if (bucket !== currentBucket) {
+						currentBucket = bucket;
+						listEl.createDiv({ cls: "p-history-group", text: bucket });
+					}
+					// A source and its forks are drawn together: the indent means
+					// nothing once the parent is on the other side of a page break.
+					makeRow(src, false, false);
+					for (const f of forksBySource.get(src.id) ?? []) makeRow(f, true, true);
 				}
-				makeRow(src, false, false);
-				for (const f of forks) makeRow(f, true, true);
-			}
+				const left = sources.length - nextSource;
+				if (left > 0) {
+					moreEl = listEl.createDiv({ cls: "p-history-more", text: t("showMoreRows", { count: String(left) }) });
+					moreEl.addEventListener("click", () => { renderPage(); paintSelection(); });
+				}
+			};
+			renderPage();
+
 			if (!listEl.hasChildNodes()) {
 				listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
 			}

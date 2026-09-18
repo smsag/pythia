@@ -7,6 +7,7 @@ import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 import { debugLog } from "./messageUtils";
 import { describeErrorForLog } from "./redact";
 import { archiveFolderOf } from "./conversationArchive";
+import { formatBytes, storageLevel } from "./storageSize";
 import {
 	applySettingsMigrations,
 	mergeSettings,
@@ -127,6 +128,8 @@ export class PluginDataStore {
 		if (needsSave) {
 			await p.saveData({ settings: p.settings, conversations: p.conversations });
 		}
+
+		void this.warnIfStoreIsLarge();
 	}
 
 	async saveSettings(): Promise<void> {
@@ -301,6 +304,44 @@ export class PluginDataStore {
 		if (notify) new Notice(t("reloadComplete"));
 	}
 
+	/** The plugin's own data.json. The config directory is user-configurable, so
+	 *  this is derived from the manifest, never a hardcoded ".obsidian". */
+	private dataJsonPath(): string {
+		const p = this.plugin;
+		const pluginDir = p.manifest.dir ?? `${p.app.vault.configDir}/plugins/${p.manifest.id}`;
+		return normalizePath(`${pluginDir}/data.json`);
+	}
+
+	/** Size of data.json in bytes, or null when it cannot be read (ADR-174). The
+	 *  settings tab shows it: it is the number that decides when this design
+	 *  starts to hurt, and nothing else in the app exposes it. */
+	async dataFileBytes(): Promise<number | null> {
+		try {
+			const stat = await this.plugin.app.vault.adapter.stat(this.dataJsonPath());
+			return stat?.size ?? null;
+		} catch (e) {
+			console.warn("[Pythia] could not stat data.json:", describeErrorForLog(e));
+			return null;
+		}
+	}
+
+	/**
+	 * Say once per load when data.json has grown past the point where every
+	 * message pays for the whole file (ADR-174). Only at `high`: the settings
+	 * readout carries `warn`, and a Notice the user cannot act on twice is noise.
+	 */
+	private async warnIfStoreIsLarge(): Promise<void> {
+		const bytes = await this.dataFileBytes();
+		if (bytes === null || storageLevel(bytes) !== "high") return;
+		new Notice(
+			t("storageHighNotice", {
+				size: formatBytes(bytes),
+				count: String(this.plugin.conversations.length),
+			}),
+			12000,
+		);
+	}
+
 	/**
 	 * Poll data.json for external modifications every 5 seconds.
 	 * vault.on("modify") does not fire for .obsidian/ system files, so
@@ -315,8 +356,7 @@ export class PluginDataStore {
 		// The plugin folder, not a hardcoded ".obsidian": the config directory is
 		// user-configurable, and a watcher pointed at the wrong path never fires —
 		// silently, since a missing stat is the "nothing to do" case below.
-		const pluginDir = p.manifest.dir ?? `${p.app.vault.configDir}/plugins/${p.manifest.id}`;
-		const DATA_JSON_PATH = normalizePath(`${pluginDir}/data.json`);
+		const DATA_JSON_PATH = this.dataJsonPath();
 		// Seeded from the clock and corrected on the first poll below. Using the
 		// file's own mtime as the baseline matters: data.json is routinely older
 		// than the moment the plugin loads, and seeding from the clock would let a

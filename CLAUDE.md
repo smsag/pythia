@@ -38,6 +38,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
+    storageSize.ts            ← pure: storageLevel + formatBytes — MEASURED data.json thresholds (warn 25 MB · high 50 MB), ADR-174
     conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
@@ -82,7 +83,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1192 tests across 77 files
+  tests/                      ← Vitest unit tests (npm test) — 1203 tests across 79 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -94,6 +95,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     engineering-review.md     ← improvement suggestions and priority matrix
     briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
   scripts/bench-search.mjs    ← per-keystroke cost of the search panel at three vault sizes (ADR-170)
+  scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
@@ -483,7 +485,11 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **An empty reply always says something** (`noticeEmptyReply`). An empty *truncated* reply names the budget — that is the reasoning-model case
 - Model rows show `MODEL_PROFILE` tiers (speed · depth · cost, 1–3) — tiers, not prices; the test requires one per catalog entry
 
-### The conversation history limit (ADR-171/172)
+### The conversation history limit (ADR-171/172/174)
+
+- **The cost is bytes, not conversations** (ADR-174). The whole `data.json` is rewritten after every message and a synced vault moves all of it again, so a hundred long conversations outweigh a thousand short ones. Thresholds live in `services/storageSize.ts` and are **measured** — re-run `scripts/bench-store.mjs` before changing one, and record the numbers. The settings tab always prints the size under the limit; the `Notice` fires once per load and only at `high`, because a warning repeated after the user has acted on it is how people learn to dismiss warnings
+- **The browse listing pages at `BROWSE_PAGE_ROWS = 50`** and `show more` **appends** — search has been capped since ADR-170, and the empty-query listing was the one surface whose length was the whole corpus. A source and its forks are always drawn together, so a page may overshoot; the fork indent means nothing across a page break
+- **`forksBySource` is built once per list build** and both readers share it — the ⑂ badge is its `length`. Never re-introduce a `filter` over the corpus inside the row loop: that is what made drawing the list quadratic (528ms at 5 000 conversations)
 
 - **The limit archives before it deletes, and the order is the rule** (ADR-172). `applyCap` writes each removed conversation to a note through `NoteWriter.archiveConversationNote`, and drops **only what was written** — a failed write keeps the conversation and leaves the list over the cap. Never reorder this into drop-then-archive, and never let a failure fall through to the delete
 - **`archiveBeforeEviction` is ON by default.** The user this protects is the one who never opens the settings. `createNote` (which refuses an existing path) plus `archiveNotePath`'s suffixing means the archive can never overwrite a note — two conversations may share a name and a day

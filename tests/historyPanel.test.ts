@@ -142,6 +142,57 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(pane().querySelector(".p-history-snippet")?.textContent).toContain("seiko");
 	});
 
+	// ── Paging the browse listing (ADR-174) ──────────────────────────────────
+	//
+	// The browse listing was the one surface whose length was the whole corpus;
+	// search has been capped since ADR-170.
+
+	it("draws a page of rows and offers the rest behind show-more", async () => {
+		for (let i = 0; i < 120; i++) {
+			await seedConversation(plugin, { name: `Conversation ${i}`, messages: [userMsg(`m${i}`, "hi")] } as Partial<Conversation>);
+		}
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+
+		expect(historyRows(pane)).toHaveLength(50);
+		const more = pane().querySelector<HTMLElement>(".p-history-more")!;
+		expect(more).not.toBeNull();
+		expect(more.textContent).toContain("70");            // what is still hidden
+
+		more.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(historyRows(pane)).toHaveLength(100);
+		expect(pane().querySelector(".p-history-more")).not.toBeNull();
+
+		pane().querySelector<HTMLElement>(".p-history-more")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(historyRows(pane)).toHaveLength(120);
+		// Nothing left to show: the control goes rather than sitting there inert.
+		expect(pane().querySelector(".p-history-more")).toBeNull();
+	});
+
+	it("shows no page control when the whole corpus fits", async () => {
+		await seedThree();
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+
+		expect(historyRows(pane)).toHaveLength(3);
+		expect(pane().querySelector(".p-history-more")).toBeNull();
+	});
+
+	it("keeps a source and its forks on the same page, and counts the forks once", async () => {
+		const source = await seedConversation(plugin, { name: "Source", messages: [userMsg("s1", "hi")] } as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Fork A", forkedFromId: source.id, messages: [userMsg("f1", "hi")] } as Partial<Conversation>);
+		await seedConversation(plugin, { name: "Fork B", forkedFromId: source.id, messages: [userMsg("f2", "hi")] } as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+
+		const titles = historyRows(pane).map((r) => r.querySelector(".p-history-row-title")?.textContent);
+		expect(titles).toContain("Source");
+		expect(titles).toContain("Fork A");
+		expect(titles).toContain("Fork B");
+		// The ⑂ count comes from the same index the fork rows do.
+		expect(pane().querySelector(".p-history-fork-count")?.textContent).toContain("2");
+	});
+
 	it("↑/↓ move the selection and Enter opens the selected conversation", async () => {
 		await seedThree();
 		const { view, pane } = await mountView(plugin);

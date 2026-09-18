@@ -26,6 +26,9 @@ const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
 /** Keys that may legitimately be absent (the "use the API default" state). */
 const OPTIONAL_KEYS = new Set<keyof PythiaSettings>(["maxTokens", "temperature", "effort"]);
 
+/** The conversation cap shipped up to 2.20.x. See the migration below. */
+const LEGACY_DEFAULT_MAX_CONVERSATIONS = 200;
+
 /**
  * Apply one-time settings migrations to a raw saved-settings object.
  * Mutates `saved` in place (same semantics as the original inline code).
@@ -60,6 +63,15 @@ export function applySettingsMigrations(saved: Record<string, unknown>): {
 	if (saved.encryptedOpenAIKey) {
 		legacyOpenAICiphertext = saved.encryptedOpenAIKey as string;
 		delete saved.encryptedOpenAIKey;
+		needsSave = true;
+	}
+
+	// The old 200 was never a measured number (ADR-174): at ~22 KB per
+	// conversation it capped data.json around 4.5 MB, well below where anything
+	// gets slow. A vault still sitting on it is one that never touched the field,
+	// so it moves to the new default. Raising a cap can only ever keep more.
+	if (saved.maxConversations === LEGACY_DEFAULT_MAX_CONVERSATIONS) {
+		saved.maxConversations = DEFAULT_SETTINGS.maxConversations;
 		needsSave = true;
 	}
 
