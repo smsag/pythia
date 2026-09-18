@@ -61,6 +61,9 @@ export interface PythiaSettings {
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
 	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
+	/** The optimizer also rates the task and suggests the cheapest model of the
+	 *  preferred provider that is deep enough — offered, never applied (ADR-181). */
+	optimizerSuggestsModel: boolean;
 	/** Default max-output-tokens sent to both providers. Undefined = use the model-aware default (services/promptConstants.ts). */
 	maxTokens?: number;
 	/** Default sampling temperature (0–1) sent to both providers. Undefined = use the API's own default. */
@@ -131,6 +134,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	showCost: false,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
+	optimizerSuggestsModel: true,
 	temperature: 0.7,
 	effort: "high",
 	maxAttachedNotesTokens: 8000,

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-180 (what each provider is sent is decided by the model, not by the SDK's types: Mistral gets `reasoning_effort` only on adjustable-reasoning models and only as `none`/`high`; OpenAI reasoning models get a real system message).*
+*Last updated: 2026-09-18 — ADR-181 (the prompt optimizer suggests a model: the model rates the task, Pythia picks the cheapest adequate model of the preferred provider, offered as a chip beside Send and applied to one send only).*
+
+*Previously: 2026-09-18 — ADR-180 (what each provider is sent is decided by the model, not by the SDK's types: Mistral gets `reasoning_effort` only on adjustable-reasoning models and only as `none`/`high`; OpenAI reasoning models get a real system message).*
 
 *Previously: 2026-09-18 — ADR-179 addendum (the first curation from the catalog issue: three deprecated OpenAI models hidden, five models added; `contextWindow` is the input-side limit where the provider caps the prompt separately).*
 
@@ -3364,4 +3366,27 @@ The obvious copy of ADR-163 — regenerate the catalog from upstream — is wron
 - The header shows the level the user chose (`Niedrig`), while Mistral receives `none`. That is intended: the segment shows the instruction, and this function translates it. The alternative, a provider-specific set of levels, would break ADR-048's rule that one `EffortLevel` is valid for every provider.
 - A pinned effort on a Mistral Large conversation is kept but shown as `—`, like an effort on Haiku (ADR-165).
 - Neither change has been run against the live APIs. The Mistral mapping follows the documentation, and the system role follows OpenAI's documented behaviour for reasoning models.
+
+### ADR-181 — The prompt optimizer suggests a model: the model rates, Pythia picks
+
+**Status:** Accepted — 2026-09-18
+
+**Context.** The optimizer rewrites a prompt before it is sent, and at that moment the user has already asked for help with the send. The idea was to have it also pick the model, for cost. There were three ways to do it wrong. The model could name a model: it does not know this catalog, these prices or which keys the user has, and it invents ids. The pick could be applied silently: nothing this plugin does to a send is hidden, and the turn label would be the only trace. Or the pick could be written onto the conversation: "follows the default" would then turn into "frozen at whatever the optimizer liked once", which is principle 6 broken.
+
+**Decision.**
+
+1. **One call, two answers.** When `optimizerSuggestsModel` is on, the optimizer request asks for one extra final line, `DIFFICULTY: light | standard | deep`, in the same call. There is no second round trip and no extra cost. `parseDifficulty` removes the line before `cleanOptimizedOutput` runs. It only reads the *last* line, so a prompt that happens to mention "difficulty:" is never cut. A missing or unknown rating means no chip, with a debug-log line. The prompt was still optimized, so there is nothing to tell the user.
+2. **Pythia picks, by rule** (`services/modelRecommendation.ts`, pure). The rating is mapped to a `MODEL_PROFILE` depth, one tier higher with research mode or ≥ 3 notes, because the prompt alone does not show the material. Candidates are the visible models of the **user's preferred provider** (`settings.defaultProvider`, which needs a key), deep enough, and with a window larger than 1.2× the history. They are sorted by cost tier, then list price (`MODEL_PRICING`), then catalog order, which lists the newest model of a family first.
+3. **It says nothing when there is nothing worth saying:** a template armed for the next send names a model (the template wins, as in ADR-177); a PDF is attached and the provider is Mistral; the current model is already adequate and not dearer, which also means no churn between siblings at one price; or a downgrade would cost more than staying. The last case is measured, not guessed. `sendCost` prices one send as the history plus `TYPICAL_ANSWER_TOKENS` of output. Staying is priced at the cache-read rate, switching at the cold input rate. With current prices, an Opus conversation of 150K tokens gets no Haiku suggestion, because re-reading the history cold costs more than the cheaper answer saves. An **upgrade** skips the check: it is suggested for quality, not price.
+4. **Offered, never applied.** `.p-model-hint` sits beside Send and reads `→ GPT-5.4 mini ●●○`: the name and the cost as a tier, never dollars (ADR-163 removed the next-send estimate). One tap accepts it (accent fill), a second tap withdraws it. Sending without accepting drops the offer, because it was about that prompt.
+5. **One send, never written.** `ModelSuggestionController.layer(conv)` returns a clone with the suggested provider and model, and `applyPendingTemplate` runs over it, so a template's own model wins. The accepted model is spent when the answer commits, and stays for a retry after an error or an empty reply, exactly like ADR-177. The offer lives in view memory, not on the conversation: it belongs to the text in the box and does not survive a conversation switch or a reload.
+6. **On by default, one toggle** in the optimizer section: *Suggest a model*. The chip only suggests, so having it on costs nothing, and a user who never opens the settings is the one who benefits from it.
+
+**Found on the way, fixed here.** The assistant message recorded `conv.model` and priced its cost snapshot with it, even when an armed template had moved that one turn to another model (ADR-177). Such a turn's label and cost named the wrong model. Both now use `turnConv.model`, the model that actually answered, and so does the stream-error message. This fix was a precondition: a one-send model is only honest if the answer says which model it was.
+
+**Consequences.**
+- The optimizer runs on the conversation's model, so the rating costs whatever that model costs, but it is the same single call, so the extra cost is one line of output.
+- Recommendations follow the preferred provider even when the conversation is on another one. That is the user's instruction and changes the provider for one send. Provider-specific context then does not carry over; a PDF on Mistral is excluded because it would fail.
+- Deferred: suggesting on every send, not only on an optimize (D-28), and a *compare with* link on an answer that came from a suggested model (D-30). Out of scope: ever applying a suggestion automatically (D-29).
+- `sidebar.ts` stays at its ceiling of 1716: the two inline-SVG toolbar icons moved to `ui/toolbarIcons.ts` to pay for the wiring.
 
