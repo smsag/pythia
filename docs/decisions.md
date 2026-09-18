@@ -3348,13 +3348,28 @@ Both indexes chunked at a hardcoded 500 chars — ~150 tokens of German against 
 
 `doSync` wrote a single time, at the end. Anything that stopped a build — a quit, a plugin reload, a renderer crash, one note throwing — discarded every vector computed in that pass. Combined with a build that could no longer finish, this is the whole of "no index was ever successful": not slow progress across sessions, but zero progress, forever. `ConversationIndexService` commits on abort, but a crash is not an abort, so "resumable" has to mean *already on disk*.
 
-**Decision:** persist every 25 notes, and on the way out of a failure before rethrowing. A mid-build snapshot is what the pass has rebuilt *plus* the not-yet-reached notes whose vectors are still valid — persisting only the former would make every interrupted build delete the tail of its own index.
+**Decision:** persist every 25 **embeds**, and on the way out of a failure before rethrowing. A mid-build snapshot is what the pass has rebuilt *plus* the not-yet-reached notes whose vectors are still valid — persisting only the former would make every interrupted build delete the tail of its own index.
+
+Counted in embeds rather than notes processed because the `continue` paths (unreadable, empty) jump past the flush check, so a modulus on a processed counter can stride over the flush point and skip it. Gated additionally on **30 s since the last write**: every persist serializes the *whole* index — ~19 MB at the 5 000-note cap, which is the per-note cost ADR-122 exists to avoid — so the embed count alone would mean ~200 full rewrites on a cold build at that size, and 200 sync events on a synced vault. Both conditions must hold, so the binding one is whichever is scarcer: the embed count on a slow build, the clock on a fast one. The rescue write on failure is deliberately *not* throttled — by then there is no later to defer to. The real answer is an index format that does not rewrite what has not changed (D-32).
+
+`persist` assigns `this.items` as well as writing. Without that the two diverge the moment a build is interrupted: `load()` is a no-op once `loaded` is set, so the next sync on the same instance rebuilds `existing` from the stale pre-sync list and re-embeds everything the failed pass just saved. The resume then worked only across a restart — and a unit test that constructs a fresh service to check the resume cannot see it. Retrying in place is the common case (the vault refresh runs again on the next turn), so it is the one that had to work. `snapshot()` therefore reads the `existing` map captured before the loop, never the live `this.items`, or each snapshot would include the previous one's `kept` and duplicate every note.
 
 A failing note is also skipped rather than fatal, so one huge note can no longer cost the build. **But five consecutive failures rethrow**: skipping blindly turns an unloaded provider into a "successful" build that indexed almost nothing and then reported itself ready. One note failing is data; five in a row is the runtime.
+
+The streak resets on a note whose vectors are *reused*, not only on a successful embed. The stricter reading — an unchanged note does not exercise the backend, so it should not clear suspicion — lets five bad notes scattered through a mostly-unchanged vault abort the build permanently, which is the original bug wearing a new hat. A dead backend still trips the guard, because a cold build embeds every note.
 
 **5. The chain was silent about which backend it landed on.**
 
 This is why a desktop-wide fallback to the UI thread survived three ADRs. `FallbackEmbeddingProvider` now reports the backend that actually started — `worker (blob)` · `worker (resource)` · `iframe (UI thread)` — once, to the debug log and to the vault-index status line in settings. The `numThreads = 1` guard in `model.ts`, which is the fix for a known hard renderer crash (ADR-119), gained the `else` it never had: if `env.backends.onnx.wasm` is absent the guard did not apply, and that must be reportable rather than inferred. It is reachable exactly when transformers resolves to the Node backend — the case this ADR removes.
+
+**What the self-review caught.** The implementation was reviewed against its own diff before merge, and four of the findings were in the new code rather than the old:
+
+- **The resume only worked across a restart** — `persist` wrote to the store without updating `this.items`, and the test that "proved" the resume used a fresh service instance, so it read from disk and never exercised the path that actually runs. Fixed, with a regression test verified to fail in the forbidden direction.
+- **The flush counted notes processed, not embeds**, so the `continue` paths could stride past it.
+- **The write rate was unbounded** — ~200 whole-index rewrites on a 5 000-note cold build, the exact cost ADR-122 was written to remove.
+- **The failure streak did not reset on an unchanged note**, reinstating a permanent build abort for scattered bad notes.
+
+Two smaller ones: the rescue write in the catch now has its own guard, so a failing *store* cannot replace the real cause with a duplicate of itself; and a short batch from the pipeline is caught in `embedBatch` with a message naming the batch and the dim, instead of surfacing three layers later as `serializeIndex: chunk dim 0 != 384`.
 
 **Consequences.**
 - **The vault index rebuilds once**, because the chunk size changed and content hashes with it. Free for anyone whose build never completed; a one-time cost otherwise. The conversation index is untouched.

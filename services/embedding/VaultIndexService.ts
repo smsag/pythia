@@ -14,7 +14,7 @@ const YIELD_EVERY_NOTES = 8;
 /** Items scored between cooperative yields during a query rank (ADR-120). */
 const RANK_YIELD_EVERY = 2000;
 /**
- * Notes embedded between persists during a build (ADR-179).
+ * Notes EMBEDDED between persists during a build (ADR-179).
  *
  * Before this, `doSync` wrote ONCE, after the last note. Anything that stopped a
  * build — a quit, a plugin reload, a renderer crash, one note throwing — threw
@@ -22,9 +22,24 @@ const RANK_YIELD_EVERY = 2000;
  * finish in a single sitting never got an index at all, no matter how many times
  * it was attempted. `ConversationIndexService` commits on abort, but a crash is
  * not an abort, so "resumable" has to mean "already on disk", not "flushed on the
- * way out". 25 notes is a few seconds of work against a multi-MB write.
+ * way out". 25 embeds is a few seconds of work against a multi-MB write, and an
+ * incremental re-sync that embeds nothing still writes nothing.
  */
-const PERSIST_EVERY_NOTES = 25;
+const PERSIST_EVERY_EMBEDS = 25;
+/**
+ * Floor on how often a build may rewrite the index, whatever the embed count
+ * says (ADR-179).
+ *
+ * Every persist serializes the WHOLE index — ~19 MB at the 5 000-note cap — which
+ * is the cost ADR-122 exists to avoid paying per note. Embeds alone would mean
+ * ~200 full rewrites on a cold build at that size, and on a synced vault every
+ * one of them is a sync event. Both conditions must hold, so the binding one is
+ * whichever is scarcer: on a slow build that is the embed count, on a fast one
+ * the clock. Either way the loss window stays ~30s of work, and the write rate
+ * stays under 2/min. The real answer is an append-only index that does not
+ * rewrite what has not changed — see D-32.
+ */
+const MIN_PERSIST_INTERVAL_MS = 30_000;
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
  * bad (ADR-179).
@@ -71,7 +86,10 @@ export class VaultIndexService {
 	constructor(
 		private readonly provider: EmbeddingProvider,
 		private readonly store: IndexStore,
-		private readonly opts: { maxChars?: number } = {}
+		/** `persistIntervalMs` overrides MIN_PERSIST_INTERVAL_MS — a test seam, so the
+		 *  mid-build flush can be exercised without a fake clock (a real build's
+		 *  embeds take seconds; a fake provider's take microseconds). */
+		private readonly opts: { maxChars?: number; persistIntervalMs?: number } = {}
 	) {}
 
 	private enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -248,17 +266,31 @@ export class VaultIndexService {
 		let processed = 0;
 		let persistedEmbeds = 0;
 		let failedInARow = 0;
+		let lastPersistAt = Date.now();
+		const persistIntervalMs = this.opts.persistIntervalMs ?? MIN_PERSIST_INTERVAL_MS;
 
 		// A mid-build snapshot = what this pass has rebuilt so far, PLUS the notes it
 		// has not reached yet whose vectors are still valid. Persisting only `kept`
 		// would make every interrupted build delete the tail of its own index.
+		//
+		// Reads `existing` — captured once, before the loop — and NOT `this.items`,
+		// which `persist` reassigns. Reading the live field would make each snapshot
+		// include the previous one's `kept` and duplicate every note.
 		const snapshot = (): IndexedConversation[] => [
 			...kept,
-			...this.items.filter((i) => !handled.has(i.id) && desired.has(i.id)),
+			...[...existing.values()].filter((i) => !handled.has(i.id) && desired.has(i.id)),
 		];
+		// Memory follows disk. Without the assignment the two diverge the moment a
+		// build is interrupted: `load()` is a no-op once `loaded` is set, so the NEXT
+		// sync on this same instance would rebuild `existing` from the stale
+		// pre-sync list and re-embed everything the failed pass had just persisted.
+		// The resume only worked across a restart, which is exactly the case a unit
+		// test with a fresh service instance fails to notice.
 		const persist = async (items: IndexedConversation[]): Promise<void> => {
 			await this.store.write(serializeIndex(items, this.provider.dim));
+			this.items = items;
 			persistedEmbeds = embedded;
+			lastPersistAt = Date.now();
 		};
 
 		try {
@@ -279,6 +311,11 @@ export class VaultIndexService {
 				if (prev && prev.contentHash === hash) {
 					kept.push(prev); // unchanged — reuse vectors, no re-embed
 					seen.add(note.path);
+					// Resets the failure streak too. Not resetting here would let five
+					// bad notes SCATTERED through a mostly-unchanged vault abort the
+					// build — reinstating the very bug this guard sits next to. A dead
+					// backend still trips it, because a cold build embeds every note.
+					failedInARow = 0;
 				} else {
 					try {
 						const raw = await this.provider.embed(chunks);
@@ -299,8 +336,14 @@ export class VaultIndexService {
 				}
 				onProgress?.(processed, total);
 				// Flush what is embedded so far, so an interruption costs at most the
-				// last few notes instead of the entire build (ADR-179).
-				if (embedded > persistedEmbeds && processed % PERSIST_EVERY_NOTES === 0) {
+				// last few notes instead of the entire build (ADR-179). Counted in
+				// EMBEDS, not notes processed: the `continue` paths above (unreadable,
+				// empty) jump past this check, so a modulus on `processed` could stride
+				// over the flush point and skip it.
+				if (
+					embedded - persistedEmbeds >= PERSIST_EVERY_EMBEDS &&
+					Date.now() - lastPersistAt >= persistIntervalMs
+				) {
 					await persist(snapshot());
 				}
 				// Cooperative yield: on the UI-thread (iframe) backend, embedding runs on the
@@ -310,7 +353,16 @@ export class VaultIndexService {
 			}
 		} catch (e) {
 			// Abort, unload, anything else: keep the work rather than the tidiness.
-			if (embedded > persistedEmbeds) await persist(snapshot());
+			// The rescue write gets its own guard — if the STORE is what failed (a full
+			// disk, an evicted iCloud file), retrying it here would replace the real
+			// cause with a duplicate of itself and lose the diagnosis.
+			if (embedded > persistedEmbeds) {
+				try {
+					await persist(snapshot());
+				} catch (writeErr) {
+					console.warn("[Pythia] vault RAG: could not persist partial index", writeErr);
+				}
+			}
 			throw e;
 		}
 
