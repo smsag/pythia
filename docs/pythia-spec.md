@@ -142,6 +142,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
     └── .p-toolbar
         ├── .p-toolbar-left > .p-tool-btn           attach · save · globe (web) · library (vault context)
         ├── .p-send-hint                            token-limit warning   ui/SendHintController.ts
+        ├── .p-model-hint                           optimizer's model suggestion (one send)   ui/ModelSuggestionController.ts
         └── .p-send-wrap > .p-send                  long-press → .p-send-menu
 ```
 
@@ -229,6 +230,8 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-9 | **An explicit delete does not archive.** | ADR-173 | Deliberate: a delete is intent, and archiving deliberate deletions fills the vault. The dialog offers Archive as a choice instead. | If the dialog's own usage shows people always choose Archive. |
 | D-10 | **No "Enter sends" setting.** | ADR-175 | Deliberate: it doubles the send path, and the question is which behaviour is correct, not which is popular. | If asked for; then as a setting with a stated default, not a toggle to avoid deciding. |
 | D-11 | **No retention policy for the archive folder**, and no size readout for it. | #294 | Pruning is Obsidian's job. A count beside the folder picker would answer the visibility half without Pythia owning retention. | Cheap; next docs/settings pass. |
+| D-28 | **The model suggestion runs only on an optimize**, not on every send. | ADR-181 | The optimizer is the moment the user asked for help; a suggestion on every send is a second, unrequested voice beside Send. `recommendModel` already takes nothing optimizer-specific. | Someone uses the optimizer only to get the suggestion. |
+| D-30 | **No *compare with* link on an answer from a suggested model.** | ADR-181 | Compare (ADR-160) already re-runs the last turn on another model via the long-press. A link would make the way back one tap. | A cheaper suggested answer is reported as worse and the user did not find Compare. |
 | D-12 | **No flashcard reviewer, scheduler or export for the glossary.** | ADR-149/150 | Deliberate and load-bearing: Pythia captures terms, Bases browses them. The note format is the integration surface. | Not planned. Re-opening this means re-reading ADR-150 first. |
 
 ### Measurements not yet made
@@ -254,6 +257,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-24 | **An editable rule registry** (per-rule toggles, per-conversation scope) for system-prompt rules. | ADR-101 | That is where migration, snapshot semantics and layering all concentrate. The per-conversation `systemPrompt` field covers the real need. |
 | D-25 | **Caching fetched web sources into the vault.** | ADR-062 | Search + recency only in that pass. |
 | D-26 | **PDF and vision input for Mistral.** | ADR-045 | Explicit non-goal of the integration pass, deferred rather than guessed at. |
+| D-29 | **A model suggestion is never applied automatically.** | ADR-181 | A silent model switch is the kind of change this plugin has never made: the chip is offered, the answer's label names the model. |
 | D-27 | **`sidebar.ts` is excluded from coverage.** | #98 | Its logic is extracted into tested controllers instead; the view file is the thin coordinator. |
 
 ### Closed by a decision, kept here so it is not re-litigated
@@ -270,5 +274,6 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-18 | Rewritten from the 0.1 MVP draft: current product framing, the UI vocabulary map, and the deferred-decision register (D-1…D-27). |
 | 2026-05-07 | 0.1 MVP spec — "Claude Vault Assistant". |
