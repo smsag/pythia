@@ -89,6 +89,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
   docs/
+    pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
@@ -136,6 +137,8 @@ The canonical list lives here, because this file is what every session reads fir
 | UI components, CSS tokens, design rules | `docs/design.md` |
 | Architectural choice or trade-off | `docs/decisions.md` (append a new ADR) |
 | Bug found / suggestion resolved / new suggestion | `docs/engineering-review.md` |
+| **A decision postponed, parked or deliberately not done** | `docs/pythia-spec.md` → Deferred & postponed decisions (a `D-n` row, with what would make it worth revisiting) |
+| A new surface, or a renamed class | `docs/pythia-spec.md` → UI architecture (the map is the shared vocabulary; a surface missing from it cannot be asked for by name) |
 
 Keep the "Last updated" line at the top of each doc current. Commit docs changes in the same commit as the code change where possible.
 
