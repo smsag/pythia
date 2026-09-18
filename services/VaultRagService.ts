@@ -4,6 +4,7 @@ import type { PythiaSettings } from "../settings";
 import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
+import { retrievalQuery, isIndexingOptedOut } from "./embedding/vaultRetrieval";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
 import { embedChunkChars } from "../models/embeddingModels";
@@ -102,7 +103,13 @@ export class VaultRagService {
 			this.lastAutoContext.delete(conversation.id);
 			return [];
 		}
-		const q = query.trim();
+		// The retrieval query is the message PLUS the head of the preceding answer
+		// (ADR-180) — a short follow-up otherwise embeds four tokens and retrieves
+		// noise, which is exactly the turn that needed the conversation's context.
+		const lastAnswer = [...(conversation.messages ?? [])]
+			.reverse()
+			.find((m) => m?.role === "assistant" && typeof m.content === "string");
+		const q = retrievalQuery(query, lastAnswer?.content ?? "");
 		if (!q) return [];
 
 		this.refresh(); // background FIRST build only — never awaited; no-op once ready
@@ -218,7 +225,7 @@ export class VaultRagService {
 		const removes = [...deleted];
 		const updates: IndexableNote[] = [];
 		for (const file of changed) {
-			if (isPathInScope(file.path, include, skip)) {
+			if (isPathInScope(file.path, include, skip) && !this.optedOut(file)) {
 				updates.push({ path: file.path, load: () => this.app.vault.cachedRead(file) });
 			} else {
 				removes.push(file.path); // edited into an out-of-scope / skip folder
@@ -241,6 +248,22 @@ export class VaultRagService {
 		this.refresh({ force: true }); // an explicit rebuild is the one caller that always runs
 	}
 
+	/** Whether this note opts out of the index with `pythia: false` in its
+	 *  frontmatter (ADR-180). Read from the metadata cache, so it costs no file
+	 *  I/O; an uncached file reads as "not opted out", matching the helper's rule
+	 *  that only an explicit false excludes. */
+	private optedOut(file: TFile): boolean {
+		try {
+			return isIndexingOptedOut(this.app.metadataCache?.getFileCache(file)?.frontmatter);
+		} catch {
+			// Fail OPEN, deliberately. A cache that is not there yet, or throws, must
+			// not decide the scope — and it must certainly not take the whole build
+			// down from inside the file scan. Indexing a note is the status quo; the
+			// opt-out is an explicit `pythia: false`, which this could not read.
+			return false;
+		}
+	}
+
 	/** Notes to index as LAZY refs (path + content loader): the configured folders
 	 *  (empty = whole vault) minus Pythia's own folders, trimmed to the note cap.
 	 *  Only paths are materialized here — content is read one note at a time during
@@ -251,7 +274,15 @@ export class VaultRagService {
 		const include = settings.vaultContextFolders.map(norm).filter(Boolean);
 		const skip = [settings.conversationsFolder, settings.scratchFolder].map(norm).filter(Boolean);
 
-		const files = this.app.vault.getMarkdownFiles();
+		// Newest first, so a capped vault indexes the notes actually being worked in
+		// rather than whatever order the adapter happened to return (ADR-180). That
+		// order is not stable between sessions, which made the cap's membership
+		// churn — notes silently entering and leaving retrieval, and re-embedding
+		// each time they came back.
+		const files = this.app.vault
+			.getMarkdownFiles()
+			.filter((f) => !this.optedOut(f))
+			.sort((a, b) => (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0));
 		const byPath = new Map(files.map((f) => [f.path, f]));
 		const { paths, total, capped } = selectIndexPaths([...byPath.keys()], {
 			include,

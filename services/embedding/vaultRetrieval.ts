@@ -4,15 +4,13 @@
 //   • noteEmbedChunks — split a note's markdown into the text chunks that get
 //     embedded (heading-aware, then windowed to a char budget), mirroring how
 //     conversationChunks feeds the conversation index.
-//   • rankByQuery — score an already-embedded index against a query vector and
-//     return the best-matching note ids, most-relevant first.
+//   • retrievalQuery — the text actually embedded for a turn (ADR-180).
+//   • isIndexingOptedOut — the per-note `pythia: false` escape hatch (ADR-180).
 //
-// The index itself, its diff/serialize helpers, and the cosine/quantize math are
-// all shared with the conversation index (embeddingIndex.ts, vectorMath.ts) — a
-// note is just another {id, contentHash, chunks} row, keyed by vault path.
+// Scoring lives in `VaultIndexService.query`, which yields cooperatively over a
+// large index. A second, non-yielding copy (`rankByQuery`) existed here until
+// ADR-180 and had already drifted — it never learned about `exclude`.
 
-import { cosine } from "./vectorMath";
-import type { IndexedConversation } from "./embeddingIndex";
 import { chunkByHeadings } from "../noteChunking";
 
 /** A scored note from a vault-retrieval query. */
@@ -52,33 +50,48 @@ export function noteEmbedChunks(content: string, maxChars = 500): string[] {
 	return chunks;
 }
 
-/**
- * Rank the notes in `index` by similarity to `queryVec`, keeping only those at or
- * above `minScore`, most-similar first. A note's score is its best chunk-to-query
- * cosine (the closest single chunk), matching the max-pairwise measure the
- * related-conversations ranking uses.
- *
- * Pure: operates on a prebuilt in-memory index and a query vector, so it is fully
- * testable with fabricated vectors and independent of the embedding runtime.
- */
-export function rankByQuery(
-	queryVec: Int8Array,
-	index: IndexedConversation[],
-	opts: { minScore?: number; limit?: number } = {}
-): RetrievedNote[] {
-	const { minScore = 0.35, limit } = opts;
-	const ranked = index
-		.filter((i) => i.chunks.length > 0)
-		.map((i) => {
-			let best = -Infinity;
-			for (const chunk of i.chunks) {
-				const s = cosine(chunk, queryVec);
-				if (s > best) best = s;
-			}
-			return { id: i.id, score: best };
-		})
-		.filter((r) => Number.isFinite(r.score) && r.score >= minScore)
-		.sort((a, b) => b.score - a.score);
+/** How much of the preceding answer joins the retrieval query (ADR-180). */
+const CARRY_OVER_CHARS = 200;
 
-	return typeof limit === "number" ? ranked.slice(0, limit) : ranked;
+/**
+ * The text actually embedded to retrieve notes for a turn.
+ *
+ * The bare user message was the query until ADR-180, which makes a follow-up
+ * ("and the second one?") a four-token query that retrieves noise or nothing —
+ * the turns most in need of the conversation's context were the ones with none.
+ * The head of the preceding answer is appended as carry-over: enough to keep the
+ * topic in the vector, short enough that the user's actual words still dominate.
+ *
+ * The message always leads, and carry-over is dropped when the message is long
+ * enough to stand on its own — a full question does not need help, and diluting
+ * it would move the vector away from what was asked.
+ *
+ * Pure: takes the strings, not the conversation, so it is testable and cannot
+ * reach for anything else.
+ */
+export function retrievalQuery(message: string, previousAnswer = ""): string {
+	const q = message.trim();
+	if (!q) return "";
+	if (q.length >= CARRY_OVER_CHARS) return q;
+	const carry = previousAnswer.trim().slice(0, CARRY_OVER_CHARS).trim();
+	return carry ? `${q}\n\n${carry}` : q;
+}
+
+/**
+ * Whether a note's frontmatter opts it out of the vault index (ADR-180).
+ *
+ * `pythia: false` keeps a note out of the index entirely, so its text never
+ * reaches a cloud model as auto-retrieved context. Folder scope already answers
+ * "which parts of the vault", but a single sensitive note inside an otherwise
+ * indexed folder had no answer at all — and data minimisation wants the smallest
+ * unit to be excludable, not just the largest.
+ *
+ * Only an explicit `false` (or the string "false") opts out. Anything else,
+ * including a missing key or an unreadable cache, indexes as before — a
+ * frontmatter typo must not silently drop a note out of retrieval.
+ */
+export function isIndexingOptedOut(frontmatter: unknown): boolean {
+	if (!frontmatter || typeof frontmatter !== "object") return false;
+	const value = (frontmatter as Record<string, unknown>).pythia;
+	return value === false || value === "false";
 }

@@ -56,6 +56,12 @@ class TestProvider extends BaseProvider {
 		return this.languageLabel(conversation);
 	}
 
+	/** `resolveUserContent` is protected; expose it so the ADR-180 warning rules
+	 *  can be exercised without a real stream. */
+	resolve(conv: Conversation, notes: string[], msg: string, auto?: ReadonlySet<string>) {
+		return this.resolveUserContent(conv, notes, msg, auto);
+	}
+
 	finish(
 		error: unknown,
 		fullText: string,
@@ -185,5 +191,32 @@ describe("glossary prompts follow the passage under AUTO", () => {
 		await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
 		expect(p.prompts[0]).toContain("into English");
 		expect(p.prompts[0]).toContain("Ein Gerät, das Ereignisse erfasst.");
+	});
+});
+
+// ── ADR-180: warnings are about notes the USER attached ─────────────────────
+describe("BaseProvider.resolveUserContent — auto-retrieved notes stay quiet", () => {
+	beforeEach(() => { noticeMessages.length = 0; });
+
+	/** Every note path is missing, which is the case that warns. */
+	const appMissingEverything = { vault: { getAbstractFileByPath: () => null } } as unknown as App;
+	const provider = () => new TestProvider(appMissingEverything, {} as PythiaSettings, "", "anthropic");
+	const c = { contextNotes: [] } as unknown as Conversation;
+
+	it("warns about a missing note the user attached", async () => {
+		await provider().resolve(c, ["Manual/gone.md"], "hi");
+		expect(noticeMessages.some((m) => m.startsWith("contextNotesWarning"))).toBe(true);
+	});
+
+	it("says NOTHING about a missing note that RAG retrieved", async () => {
+		// The index can outlive a note. The user never chose it and cannot remove
+		// it, so a warning is noise they can only learn to ignore.
+		await provider().resolve(c, ["Auto/gone.md"], "hi", new Set(["Auto/gone.md"]));
+		expect(noticeMessages.some((m) => m.startsWith("contextNotesWarning"))).toBe(false);
+	});
+
+	it("still warns when a manual note is missing alongside an auto one", async () => {
+		await provider().resolve(c, ["Manual/gone.md", "Auto/gone.md"], "hi", new Set(["Auto/gone.md"]));
+		expect(noticeMessages.filter((m) => m.startsWith("contextNotesWarning")).length).toBe(1);
 	});
 });

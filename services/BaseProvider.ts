@@ -195,7 +195,8 @@ export abstract class BaseProvider implements LLMProvider {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: (call: ToolCall) => Promise<string>,
+		autoNotes: ReadonlySet<string> = new Set()
 	): Promise<void> {
 		this.abort();
 		const controller = new AbortController();
@@ -208,7 +209,7 @@ export abstract class BaseProvider implements LLMProvider {
 
 		try {
 			const { userContent, systemPrompt, pdfAttachments } =
-				await this.resolveUserContent(conversation, attachedNotes, newMessage);
+				await this.resolveUserContent(conversation, attachedNotes, newMessage, autoNotes);
 
 			await this.prepareStream(conversation, userContent, systemPrompt, pdfAttachments, onToolCall);
 
@@ -290,7 +291,8 @@ export abstract class BaseProvider implements LLMProvider {
 	protected async resolveUserContent(
 		conversation: Conversation,
 		attachedNotes: string[],
-		newMessage: string
+		newMessage: string,
+		autoNotes: ReadonlySet<string> = new Set()
 	): Promise<{ userContent: string; systemPrompt: string; pdfAttachments: PdfAttachment[] }> {
 		const pdfPaths = attachedNotes.filter((p) => p.toLowerCase().endsWith(".pdf"));
 		const notePaths = attachedNotes.filter((p) => !p.toLowerCase().endsWith(".pdf"));
@@ -299,12 +301,20 @@ export abstract class BaseProvider implements LLMProvider {
 			{ content: attachedContent, missingNotes, estimatedTokens },
 			{ pdfs, missingPdfs, oversizedPdfs },
 		] = await Promise.all([
-			buildAttachedNotesContent(this.app, notePaths, newMessage),
+			buildAttachedNotesContent(this.app, notePaths, newMessage, autoNotes),
 			buildAttachedPdfs(this.app, pdfPaths),
 		]);
 
-		if (missingNotes.length > 0) {
-			new Notice(t("contextNotesWarning", { count: missingNotes.length }));
+		// Only ever warn about notes the USER attached (ADR-180). A vault-RAG path
+		// can go missing because the index outlived the note — the user never chose
+		// it, cannot remove it, and a warning about it is noise they can only ignore.
+		const missingManual = missingNotes.filter((p) => !autoNotes.has(p));
+		if (missingManual.length > 0) {
+			new Notice(t("contextNotesWarning", { count: missingManual.length }));
+		}
+		const missingAuto = missingNotes.filter((p) => autoNotes.has(p));
+		if (missingAuto.length > 0) {
+			debugLog(this.settings, "vault RAG: retrieved note(s) no longer in the vault", { paths: missingAuto });
 		}
 		if (missingPdfs.length > 0) {
 			new Notice(t("missingPdfsWarning", { count: missingPdfs.length }));

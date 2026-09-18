@@ -94,6 +94,24 @@ export function renderEmbeddingSettings(
 			}));
 		});
 
+	// How many retrieved notes reach a turn. Exposed in ADR-180; the strictness
+	// preset beside it deliberately is NOT, because `vaultRetrievalMinScore`'s
+	// three constants have never been measured (D-13) — a control over a number
+	// nobody can justify is worse than no control.
+	new Setting(containerEl)
+		.setName(t("vaultContextNotesPerTurnName"))
+		.setDesc(t("vaultContextNotesPerTurnDesc"))
+		.addText((txt) => {
+			registerCommit(bindNumberSetting(txt, {
+				rule: { min: 1, max: 20 },
+				read: () => plugin.settings.vaultContextMaxNotes,
+				write: (n) => {
+					plugin.settings.vaultContextMaxNotes = n;
+					plugin.saveSettingsSoon();
+				},
+			}));
+		});
+
 	// Rebuild action + a status line that reflects the current index state.
 	const status = new Setting(containerEl)
 		.setName(t("vaultContextReindexName"))

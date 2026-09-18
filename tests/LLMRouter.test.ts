@@ -89,3 +89,61 @@ describe("LLMRouter — provider resolution", () => {
 		expect(a.provider.streamMessage).toHaveBeenCalledTimes(1);
 	});
 });
+
+// ── ADR-180: the provider must be told which notes RAG added ─────────────────
+describe("LLMRouter — marking auto-retrieved notes", () => {
+	const conv = { id: "c", provider: "anthropic", messages: [] } as unknown as Conversation;
+	const noop = () => {};
+
+	/** Records the 8th argument (autoNotes) alongside the notes list. */
+	function trackingRouter() {
+		const seen: { notes: string[]; auto: string[] }[] = [];
+		const provider = {
+			streamMessage: vi.fn(async (
+				_c: unknown, _m: unknown, notes: string[],
+				_t: unknown, _co: unknown, _e: unknown, _tc: unknown,
+				auto?: ReadonlySet<string>,
+			) => { seen.push({ notes, auto: [...(auto ?? [])] }); }),
+			updateSettings() {}, updateApiKey() {}, abort() {},
+		};
+		const router = new LLMRouter(
+			provider as unknown as AnthropicService,
+			provider as unknown as OpenAIProvider,
+			provider as unknown as MistralService,
+		);
+		return { router, seen };
+	}
+
+	it("names exactly the paths RAG added, not the ones the user attached", async () => {
+		const { router, seen } = trackingRouter();
+		router.setVaultRetriever(async () => ["Auto/one.md", "Auto/two.md"]);
+		await router.streamMessage(conv, "hi", ["Manual/mine.md"], noop, noop, noop);
+		expect(seen[0].notes).toEqual(["Manual/mine.md", "Auto/one.md", "Auto/two.md"]);
+		expect(seen[0].auto.sort()).toEqual(["Auto/one.md", "Auto/two.md"]);
+	});
+
+	it("does not mark a path the user had already attached", async () => {
+		// It is deduped out of the merge, so it stays a manual note and keeps the
+		// full excerpt budget and the missing-note warning.
+		const { router, seen } = trackingRouter();
+		router.setVaultRetriever(async () => ["Manual/mine.md", "Auto/new.md"]);
+		await router.streamMessage(conv, "hi", ["Manual/mine.md"], noop, noop, noop);
+		expect(seen[0].auto).toEqual(["Auto/new.md"]);
+	});
+
+	it("marks nothing when retrieval returns nothing or fails", async () => {
+		const { router, seen } = trackingRouter();
+		router.setVaultRetriever(async () => []);
+		await router.streamMessage(conv, "hi", ["Manual/mine.md"], noop, noop, noop);
+		router.setVaultRetriever(async () => { throw new Error("boom"); });
+		await router.streamMessage(conv, "hi", ["Manual/mine.md"], noop, noop, noop);
+		expect(seen[0].auto).toEqual([]);
+		expect(seen[1].auto).toEqual([]);
+	});
+
+	it("marks nothing when no retriever is installed at all", async () => {
+		const { router, seen } = trackingRouter();
+		await router.streamMessage(conv, "hi", ["Manual/mine.md"], noop, noop, noop);
+		expect(seen[0].auto).toEqual([]);
+	});
+});

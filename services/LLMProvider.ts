@@ -12,7 +12,12 @@ export interface LLMProvider {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: (call: ToolCall) => Promise<string>,
+		/** Which of `attachedNotes` the vault-RAG hook added rather than the user
+		 *  (ADR-180). They get a tighter excerpt budget, and the warnings about
+		 *  missing or oversized notes stay off them — the user did not attach them
+		 *  and cannot remove them. */
+		autoNotes?: ReadonlySet<string>
 	): Promise<void>;
 	generateSummary(conversation: Conversation): Promise<string>;
 	generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }>;

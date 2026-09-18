@@ -71,16 +71,16 @@ describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-179 fix)", () => 
 		const plugin = fakePlugin();
 		const commits: (() => void)[] = [];
 		renderEmbeddingSettings(document.createElement("div"), plugin as unknown as PythiaPlugin, (c) => commits.push(c));
-		// The only numeric field in this pane.
-		const input = inputs[inputs.length - 1];
-		return { plugin, commits, input };
+		// Two numeric fields, in creation order: the index cap, then notes-per-turn.
+		const [input, perTurn] = inputs;
+		return { plugin, commits, input, perTurn };
 	};
 
 	it("registers a commit, so the tab can flush it when it closes", () => {
 		// A per-keystroke `onChange` field registers nothing — closing the tab
 		// destroys the input before `blur` fires, which is why the flush exists.
 		const { commits } = render();
-		expect(commits.length).toBe(1);
+		expect(commits.length).toBe(2); // the index cap and notes-per-turn
 	});
 
 	it("shows the stored value", () => {
@@ -129,5 +129,27 @@ describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-179 fix)", () => 
 		input.value = "0";
 		input.dispatchEvent(new Event("blur"));
 		expect(plugin.settings.vaultContextMaxIndexedNotes).toBe(0);
+	});
+
+	it("exposes notes-per-turn, which had no UI at all", () => {
+		// It was reachable only by hand-editing data.json, so everyone ran the
+		// hardcoded 5 whatever their context budget looked like.
+		const { plugin, perTurn } = render();
+		expect(perTurn.value).toBe(String(plugin.settings.vaultContextMaxNotes));
+		perTurn.value = "3";
+		perTurn.dispatchEvent(new Event("blur"));
+		expect(plugin.settings.vaultContextMaxNotes).toBe(3);
+	});
+
+	it("refuses a notes-per-turn value that would mean 'none' or 'absurd'", () => {
+		// 0 here is not "unlimited" like the index cap — it would mean retrieval is
+		// on and silently contributes nothing, which is the least explicable state.
+		const { plugin, perTurn } = render();
+		const stored = plugin.settings.vaultContextMaxNotes;
+		for (const v of ["0", "-1", "500"]) {
+			perTurn.value = v;
+			perTurn.dispatchEvent(new Event("blur"));
+			expect(plugin.settings.vaultContextMaxNotes).toBe(stored);
+		}
 	});
 });

@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { noteEmbedChunks, rankByQuery } from "../services/embedding/vaultRetrieval";
-import { quantize } from "../services/embedding/vectorMath";
-import type { IndexedConversation } from "../services/embedding/embeddingIndex";
+import { noteEmbedChunks, retrievalQuery, isIndexingOptedOut } from "../services/embedding/vaultRetrieval";
 
 // ── noteEmbedChunks ─────────────────────────────────────────────────────────
 
@@ -36,53 +34,57 @@ describe("noteEmbedChunks", () => {
 	});
 });
 
-// ── rankByQuery ──────────────────────────────────────────────────────────────
-
-/** Build an indexed note from axis-vector chunks (already unit-ish, then quantized). */
-function note(id: string, axes: number[][]): IndexedConversation {
-	return {
-		id,
-		contentHash: id,
-		chunks: axes.map((a) => quantize(Float32Array.from(a))),
-	};
-}
-
-const AX = (i: number): number[] => [0, 0, 0, 0].map((_, k) => (k === i ? 1 : 0));
-
-describe("rankByQuery", () => {
-	const index = [
-		note("alpha.md", [AX(0)]),
-		note("beta.md", [AX(1)]),
-		note("mixed.md", [AX(1), AX(0)]), // has an alpha chunk too
-	];
-	const queryAlpha = quantize(Float32Array.from(AX(0)));
-
-	it("ranks notes by best chunk-to-query cosine, filtered by minScore", () => {
-		const out = rankByQuery(queryAlpha, index, { minScore: 0.5 });
-		// alpha.md and mixed.md both contain the alpha axis; beta.md does not.
-		expect(out.map((r) => r.id).sort()).toEqual(["alpha.md", "mixed.md"]);
-		expect(out.every((r) => r.score > 0.9)).toBe(true);
+// ── retrievalQuery (ADR-180) ─────────────────────────────────────────────────
+describe("retrievalQuery", () => {
+	it("carries the previous answer into a SHORT follow-up", () => {
+		// "and the second one?" is four tokens — on its own it retrieves noise.
+		const out = retrievalQuery("and the second one?", "Ranked retrieval uses cosine similarity over chunks.");
+		expect(out).toContain("and the second one?");
+		expect(out).toContain("cosine similarity");
 	});
 
-	it("excludes notes below the similarity floor", () => {
-		const out = rankByQuery(queryAlpha, index, { minScore: 0.5 });
-		expect(out.find((r) => r.id === "beta.md")).toBeUndefined();
+	it("puts the user's own words FIRST", () => {
+		const out = retrievalQuery("what about pricing?", "Some earlier answer about embeddings.");
+		expect(out.startsWith("what about pricing?")).toBe(true);
 	});
 
-	it("applies the limit after sorting", () => {
-		const out = rankByQuery(queryAlpha, index, { minScore: 0.5, limit: 1 });
-		expect(out.length).toBe(1);
-		expect(out[0].score).toBeGreaterThan(0.9);
+	it("leaves a long message alone — a full question does not need help", () => {
+		const long = "x".repeat(250);
+		expect(retrievalQuery(long, "an earlier answer")).toBe(long);
 	});
 
-	it("returns [] when nothing clears the floor", () => {
-		const queryOrthogonal = quantize(Float32Array.from(AX(3)));
-		expect(rankByQuery(queryOrthogonal, index, { minScore: 0.5 })).toEqual([]);
+	it("caps how much of the answer is carried, so it cannot dominate", () => {
+		const out = retrievalQuery("more?", "y".repeat(5000));
+		expect(out.length).toBeLessThan(400);
 	});
 
-	it("skips notes with no chunks", () => {
-		const withEmpty = [...index, { id: "empty.md", contentHash: "e", chunks: [] }];
-		const out = rankByQuery(queryAlpha, withEmpty, { minScore: 0.5 });
-		expect(out.find((r) => r.id === "empty.md")).toBeUndefined();
+	it("is just the message when there is no previous answer", () => {
+		expect(retrievalQuery("first turn", "")).toBe("first turn");
+		expect(retrievalQuery("first turn")).toBe("first turn");
+	});
+
+	it("returns empty for an empty message, so retrieval short-circuits", () => {
+		expect(retrievalQuery("   ", "an answer")).toBe("");
+	});
+});
+
+// ── isIndexingOptedOut (ADR-180) ─────────────────────────────────────────────
+describe("isIndexingOptedOut", () => {
+	it("opts out on an explicit false", () => {
+		expect(isIndexingOptedOut({ pythia: false })).toBe(true);
+		expect(isIndexingOptedOut({ pythia: "false" })).toBe(true);
+	});
+
+	it("indexes everything else, including a missing or malformed key", () => {
+		// A frontmatter typo must never silently drop a note out of retrieval:
+		// the user would see no pills and have nothing to explain it.
+		for (const fm of [undefined, null, {}, { pythia: true }, { pythia: "no" }, { pythia: 0 }, "not an object"]) {
+			expect(isIndexingOptedOut(fm)).toBe(false);
+		}
+	});
+
+	it("ignores other frontmatter keys", () => {
+		expect(isIndexingOptedOut({ tags: ["a"], aliases: [], pythia: false })).toBe(true);
+		expect(isIndexingOptedOut({ tags: ["a"] })).toBe(false);
 	});
 });

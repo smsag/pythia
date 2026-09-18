@@ -293,6 +293,8 @@ const de: Strings = {
 	vaultIndexCapped:                  "Großer Vault: {{indexed}} von {{total}} Notizen werden indexiert. Grenze in den Einstellungen auf Ordner ein oder erhöhe das Limit.",
 	vaultIndexThrottled:               "Dieses Gerät führt das Embedding-Modell im UI-Thread aus (kein Hintergrund-Worker verfügbar). Die Indexierung wird daher gedrosselt, damit die App reagierbar bleibt – das kann dauern. Sie läuft einmal; Änderungen werden inkrementell aktualisiert.",
 	vaultIndexBackend:                 "· Engine: {{backend}}",
+	vaultContextNotesPerTurnName:      "Notizen pro Antwort",
+	vaultContextNotesPerTurnDesc:      "Wie viele passende Notizen einer Nachricht als Kontext beigelegt werden. Mehr Notizen kosten mehr Tokens und können die eigentliche Frage überdecken.",
 	cmdReindexVault:                   "Vault-Kontext-Index neu aufbauen",
 	vaultContextSectionName:           "Vault-Kontext (semantisches RAG)",
 	vaultContextEnabledName:           "Standardmäßig aktivieren",

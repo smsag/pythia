@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-179 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
+*Last updated: 2026-09-18 — ADR-180 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
+
+*Previously: 2026-09-18 — ADR-179 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
 
 *Previously: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
@@ -3379,3 +3381,33 @@ Two smaller ones: the rescue write in the catch now has its own guard, so a fail
 - ADR-125's UI-thread throttle and `hydrateForQuery` stay. They are still correct where the iframe really is the only option, and this change is not the moment to delete a fallback.
 - **Not verifiable headlessly.** The prefix's position, its strict-mode and non-configurable behaviour, the crash-safe persistence and the chunk sizing are unit-tested; that transformers then actually runs its WASM runtime inside a Node-enabled desktop Worker needs Obsidian. If it does not, the iframe still catches it and the new log line says so.
 - **Deferred:** recycling the backend every N notes as a hard ceiling on the heap (ADR-125 named it and left it). Batching should make it unnecessary; the log line and a heap measurement are the evidence that would justify it.
+
+---
+
+## ADR-180 — An auto-retrieved note is not an attached one
+
+**Status:** Active. Builds on ADR-116/117's retrieval path.
+
+**Context.** ADR-116 injected retrieved notes by merging them into `attachedNotes`, which bought the whole attached-note pipeline for free: excerpting, the token guard, the ADR-115 untrusted-content framing, citations. That reuse was right, and it hid a category error — downstream, nothing could tell a note the user *chose* from one a cosine *picked*, so both were treated as the user's own deliberate act.
+
+**Decision: the two are distinguished, and differ in three places.**
+
+`LLMRouter` already knows which paths it added; it now passes them as `autoNotes` to `streamMessage`.
+
+1. **Budget.** An auto note is excerpted to `AUTO_NOTE_BUDGET_CHARS` (3 000) instead of the manual 12 000. Five retrieved notes at the manual budget added ~60 000 chars — roughly 15k tokens — to every turn, silently: enough to bury the question and to move what the answer costs, for context nobody asked for. A note the user chose still gets the room it needs.
+2. **Warnings.** `contextNotesWarning` and the oversized-notes warning fire only for manual paths. A retrieved path can go missing because the index outlived the note; the user never chose it and cannot remove it, so the warning is noise they can only learn to ignore. It goes to the debug log instead.
+3. **Provenance stays.** The "auto" pills (ADR-117) and the citation/untrusted framing are unchanged — the user still sees exactly what was pulled in.
+
+**Decision: a note can opt out of the index.** `pythia: false` in frontmatter keeps a note out entirely, read from the metadata cache so it costs no I/O. Folder scope answered "which parts of the vault"; a single sensitive note inside an otherwise-indexed folder had no answer at all, and data minimisation wants the *smallest* unit to be excludable, not only the largest. Only an explicit `false` opts out — a frontmatter typo must not silently drop a note out of retrieval, because the user would see no pills and have nothing to explain it. The read fails **open**: a cache that is missing or throws must not decide the scope, and must certainly not take the whole build down from inside the file scan.
+
+**Decision: the retrieval query carries the previous answer.** The query was the bare user message, so a follow-up — "and the second one?" — embedded four tokens and retrieved noise. The turns most in need of the conversation's context were the ones with none. `retrievalQuery` appends the first 200 chars of the preceding answer, with the user's words leading, and drops the carry-over entirely once the message is long enough to stand on its own — a full question does not need help, and diluting it moves the vector away from what was asked. Sticky retrieval (holding a note set across a conversation) is the better answer and is deferred: it needs a "topic changed" rule, which is its own decision.
+
+**Decision: the index cap keeps the most recently modified notes.** `selectIndexPaths` sliced `getMarkdownFiles()` order, which is not stable between sessions — so *which* 5 000 of 30 000 notes were indexed churned, notes silently entered and left retrieval, and each return cost a re-embed. Sorting by `mtime` descending makes the cap both deterministic and meaningful: "the notes you are actually working in".
+
+**Also:** `vaultContextMaxNotes` is finally in the settings (1–20); it had no UI and everyone ran the hardcoded 5. `vaultContextSimilarity` deliberately stays hidden — `vaultRetrievalMinScore`'s three constants have never been measured (D-13), and a control over a number nobody can justify is worse than no control. `rankByQuery` is deleted: it duplicated `VaultIndexService.query`, was used only by its own tests, and had already drifted (it never learned about `exclude`).
+
+**Consequences.**
+- Auto-retrieved context is now materially cheaper per turn, and a conversation that also has manual notes is unaffected.
+- The index shrinks for anyone using the opt-out, and the cap's membership stops churning — both mean re-embeds that used to repeat now happen once.
+- Verified by mutation: each of the ten behaviours above was broken in turn and a test failed for every one.
+- **Not done:** the embedding model itself. `paraphrase-multilingual-MiniLM` is a sentence-similarity model doing query-to-passage retrieval, which is the wrong model class and sits upstream of every floor question here. A retrieval model (e5, bge) needs asymmetric query/passage prefixes — a change to the provider interface, not a dropdown entry — and new measured floors. D-33.
