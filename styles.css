@@ -655,6 +655,12 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .p-wikilink--auto .p-wikilink-bracket { opacity: 0.6; }
 
+/* The one-shot template armed for the next answer (ADR-177). It is not a note
+   in context, it is the thing shaping the turn, so it reads as a state: weight
+   on the name, and no [[ ]] brackets, which say "vault note" everywhere else. */
+.p-wikilink--template .p-wikilink-name { font-weight: 600; }
+.p-wikilink--template .p-wikilink-bracket { display: none; }
+
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
   all: unset;

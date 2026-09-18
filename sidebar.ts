@@ -13,6 +13,7 @@ import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendP
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
+import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController, type HistoryPick } from "./ui/HistoryController";
@@ -806,12 +807,16 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		type RefEntry =
+			| { kind: "template"; path: string; label: string }
 			| { kind: "context"; path: string }
 			| { kind: "output"; path: string; clearField: () => void }
 			| { kind: "auto"; path: string };
 
 		const entries: RefEntry[] = [];
 
+		// The armed one-shot template leads the row; its ✕ disarms it (ADR-177).
+		const armed = conv.pendingTemplate;
+		if (armed) entries.push({ kind: "template", path: armed.id, label: armed.name });
 		for (const path of conv.contextNotes ?? []) {
 			entries.push({ kind: "context", path });
 		}
@@ -837,7 +842,7 @@ export class PythiaSidebarView extends ItemView {
 
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
-			const displayName = noteBasename(entry.path);
+			const displayName = entry.kind === "template" ? entry.label : noteBasename(entry.path);
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
@@ -846,6 +851,7 @@ export class PythiaSidebarView extends ItemView {
 			// Auto-retrieved pills are read-only and visually distinct (no × — they
 			// are ephemeral per-turn context, not persistent conversation context).
 			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
+			if (entry.kind === "template") ref.addClass("p-wikilink--template");
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
 			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
 			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
@@ -861,9 +867,10 @@ export class PythiaSidebarView extends ItemView {
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
 			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
-			if (entry.kind === "context") {
+			if (entry.kind === "template" || entry.kind === "context") {
 				x.addEventListener("click", async () => {
-					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
+					if (entry.kind === "template") conv.pendingTemplate = undefined;
+					else conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
 				});
@@ -1281,20 +1288,8 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		new TemplateSuggestModal(this.app, templates, async (tpl) => {
-			conv.systemPrompt = tpl.systemPrompt;
-			conv.templateId   = tpl.id;
-			if (tpl.provider)   conv.provider   = tpl.provider;
-			if (tpl.model)      conv.model      = tpl.model;
-			if (tpl.maxTokens)  conv.maxTokens  = tpl.maxTokens;
-			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-			if (tpl.effort !== undefined) conv.effort = tpl.effort;
-			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-			if (tpl.writeMode)  conv.writeMode  = tpl.writeMode;
-
-			for (const n of tpl.contextNotes) {
-				if (!conv.contextNotes.includes(n)) conv.contextNotes.push(n);
-			}
-
+			// Armed for the next answer only, never written onto the conversation (ADR-177).
+			conv.pendingTemplate = armPendingTemplate(tpl);
 			await this.plugin.conversationStore.save(conv);
 			this.headerController.updateInstructions();
 			this.renderReferencePills();
@@ -1416,12 +1411,14 @@ export class PythiaSidebarView extends ItemView {
 		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
+		// This turn's conversation: the armed template layered over a clone (ADR-177).
+		const turnConv = applyPendingTemplate(conv);
 		const userMsg: Message = {
 			id: crypto.randomUUID(),
 			role: "user",
 			content: text,
 			timestamp: new Date().toISOString(),
-			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
+			attachedNotes: turnConv.contextNotes.length > 0 ? [...turnConv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
 		// Persist the user turn immediately so it survives an errored or empty
@@ -1432,7 +1429,7 @@ export class PythiaSidebarView extends ItemView {
 		await this.appendMessageBubble(userMsg);
 		this.lastRenderedMsgId = userMsg.id;
 
-		const attachedNotes = [...(conv.contextNotes ?? [])];
+		const attachedNotes = [...(turnConv.contextNotes ?? [])];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
@@ -1581,7 +1578,7 @@ export class PythiaSidebarView extends ItemView {
 			// offered this turn. The clone shares conv.messages (read-only in the
 			// provider) and is never persisted — sidebar's own callbacks below save
 			// the original `conv`, so the toggle stays off after the turn.
-			autoArmedSearch ? { ...conv, researchMode: true } : conv,
+			autoArmedSearch ? { ...turnConv, researchMode: true } : turnConv,
 			text,
 			attachedNotes,
 			appendToken,
@@ -1613,12 +1610,15 @@ export class PythiaSidebarView extends ItemView {
 					timestamp: new Date().toISOString(),
 					model: conv.model,
 					tokenUsage,
-					...(conv.templateId ? { templateId: conv.templateId } : {}),
+					...(turnConv.templateId ? { templateId: turnConv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
 					...(finish?.truncated ? { truncated: true as const } : {}),
 					...(cost ? { cost } : {}),
 				};
 				conv.messages.push(assistantMsg);
+				// Spent. Cleared on a committed answer, not at send start, so an
+				// errored or empty reply leaves it armed for the retry (ADR-177).
+				conv.pendingTemplate = undefined;
 				if (this.activeConversation?.id === conv.id) {
 					this.lastRenderedMsgId = assistantMsg.id;
 					// Surface any vault-RAG notes pulled in this turn as auto pills (ADR-116).

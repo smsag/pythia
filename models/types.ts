@@ -65,6 +65,33 @@ export interface Conversation {
 	 *  conversation ends with the user turn — the answers live here, not in
 	 *  `messages` — and sending is blocked until one is kept. */
 	comparison?: Comparison;
+	/** A template applied to this running conversation, in force for the NEXT
+	 *  answer only and then cleared (ADR-177). Nothing here is ever written onto
+	 *  the conversation itself — see `services/pendingTemplate.ts`. */
+	pendingTemplate?: PendingTemplate;
+}
+
+/**
+ * A template armed for one turn: everything the send needs, snapshotted at the
+ * moment it was applied.
+ *
+ * A snapshot rather than the template's path, for the same reason a message
+ * keeps its own cost (ADR-163): an edit to the template file between arming and
+ * sending must not change the turn under the user.
+ */
+export interface PendingTemplate {
+	/** Vault path of the template — what the answer records as its `templateId`. */
+	id: string;
+	name: string;
+	systemPrompt: string;
+	provider?: Provider;
+	model?: string;
+	maxTokens?: number;
+	temperature?: number;
+	effort?: EffortLevel;
+	writeMode?: Conversation["writeMode"];
+	outputFolder?: string;
+	contextNotes?: string[];
 }
 
 /**
