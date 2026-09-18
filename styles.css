@@ -659,6 +659,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    in context, it is the thing shaping the turn, so it reads as a state: weight
    on the name, and no [[ ]] brackets, which say "vault note" everywhere else. */
 .p-wikilink--template .p-wikilink-name { font-weight: 600; }
+/* The armed rewrite target reuses that treatment: both are "the thing shaping
+   the next answer", not a note in context (ADR-177/178). */
 .p-wikilink--template .p-wikilink-bracket { display: none; }
 
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
@@ -2849,6 +2851,54 @@ body.is-phone .workspace-drawer .p-input-area {
 }
 .pythia-storage-line.mod-warning {
   color: var(--text-warning, var(--text-muted));
+}
+
+/* The proposed-rewrite card under an answer (ADR-178). Third card in the family
+   after .p-trunc and .p-compare, and it follows their grammar: accent left rule,
+   mono caps label, quiet secondary actions. Nothing here is a fill that
+   communicates state, so nothing transitions (ADR-155). */
+.p-rewrite {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--color-accent);
+}
+.p-rewrite-head { display: flex; align-items: center; gap: 6px; }
+.p-rewrite-icon { color: var(--color-accent); display: inline-flex; }
+.p-rewrite-icon svg { width: 12px; height: 12px; }
+.p-rewrite-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.p-rewrite-meta {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.p-rewrite-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+.p-rewrite-btn {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+}
+.p-rewrite-btn--quiet {
+  background: transparent;
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+}
+@media (pointer: coarse) {
+  .p-rewrite-btn { padding: 8px 12px; }
 }
 
 .pythia-modal-buttons {

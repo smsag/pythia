@@ -19,11 +19,17 @@ const DEFAULT_MAX = 600;
 // DOWN as ADR-097 extractions land; delete an entry once the file drops under
 // DEFAULT_MAX on its own.
 const CEILINGS = {
-	"sidebar.ts": 1730,
+	"sidebar.ts": 1716,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// Settings tab monolith; grows one setting at a time (embedding model, related-
 	// similarity preset, …). TODO: split into grouped sections. Split later.
 	"settings.ts": 528,
+	// The two string tables. A line here is one user-visible string, so the budget
+	// measures vocabulary rather than structure — the thing ADR-097 exists to
+	// bound. Ratchet these down only by REMOVING strings, never by reflowing
+	// them; splitting the tables per feature area is the real fix (review #301).
+	"locales/en.ts": 620,
+	"locales/de.ts": 620,
 	// tests/viewRender.test.ts dropped under DEFAULT_MAX once the mount fixture
 	// moved to tests/helpers/viewHarness.ts and the conversation-panel describes
 	// moved to tests/historyPanel.test.ts (ADR-143) — no ceiling needed.

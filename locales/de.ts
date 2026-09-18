@@ -182,6 +182,18 @@ const de: Strings = {
 	sourcesVault: "Vault",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
+	rewriteSelection:        "Auswahl mit Pythia überarbeiten",
+	rewriteArmed:            "[Pythia] Überarbeite eine Passage in {{note}} — sag, was geändert werden soll.",
+	rewriteBarLabel:         "Überarbeitet: {{passage}}",
+	rewriteDefaultInstruction: "Überarbeite die folgende Passage wie gerade besprochen.",
+	rewriteOutputOnly:       "Gib NUR den Ersatztext für die Passage aus, genau so, wie er in der Notiz stehen soll. Behalte die Markdown-Form bei (Überschriftenebene, Liste, Tabellenzeile). Keine Einleitung, keine Erklärung, keine Anführungszeichen, keine Code-Fences.",
+	rewriteCardLabel:        "VORSCHLAG",
+	rewriteApply:            "In Notiz ersetzen",
+	rewriteDiscard:          "Verwerfen",
+	rewriteApplied:          "[Pythia] Passage in {{note}} ersetzt.",
+	rewriteStale:            "[Pythia] Die Passage hat sich seit der Auswahl geändert, es wurde nichts geschrieben. Kopiere die Antwort oder wähle die Passage erneut aus.",
+	rewriteGone:             "[Pythia] Die Passage steht nicht mehr in der Notiz, es wurde nichts geschrieben. Kopiere die Antwort oder wähle die Passage erneut aus.",
+	rewriteNoteGone:         "[Pythia] {{note}} existiert nicht mehr, es wurde nichts geschrieben.",
 	copyBtn:  "Kopieren",
 	insertBtn:"In Notiz einfügen",
 	inboxBtn: "In Posteingang kopieren",

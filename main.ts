@@ -1,4 +1,4 @@
-import { debounce, Editor, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
+import { debounce, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -6,6 +6,7 @@ import type { Conversation, Provider, PythiaTemplate } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { PYTHIA_ICON_ID, registerPythiaIcon } from "./ui/pluginIcon";
+import { registerEditorSelectionEntries } from "./ui/editorSelectionEntries";
 import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ConversationStore } from "./services/ConversationStore";
@@ -380,43 +381,7 @@ export default class PythiaPlugin extends Plugin {
 			else flushChanges();
 		}));
 
-		this.addCommand({
-			id: "send-selection-to-pythia",
-			name: t("sendSelectionToPythia"),
-			icon: PYTHIA_ICON_ID,
-			editorCallback: async (editor: Editor) => {
-				const selection = editor.getSelection();
-				if (!selection) return;
-				const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
-				const view = await this.activateView();
-				await view.setActiveConversation(conv);
-				view.triggerAutoPrompt(selection);
-			},
-		});
-
-		this.addCommand({
-			id: "send-selection-to-pythia-with-template",
-			name: t("sendSelectionToPythiaWithTemplate"),
-			icon: PYTHIA_ICON_ID,
-			editorCallback: async (editor: Editor) => {
-				const selection = editor.getSelection();
-				if (!selection) return;
-				const templates = await this.templateLoader.loadTemplates();
-				if (templates.length === 0) {
-					new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
-					return;
-				}
-				const activeFile = this.app.workspace.getActiveFile();
-				new TemplateSuggestModal(this.app, templates, async (tpl) => {
-					const { contextNotes, outputFolder } = this.conversationService.resolveTemplateContext(tpl, activeFile);
-					const conv = await this.createConversationFromTemplate(tpl, contextNotes, outputFolder);
-					const view = await this.activateView();
-					await view.setActiveConversation(conv);
-					view.triggerAutoPrompt(selection);
-				}).open();
-			},
-		});
-
+		registerEditorSelectionEntries(this);
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
 				if (file instanceof TFile) {

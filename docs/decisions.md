@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently). ADR-175 and ADR-176 are in flight on their own branches.*
+*Last updated: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
+
+*Previously: 2026-09-18 — ADR-177 (a template applied to a running conversation is a one-shot: it shapes the next answer through a snapshot layer and is then spent, instead of overwriting nine conversation fields permanently). ADR-175 and ADR-176 are in flight on their own branches.*
 
 *Previously: 2026-09-18 — ADR-174 (the limit is measured in bytes, and the list is paged: the cap's default was never measured — 450 now, with a data.json size readout and a warning past 25 MB — and the browse listing draws 50 rows with the forks indexed once instead of a filter per row).*
 
@@ -3208,3 +3210,41 @@ Two smaller things fell out of the same confusion: the settings a template chang
 - A conversation that had a template applied before this change keeps those fields; they were written and this ADR does not unwind them. New applications write nothing.
 - The armed template survives a reload, because it is on the conversation and persisted. That is intended: arming is a deliberate act and the pill is on screen to say so.
 - Engineering-review #258 shrinks again: the template's effect is visible *before* the send as a pill, and *after* it on the answer. What remains is reading the prompt text itself.
+
+---
+
+### ADR-178 — Rewriting a passage: the user picks the target, the model proposes, the write is its own step
+
+**Date:** 2026-09-18
+**Status:** Accepted
+
+**Context.** The scenario is ordinary and had no path through Pythia: a note is open, the user talks to Pythia about part of it, and then wants that part changed. Everything for it existed except the one thing that matters. `Send selection to Pythia` starts a *new* conversation, throwing away the discussion that is the whole point. `rewrite_note` replaces a note **entirely**. `Insert into note` writes at wherever the cursor happens to be. Nothing could say *this passage, that answer*.
+
+**Decision — an action, not a tool.**
+
+The obvious implementation is a fourth write tool, `rewrite_selection`, called by the model. It is the wrong one: a tool means the **model** chooses the target, which means re-identifying the passage by its text at write time. ADR-096 spent three rounds on exactly that for fork selections, where the cost of a miss was a highlight that did not paint. Here the cost of a miss is a paragraph overwritten somewhere else in the user's note.
+
+So the target is captured, not found:
+
+1. **The user arms it from the editor** — a command and a context-menu item on a selection — which records `{ path, from, to, text }`: the range *and* the passage that was in it. `Conversation.pendingRewrite` holds it.
+2. **It stays armed** until applied or dismissed. Unlike ADR-177's one-shot template, a rewrite is iterated — "shorter", "keep the second sentence" — and each answer while a target is armed is another proposal for the same passage.
+3. **The passage rides in the message, not the system prompt**, wrapped in `<rewrite_passage>` with an output-only instruction, so a follow-up turn can still see what is being rewritten.
+4. **The answer is a proposal.** Nothing is written when it arrives. A card under it offers *Replace in note · Copy · Discard* — a write that can destroy content is a distinct, named operation (ADR-159's corollary), and here the destruction would be of the user's own prose.
+5. **Verify, then write.** `targetState` compares the range's current text against what was captured — **exactly**, no trimming, no whitespace normalization. `ok` writes; `stale` and `gone` refuse and say which, leaving the answer on screen to paste by hand. "Close enough" is the wrong test when the thing being replaced is a range: if the note moved by one character, the range already points at the wrong text.
+6. **Through the open editor where possible**, because `editor.replaceRange` is one undo step and undo is the user's real safety net. A closed note is opened first rather than written blind.
+
+`services/rewriteTarget.ts` holds the rule as pure functions over a string — `rangeText`, `targetState`, `replaceRange`, `targetLabel` — so the whole of it is tested without an editor.
+
+**Two extractions paid for the change**, under the ADR-097 ratchet, and both were overdue:
+
+- **`ui/referenceEntries.ts`** — which pills the reference row shows, and in what order, as a pure function. The row had quietly accumulated four unrelated things (attachments, outputs, auto-retrieved vault notes, the armed template) inside a DOM builder. The armed rewrite is the fifth, and it is a rule now, with tests. `sidebar.ts` 1730 → 1716.
+- **`ui/editorSelectionEntries.ts`** — all three things a selection in the editor can do, together. Two of them were screens apart in `main.ts` and had drifted into near-copies. `main.ts` 602 → 564.
+- `shouldAutoArmSearch` also moved into `services/sendPolicy.ts`: a four-term rule with no DOM in it, previously untestable where it sat.
+
+**The locale tables are grandfathered** at 620 lines rather than split today. A line in `locales/*.ts` is one user-visible string, so the budget there measures vocabulary, not the structural discipline ADR-097 exists to bound. Splitting them per feature area is the real fix and is recorded as engineering-review #301.
+
+**Consequences.**
+- No `writeMode` involvement: this is not a model tool, so it works in a conversation where the model has no write tools at all. That is correct — the user is the one writing.
+- A stale refusal will happen on a synced vault, and the message says which of the two reasons it was, because "nothing happened" is the failure this plugin has already been bitten by (principle 2).
+- Applying is once: the card's affordance is spent and the target disarmed. Re-arm to apply again.
+- Not built: multi-selection rewrites, and a diff view of what would change. The card shows the proposal as the answer already renders it; a real diff is a bigger piece and wants its own decision.
