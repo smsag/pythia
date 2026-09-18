@@ -6,6 +6,7 @@ export function readCatalogDetails(source: string): CatalogDetail[];
 /** `unknown` on purpose: the point of the guard is that the caller cannot
  *  promise what upstream sent. */
 export function formatWindow(n: unknown): string;
+export function upstreamWindow(row: unknown): unknown;
 export function syncContextWindows(source: string, upstream: unknown, catalog: CatalogDetail[], ids?: Record<string, string>, noUpstream?: Set<string>): { source: string; changes: WindowChange[] };
 export function findDeprecated(upstream: unknown, catalog: CatalogDetail[], ids?: Record<string, string>, noUpstream?: Set<string>): { id: string; provider: string }[];
 export function findNewModels(upstream: unknown, catalog: CatalogDetail[], ids?: Record<string, string>, noUpstream?: Set<string>): NewModel[];

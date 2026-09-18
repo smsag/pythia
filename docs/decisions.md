@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-179 (the model catalog is checked against models.dev weekly: context windows are rewritten for a PR like prices; new and deprecated models are reported in one standing issue and never applied by the script).*
+*Last updated: 2026-09-18 — ADR-179 addendum (the first curation from the catalog issue: three deprecated OpenAI models hidden, five models added; `contextWindow` is the input-side limit where the provider caps the prompt separately).*
+
+*Previously: 2026-09-18 — ADR-179 (the model catalog is checked against models.dev weekly: context windows are rewritten for a PR like prices; new and deprecated models are reported in one standing issue and never applied by the script).*
 
 *Previously: 2026-09-18 — ADR-178 (rewriting a passage of a note from the conversation: the user captures the range, the model proposes, and the write is a separate step that verifies the passage is still there).*
 
@@ -3328,3 +3330,14 @@ The obvious copy of ADR-163 — regenerate the catalog from upstream — is wron
 - Upstream strings reach the issue only as ids matching `^[a-z0-9][a-z0-9._-]{0,63}$`; model names and descriptions are never copied. Same trust reasoning as engineering-review #287, plus `issues: write`.
 - Not built: the script does not check other flags (`noTemperature`, reasoning) of existing models against upstream. The OpenAI o-series shows why — upstream says `temperature: false`, our row has no `noTemperature`, and that is correct, because `isReasoning` is what drops temperature for OpenAI. The flags mean what the code does with them, not what upstream calls them.
 
+**Addendum (same day) — the first curation, and what `contextWindow` means.** Issue #173 was worked the same day. Two things came out of it.
+
+*The window is the input-side limit.* For GPT-5 models models.dev reports `limit.context` 400K with `limit.input` 272K (1.05M / 922K for the larger ones): the provider caps the prompt separately, and `context` is prompt plus answer. `trimHistoryToBudget` budgets history as `contextWindow − output budget − system prompt`, so a 400K window with a 16K budget would let a long conversation send 384K into a 272K limit and fail at the provider. `upstreamWindow` now prefers `limit.input` where upstream gives one, for the sync, the suggested rows and the report alike. No committed model had an input limit, so no existing window changed. The cost is conservative: the budget subtracts the output from a number that already excludes it, which trims a little early. That is the right direction to be wrong in.
+
+*The selection.* Hidden, not deleted: `gpt-4.1-nano`, `o3-mini`, `o4-mini`. Added: `claude-fable-5-1`, `gpt-5.6`, `gpt-5.4-mini`, `gpt-5.4-nano`, `mistral-medium-latest`, each with profile, guidance and a price row from `update:pricing`. Not added, and left in the issue: the `-pro` and `-codex` variants, `gpt-5.6-luna`/`-sol`/`-terra` (flagged experimental upstream, with nothing saying what distinguishes them), `gpt-6-astra`, and the GLM models on Mistral. Adding `gpt-5.6` moved the OpenAI cut-off to 2026-07-09, so the 24 candidates are now 6.
+
+*The flags, checked against what the providers are sent rather than copied from upstream.*
+- GPT-5 gets `isReasoning`: it rejects `temperature` and `max_tokens` exactly like the o-series, and takes `reasoning_effort`. The o-series guard test now reads `/^(o\d|gpt-([5-9]|\d\d))/`.
+- `mistral-medium-latest` does **not** get `isMistralReasoning`, although upstream says `reasoning: true`. Its reasoning options (`none` · `high`) and its temperature support are those of `mistral-small-latest`, which has never had the flag. The flag means *Magistral-like*: no temperature and the reasoning token budget. Medium is neither.
+
+*The OpenAI default.* `DEFAULT_SETTINGS.defaultOpenAIModel` moves from `gpt-4o` to `gpt-5.4-mini`, the cheap GPT-5 tier added above. A default is a starting value, not a migration: a saved `defaultOpenAIModel` is the user's, so an existing vault keeps whatever it stored. A new test requires every provider's default to be a selectable (non-hidden) catalog model, so hiding a model can never strand the default.

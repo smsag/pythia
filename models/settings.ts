@@ -112,7 +112,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	searchSecretName: "pythia-tavily",
 	defaultProvider: "anthropic",
 	defaultAnthropicModel: "claude-sonnet-5",
-	defaultOpenAIModel: "gpt-4o",
+	defaultOpenAIModel: "gpt-5.4-mini",
 	defaultMistralModel: "mistral-large-latest",
 	templatesFolder: "Pythia/Templates",
 	conversationsFolder: "Pythia/Conversations",
