@@ -110,7 +110,7 @@ const de: Strings = {
 	relatedFailed:             "Ähnliche Gespräche fehlgeschlagen: {{error}}",
 	embeddingModelName:        "Modell für ähnliche Gespräche",
 	embeddingModelDesc:        "Lokales Modell zum Finden ähnlicher Gespräche. Mehrsprachig unterstützt Deutsch + Englisch; Englisch ist schneller. Wird beim ersten Gebrauch heruntergeladen.",
-	relatedSimilarityName:     "Strenge für ähnliche Gespräche",
+	relatedSimilarityName:     "Ähnliche Gespräche — ab welcher Nähe ein Treffer zählt",
 	relatedSimilarityDesc:     "Wie ähnlich ein Gespräch sein muss, um unter „Ähnliche anzeigen“ zu erscheinen. Streng zeigt nur sehr enge Treffer; Locker auch schwächere.",
 	relatedSimilarityStrict:   "Streng (weniger, näher)",
 	relatedSimilarityBalanced: "Ausgewogen",

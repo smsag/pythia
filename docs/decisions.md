@@ -3167,3 +3167,27 @@ Now `forksBySource` is built once per list build and both readers share it — t
 - The thresholds are constants read off one measurement on one machine. They are in a pure module with tests and a documented table so the next person can re-measure with the script rather than argue about the number.
 - Paging changes what ↑/↓ can reach: keyboard selection covers the rendered rows, so a conversation past the page needs `show more` first. Search — which reaches everything, capped and ranked — is the way to find a distant conversation, and it is one keystroke away in the same panel.
 - **None of this is the fix.** Every message still pays for the whole corpus. `scripts/bench-store.mjs` and `storageSize.ts` exist so that the point where that stops being acceptable announces itself instead of being discovered. The fix is engineering-review **#298** — an index plus one file per conversation — designed there in full, deliberately not scheduled: its real cost is not the storage layer but making `plugin.conversations` a loader rather than a live array, and nothing in a vault at today's sizes has earned that yet.
+
+---
+
+### ADR-176 — A shared label is not a shared number
+
+**Date:** 2026-09-18
+**Status:** Accepted — the naming half of engineering-review #273; the measurement stays open
+
+**Context.** Two settings offer the same three words, `strict` / `balanced` / `loose`, and both were typed `RelatedSimilarity`:
+
+- `relatedSimilarity` — how close two **conversations** must be to appear under "Show similar". Resolved by `relatedMinScore(preset, modelId)` against floors **measured per embedding model** (ADR-169), because the multilingual model scores every pair ~0.08 hotter than the English one.
+- `vaultContextSimilarity` — how close a **note chunk** must be to the question to enter the prompt. Resolved by `vaultRetrievalMinScore(preset)` against 0.5 / 0.35 / 0.2 — three constants nobody has ever measured.
+
+The code already kept the two maps apart, with a test that fails if they are merged (ADR-169). The **name** said the opposite: a type called `RelatedSimilarity` sitting on the vault-context field reads as though the measured related floors govern vault retrieval too. They never did, and only one of the two has evidence behind it.
+
+**Decision.** The type is named for what it is — a label, not a question. `RelatedSimilarity` → **`SimilarityPreset`**; `RELATED_SIMILARITY_PRESETS` → `SIMILARITY_PRESETS`; `DEFAULT_RELATED_SIMILARITY` → `DEFAULT_SIMILARITY_PRESET`. The two resolvers keep their specific names (`relatedMinScore`, `vaultRetrievalMinScore`) — those are correct, and they are where the difference lives. `relatedFloors` stays on the embedding model: those floors really are related-specific.
+
+Both settings fields now say in one line which they are and what backs them, so the unmeasured one is unmeasured *in the place someone would change it*.
+
+The settings label gains the question rather than the jargon: **"Related conversations — how close a match counts"**. The vault-retrieval preset has no settings-tab control at all (`data.json` only), which is the right way round while it is the unproven one — a control implies a calibration that does not exist yet.
+
+**Consequences.**
+- Pure rename plus comments; no behaviour, no persisted key, no migration. Settings keys (`relatedSimilarity`, `vaultContextSimilarity`) are untouched on purpose — renaming those would mean a data migration for a readability fix.
+- The measurement question is **not** answered here. `vaultRetrievalMinScore` still rests on three chosen numbers; engineering-review #273 stays open and wants its own probe, like `scripts/measure-related.mjs` did for conversation pairs. This ADR only stops the names from claiming otherwise.

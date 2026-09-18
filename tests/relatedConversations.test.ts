@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { rankRelated, relatedMinScore, vaultRetrievalMinScore, VAULT_RETRIEVAL_MIN_SCORES } from "../services/embedding/relatedConversations";
-import { EMBEDDING_MODELS, EMBEDDING_MODEL_IDS, RELATED_SIMILARITY_PRESETS } from "../models/embeddingModels";
+import { EMBEDDING_MODELS, EMBEDDING_MODEL_IDS, SIMILARITY_PRESETS } from "../models/embeddingModels";
 import { quantize } from "../services/embedding/vectorMath";
 import type { IndexedConversation } from "../services/embedding/embeddingIndex";
 
@@ -65,7 +65,7 @@ describe("relatedMinScore — per model (ADR-169)", () => {
 		// A model added without floors would silently fall back to another model's
 		// numbers — the bug ADR-169 exists to stop.
 		for (const id of EMBEDDING_MODEL_IDS) {
-			for (const preset of RELATED_SIMILARITY_PRESETS) {
+			for (const preset of SIMILARITY_PRESETS) {
 				const floor = EMBEDDING_MODELS[id].relatedFloors[preset];
 				expect(typeof floor).toBe("number");
 				expect(floor).toBeGreaterThan(0);
@@ -80,7 +80,7 @@ describe("relatedMinScore — per model (ADR-169)", () => {
 		// made "Balanced" mean 19 of 23 neighbours on one model and 11 on the other.
 		// The test is directional, not literal — it survives a re-measurement that
 		// moves the numbers but not the relationship.
-		for (const preset of RELATED_SIMILARITY_PRESETS) {
+		for (const preset of SIMILARITY_PRESETS) {
 			expect(relatedMinScore(preset, "xenova-paraphrase-multilingual-MiniLM-L12-v2")).toBeGreaterThan(
 				relatedMinScore(preset, "xenova-all-MiniLM-L6-v2")
 			);
