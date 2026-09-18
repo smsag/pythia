@@ -34,6 +34,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
@@ -85,11 +86,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
+    ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1270 tests across 84 files
+  tests/                      ← Vitest unit tests (npm test) — 1294 tests across 86 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -530,6 +533,14 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **Write through the open editor when possible** — `editor.replaceRange` is one undo step, and undo is the real safety net. A closed note is opened first, never written blind
 - **Armed until applied or dismissed**, unlike ADR-177's one-shot template: a rewrite is iterated ("shorter"), so every answer while it is armed is another proposal for the same passage
 - The passage rides in the **message**, not the system prompt, so a follow-up turn can still see what is being rewritten
+
+### Model suggestion (ADR-181)
+
+- **The model rates, Pythia picks.** The optimizer reply ends with `DIFFICULTY: light | standard | deep` (same call, no second request); `recommendModel` maps it to the cheapest adequate model of `settings.defaultProvider` by `MODEL_PROFILE` + `MODEL_PRICING`. **Never let a model name a model** — it does not know the catalog, the prices or the keys
+- **Offered, never applied; one send, never written.** `.p-model-hint` beside Send; tap accepts, tap again withdraws. `layer(conv)` clones for the next send and `applyPendingTemplate` runs over it, so a template's model wins. Spent on a committed answer, like ADR-177. Never assign the suggestion to `conv.model`
+- **Cost as a tier, never dollars** (ADR-163) — the chip carries `tierDots`, not `≈ $`
+- **No suggestion** when a template pins the model, a PDF meets Mistral, the current model is adequate and not dearer, or a downgrade's cold send costs more than staying on the cached model (`sendCost`) — measured from the price table, not guessed
+- **The answer names the model that answered**: `turnConv.model`, never `conv.model`, for the message, its cost snapshot and a stream error (#305)
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

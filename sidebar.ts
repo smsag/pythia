@@ -36,6 +36,8 @@ import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
 import { SendHintController } from "./ui/SendHintController";
+import { drawAttachIcon, drawSaveIcon } from "./ui/toolbarIcons";
+import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
@@ -125,6 +127,7 @@ export class PythiaSidebarView extends ItemView {
 	 *  popover (created lazily on first long-press). */
 	private actionSheet: ActionSheet | null = null;
 	private sendHint!: SendHintController;
+	private modelSuggestion!: ModelSuggestionController;
 	private truncation!: TruncationController;
 	/** Public: the editor entry point arms a target through it (ADR-178). */
 	rewrite!: RewriteController;
@@ -210,8 +213,9 @@ export class PythiaSidebarView extends ItemView {
 		this.closeSummaryMenu();
 		this.actionSheet?.close();
 
-		// Discard any pending optimization state.
+		// Discard any pending optimization state and its model offer (ADR-181).
 		this.optimizationController?.cancel();
+		this.modelSuggestion?.clear();
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
@@ -239,6 +243,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 		this.headerController?.exitRename(false);     // discard any in-progress rename
 		this.optimizationController?.cancel();
+		this.modelSuggestion?.clear();
 		this.activeConversation = conversation;
 		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
 		// Resetting to true here was the root cause of conversations always scrolling
@@ -374,6 +379,7 @@ export class PythiaSidebarView extends ItemView {
 			isStreaming: () => this.isStreaming,
 			autoResizeTextarea: () => this.autoResizeTextarea(),
 			updateSendBtnLabel: () => this.updateSendBtnLabel(),
+			onRated: (difficulty) => this.modelSuggestion.consider(difficulty),
 		});
 
 		this.navigatorController = new NavigatorController({
@@ -594,12 +600,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-tool-btn",
 			attr: { title: t("attachNoteTooltip") },
 		});
-		const attachSvg = attachBtn.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		attachSvg.createSvg("path", {
-			attr: { d: "M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" },
-		});
+		drawAttachIcon(attachBtn);
 		this.registerDomEvent(attachBtn, "click", () => {
 			this.ensureInputExpanded();
 			this.onAttachNote();
@@ -609,21 +610,11 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-tool-btn",
 			attr: { title: t("saveResponseTooltip") },
 		});
-		const saveSvg = saveBtn.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		saveSvg.createSvg("path", {
-			attr: { d: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" },
-		});
-		saveSvg.createSvg("polyline", { attr: { points: "17 21 17 13 7 13 7 21" } });
-		saveSvg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
+		drawSaveIcon(saveBtn);
 		this.registerDomEvent(saveBtn, "click", () => {
 			this.ensureInputExpanded();
 			void this.onSaveResponse();
 		});
-
-		// Prompt optimization now lives as a third entry in the Send long-press menu
-		// (openSummaryMenu) rather than a toolbar icon.
 
 		const applyTemplateBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -666,6 +657,13 @@ export class PythiaSidebarView extends ItemView {
 			openSettings: () => this.headerController.openConversationSettings(),
 		});
 		this.sendHint.mount(toolbar);
+		this.modelSuggestion = new ModelSuggestionController({
+			getSettings: () => this.plugin.settings,
+			getConversation: () => this.activeConversation,
+			hasApiKeyFor: (provider) => this.plugin.hasApiKeyFor(provider),
+			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+		});
+		this.modelSuggestion.mount(toolbar);
 
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
@@ -1397,8 +1395,9 @@ export class PythiaSidebarView extends ItemView {
 		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
-		// This turn's conversation: the armed template layered over a clone (ADR-177).
-		const turnConv = applyPendingTemplate(conv);
+		// This turn: accepted model suggestion, armed template over it (ADR-177/181).
+		const turnConv = applyPendingTemplate(this.modelSuggestion.layer(conv));
+		this.modelSuggestion.sent();
 		const userMsg: Message = {
 			id: crypto.randomUUID(),
 			role: "user",
@@ -1584,15 +1583,15 @@ export class PythiaSidebarView extends ItemView {
 				}
 
 				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
-				// Priced now, with the prices in force now (ADR-163) — a later table
-				// update must not re-price an answer that was already paid for.
-				const cost = costSnapshot(conv.model, tokenUsage);
+				// Priced now (ADR-163), on the model that answered: turnConv, which a
+				// template or model suggestion can move off conv.model (ADR-181).
+				const cost = costSnapshot(turnConv.model, tokenUsage);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
 					content: fullText,
 					timestamp: new Date().toISOString(),
-					model: conv.model,
+					model: turnConv.model,
 					tokenUsage,
 					...(turnConv.templateId ? { templateId: turnConv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
@@ -1604,6 +1603,7 @@ export class PythiaSidebarView extends ItemView {
 				// Spent. Cleared on a committed answer, not at send start, so an
 				// errored or empty reply leaves it armed for the retry (ADR-177).
 				conv.pendingTemplate = undefined;
+				this.modelSuggestion.spent(conv.id);
 				if (this.activeConversation?.id === conv.id) {
 					this.lastRenderedMsgId = assistantMsg.id;
 					// Surface any vault-RAG notes pulled in this turn as auto pills (ADR-116).
@@ -1663,7 +1663,7 @@ export class PythiaSidebarView extends ItemView {
 				// error object (avoids ever surfacing request metadata in the console).
 				console.error("[Pythia] stream error:", describeErrorForLog(error));
 
-				new Notice(buildStreamErrorMessage(error, conv.model ?? ""));
+				new Notice(buildStreamErrorMessage(error, turnConv.model ?? ""));
 
 				// Discard any partial reply and drop the streaming row. The user's
 				// message is already persisted (saved above), so they can retry from a

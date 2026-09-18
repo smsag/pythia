@@ -3275,3 +3275,46 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 
 /* ── Cost disclaimer in the settings tab (ADR-163) ─────────────── */
 .p-pricing-disclaimer { font-size: var(--font-small); line-height: 1.45; }
+
+/* ── Optimizer model suggestion beside Send (ADR-181) ──
+   Reads as a pill: accent border and text, mono caps rhythm. Accepted = accent
+   fill, which is STATE — no transition on it (ADR-155), and text on the fill
+   follows hard rule 6a. */
+.p-input-area.collapsed .p-model-hint {
+  display: none;
+}
+
+.pythia-view .p-model-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 20px;
+  padding: 0 var(--s2);
+  margin-right: var(--s2);
+  border: 1px solid var(--color-accent);
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-accent);
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pythia-view .p-model-hint-cost {
+  opacity: 0.7;
+  letter-spacing: -1px;
+}
+
+.pythia-view .p-model-hint.is-accepted {
+  background: var(--color-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+}
+
+@media (hover: hover) {
+  .pythia-view .p-model-hint:not(.is-accepted):hover {
+    background: var(--background-modifier-hover);
+  }
+}
