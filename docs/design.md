@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — the fork and merge anchors show their summary in full (ADR-189). `.p-clamped` (the five-line mask) and `.p-anchor-more` / `.p-anchor-more-wrap` (the `mehr`/`weniger` control) are removed; both anchor specs already read "not clamped".*
+*Last updated: 2026-09-20 — the `.pb` base claims every property of Obsidian's bare `button` rule (`height: auto`, `width: auto`, `corner-shape: round`), each role restates its padding at (0,3,0), a phone modal's Setting control can no longer stretch the effort segments, a disabled Send is not dimmed, `[hidden]` always hides, and the model segment is a block so its name ends in an ellipsis (ADR-190).*
+
+*Previously: 2026-09-20 — the fork and merge anchors show their summary in full (ADR-189). `.p-clamped` (the five-line mask) and `.p-anchor-more` / `.p-anchor-more-wrap` (the `mehr`/`weniger` control) are removed; both anchor specs already read "not clamped".*
 
 *Previously: 2026-09-20 — Buttons (ADR-188). One look per role, defined once in `styles.css` ("Buttons: one rule set per role"): every button carries `pb` + `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. Mono 11px, weight 500, `3px 8px`, radius 3px, 24px min height (32px under `pointer: coarse`); icons 24×24 with a 12px glyph in `--text-muted` (never faint). Hover: soft neutral — `--background-modifier-hover` behind everything unfilled, a filled button lightens to `color-mix(accent 88%, white)`. Chosen segments are the accent tint everywhere; the comparison tabs keep their underline. Old per-button classes keep layout only.*
 
@@ -294,7 +296,7 @@ Every button Pythia creates carries `pb` plus **one** role class. The look lives
 
 - **One box:** mono `--font-smaller` (11px), weight 500, `3px 8px`, radius 3px, a 1px border slot on every role, 24px minimum height. **Touch:** 32px (the header holds seven controls on a 375px phone).
 - **States:** on = accent fill (`pb-icon.is-active`, `pb-secondary.is-accepted`); chosen = accent tint (`pb-seg.is-pinned` / `.active`); open tab = normal label, 600, accent underline.
-- **Never** `opacity` for hover or at rest, **never** `--text-faint` on a control (2.3:1), and **never** a fill set below (0,3,0): Obsidian's `button:not(.clickable-icon):hover` is (0,2,1) and Pythia's reset (0,1,1).
+- **Never** `opacity` for hover or at rest, **never** `--text-faint` on a control (2.3:1), and **never** a property left for Obsidian's bare `button` rule to set (height, padding, radius, corner-shape — ADR-190). Its fills are (0,1,1), `.is-tablet` padding (0,2,1), a phone modal's Setting control (0,4,1); `tests/obsidianCascade.test.ts` fails if any of them reaches a role.
 
 ### Header
 ```

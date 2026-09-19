@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-20 — anchor summaries in full (ADR-189). `ui/clampBody.ts` (`clampSummary`) and its test are deleted; `ForkController` and `MergeController` render the summary body without it; `summaryMore`/`summaryLess` leave both locales. New `tests/anchorSummaryFull.test.ts` (1439 across 96 files).*
+*Last updated: 2026-09-20 — Obsidian's button rules, measured (ADR-190). New `scripts/obsidian-button-rules.mjs` (`npm run check:obsidian-cascade`, local only) extracts app.css from the installed Obsidian .asar and compares the rules that can reach a Pythia button with `tests/fixtures/obsidianButtonRules.ts` (selectors + sentinel values). New `tests/obsidianCascade.test.ts`. `styles.css`: base claims height/width/corner-shape, roles restate padding, phone-modal guard, `[hidden]`, block model segment (1447 across 97 files).*
+
+*Previously: 2026-09-20 — anchor summaries in full (ADR-189). `ui/clampBody.ts` (`clampSummary`) and its test are deleted; `ForkController` and `MergeController` render the summary body without it; `summaryMore`/`summaryLess` leave both locales. New `tests/anchorSummaryFull.test.ts` (1439 across 96 files).*
 
 *Previously: 2026-09-20 — button roles (ADR-188). `styles.css` gains one block, "Buttons: one rule set per role", right after the reset; 98 per-button rules were rewritten: 80 dropped (look, hover, glyph size), 18 kept with layout only. Every `createEl("button")` in `sidebar.ts`, `ui/` and `suggest/` names `pb` + a role (65 call sites). `tests/buttonRoles.test.ts` replaces `tests/sendButtonCascade.test.ts`: role cascade against core-like rules + a source scan for role-less buttons (1443 across 96 files).*
 
