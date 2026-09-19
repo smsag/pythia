@@ -93,6 +93,22 @@ describe("Obsidian's button rules never reach a Pythia button (ADR-190)", () => 
 	});
 });
 
+describe("the accordion header is a button too (ADR-192)", () => {
+	for (const [bodyCls, label] of [["is-desktop", "desktop"], ["is-mobile is-tablet", "tablet"]] as const) {
+		it(`${label}: Obsidian's button rules do not size, pad or fill it`, () => {
+			const host = mount(bodyCls, [...VIEW, "p-acc open"], `<div class="p-acc-head"><button class="p-acc-toggle">T</button><button class="p-acc-toggle is-hovered">T</button></div>`);
+			for (const b of Array.from(host.querySelectorAll<HTMLElement>("button"))) {
+				const cs = getComputedStyle(b);
+				expect(cs.height).not.toBe(SENTINEL.height);
+				expect(`${cs.paddingTop} ${cs.paddingRight}`).not.toBe(SENTINEL.tabletPadding);
+				expect([SENTINEL.fill, SENTINEL.hoverFill]).not.toContain(cs.backgroundColor);
+				expect(cs.color).not.toBe(SENTINEL.label);
+				expect(cs.boxShadow).not.toBe(SENTINEL.shadow);
+			}
+		});
+	}
+});
+
 describe("two things the role base must not break", () => {
 	it("`hidden` hides a button even though .pb sets display (search panel's clear ✕)", () => {
 		const host = mount("is-desktop", VIEW, `<button class="pb pb-icon p-switcher-clear" hidden>x</button>`);

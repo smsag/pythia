@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — one glyph for regenerate (ADR-191): `refresh-cw` on all six controls (rename with AI, summary card, fork/merge anchor, *Define again*, *Rebuild vault index*); the anchors' `rotate-cw` is gone. The summary card's regenerate turns accent (`.is-stale`) and its timestamp reads `· outdated` when something newer than the summary exists, like the anchors.*
+*Last updated: 2026-09-20 — one accordion (ADR-192). The context inspector and the summary cards share `.p-acc`: `--background-secondary`, 1px border, radius 6px; a `<button>` header (`.p-acc-toggle`, min 36px, `--s2 --s3`) holding a 12px `chevron-right` (rotated when open), a 12px muted icon, a 600 `--text-normal` title and a mono 10px faint meta slot; actions (↻) beside it in `.p-acc-actions`. Hover fills the toggle only. The ▸/▾ text chevrons and the inspector's white fill are gone.*
+
+*Previously: 2026-09-20 — one glyph for regenerate (ADR-191): `refresh-cw` on all six controls (rename with AI, summary card, fork/merge anchor, *Define again*, *Rebuild vault index*); the anchors' `rotate-cw` is gone. The summary card's regenerate turns accent (`.is-stale`) and its timestamp reads `· outdated` when something newer than the summary exists, like the anchors.*
 
 *Previously: 2026-09-20 — the `.pb` base claims every property of Obsidian's bare `button` rule (`height: auto`, `width: auto`, `corner-shape: round`), each role restates its padding at (0,3,0), a phone modal's Setting control can no longer stretch the effort segments, a disabled Send is not dimmed, `[hidden]` always hides, and the model segment is a block so its name ends in an ellipsis (ADR-190).*
 

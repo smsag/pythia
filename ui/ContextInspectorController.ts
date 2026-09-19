@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "../services/ContextBuilder";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
+import { buildAccordion } from "./accordion";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -102,30 +103,27 @@ export class ContextInspectorController {
 		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
 		wrap.style.display = "";
 
-		const card = wrap.createDiv({ cls: "p-inspector" });
-		if (budgetTight) card.addClass("warn");
-
-		// ── Header (toggles the body) ────────────────────────────────
-		const header = card.createDiv({ cls: "p-inspector-header" });
-		setIcon(header.createSpan({ cls: "p-inspector-icon" }), "file-text");
+		// ── The shared accordion (ADR-192): same box as the summary cards ──
 		const shortK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
 		const titleText = budgetTight
 			? `${t("ctxLabel")} · ${shortK(used)} / ${shortK(windowSize)}`
 			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
-		header.createSpan({ cls: "p-inspector-title", text: titleText });
-		if (budgetTight) {
-			header.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
-		}
-		const chevron = header.createSpan({ cls: "p-inspector-chevron", text: this.inspectorOpen ? "▾" : "▸" });
-		header.addEventListener("click", () => {
-			this.inspectorOpen = !this.inspectorOpen;
-			card.toggleClass("open", this.inspectorOpen);
-			chevron.setText(this.inspectorOpen ? "▾" : "▸");
+		const acc = buildAccordion(wrap, {
+			cls: "p-inspector",
+			icon: "file-text",
+			title: titleText,
+			open: this.inspectorOpen,
+			onToggle: (open) => { this.inspectorOpen = open; },
 		});
-		card.toggleClass("open", this.inspectorOpen);
+		const card = acc.root;
+		if (budgetTight) {
+			card.addClass("warn");
+			acc.meta.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
+		}
 
 		// ── Body ─────────────────────────────────────────────────────
-		const body = card.createDiv({ cls: "p-inspector-body" });
+		const body = acc.body;
+		body.addClass("p-inspector-body");
 
 		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
 			const bar = row.createDiv({ cls: "p-ins-bar" });

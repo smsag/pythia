@@ -967,61 +967,75 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin-bottom: var(--s4);
 }
 
-.p-summary-card {
+/* ── Accordion (ADR-192) ──────────────────────────────────────────
+   The one collapsible box above the conversation: the context inspector and
+   the summary cards (ui/accordion.ts). They had drifted into two looks —
+   white vs grey fill, 13 vs 14px icons, muted vs normal titles, a hover on
+   one only, and ▸/▾ text chevrons — for the same kind of thing. The header is
+   a <button> (aria-expanded), so it claims every property Obsidian's button
+   rules set (ADR-190); actions such as ↻ sit beside it, never inside. */
+.p-acc {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   overflow: hidden;
 }
-
-.p-summary-card-header {
+.p-acc-head { display: flex; align-items: center; }
+.pythia-view .p-acc .p-acc-toggle,
+.pythia-view .p-acc .p-acc-toggle:hover {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--s2);
+  height: auto;
+  min-height: 36px;
   padding: var(--s2) var(--s3);
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  corner-shape: round;
   cursor: pointer;
   user-select: none;
-}
-@media (hover: hover) {
-  .p-summary-card-header:hover {
-    background: var(--background-modifier-hover);
-  }
-}
-
-.p-summary-card-icon {
-  display: inline-flex;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.p-summary-card-icon svg { width: 14px; height: 14px; }
-
-.p-summary-card-title {
-  flex: 1;
   font-family: var(--font-interface);
   font-size: var(--font-small);
-  font-weight: 600;
   color: var(--text-normal);
+  -webkit-text-fill-color: var(--text-normal);
+}
+@media (hover: hover) {
+  .pythia-view .p-acc .p-acc-toggle:hover { background: var(--background-modifier-hover); }
+}
+.pythia-view .p-acc .p-acc-toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.p-acc-chevron, .p-acc-icon { display: flex; flex-shrink: 0; color: var(--text-muted); }
+.p-acc-chevron svg, .p-acc-icon svg { width: 12px; height: 12px; }
+/* Open state is a rotation, applied at once — a state change is never animated (ADR-155). */
+.p-acc.open .p-acc-chevron svg { transform: rotate(90deg); }
+.p-acc-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.p-summary-card-chevron {
-  font-size: 9px;
+.p-acc-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex-shrink: 0;
+  font-family: var(--font-monospace);
+  font-size: 10px;
   color: var(--text-faint);
-  flex-shrink: 0;
+  -webkit-text-fill-color: var(--text-faint);
+  white-space: nowrap;
 }
-
-/* Regenerate icon in the card header (right side, next to the chevron). */
-.p-summary-card-regen {
-  flex-shrink: 0;
-}
-
-.p-summary-card-body {
-  display: none;
-  padding: 0 var(--s3) var(--s2);
-}
-.p-summary-card.open .p-summary-card-body { display: block; }
+.p-acc-meta:empty { display: none; }
+.p-acc-actions { display: flex; align-items: center; gap: var(--s1); flex-shrink: 0; padding-right: var(--s2); }
+.p-acc-actions:empty { display: none; }
+.p-acc-body { padding: 0 var(--s3) var(--s2); }
+.p-acc:not(.open) > .p-acc-body { display: none; }
 
 .p-summary-card-footer {
   display: flex;
@@ -1172,41 +1186,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 
 /* ── Context inspector (F2/F3) ──────────────────────────────────── */
 .p-inspector-wrap { min-width: 0; }
-.p-inspector {
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.p-inspector-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-.p-inspector-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
-.p-inspector-icon svg { width: 13px; height: 13px; }
-.p-inspector-title {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-small);
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.p-inspector-pct {
-  font-family: var(--font-monospace);
-  font-size: 9px;
-  color: var(--text-warning, var(--color-orange));
-  flex-shrink: 0;
-}
-.p-inspector-chevron { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
-/* Body hidden until .open, mirroring the summary-card toggle. */
-.p-inspector-body { display: none; padding: 0 12px 10px; flex-direction: column; gap: 5px; }
-.p-inspector.open .p-inspector-body { display: flex; }
+/* The box and header are the shared accordion (.p-acc, ADR-192); this is the
+   body's own layout only. */
+.p-inspector-pct { color: var(--text-warning, var(--color-orange)); -webkit-text-fill-color: var(--text-warning, var(--color-orange)); }
+.p-inspector-body { display: flex; flex-direction: column; gap: 5px; padding-bottom: 10px; }
 .p-inspector-row { display: flex; align-items: center; gap: 8px; }
 .p-inspector-rowlabel { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-normal); }
 .p-inspector-row .p-wikilink { flex: 1; }

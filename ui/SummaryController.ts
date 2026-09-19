@@ -4,6 +4,7 @@ import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
 import { REGENERATE_ICON } from "./icons";
+import { buildAccordion, setAccordionOpen } from "./accordion";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -85,26 +86,24 @@ export class SummaryController {
 		// Outdated when something newer than the summary exists — the fork and merge
 		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
 		const stale = !!(updatedAt && latestSource && latestSource > updatedAt);
-		const card = this.d.getCardsEl()!.createDiv({
+		// The shared accordion (ADR-192): same box as the context inspector.
+		const acc = buildAccordion(this.d.getCardsEl()!, {
 			cls: "p-summary-card",
-			attr: { "data-kind": kind },
+			icon: kind === "favorites" ? "star" : "align-left",
+			title: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
-		const header = card.createDiv({ cls: "p-summary-card-header" });
-		const icon = header.createSpan({ cls: "p-summary-card-icon" });
-		setIcon(icon, kind === "favorites" ? "star" : "align-left");
-		header.createSpan({
-			cls: "p-summary-card-title",
-			text: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
-		});
-		// Timestamp lives in the header now (right-aligned, faint).
+		const card = acc.root;
+		card.setAttribute("data-kind", kind);
+		// Timestamp in the header's meta slot (right-aligned, faint).
 		if (updatedAt) {
 			const ts = formatSummaryTimestamp(updatedAt);
-			header.createSpan({ cls: "p-summary-ts", text: stale ? `${ts} · ${t("forkSummaryStale")}` : ts });
+			acc.meta.createSpan({ cls: "p-summary-ts", text: stale ? `${ts} · ${t("forkSummaryStale")}` : ts });
 		}
-		// Regenerate icon — re-runs the summary matching this card's kind.
-		const regen = header.createEl("button", {
+		// Regenerate icon — beside the toggle, never inside it.
+		const regenLabel = kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation");
+		const regen = acc.actions.createEl("button", {
 			cls: `pb pb-icon p-summary-card-regen${stale ? " is-stale" : ""}`,
-			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
+			attr: { title: regenLabel, "aria-label": regenLabel },
 		});
 		setIcon(regen, REGENERATE_ICON);
 		regen.addEventListener("click", (e) => {
@@ -112,12 +111,8 @@ export class SummaryController {
 			if (kind === "favorites") void this.summarizeFavorites();
 			else void this.generateConversationSummary();
 		});
-		header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
-		header.addEventListener("click", () =>
-			this.setSummaryCardOpen(card, !card.hasClass("open"))
-		);
-
-		const body = card.createDiv({ cls: "p-summary-card-body" });
+		const body = acc.body;
+		body.addClass("p-summary-card-body");
 		const md = body.createDiv({ cls: "p-summary-card-md" });
 		this.d.renderMarkdown(text, md);
 
@@ -140,9 +135,7 @@ export class SummaryController {
 	}
 
 	private setSummaryCardOpen(card: HTMLElement, open: boolean): void {
-		card.toggleClass("open", open);
-		const chevron = card.querySelector<HTMLElement>(".p-summary-card-chevron");
-		if (chevron) chevron.setText(open ? "▾" : "▸");
+		setAccordionOpen(card, open);
 	}
 
 	private async onSaveSummaryToNote(kind: "conversation" | "favorites", text: string): Promise<void> {
