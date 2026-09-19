@@ -102,7 +102,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │   │   ├── .p-inst-seg.p-inst-model                → .p-model-pop
 │   │   ├── .p-inst-seg.p-inst-effort               → .p-choice-pop / .p-sheet
 │   │   └── .p-inst-seg.p-inst-lang                 → .p-choice-pop / .p-sheet
-│   ├── .p-hdr-btn.p-hdr-menu (⌄)                   rename · copy link · conversation settings
+│   ├── .p-hdr-btn.p-hdr-menu (⌄)                   rename [↻ .p-choice-trailing = AI rename] · copy link · conversation settings
 │   ├── .p-hdr-btn            (trash)               → DeleteConversationModal
 │   └── .p-hdr-btn            (plus)                new conversation — always the last child
 │
