@@ -90,13 +90,14 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    accordion.ts              ← buildAccordion / setAccordionOpen: the ONE collapsible box (context inspector, summary cards) — a <button> header with aria-expanded, actions beside it (ADR-192)
     icons.ts                  ← REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1453 tests across 98 files
+  tests/                      ← Vitest unit tests (npm test) — 1459 tests across 99 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -350,6 +351,11 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 ```
 - **No label.** This spec described a `REFERENZ` label in a 54px column for a long time; `.p-ref-row` holds only `.p-pills` and no such element has ever been created (flagged in the 2026-09-10 locale audit, corrected in ADR-144). Removed rather than built: the pills carry an ✕ and read as attachments on their own
 - Pills: `--color-accent` border + text, 10px mono, `border-radius: 10px`
+
+### Accordion boxes (ADR-192)
+- The context inspector and the summary cards are ONE component: `buildAccordion` in `ui/accordion.ts`, styled only by `.p-acc*`. A new collapsible box above the conversation uses it — never a second hand-built header
+- The header is a `<button>` with `aria-expanded`; actions (↻) go in `actions`, **never inside the toggle**
+- Chevron is `chevron-right` rotated when open — never ▸/▾ text
 
 ### Summary bar (sticky, always visible)
 - `background: var(--background-secondary)`

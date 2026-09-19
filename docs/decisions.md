@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-191 (one glyph for regenerate: `refresh-cw` from `ui/icons.ts` on all six controls, the summary card flags an outdated summary like the anchors, and an empty definition reply is reported).*
+*Last updated: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
+
+*Previously: 2026-09-20 — ADR-191 (one glyph for regenerate: `refresh-cw` from `ui/icons.ts` on all six controls, the summary card flags an outdated summary like the anchors, and an empty definition reply is reported).*
 
 *Previously: 2026-09-20 — ADR-190 (Obsidian's button rules, measured: read from the installed app.css, ten rules reach a Pythia button, and ADR-188's role base let four of them through — every text button took Obsidian's input height; now checked by a sentinel test and a drift script).*
 
@@ -3718,4 +3720,32 @@ At 12px the two are visibly different, so the same verb read as two actions. The
 - **An empty definition reply says so.** `GlossaryService` shows `lookupEmptyReply` ("nothing was saved") for terms and people alike.
 
 **Guards.** `tests/icons.test.ts` fails if `refresh-cw`, `refresh-ccw`, `rotate-cw` or `rotate-ccw` is written as a literal anywhere outside `ui/icons.ts`, if the set of files using the constant changes, if the summary card's marker is missing (conversation and favorites), or if an empty lookup reply is silent. Five of its six cases fail on the previous code; the sixth is the negative case. The test `Notice` mock now records what it was asked to show, so "silence is a bug" can be tested.
+
+### ADR-192 — One accordion for the boxes above the conversation
+
+*2026-09-20*
+
+**Context.** The context inspector ("Kontext · ~4.2k") and the summary cards (conversation, favorites) are the same kind of thing: a collapsible box above the conversation, with a title, sometimes meta text on the right, and sometimes an action. They were two hand-built components that had drifted apart:
+- white fill (`--background-primary`) vs grey (`--background-secondary`);
+- a 13px faint icon vs a 14px muted one;
+- a muted title vs a normal one;
+- a hover fill on one only;
+- ▸/▾ as text characters on both, which do not follow the icon set.
+
+Neither header could be reached from the keyboard: each was a `div` with a click handler. The summary card also held its regenerate button inside that clickable header.
+
+**Decision.**
+- **`ui/accordion.ts` builds both.** `buildAccordion(parent, { cls, icon, title, open, onToggle })` returns `root · toggle · meta · actions · body`, and `setAccordionOpen` opens or closes one from outside (the summary cards fold when scrolled away). Each keeps its own class (`.p-inspector`, `.p-summary-card`) for its body's layout.
+- **The header is a `<button>`** with `aria-expanded` and `aria-controls`, so Tab, Enter and Space work and a screen reader hears the state. **Actions sit beside it** (`.p-acc-actions`), never inside: a button inside a button is invalid, and the inner click would also toggle the box.
+- **One rule set, `.p-acc*`.** `--background-secondary`, the surface the design system names for summary chrome, applies to both. A 12px `chevron-right` rotates to point down when open (no transition, ADR-155), with a 12px muted icon, a 600 title in `--text-normal`, a mono 10px meta slot and a hover fill on the toggle. Because the toggle is a button, it names every property Obsidian's button rules set (ADR-190), and `tests/obsidianCascade.test.ts` covers it.
+
+**Guards.**
+- `tests/accordion.test.ts` checks the toggle's semantics and that actions stay outside the toggle.
+- It checks that the summary card is built this way in the real view.
+- It checks that neither controller still hand-builds a header or uses a text chevron.
+- `tests/buttonRoles.test.ts` lists `p-acc-toggle` as an allowed non-role button.
+
+**Consequences.**
+- The context box turns grey like the summary cards.
+- Summary cards previously toggled from a click anywhere on the header row; now the toggle covers the row except the ↻ action.
 

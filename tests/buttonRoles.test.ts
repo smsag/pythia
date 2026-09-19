@@ -118,10 +118,11 @@ describe("button roles against Obsidian's button rules (ADR-188)", () => {
  * Every button Pythia creates carries a role, so a new one cannot quietly bring
  * its own look back. Obsidian's own dialog buttons (mod-cta / mod-warning /
  * plain) stay Obsidian's; the mobile sheet's trailing icon matches the sheet's
- * 18px rows; the conversation picker lives in Obsidian's suggestion modal.
+ * 18px rows; the conversation picker lives in Obsidian's suggestion modal; the
+ * accordion header is a full-width row, not a button look (ADR-192).
  */
 describe("every button has a role", () => {
-	const ALLOWED = [/^mod-cta$/, /^mod-warning$/, /^p-sheet-item-trailing$/, /^pythia-conv-suggest-delete$/];
+	const ALLOWED = [/^mod-cta$/, /^mod-warning$/, /^p-sheet-item-trailing$/, /^pythia-conv-suggest-delete$/, /^p-acc-toggle$/];
 	const ROLE = /(^|\s)pb pb-(primary|secondary|quiet|destructive|link|icon|seg|tab|chip-warn)(\s|$|\$)/;
 	const files = ["sidebar.ts", ...["ui", "suggest"].flatMap((d) => readdirSync(resolve(root, d)).filter((f) => f.endsWith(".ts")).map((f) => join(d, f)))];
 	it("createEl(\"button\") always names a role class", () => {
