@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-193 (one icon per source type: a reference leads with the icon of the toolbar control that brings it in — file-text, library, layout-template, globe, save, pencil-line — replacing `[[ ]]`, and the trailing `↗`; link colours are Obsidian's link tokens).*
+*Last updated: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
+
+*Previously: 2026-09-20 — ADR-194 (the highlighter stroke is the family's: Klartext is the baseline, its `kit/highlight.css` is copied in, the pen is shared and only the ink differs; supersedes ADR-090).*
+
+*Previously: 2026-09-20 — ADR-193 (one icon per source type: a reference leads with the icon of the toolbar control that brings it in — file-text, library, layout-template, globe, save, pencil-line — replacing `[[ ]]`, and the trailing `↗`; link colours are Obsidian's link tokens).*
 
 *Previously: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
 
@@ -2840,7 +2844,7 @@ return block?.type === "text" ? block.text.trim() : "";
 
 **Decision.** Pythia registers its own icon, `pythia-logo`, once in `onload()` — the Python of Delphi, a serpent winding like lines of text with a single eye. It is used by the ribbon, the entry commands (`new-conversation`, `resume-conversation`, `hub`, `send-selection-to-pythia`, `send-selection-to-pythia-with-template`), the two file-menu entries ("Chat about note/folder") and `getIcon()` of the view. Task commands do **not** wear it: they carry the Lucide icon that names the task (`star`, `library`, `refresh-cw`), so the palette distinguishes "open Pythia" from "do something in Pythia". The three sibling plugins take the same shape (one `<name>-logo` id, registered before anything names it, ribbon + entry commands + main view, task commands on descriptive icons), so the family reads as one.
 
-**How it is drawn.** On Lucide's 24-unit grid at stroke 2 with round caps and joins, stroke only, `currentColor` throughout — the rules Obsidian's own icons follow, so it sits in a row of them without standing out, and follows the theme and the accent rather than carrying a colour. `addIcon` draws inside a `0 0 100 100` box, so a `<g transform="scale(4.1667)">` carries the artwork over rather than the paths being rewritten: the module keeps the designer's coordinates verbatim, the stroke scales with the group, and the same artwork ships unchanged as `assets/logo.svg`. Registration happens before `registerView`, because a leaf restored from `workspace.json` asks for its icon during layout-ready and would otherwise draw nothing.
+**How it is drawn.** *(Amended by ADR-195: the registered icon no longer pins its stroke; it inherits Obsidian's. `assets/logo.svg` keeps stroke 2.)* On Lucide's 24-unit grid at stroke 2 with round caps and joins, stroke only, `currentColor` throughout — the rules Obsidian's own icons follow, so it sits in a row of them without standing out, and follows the theme and the accent rather than carrying a colour. `addIcon` draws inside a `0 0 100 100` box, so a `<g transform="scale(4.1667)">` carries the artwork over rather than the paths being rewritten: the module keeps the designer's coordinates verbatim, the stroke scales with the group, and the same artwork ships unchanged as `assets/logo.svg`. Registration happens before `registerView`, because a leaf restored from `workspace.json` asks for its icon during layout-ready and would otherwise draw nothing.
 
 **Guards.** `tests/pluginIcon.test.ts` checks the id, the registration, the markup (one group, a path and a circle), the 100/24 scale, the Lucide attributes, stroke-only shapes, no colour literal, and the geometry verbatim. `tests/mocks/obsidian.ts` gains a capturing `addIcon` so a test can see what was handed over. The `"bot"` string no longer appears in the codebase.
 
@@ -3776,4 +3780,45 @@ Three options were drawn in the audit page: today, Obsidian-native (a bare note 
 **Supersedes** ADR-153's "web chips end with `↗`, the one mark separating them from notes" and its exception that "the context inspector keeps its brackets". The run-in label decision of ADR-153 stands.
 
 **Guards.** `tests/linkIcons.test.ts` fails if UI code writes `[[`/`]]` as link text or a `↗` anywhere, or names a source icon anywhere but `ui/icons.ts`. It also fails if the reference row's pills lose their icons (template · note · output checked in the real view) or if the toolbar's template, web and vault buttons stop sharing them. All four cases fail on the previous code. `tests/sourcesRow.test.ts` now asserts globe, file-text and layout-template in their rows, and the number ahead of the icon. The shared `obsidian` mock's `setIcon` records `data-icon`.
+
+
+### ADR-194 — The highlighter stroke is the family's, not Pythia's
+
+*2026-09-20*
+
+**Context.** Pythia, Vizardry, Schreibstube and Klartext are one author's. A reader should be able to tell that from the UI, and a mark on a run of text is the one place it shows without any of them coupling to the others. Measured in the running app, every mark the family drew was a different pen:
+
+| mark | strength | geometry |
+|---|---|---|
+| Klartext `==highlight==` | 70 | `104deg`, feathered landing and lift, square ends, no halo |
+| Pythia favorite (ADR-090) | 32 | `-100deg`, `1em 0 1em 0` corners, white text-shadow |
+| Pythia fork origin | 32 | the same |
+| Schreibstube diff insert | 312 | a flat slab from `--background-modifier-success` |
+
+Strength is the Euclidean RGB distance of the painted fill from the page, sampled over the flat middle of the stroke. The spread was a factor of ten.
+
+Two things made it worse than a table suggests. The theme's `mark` selector is unscoped, so an answer containing `==highlight==` paints the theme's stroke **inside this panel** — the two pens sat in one paragraph, leaning opposite ways. And ADR-090's ink read `--text-highlight-bg` raw, which Klartext defines as `rgba(255,200,40,0.30)` and Obsidian's default theme as near-solid yellow, so the same rule painted at half the theme's strength under one and a fifth under the other.
+
+**Decision.** Klartext is the baseline. Its stroke is written once in that repo as `kit/highlight.css` and **copied** into each plugin at the file level — no runtime dependency, because Obsidian loads every plugin's CSS globally and a shared class name would couple the plugins to each other through whichever loaded last.
+
+- **The pen is shared, the ink is not.** Both marks draw with one rule; `--hl-ink` is the only thing that differs. A shared hue would say the marks are the same thing.
+- **ADR-090 is superseded.** The asymmetric corners and the text-shadow halo are gone. They were ported from smsag.de's `a:hover`, where nothing else was drawing a marker; here the theme's own stroke lands beside them.
+- **The ink is a named colour composited onto the page**, never `--text-highlight-bg` raw: `color-mix(in srgb, var(--color-yellow) 26%, var(--background-primary))` for a favorite, `var(--color-accent) 34%` for a fork origin. Opaque and predictable under any theme, and both land in the family's 60–140 band (69 and 67, measured).
+- **The flash animates `background-color`**, a wash behind the stroke. It used to replace `background`, which dropped the gradient for the duration; animating `--hl-ink` instead would step rather than fade, since a custom property does not interpolate without `@property`.
+
+**Not adopted from the theme.** Its opaque inks and `mix-blend-mode`. Live Preview splits one highlight into a span per formatting change, so two feathered ends overlap and translucent tints would add up darker; a plugin wraps a selection in one element and never meets that case. `mix-blend-mode` is also fragile here — any ancestor with `transform`, `filter` or `opacity` ends the blend.
+
+**Guards.** `tests/highlightStroke.test.ts` pins every number of the stroke, that both marks are drawn by one rule, that the ink is a composited named colour and never `--text-highlight-bg`, that `box-decoration-break: clone` survives (anchored — a bare substring check passes on the `-webkit-` copy alone), and that radius, text-shadow and box-shadow stay at their family values. Klartext's own `tools/check-highlight-kit.mjs` holds the kit against the theme; a change there means re-copying here.
+
+**Consequences.** A favorite and a fork origin are twice as strong as before and no longer rounded. The merge link's dashed underline (ADR-130) and the term's dotted one (ADR-136) are unaffected — they are the underline vocabulary, a different signal, and they still stack on top of a highlighter fill (ADR-157).
+
+### ADR-195 — The plugin icon inherits Obsidian's stroke width
+
+*2026-09-20 (made 2026-09-16 as "ADR-168" on a long-lived branch; renumbered on merge)*
+
+**Context.** In a sidebar tab row, Pythia's icon read darker than its neighbours. Measured in Obsidian 1.13.7 over the debugging port, the colour is the same as core's (rgb(87, 87, 87) inactive); the stroke is not. Obsidian styles `.svg-icon` with `stroke-width: var(--icon-stroke)` (1.75px in a tab, other values in the ribbon and menus), and a Lucide icon carries no attribute of its own, so it inherits whatever the context sets. ADR-164 drew the registered icon with `stroke-width="2"` on its group. That blocked the inheritance, and because the group's `scale()` multiplies the stroke with the geometry, the pin was never in core's units: the icon drew at 8.33% of its width against every neighbour's 7.29%, 14% heavier, which reads as a darker glyph rather than a bolder one.
+
+**Decision.** `PYTHIA_ICON_SVG` carries no `stroke-width`. The icon behaves exactly like a Lucide icon at every size, with no value of ours to keep in step; in the running app it measured 7.29%, the same as core's. `assets/logo.svg` keeps `stroke-width="2"`: a standalone file has no stylesheet to inherit from, and 2 on the 24-unit grid is Lucide's own.
+
+**Guard.** `tests/pluginIcon.test.ts` fails if the group or any shape carries a `stroke-width`.
 
