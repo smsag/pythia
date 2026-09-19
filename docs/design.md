@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-19 — rename (ADR-186). The menu's rename row gains a trailing ↻ (`.p-choice-trailing`: 20×20, 12px `refresh-cw`, `--text-faint` → accent on hover, 44px under `pointer: coarse`; `.p-sheet-item-trailing` 44px on the mobile sheet) that renames with AI in one tap; the current name pulses (`.p-title.is-generating`) until replaced. `.p-rename-input` is now the title made editable — same font, weight, 18px line, `1px 2px` padding; no border, underline or fill, accent caret only. `.p-rename-refresh` removed.*
+*Last updated: 2026-09-19 — the template button (`layout-template`) takes the same `.p-tool-btn.is-active` accent fill as the research globe and the vault toggle while a template is armed for the next answer (ADR-177), with `aria-pressed`. It clears when the answer commits or the template pill is removed. No new tokens.*
+
+*Previously: 2026-09-19 — rename (ADR-186). The menu's rename row gains a trailing ↻ (`.p-choice-trailing`: 20×20, 12px `refresh-cw`, `--text-faint` → accent on hover, 44px under `pointer: coarse`; `.p-sheet-item-trailing` 44px on the mobile sheet) that renames with AI in one tap; the current name pulses (`.p-title.is-generating`) until replaced. `.p-rename-input` is now the title made editable — same font, weight, 18px line, `1px 2px` padding; no border, underline or fill, accent caret only. `.p-rename-refresh` removed.*
 
 *Previously: 2026-09-18 — the model-suggestion chip (ADR-181). `.p-model-hint` sits between `.p-send-hint` and Send: a pill (1px accent border, accent text, 10px mono, 20px tall, `border-radius: 10px`) reading `→ GPT-5.4 mini` plus the cost tier as dots (`.p-model-hint-cost`, 0.7 opacity) — never dollars (ADR-163). Accepted = accent fill with `--p-on-accent` text and `-webkit-text-fill-color` (hard rule 6a), no transition (ADR-155); hover fill only under `@media (hover: hover)`. Hidden with the rest of the Send annotations when the input area is collapsed.*
 

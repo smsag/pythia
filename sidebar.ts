@@ -36,7 +36,7 @@ import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
 import { SendHintController } from "./ui/SendHintController";
-import { drawAttachIcon, drawSaveIcon } from "./ui/toolbarIcons";
+import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
 import { TruncationController } from "./ui/TruncationController";
@@ -142,6 +142,7 @@ export class PythiaSidebarView extends ItemView {
 	private disposeViewport: (() => void) | null = null;
 
 	private researchBtnEl!: HTMLButtonElement;
+	private templateBtnEl!: HTMLButtonElement;
 	private vaultBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
@@ -252,8 +253,7 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.headerController.renderHeader();
 		this.headerController.updateInstructions();
-		this.updateResearchButton();
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -616,7 +616,7 @@ export class PythiaSidebarView extends ItemView {
 			void this.onSaveResponse();
 		});
 
-		const applyTemplateBtn = toolbarLeft.createEl("button", {
+		const applyTemplateBtn = this.templateBtnEl = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
 			attr: { title: t("applyTemplateTooltip") },
 		});
@@ -632,7 +632,6 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.researchBtnEl, "globe");
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
-		this.updateResearchButton();
 
 		this.vaultBtnEl = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -640,7 +639,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 		setIcon(this.vaultBtnEl, "library");
 		this.registerDomEvent(this.vaultBtnEl, "click", () => this.toggleVaultContext());
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
 			cls: "p-tool-btn",
@@ -805,6 +804,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private renderReferencePills(): void {
+		this.updateToolbarToggles(); // every template arm/clear repaints this row
 		this.referencePillsEl.empty();
 		const conv = this.activeConversation;
 
@@ -1195,14 +1195,16 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	/** Reflect the active conversation's research (web-search) state on the
-	 *  toolbar toggle. Called on build and on every conversation switch, since
-	 *  the input toolbar is not rebuilt when the active conversation changes. */
-	private updateResearchButton(): void {
-		if (!this.researchBtnEl) return;
-		const on = !!this.activeConversation?.researchMode;
-		this.researchBtnEl.toggleClass("is-active", on);
-		this.researchBtnEl.setAttr("aria-pressed", String(on));
+
+
+	/** Paint the input toolbar's per-conversation toggles — web search, vault
+	 *  context, and an armed template (ADR-177) — with one shared active state.
+	 *  Called on build and on every switch: the toolbar is not rebuilt. */
+	private updateToolbarToggles(): void {
+		const conv = this.activeConversation;
+		paintToggle(this.researchBtnEl, !!conv?.researchMode);
+		paintToggle(this.vaultBtnEl, !!(conv?.vaultContext ?? this.plugin.settings.vaultContextEnabled));
+		paintToggle(this.templateBtnEl, !!conv?.pendingTemplate);
 	}
 
 	/** Briefly pulse the research globe to show web search was auto-armed for this
@@ -1220,7 +1222,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		conv.researchMode = !conv.researchMode;
-		this.updateResearchButton();
+		this.updateToolbarToggles();
 		if (conv.researchMode && !this.plugin.webSearchService.hasApiKey()) {
 			new Notice(t("researchNoKeyNotice"));
 		} else {
@@ -1229,14 +1231,6 @@ export class PythiaSidebarView extends ItemView {
 		void this.plugin.conversationStore.save(conv);
 	}
 
-	/** Reflect the conversation's vault-context state on the toggle (falls back to
-	 *  the global `vaultContextEnabled` default; mirrors `getRelevantNotes`). */
-	private updateVaultButton(): void {
-		if (!this.vaultBtnEl) return;
-		const on = this.activeConversation?.vaultContext ?? this.plugin.settings.vaultContextEnabled;
-		this.vaultBtnEl.toggleClass("is-active", !!on);
-		this.vaultBtnEl.setAttr("aria-pressed", String(!!on));
-	}
 
 	/** Toggle vault-context (semantic RAG) for the active conversation; persists.
 	 *  The first send after enabling lazily builds the embedding index. */
@@ -1244,7 +1238,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		conv.vaultContext = !(conv.vaultContext ?? this.plugin.settings.vaultContextEnabled);
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 		new Notice(conv.vaultContext ? t("vaultContextOn") : t("vaultContextOff"));
 		void this.plugin.conversationStore.save(conv);
 	}
