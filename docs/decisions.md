@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-19 — ADR-186 (rename by hand, or rename with AI in one tap: the ↻ leaves the inline editor for a trailing action on the menu's rename row, applies without the editor, names what the conversation became — summary plus the last exchange — and the editor takes exactly the title's box).*
+*Last updated: 2026-09-19 — ADR-187 (Send works from the keyboard and reads on hover: the shortcut moves into the view's own keymap scope, ahead of Obsidian's Mod+Enter hotkey, and every Send state out-ranks core's button hover).*
+
+*Previously: 2026-09-19 — ADR-186 (rename by hand, or rename with AI in one tap: the ↻ leaves the inline editor for a trailing action on the menu's rename row, applies without the editor, names what the conversation became — summary plus the last exchange — and the editor takes exactly the title's box).*
 
 *Previously: 2026-09-18 — ADR-185 (hiding `process` was not enough, and the chain would not say why: the Worker prelude gains a lexical `const process = void 0` beside its two property operations, which a locked-down global defeats through their own `catch` — and the fallback chain now reports WHY each backend failed, not only which one won).*
 
@@ -3578,4 +3580,23 @@ The `const` is safe **only** because this is a module — in a classic script it
 - AI rename is one tap from the menu, and the editor is purely manual. There is no undo: the old name is gone once replaced (a second ↻ or a manual rename is the way back). Deliberate — a Notice with Undo was offered and not chosen.
 - The trailing slot is generic; a future row with a second verb uses it rather than a third menu entry.
 - **Not verified in Obsidian.** The pixel equality of title and editor follows from shared metrics in CSS; happy-dom does no layout, so the tests prove the flow, not the zero-jump.
+
+### ADR-187 — Send works from the keyboard, and reads on hover
+
+*2026-09-19*
+
+**Context.** Two reports on the Send button, both in the installed 2.23.0 build.
+1. **Hover made the label unreadable.** Obsidian's `app.css` fills `button:not(.clickable-icon):hover` with `--interactive-hover` at (0,2,1). Our fill, `.p-send:not(.stop)`, sat at (0,2,0) and lost on hover: a light-grey fill under the white `--p-on-accent` label, which looked like an outlined button with no readable word. `.p-send:hover { opacity: 0.85 }` could not help, and would have cost the label contrast even when it worked. `.stop` also set `color` without `-webkit-text-fill-color`, so on WebKit its label kept the base white (hard rule 6a).
+2. **Cmd+Enter did not send.** The built key rule is correct (`composerKeyAction` is in the shipped `main.js`), so the press never reached the textarea's handler. Obsidian's keymap sees keydown before the target. The likely consumer is the core Mod+Enter hotkey (open link under cursor in new tab), which runs against the *last active* editor, and there is one even while focus is in the sidebar. This could not be observed from here: the reporter's Obsidian runs their real vault, and we did not drive it.
+
+**Decision.**
+- **Every Send state is `.pythia-view .p-send…` (0,3,0) and sets fill and label together**, so no core or theme rule can pair one of ours with one of its own. Hover darkens the accent (`color-mix(in srgb, accent 85%, black)`, under `@media (hover: hover)`) instead of fading it. `:disabled` is the *Optimizing…* indicator, so it gets no dimming.
+- **The shortcut is registered on the view's own `Scope`** (`new Scope(this.app.scope)`, created once in the constructor), which Obsidian consults before the app hotkeys while the leaf is active. It acts only when the composer textarea has focus. Otherwise it returns `true` and the press continues to Obsidian. Mod+Enter and Ctrl+Enter are both registered, because ADR-175's rule accepts either modifier on every platform.
+- **The textarea keydown stays**, as the path whenever the keymap is not involved. It skips the exact event object the scope already handled, so one press cannot send twice. Both paths go through one `ComposerSend.handle` (`#` picker first, then `composerKeyAction`). The rule still lives only in `ui/composerKeys.ts`.
+
+**Guards.** `tests/sendButtonCascade.test.ts` loads `styles.css` after core-like button rules (`:hover` stood in by a class of the same specificity, and the nested `var()` fallback flattened because happy-dom cannot resolve it). It fails on the previous stylesheet in all three states. `tests/viewRender.test.ts` sends through the scope exactly once when focused, and leaves the press to Obsidian when not.
+
+**Consequences.**
+- **Not verified in Obsidian.** The scope path is Obsidian's documented way for a view to own a key, but that the Mod+Enter hotkey was the consumer is inferred, not observed. If Cmd+Enter still fails, the next step is to check what `app.keymap` does with the event in the developer console.
+- While the composer has focus, Cmd+Enter no longer reaches Obsidian's own Mod+Enter command. That command acts on a note editor, not on the composer, so nothing a user could want is lost.
 

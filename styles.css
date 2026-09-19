@@ -2659,22 +2659,36 @@ body.is-phone .workspace-drawer .p-input-area {
   white-space: nowrap;
   box-sizing: border-box;
 }
-/* Border + fill only in send state; specificity 0,2,0 beats the global
-   border:none AND background-color:transparent reset at 0,1,1 (the base
-   .p-send at 0,1,0 loses to that reset, so the accent fill is restored here). */
-.p-send:not(.stop) {
+/* Fill, border and label per state, at (0,3,0) under .pythia-view. Obsidian's
+   app.css paints `button:not(.clickable-icon):hover` with --interactive-hover
+   at (0,2,1), which out-ranked `.p-send:not(.stop)` (0,2,0) on hover: the fill
+   went light grey under the white --p-on-accent label, leaving an outline with
+   an unreadable word. Every state now sets fill AND label (hard rule 6a), so no
+   theme rule can pair one of ours with one of its own. */
+.pythia-view .p-send:not(.stop),
+.pythia-view .p-send:not(.stop):hover {
   background: var(--color-accent);
   border: 1px solid var(--color-accent);                                      /* fallback: Chromium < 111 */
   border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);      /* preferred: darkened */
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
 }
-.p-send:hover {
-  opacity: 0.85;
+/* Hover darkens the fill instead of fading it: opacity lowered the label's
+   contrast, and the label is what has to stay readable. */
+@media (hover: hover) {
+  .pythia-view .p-send:not(.stop):not(:disabled):hover {
+    background: color-mix(in srgb, var(--color-accent) 85%, black);
+  }
 }
-.p-send.stop {
+.pythia-view .p-send.stop,
+.pythia-view .p-send.stop:hover {
   background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
   color: var(--text-error);
-  opacity: 1;
+  -webkit-text-fill-color: var(--text-error);
 }
+/* Disabled = "Optimizing…" (OptimizationController): a label to read, so no dimming. */
+.pythia-view .p-send:disabled { cursor: default; }
 
 /* Minimized input: hide everything that belongs to composing a message — the
    textarea, Send, and the send-adjacent token estimate + max-tokens warning.

@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
@@ -13,7 +13,7 @@ import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } f
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
-import { composerKeyAction, composerPlaceholder } from "./ui/composerKeys";
+import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
 import { referenceEntries } from "./ui/referenceEntries";
@@ -143,12 +143,20 @@ export class PythiaSidebarView extends ItemView {
 
 	private researchBtnEl!: HTMLButtonElement;
 	private templateBtnEl!: HTMLButtonElement;
+	private readonly composerSend = new ComposerSend({
+		input: () => this.inputEl,
+		suggest: (e) => this.inlineSuggest.handleKeydown(e),
+		send: () => void this.sendMessage(),
+	});
 	private vaultBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
 		this.plugin = plugin;
+		// Cmd/Ctrl+Enter reaches Obsidian's keymap before the textarea (ComposerSend).
+		this.scope = new Scope(this.app.scope);
+		this.composerSend.registerOn(this.scope);
 	}
 
 	getViewType(): string {
@@ -567,12 +575,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 			}
 		);
-		this.registerDomEvent(this.inputEl, "keydown", (e: KeyboardEvent) => {
-			if (this.inlineSuggest.handleKeydown(e)) return;
-			if (composerKeyAction(e) !== "send") return;   // Enter is a line break (ADR-175)
-			e.preventDefault();
-			void this.sendMessage();
-		});
+		this.registerDomEvent(this.inputEl, "keydown", this.composerSend.onKeydown);
 		{
 			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
 			this.registerDomEvent(this.inputEl, "input", () => {

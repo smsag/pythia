@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-19 — the template button (`layout-template`) takes the same `.p-tool-btn.is-active` accent fill as the research globe and the vault toggle while a template is armed for the next answer (ADR-177), with `aria-pressed`. It clears when the answer commits or the template pill is removed. No new tokens.*
+*Last updated: 2026-09-19 — Send is readable in every state (ADR-187). Obsidian's `button:not(.clickable-icon):hover` (0,2,1) out-ranked `.p-send:not(.stop)` (0,2,0), so on hover the white label sat on light grey. Every Send state is now `.pythia-view .p-send…` (0,3,0) and sets fill **and** label (`color` + `-webkit-text-fill-color`, hard rule 6a): accent fill at rest and on hover, the hover darkened to `color-mix(accent 85%, black)` under `@media (hover: hover)` instead of faded with `opacity` (which cost the label contrast); `.stop` = `--background-modifier-hover` fill, hairline border, `--text-error` label; `:disabled` (Optimizing…) not dimmed.*
+
+*Previously: 2026-09-19 — the template button (`layout-template`) takes the same `.p-tool-btn.is-active` accent fill as the research globe and the vault toggle while a template is armed for the next answer (ADR-177), with `aria-pressed`. It clears when the answer commits or the template pill is removed. No new tokens.*
 
 *Previously: 2026-09-19 — rename (ADR-186). The menu's rename row gains a trailing ↻ (`.p-choice-trailing`: 20×20, 12px `refresh-cw`, `--text-faint` → accent on hover, 44px under `pointer: coarse`; `.p-sheet-item-trailing` 44px on the mobile sheet) that renames with AI in one tap; the current name pulses (`.p-title.is-generating`) until replaced. `.p-rename-input` is now the title made editable — same font, weight, 18px line, `1px 2px` padding; no border, underline or fill, accent caret only. `.p-rename-refresh` removed.*
 
