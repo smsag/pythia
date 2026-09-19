@@ -96,18 +96,28 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    chip-warn. Hover is "soft neutral": one grey wash behind everything that is
    not filled; a filled button lightens.
 
-   Specificity is the point of this block. Pythia's reset above is (0,1,1),
-   Obsidian's `button:not(.clickable-icon):hover` fill is (0,2,1). A role's
-   rest rule is (0,3,0) and also names `:hover`, at (0,4,0), so core's hover
-   can never repaint a button; the real hover is (0,5,0) under
-   `@media (hover: hover)` (ADR-155). Fill and label are always set together
-   (hard rule 6a). Spacing and type tokens carry fallbacks because
-   .pythia-modal does not define them. tests/buttonRoles.test.ts replays this against core-like
-   rules and fails if a role's label drops below WCAG contrast. */
+   Specificity is the point of this block. Pythia's reset above is (0,1,1).
+   Obsidian 1.13.7 reaches a button with ten rules (npm run
+   check:obsidian-cascade): a bare `button` that also sets height, padding,
+   radius and corner-shape; `button:not(.clickable-icon)` and `button:hover`
+   fills at (0,1,1); `button[disabled]` opacity; `.is-tablet` padding at (0,2,1);
+   and a phone modal's Setting control at (0,4,1). So the base claims every
+   property the bare rule sets, each role restates its padding at (0,3,0), and a
+   role's rest rule also names `:hover` at (0,4,0); the real hover is (0,5,0)
+   under `@media (hover: hover)` (ADR-155). Fill and label are always set
+   together (hard rule 6a). Spacing and type tokens carry fallbacks because
+   .pythia-modal does not define them. tests/obsidianCascade.test.ts loads
+   those rules with sentinel values and fails if one leaks into any role
+   (ADR-190); tests/buttonRoles.test.ts checks each role's label and fill. */
 :is(.pythia-view, .pythia-modal) .pb {
   -webkit-appearance: none;
   appearance: none;
   box-sizing: border-box;
+  /* Obsidian's `button` rule sets height (--input-height), corner-shape and
+     padding that no role would otherwise name — claim each one (ADR-190). */
+  height: auto;
+  width: auto;
+  corner-shape: round;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -130,13 +140,14 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 :is(.pythia-view, .pythia-modal) .pb svg { width: 12px; height: 12px; stroke-width: 1.6; flex-shrink: 0; pointer-events: none; }
 :is(.pythia-view, .pythia-modal) .pb:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
-:is(.pythia-view, .pythia-modal) .pb:disabled { cursor: default; }
+:is(.pythia-view, .pythia-modal) .pb:disabled { cursor: default; opacity: 1; } /* core: button[disabled] { opacity: 0.7 } */
 /* A disabled Send is the "Optimizing…" label (ADR-187): readable, so never dimmed. */
 :is(.pythia-view, .pythia-modal) .pb:disabled:not(.pb-primary) { opacity: 0.5; }
 
 /* Primary — the one action its surface exists for. Send's `.stop` is destructive. */
 :is(.pythia-view, .pythia-modal) .pb.pb-primary,
 :is(.pythia-view, .pythia-modal) .pb.pb-primary:hover {
+  padding: 3px var(--s2, 8px);
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--p-on-accent, var(--text-on-accent));
@@ -145,6 +156,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 /* Secondary — offered next to it. A toggle (model hint) fills while on. */
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary,
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary:hover {
+  padding: 3px var(--s2, 8px);
   background: transparent;
   border-color: var(--color-accent);
   color: var(--color-accent);
@@ -152,12 +164,13 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 /* Quiet — cancel, discard, copy. */
 :is(.pythia-view, .pythia-modal) .pb.pb-quiet,
-:is(.pythia-view, .pythia-modal) .pb.pb-quiet:hover { background: transparent; }
+:is(.pythia-view, .pythia-modal) .pb.pb-quiet:hover { background: transparent; padding: 3px var(--s2, 8px); }
 /* Destructive — removes something: Delete, and Send while it reads Stop. */
 :is(.pythia-view, .pythia-modal) .pb.pb-destructive,
 :is(.pythia-view, .pythia-modal) .pb.pb-destructive:hover,
 :is(.pythia-view, .pythia-modal) .pb.pb-primary.stop,
 :is(.pythia-view, .pythia-modal) .pb.pb-primary.stop:hover {
+  padding: 3px var(--s2, 8px);
   background: transparent;
   border-color: var(--text-error);
   color: var(--text-error);
@@ -214,6 +227,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    container draws the frame; chosen = accent tint, in both places. */
 :is(.pythia-view, .pythia-modal) .pb.pb-seg,
 :is(.pythia-view, .pythia-modal) .pb.pb-seg:hover {
+  padding: 3px var(--s2, 8px);
   border: 0;
   border-radius: 0;
   font-weight: 400;
@@ -254,6 +268,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    (orange text measures under 3:1 on white). */
 :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn,
 :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn:hover {
+  padding: 3px var(--s2, 8px);
   border-color: var(--color-orange);                                    /* no color-mix: plain */
   border-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
   background: transparent;
@@ -310,6 +325,22 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   :is(.pythia-view, .pythia-modal) .pb.pb-link,
   :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-inline { margin-block: -8px; }
 }
+/* On a phone, Obsidian stretches every button in a modal's Setting control to
+   full width with 10px padding (`.is-phone .modal .setting-item-control
+   button…`, up to (0,4,1)). The effort segments live in one; at (0,5,1) this
+   out-ranks it without relying on load order (ADR-190). */
+.modal.pythia-modal .setting-item-control button.pb.pb {
+  width: auto;
+  margin: 0;
+  padding: 3px var(--s2, 8px);
+}
+@media (pointer: coarse) {
+  .modal.pythia-modal .setting-item-control button.pb.pb { min-height: 32px; }
+}
+/* `hidden` must hide. The UA's `[hidden] { display: none }` loses to ANY
+   author `display`, so `.pb`'s inline-flex (and any layout rule) would show
+   an element the code hid — the search panel's clear ✕ was always visible. */
+:is(.pythia-view, .pythia-modal) [hidden] { display: none !important; }
 
 /* ── Header ─────────────────────────────────────────────────── */
 .p-header {
@@ -388,6 +419,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-normal);
   -webkit-text-fill-color: var(--text-normal);
 }
+/* A block, not .pb's centred inline-flex: text-overflow does not reach a flex
+   container's anonymous text, and a centred overflow is cut on both sides. */
+.pythia-view .pb.p-inst-model { display: block; }
 
 .pythia-view .p-inst-seg.open,
 .pythia-view .p-hdr-btn.open {

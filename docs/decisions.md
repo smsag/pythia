@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-189 (the anchor summaries are shown in full again: the five-line fold ADR-141 added to the fork and merge anchors is removed from both; the prompt contract stays).*
+*Last updated: 2026-09-20 — ADR-190 (Obsidian's button rules, measured: read from the installed app.css, ten rules reach a Pythia button, and ADR-188's role base let four of them through — every text button took Obsidian's input height; now checked by a sentinel test and a drift script).*
+
+*Previously: 2026-09-20 — ADR-189 (the anchor summaries are shown in full again: the five-line fold ADR-141 added to the fork and merge anchors is removed from both; the prompt contract stays).*
 
 *Previously: 2026-09-20 — ADR-188 (one look per button role: every Pythia button carries `pb` + one of nine roles, the look lives in one block of `styles.css`, hover is "soft neutral", and a test fails when a button is created without a role).*
 
@@ -3657,4 +3659,44 @@ The `const` is safe **only** because this is a module — in a classic script it
 - A summary written before ADR-141 can run longer than five sentences and now shows at its full length. The regenerate control (↻) on the anchor rewrites it under the current rules.
 - The design spec for both anchors already said "not clamped"; it went stale with ADR-141 and is true again.
 - **Guard:** `tests/anchorSummaryFull.test.ts` opens each anchor on a 24-sentence summary. It asserts the whole text, no `.p-clamped` and no fold control, both synchronously and after two frames, since happy-dom lays nothing out and a measuring clamp would remove itself there. Both cases fail on the previous code.
+
+### ADR-190 — Obsidian's button rules, measured instead of inferred
+
+*2026-09-20*
+
+**Context.** ADR-187 and ADR-188 guarded Pythia's buttons against a *guessed* Obsidian rule: a hover fill in the shape `button:not(.clickable-icon):hover` at (0,2,1), inferred from a screenshot. A review of #184 found that the `.pb` base broke the header's model ellipsis. Asked to make sure Obsidian's rules overwrite nothing, we read the real stylesheet. `app.css` from the installed Obsidian 1.13.7 (`~/Library/Application Support/obsidian/obsidian-1.13.7.asar`) has **ten** rules that can reach a Pythia button, and the guessed one is not among them:
+
+| Rule | Specificity | Sets |
+|---|---|---|
+| `button` | (0,0,1) | display, alignment, colour, font size and weight, radius, **corner-shape**, border, **padding**, **height: var(--input-height)**, cursor, outline, user-select, white-space |
+| `button:not(.clickable-icon)` | (0,1,1) | colour, fill, shadow |
+| `@media (hover: hover) button:hover` | (0,1,1) | fill, shadow |
+| `button:focus-visible` | (0,1,1) | shadow ring |
+| `button[disabled]` and two aria/string variants | (0,1,1) | cursor, **opacity 0.7** |
+| `.is-tablet button:not(.clickable-icon)` | (0,2,1) | **padding** |
+| `.is-phone .modal .setting-item-control button:not(.clickable-icon)` | (0,4,1) | **width: 100%**, margin |
+| `.is-phone .modal .setting-item-control button` | (0,3,1) | **padding: 10px** |
+
+The pre-#184 per-button rules each began with `all: unset`, which quietly cleared the bare rule's height and padding. ADR-188 moved the look into `.pb` without it, and four rules got through:
+
+- **Every text button, link, segment and tab took Obsidian's input height** (about 30px). `.pb` sets `min-height` but never `height`.
+- **On an iPad, most roles took `4px 20px` padding.** `.is-tablet …` is (0,2,1) and beat `.pb`'s (0,2,0).
+- **In the settings dialog on a phone, each effort segment was stretched to full width with 10px padding.** The segments live in a Setting control.
+- **A disabled Send (*Optimizing…*) was dimmed to 0.7**, which ADR-187 had ruled out.
+
+A test for these could not see them, because its stand-in rules did not set height or padding. Two further defects came from the review: the model segment lost its ellipsis (`.pb` is a centred inline-flex, which `text-overflow` does not reach), and the search panel's clear ✕ ignored `hidden` (any author `display` beats the UA's `[hidden]`; pre-existing, since `.p-switcher-clear` set `display: flex`).
+
+**Decision.**
+- **The `.pb` base names every property the bare `button` rule sets** that a role would otherwise inherit: `height: auto`, `width: auto`, `corner-shape: round`, alongside the display, font, padding, border, radius, colour and shadow it already set.
+- **Each role restates its padding at (0,3,0)**, above the tablet rule.
+- **`.modal.pythia-modal .setting-item-control button.pb.pb`** (0,5,1) resets width, margin and padding. It out-ranks the phone-modal rules instead of relying on load order, which a theme can change.
+- `.pb:disabled` sets `opacity: 1`; only non-primary roles dim to 0.5.
+- `:is(.pythia-view, .pythia-modal) [hidden] { display: none !important }`: `hidden` must hide whatever sets `display`.
+- `.pythia-view .pb.p-inst-model { display: block }`, so the model name ends in an ellipsis again.
+- **Measured, not guessed, from now on.** `scripts/obsidian-button-rules.mjs` (`npm run check:obsidian-cascade`) reads `app.css` straight out of the installed `.asar`, with no dependency. It keeps every rule whose subject is a bare `button` under ancestors a Pythia button can have, prints them, and exits 1 when they differ from `tests/fixtures/obsidianButtonRules.ts`. The fixture copies the selectors and property names with **sentinel values**. `tests/obsidianCascade.test.ts` loads it before `styles.css` and fails if a sentinel reaches any role at rest, hovered, disabled, on a tablet or in a phone modal. All 8 of its cases fail on the stylesheet before this ADR.
+
+**Corrections.**
+- ADR-187's diagnosis of the Send hover is **not supported by the measured rule.** With `button:hover` at (0,1,1), the old `.p-send:not(.stop)` fill at (0,2,0) should have won. The grey hover in the report came from something else, probably the theme, and remains unexplained.
+- `tests/buttonRoles.test.ts` keeps its stricter (0,2,1) stand-in, relabelled as what a theme might write. The two tests now answer different questions.
+- **Not verified in Obsidian itself.** The rules are Obsidian's own, read from the installed file, but the cascade is replayed in happy-dom. A theme adds rules of its own that neither test sees.
 

@@ -95,7 +95,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1439 tests across 96 files
+  tests/                      ← Vitest unit tests (npm test) — 1447 tests across 97 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -113,6 +113,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
   scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
+  scripts/obsidian-button-rules.mjs ← reads app.css from the installed Obsidian and lists the rules that can reach a Pythia button; exits 1 when tests/fixtures/obsidianButtonRules.ts has drifted (npm run check:obsidian-cascade, local only — ADR-190)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
@@ -336,7 +337,9 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - **A new button names a role** or `tests/buttonRoles.test.ts` fails. Exceptions are listed in that test: Obsidian's `mod-cta`/`mod-warning` dialog buttons, the mobile sheet's trailing icon, the conversation picker's delete
 - **Hover is "soft neutral"**: `--background-modifier-hover` behind everything unfilled, a filled button lightens. Under `@media (hover: hover)` only, transition only there (ADR-155)
 - **Never `--text-faint` on a control** (2.3:1 on white) and never `opacity` to express rest or hover — both failed WCAG in the audit
-- **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Obsidian's button hover is (0,2,1) and Pythia's reset (0,1,1); a fill set below either is repainted — which made "In Notiz ersetzen" invisible
+- **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Pythia's reset is (0,1,1); a fill set below it is removed — which made "In Notiz ersetzen" invisible
+- **Obsidian's own button rules are measured, not guessed** (ADR-190). `npm run check:obsidian-cascade` reads app.css from the installed Obsidian and lists the ten rules that can reach a Pythia button; `tests/fixtures/obsidianButtonRules.ts` holds them with sentinel values and `tests/obsidianCascade.test.ts` fails if any sentinel reaches a role. The bare `button` rule sets **height** (`--input-height`), padding, radius and corner-shape — the `.pb` base must name every property it sets, because a role that forgets one inherits Obsidian's. Re-run the script after an Obsidian update; it exits 1 on drift
+- **`[hidden]` always hides** inside the view and its modals (`display: none !important`): the UA rule loses to any author `display`
 - The comparison tabs are `pb-tab` and keep their underline by the user's choice; chosen segments are the accent tint everywhere
 
 ### Reference row
@@ -584,7 +587,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Textarea: transparent, no border, `--font-monospace`, 12px
 - Toolbar icons: inline SVG, `pb pb-icon` (24×24px)
 - Send: `pb pb-primary`; while streaming `.stop` renders destructive
-- **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188): core's `button:not(.clickable-icon):hover` is (0,2,1) and turned hovers grey under white labels. `tests/buttonRoles.test.ts` fails in the forbidden direction
+- **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188/190). `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` fail in the forbidden direction
 - **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
 ---

@@ -5,12 +5,13 @@ import { resolve, join } from "node:path";
 
 /**
  * Buttons have one look per role (ADR-188), and each role keeps its label and
- * fill against Obsidian's own button rules — the regression ADR-187 fixed for
- * Send came back for every button that set its fill below (0,2,1).
+ * fill against a button rule stricter than Obsidian's own.
  *
- * `styles.css` is loaded after core-like rules with stand-in colours: a plain
- * button gets a fill, and a hovered one a grey fill at (0,2,1) — the shape
- * inferred in #183. happy-dom cannot hover, so `:hover` becomes the class
+ * `styles.css` is loaded after rules with stand-in colours: a plain button
+ * gets a fill, and a hovered one a grey fill at (0,2,1). That is the shape
+ * inferred in #183; Obsidian 1.13.7's real hover is `button:hover` at (0,1,1)
+ * (ADR-190, tests/obsidianCascade.test.ts). The stricter shape stays because
+ * a theme may well write it. happy-dom cannot hover, so `:hover` becomes the class
  * `.is-hovered` in both sheets (same specificity); `(hover: hover)` counts as
  * a mouse, `(pointer: coarse)` as not a phone. The nested var() fallback is
  * flattened because happy-dom cannot resolve it.
