@@ -7,6 +7,7 @@ import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
+import { REGENERATE_ICON } from "./icons";
 
 export interface ForkDeps {
 	plugin: PythiaPlugin;
@@ -207,7 +208,7 @@ export class ForkController {
 			cls: `pb pb-icon is-inline p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("forkRefreshSummary"), title: t("forkRefreshSummary") },
 		});
-		setIcon(refresh, "rotate-cw");
+		setIcon(refresh, REGENERATE_ICON);
 		refresh.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.generateForkSummary(anchor, fork, summaryKind ?? "conversation");

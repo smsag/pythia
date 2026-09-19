@@ -31,6 +31,7 @@ import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
+import { REGENERATE_ICON } from "./ui/icons";
 
 /** Related conversations shown at once. A cap, not a filter: the floor decides
  *  relevance, this decides how much of it fits on a screen (ADR-169). */
@@ -339,7 +340,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "reindex-vault-context",
 			name: t("cmdReindexVault"),
-			icon: "refresh-cw",
+			icon: REGENERATE_ICON,
 			callback: () => void this.reindexVault(),
 		});
 

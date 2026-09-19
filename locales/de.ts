@@ -39,6 +39,7 @@ const de: Strings = {
 	glossaryAnchorLabel:       "GLOSSAR",
 	glossaryDefined:           "\"{{term}}\" ins Glossar aufgenommen",
 	glossaryLookingUp:         "Schlage \"{{term}}\" nach…",
+	lookupEmptyReply:          "Das Modell hat zu \"{{term}}\" keinen Text geliefert — nichts wurde gespeichert. Bitte erneut versuchen.",
 	glossaryLookupFailed:      "Begriff konnte nicht erklärt werden: {{error}}",
 	glossaryOpenNote:          "Im Glossar öffnen",
 	glossaryRegenerate:        "Neu erklären",

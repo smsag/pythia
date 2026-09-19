@@ -16,6 +16,7 @@ import { ActionSheet } from "./ActionSheet";
 import { openChoicePicker, placeBelow, type ChoiceItem } from "./choicePicker";
 import { resolveEffortState, resolveLanguageState } from "./instructionState";
 import { languageOptions, languageOptionLabel } from "./languageOptions";
+import { REGENERATE_ICON } from "./icons";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -322,7 +323,7 @@ export class HeaderController {
 			{
 				label: t("renameConvTooltip"), icon: "pencil", onSelect: () => this.enterRenameMode(),
 				trailing: canRetitle
-					? { icon: "refresh-cw", label: t("renameLLMTooltip"), onSelect: () => void this.onRenameLLM() }
+					? { icon: REGENERATE_ICON, label: t("renameLLMTooltip"), onSelect: () => void this.onRenameLLM() }
 					: undefined,
 			},
 			{ label: t("copyConvLinkTooltip"), icon: "link", onSelect: () => void this.onCopyConversationLink() },

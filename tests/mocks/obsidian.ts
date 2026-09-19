@@ -89,7 +89,9 @@ export class Plugin extends Component {
 }
 
 export class Notice {
-	constructor(_msg?: string, _timeout?: number) {}
+	/** Every message shown, so a test can assert that something was said (principle 2). */
+	static shown: string[] = [];
+	constructor(msg?: string, _timeout?: number) { if (typeof msg === "string") Notice.shown.push(msg); }
 	setMessage(): void {}
 	hide(): void {}
 }

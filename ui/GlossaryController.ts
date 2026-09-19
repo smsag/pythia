@@ -8,6 +8,7 @@ import { definitionLanguageOf, displayLanguage, needsTranslation } from "../serv
 import { resolveLanguageState } from "./instructionState";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintTerms } from "./HighlightPainter";
+import { REGENERATE_ICON } from "./icons";
 
 export interface GlossaryDeps {
 	plugin: PythiaPlugin;
@@ -234,7 +235,7 @@ export class GlossaryController {
 			cls: "pb pb-icon is-inline p-term-anchor-btn",
 			attr: { "aria-label": t("glossaryRegenerate"), title: t("glossaryRegenerate") },
 		});
-		setIcon(regen, "rotate-cw");
+		setIcon(regen, REGENERATE_ICON);
 		regen.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.regenerate(anchor, entry.term, markEl);
