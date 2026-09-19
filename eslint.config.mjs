@@ -2,7 +2,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
 	// Global ignores — these must be a standalone object with only `ignores`
-	{ ignores: ["node_modules/**", "coverage/**", "main.js"] },
+	{ ignores: ["node_modules/**", "coverage/**", "main.js", ".claude/**"] },
 
 	// Apply to all TypeScript files
 	{
