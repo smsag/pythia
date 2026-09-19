@@ -175,8 +175,6 @@ const de: Strings = {
 	ctxSummarize:      "Zusammenfassen",
 
 	// ── Citations / sources ───────────────────────────────────────────────────
-	summaryMore: "mehr",
-	summaryLess: "weniger",
 	sourcesTemplate: "Vorlage",
 	sourcesWeb:   "Web",
 	sourcesVault: "Vault",

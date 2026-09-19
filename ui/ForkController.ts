@@ -6,7 +6,6 @@ import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
-import { clampSummary } from "./clampBody";
 import { attachOutsideDismiss } from "./outsideDismiss";
 
 export interface ForkDeps {
@@ -169,14 +168,10 @@ export class ForkController {
 		// Fork title.
 		anchor.createDiv({ cls: "p-fork-anchor-title", text: fork.name });
 
-		// The summary, clamped to five lines with an expand control when it runs
-		// longer (ADR-141). The mount is created now so the control lands between
-		// the body and the meta line, not after it — the measurement that decides
-		// whether it appears at all happens a frame later.
+		// The summary, in full: the fold ADR-141 put here is gone (ADR-189).
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			this.d.renderMarkdown(summary, body);
-			clampSummary(body, anchor.createDiv({ cls: "p-anchor-more-wrap" }));
 		}
 
 		// Meta line: "N Nachrichten · Model · <generated date> · Öffnen →". Model and

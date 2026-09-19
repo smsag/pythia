@@ -165,8 +165,6 @@ const en = {
 	ctxSystemPromptEst:"+ System prompt {{est}}",
 	ctxNearFull:       "Almost full — condensing history saves {{n}}.",
 	ctxSummarize:      "Summarize",
-	summaryMore:       "more",
-	summaryLess:       "less",
 	sourcesTemplate:   "Template",
 	sourcesWeb:        "Web",
 	sourcesVault:      "Vault",
