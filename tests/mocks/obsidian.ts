@@ -12,7 +12,6 @@
 // the view to build its DOM. `document` is happy-dom's, available because this
 // module is only imported from tests that run in the happy-dom environment.
 
-const noop = (): void => {};
 const anoop = async (): Promise<void> => {};
 const cls = (): new () => object => class {};
 
@@ -134,7 +133,8 @@ export const Setting = cls();
 
 export const Platform = { isMobile: false, isDesktop: true, isIosApp: false, isAndroidApp: false };
 
-export const setIcon = noop;
+/** Records the icon id as `data-icon`, so a test can assert which glyph was drawn. */
+export const setIcon = (el?: { setAttribute?: (k: string, v: string) => void }, id?: string): void => { el?.setAttribute?.("data-icon", String(id)); };
 /** Icons the plugin registered, so a test can assert what was handed over. */
 export const registeredIcons = new Map<string, string>();
 export const addIcon = (id: string, svg: string): void => { registeredIcons.set(id, svg); };

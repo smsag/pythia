@@ -3,6 +3,7 @@ import type { MessageSource } from "../models/types";
 import { t } from "../i18n";
 import { safeHttpUrl } from "../services/urlSafety";
 import { noteBasename } from "../services/pathUtils";
+import { appendSourceIcon, type SourceKind } from "./icons";
 
 /**
  * The citation "sources" surface, extracted from `PythiaSidebarView` (ADR-103
@@ -41,7 +42,8 @@ export async function openCitationSource(app: App, src: MessageSource): Promise<
  * The context inspector keeps its brackets: its note list has no label column,
  * so there the brackets are the only thing marking a name as a note.
  */
-function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?: string): void {
+function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?: string, kind: SourceKind = "note"): void {
+	appendSourceIcon(item, kind);
 	const name = item.createSpan({
 		cls: "p-wikilink-name",
 		text: src.title,
@@ -89,7 +91,7 @@ export function renderSourcesRow(
 	const vault = sources.filter((s) => s.kind === "vault");
 	const container = row.createDiv({ cls: "p-sources" });
 
-	const makeRow = (label: string, items: MessageSource[], numbered = true, tip?: (s: MessageSource) => string) => {
+	const makeRow = (label: string, items: MessageSource[], numbered = true, tip?: (s: MessageSource) => string, kindOf: SourceKind = "note") => {
 		const r = container.createDiv({ cls: "p-sources-row" });
 		// Run-in label, not a column (ADR-153): `Web:` sits in the flow ahead of the
 		// first entry. The colon is added here rather than in the string tables so a
@@ -99,10 +101,12 @@ export function renderSourcesRow(
 			const item = r.createSpan({ cls: "p-source" });
 			if (numbered) item.createSpan({ cls: "p-source-num", text: String(s.n) });
 			if (s.kind === "web") {
-				const link = item.createSpan({ cls: "p-source-web", text: `${s.title} ↗` });
+				// The globe says "leaves Obsidian" — the web-search toggle's icon (ADR-193).
+				appendSourceIcon(item, "web");
+				const link = item.createSpan({ cls: "p-source-web", text: s.title });
 				link.addEventListener("click", () => void openCitationSource(app, s));
 			} else {
-				renderWikilink(app, item, s, tip?.(s));
+				renderWikilink(app, item, s, tip?.(s), kindOf);
 			}
 		}
 	};
@@ -116,6 +120,7 @@ export function renderSourcesRow(
 			[{ n: 0, kind: "vault", ref: templatePath, title: noteBasename(templatePath) }],
 			false,
 			(s) => t("templateLabel", { name: s.title }),
+			"template",
 		);
 	}
 	// One label per row type, unconditionally. The vault row used to be relabelled
