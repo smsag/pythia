@@ -27,7 +27,7 @@ const ARTWORK = [
 ].join("");
 
 /**
- * No `stroke-width` here, deliberately (ADR-168). Obsidian's `.svg-icon` sets
+ * No `stroke-width` here, deliberately (ADR-195). Obsidian's `.svg-icon` sets
  * `stroke-width: var(--icon-stroke)` — 1.75px in a sidebar tab, other values in
  * the ribbon and menus — and a Lucide icon has no attribute of its own, so it
  * inherits that. A presentation attribute on this group would block it: the

@@ -10,6 +10,8 @@ vi.mock("obsidian", () => ({
 	App: class {},
 	Notice: class { constructor(public msg: string) {} },
 	TFile: class {},
+	// Records the icon id, so the source-type icons (ADR-193) can be asserted.
+	setIcon: (el: HTMLElement, id: string) => { el.setAttribute("data-icon", id); },
 }));
 
 import { renderSourcesRow } from "../ui/sourcesRow";
@@ -134,9 +136,23 @@ describe("renderSourcesRow — run-in labels (ADR-153)", () => {
 		expect(row.textContent).not.toContain("[[");
 	});
 
-	it("keeps the ↗ on web entries — the one mark that separates them from notes", () => {
-		const row = render([web(1, "example.com"), vault(2, "Notes/A.md", "A")]);
-		expect(row.querySelector(".p-source-web")?.textContent).toBe("example.com ↗");
-		expect(row.querySelector(".p-wikilink-name")?.textContent).toBe("A");
+	// ADR-193 replaces ADR-153's trailing ↗: every entry leads with the icon of its
+	// source type, the same icon as the toolbar control that brings it in.
+	it("leads each entry with its source icon: globe for web, file-text for a note, layout-template for the template", () => {
+		const row = render([web(1, "example.com"), vault(2, "Notes/A.md", "A")], "Templates/Podcast.md");
+		const iconsIn = (label: string) => Array.from(row.querySelectorAll(".p-sources-row"))
+			.find((r) => r.querySelector(".p-sources-label")?.textContent === `${label}:`)!
+			.querySelectorAll(".p-source-icon");
+		expect(Array.from(iconsIn("Web")).map((i) => i.getAttribute("data-icon"))).toEqual(["globe"]);
+		expect(Array.from(iconsIn("Vault")).map((i) => i.getAttribute("data-icon"))).toEqual(["file-text"]);
+		expect(Array.from(iconsIn("Template")).map((i) => i.getAttribute("data-icon"))).toEqual(["layout-template"]);
+		expect(row.querySelector(".p-source-web")?.textContent).toBe("example.com");
+		expect(row.textContent).not.toContain("↗");
+	});
+	it("keeps the citation number ahead of the icon, matching the superscript in the prose", () => {
+		const row = render([web(3, "example.com")]);
+		const item = row.querySelector(".p-source")!;
+		expect(item.firstElementChild?.className).toBe("p-source-num");
+		expect(item.children[1]?.className).toBe("p-source-icon");
 	});
 });

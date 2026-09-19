@@ -820,19 +820,28 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   overflow: hidden;
   scroll-snap-align: start;
 }
-.p-wikilink-bracket {
-  color: var(--text-faint);
+/* A reference leads with the icon of its source type (ADR-193): file-text,
+   library, layout-template, globe, save, pencil-line — ui/icons.ts. It replaces
+   the [[ ]] brackets, and it is decorative: the name next to it is the link.
+   Muted, not faint: an icon that carries meaning needs 3:1 (ADR-188). */
+.p-source-icon {
+  display: inline-flex;
+  align-self: center;
   flex-shrink: 0;
+  color: var(--text-muted);
 }
+.p-source-icon svg { width: 12px; height: 12px; stroke-width: 1.75; }
+/* Link colours are Obsidian's own tokens, so a theme that styles links styles
+   these too, like the links in the answer above them (ADR-193). */
 .p-wikilink-name {
-  color: var(--color-accent);
+  color: var(--link-color, var(--color-accent));
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-.p-wikilink-name:hover { text-decoration: underline; }
+.p-wikilink-name:hover { color: var(--link-color-hover, var(--link-color, var(--color-accent))); text-decoration-line: var(--link-decoration-hover, underline); }
 .p-wikilink-tokens {
   font-family: var(--font-monospace);
   font-size: 9px;
@@ -850,15 +859,11 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-muted);
   font-style: italic;
 }
-.p-wikilink--auto .p-wikilink-bracket { opacity: 0.6; }
 
-/* The one-shot template armed for the next answer (ADR-177). It is not a note
-   in context, it is the thing shaping the turn, so it reads as a state: weight
-   on the name, and no [[ ]] brackets, which say "vault note" everywhere else. */
+/* The one-shot template armed for the next answer (ADR-177), and the armed
+   rewrite target (ADR-178): the thing shaping the next turn, so weight on the
+   name. Which of the two it is, is the icon's job (ADR-193). */
 .p-wikilink--template .p-wikilink-name { font-weight: 600; }
-/* The armed rewrite target reuses that treatment: both are "the thing shaping
-   the next answer", not a note in context (ADR-177/178). */
-.p-wikilink--template .p-wikilink-bracket { display: none; }
 
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
@@ -1181,8 +1186,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    rather than push the row wider than the sidebar. */
 .p-sources-row .p-wikilink-name { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-source-num { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); }
-.p-source-web { color: var(--color-accent); cursor: pointer; }
-.p-source-web:hover { text-decoration: underline; }
+.p-source-web { color: var(--link-external-color, var(--color-accent)); cursor: pointer; }
+.p-source-web:hover { color: var(--link-external-color-hover, var(--link-external-color, var(--color-accent))); text-decoration-line: var(--link-external-decoration-hover, underline); }
 
 /* ── Context inspector (F2/F3) ──────────────────────────────────── */
 .p-inspector-wrap { min-width: 0; }

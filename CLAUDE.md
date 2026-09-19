@@ -91,13 +91,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
     accordion.ts              ← buildAccordion / setAccordionOpen: the ONE collapsible box (context inspector, summary cards) — a <button> header with aria-expanded, actions beside it (ADR-192)
-    icons.ts                  ← REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
+    icons.ts                  ← SOURCE_ICONS + appendSourceIcon: one icon per source type, shared by the toolbar and every reference (ADR-193); REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1459 tests across 99 files
+  tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -406,14 +406,14 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430 · ≈ $0.012
 ```
 Template: Podcast Summary
 Vault: 1 Some Note
-Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `globe` icon, not an emoji)
 ```
 - Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
-- Vault references — the template included — render as a **bare accent-coloured name, no `[[ ]]`** (ADR-153): the run-in label already says it is a note. Web chips are numbered and end with `↗`, the one mark separating them from notes. The **context inspector keeps its brackets** — it has no label, so there they are the only signal
+- **Every reference leads with its source icon** (ADR-193, superseding ADR-153's `↗` and bracket rules): `SOURCE_ICONS` in `ui/icons.ts` — `file-text` note · `library` vault-search note · `layout-template` template · `globe` web · `save` saved note · `pencil-line` rewrite target — the icon of the toolbar control that brings it in, drawn by `appendSourceIcon`. **No `[[ ]]`, no `↗`**, in the reference row, the context box and here. The citation number stays first. Name colours are Obsidian's `--link-color` / `--link-external-color`. `tests/linkIcons.test.ts` fails on a bracket, an arrow or a literal icon id outside `ui/icons.ts`
 - `.p-sources-label` is a **run-in prefix, never a column** (ADR-153): `Template:` / `Vault:` / `Web:` in the flow ahead of the first entry, colon added in code so a translation cannot drop it. **Do not reintroduce a label column** — `.p-sources-row` wraps, flex wrapping has no hanging indent, so a column aligns only each row's first line while charging its width on every line
-- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
+- **Words for the row labels** (ADR-140): `Template:` / `Vault:` / `Web:` stay words; the icons (ADR-193) are on the entries
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)

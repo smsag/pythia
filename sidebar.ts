@@ -50,6 +50,7 @@ import { describeErrorForLog } from "./services/redact";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
+import { appendSourceIcon, SOURCE_ICONS } from "./ui/icons";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -623,7 +624,7 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("applyTemplateTooltip") },
 		});
-		setIcon(applyTemplateBtn, "layout-template");
+		setIcon(applyTemplateBtn, SOURCE_ICONS.template);
 		this.registerDomEvent(applyTemplateBtn, "click", () => {
 			this.ensureInputExpanded();
 			void this.onApplyTemplate();
@@ -633,14 +634,14 @@ export class PythiaSidebarView extends ItemView {
 			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("researchToggleTooltip") },
 		});
-		setIcon(this.researchBtnEl, "globe");
+		setIcon(this.researchBtnEl, SOURCE_ICONS.web);
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
 
 		this.vaultBtnEl = toolbarLeft.createEl("button", {
 			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("vaultContextTooltip") },
 		});
-		setIcon(this.vaultBtnEl, "library");
+		setIcon(this.vaultBtnEl, SOURCE_ICONS.auto);
 		this.registerDomEvent(this.vaultBtnEl, "click", () => this.toggleVaultContext());
 		this.updateToolbarToggles();
 
@@ -831,13 +832,13 @@ export class PythiaSidebarView extends ItemView {
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
-			// Wikilink reference: [[ name ]] ~tokens ×
+			// Reference: <source icon> name ~tokens × (ADR-193)
 			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
 			// Auto-retrieved pills are read-only and visually distinct (no × — they
 			// are ephemeral per-turn context, not persistent conversation context).
 			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
 			if (entry.kind === "template" || entry.kind === "rewrite") ref.addClass("p-wikilink--template");
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			appendSourceIcon(ref, entry.kind === "context" ? "note" : entry.kind);
 			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
 			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
 			label.addEventListener("click", async () => {
@@ -848,7 +849,6 @@ export class PythiaSidebarView extends ItemView {
 					new Notice(t("fileNotFound", { path: entry.path }));
 				}
 			});
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
 			const x = ref.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });

@@ -33,7 +33,7 @@ describe("the Pythia icon", () => {
 		expect(scale).toBeCloseTo(100 / 24, 3);
 	});
 
-	it("inherits Obsidian's stroke width rather than pinning its own (ADR-168)", () => {
+	it("inherits Obsidian's stroke width rather than pinning its own (ADR-195)", () => {
 		// `.svg-icon` sets `stroke-width: var(--icon-stroke)` and a Lucide icon
 		// carries no attribute of its own. An attribute here would block that, and
 		// the group's scale() multiplies the stroke — a hardcoded 2 drew at 8.33%
