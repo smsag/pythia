@@ -1,6 +1,16 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-181 (the prompt optimizer suggests a model: the model rates the task, Pythia picks the cheapest adequate model of the preferred provider, offered as a chip beside Send and applied to one send only).*
+*Last updated: 2026-09-19 — ADR-186 (rename by hand, or rename with AI in one tap: the ↻ leaves the inline editor for a trailing action on the menu's rename row, applies without the editor, names what the conversation became — summary plus the last exchange — and the editor takes exactly the title's box).*
+
+*Previously: 2026-09-18 — ADR-185 (hiding `process` was not enough, and the chain would not say why: the Worker prelude gains a lexical `const process = void 0` beside its two property operations, which a locked-down global defeats through their own `catch` — and the fallback chain now reports WHY each backend failed, not only which one won).*
+
+*Previously: 2026-09-18 — ADR-184 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
+
+*Previously: 2026-09-18 — ADR-183 (an auto-retrieved note is not an attached one: its own excerpt budget, none of the attach-a-note warnings, a `pythia: false` opt-out per note, the retrieval query carries the previous answer, and the index cap keeps the notes you actually work in).*
+
+*Previously: 2026-09-18 — ADR-182 (embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing: `process` is hidden from the Worker so transformers.js stops binding onnxruntime-node, chunks embed in batches sized to the model's own token window, and the index persists every 25 notes instead of once at the end).*
+
+*Previously: 2026-09-18 — ADR-181 (the prompt optimizer suggests a model: the model rates the task, Pythia picks the cheapest adequate model of the preferred provider, offered as a chip beside Send and applied to one send only).*
 
 *Previously: 2026-09-18 — ADR-180 (what each provider is sent is decided by the model, not by the SDK's types: Mistral gets `reasoning_effort` only on adjustable-reasoning models and only as `none`/`high`; OpenAI reasoning models get a real system message).*
 
@@ -3389,4 +3399,183 @@ The obvious copy of ADR-163 — regenerate the catalog from upstream — is wron
 - Recommendations follow the preferred provider even when the conversation is on another one. That is the user's instruction and changes the provider for one send. Provider-specific context then does not carry over; a PDF on Mistral is excluded because it would fail.
 - Deferred: suggesting on every send, not only on an optimize (D-28), and a *compare with* link on an answer that came from a suggested model (D-30). Out of scope: ever applying a suggestion automatically (D-29).
 - `sidebar.ts` stays at its ceiling of 1716: the two inline-SVG toolbar icons moved to `ui/toolbarIcons.ts` to pay for the wiring.
+
+### ADR-182 — Embedding never ran off the UI thread on desktop, and a build that could not finish in one sitting produced nothing
+
+**Status:** Active. Supersedes part of ADR-125/126's root-cause analysis.
+
+**Context.** A field report: a 400-note vault on a MacBook Air M2, indexing "starts strong, deteriorates at roughly half," and no index was *ever* successfully built. This is the same shape as ADR-124's 311-note report, which ADR-125 and ADR-126 had each already claimed to fix. Three separate defects were compounding.
+
+**1. The Worker never started — on any desktop, for a reason nobody had looked for.**
+
+ADR-119 added a Web Worker so inference would leave the renderer thread. ADR-125 found it falling back to the UI-thread iframe and blamed `blob:` being refused on `capacitor://` origins; ADR-126 added a second, blob-free Worker started from a plugin resource path. Neither was the desktop cause.
+
+Obsidian gives desktop Workers Node access, so `process` is defined there. transformers.js 3.8.1 reads exactly this (`src/env.js:38-39`):
+
+```js
+const IS_PROCESS_AVAILABLE = typeof process !== 'undefined';
+const IS_NODE_ENV = IS_PROCESS_AVAILABLE && process?.release?.name === 'node';
+```
+
+and on that branch `src/backends/onnx.js` binds onnxruntime-**node**, whose `supportedDevices` on macOS is `['cpu']` — so `device: "wasm"`, which this plugin always passes, is rejected outright (`Unsupported device: "wasm". Should be one of: cpu.`). The Worker never became ready. The resource-path Worker is cross-origin on desktop and fails for its own reason. **Every desktop fell through to the iframe**, which is the UI thread. The iframe worked only because Electron gives subframes no Node access — the accident that made the slowest path the only functioning one.
+
+**Decision:** hide `process` from the Worker before transformers is imported. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and nowhere else; the iframe gets the bundle unchanged.
+
+It cannot live in `frame/entry.ts`: an ES `import` is hoisted, so any statement there runs *after* transformers' module body has read `process`. The esbuild pass emits a self-contained ESM bundle with no remaining top-level imports (asserted), so a textual prefix genuinely runs first. The prelude tries `delete globalThis.process` and then, if the property is still there, an assignment — each inside its own `try`, because the bundle is a module and therefore strict, where either operation on a locked-down global throws, and a throw at statement zero would kill the Worker and look exactly like the bug being fixed. Where neither works the chain still falls through to the iframe. **The fix can only move embedding off the UI thread; it cannot take it down.** (That it does nothing *silently* in that case is the hole ADR-185 closes.)
+
+**This half was reached twice.** It shipped on `main` as engineering-review **#312** while this branch was open, with the same reasoning and the same two property operations; `workerPrelude.ts` is that implementation, and this branch's own prefix was dropped rather than merged. The two differences kept from here: the resource-path worker file is fingerprinted by its **content** rather than a hand-typed `-p1` marker — the file is written only when absent, so the name is the whole cache key, and the prelude has now changed twice — and the failure reasons of ADR-185.
+
+**2. The build degraded because nothing bounded the WASM heap.**
+
+Every chunk was embedded in its own inference call at its own sequence length. onnxruntime-web allocates an execution plan and arena per distinct shape, and WASM linear memory only ever grows, so each `memory.grow` copied a larger heap than the last — a progressive slowdown, not a cliff, which is what "deteriorates at roughly half" describes.
+
+**Decision:** embed in batches of 16 with `padding: true`. Padding collapses a batch to one shape and cuts both the distinct-shape count and the number of calls by the batch size. 16 matches `scripts/measure-related.mjs`, so in-app throughput is finally comparable with ADR-169's measured ~4 chunks/s — which was measured *batched*, while production was not, so the real cold-build cost was always worse than the number that already read as "unusable".
+
+**`truncation: true` was deliberately NOT taken**, though it would bound the shape space harder. It would change every vector longer than the tokenizer's window, which would silently invalidate ADR-169's **measured** `relatedFloors` and drop text that is embedded today. Chunks are sized to fit the window instead (below) — the non-destructive half of the same fix. Padding with an attention mask is mathematically neutral for mean pooling, so batching changes no vector, which is what let it ship without re-measuring.
+
+**3. `maxTokens` was declared on every model and read by nothing.**
+
+Both indexes chunked at a hardcoded 500 chars — ~150 tokens of German against the default multilingual model's 128-token window, and only ~60% of the English model's 256.
+
+**Decision:** `embedChunkChars(id)` derives the chunk from `maxTokens` at a pessimistic 3.3 chars/token. Applied to the **vault index only**. The conversation index stays at 500 on purpose: ADR-169's floors were measured at that chunk size, and moving it moves the distribution they are calibrated against (D-13/D-14).
+
+**4. The build persisted once, after the last note.**
+
+`doSync` wrote a single time, at the end. Anything that stopped a build — a quit, a plugin reload, a renderer crash, one note throwing — discarded every vector computed in that pass. Combined with a build that could no longer finish, this is the whole of "no index was ever successful": not slow progress across sessions, but zero progress, forever. `ConversationIndexService` commits on abort, but a crash is not an abort, so "resumable" has to mean *already on disk*.
+
+**Decision:** persist every 25 **embeds**, and on the way out of a failure before rethrowing. A mid-build snapshot is what the pass has rebuilt *plus* the not-yet-reached notes whose vectors are still valid — persisting only the former would make every interrupted build delete the tail of its own index.
+
+Counted in embeds rather than notes processed because the `continue` paths (unreadable, empty) jump past the flush check, so a modulus on a processed counter can stride over the flush point and skip it. Gated additionally on **30 s since the last write**: every persist serializes the *whole* index — ~19 MB at the 5 000-note cap, which is the per-note cost ADR-122 exists to avoid — so the embed count alone would mean ~200 full rewrites on a cold build at that size, and 200 sync events on a synced vault. Both conditions must hold, so the binding one is whichever is scarcer: the embed count on a slow build, the clock on a fast one. The rescue write on failure is deliberately *not* throttled — by then there is no later to defer to. The real answer is an index format that does not rewrite what has not changed (D-35).
+
+`persist` assigns `this.items` as well as writing. Without that the two diverge the moment a build is interrupted: `load()` is a no-op once `loaded` is set, so the next sync on the same instance rebuilds `existing` from the stale pre-sync list and re-embeds everything the failed pass just saved. The resume then worked only across a restart — and a unit test that constructs a fresh service to check the resume cannot see it. Retrying in place is the common case (the vault refresh runs again on the next turn), so it is the one that had to work. `snapshot()` reads the `existing` map captured before the loop rather than the live `this.items`. **Correction:** an earlier draft of this ADR said the live field would duplicate every note. It would not — everything in `kept` is also in `handled`, so the filter drops it either way, and mutation testing confirmed the two are behaviourally identical. The immutable map is clarity, not a fix.
+
+A failing note is also skipped rather than fatal, so one huge note can no longer cost the build. **But five consecutive failures rethrow**: skipping blindly turns an unloaded provider into a "successful" build that indexed almost nothing and then reported itself ready. One note failing is data; five in a row is the runtime.
+
+The streak resets on a note whose vectors are *reused*, not only on a successful embed. The stricter reading — an unchanged note does not exercise the backend, so it should not clear suspicion — lets five bad notes scattered through a mostly-unchanged vault abort the build permanently, which is the original bug wearing a new hat. A dead backend still trips the guard, because a cold build embeds every note.
+
+**5. The chain was silent about which backend it landed on.**
+
+This is why a desktop-wide fallback to the UI thread survived three ADRs. `FallbackEmbeddingProvider` now reports the backend that actually started — `worker (blob)` · `worker (resource)` · `iframe (UI thread)` — once, to the debug log and to the vault-index status line in settings. The `numThreads = 1` guard in `model.ts`, which is the fix for a known hard renderer crash (ADR-119), gained the `else` it never had: if `env.backends.onnx.wasm` is absent the guard did not apply, and that must be reportable rather than inferred. It is reachable exactly when transformers resolves to the Node backend — the case this ADR removes.
+
+**What the self-review caught.** The implementation was reviewed against its own diff before merge, and four of the findings were in the new code rather than the old:
+
+- **The resume only worked across a restart** — `persist` wrote to the store without updating `this.items`, and the test that "proved" the resume used a fresh service instance, so it read from disk and never exercised the path that actually runs. Fixed, with a regression test verified to fail in the forbidden direction.
+- **The flush counted notes processed, not embeds**, so the `continue` paths could stride past it.
+- **The write rate was unbounded** — ~200 whole-index rewrites on a 5 000-note cold build, the exact cost ADR-122 was written to remove.
+- **The failure streak did not reset on an unchanged note**, reinstating a permanent build abort for scattered bad notes.
+
+**Then the review was checked, by mutation.** Every behaviour above was broken one at a time to see whether a test noticed. **Five of fourteen survived.** The worst was the in-place resume — its own test constructed a fresh service, which reads from disk, so it never exercised the path that actually runs. Also untested: the failure-streak reset, the chunk-size wiring, the backend reporting, and the short-batch guard. `sliceBatch` was extracted out of `model.ts` for that last one, because `model.ts` imports transformers at module scope and no test environment can load it. 16/16 killed now. **A test that passes against broken code is worse than no test, and this change shipped five of them before they were caught.**
+
+Two smaller ones: the rescue write in the catch now has its own guard, so a failing *store* cannot replace the real cause with a duplicate of itself; and a short batch from the pipeline is caught in `embedBatch` with a message naming the batch and the dim, instead of surfacing three layers later as `serializeIndex: chunk dim 0 != 384`.
+
+**Consequences.**
+- **The vault index rebuilds once**, because the chunk size changed and content hashes with it. Free for anyone whose build never completed; a one-time cost otherwise. The conversation index is untouched.
+- The resource-path worker file is now fingerprinted by content, not just plugin version, so a same-version rebuild can no longer serve stale worker code.
+- ADR-125's UI-thread throttle and `hydrateForQuery` stay. They are still correct where the iframe really is the only option, and this change is not the moment to delete a fallback.
+- **Not verifiable headlessly.** The prefix's position, its strict-mode and non-configurable behaviour, the crash-safe persistence and the chunk sizing are unit-tested; that transformers then actually runs its WASM runtime inside a Node-enabled desktop Worker needs Obsidian. If it does not, the iframe still catches it and the new log line says so.
+- **Deferred:** recycling the backend every N notes as a hard ceiling on the heap (ADR-125 named it and left it). Batching should make it unnecessary; the log line and a heap measurement are the evidence that would justify it.
+
+### ADR-183 — An auto-retrieved note is not an attached one
+
+**Status:** Active. Builds on ADR-116/117's retrieval path.
+
+**Context.** ADR-116 injected retrieved notes by merging them into `attachedNotes`, which bought the whole attached-note pipeline for free: excerpting, the token guard, the ADR-115 untrusted-content framing, citations. That reuse was right, and it hid a category error — downstream, nothing could tell a note the user *chose* from one a cosine *picked*, so both were treated as the user's own deliberate act.
+
+**Decision: the two are distinguished, and differ in three places.**
+
+`LLMRouter` already knows which paths it added; it now passes them as `autoNotes` to `streamMessage`.
+
+1. **Budget.** An auto note is excerpted to `AUTO_NOTE_BUDGET_CHARS` (3 000) instead of the manual 12 000. Five retrieved notes at the manual budget added ~60 000 chars — roughly 15k tokens — to every turn, silently: enough to bury the question and to move what the answer costs, for context nobody asked for. A note the user chose still gets the room it needs.
+2. **Warnings.** `contextNotesWarning` and the oversized-notes warning fire only for manual paths. A retrieved path can go missing because the index outlived the note; the user never chose it and cannot remove it, so the warning is noise they can only learn to ignore. It goes to the debug log instead.
+3. **Provenance stays.** The "auto" pills (ADR-117) and the citation/untrusted framing are unchanged — the user still sees exactly what was pulled in.
+
+**Decision: a note can opt out of the index.** `pythia: false` in frontmatter keeps a note out entirely, read from the metadata cache so it costs no I/O. Folder scope answered "which parts of the vault"; a single sensitive note inside an otherwise-indexed folder had no answer at all, and data minimisation wants the *smallest* unit to be excludable, not only the largest. Only an explicit `false` opts out — a frontmatter typo must not silently drop a note out of retrieval, because the user would see no pills and have nothing to explain it. The read fails **open**: a cache that is missing or throws must not decide the scope, and must certainly not take the whole build down from inside the file scan.
+
+**Decision: the retrieval query carries the previous answer.** The query was the bare user message, so a follow-up — "and the second one?" — embedded four tokens and retrieved noise. The turns most in need of the conversation's context were the ones with none. `retrievalQuery` appends the first 200 chars of the preceding answer, with the user's words leading, and drops the carry-over entirely once the message is long enough to stand on its own — a full question does not need help, and diluting it moves the vector away from what was asked. Sticky retrieval (holding a note set across a conversation) is the better answer and is deferred: it needs a "topic changed" rule, which is its own decision.
+
+**Decision: the index cap keeps the most recently modified notes.** `selectIndexPaths` sliced `getMarkdownFiles()` order, which is not stable between sessions — so *which* 5 000 of 30 000 notes were indexed churned, notes silently entered and left retrieval, and each return cost a re-embed. Sorting by `mtime` descending makes the cap both deterministic and meaningful: "the notes you are actually working in".
+
+**Also:** `vaultContextMaxNotes` is finally in the settings (1–20); it had no UI and everyone ran the hardcoded 5. `vaultContextSimilarity` deliberately stays hidden — `vaultRetrievalMinScore`'s three constants have never been measured (D-13), and a control over a number nobody can justify is worse than no control. `rankByQuery` is deleted: it duplicated `VaultIndexService.query`, was used only by its own tests, and had already drifted (it never learned about `exclude`).
+
+**Consequences.**
+- Auto-retrieved context is now materially cheaper per turn, and a conversation that also has manual notes is unaffected.
+- The index shrinks for anyone using the opt-out, and the cap's membership stops churning — both mean re-embeds that used to repeat now happen once.
+- Verified by mutation: each of the ten behaviours above was broken in turn and a test failed for every one.
+- **Not done:** the embedding model itself. `paraphrase-multilingual-MiniLM` is a sentence-similarity model doing query-to-passage retrieval, which is the wrong model class and sits upstream of every floor question here. A retrieval model (e5, bge) needs asymmetric query/passage prefixes — a change to the provider interface, not a dropdown entry — and new measured floors. D-36.
+
+### ADR-184 — An index records what it is, and whether it finished
+
+**Status:** Active. Closes five defects a review found in ADR-182/180.
+
+**Context.** ADR-182 made a build persist every 25 embeds so an interruption is resumable. That was right, and it invalidated an assumption three other places were quietly built on: **"the index file has rows in it" had meant "the vault is indexed"**, and from that commit it no longer did.
+
+**1. A partial index reported itself finished, permanently.**
+
+`refresh()` on the UI-thread backend hydrates the persisted index and returns early when `size() > 0` — ADR-125's rule, so the app is not re-frozen every session. ADR-182 also gated the whole of `refresh()` on `isReady()`, which `hydrateForQuery` sets. Together: a build interrupted once was never resumed, on any backend, and the settings tab said `Ready — N notes`. Retrieval answered from a fraction of the vault and nothing said so.
+
+**Decision: completeness is a property of the index, and it is persisted.** The binary format goes to **v2**, carrying `complete` and `scope`. `isComplete(scope)` is what decides whether to build; `isReady()` keeps its old meaning — *can answer a query*. A mid-build flush writes `complete: false`; only a build that reaches the end writes `true`. A v1 file is refused and rebuilt, which is free this release because ADR-182's chunk-size change invalidates every content hash anyway.
+
+**2. A scope change left the old notes retrievable.** Nothing invalidated the index when `vaultContextFolders` or the note cap changed, and after ADR-182 the rescan ran at most once per lifetime. Narrowing the folders for privacy left the excluded notes in the rows, still being inlined into prompts, until a manual rebuild. So `scope` — folders, skip folders, cap, model — is persisted with the rows, and an index built under a different one is not complete.
+
+**3. Edits during the first build were dropped for the session.** `applyChanges` no-ops until the index is ready, and the watcher has already cleared its own batch by then — so every edit made during a build (which is precisely when the user is still working) was lost until a restart. They are buffered and replayed once the build lands.
+
+**4. The live scope now wins over the index, at the point of use.** The index is a cache of a decision and can lag it: a note whose `pythia: false` was added on another device, or one left behind by a scope since narrowed, is in the rows until a rebuild. Retrieved paths are re-checked against today's folders and frontmatter before they are returned. A privacy control has to hold where the text would actually leave the vault, not only where the index was written. The check is total — a vault API that throws keeps the note (it is reported missing downstream anyway) rather than silently disabling retrieval.
+
+**5. The size warning still counted auto-retrieved notes.** ADR-183 ruled that the attached-note warnings are about what the user attached, but only filtered the missing-note one. A conversation with nothing attached could be told its attached notes were large, every turn. `buildAttachedNotesContent` now returns `manualTokens` and the warning reads that.
+
+**Consequences.**
+- One more forced rebuild, folded into the one ADR-182 already required.
+- A UI-thread build that cannot finish in one sitting now *resumes* each session instead of being served as complete — slower to settle, correct at rest, and the debug log says it is resuming.
+- Verified by mutation: twelve behaviours, each broken in turn. **Six of the first twelve survived, and all six were flaws in the new tests rather than the code** — a fake provider reporting the wrong backend, an assertion satisfied by the build instead of the replay, a plain object that was not `instanceof TFile`, and a "failed" build that ADR-182's own guard correctly treated as finished. A test that cannot fail is not evidence.
+
+### ADR-185 — Hiding `process` was not enough, and the chain would not say why
+
+**Status:** Active. Partly falsifies ADR-182's central claim.
+
+**Context.** ADR-182 hid `process` from the embedding Worker so transformers.js would stop binding onnxruntime-node and accept the `wasm` device. The reasoning was verified against the installed source, the prefix's position was asserted against the real bundle, and the whole thing was unit-tested. On the reporting machine — the M2 Air this began with — the settings line still reads **`iframe (UI thread)`**. The Worker did not start.
+
+That is the value of having shipped the backend readout first: the claim was falsifiable, and it was falsified in one glance instead of another round of theory.
+
+**Two things were wrong, and only one of them is about `process`.**
+
+**1. The chain knew why each backend failed and threw it away.** `console.warn` is not a report. `Unsupported device: "wasm"` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and the difference decides everything about what to do next — yet the only thing reaching the user was *which backend won*. ADR-182 fixed the silence one level up and left it one level down.
+
+**Decision:** `FallbackEmbeddingProvider` records each attempt's failure reason and hands them to the `onBackend` callback and a `backendFailures()` accessor; `main.ts` logs them beside the winner. Principle 2, applied to the layer that ADR-182's own fix depended on.
+
+**2. Both halves of the prelude are property operations, and a locked-down global defeats both — silently.** `delete globalThis.process` fails on a **non-configurable** property; the assignment that follows fails on a **non-writable** one. Each is wrapped in its own `try`, so that a throw at statement zero cannot kill the Worker — which also means that where `process` is locked down the prelude does nothing at all, with no trace. Whether Electron's Worker exposes `process` that way is not something this repo can determine from here; it is a live suspect, and it costs nothing to close.
+
+**Decision:** shadow `process` **lexically** as well — `const process = void 0` as the prelude's last statement, beside the two property operations. A module-scope binding cannot be defeated by any property descriptor, and the bundle's bare `process` reads — which is what `env.js:38-39` uses — all resolve to it.
+
+The `const` is **unconditional**, outside the `typeof window === "undefined"` guard that gates the property half, because a `const` inside a block shadows only that block. Nothing is lost by that: the iframe is rendered from the bare bundle and never sees the prelude at all.
+
+Verified rather than assumed:
+
+- the bundle declares no top-level `process`, so there is no redeclaration, and nothing above the `const` names `process` bare, so its temporal dead zone is never entered;
+- `node --check` parses the real worker source — the 0.87 MB minified bundle with the prelude in front of it — as a module, and esbuild leaves no top-level `import` in it, so the prelude genuinely runs first;
+- with a `process` that is neither configurable nor writable, transformers' exact guard (`env.js:38-39`) evaluates to `IS_NODE_ENV === false` while `globalThis.process` is untouched — the case `tests/embeddingWorker.test.ts` pins, and the one where the two property operations do nothing at all.
+
+The `const` is safe **only** because this is a module — in a classic script it would collide with that same non-configurable global and throw at parse time. That is not an assumption: the bundle uses `import.meta` twelve times, which is a SyntaxError outside a module, so it cannot be loaded any other way, and both Worker paths pass `{ type: "module" }`. All three stay: the lexical binding cannot be defeated, and `delete`/assignment still cover code that reads `globalThis.process` explicitly, which a shadow does not intercept.
+
+**Consequences.**
+- If the reported failure turns out to be `Unsupported device`, this closes it. If it is a blocked `blob:` plus a cross-origin resource path, this changes nothing and **ADR-182's premise was wrong for this machine** — the failure reasons now in the log say which, without another round-trip.
+- The iframe path is unaffected either way, and ADR-184 means a UI-thread build now resumes across sessions rather than restarting, so the feature works while this is settled — slowly.
+- **Still not verified in Obsidian.** The mechanism is proven in Node under module semantics with the hostile descriptor; that the Electron Worker then loads the WASM runtime is not. D-31 stays open.
+
+### ADR-186 — Rename by hand, or rename with AI in one tap
+
+*2026-09-19*
+
+**Context.** Since ADR-165 the header menu's *Rename* opened the inline editor, and the AI rename was a ↻ button **inside** that editor, in front of the input. Three problems: an AI rename cost two taps and an editor the user never typed in; the button pushed the name ~20px right the moment editing began; and the input picked up Obsidian's `input[type=text]` chrome (border, radius, fill, padding) because `.p-rename-input` only set a bottom border — the name visibly became a form field and changed height (17 → 20px). The ↻ also titled from the **first** exchange (`generateConversationTitle`), which is right for the automatic first-turn title and wrong for a deliberate rename of a conversation that has drifted.
+
+**Decision.**
+1. **Two verbs, one row.** The menu's rename row carries a trailing icon action: tapping the row edits by hand, tapping ↻ renames with AI. `ActionSheetItem` gains `trailing?: { icon, label, onSelect }`, rendered by both `openChoicePicker` (`.p-choice-trailing`, 20px, 44px under `pointer: coarse`) and the mobile `ActionSheet` (`.p-sheet-item-trailing`, 44px) — one item shape, both surfaces. The trailing press stops propagation, so it never runs the row's verb. ↻ is omitted on an empty conversation: there is nothing to name.
+2. **The AI rename never opens the editor.** `HeaderController.onRenameLLM` captures the conversation, pulses the current name (`.p-title.is-generating`, the sparkle's pulse — decorative, not state), and applies the result through `plugin.renameConversation` (so the theme note follows, ADR-150). No Notice on success — the new name is the confirmation; `renameLLMEmpty` on an empty reply and `renameLLMFailed` on a throw (ADR-158). A conversation switch mid-call renames the captured one and leaves the header alone. One rename at a time.
+3. **It names what the conversation became.** New `LLMProvider.retitleConversation(conv)` on the fast model, fed by the pure `buildRetitleDigest`: the summary (≤600 chars) when there is one, then the last user message and its answer (≤300 each). The automatic first-turn title keeps `generateConversationTitle`.
+4. **The editor is the title, made editable.** `.p-rename-input` is `all: unset` under `.pythia-view` (out-ranking Obsidian's input chrome and, via the `:focus`/`:focus-visible`/`:hover` selectors, its focus ring) and shares `.p-title`'s font family, size, weight, `line-height: 18px`, `padding: 1px 2px` and box. No border, underline or fill: the accent caret and the selection are the only signs of editing.
+5. **The title prompts moved to `services/titlePrompts.ts`** (chapter name, first-turn title, retitle, `REPLY_TITLE_ONLY_INSTRUCTION`, `buildRetitleDigest`) — adding the third prompt put `BaseProvider.ts` at 613 lines against the 600 ratchet (ADR-097), and three prompts sharing one reply rule belong together.
+
+**Consequences.**
+- AI rename is one tap from the menu, and the editor is purely manual. There is no undo: the old name is gone once replaced (a second ↻ or a manual rename is the way back). Deliberate — a Notice with Undo was offered and not chosen.
+- The trailing slot is generic; a future row with a second verb uses it rather than a third menu entry.
+- **Not verified in Obsidian.** The pixel equality of title and editor follows from shared metrics in CSS; happy-dom does no layout, so the tests prove the flow, not the zero-jump.
 

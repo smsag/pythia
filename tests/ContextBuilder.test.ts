@@ -22,6 +22,7 @@ vi.mock("obsidian", () => ({
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs, neutralizeControlTags } from "../services/ContextBuilder";
 import { PRIOR_SUMMARY_INSTRUCTION, NO_SOLICITATION_INSTRUCTION, UNTRUSTED_CONTENT_INSTRUCTION } from "../services/promptConstants";
 import type { Conversation } from "../models/types";
+import type { App } from "obsidian";
 
 class MockVault {
 	private files = new Map<string, string>();
@@ -293,7 +294,7 @@ describe("buildAttachedNotesContent", () => {
 		const vault = new MockVault();
 		const app = { vault } as unknown as import("obsidian").App;
 		const result = await buildAttachedNotesContent(app, []);
-		expect(result).toEqual({ content: "", missingNotes: [], estimatedTokens: 0 });
+		expect(result).toEqual({ content: "", missingNotes: [], estimatedTokens: 0, manualTokens: 0 });
 	});
 
 	it("inlines note content wrapped in an attached_note tag", async () => {
@@ -434,5 +435,40 @@ describe("buildAttachedPdfs", () => {
 		const { oversizedPdfs, pdfs } = await buildAttachedPdfs(app, ["Papers/huge.pdf"]);
 		expect(oversizedPdfs).toEqual(["Papers/huge.pdf"]);
 		expect(pdfs).toHaveLength(0);
+	});
+});
+
+// ── ADR-183: an auto-retrieved note is not an attached one ───────────────────
+describe("buildAttachedNotesContent — auto-retrieved budget (ADR-183)", () => {
+	const longBody = Array.from({ length: 60 }, (_, i) => `## Section ${i}\n\n${"word ".repeat(200)}`).join("\n\n");
+
+	const appWith = (body: string) => ({
+		vault: {
+			getAbstractFileByPath: (p: string) => (p.endsWith(".md") ? new TFileMock(p) : null),
+			read: async () => body,
+		},
+	});
+
+	it("excerpts an auto-retrieved note far harder than an attached one", async () => {
+		// Five auto notes at the manual budget added ~60 000 chars (~15k tokens) to
+		// every turn, silently — enough to bury the question and move the bill.
+		const app = appWith(longBody) as unknown as App;
+		const manual = await buildAttachedNotesContent(app, ["Notes/a.md"], "query");
+		const auto = await buildAttachedNotesContent(app, ["Notes/a.md"], "query", new Set(["Notes/a.md"]));
+		expect(auto.content.length).toBeLessThan(manual.content.length / 2);
+		expect(auto.estimatedTokens).toBeLessThan(manual.estimatedTokens);
+	});
+
+	it("leaves a note the user attached at the full budget", async () => {
+		const app = appWith(longBody) as unknown as App;
+		const a = await buildAttachedNotesContent(app, ["Notes/a.md"], "query", new Set(["Notes/other.md"]));
+		const b = await buildAttachedNotesContent(app, ["Notes/a.md"], "query");
+		expect(a.content).toBe(b.content);
+	});
+
+	it("still reports an auto note as missing, so the caller can decide what to say", async () => {
+		const app = { vault: { getAbstractFileByPath: () => null, read: async () => "" } } as unknown as App;
+		const out = await buildAttachedNotesContent(app, ["Notes/gone.md"], "q", new Set(["Notes/gone.md"]));
+		expect(out.missingNotes).toEqual(["Notes/gone.md"]);
 	});
 });

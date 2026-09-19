@@ -72,12 +72,17 @@ export class LLMRouter {
 		// Vault-RAG augmentation (ADR-116): fail-open — a retrieval error must never
 		// block the turn, so fall back to just the manually-attached notes.
 		let notes = attachedNotes;
+		// Which paths RAG added, so the provider can give them their own budget and
+		// keep the attach-a-note warnings off them (ADR-183).
+		let autoNotes: ReadonlySet<string> = new Set<string>();
 		if (this.vaultRetriever) {
 			try {
 				const extra = await this.vaultRetriever(conversation, newMessage, attachedNotes);
 				if (extra.length > 0) {
 					const seen = new Set(attachedNotes);
-					notes = [...attachedNotes, ...extra.filter((p) => !seen.has(p))];
+					const added = extra.filter((p) => !seen.has(p));
+					notes = [...attachedNotes, ...added];
+					autoNotes = new Set(added);
 				}
 			} catch {
 				notes = attachedNotes;
@@ -90,7 +95,8 @@ export class LLMRouter {
 			onToken,
 			onComplete,
 			onError,
-			onToolCall
+			onToolCall,
+			autoNotes
 		);
 	}
 
@@ -135,6 +141,10 @@ export class LLMRouter {
 		conversation?: Conversation
 	): Promise<string> {
 		return this.byProvider(provider).generateConversationTitle(userMessage, assistantMessage, conversation);
+	}
+
+	retitleConversation(conversation: Conversation): Promise<string> {
+		return this.byProvider(conversation.provider).retitleConversation(conversation);
 	}
 
 	summarizeNotes(content: string, provider: Provider, conversation?: Conversation): Promise<string> {

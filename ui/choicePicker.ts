@@ -80,6 +80,20 @@ export function openChoicePicker(o: ChoicePickerOptions): () => void {
 		text.createSpan({ cls: "p-choice-label", text: item.label });
 		if (item.detail) text.createSpan({ cls: "p-choice-detail", text: item.detail });
 		if (item.disabled) continue;
+		if (item.trailing) {
+			const tr = item.trailing;
+			const btn = row.createEl("button", {
+				cls: "p-choice-trailing",
+				attr: { "aria-label": tr.label, title: tr.label },
+			});
+			setIcon(btn, tr.icon);
+			btn.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation(); // never reaches the row: the other verb
+				close();
+				tr.onSelect();
+			});
+		}
 		// mousedown, not click: keeps focus where it was, like the model popover.
 		row.addEventListener("mousedown", (e) => {
 			e.preventDefault();
