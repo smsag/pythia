@@ -8,6 +8,7 @@ import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
 import { buildAccordion } from "./accordion";
+import { appendSourceIcon, SOURCE_ICONS } from "./icons";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -110,7 +111,7 @@ export class ContextInspectorController {
 			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
 		const acc = buildAccordion(wrap, {
 			cls: "p-inspector",
-			icon: "file-text",
+			icon: SOURCE_ICONS.note,
 			title: titleText,
 			open: this.inspectorOpen,
 			onToggle: (open) => { this.inspectorOpen = open; },
@@ -134,7 +135,7 @@ export class ContextInspectorController {
 		const wikilinkRow = (parent: HTMLElement, path: string): HTMLElement => {
 			const row = parent.createDiv({ cls: "p-inspector-row" });
 			const ref = row.createSpan({ cls: "p-wikilink" });
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			appendSourceIcon(ref, "note"); // the inspector lists attached notes only
 			const name = ref.createEl("span", {
 				cls: "p-wikilink-name",
 				text: noteBasename(path),
@@ -145,7 +146,6 @@ export class ContextInspectorController {
 				if (f instanceof TFile) await this.d.plugin.app.workspace.getLeaf(false).openFile(f);
 				else new Notice(t("fileNotFound", { path }));
 			});
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			return row;
 		};
 

@@ -31,7 +31,7 @@ import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
-import { REGENERATE_ICON } from "./ui/icons";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
 /** Related conversations shown at once. A cap, not a filter: the floor decides
  *  relevance, this decides how much of it fits on a screen (ADR-169). */
@@ -329,7 +329,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "toggle-vault-context",
 			name: t("cmdToggleVaultContext"),
-			icon: "library",
+			icon: SOURCE_ICONS.auto,
 			callback: async () => {
 				this.settings.vaultContextEnabled = !this.settings.vaultContextEnabled;
 				await this.saveSettings();

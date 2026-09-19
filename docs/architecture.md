@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-20 — `ui/accordion.ts` (`buildAccordion`, `setAccordionOpen`) builds the context inspector and the summary cards (ADR-192); `ContextInspectorController` and `SummaryController` keep only their bodies. New `tests/accordion.test.ts` (1459 across 99 files).*
+*Last updated: 2026-09-20 — `ui/icons.ts` gains `SOURCE_ICONS` + `appendSourceIcon` (ADR-193); `sidebar.ts` (reference pills, toolbar), `ui/ContextInspectorController.ts`, `ui/sourcesRow.ts`, `ui/RewriteController.ts` and `main.ts` read icons from it. New `tests/linkIcons.test.ts`; the `obsidian` mock's `setIcon` records `data-icon` (1464 across 100 files).*
+
+*Previously: 2026-09-20 — `ui/accordion.ts` (`buildAccordion`, `setAccordionOpen`) builds the context inspector and the summary cards (ADR-192); `ContextInspectorController` and `SummaryController` keep only their bodies. New `tests/accordion.test.ts` (1459 across 99 files).*
 
 *Previously: 2026-09-20 — `ui/icons.ts` (`REGENERATE_ICON`) is the one reload glyph for six controls; `SummaryController.buildSummaryCard` takes the newest covered timestamp and marks the card stale; `GlossaryService` reports an empty term/person reply (`lookupEmptyReply`). The test `Notice` mock records messages (`Notice.shown`). New `tests/icons.test.ts` (1453 across 98 files) — ADR-191.*
 

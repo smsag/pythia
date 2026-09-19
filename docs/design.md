@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — one accordion (ADR-192). The context inspector and the summary cards share `.p-acc`: `--background-secondary`, 1px border, radius 6px; a `<button>` header (`.p-acc-toggle`, min 36px, `--s2 --s3`) holding a 12px `chevron-right` (rotated when open), a 12px muted icon, a 600 `--text-normal` title and a mono 10px faint meta slot; actions (↻) beside it in `.p-acc-actions`. Hover fills the toggle only. The ▸/▾ text chevrons and the inspector's white fill are gone.*
+*Last updated: 2026-09-20 — one icon per source type (ADR-193). References lead with `.p-source-icon` (12px, `--text-muted`, `aria-hidden`): `file-text` note, `library` vault-search note, `layout-template` template, `globe` web, `save` saved note, `pencil-line` rewrite target — the same icons as the toolbar controls that bring them in. `.p-wikilink-bracket` and the trailing `↗` are gone. Note links use `--link-color`, web links `--link-external-color`, with hover from `--link-decoration-hover` — Obsidian's tokens, falling back to the accent.*
+
+*Previously: 2026-09-20 — one accordion (ADR-192). The context inspector and the summary cards share `.p-acc`: `--background-secondary`, 1px border, radius 6px; a `<button>` header (`.p-acc-toggle`, min 36px, `--s2 --s3`) holding a 12px `chevron-right` (rotated when open), a 12px muted icon, a 600 `--text-normal` title and a mono 10px faint meta slot; actions (↻) beside it in `.p-acc-actions`. Hover fills the toggle only. The ▸/▾ text chevrons and the inspector's white fill are gone.*
 
 *Previously: 2026-09-20 — one glyph for regenerate (ADR-191): `refresh-cw` on all six controls (rename with AI, summary card, fork/merge anchor, *Define again*, *Rebuild vault index*); the anchors' `rotate-cw` is gone. The summary card's regenerate turns accent (`.is-stale`) and its timestamp reads `· outdated` when something newer than the summary exists, like the anchors.*
 

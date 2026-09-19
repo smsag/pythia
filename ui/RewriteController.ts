@@ -4,6 +4,7 @@ import type { Conversation, Message, RewriteTarget } from "../models/types";
 import { replaceRange, targetState } from "../services/rewriteTarget";
 import { cleanOptimizedOutput } from "../services/promptOptimizerText";
 import { t } from "../i18n";
+import { SOURCE_ICONS } from "./icons";
 
 export interface RewriteDeps {
 	plugin: PythiaPlugin;
@@ -90,7 +91,7 @@ export class RewriteController {
 
 		const card = row.createDiv({ cls: "p-rewrite" });
 		const head = card.createDiv({ cls: "p-rewrite-head" });
-		setIcon(head.createSpan({ cls: "p-rewrite-icon" }), "pencil-line");
+		setIcon(head.createSpan({ cls: "p-rewrite-icon" }), SOURCE_ICONS.rewrite);
 		head.createSpan({ cls: "p-rewrite-label", text: t("rewriteCardLabel") });
 		card.createDiv({ cls: "p-rewrite-meta", text: target.path });
 

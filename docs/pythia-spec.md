@@ -109,8 +109,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │   └── .p-hdr-btn            (plus)                new conversation — always the last child
 │
 ├── .p-ref-row                                      sidebar.ts — hidden when empty
-│   └── .p-pills > .p-wikilink                      one per attached note
-│       ├── .p-wikilink-name / .p-wikilink-tokens
+│   └── .p-pills > .p-wikilink                      one per reference (template · rewrite · note · saved note · vault search)
+│       ├── .p-source-icon · .p-wikilink-name · .p-wikilink-tokens   icon per source type (ADR-193)
 │       └── .p-wikilink-x                           remove from context
 │
 ├── .p-chat                                         sidebar.ts — the scroll area, flex: 1

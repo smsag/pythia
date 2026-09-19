@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
+*Last updated: 2026-09-20 — ADR-193 (one icon per source type: a reference leads with the icon of the toolbar control that brings it in — file-text, library, layout-template, globe, save, pencil-line — replacing `[[ ]]`, and the trailing `↗`; link colours are Obsidian's link tokens).*
+
+*Previously: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
 
 *Previously: 2026-09-20 — ADR-191 (one glyph for regenerate: `refresh-cw` from `ui/icons.ts` on all six controls, the summary card flags an outdated summary like the anchors, and an empty definition reply is reported).*
 
@@ -3748,4 +3750,30 @@ Neither header could be reached from the keyboard: each was a `div` with a click
 **Consequences.**
 - The context box turns grey like the summary cards.
 - Summary cards previously toggled from a click anywhere on the header row; now the toggle covers the row except the ↻ action.
+
+### ADR-193 — One icon per source type
+
+*2026-09-20*
+
+**Context.** Internal and external links used different kinds of marks in different places. A note was wrapped in faint `[[ ]]` in the reference row and the context box (ADR-068), bare in the sources row (ADR-153), bold as a template (ADR-177), and italic when vault search had pulled it in. A web source was numbered and trailed a `↗` *character*. So the same fact, "this is a note" or "this is the web", was spelled five ways, with one mechanism for notes and an unrelated one for the web. Colours were a hard-coded `--color-accent`, while the links rendered in the answer above use Obsidian's `--link-color` / `--link-external-color`, which a theme can restyle.
+
+Three options were drawn in the audit page: today, Obsidian-native (a bare note link plus Obsidian's external-link icon), and one icon per source type. The reporter chose the last.
+
+**Decision.**
+- **A reference leads with the icon of the control that brings it in**, from `SOURCE_ICONS` in `ui/icons.ts`:
+  - `file-text`: an attached note, and a cited vault note;
+  - `library`: a note vault search pulled in (the vault-context toggle);
+  - `layout-template`: a template (the template button);
+  - `globe`: a web page (the web-search toggle);
+  - `save`: a note the conversation wrote (the save button's floppy);
+  - `pencil-line`: the passage a rewrite will replace (also the rewrite card's icon).
+- `appendSourceIcon` draws it at 12px in `--text-muted` (faint fails 3:1), with `aria-hidden`: the name beside it stays the link.
+- **The toolbar reads the same map**: the template button, the web toggle, the vault toggle, the *Toggle vault context* command and the rewrite card. The icon on a pill is the icon on the control that made it.
+- **No more `[[ ]]` and no more `↗`**, in the reference row, the context box and the sources row. The citation number stays first, ahead of the icon, matching the superscript in the prose (ADR-140). The run-in row labels stay words (ADR-140/153); the icons are for entries, which they could not tell apart before.
+- **Existing emphasis stays:** a template or rewrite name is still bold, and an auto-retrieved note still italic and muted. The icon says the kind; the weight says it shapes the next answer.
+- **Link colours are Obsidian's tokens**: `--link-color` / `--link-color-hover` / `--link-decoration-hover` for notes, `--link-external-color` and friends for the web. Each falls back to `--color-accent`.
+
+**Supersedes** ADR-153's "web chips end with `↗`, the one mark separating them from notes" and its exception that "the context inspector keeps its brackets". The run-in label decision of ADR-153 stands.
+
+**Guards.** `tests/linkIcons.test.ts` fails if UI code writes `[[`/`]]` as link text or a `↗` anywhere, or names a source icon anywhere but `ui/icons.ts`. It also fails if the reference row's pills lose their icons (template · note · output checked in the real view) or if the toolbar's template, web and vault buttons stop sharing them. All four cases fail on the previous code. `tests/sourcesRow.test.ts` now asserts globe, file-text and layout-template in their rows, and the number ahead of the icon. The shared `obsidian` mock's `setIcon` records `data-icon`.
 
