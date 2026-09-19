@@ -96,7 +96,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1426 tests across 96 files
+  tests/                      ← Vitest unit tests (npm test) — 1443 tests across 96 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -330,7 +330,15 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
 - **Rename has two verbs on one row** (ADR-186): the row edits by hand; its trailing ↻ (`ActionSheetItem.trailing`) renames with AI **without opening the editor** — from the summary plus the last exchange (`retitleConversation`), never the first exchange. The editor `.p-rename-input` is the title made editable: same font, weight, line-height and padding as `.p-title`, no border/underline/fill — never let Obsidian's input chrome back in
 - The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
-- Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
+- Icons: `setIcon`, `pb pb-icon` — 24×24px, 12px glyph, `--text-muted` → `--text-normal` on hover (ADR-188)
+
+### Buttons (ADR-188)
+- **Every button carries `pb` + one role**, added where it is created: `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. The look lives ONLY in the "Buttons: one rule set per role" block of `styles.css`; a button's own class (`.p-send`, `.p-hdr-btn`, …) holds layout (position, margins, flex, `display: none`) and nothing visual. Never restate a font, padding, colour, border or hover on a per-button class — that is the drift ADR-188 removed (4 label sizes, 6 glyph sizes, 7 hover behaviours)
+- **A new button names a role** or `tests/buttonRoles.test.ts` fails. Exceptions are listed in that test: Obsidian's `mod-cta`/`mod-warning` dialog buttons, the mobile sheet's trailing icon, the conversation picker's delete
+- **Hover is "soft neutral"**: `--background-modifier-hover` behind everything unfilled, a filled button lightens. Under `@media (hover: hover)` only, transition only there (ADR-155)
+- **Never `--text-faint` on a control** (2.3:1 on white) and never `opacity` to express rest or hover — both failed WCAG in the audit
+- **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Obsidian's button hover is (0,2,1) and Pythia's reset (0,1,1); a fill set below either is repainted — which made "In Notiz ersetzen" invisible
+- The comparison tabs are `pb-tab` and keep their underline by the user's choice; chosen segments are the accent tint everywhere
 
 ### Reference row
 ```
@@ -575,9 +583,9 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ```
 - **Enter writes a line break; Cmd/Ctrl+Enter sends** (ADR-175). The rule lives once, in `ui/composerKeys.ts` — never re-derive it in a keydown handler, and never let a send fire while `isComposing` is true. The placeholder names the shortcut on desktop only
 - Textarea: transparent, no border, `--font-monospace`, 12px
-- Toolbar icons: inline SVG, 22×22px hit area
-- Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
-- **Every Send state sets fill AND label at `.pythia-view .p-send…` (0,3,0)** (ADR-187): core's `button:not(.clickable-icon):hover` is (0,2,1) and turned the hover grey under a white label. Hover darkens the accent, never `opacity`. `tests/sendButtonCascade.test.ts` fails in the forbidden direction
+- Toolbar icons: inline SVG, `pb pb-icon` (24×24px)
+- Send: `pb pb-primary`; while streaming `.stop` renders destructive
+- **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188): core's `button:not(.clickable-icon):hover` is (0,2,1) and turned hovers grey under white labels. `tests/buttonRoles.test.ts` fails in the forbidden direction
 - **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
 ---

@@ -178,7 +178,7 @@ export class ComparisonController {
 		for (const c of cmp.candidates) {
 			const isRunning = this.running?.id === c.id;
 			const tab = tabs.createEl("button", {
-				cls: `p-compare-tab${c.id === active.id ? " is-active" : ""}`,
+				cls: `pb pb-tab p-compare-tab${c.id === active.id ? " is-active" : ""}`,
 				text: abbreviateModel(c.model) + (isRunning ? " …" : ""),
 				attr: { role: "tab", "aria-selected": String(c.id === active.id) },
 			});
@@ -204,13 +204,13 @@ export class ComparisonController {
 
 		const actions = card.createDiv({ cls: "p-compare-actions" });
 		const running = this.running !== null;
-		const keepBtn = actions.createEl("button", { cls: "p-compare-keep", text: t("compareKeep") });
+		const keepBtn = actions.createEl("button", { cls: "pb pb-primary p-compare-keep", text: t("compareKeep") });
 		keepBtn.disabled = running;
 		keepBtn.addEventListener("click", () => void this.keep(active.id));
-		const addBtn = actions.createEl("button", { cls: "p-compare-add", text: t("compareAddModel") });
+		const addBtn = actions.createEl("button", { cls: "pb pb-secondary p-compare-add", text: t("compareAddModel") });
 		addBtn.disabled = running;
 		addBtn.addEventListener("click", () => this.pickModel());
-		const discardBtn = actions.createEl("button", { cls: "p-compare-discard", text: t("compareDiscard") });
+		const discardBtn = actions.createEl("button", { cls: "pb pb-quiet p-compare-discard", text: t("compareDiscard") });
 		discardBtn.disabled = running;
 		discardBtn.addEventListener("click", () => void this.discard());
 	}

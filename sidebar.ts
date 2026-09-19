@@ -540,7 +540,7 @@ export class PythiaSidebarView extends ItemView {
 		const indexWrap = messagesWrapper.createDiv({ cls: "p-index-wrap" });
 		this.navigatorEl = indexWrap.createDiv({ cls: "p-navigator" });
 		this.indexTriggerEl = indexWrap.createEl("button", {
-			cls: "p-index-trigger",
+			cls: "pb pb-icon is-float p-index-trigger",
 			text: "#",
 			attr: { title: t("showChaptersTooltip") },
 		});
@@ -600,7 +600,7 @@ export class PythiaSidebarView extends ItemView {
 		const toolbarLeft = toolbar.createDiv({ cls: "p-toolbar-left" });
 
 		const attachBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("attachNoteTooltip") },
 		});
 		drawAttachIcon(attachBtn);
@@ -610,7 +610,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 
 		const saveBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("saveResponseTooltip") },
 		});
 		drawSaveIcon(saveBtn);
@@ -620,7 +620,7 @@ export class PythiaSidebarView extends ItemView {
 		});
 
 		const applyTemplateBtn = this.templateBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("applyTemplateTooltip") },
 		});
 		setIcon(applyTemplateBtn, "layout-template");
@@ -630,14 +630,14 @@ export class PythiaSidebarView extends ItemView {
 		});
 
 		this.researchBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("researchToggleTooltip") },
 		});
 		setIcon(this.researchBtnEl, "globe");
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
 
 		this.vaultBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("vaultContextTooltip") },
 		});
 		setIcon(this.vaultBtnEl, "library");
@@ -645,7 +645,7 @@ export class PythiaSidebarView extends ItemView {
 		this.updateToolbarToggles();
 
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("minimizeInputTooltip") },
 		});
 		setIcon(this.inputCollapseBtn, "arrow-down");
@@ -670,7 +670,7 @@ export class PythiaSidebarView extends ItemView {
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
 		this.sendBtn = this.sendMenuWrap.createEl("button", {
-			cls: "p-send",
+			cls: "pb pb-primary p-send",
 			text: t("sendBtn"),
 		});
 		this.registerDomEvent(this.sendBtn, "click", () => {
@@ -851,7 +851,7 @@ export class PythiaSidebarView extends ItemView {
 			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
-			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
+			const x = ref.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
 			if (entry.kind !== "output") {
 				x.addEventListener("click", async () => {
 					if (entry.kind === "template") conv.pendingTemplate = undefined;
@@ -874,7 +874,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		const addBtn = this.referencePillsEl.createEl("button", {
-			cls: "pythia-pill-add",
+			cls: "pb pb-link pythia-pill-add",
 			attr: { title: t("addContextNoteTooltip") },
 			text: t("addNoteInline"),
 		});
@@ -1032,7 +1032,7 @@ export class PythiaSidebarView extends ItemView {
 			this.mergeController.repaintMergeLinks(bubble, msg.id);
 			if (isLong) {
 				const toggle = row.createEl("button", {
-					cls: "p-bubble-toggle",
+					cls: "pb pb-icon p-bubble-toggle",
 					attr: { title: t("showMore") },
 				});
 				setIcon(toggle, "chevron-down");
@@ -1504,11 +1504,11 @@ export class PythiaSidebarView extends ItemView {
 
 				const confirmed = await new Promise<boolean>((resolve) => {
 					const actionBtn = actionsEl.createEl("button", {
-						cls: "pythia-tool-call-btn pythia-tool-call-btn--action",
+						cls: "pb pb-primary pythia-tool-call-btn pythia-tool-call-btn--action",
 						text: actionLabel,
 					});
 					const cancelBtn = actionsEl.createEl("button", {
-						cls: "pythia-tool-call-btn",
+						cls: "pb pb-quiet pythia-tool-call-btn",
 						text: t("cancelBtn"),
 					});
 					this.registerDomEvent(actionBtn, "click", () => resolve(true));

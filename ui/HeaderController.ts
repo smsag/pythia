@@ -93,7 +93,7 @@ export class HeaderController {
 		// its search input focused (ADR-107). It replaced the former history icon;
 		// the panel is now the single conversation-search surface.
 		const historyBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
+			cls: "pb pb-icon p-hdr-btn",
 			attr: { title: t("historyTooltip") },
 		});
 		setIcon(historyBtn, "search");
@@ -124,7 +124,7 @@ export class HeaderController {
 
 		// Context-budget warning chip (e.g. "94%"), shown only at >=80% usage.
 		// Clicking it scrolls to the top and opens the context inspector.
-		this.ctxChipEl = header.createEl("button", { cls: "p-ctx-chip" });
+		this.ctxChipEl = header.createEl("button", { cls: "pb pb-chip-warn p-ctx-chip" });
 		this.ctxChipEl.style.display = "none";
 		this.d.registerDomEvent(this.ctxChipEl, "click", () => this.d.revealContextInspector());
 
@@ -134,20 +134,20 @@ export class HeaderController {
 		this.instEl.style.display = "none";
 
 		this.modelBadgeEl = this.instEl.createEl("button", {
-			cls: "p-inst-seg p-inst-model",
+			cls: "pb pb-seg p-inst-seg p-inst-model",
 			attr: { title: t("changeModelTooltip") },
 		});
 		this.d.registerDomEvent(this.modelBadgeEl, "click", () => this.openModelPopover());
 
-		this.effortEl = this.instEl.createEl("button", { cls: "p-inst-seg p-inst-effort" });
+		this.effortEl = this.instEl.createEl("button", { cls: "pb pb-seg p-inst-seg p-inst-effort" });
 		this.d.registerDomEvent(this.effortEl, "click", () => this.openEffortPicker());
 
-		this.langEl = this.instEl.createEl("button", { cls: "p-inst-seg p-inst-lang" });
+		this.langEl = this.instEl.createEl("button", { cls: "pb pb-seg p-inst-seg p-inst-lang" });
 		this.d.registerDomEvent(this.langEl, "click", () => this.openLanguagePicker());
 
 		// ── Menu: rename · copy link · conversation settings ───────────────────
 		this.menuBtn = header.createEl("button", {
-			cls: "p-hdr-btn p-hdr-menu",
+			cls: "pb pb-icon p-hdr-btn p-hdr-menu",
 			attr: { title: t("convMenuTooltip") },
 		});
 		setIcon(this.menuBtn, "chevron-down");
@@ -155,7 +155,7 @@ export class HeaderController {
 		this.d.registerDomEvent(this.menuBtn, "click", () => this.openMenu());
 
 		this.deleteConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
+			cls: "pb pb-icon p-hdr-btn",
 			attr: { title: t("deleteConvTooltip") },
 		});
 		setIcon(this.deleteConvBtn, "trash");
@@ -164,7 +164,7 @@ export class HeaderController {
 
 		// ── Far right: new conversation (always the last child) ────────────────
 		const newConvBtn = header.createEl("button", {
-			cls: "p-hdr-btn",
+			cls: "pb pb-icon p-hdr-btn",
 			attr: { title: t("newConvTooltip") },
 		});
 		setIcon(newConvBtn, "plus");

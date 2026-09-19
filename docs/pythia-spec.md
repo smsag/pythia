@@ -89,6 +89,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 
 **Naming convention:** `p-*` is the view's own vocabulary; `pythia-*` is used for marks inside rendered markdown and for surfaces that live outside the view (modals, action sheet, inline suggest). Both are in `styles.css`.
 
+**Buttons** carry a role on top of their own class (ADR-188): `.pb` + `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. Ask for a button by its own class (where it is) and its role (how it looks): "the `.p-trunc-btn` secondaries".
+
 ### The panel, top to bottom
 
 ```

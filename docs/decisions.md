@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-19 — ADR-187 (Send works from the keyboard and reads on hover: the shortcut moves into the view's own keymap scope, ahead of Obsidian's Mod+Enter hotkey, and every Send state out-ranks core's button hover).*
+*Last updated: 2026-09-20 — ADR-188 (one look per button role: every Pythia button carries `pb` + one of nine roles, the look lives in one block of `styles.css`, hover is "soft neutral", and a test fails when a button is created without a role).*
+
+*Previously: 2026-09-19 — ADR-187 (Send works from the keyboard and reads on hover: the shortcut moves into the view's own keymap scope, ahead of Obsidian's Mod+Enter hotkey, and every Send state out-ranks core's button hover).*
 
 *Previously: 2026-09-19 — ADR-186 (rename by hand, or rename with AI in one tap: the ↻ leaves the inline editor for a trailing action on the menu's rename row, applies without the editor, names what the conversation became — summary plus the last exchange — and the editor takes exactly the title's box).*
 
@@ -3599,4 +3601,41 @@ The `const` is safe **only** because this is a module — in a classic script it
 **Consequences.**
 - **Not verified in Obsidian.** The scope path is Obsidian's documented way for a view to own a key, but that the Mod+Enter hotkey was the consumer is inferred, not observed. If Cmd+Enter still fails, the next step is to check what `app.keymap` does with the event in the developer console.
 - While the composer has focus, Cmd+Enter no longer reaches Obsidian's own Mod+Enter command. That command acts on a note editor, not on the composer, so nothing a user could want is lost.
+
+### ADR-188 — One look per button role
+
+*2026-09-20*
+
+**Context.** An audit of every button in the panel (39 kinds, each rendered from `styles.css` against a stand-in for Obsidian's button rules, contrast and size measured in the browser) found the drift the reporter suspected, and three bugs under it:
+- **Four label sizes** (9 · 10 · 10.5 · 11px), **six icon glyph sizes** (11–18px), **eight icon target sizes** (from a bare 11px glyph to 44px), **seven hover behaviours** (fill, opacity up, opacity down, tint, underline, colour only, none), and **24 buttons below WCAG contrast** at rest or on hover. Much of that was `--text-faint` on actionable controls (2.3:1 on white) and outline buttons faded to 75% at rest, which on touch they never leave.
+- **"In Notiz ersetzen" was invisible** (engineering-review #334). `.p-rewrite-btn` set its accent fill at (0,1,0); Pythia's own `.pythia-view button` reset is (0,1,1) and removed it, leaving a white label on white. Its quiet siblings lost their border the same way.
+- **Obsidian's hover repainted filled buttons** (#335), the defect ADR-187 fixed for Send alone. Keep this answer and Replace in note set their fill below core's `button:not(.clickable-icon):hover` (0,2,1).
+- **The tool-call "Abbrechen" was red** (#336), the destructive colour, while "Erstellen" was the neutral one.
+
+**Decision.**
+- **Every button carries `pb` plus one role**, added where it is created; its own class keeps only layout (position, margins, flex, `display: none` states). Nine roles:
+  - `pb-primary`: filled accent. Send, Replace in note, Keep this answer, tool-call Create. Send's `.stop` renders destructive.
+  - `pb-secondary`: accent outline. Continue, Retry, Compare, + Model, Use default, Summarize, the model suggestion (filled while `.is-accepted`).
+  - `pb-quiet`: no border, `--text-muted`. Every Cancel, Discard and Copy, the selection toolbar, and the tool-call Cancel.
+  - `pb-destructive`: `--text-error` outline. Delete.
+  - `pb-link`: inline text action. Open →, Show more, + Note.
+  - `pb-icon`: 24px box, 12px glyph, `--text-muted`. `.is-active` fills, `.is-inline` takes a 24px target inside a text line through a negative margin, `.is-float` is the 36px `#` trigger (the one deliberate exception), `.is-warning` is the token-limit triangle.
+  - `pb-seg`: one choice from a group (header instructions, effort). The chosen one (`.is-pinned` / `.active`) gets the accent tint in both places; the modal's solid fill is gone.
+  - `pb-tab`: the comparison card's model tabs. At the reporter's request they keep their own look, the accent underline, and change only for accessibility: muted inactive labels (were faint), 28px tall, a hover hint on the rule. `role="tab"` / `aria-selected` were already set.
+  - `pb-chip-warn`: the context-budget chip, 11px (was 9px). The warning is carried by an orange tint and border and the label stays `--text-normal`, because orange text measures under 3:1 on white.
+- **One type and one box.** Mono `--font-smaller` (11px), weight 500, `3px 8px`, radius 3px, a 24px minimum height, and a 1px border slot on every role, so an outline and a fill are the same size.
+- **Hover is "soft neutral"**, chosen by the reporter from four rendered directions (role-specific, soft neutral, accent wash, ring). `--background-modifier-hover` goes behind everything that is not filled, links included; a filled button lightens (`color-mix(accent 88%, white)`). The rule is Obsidian's own idiom from its sidebars and file list, and it leaves the accent to mean "on" or "chosen".
+- **Specificity is the mechanism.** Each role's rest rule is (0,3,0) and also names `:hover` at (0,4,0), so core's (0,2,1) hover can never repaint it. The real hover is (0,5,0) under `@media (hover: hover)`, with its 120ms transition only there, so no state fill is animated on the tap that set it (ADR-155). Fill and label are always set together (hard rule 6a). Spacing and type tokens carry fallbacks, because `.pythia-modal` does not define them.
+- **Touch: 32px**, not the 44px the audit proposed. The header holds seven controls and has to fit a 375px phone; 32px clears WCAG 2.5.8's 24px. Inline links and icons grow into their negative margin, so text lines keep their height.
+- **Out of scope:** Obsidian's own dialog buttons (`mod-cta` / `mod-warning`) stay Obsidian's. The mobile sheet's trailing icon matches the sheet's 18px rows. The conversation picker's delete lives in Obsidian's suggestion modal.
+
+**Guards.**
+- `tests/buttonRoles.test.ts` loads `styles.css` after core-like button rules and checks every role's label and fill at rest and on hover (`:hover` stood in by a class, `(hover: hover)` as a mouse). It also checks that quiet roles are muted at rest and normal on hover, never faint, and that the modal gets the same roles. 14 of its 20 cases fail on the previous stylesheet.
+- A source scan in the same file fails when `createEl("button")` in `sidebar.ts`, `ui/` or `suggest/` names no role, except the four allowed shapes above.
+- It replaces `tests/sendButtonCascade.test.ts` (ADR-187), which covered Send alone.
+
+**Consequences.**
+- Measured in the audit page after the change: one label size, one glyph size, two icon target sizes (24px and the 36px float), four hover behaviours, and three buttons below contrast: Stop, Delete and the warning triangle. All three use Obsidian's `--text-error` (4.2:1 on white) and `--text-warning` (about 3:1) as they are, because hard rule 3 forbids our own colours. A theme with darker reds passes.
+- The header grows by 4px per icon (20 → 24) and its segments from 20 to 24px tall.
+- **Not verified in Obsidian.** Rendered in a browser against a stand-in for core's button rules; the real theme's hover colour and the phone header's fit at 32px are unchecked.
 

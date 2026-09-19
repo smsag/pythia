@@ -31,7 +31,7 @@ export function clampSummary(body: HTMLElement, mount: HTMLElement): void {
 			body.removeClass(CLAMP_CLASS);
 			return;
 		}
-		const btn = mount.createEl("button", { cls: "p-anchor-more", text: t("summaryMore") });
+		const btn = mount.createEl("button", { cls: "pb pb-link p-anchor-more", text: t("summaryMore") });
 		btn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			const wasClamped = body.hasClass(CLAMP_CLASS);

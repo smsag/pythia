@@ -59,7 +59,7 @@ export class TruncationController {
 		const on = (btn: HTMLElement, fn: () => void): void => {
 			btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
 		};
-		const cont = actions.createEl("button", { cls: "p-trunc-btn", text: t("truncContinueBtn") });
+		const cont = actions.createEl("button", { cls: "pb pb-secondary p-trunc-btn", text: t("truncContinueBtn") });
 		on(cont, () => void this.continueAnswer());
 
 		// Retry re-sends the prompt with a bigger budget, which means removing
@@ -70,11 +70,11 @@ export class TruncationController {
 			(conv.merges ?? []).some((l) => l.messageId === msg.id);
 		if (!referenced) {
 			const raised = raisedMaxTokens(conv.model, max);
-			const retry = actions.createEl("button", { cls: "p-trunc-btn", text: t("truncRetryBtn", { n: String(raised) }) });
+			const retry = actions.createEl("button", { cls: "pb pb-secondary p-trunc-btn", text: t("truncRetryBtn", { n: String(raised) }) });
 			on(retry, () => void this.retryWithRaisedLimit(msg, raised));
 		}
 
-		const cmp = actions.createEl("button", { cls: "p-trunc-btn p-trunc-btn--quiet", text: t("compareBtn") });
+		const cmp = actions.createEl("button", { cls: "pb pb-quiet p-trunc-btn p-trunc-btn--quiet", text: t("compareBtn") });
 		on(cmp, () => this.compare(msg));
 	}
 
