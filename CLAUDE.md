@@ -90,12 +90,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    icons.ts                  ← REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1447 tests across 97 files
+  tests/                      ← Vitest unit tests (npm test) — 1453 tests across 98 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -329,6 +330,7 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
 - **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
 - **Rename has two verbs on one row** (ADR-186): the row edits by hand; its trailing ↻ (`ActionSheetItem.trailing`) renames with AI **without opening the editor** — from the summary plus the last exchange (`retitleConversation`), never the first exchange. The editor `.p-rename-input` is the title made editable: same font, weight, line-height and padding as `.p-title`, no border/underline/fill — never let Obsidian's input chrome back in
+- **Regenerate is one glyph everywhere**: `REGENERATE_ICON` from `ui/icons.ts`, never a literal `refresh-cw`/`rotate-cw` (ADR-191). An outdated summary shows the same way wherever it sits: accent regenerate (`.is-stale`) plus `· outdated`
 - The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
 - Icons: `setIcon`, `pb pb-icon` — 24×24px, 12px glyph, `--text-muted` → `--text-normal` on hover (ADR-188)
 

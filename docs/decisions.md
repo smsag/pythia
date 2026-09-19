@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-190 (Obsidian's button rules, measured: read from the installed app.css, ten rules reach a Pythia button, and ADR-188's role base let four of them through — every text button took Obsidian's input height; now checked by a sentinel test and a drift script).*
+*Last updated: 2026-09-20 — ADR-191 (one glyph for regenerate: `refresh-cw` from `ui/icons.ts` on all six controls, the summary card flags an outdated summary like the anchors, and an empty definition reply is reported).*
+
+*Previously: 2026-09-20 — ADR-190 (Obsidian's button rules, measured: read from the installed app.css, ten rules reach a Pythia button, and ADR-188's role base let four of them through — every text button took Obsidian's input height; now checked by a sentinel test and a drift script).*
 
 *Previously: 2026-09-20 — ADR-189 (the anchor summaries are shown in full again: the five-line fold ADR-141 added to the fork and merge anchors is removed from both; the prompt contract stays).*
 
@@ -3699,4 +3701,21 @@ A test for these could not see them, because its stand-in rules did not set heig
 - ADR-187's diagnosis of the Send hover is **not supported by the measured rule.** With `button:hover` at (0,1,1), the old `.p-send:not(.stop)` fill at (0,2,0) should have won. The grey hover in the report came from something else, probably the theme, and remains unexplained.
 - `tests/buttonRoles.test.ts` keeps its stricter (0,2,1) stand-in, relabelled as what a theme might write. The two tests now answer different questions.
 - **Not verified in Obsidian itself.** The rules are Obsidian's own, read from the installed file, but the cascade is replayed in happy-dom. A theme adds rules of its own that neither test sees.
+
+### ADR-191 — One glyph for regenerate
+
+*2026-09-20*
+
+**Context.** Six controls re-run a generation or a rebuild, and they used two glyphs with no decision behind the split:
+- `refresh-cw` (two chasing arrows): rename with AI, the summary card's regenerate, and the *Rebuild vault index* command;
+- `rotate-cw` (one arrow): the fork anchor's and merge anchor's regenerate, and the glossary anchor's *Define again*.
+
+At 12px the two are visibly different, so the same verb read as two actions. The audit turned up two related gaps. The summary card had no *outdated* signal, although the fork and merge anchors flag exactly that for the same kind of summary (ADR-128). And a term or person lookup whose model reply was empty returned `null` without a word, contrary to ADR-158.
+
+**Decision.**
+- **`REGENERATE_ICON = "refresh-cw"` in `ui/icons.ts`**, used by all six controls. `refresh-cw` was already on the three most recent controls and on the command.
+- **The summary card flags an outdated summary with the anchors' rule**: something newer than the summary (the last message, or for the favorites card the newest favorite) turns the regenerate icon accent (`.is-stale`) and appends `· outdated` to the timestamp.
+- **An empty definition reply says so.** `GlossaryService` shows `lookupEmptyReply` ("nothing was saved") for terms and people alike.
+
+**Guards.** `tests/icons.test.ts` fails if `refresh-cw`, `refresh-ccw`, `rotate-cw` or `rotate-ccw` is written as a literal anywhere outside `ui/icons.ts`, if the set of files using the constant changes, if the summary card's marker is missing (conversation and favorites), or if an empty lookup reply is silent. Five of its six cases fail on the previous code; the sixth is the negative case. The test `Notice` mock now records what it was asked to show, so "silence is a bug" can be tested.
 

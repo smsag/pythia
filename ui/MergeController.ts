@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintMergeLinks as paintMergeLinks } from "./HighlightPainter";
+import { REGENERATE_ICON } from "./icons";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -275,7 +276,7 @@ export class MergeController {
 			cls: `pb pb-icon is-inline p-merge-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("mergeRefreshSummary"), title: t("mergeRefreshSummary") },
 		});
-		setIcon(refresh, "rotate-cw");
+		setIcon(refresh, REGENERATE_ICON);
 		refresh.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.generateMergeSummary(anchor, link, target);

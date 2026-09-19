@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-20 — Obsidian's button rules, measured (ADR-190). New `scripts/obsidian-button-rules.mjs` (`npm run check:obsidian-cascade`, local only) extracts app.css from the installed Obsidian .asar and compares the rules that can reach a Pythia button with `tests/fixtures/obsidianButtonRules.ts` (selectors + sentinel values). New `tests/obsidianCascade.test.ts`. `styles.css`: base claims height/width/corner-shape, roles restate padding, phone-modal guard, `[hidden]`, block model segment (1447 across 97 files).*
+*Last updated: 2026-09-20 — `ui/icons.ts` (`REGENERATE_ICON`) is the one reload glyph for six controls; `SummaryController.buildSummaryCard` takes the newest covered timestamp and marks the card stale; `GlossaryService` reports an empty term/person reply (`lookupEmptyReply`). The test `Notice` mock records messages (`Notice.shown`). New `tests/icons.test.ts` (1453 across 98 files) — ADR-191.*
+
+*Previously: 2026-09-20 — Obsidian's button rules, measured (ADR-190). New `scripts/obsidian-button-rules.mjs` (`npm run check:obsidian-cascade`, local only) extracts app.css from the installed Obsidian .asar and compares the rules that can reach a Pythia button with `tests/fixtures/obsidianButtonRules.ts` (selectors + sentinel values). New `tests/obsidianCascade.test.ts`. `styles.css`: base claims height/width/corner-shape, roles restate padding, phone-modal guard, `[hidden]`, block model segment (1447 across 97 files).*
 
 *Previously: 2026-09-20 — anchor summaries in full (ADR-189). `ui/clampBody.ts` (`clampSummary`) and its test are deleted; `ForkController` and `MergeController` render the summary body without it; `summaryMore`/`summaryLess` leave both locales. New `tests/anchorSummaryFull.test.ts` (1439 across 96 files).*
 

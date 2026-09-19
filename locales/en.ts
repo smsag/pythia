@@ -37,6 +37,7 @@ const en = {
 	glossaryAnchorLabel:       "GLOSSARY",
 	glossaryDefined:           "Added \"{{term}}\" to the glossary",
 	glossaryLookingUp:         "Looking up \"{{term}}\"…",
+	lookupEmptyReply:          "The model returned no text for \"{{term}}\" — nothing was saved. Try again.",
 	glossaryLookupFailed:      "Could not define the term: {{error}}",
 	glossaryOpenNote:          "Open in glossary",
 	glossaryRegenerate:        "Define again",

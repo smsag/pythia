@@ -3,6 +3,7 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
+import { REGENERATE_ICON } from "./icons";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -48,10 +49,12 @@ export class SummaryController {
 		const conv = this.d.getConversation();
 		const cards: HTMLElement[] = [];
 		if (conv?.summaryText?.trim()) {
-			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt));
+			const last = conv.messages.length ? conv.messages[conv.messages.length - 1].timestamp : undefined;
+			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, last));
 		}
 		if (conv?.favoritesSummary?.text?.trim()) {
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt));
+			const newest = (conv.favorites ?? []).map((f) => f.createdAt ?? "").sort().pop() || undefined;
+			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, newest));
 		}
 		cardsEl.style.display = cards.length ? "" : "none";
 
@@ -75,8 +78,13 @@ export class SummaryController {
 	private buildSummaryCard(
 		kind: "conversation" | "favorites",
 		text: string,
-		updatedAt?: string
+		updatedAt?: string,
+		/** The newest thing the summary covers (last message, newest favorite). */
+		latestSource?: string,
 	): HTMLElement {
+		// Outdated when something newer than the summary exists — the fork and merge
+		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
+		const stale = !!(updatedAt && latestSource && latestSource > updatedAt);
 		const card = this.d.getCardsEl()!.createDiv({
 			cls: "p-summary-card",
 			attr: { "data-kind": kind },
@@ -90,14 +98,15 @@ export class SummaryController {
 		});
 		// Timestamp lives in the header now (right-aligned, faint).
 		if (updatedAt) {
-			header.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
+			const ts = formatSummaryTimestamp(updatedAt);
+			header.createSpan({ cls: "p-summary-ts", text: stale ? `${ts} · ${t("forkSummaryStale")}` : ts });
 		}
 		// Regenerate icon — re-runs the summary matching this card's kind.
 		const regen = header.createEl("button", {
-			cls: "pb pb-icon p-summary-card-regen",
+			cls: `pb pb-icon p-summary-card-regen${stale ? " is-stale" : ""}`,
 			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
 		});
-		setIcon(regen, "refresh-cw");
+		setIcon(regen, REGENERATE_ICON);
 		regen.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (kind === "favorites") void this.summarizeFavorites();

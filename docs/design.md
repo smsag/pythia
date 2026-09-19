@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — the `.pb` base claims every property of Obsidian's bare `button` rule (`height: auto`, `width: auto`, `corner-shape: round`), each role restates its padding at (0,3,0), a phone modal's Setting control can no longer stretch the effort segments, a disabled Send is not dimmed, `[hidden]` always hides, and the model segment is a block so its name ends in an ellipsis (ADR-190).*
+*Last updated: 2026-09-20 — one glyph for regenerate (ADR-191): `refresh-cw` on all six controls (rename with AI, summary card, fork/merge anchor, *Define again*, *Rebuild vault index*); the anchors' `rotate-cw` is gone. The summary card's regenerate turns accent (`.is-stale`) and its timestamp reads `· outdated` when something newer than the summary exists, like the anchors.*
+
+*Previously: 2026-09-20 — the `.pb` base claims every property of Obsidian's bare `button` rule (`height: auto`, `width: auto`, `corner-shape: round`), each role restates its padding at (0,3,0), a phone modal's Setting control can no longer stretch the effort segments, a disabled Send is not dimmed, `[hidden]` always hides, and the model segment is a block so its name ends in an ellipsis (ADR-190).*
 
 *Previously: 2026-09-20 — the fork and merge anchors show their summary in full (ADR-189). `.p-clamped` (the five-line mask) and `.p-anchor-more` / `.p-anchor-more-wrap` (the `mehr`/`weniger` control) are removed; both anchor specs already read "not clamped".*
 
