@@ -24,3 +24,11 @@ export function drawSaveIcon(btn: HTMLElement): void {
 	svg.createSvg("polyline", { attr: { points: "17 21 17 13 7 13 7 21" } });
 	svg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
 }
+
+/** The toolbar's shared on/off state: accent fill plus `aria-pressed`. A button
+ *  not built yet (the toolbar mounts after the first paint) is skipped. */
+export function paintToggle(btn: HTMLElement | undefined, on: boolean): void {
+	if (!btn) return;
+	btn.toggleClass("is-active", on);
+	btn.setAttr("aria-pressed", String(on));
+}
