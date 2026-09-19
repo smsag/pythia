@@ -122,7 +122,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │   │       ├── .p-acc-head > .p-acc-toggle         <button aria-expanded>: .p-acc-chevron · -icon · -title · -meta (ADR-192)
 │   │       ├── .p-acc-actions                      ↻ .p-summary-card-regen (beside the toggle, never inside)
 │   │       ├── .p-summary-card-body > .p-summary-card-md
-│   │       └── .p-summary-card-footer              .p-summary-card-regen · .p-summary-ts
+│   │       └── .p-summary-card-footer              Kopieren · In Notiz speichern (pb-quiet); the timestamp is .p-summary-ts in .p-acc-meta
 │   └── .pythia-messages-wrapper
 │       ├── .p-turn-label                           ui/turnLabel.ts — model · time · tokens
 │       │   └── .p-turn-cost                        ≈ $0.012, when showCost is on
