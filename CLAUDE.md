@@ -90,12 +90,12 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
-    toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar
+    toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1411 tests across 92 files
+  tests/                      ← Vitest unit tests (npm test) — 1413 tests across 93 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -540,7 +540,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **A snapshot, not the template's path**: an edit to the template file between arming and sending must not change the turn (same reasoning as ADR-163's cost snapshot)
 - **Cleared on a committed answer, not at send start** — an errored or empty reply leaves it armed so the retry is the same shape
 - `resume_mode` deliberately does **not** apply on this path: history selection is a property of the conversation, not of one answer
-- The armed template is visible as the leading `.p-wikilink--template` pill, and `Message.templateId` records the template that actually shaped that answer — which is what the field always claimed to mean
+- The armed template is visible as the leading `.p-wikilink--template` pill and as the template toolbar button's `.is-active` fill (same state as the research globe), and `Message.templateId` records the template that actually shaped that answer — which is what the field always claimed to mean
 
 ### Rewriting a passage (ADR-178)
 
