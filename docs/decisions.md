@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-18 — ADR-185 (hiding `process` was not enough, and the chain would not say why: the Worker prelude gains a lexical `const process = void 0` beside its two property operations, which a locked-down global defeats through their own `catch` — and the fallback chain now reports WHY each backend failed, not only which one won).*
+*Last updated: 2026-09-19 — ADR-186 (rename by hand, or rename with AI in one tap: the ↻ leaves the inline editor for a trailing action on the menu's rename row, applies without the editor, names what the conversation became — summary plus the last exchange — and the editor takes exactly the title's box).*
+
+*Previously: 2026-09-18 — ADR-185 (hiding `process` was not enough, and the chain would not say why: the Worker prelude gains a lexical `const process = void 0` beside its two property operations, which a locked-down global defeats through their own `catch` — and the fallback chain now reports WHY each backend failed, not only which one won).*
 
 *Previously: 2026-09-18 — ADR-184 (an index records what it is and whether it finished: partial persistence made "has rows" stop meaning "is built", a scope change now rebuilds, mid-build edits are replayed, and the live scope is re-checked where the text would leave the vault).*
 
@@ -3558,3 +3560,22 @@ The `const` is safe **only** because this is a module — in a classic script it
 - If the reported failure turns out to be `Unsupported device`, this closes it. If it is a blocked `blob:` plus a cross-origin resource path, this changes nothing and **ADR-182's premise was wrong for this machine** — the failure reasons now in the log say which, without another round-trip.
 - The iframe path is unaffected either way, and ADR-184 means a UI-thread build now resumes across sessions rather than restarting, so the feature works while this is settled — slowly.
 - **Still not verified in Obsidian.** The mechanism is proven in Node under module semantics with the hostile descriptor; that the Electron Worker then loads the WASM runtime is not. D-31 stays open.
+
+### ADR-186 — Rename by hand, or rename with AI in one tap
+
+*2026-09-19*
+
+**Context.** Since ADR-165 the header menu's *Rename* opened the inline editor, and the AI rename was a ↻ button **inside** that editor, in front of the input. Three problems: an AI rename cost two taps and an editor the user never typed in; the button pushed the name ~20px right the moment editing began; and the input picked up Obsidian's `input[type=text]` chrome (border, radius, fill, padding) because `.p-rename-input` only set a bottom border — the name visibly became a form field and changed height (17 → 20px). The ↻ also titled from the **first** exchange (`generateConversationTitle`), which is right for the automatic first-turn title and wrong for a deliberate rename of a conversation that has drifted.
+
+**Decision.**
+1. **Two verbs, one row.** The menu's rename row carries a trailing icon action: tapping the row edits by hand, tapping ↻ renames with AI. `ActionSheetItem` gains `trailing?: { icon, label, onSelect }`, rendered by both `openChoicePicker` (`.p-choice-trailing`, 20px, 44px under `pointer: coarse`) and the mobile `ActionSheet` (`.p-sheet-item-trailing`, 44px) — one item shape, both surfaces. The trailing press stops propagation, so it never runs the row's verb. ↻ is omitted on an empty conversation: there is nothing to name.
+2. **The AI rename never opens the editor.** `HeaderController.onRenameLLM` captures the conversation, pulses the current name (`.p-title.is-generating`, the sparkle's pulse — decorative, not state), and applies the result through `plugin.renameConversation` (so the theme note follows, ADR-150). No Notice on success — the new name is the confirmation; `renameLLMEmpty` on an empty reply and `renameLLMFailed` on a throw (ADR-158). A conversation switch mid-call renames the captured one and leaves the header alone. One rename at a time.
+3. **It names what the conversation became.** New `LLMProvider.retitleConversation(conv)` on the fast model, fed by the pure `buildRetitleDigest`: the summary (≤600 chars) when there is one, then the last user message and its answer (≤300 each). The automatic first-turn title keeps `generateConversationTitle`.
+4. **The editor is the title, made editable.** `.p-rename-input` is `all: unset` under `.pythia-view` (out-ranking Obsidian's input chrome and, via the `:focus`/`:focus-visible`/`:hover` selectors, its focus ring) and shares `.p-title`'s font family, size, weight, `line-height: 18px`, `padding: 1px 2px` and box. No border, underline or fill: the accent caret and the selection are the only signs of editing.
+5. **The title prompts moved to `services/titlePrompts.ts`** (chapter name, first-turn title, retitle, `REPLY_TITLE_ONLY_INSTRUCTION`, `buildRetitleDigest`) — adding the third prompt put `BaseProvider.ts` at 613 lines against the 600 ratchet (ADR-097), and three prompts sharing one reply rule belong together.
+
+**Consequences.**
+- AI rename is one tap from the menu, and the editor is purely manual. There is no undo: the old name is gone once replaced (a second ↻ or a manual rename is the way back). Deliberate — a Notice with Undo was offered and not chosen.
+- The trailing slot is generic; a future row with a second verb uses it rather than a third menu entry.
+- **Not verified in Obsidian.** The pixel equality of title and editor follows from shared metrics in CSS; happy-dom does no layout, so the tests prove the flow, not the zero-jump.
+

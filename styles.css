@@ -132,6 +132,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-title {
   all: unset;
   cursor: default; /* plain, non-interactive title (ADR-107) */
+  font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
   flex: 1;
@@ -141,8 +142,11 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   text-overflow: ellipsis;
   color: var(--text-normal);
   padding: 1px 2px;
+  line-height: 18px; /* shared with .p-rename-input: the edit must not move a pixel */
   box-sizing: border-box;
 }
+/* AI rename in flight (menu ↻): the name it will replace pulses. Decorative, not state. */
+.p-title.is-generating { animation: p-sparkle-pulse 0.7s ease-in-out infinite; }
 
 /* ── Instructions: model | effort | language (ADR-165) ──────────
    One bordered group of three segments, each its own tap target. A tint
@@ -547,6 +551,29 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-choice-label { font-size: var(--font-small); line-height: 16px; color: var(--text-normal); }
 .p-choice-row.is-active .p-choice-label { color: var(--color-accent); font-weight: 500; }
 .p-choice-detail { font-size: var(--font-smaller); line-height: 1.4; color: var(--text-faint); }
+/* Trailing verb on a row (rename by hand · ↻ rename with AI): its own target at
+   the row's end, faint until hovered — the row's label stays the primary verb. */
+.pythia-view .p-choice-trailing {
+  all: unset;
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.pythia-view .p-choice-trailing svg { width: 12px; height: 12px; }
+@media (hover: hover) {
+  .pythia-view .p-choice-trailing:hover { color: var(--color-accent); background: var(--background-primary); }
+}
+@media (pointer: coarse) {
+  .pythia-view .p-choice-trailing { width: 44px; height: 44px; margin-right: calc(-1 * var(--s3)); }
+}
 
 .p-hdr-btn {
   all: unset;
@@ -879,37 +906,37 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   gap: 0;
 }
 
-/* Rename inline editor — no border; input looks like the title itself */
+/* Rename inline editor — the title, made editable. Same font, weight, padding,
+   line-height and box as .p-title, so entering and leaving edit moves nothing.
+   No border, underline or fill: the caret and the selection are the only signs.
+   `all: unset` under .pythia-view out-ranks Obsidian's input[type=text] chrome
+   (border, radius, background, padding); the :focus rules out-rank its focus ring. */
 .p-rename-wrap {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0;
 }
-.p-rename-input {
+.pythia-view .p-rename-input,
+.pythia-view .p-rename-input:focus,
+.pythia-view .p-rename-input:focus-visible,
+.pythia-view .p-rename-input:hover {
+  all: unset;
   flex: 1;
   min-width: 0;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--background-modifier-border);
-  color: var(--text-normal);
+  width: 100%;
   font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
-  padding: 0;
-  outline: none;
-  height: 20px;
+  line-height: 18px;
+  padding: 1px 2px;
   box-sizing: border-box;
+  color: var(--text-normal);
+  caret-color: var(--color-accent);
+  cursor: text;
+  white-space: nowrap;
 }
-.p-rename-input:focus {
-  border-bottom-color: var(--color-accent);
-}
-/* Loading state for refresh icon — reuse existing pulse animation */
-.p-hdr-btn.p-rename-refresh.p-rename-refresh-loading {
-  color: var(--color-accent);
-  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
-}
+.pythia-view .p-rename-input::placeholder { color: var(--text-faint); font-weight: 400; }
 
 @keyframes p-sparkle-pulse {
   0%, 100% { opacity: 1; }
@@ -2815,6 +2842,20 @@ body.is-phone .workspace-drawer .p-input-area {
 .p-sheet-item-icon:empty { width: 18px; }
 .p-sheet-item.is-active .p-sheet-item-icon,
 .p-sheet-item.is-active .p-sheet-item-label { color: var(--color-accent); }
+.p-sheet-item-trailing {
+  all: unset;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+.p-sheet-item-trailing svg { width: 18px; height: 18px; }
+.p-sheet-item-trailing:active { color: var(--color-accent); background: var(--background-modifier-hover); }
 
 /* ── Settings — folder picker display ───────────────────────── */
 .pythia-folder-display {

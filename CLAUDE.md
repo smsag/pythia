@@ -46,6 +46,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
+    titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
@@ -95,7 +96,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1411 tests across 92 files
+  tests/                      ← Vitest unit tests (npm test) — 1418 tests across 93 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -327,6 +328,7 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - `AUTO` = no language instruction (ADR-148's `auto`). `obsidian` shows the resolved locale code. A model without effort shows a dimmed `—` (`.is-off`) and tapping says so; a stored effort on such a model is kept, not tinted
 - Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
 - **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
+- **Rename has two verbs on one row** (ADR-186): the row edits by hand; its trailing ↻ (`ActionSheetItem.trailing`) renames with AI **without opening the editor** — from the summary plus the last exchange (`retitleConversation`), never the first exchange. The editor `.p-rename-input` is the title made editable: same font, weight, line-height and padding as `.p-title`, no border/underline/fill — never let Obsidian's input chrome back in
 - The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
 - Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
 

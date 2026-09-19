@@ -561,6 +561,7 @@ const de: Strings = {
 	renameConvTooltip:   "Gespräch umbenennen",
 	renameConvPlaceholder: "Gesprächsname…",
 	renameLLMTooltip:    "Name mit KI generieren",
+	renameLLMEmpty:      "Das Modell hat keinen Namen geliefert – der bisherige bleibt.",
 	renameLLMFailed:     "Name konnte nicht generiert werden – API-Schlüssel und Verbindung prüfen.",
 
 	// ── Message bubble collapse ────────────────────────────────────────────────

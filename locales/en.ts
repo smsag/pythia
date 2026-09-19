@@ -550,6 +550,7 @@ const en = {
 	renameConvTooltip:   "Rename conversation",
 	renameConvPlaceholder: "Conversation name…",
 	renameLLMTooltip:    "Generate name with AI",
+	renameLLMEmpty:      "The model returned no name — the current one stays.",
 	renameLLMFailed:     "Could not generate a name — check your API key and connection.",
 
 	// ── Message bubble collapse ────────────────────────────────────────────────
