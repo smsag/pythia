@@ -65,6 +65,37 @@ export interface Conversation {
 	 *  conversation ends with the user turn — the answers live here, not in
 	 *  `messages` — and sending is blocked until one is kept. */
 	comparison?: Comparison;
+	/** The passage in a note this conversation is rewriting (ADR-178). Armed from
+	 *  the editor, kept until it is applied or dismissed — a rewrite is iterated
+	 *  ("shorter"), so unlike `pendingTemplate` it is not spent by one answer. */
+	pendingRewrite?: RewriteTarget;
+	/** A template applied to this running conversation, in force for the NEXT
+	 *  answer only and then cleared (ADR-177). Nothing here is ever written onto
+	 *  the conversation itself — see `services/pendingTemplate.ts`. */
+	pendingTemplate?: PendingTemplate;
+}
+
+/**
+ * A template armed for one turn: everything the send needs, snapshotted at the
+ * moment it was applied.
+ *
+ * A snapshot rather than the template's path, for the same reason a message
+ * keeps its own cost (ADR-163): an edit to the template file between arming and
+ * sending must not change the turn under the user.
+ */
+export interface PendingTemplate {
+	/** Vault path of the template — what the answer records as its `templateId`. */
+	id: string;
+	name: string;
+	systemPrompt: string;
+	provider?: Provider;
+	model?: string;
+	maxTokens?: number;
+	temperature?: number;
+	effort?: EffortLevel;
+	writeMode?: Conversation["writeMode"];
+	outputFolder?: string;
+	contextNotes?: string[];
 }
 
 /**
@@ -98,6 +129,23 @@ export interface TokenUsage {
 	cacheCreationTokens?: number;
 }
 
+/** A position in a note, as Obsidian's editor reports one. */
+export interface EditorPos { line: number; ch: number; }
+
+/**
+ * The passage a rewrite replaces (ADR-178): a captured range **plus the text
+ * that was in it**, so the write can be verified before it happens. The rule
+ * that verifies it is `services/rewriteTarget.ts`.
+ */
+export interface RewriteTarget {
+	/** Vault path of the note the passage lives in. */
+	path: string;
+	from: EditorPos;
+	to: EditorPos;
+	/** The passage as it read when the target was captured. */
+	text: string;
+}
+
 /** A citation source parsed from an assistant message's ⟦cite:…⟧ markers.
  *  Shape matches services/citations.ts CitationSource. */
 export interface MessageSource {
@@ -118,6 +166,9 @@ export interface Message {
 	sources?: MessageSource[]; // parsed citation sources (assistant messages, from ⟦cite:…⟧ markers)
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
 	templateId?: string;      // vault path of the template active when this answer was produced
+	/** Set when this answer is a proposed rewrite of a passage (ADR-178): the
+	 *  card under it can apply the answer over that range, verifying first. */
+	rewriteTarget?: RewriteTarget;
 	/** The provider stopped at the max-tokens cap: the answer ends where the
 	 *  budget ended, not where the model did (ADR-162). Only ever `true`. */
 	truncated?: true;

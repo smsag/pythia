@@ -88,6 +88,260 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   outline-offset: -2px;
 }
 
+/* ── Buttons: one rule set per role (ADR-188) ──────────────────────────────
+   Every Pythia button carries `pb` plus ONE role class; its own class keeps
+   only layout (position, margins, flex). The look lives here and nowhere else.
+
+   Roles: primary · secondary · quiet · destructive · link · icon · seg · tab ·
+   chip-warn. Hover is "soft neutral": one grey wash behind everything that is
+   not filled; a filled button lightens.
+
+   Specificity is the point of this block. Pythia's reset above is (0,1,1).
+   Obsidian 1.13.7 reaches a button with ten rules (npm run
+   check:obsidian-cascade): a bare `button` that also sets height, padding,
+   radius and corner-shape; `button:not(.clickable-icon)` and `button:hover`
+   fills at (0,1,1); `button[disabled]` opacity; `.is-tablet` padding at (0,2,1);
+   and a phone modal's Setting control at (0,4,1). So the base claims every
+   property the bare rule sets, each role restates its padding at (0,3,0), and a
+   role's rest rule also names `:hover` at (0,4,0); the real hover is (0,5,0)
+   under `@media (hover: hover)` (ADR-155). Fill and label are always set
+   together (hard rule 6a). Spacing and type tokens carry fallbacks because
+   .pythia-modal does not define them. tests/obsidianCascade.test.ts loads
+   those rules with sentinel values and fails if one leaks into any role
+   (ADR-190); tests/buttonRoles.test.ts checks each role's label and fill. */
+:is(.pythia-view, .pythia-modal) .pb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  /* Obsidian's `button` rule sets height (--input-height), corner-shape and
+     padding that no role would otherwise name — claim each one (ADR-190). */
+  height: auto;
+  width: auto;
+  corner-shape: round;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1, 4px);
+  min-height: 24px;
+  padding: 3px var(--s2, 8px);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  box-shadow: none;
+  background: transparent;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 11px);
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+:is(.pythia-view, .pythia-modal) .pb svg { width: 12px; height: 12px; stroke-width: 1.6; flex-shrink: 0; pointer-events: none; }
+:is(.pythia-view, .pythia-modal) .pb:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+:is(.pythia-view, .pythia-modal) .pb:disabled { cursor: default; opacity: 1; } /* core: button[disabled] { opacity: 0.7 } */
+/* A disabled Send is the "Optimizing…" label (ADR-187): readable, so never dimmed. */
+:is(.pythia-view, .pythia-modal) .pb:disabled:not(.pb-primary) { opacity: 0.5; }
+
+/* Primary — the one action its surface exists for. Send's `.stop` is destructive. */
+:is(.pythia-view, .pythia-modal) .pb.pb-primary,
+:is(.pythia-view, .pythia-modal) .pb.pb-primary:hover {
+  padding: 3px var(--s2, 8px);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+}
+/* Secondary — offered next to it. A toggle (model hint) fills while on. */
+:is(.pythia-view, .pythia-modal) .pb.pb-secondary,
+:is(.pythia-view, .pythia-modal) .pb.pb-secondary:hover {
+  padding: 3px var(--s2, 8px);
+  background: transparent;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  -webkit-text-fill-color: var(--color-accent);
+}
+/* Quiet — cancel, discard, copy. */
+:is(.pythia-view, .pythia-modal) .pb.pb-quiet,
+:is(.pythia-view, .pythia-modal) .pb.pb-quiet:hover { background: transparent; padding: 3px var(--s2, 8px); }
+/* Destructive — removes something: Delete, and Send while it reads Stop. */
+:is(.pythia-view, .pythia-modal) .pb.pb-destructive,
+:is(.pythia-view, .pythia-modal) .pb.pb-destructive:hover,
+:is(.pythia-view, .pythia-modal) .pb.pb-primary.stop,
+:is(.pythia-view, .pythia-modal) .pb.pb-primary.stop:hover {
+  padding: 3px var(--s2, 8px);
+  background: transparent;
+  border-color: var(--text-error);
+  color: var(--text-error);
+  -webkit-text-fill-color: var(--text-error);
+}
+/* Link — inline text action. The negative margin gives a 24px target without
+   growing the line it sits in. */
+:is(.pythia-view, .pythia-modal) .pb.pb-link,
+:is(.pythia-view, .pythia-modal) .pb.pb-link:hover {
+  font-family: var(--font-interface);
+  font-weight: 400;
+  padding: 4px 2px;
+  margin-block: -4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  -webkit-text-fill-color: var(--color-accent);
+}
+/* Icon — one 24px box, one 12px glyph. */
+:is(.pythia-view, .pythia-modal) .pb.pb-icon,
+:is(.pythia-view, .pythia-modal) .pb.pb-icon:hover {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+}
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-inline { margin-block: -4px; vertical-align: middle; }
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning,
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning:hover { color: var(--text-warning, var(--color-orange)); -webkit-text-fill-color: var(--text-warning, var(--color-orange)); }
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-stale { color: var(--color-accent); -webkit-text-fill-color: var(--color-accent); }
+/* The floating # trigger: the one deliberate exception to the 24px box. */
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-float,
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-float:hover {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+  color: var(--color-accent);
+  -webkit-text-fill-color: var(--color-accent);
+}
+/* On: a toggle that is set (toolbar web/vault/template, accepted model hint). */
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active,
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active:hover,
+:is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted,
+:is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--p-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+}
+/* Segment — one choice from a group (header instructions, effort). The group's
+   container draws the frame; chosen = accent tint, in both places. */
+:is(.pythia-view, .pythia-modal) .pb.pb-seg,
+:is(.pythia-view, .pythia-modal) .pb.pb-seg:hover {
+  padding: 3px var(--s2, 8px);
+  border: 0;
+  border-radius: 0;
+  font-weight: 400;
+  background: transparent;
+}
+:is(.pythia-view, .pythia-modal) .pb.pb-seg + .pb.pb-seg { border-left: 1px solid var(--background-modifier-border); }
+:is(.pythia-view, .pythia-modal) .pb.pb-seg.is-pinned,
+:is(.pythia-view, .pythia-modal) .pb.pb-seg.is-pinned:hover,
+:is(.pythia-view, .pythia-modal) .pb.pb-seg.active,
+:is(.pythia-view, .pythia-modal) .pb.pb-seg.active:hover {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  -webkit-text-fill-color: var(--color-accent);
+  font-weight: 500;
+}
+/* A model without effort: the dimmed dash is a statement, not a control state. */
+:is(.pythia-view, .pythia-modal) .pb.pb-seg.is-off { color: var(--text-faint); -webkit-text-fill-color: var(--text-faint); }
+/* Tab — the comparison card keeps its underline; accessibility only (ADR-188). */
+:is(.pythia-view, .pythia-modal) .pb.pb-tab,
+:is(.pythia-view, .pythia-modal) .pb.pb-tab:hover {
+  min-height: 28px;
+  padding: var(--s1, 4px) var(--s2, 8px);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  font-weight: 400;
+  background: transparent;
+}
+:is(.pythia-view, .pythia-modal) .pb.pb-tab.is-active,
+:is(.pythia-view, .pythia-modal) .pb.pb-tab.is-active:hover {
+  font-weight: 600;
+  border-bottom-color: var(--color-accent);
+  color: var(--text-normal);
+  -webkit-text-fill-color: var(--text-normal);
+}
+/* Chip — a status you can tap. The warning is the tint; the label stays normal
+   (orange text measures under 3:1 on white). */
+:is(.pythia-view, .pythia-modal) .pb.pb-chip-warn,
+:is(.pythia-view, .pythia-modal) .pb.pb-chip-warn:hover {
+  padding: 3px var(--s2, 8px);
+  border-color: var(--color-orange);                                    /* no color-mix: plain */
+  border-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
+  background: transparent;
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+  color: var(--text-normal);
+  -webkit-text-fill-color: var(--text-normal);
+}
+
+/* Hover — soft neutral. Only where a pointer can hover, so nothing sticks on
+   touch; the transition runs only here, so a state fill is never animated on
+   the tap that set it (ADR-155). */
+@media (hover: hover) {
+  :is(.pythia-view, .pythia-modal) .pb.pb-primary:hover:not(:disabled):not(.stop),
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active:hover:not(:disabled),
+  :is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 88%, white);
+  }
+  :is(.pythia-view, .pythia-modal) .pb.pb-secondary:hover:not(:disabled):not(.is-accepted),
+  :is(.pythia-view, .pythia-modal) .pb.pb-destructive:hover:not(:disabled),
+  :is(.pythia-view, .pythia-modal) .pb.pb-primary.stop:hover:not(:disabled),
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-float:hover:not(:disabled),
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning:hover:not(:disabled) {
+    background: var(--background-modifier-hover);
+  }
+  :is(.pythia-view, .pythia-modal) .pb.pb-quiet:hover:not(:disabled),
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon:hover:not(:disabled):not(.is-active):not(.is-float):not(.is-warning),
+  :is(.pythia-view, .pythia-modal) .pb.pb-seg:hover:not(:disabled):not(.is-pinned):not(.active) {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    -webkit-text-fill-color: var(--text-normal);
+  }
+  :is(.pythia-view, .pythia-modal) .pb.pb-link:hover:not(:disabled) {
+    background: var(--background-modifier-hover);
+    padding-inline: 6px;
+    margin-inline: -4px;
+  }
+  :is(.pythia-view, .pythia-modal) .pb.pb-tab:hover:not(:disabled):not(.is-active) {
+    color: var(--text-normal);
+    -webkit-text-fill-color: var(--text-normal);
+    border-bottom-color: var(--background-modifier-border);
+  }
+  :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-orange) 22%, transparent);
+  }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :is(.pythia-view, .pythia-modal) .pb { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
+}
+/* Touch: every target at least 32px. Inline links and icons grow into their
+   negative margin rather than pushing the line apart. */
+@media (pointer: coarse) {
+  :is(.pythia-view, .pythia-modal) .pb { min-height: 32px; }
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon:not(.is-float) { width: 32px; height: 32px; }
+  :is(.pythia-view, .pythia-modal) .pb.pb-link,
+  :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-inline { margin-block: -8px; }
+}
+/* On a phone, Obsidian stretches every button in a modal's Setting control to
+   full width with 10px padding (`.is-phone .modal .setting-item-control
+   button…`, up to (0,4,1)). The effort segments live in one; at (0,5,1) this
+   out-ranks it without relying on load order (ADR-190). */
+.modal.pythia-modal .setting-item-control button.pb.pb {
+  width: auto;
+  margin: 0;
+  padding: 3px var(--s2, 8px);
+}
+@media (pointer: coarse) {
+  .modal.pythia-modal .setting-item-control button.pb.pb { min-height: 32px; }
+}
+/* `hidden` must hide. The UA's `[hidden] { display: none }` loses to ANY
+   author `display`, so `.pb`'s inline-flex (and any layout rule) would show
+   an element the code hid — the search panel's clear ✕ was always visible. */
+:is(.pythia-view, .pythia-modal) [hidden] { display: none !important; }
+
 /* ── Header ─────────────────────────────────────────────────── */
 .p-header {
   display: flex;
@@ -118,20 +372,12 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 /* Header percent chip — only shown at >=80% usage. */
 .p-ctx-chip {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 9px;
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 8px;
-  color: var(--text-warning, var(--color-orange));
-  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-orange) 40%, transparent);
 }
 .p-title {
   all: unset;
   cursor: default; /* plain, non-interactive title (ADR-107) */
+  font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
   flex: 1;
@@ -141,8 +387,11 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   text-overflow: ellipsis;
   color: var(--text-normal);
   padding: 1px 2px;
+  line-height: 18px; /* shared with .p-rename-input: the edit must not move a pixel */
   box-sizing: border-box;
 }
+/* AI rename in flight (menu ↻): the name it will replace pulses. Decorative, not state. */
+.p-title.is-generating { animation: p-sparkle-pulse 0.7s ease-in-out infinite; }
 
 /* ── Instructions: model | effort | language (ADR-165) ──────────
    One bordered group of three segments, each its own tap target. A tint
@@ -158,21 +407,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   overflow: hidden;
 }
 .pythia-view .p-inst-seg {
-  all: unset;
-  cursor: pointer;
-  box-sizing: border-box;
-  font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
-  line-height: 18px;
-  padding: 1px 6px;
-  white-space: nowrap;
   flex-shrink: 0;
-  color: var(--text-muted);
-  -webkit-text-fill-color: var(--text-muted);
 }
-.pythia-view .p-inst-seg + .p-inst-seg {
-  border-left: 1px solid var(--background-modifier-border);
-}
+
 /* The model name gives way first on a narrow leaf; effort and language never do. */
 .pythia-view .p-inst-model {
   flex-shrink: 1;
@@ -182,18 +419,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-normal);
   -webkit-text-fill-color: var(--text-normal);
 }
-.pythia-view .p-inst-seg.is-pinned {
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  color: var(--color-accent);
-  -webkit-text-fill-color: var(--color-accent);
-}
-.pythia-view .p-inst-seg.is-off {
-  color: var(--text-faint);
-  -webkit-text-fill-color: var(--text-faint);
-}
-@media (hover: hover) {
-  .pythia-view .p-inst-seg:hover { background: var(--background-modifier-hover); }
-}
+/* A block, not .pb's centred inline-flex: text-overflow does not reach a flex
+   container's anonymous text, and a centred overflow is cut on both sides. */
+.pythia-view .pb.p-inst-model { display: block; }
+
 .pythia-view .p-inst-seg.open,
 .pythia-view .p-hdr-btn.open {
   box-shadow: inset 0 0 0 1px var(--color-accent);
@@ -362,20 +591,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    loupe + field at rest. Faint like the loupe it balances; the accent is kept
    for hover, matching every other icon button in the panel. */
 .p-switcher-clear {
-  all: unset;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
-  cursor: pointer;
-  color: var(--text-faint);
-  border-radius: 3px;
-}
-.p-switcher-clear svg { width: 13px; height: 13px; }
-@media (hover: hover) {
-  .p-switcher-clear:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 }
 
 .pythia-view .p-switcher-input:focus,
@@ -547,33 +763,22 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-choice-label { font-size: var(--font-small); line-height: 16px; color: var(--text-normal); }
 .p-choice-row.is-active .p-choice-label { color: var(--color-accent); font-weight: 500; }
 .p-choice-detail { font-size: var(--font-smaller); line-height: 1.4; color: var(--text-faint); }
+/* Trailing verb on a row (rename by hand · ↻ rename with AI): its own target at
+   the row's end — the row's label stays the primary verb. Look: .pb-icon (ADR-188). */
+.pythia-view .p-choice-trailing {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+@media (pointer: coarse) {
+  .pythia-view .p-choice-trailing {
+  margin-right: calc(-1 * var(--s3));
+}
+}
 
 .p-hdr-btn {
-  all: unset;
-  cursor: pointer;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  border-radius: 3px;
-  transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
-  box-sizing: border-box;
-}
-@media (hover: hover) {
-  .p-hdr-btn:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-}
-.p-hdr-btn svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.6;
-  display: block;
-  pointer-events: none;
 }
 
 /* ── Reference row ──────────────────────────────────────────── */
@@ -586,7 +791,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   flex-shrink: 0;
   min-height: 26px;
 }
-
 
 .p-pills {
   display: flex;
@@ -616,19 +820,28 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   overflow: hidden;
   scroll-snap-align: start;
 }
-.p-wikilink-bracket {
-  color: var(--text-faint);
+/* A reference leads with the icon of its source type (ADR-193): file-text,
+   library, layout-template, globe, save, pencil-line — ui/icons.ts. It replaces
+   the [[ ]] brackets, and it is decorative: the name next to it is the link.
+   Muted, not faint: an icon that carries meaning needs 3:1 (ADR-188). */
+.p-source-icon {
+  display: inline-flex;
+  align-self: center;
   flex-shrink: 0;
+  color: var(--text-muted);
 }
+.p-source-icon svg { width: 12px; height: 12px; stroke-width: 1.75; }
+/* Link colours are Obsidian's own tokens, so a theme that styles links styles
+   these too, like the links in the answer above them (ADR-193). */
 .p-wikilink-name {
-  color: var(--color-accent);
+  color: var(--link-color, var(--color-accent));
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-.p-wikilink-name:hover { text-decoration: underline; }
+.p-wikilink-name:hover { color: var(--link-color-hover, var(--link-color, var(--color-accent))); text-decoration-line: var(--link-decoration-hover, underline); }
 .p-wikilink-tokens {
   font-family: var(--font-monospace);
   font-size: 9px;
@@ -637,15 +850,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   white-space: nowrap;
 }
 .p-wikilink-x {
-  all: unset;
-  cursor: pointer;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-faint);
   flex-shrink: 0;
-  transition: color 0.1s;
 }
-.p-wikilink-x:hover { color: var(--text-error, var(--color-red)); }
 
 /* Vault-RAG auto-retrieved pill (ADR-116): muted + italic, no × — read-only,
    ephemeral per-turn context, visually set apart from persistent context notes. */
@@ -653,19 +859,16 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-muted);
   font-style: italic;
 }
-.p-wikilink--auto .p-wikilink-bracket { opacity: 0.6; }
+
+/* The one-shot template armed for the next answer (ADR-177), and the armed
+   rewrite target (ADR-178): the thing shaping the next turn, so weight on the
+   name. Which of the two it is, is the icon's job (ADR-193). */
+.p-wikilink--template .p-wikilink-name { font-weight: 600; }
 
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
-  all: unset;
-  cursor: pointer;
-  font-size: 11px;
-  color: var(--text-faint);
   flex-shrink: 0;
-  padding: 0 2px;
-  transition: color 0.1s;
 }
-.pythia-view .pythia-pill-add:hover { color: var(--color-accent); }
 
 /* ── Merged-from banner (ADR-130/142) ────────────────────────── */
 /* The far half of a link: shown at the top of a conversation that OTHER
@@ -769,70 +972,75 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin-bottom: var(--s4);
 }
 
-.p-summary-card {
+/* ── Accordion (ADR-192) ──────────────────────────────────────────
+   The one collapsible box above the conversation: the context inspector and
+   the summary cards (ui/accordion.ts). They had drifted into two looks —
+   white vs grey fill, 13 vs 14px icons, muted vs normal titles, a hover on
+   one only, and ▸/▾ text chevrons — for the same kind of thing. The header is
+   a <button> (aria-expanded), so it claims every property Obsidian's button
+   rules set (ADR-190); actions such as ↻ sit beside it, never inside. */
+.p-acc {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   overflow: hidden;
 }
-
-.p-summary-card-header {
+.p-acc-head { display: flex; align-items: center; }
+.pythia-view .p-acc .p-acc-toggle,
+.pythia-view .p-acc .p-acc-toggle:hover {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--s2);
+  height: auto;
+  min-height: 36px;
   padding: var(--s2) var(--s3);
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  corner-shape: round;
   cursor: pointer;
   user-select: none;
-}
-@media (hover: hover) {
-  .p-summary-card-header:hover {
-    background: var(--background-modifier-hover);
-  }
-}
-
-.p-summary-card-icon {
-  display: inline-flex;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.p-summary-card-icon svg { width: 14px; height: 14px; }
-
-.p-summary-card-title {
-  flex: 1;
   font-family: var(--font-interface);
   font-size: var(--font-small);
-  font-weight: 600;
   color: var(--text-normal);
+  -webkit-text-fill-color: var(--text-normal);
+}
+@media (hover: hover) {
+  .pythia-view .p-acc .p-acc-toggle:hover { background: var(--background-modifier-hover); }
+}
+.pythia-view .p-acc .p-acc-toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.p-acc-chevron, .p-acc-icon { display: flex; flex-shrink: 0; color: var(--text-muted); }
+.p-acc-chevron svg, .p-acc-icon svg { width: 12px; height: 12px; }
+/* Open state is a rotation, applied at once — a state change is never animated (ADR-155). */
+.p-acc.open .p-acc-chevron svg { transform: rotate(90deg); }
+.p-acc-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.p-summary-card-chevron {
-  font-size: 9px;
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-
-/* Regenerate icon in the card header (right side, next to the chevron). */
-.p-summary-card-regen {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
+.p-acc-meta {
+  display: flex;
   align-items: center;
-  color: var(--text-faint);
+  gap: var(--s1);
   flex-shrink: 0;
-  border-radius: 3px;
-  transition: color 0.12s;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--text-faint);
+  -webkit-text-fill-color: var(--text-faint);
+  white-space: nowrap;
 }
-.p-summary-card-regen:hover { color: var(--text-normal); }
-.p-summary-card-regen svg { width: 13px; height: 13px; }
-
-.p-summary-card-body {
-  display: none;
-  padding: 0 var(--s3) var(--s2);
-}
-.p-summary-card.open .p-summary-card-body { display: block; }
+.p-acc-meta:empty { display: none; }
+.p-acc-actions { display: flex; align-items: center; gap: var(--s1); flex-shrink: 0; padding-right: var(--s2); }
+.p-acc-actions:empty { display: none; }
+.p-acc-body { padding: 0 var(--s3) var(--s2); }
+.p-acc:not(.open) > .p-acc-body { display: none; }
 
 .p-summary-card-footer {
   display: flex;
@@ -851,14 +1059,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   flex-shrink: 0;
 }
 
-.p-summary-card-action {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  padding: 2px var(--s2);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
 /* The summary flows with the card (no inner scroll) so the footer isn't pinned;
    the card scrolls with the conversation. */
 
@@ -871,37 +1071,37 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   gap: 0;
 }
 
-/* Rename inline editor — no border; input looks like the title itself */
+/* Rename inline editor — the title, made editable. Same font, weight, padding,
+   line-height and box as .p-title, so entering and leaving edit moves nothing.
+   No border, underline or fill: the caret and the selection are the only signs.
+   `all: unset` under .pythia-view out-ranks Obsidian's input[type=text] chrome
+   (border, radius, background, padding); the :focus rules out-rank its focus ring. */
 .p-rename-wrap {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0;
 }
-.p-rename-input {
+.pythia-view .p-rename-input,
+.pythia-view .p-rename-input:focus,
+.pythia-view .p-rename-input:focus-visible,
+.pythia-view .p-rename-input:hover {
+  all: unset;
   flex: 1;
   min-width: 0;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--background-modifier-border);
-  color: var(--text-normal);
+  width: 100%;
   font-family: var(--font-interface);
   font-size: var(--font-small);
   font-weight: 600;
-  padding: 0;
-  outline: none;
-  height: 20px;
+  line-height: 18px;
+  padding: 1px 2px;
   box-sizing: border-box;
+  color: var(--text-normal);
+  caret-color: var(--color-accent);
+  cursor: text;
+  white-space: nowrap;
 }
-.p-rename-input:focus {
-  border-bottom-color: var(--color-accent);
-}
-/* Loading state for refresh icon — reuse existing pulse animation */
-.p-hdr-btn.p-rename-refresh.p-rename-refresh-loading {
-  color: var(--color-accent);
-  animation: p-sparkle-pulse 0.7s ease-in-out infinite;
-}
+.pythia-view .p-rename-input::placeholder { color: var(--text-faint); font-weight: 400; }
 
 @keyframes p-sparkle-pulse {
   0%, 100% { opacity: 1; }
@@ -951,24 +1151,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin-left: 2px;
   cursor: pointer;
 }
-/* Clamped summary body inside an inline anchor (ADR-141). Five lines at the
-   anchor's 1.55 line-height, faded at the cut so the truncation is visible
-   rather than a sentence that merely stops. The mask is doubled with the
-   unprefixed property for engines that have moved on from -webkit-. */
-.pythia-view .p-clamped {
-  max-height: 7.75em;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
-}
-.p-anchor-more-wrap { display: flex; }
-.p-anchor-more {
-  all: unset;
-  cursor: pointer;
-  color: var(--color-accent);
-  font-size: 11px;
-}
-.p-anchor-more:hover { text-decoration: underline; }
 
 .p-sources {
   display: flex;
@@ -1004,46 +1186,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    rather than push the row wider than the sidebar. */
 .p-sources-row .p-wikilink-name { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-source-num { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); }
-.p-source-web { color: var(--color-accent); cursor: pointer; }
-.p-source-web:hover { text-decoration: underline; }
+.p-source-web { color: var(--link-external-color, var(--color-accent)); cursor: pointer; }
+.p-source-web:hover { color: var(--link-external-color-hover, var(--link-external-color, var(--color-accent))); text-decoration-line: var(--link-external-decoration-hover, underline); }
 
 /* ── Context inspector (F2/F3) ──────────────────────────────────── */
 .p-inspector-wrap { min-width: 0; }
-.p-inspector {
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.p-inspector-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-.p-inspector-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
-.p-inspector-icon svg { width: 13px; height: 13px; }
-.p-inspector-title {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-small);
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.p-inspector-pct {
-  font-family: var(--font-monospace);
-  font-size: 9px;
-  color: var(--text-warning, var(--color-orange));
-  flex-shrink: 0;
-}
-.p-inspector-chevron { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
-/* Body hidden until .open, mirroring the summary-card toggle. */
-.p-inspector-body { display: none; padding: 0 12px 10px; flex-direction: column; gap: 5px; }
-.p-inspector.open .p-inspector-body { display: flex; }
+/* The box and header are the shared accordion (.p-acc, ADR-192); this is the
+   body's own layout only. */
+.p-inspector-pct { color: var(--text-warning, var(--color-orange)); -webkit-text-fill-color: var(--text-warning, var(--color-orange)); }
+.p-inspector-body { display: flex; flex-direction: column; gap: 5px; padding-bottom: 10px; }
 .p-inspector-row { display: flex; align-items: center; gap: 8px; }
 .p-inspector-rowlabel { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-normal); }
 .p-inspector-row .p-wikilink { flex: 1; }
@@ -1077,20 +1228,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-inspector-warn-icon svg { width: 12px; height: 12px; }
 .p-inspector-warn-text { flex: 1; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 .p-inspector-summarize {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  color: var(--color-accent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
-  border-radius: 3px;
-  padding: 2px 8px;
   flex-shrink: 0;
-  transition: background 0.1s;
 }
-@media (hover: hover) {
-  .p-inspector-summarize:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
-}
+
 .p-inspector-footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .p-inspector-add {
   flex: 1;
@@ -1197,18 +1337,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   mask-image: none;
 }
 .p-bubble-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  opacity: 0.75;
-  padding: 0;
-  display: flex;
-  align-items: center;
   margin-top: var(--s1);
 }
-.p-bubble-toggle:hover { opacity: 1; }
-.p-bubble-toggle svg { width: 12px; height: 12px; }
 
 /* ── AI message (v3) ────────────────────────────────────────── */
 .p-msg-ai {
@@ -1503,32 +1633,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .p-code-frame:hover .p-code-actions { opacity: 1; }
 
-/* Shared style for action buttons */
-.p-code-btn {
-  all: unset;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  color: var(--text-faint);
-  transition: color 0.15s, background 0.15s;
-}
-/* Fix the icon glyph itself, not just the hit area — otherwise the "copy"
-   and "check" (copy-confirmed) icons setIcon() swaps between can render at
-   visibly different sizes, since Lucide glyphs don't share one proportion. */
-.p-code-btn svg {
-  width: 14px;
-  height: 14px;
-}
-@media (hover: hover) {
-  .p-code-btn:hover {
-    color: var(--text-normal);
-    background: var(--background-modifier-hover);
-  }
-}
 /* Confirmation feedback uses accent (the app's existing token for
    interactive/confirmation states — send button, hover states), not green:
    this is a momentary click acknowledgment, not one of the app's few
@@ -1603,65 +1707,90 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   user-select: none;
 }
 
-/* ── Favorite highlights ─────────────────────────────────────── */
+/* ── Highlighter marks ──────────────────────────────────────── */
 /* Favorites and fork origins are wrapped in dedicated custom elements
    (<pythia-favorite>, <pythia-fork>) rather than <mark> — ADR-086. <mark> is
    styled by Obsidian core / theme `.markdown-rendered mark` rules that load
    after the plugin, which kept overriding a fork's accent background back to the
    yellow highlight token. A custom element carries no theme rules, so these
    styles win with no specificity contest and no scoping tricks. Both default to
-   inline (unknown elements are inline); .pythia-view scope kept for consistency. */
+   inline (unknown elements are inline); .pythia-view scope kept for consistency.
 
-/* Favorite — smsag.de-style highlighter marker (ADR-090): a diagonal, uneven ink
-   sweep with asymmetric "hand-drawn" corners, ported from the site's a:hover rule.
-   The color is unchanged — the gradient's peak stop is the full --text-highlight-bg,
-   lighter stops build the sweep. The plain `background` line is the no-color-mix
-   fallback (kept as a separate declaration so an unsupported gradient falls back to
-   the original solid). text-shadow uses --background-primary so it's a white halo in
-   light themes (as on smsag.de) and a dark halo in dark themes. box-decoration-break
-   keeps the ink and corners clean across line wraps. */
-.pythia-view pythia-favorite {
+   THE STROKE below is the family's, copied from Klartext's `kit/highlight.css`.
+   It supersedes ADR-090's smsag.de marker: the asymmetric `1em 0 1em 0` corners
+   and the text-shadow halo are gone, because the theme's own `==highlight==`
+   lands in this same panel whenever an answer contains one, and the two were
+   visibly different marks — measured mirrored sweeps (−100deg against 104deg),
+   a rounded landing against a square one, a halo against none, and the
+   plugin's ink at less than half the theme's strength. Same pen now; only the
+   ink says which mark it is. Re-copy from the kit if that file changes — no
+   runtime dependency, by design (Obsidian loads every plugin's CSS globally,
+   so a shared class name would couple the plugins to each other).
+
+   THE INK is a named colour token composited onto the page, never
+   `--text-highlight-bg` raw: that token is `rgba(255,200,40,0.30)` under
+   Klartext and near-solid yellow under the default theme, so reading it
+   directly made the same rule paint at wildly different strength (32 against
+   the theme's 70, measured). A `color-mix` onto `--background-primary` is
+   opaque and predictable under any theme, and the percentages here put both
+   marks in the family's 60–140 band (favourite 69, fork 67). */
+.pythia-view pythia-favorite,
+.pythia-view pythia-fork {
+  --hl-angle: 104deg;
+  --hl-land-0: 0.2em;                    /* transparent until here… */
+  --hl-land-1: 0.7em;                    /* …ink from here: the pen lands over half a character */
+  --hl-lift-1: 88%;                      /* full ink until here… */
+  --hl-lift-0: calc(100% - 0.28em);      /* …transparent from here: it lifts off in a sixth */
+  --hl-pad-y: 0.14em;                    /* overshoots the letters as a felt tip does */
+  --hl-pad-x: 0.42em;
+  --hl-ink-strong: var(--hl-ink);
+
+  background-color: transparent;
+  background-image: linear-gradient(
+    var(--hl-angle),
+    transparent var(--hl-land-0),
+    var(--hl-ink-strong) var(--hl-land-1),
+    var(--hl-ink) var(--hl-lift-1),
+    transparent var(--hl-lift-0)
+  );
   color: inherit;
-  border-radius: 1em 0 1em 0;
-  padding: 0 2px;
-  text-shadow: 1px 1px 1px var(--background-primary);
-  background: var(--text-highlight-bg);                                     /* solid fallback */
-  background: linear-gradient(-100deg,
-    color-mix(in srgb, var(--text-highlight-bg) 30%, transparent),
-    var(--text-highlight-bg) 100%,
-    color-mix(in srgb, var(--text-highlight-bg) 45%, transparent));         /* marker sweep */
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+  /* Inline padding never moves the line, and the side margins hand the
+     overshoot back, so the stroke runs past the text without taking width. */
+  padding: var(--hl-pad-y) var(--hl-pad-x);
+  margin: 0 calc(-1 * var(--hl-pad-x));
+  /* One stroke PER LINE, each with its own landing and lift. */
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-.pythia-view pythia-favorite.p-highlight-flash {
+
+/* Favorite: the highlighter's own yellow. */
+.pythia-view pythia-favorite {
+  --hl-ink: color-mix(in srgb, var(--color-yellow) 26%, var(--background-primary));
+}
+
+/* Fork origin: the accent, so it reads as a different-coloured pen from a
+   favorite; tapping it reveals the fork's summary anchor. */
+.pythia-view pythia-fork {
+  --hl-ink: color-mix(in srgb, var(--color-accent) 34%, var(--background-primary));
+  cursor: pointer;
+}
+
+/* The jump-to flash fades an accent wash out from BEHIND the stroke, on
+   background-color. It used to replace `background`, which dropped the whole
+   gradient for the duration and made the mark change shape as it flashed. Not
+   the ink itself: a custom property does not interpolate without @property, so
+   animating --hl-ink would step rather than fade. */
+.pythia-view pythia-favorite.p-highlight-flash,
+.pythia-view pythia-fork.p-highlight-flash {
   animation: pythia-hl-flash 1.2s ease-out;
 }
 @keyframes pythia-hl-flash {
-  0%   { background: var(--color-accent); }
-  100% { background: var(--text-highlight-bg); }
-}
-
-/* ── Fork-origin marks + inline anchor ───────────────────────── */
-/* Snippet in the source that spawned a fork — accent-tinted, so it reads as a
-   different-colored highlighter from yellow favorites; tapping it reveals the
-   fork's summary anchor. The readable highlight token is a fallback for engines
-   without color-mix. */
-.pythia-view pythia-fork {
-  color: inherit;
-  border-radius: 1em 0 1em 0;
-  padding: 0 2px;
-  cursor: pointer;
-  text-shadow: 1px 1px 1px var(--background-primary);
-  background: var(--text-highlight-bg);                                     /* readable fallback */
-  background: linear-gradient(-100deg,
-    color-mix(in srgb, var(--color-accent) 12%, transparent),
-    color-mix(in srgb, var(--color-accent) 30%, transparent) 100%,
-    color-mix(in srgb, var(--color-accent) 18%, transparent));             /* accent marker sweep */
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-.pythia-view pythia-fork.p-highlight-flash {
-  animation: pythia-hl-flash 1.2s ease-out;
+  0%   { background-color: color-mix(in srgb, var(--color-accent) 45%, transparent); }
+  100% { background-color: transparent; }
 }
 
 /* Frameless fork anchor (ADR-066 / F1): 2px accent left-rule, no fill or
@@ -1742,37 +1871,16 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin: 2px 0 0 0;
   flex-shrink: 0;
 }
-.p-fork-anchor-open,
-.p-merge-anchor-open {
-  all: unset;
-  cursor: pointer;
-  color: var(--color-accent);
-  font-size: 11px;
-}
-.p-fork-anchor-open:hover,
-.p-merge-anchor-open:hover { text-decoration: underline; }
-/* Visible one-tap regenerate for the fork summary (ADR-128). Faint by default,
-   accent on hover; accent when the shown summary is stale to invite a refresh. */
-.p-fork-anchor-refresh,
-.p-merge-anchor-refresh,
-.p-merge-anchor-unlink {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
+
+/* Visible one-tap regenerate for the fork summary (ADR-128). The look is
+   .pb-icon.is-inline (ADR-188), accent while the shown summary is stale
+   (.is-stale); this rule only seats the glyph on the caps line (ADR-139). */
+.p-fork-anchor-refresh, .p-merge-anchor-refresh, .p-merge-anchor-unlink {
   vertical-align: middle;
-  /* Cap-height centring — see .p-term-anchor-btn. */
   position: relative;
   top: -0.09em;
-  color: var(--text-faint);
 }
-.p-fork-anchor-refresh svg,
-.p-merge-anchor-refresh svg,
-.p-merge-anchor-unlink svg { width: 11px; height: 11px; }
-.p-fork-anchor-refresh:hover,
-.p-merge-anchor-refresh:hover,
-.p-merge-anchor-unlink:hover { color: var(--color-accent); }
-.p-fork-anchor-refresh.is-stale,
-.p-merge-anchor-refresh.is-stale { color: var(--color-accent); }
+
 /* Wrap so the long-press generate menu can stack directly above Open-fork. */
 .p-fork-open-wrap {
   position: relative;
@@ -1873,29 +1981,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-term-anchor-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 .p-term-anchor-metatext { color: var(--text-faint); }
 .p-term-anchor-btn {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
   vertical-align: middle;
-  /* Centre the glyph on the text's cap height, not on `vertical-align: middle`
-     alone. `middle` centres an inline box on baseline + half the x-height, which
-     leaves an 11px icon sitting ~1px below the centre of the 11px caps and
-     digits beside it — measured, and visible in the meta row. The nudge is
-     (cap-height − x-height) / 2, which holds within 0.1px across sans, serif and
-     mono faces, so it survives a theme font change. */
   position: relative;
   top: -0.09em;
-  color: var(--text-faint);
 }
-.p-term-anchor-btn svg { width: 11px; height: 11px; }
-.p-term-anchor-btn:hover { color: var(--color-accent); }
-.p-term-anchor-open {
-  all: unset;
-  cursor: pointer;
-  color: var(--color-accent);
-  font-size: 11px;
-}
-.p-term-anchor-open:hover { text-decoration: underline; }
 
 /* ── Merge links + inline anchor (ADR-130) ───────────────────── */
 /* The inverse of a fork origin: a passage pointed AT another conversation.
@@ -1961,54 +2050,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   to   { opacity: 1; transform: scaleY(1); }
 }
 
-.p-del-confirm {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  color: var(--text-error);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  border: 1px solid var(--text-error);
-  opacity: 0.75;
-  transition: opacity 0.1s;
-  box-sizing: border-box;
-}
-.p-del-confirm:hover { opacity: 1; }
-
-.p-del-cancel {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  color: var(--text-faint);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  transition: background 0.1s, color 0.1s;
-  box-sizing: border-box;
-}
-@media (hover: hover) {
-  .p-del-cancel:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-}
-
-/* Third action on the bar (ADR-160): re-run the prompt on another model. Accent
-   outline like the delete button's error outline — an action, not a dismissal. */
-.p-del-compare {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  color: var(--color-accent);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  border: 1px solid var(--color-accent);
-  opacity: 0.75;
-  box-sizing: border-box;
-}
-@media (hover: hover) {
-  .p-del-compare:hover { opacity: 1; }
-}
-
 /* ── Cut-off answer card (ADR-162) ───────────────────────────── */
 /* Under an answer that stopped at the token cap. The fork anchor's grammar —
    left rule, mono caps label, 11px meta — in this UI's warning colour, because
@@ -2036,25 +2077,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .pythia-view .p-trunc-meta { font-size: 11px; line-height: 1.4; color: var(--text-muted); }
 .pythia-view .p-trunc-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: 2px; }
-.pythia-view .p-trunc-btn {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  color: var(--color-accent);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  border: 1px solid var(--color-accent);
-  opacity: 0.75;
-  box-sizing: border-box;
-}
-.pythia-view .p-trunc-btn--quiet { color: var(--text-faint); border-color: var(--background-modifier-border); }
-@media (hover: hover) {
-  .pythia-view .p-trunc-btn:hover { opacity: 1; }
-}
-@media (pointer: coarse) {
-  .pythia-view .p-trunc-btn { min-height: 32px; display: inline-flex; align-items: center; }
-}
 
 /* ── Model comparison card (ADR-160) ─────────────────────────── */
 /* Sits where the assistant turn would be. Same left rule as the fork anchor
@@ -2085,26 +2107,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   border-bottom: 1px solid var(--background-modifier-border);
 }
 .pythia-view .p-compare-tab {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
-  color: var(--text-faint);
-  padding: var(--s1) var(--s2);
-  border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  box-sizing: border-box;
-  min-height: 28px;
 }
-/* State, not decoration: no transition on the selected tab (ADR-155). */
-.pythia-view .p-compare-tab.is-active {
-  color: var(--text-normal);
-  font-weight: 600;
-  border-bottom-color: var(--color-accent);
-}
-@media (hover: hover) {
-  .pythia-view .p-compare-tab:hover { color: var(--text-normal); }
-}
+
 .pythia-view .p-compare-body { font-size: var(--font-small); }
 .pythia-view .p-compare-meta {
   font-family: var(--font-monospace);
@@ -2117,34 +2122,6 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   gap: var(--s2);
   align-items: center;
 }
-.pythia-view .p-compare-keep,
-.pythia-view .p-compare-add,
-.pythia-view .p-compare-discard {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  box-sizing: border-box;
-  min-height: 24px;
-}
-.pythia-view .p-compare-keep {
-  background-color: var(--color-accent);
-  color: var(--p-on-accent, var(--text-on-accent));
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
-}
-.pythia-view .p-compare-add {
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);
-}
-.pythia-view .p-compare-discard { color: var(--text-faint); }
-@media (hover: hover) {
-  .pythia-view .p-compare-discard:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-}
-.pythia-view .p-compare-keep:disabled,
-.pythia-view .p-compare-add:disabled,
-.pythia-view .p-compare-discard:disabled { opacity: 0.4; cursor: default; }
 
 /* ── Selection toolbar ─────────────────────────────────────── */
 /* Frameless selection toolbar (ADR-066): no grey band — panel background with a
@@ -2173,22 +2150,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 
 .pythia-sel-btn {
-  all: unset;
-  cursor: pointer;
-  font-size: 10.5px;
-  padding: 5px 7px;
-  border-radius: 4px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  transition: background 0.1s, color 0.1s;
   flex-shrink: 0;
   scroll-snap-align: start;
-}
-@media (hover: hover) {
-  .pythia-sel-btn:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
 }
 
 /* Streaming cursor animation */
@@ -2209,35 +2172,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 
 .p-index-wrap .p-index-trigger {
-  all: unset;
-  cursor: pointer;
   position: absolute;
   bottom: 6px;
   right: var(--s3);
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 3px;
-  color: var(--color-accent);
-  font-family: var(--font-monospace);
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1;
-  transition: background 0.1s;
   z-index: 10;
-  box-sizing: border-box;
-}
-@media (hover: hover) {
-  .p-index-wrap .p-index-trigger:hover {
-    background: var(--background-modifier-hover);
-  }
-}
-.p-index-wrap .p-index-trigger:active {
-  background: var(--background-secondary);
 }
 
 .p-navigator {
@@ -2545,47 +2483,6 @@ body.is-phone .workspace-drawer .p-input-area {
   font-size: var(--font-smaller, 12px);
 }
 
-.p-tool-btn {
-  all: unset;
-  cursor: pointer;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  border-radius: 3px;
-  /* Colour only. The accent fill of `.is-active` is STATE (research / vault
-     toggles) and must be true at the moment of the tap (ADR-155). */
-  transition: color 0.1s;
-  box-sizing: border-box;
-}
-@media (hover: hover) {
-  .p-tool-btn:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-}
-.p-tool-btn.is-active {
-  color: var(--p-on-accent, var(--text-on-accent));
-  /* WebKit reads -webkit-text-fill-color in preference to color, and these
-     buttons are `all: unset`, which resolves that property to `inherit` — so the
-     label inherits the surrounding --text-normal and `color` never gets a say.
-     Restating it here is the only way to win on WebKit (ADR-154). */
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
-  background: var(--color-accent);
-}
-@media (hover: hover) {
-  .p-tool-btn.is-active:hover {
-    color: var(--p-on-accent, var(--text-on-accent));
-    /* WebKit reads -webkit-text-fill-color in preference to color, and these
-       buttons are `all: unset`, which resolves that property to `inherit` — so the
-       label inherits the surrounding --text-normal and `color` never gets a say.
-       Restating it here is the only way to win on WebKit (ADR-154). */
-    -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
-    background: var(--color-accent);
-  }
-}
 /* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
    allowed for this send, without the persistent .is-active toggled state. */
 .p-tool-btn.is-auto-armed {
@@ -2595,50 +2492,6 @@ body.is-phone .workspace-drawer .p-input-area {
 @keyframes p-auto-arm-pulse {
   0%, 100% { color: var(--text-faint); }
   50%      { color: var(--color-accent); }
-}
-.p-tool-btn svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.6;
-  display: block;
-  pointer-events: none;
-}
-
-.p-send {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  padding: 3px 10px;
-  background: var(--color-accent);
-  color: var(--p-on-accent, var(--text-on-accent));
-  /* WebKit reads -webkit-text-fill-color in preference to color, and these
-     buttons are `all: unset`, which resolves that property to `inherit` — so the
-     label inherits the surrounding --text-normal and `color` never gets a say.
-     Restating it here is the only way to win on WebKit (ADR-154). */
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
-  border-radius: 3px;
-  transition: opacity 0.12s;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-/* Border + fill only in send state; specificity 0,2,0 beats the global
-   border:none AND background-color:transparent reset at 0,1,1 (the base
-   .p-send at 0,1,0 loses to that reset, so the accent fill is restored here). */
-.p-send:not(.stop) {
-  background: var(--color-accent);
-  border: 1px solid var(--color-accent);                                      /* fallback: Chromium < 111 */
-  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, black);      /* preferred: darkened */
-}
-.p-send:hover {
-  opacity: 0.85;
-}
-.p-send.stop {
-  background: var(--background-modifier-hover);
-  color: var(--text-error);
-  opacity: 1;
 }
 
 /* Minimized input: hide everything that belongs to composing a message — the
@@ -2653,20 +2506,7 @@ body.is-phone .workspace-drawer .p-input-area {
 
 /* ── Max-tokens warning beside Send ── */
 .p-send-hint {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  padding: 0;
   margin-right: var(--s2);
-  cursor: pointer;
-  color: var(--text-warning, var(--color-orange));
-  box-shadow: none;
-}
-.p-send-hint svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* ── Long-press Send menu (summary options, opens above the button) ── */
@@ -2807,6 +2647,20 @@ body.is-phone .workspace-drawer .p-input-area {
 .p-sheet-item-icon:empty { width: 18px; }
 .p-sheet-item.is-active .p-sheet-item-icon,
 .p-sheet-item.is-active .p-sheet-item-label { color: var(--color-accent); }
+.p-sheet-item-trailing {
+  all: unset;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+.p-sheet-item-trailing svg { width: 18px; height: 18px; }
+.p-sheet-item-trailing:active { color: var(--color-accent); background: var(--background-modifier-hover); }
 
 /* ── Settings — folder picker display ───────────────────────── */
 .pythia-folder-display {
@@ -2844,6 +2698,34 @@ body.is-phone .workspace-drawer .p-input-area {
 .pythia-storage-line.mod-warning {
   color: var(--text-warning, var(--text-muted));
 }
+
+/* The proposed-rewrite card under an answer (ADR-178). Third card in the family
+   after .p-trunc and .p-compare, and it follows their grammar: accent left rule,
+   mono caps label, quiet secondary actions. Nothing here is a fill that
+   communicates state, so nothing transitions (ADR-155). */
+.p-rewrite {
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--color-accent);
+}
+.p-rewrite-head { display: flex; align-items: center; gap: 6px; }
+.p-rewrite-icon { color: var(--color-accent); display: inline-flex; }
+.p-rewrite-icon svg { width: 12px; height: 12px; }
+.p-rewrite-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.p-rewrite-meta {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.p-rewrite-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
 
 .pythia-modal-buttons {
   display: flex;
@@ -2887,21 +2769,7 @@ body.is-phone .workspace-drawer .p-input-area {
   color: var(--text-warning, var(--color-orange));
 }
 .pythia-modal .p-param-advice-text { flex: 1 1 220px; }
-.pythia-modal .p-param-advice-btn {
-  all: unset;
-  cursor: pointer;
-  font-family: var(--font-monospace);
-  font-size: 11px;
-  color: var(--color-accent);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  border: 1px solid var(--color-accent);
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-@media (pointer: coarse) {
-  .pythia-modal .p-param-advice-btn { min-height: 32px; display: inline-flex; align-items: center; }
-}
+
 /* Unsupported parameter: `Setting.setDisabled` only marks the row, so dim and
    seal the control area itself. */
 .pythia-modal .p-param-off {
@@ -2929,56 +2797,7 @@ body.is-phone .workspace-drawer .p-input-area {
   border-radius: 4px;
   overflow: hidden;
 }
-.pythia-modal .p-effort-seg-btn {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  cursor: pointer;
-  font-size: var(--font-smaller);
-  padding: 3px 10px;
-  background-color: transparent;
-  color: var(--text-muted);
-  /* NO transition (ADR-155). A segmented control's fill is not decoration, it is
-     the answer to "which one did I just pick" — it has to be true at the moment
-     of the tap. On iOS WebKit a background-color transition started from a class
-     toggle inside a touch handler may not paint until the next composite, which
-     a scroll provides: the reported symptom was a segment that stayed grey until
-     the sheet was scrolled. `color` is not transitioned either, so the label and
-     the fill can never disagree mid-flight. 0.1s was imperceptible anyway. */
-}
-@media (pointer: coarse) {
-  .pythia-modal .p-effort-seg-btn { min-height: 36px; }
-}
-.pythia-modal .p-effort-seg-btn:not(:last-child) {
-  border-right: 1px solid var(--background-modifier-border);
-}
-/* Hover only where a pointer can actually hover (ADR-155). iOS keeps :hover
-   applied to the last-tapped element until something else is touched, so on a
-   phone the hover fill stuck to the segment the user had just pressed — a grey
-   that reads exactly like "selected" next to the real accent selection. The
-   codebase already draws this line for the model popover and the copy buttons. */
-@media (hover: hover) {
-  .pythia-modal .p-effort-seg-btn:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-}
-.pythia-modal .p-effort-seg-btn.active {
-  background-color: var(--color-accent);
-  color: var(--p-on-accent, var(--text-on-accent));
-  /* WebKit reads -webkit-text-fill-color in preference to color, and these
-     buttons are `all: unset`, which resolves that property to `inherit` — so the
-     label inherits the surrounding --text-normal and `color` never gets a say.
-     Restating it here is the only way to win on WebKit (ADR-154). */
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
-  font-weight: 600;
-}
-.pythia-modal .p-effort-seg-btn:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
+
 .p-effort-seg.disabled { opacity: 0.5; pointer-events: none; }
 
 /* ── Tool call chips ─────────────────────────────────────────── */
@@ -3005,29 +2824,6 @@ body.is-phone .workspace-drawer .p-input-area {
   display: flex;
   gap: var(--s2);
   justify-content: flex-end;
-}
-
-.pythia-tool-call-actions .pythia-tool-call-btn {
-  all: unset;
-  font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
-  padding: 3px var(--s2);
-  border-radius: 3px;
-  border: 1px solid var(--text-error);
-  color: var(--text-error);
-  cursor: pointer;
-  box-sizing: border-box;
-  opacity: 0.75;
-  transition: opacity 0.1s;
-}
-
-.pythia-tool-call-actions .pythia-tool-call-btn:hover {
-  opacity: 1;
-}
-
-.pythia-tool-call-actions .pythia-tool-call-btn--action {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
 }
 
 .pythia-tool-call--done {
@@ -3219,3 +3015,21 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 
 /* ── Cost disclaimer in the settings tab (ADR-163) ─────────────── */
 .p-pricing-disclaimer { font-size: var(--font-small); line-height: 1.45; }
+
+/* ── Optimizer model suggestion beside Send (ADR-181) ──
+   Reads as a pill: accent border and text, mono caps rhythm. Accepted = accent
+   fill, which is STATE — no transition on it (ADR-155), and text on the fill
+   follows hard rule 6a. */
+.p-input-area.collapsed .p-model-hint {
+  display: none;
+}
+
+.pythia-view .p-model-hint {
+  margin-right: var(--s2);
+}
+
+.pythia-view .p-model-hint-cost {
+  opacity: 0.7;
+  letter-spacing: -1px;
+}
+

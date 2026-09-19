@@ -2,8 +2,8 @@ import type { Provider, EffortLevel, OutputLanguage } from "./types";
 import {
 	type EmbeddingModelId,
 	DEFAULT_EMBEDDING_MODEL_ID,
-	type RelatedSimilarity,
-	DEFAULT_RELATED_SIMILARITY,
+	type SimilarityPreset,
+	DEFAULT_SIMILARITY_PRESET,
 } from "./embeddingModels";
 
 export interface PythiaSettings {
@@ -61,6 +61,9 @@ export interface PythiaSettings {
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
 	defaultPromptFramework: "none" | "CO-STAR" | "RACE" | "RISEN";
+	/** The optimizer also rates the task and suggests the cheapest model of the
+	 *  preferred provider that is deep enough — offered, never applied (ADR-181). */
+	optimizerSuggestsModel: boolean;
 	/** Default max-output-tokens sent to both providers. Undefined = use the model-aware default (services/promptConstants.ts). */
 	maxTokens?: number;
 	/** Default sampling temperature (0–1) sent to both providers. Undefined = use the API's own default. */
@@ -81,16 +84,19 @@ export interface PythiaSettings {
 	webSearchMaxResults: number;
 	/** On-device embedding model for "related conversations" semantic search. */
 	embeddingModelId: EmbeddingModelId;
-	/** How strict the "related conversations" similarity floor is. */
-	relatedSimilarity: RelatedSimilarity;
+	/** Strictness of the "related conversations" floor, resolved per embedding
+	 *  model against MEASURED distributions (ADR-169). */
+	relatedSimilarity: SimilarityPreset;
 	/** When true, each chat turn auto-retrieves the most semantically-relevant vault
 	 *  notes and injects them as context (on-device semantic RAG). Reuses the same
 	 *  embedding engine as "related conversations". Off by default. */
 	vaultContextEnabled: boolean;
 	/** Maximum notes auto-retrieved per turn when vault context is on. */
 	vaultContextMaxNotes: number;
-	/** How strict the vault-context similarity floor is (reuses the related presets). */
-	vaultContextSimilarity: RelatedSimilarity;
+	/** Strictness of the vault-retrieval floor. Shares the three labels with
+	 *  `relatedSimilarity` and NOTHING else: its numbers are unmeasured constants
+	 *  on their own map (engineering-review #273). No settings-tab control. */
+	vaultContextSimilarity: SimilarityPreset;
 	/** Vault folders to index for vault context (semantic RAG). Empty = the whole
 	 *  vault (minus Pythia's own conversations/scratch folders). Scoping to a few
 	 *  folders keeps the on-device index small and fast on large vaults (ADR-119). */
@@ -109,7 +115,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	searchSecretName: "pythia-tavily",
 	defaultProvider: "anthropic",
 	defaultAnthropicModel: "claude-sonnet-5",
-	defaultOpenAIModel: "gpt-4o",
+	defaultOpenAIModel: "gpt-5.4-mini",
 	defaultMistralModel: "mistral-large-latest",
 	templatesFolder: "Pythia/Templates",
 	conversationsFolder: "Pythia/Conversations",
@@ -128,6 +134,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	showCost: false,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
+	optimizerSuggestsModel: true,
 	temperature: 0.7,
 	effort: "high",
 	maxAttachedNotesTokens: 8000,
@@ -136,10 +143,10 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
 	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
-	relatedSimilarity: DEFAULT_RELATED_SIMILARITY,
+	relatedSimilarity: DEFAULT_SIMILARITY_PRESET,
 	vaultContextEnabled: false,
 	vaultContextMaxNotes: 5,
-	vaultContextSimilarity: DEFAULT_RELATED_SIMILARITY,
+	vaultContextSimilarity: DEFAULT_SIMILARITY_PRESET,
 	vaultContextFolders: [],
 	vaultContextMaxIndexedNotes: 5000,
 };

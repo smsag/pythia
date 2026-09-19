@@ -176,7 +176,7 @@ export class HistoryController {
 
 		// ── Search row (no separate header): back · loupe · input ────
 		const searchRow = overlay.createDiv({ cls: "p-switcher-search" });
-		const backBtn = searchRow.createEl("button", { cls: "p-hdr-btn", attr: { title: t("backTooltip") } });
+		const backBtn = searchRow.createEl("button", { cls: "pb pb-icon p-hdr-btn", attr: { title: t("backTooltip") } });
 		setIcon(backBtn, "arrow-left");
 		backBtn.addEventListener("click", () => close());
 		setIcon(searchRow.createSpan({ cls: "p-switcher-search-icon" }), "search");
@@ -194,7 +194,7 @@ export class HistoryController {
 		// would also be WebKit-only and unstyleable, so the reset is not worth
 		// unpicking — the control belongs to us.
 		const clearBtn = searchRow.createEl("button", {
-			cls: "p-switcher-clear",
+			cls: "pb pb-icon p-switcher-clear",
 			attr: { "aria-label": t("switcherClear"), title: t("switcherClear") },
 		});
 		setIcon(clearBtn, "x");

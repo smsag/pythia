@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldGenerateTitle, shouldGenerateChapterName } from "../services/sendPolicy";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "../services/sendPolicy";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -89,5 +89,27 @@ describe("shouldGenerateChapterName", () => {
 
 	it("does not fire once a chapter name exists", () => {
 		expect(shouldGenerateChapterName(makeMessage({ chapterName: "Auth work" }))).toBe(false);
+	});
+});
+
+describe("shouldAutoArmSearch", () => {
+	const base = { researchMode: false, autoArmEnabled: true, hasApiKey: true, timeSensitive: true };
+
+	it("arms only when all four conditions hold", () => {
+		expect(shouldAutoArmSearch(base)).toBe(true);
+	});
+
+	it("never arms when the conversation already has search on — there is nothing to arm", () => {
+		expect(shouldAutoArmSearch({ ...base, researchMode: true })).toBe(false);
+	});
+
+	it("respects the setting, the key and the heuristic independently", () => {
+		expect(shouldAutoArmSearch({ ...base, autoArmEnabled: false })).toBe(false);
+		expect(shouldAutoArmSearch({ ...base, hasApiKey: false })).toBe(false);
+		expect(shouldAutoArmSearch({ ...base, timeSensitive: false })).toBe(false);
+	});
+
+	it("treats an unset researchMode as off", () => {
+		expect(shouldAutoArmSearch({ ...base, researchMode: undefined })).toBe(true);
 	});
 });

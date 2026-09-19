@@ -256,7 +256,7 @@ export class GlossaryService {
 		try {
 			const raw = await this.plugin.llmRouter.describePerson(name, passage, undefined, conversation);
 			const { definition, variants, context } = parseDefinitionReply(raw);
-			if (!definition) return null;
+			if (!definition) { new Notice(t("lookupEmptyReply", { term: name })); return null; }
 			const entry: GlossaryEntry = {
 				term: name,
 				kind: "person",
@@ -293,7 +293,8 @@ export class GlossaryService {
 			// conversation is passed for its language override only (ADR-148).
 			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation);
 			const { definition, variants, translations, context } = parseDefinitionReply(raw);
-			if (!definition) return null;
+			// "" is never "nothing happened" (ADR-158): nothing is saved, and the user is told.
+			if (!definition) { new Notice(t("lookupEmptyReply", { term })); return null; }
 			const entry: GlossaryEntry = {
 				term,
 				definition,

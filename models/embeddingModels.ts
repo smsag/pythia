@@ -29,13 +29,27 @@ export interface EmbeddingModelConfig {
 	 *  English model's is 0.567, and its best-neighbour median is 0.08 higher
 	 *  throughout. One shared constant therefore meant two different features
 	 *  depending on which model the dropdown selected. */
-	relatedFloors: Record<RelatedSimilarity, number>;
+	relatedFloors: Record<SimilarityPreset, number>;
 }
 
 /** How strict the "related conversations" similarity floor is. A named preset so
  *  the user never has to reason about raw cosine scores; each model maps it to a
  *  number in its own `relatedFloors`. */
-export type RelatedSimilarity = "strict" | "balanced" | "loose";
+/**
+ * The three strictness labels a similarity floor can be set to (ADR-176).
+ *
+ * Named for what it is — a label — and NOT for either of the two questions it
+ * labels, because those two are not the same question and do not share numbers:
+ *
+ * - **Related conversations** resolves it through `relatedMinScore(preset, modelId)`,
+ *   against floors **measured** per embedding model (ADR-169).
+ * - **Vault retrieval** resolves it through `vaultRetrievalMinScore(preset)`,
+ *   against three constants that have never been measured (engineering-review #273).
+ *
+ * It was called `RelatedSimilarity` and used for both, which read as though the
+ * measured floors also governed vault retrieval. They never did.
+ */
+export type SimilarityPreset = "strict" | "balanced" | "loose";
 
 export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = {
 	"xenova-all-MiniLM-L6-v2": {
@@ -65,12 +79,38 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 export const DEFAULT_EMBEDDING_MODEL_ID: EmbeddingModelId =
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2";
 
-export const RELATED_SIMILARITY_PRESETS: readonly RelatedSimilarity[] = ["strict", "balanced", "loose"];
-export const DEFAULT_RELATED_SIMILARITY: RelatedSimilarity = "balanced";
+export const SIMILARITY_PRESETS: readonly SimilarityPreset[] = ["strict", "balanced", "loose"];
+export const DEFAULT_SIMILARITY_PRESET: SimilarityPreset = "balanced";
 
 /** Every known model id, for validating a persisted setting. */
 export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBEDDING_MODELS) as EmbeddingModelId[];
 
 export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig {
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];
+}
+
+/** Conservative chars-per-token for sizing a chunk against a token window.
+ *
+ *  German through the XLM-R tokenizer runs ~3.3–3.6 chars/token and English ~4;
+ *  markdown (wikilinks, URLs, code) tokenizes worse than either. Sized to the
+ *  pessimistic end on purpose: undersizing costs a few extra chunks, oversizing
+ *  pushes text past the model's window where it contributes nothing. */
+const CHARS_PER_TOKEN = 3.3;
+
+/**
+ * How many characters of note text one embed chunk should carry, for `id`.
+ *
+ * Until ADR-182 `maxTokens` was declared on every model and read by nothing: both
+ * indexes chunked at a hardcoded 500 chars. That is ~150 tokens of German — over
+ * the default (multilingual) model's 128-token window, and only ~60% of the
+ * English model's 256. The window is a property of the model, so the chunk size
+ * has to be too.
+ *
+ * Used for the VAULT index only. The conversation index deliberately stays at its
+ * historical 500: ADR-169's `relatedFloors` were MEASURED at that chunk size, and
+ * changing it would move the cosine distribution the floors are calibrated
+ * against — re-measure with `scripts/measure-related.mjs` first (D-13/D-14).
+ */
+export function embedChunkChars(id: EmbeddingModelId): number {
+	return Math.floor(embeddingModelConfig(id).maxTokens * CHARS_PER_TOKEN);
 }

@@ -6,8 +6,8 @@ import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
-import { clampSummary } from "./clampBody";
 import { attachOutsideDismiss } from "./outsideDismiss";
+import { REGENERATE_ICON } from "./icons";
 
 export interface ForkDeps {
 	plugin: PythiaPlugin;
@@ -169,14 +169,10 @@ export class ForkController {
 		// Fork title.
 		anchor.createDiv({ cls: "p-fork-anchor-title", text: fork.name });
 
-		// The summary, clamped to five lines with an expand control when it runs
-		// longer (ADR-141). The mount is created now so the control lands between
-		// the body and the meta line, not after it — the measurement that decides
-		// whether it appears at all happens a frame later.
+		// The summary, in full: the fold ADR-141 put here is gone (ADR-189).
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-fork-anchor-body" });
 			this.d.renderMarkdown(summary, body);
-			clampSummary(body, anchor.createDiv({ cls: "p-anchor-more-wrap" }));
 		}
 
 		// Meta line: "N Nachrichten · Model · <generated date> · Öffnen →". Model and
@@ -209,10 +205,10 @@ export class ForkController {
 		// long-press menu. When stale it's tinted with the accent to draw the eye. The
 		// long-press menu is kept for choosing conversation vs favorites.
 		const refresh = meta.createEl("button", {
-			cls: `p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
+			cls: `pb pb-icon is-inline p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("forkRefreshSummary"), title: t("forkRefreshSummary") },
 		});
-		setIcon(refresh, "rotate-cw");
+		setIcon(refresh, REGENERATE_ICON);
 		refresh.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.generateForkSummary(anchor, fork, summaryKind ?? "conversation");
@@ -220,7 +216,7 @@ export class ForkController {
 		meta.createSpan({ cls: "p-fork-anchor-metatext", text: " · " });
 
 		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
-		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
+		const open = openWrap.createEl("button", { cls: "pb pb-link p-fork-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (this.suppressNextForkOpen) {

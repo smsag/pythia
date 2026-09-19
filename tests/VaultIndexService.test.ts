@@ -305,3 +305,4 @@ describe("VaultIndexService", () => {
 		expect(out.map((r) => r.id)).toEqual(["Notes/alpha.md"]);
 	});
 });
+

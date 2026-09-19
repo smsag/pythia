@@ -1,4 +1,4 @@
-import { debounce, Editor, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
+import { debounce, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -6,6 +6,7 @@ import type { Conversation, Provider, PythiaTemplate } from "./models/types";
 import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { PYTHIA_ICON_ID, registerPythiaIcon } from "./ui/pluginIcon";
+import { registerEditorSelectionEntries } from "./ui/editorSelectionEntries";
 import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ConversationStore } from "./services/ConversationStore";
@@ -30,6 +31,7 @@ import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
 /** Related conversations shown at once. A cap, not a filter: the floor decides
  *  relevance, this decides how much of it fits on a screen (ADR-169). */
@@ -156,6 +158,10 @@ export default class PythiaPlugin extends Plugin {
 					total: p.total,
 				}),
 			() => (this.embeddingWorkerUrlPromise ??= embeddingWorkerUrl(this)),
+			// Which backend actually started (ADR-182). The chain was silent on the
+			// happy path, so a desktop-wide fallback to the UI-thread iframe looked
+			// exactly like a working Worker until someone read the source.
+			(backend, failures) => debugLog(this.settings, "embedding: backend resolved", { backend, modelId, failures }),
 		);
 		this.embeddingModelId = modelId;
 		return this.embeddingProvider;
@@ -323,7 +329,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "toggle-vault-context",
 			name: t("cmdToggleVaultContext"),
-			icon: "library",
+			icon: SOURCE_ICONS.auto,
 			callback: async () => {
 				this.settings.vaultContextEnabled = !this.settings.vaultContextEnabled;
 				await this.saveSettings();
@@ -334,7 +340,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "reindex-vault-context",
 			name: t("cmdReindexVault"),
-			icon: "refresh-cw",
+			icon: REGENERATE_ICON,
 			callback: () => void this.reindexVault(),
 		});
 
@@ -380,43 +386,7 @@ export default class PythiaPlugin extends Plugin {
 			else flushChanges();
 		}));
 
-		this.addCommand({
-			id: "send-selection-to-pythia",
-			name: t("sendSelectionToPythia"),
-			icon: PYTHIA_ICON_ID,
-			editorCallback: async (editor: Editor) => {
-				const selection = editor.getSelection();
-				if (!selection) return;
-				const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
-				const view = await this.activateView();
-				await view.setActiveConversation(conv);
-				view.triggerAutoPrompt(selection);
-			},
-		});
-
-		this.addCommand({
-			id: "send-selection-to-pythia-with-template",
-			name: t("sendSelectionToPythiaWithTemplate"),
-			icon: PYTHIA_ICON_ID,
-			editorCallback: async (editor: Editor) => {
-				const selection = editor.getSelection();
-				if (!selection) return;
-				const templates = await this.templateLoader.loadTemplates();
-				if (templates.length === 0) {
-					new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
-					return;
-				}
-				const activeFile = this.app.workspace.getActiveFile();
-				new TemplateSuggestModal(this.app, templates, async (tpl) => {
-					const { contextNotes, outputFolder } = this.conversationService.resolveTemplateContext(tpl, activeFile);
-					const conv = await this.createConversationFromTemplate(tpl, contextNotes, outputFolder);
-					const view = await this.activateView();
-					await view.setActiveConversation(conv);
-					view.triggerAutoPrompt(selection);
-				}).open();
-			},
-		});
-
+		registerEditorSelectionEntries(this);
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
 				if (file instanceof TFile) {

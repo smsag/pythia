@@ -111,5 +111,45 @@ describe("header instructions (ADR-165)", () => {
 		pick(pane, t("renameConvTooltip"));
 		const wrap = pane().querySelector<HTMLElement>(".p-rename-wrap")!;
 		expect(wrap.style.display).toBe("");
+		// The editor is the name alone — the AI rename moved into the menu row.
+		expect(wrap.querySelector("button")).toBeNull();
+	});
+
+	it("the rename row's ↻ renames with AI in one tap, without opening the editor", async () => {
+		const { conv, pane } = await open();
+		let resolve!: (v: string) => void;
+		plugin.llmRouter.retitleConversation = () => new Promise<string>((r) => { resolve = r; });
+		click(pane().querySelector(".p-header .p-hdr-menu")!);
+		const trailing = pane().querySelector<HTMLElement>(".p-choice-pop .p-choice-trailing")!;
+		expect(trailing.getAttribute("aria-label")).toBe(t("renameLLMTooltip"));
+		trailing.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+		const title = pane().querySelector<HTMLElement>(".p-header .p-title")!;
+		expect(pane().querySelector(".p-choice-pop")).toBeNull();
+		expect(pane().querySelector<HTMLElement>(".p-rename-wrap")!.style.display).toBe("none");
+		expect(title.classList.contains("is-generating")).toBe(true);
+
+		resolve("Snap App Vergleich");
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(conv.name).toBe("Snap App Vergleich");
+		expect(title.textContent).toBe("Snap App Vergleich");
+		expect(title.classList.contains("is-generating")).toBe(false);
+	});
+
+	it("an empty reply keeps the name", async () => {
+		const { conv, pane } = await open();
+		plugin.llmRouter.retitleConversation = async () => "";
+		click(pane().querySelector(".p-header .p-hdr-menu")!);
+		pane().querySelector<HTMLElement>(".p-choice-trailing")!
+			.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(conv.name).toBe("EZB");
+	});
+
+	it("no ↻ on an empty conversation — there is nothing to name", async () => {
+		const { pane } = await open({ messages: [] });
+		click(pane().querySelector(".p-header .p-hdr-menu")!);
+		expect(pane().querySelector(".p-choice-trailing")).toBeNull();
 	});
 });

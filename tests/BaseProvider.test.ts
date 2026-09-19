@@ -28,6 +28,7 @@ vi.mock("../i18n", () => ({
 
 import { BaseProvider, type RoundResult } from "../services/BaseProvider";
 import type { App } from "obsidian";
+import { TFile as TFileCls } from "obsidian";
 import type { PythiaSettings } from "../settings";
 import type { Conversation, TokenUsage } from "../models/types";
 
@@ -54,6 +55,12 @@ class TestProvider extends BaseProvider {
 	/** `languageLabel` is protected; expose it so the resolution order is testable. */
 	lang(conversation?: Conversation): string {
 		return this.languageLabel(conversation);
+	}
+
+	/** `resolveUserContent` is protected; expose it so the ADR-183 warning rules
+	 *  can be exercised without a real stream. */
+	resolve(conv: Conversation, notes: string[], msg: string, auto?: ReadonlySet<string>) {
+		return this.resolveUserContent(conv, notes, msg, auto);
 	}
 
 	finish(
@@ -185,5 +192,70 @@ describe("glossary prompts follow the passage under AUTO", () => {
 		await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
 		expect(p.prompts[0]).toContain("into English");
 		expect(p.prompts[0]).toContain("Ein Gerät, das Ereignisse erfasst.");
+	});
+});
+
+// ── ADR-183: warnings are about notes the USER attached ─────────────────────
+describe("BaseProvider.resolveUserContent — auto-retrieved notes stay quiet", () => {
+	beforeEach(() => { noticeMessages.length = 0; });
+
+	/** Every note path is missing, which is the case that warns. */
+	const appMissingEverything = { vault: { getAbstractFileByPath: () => null } } as unknown as App;
+	const provider = () => new TestProvider(appMissingEverything, {} as PythiaSettings, "", "anthropic");
+	const c = { contextNotes: [] } as unknown as Conversation;
+
+	it("warns about a missing note the user attached", async () => {
+		await provider().resolve(c, ["Manual/gone.md"], "hi");
+		expect(noticeMessages.some((m) => m.startsWith("contextNotesWarning"))).toBe(true);
+	});
+
+	it("says NOTHING about a missing note that RAG retrieved", async () => {
+		// The index can outlive a note. The user never chose it and cannot remove
+		// it, so a warning is noise they can only learn to ignore.
+		await provider().resolve(c, ["Auto/gone.md"], "hi", new Set(["Auto/gone.md"]));
+		expect(noticeMessages.some((m) => m.startsWith("contextNotesWarning"))).toBe(false);
+	});
+
+	it("still warns when a manual note is missing alongside an auto one", async () => {
+		await provider().resolve(c, ["Manual/gone.md", "Auto/gone.md"], "hi", new Set(["Auto/gone.md"]));
+		expect(noticeMessages.filter((m) => m.startsWith("contextNotesWarning")).length).toBe(1);
+	});
+});
+
+// ── ADR-184: the size warning is about what the user attached ───────────────
+describe("BaseProvider.resolveUserContent — the token warning is manual-only", () => {
+	beforeEach(() => { noticeMessages.length = 0; });
+
+	const big = "word ".repeat(4000); // far past any sane maxAttachedNotesTokens
+	// Must be the MOCKED TFile: buildAttachedNotesContent gates on `instanceof`.
+	const asFile = (path: string) => Object.assign(new (TFileCls as new () => object)(), { path, extension: "md" });
+	const appWith = (body: string) => ({
+		vault: {
+			getAbstractFileByPath: (p: string) => asFile(p),
+			read: async () => body,
+		},
+	}) as unknown as App;
+
+	const provider = (body: string) =>
+		new TestProvider(appWith(body), { maxAttachedNotesTokens: 100 } as PythiaSettings, "", "anthropic");
+	const c = { contextNotes: [] } as unknown as Conversation;
+	const warned = () => noticeMessages.some((m) => m.startsWith("attachedNotesTokenWarning"));
+
+	it("warns when the notes the user attached are large", async () => {
+		await provider(big).resolve(c, ["Manual/big.md"], "hi");
+		expect(warned()).toBe(true);
+	});
+
+	it("does NOT warn about size when every note was auto-retrieved", async () => {
+		// ADR-183 said the attached-note warnings are manual-only, but only the
+		// missing-note one was filtered — so a conversation with nothing attached
+		// could be told its attached notes were large, every turn.
+		await provider(big).resolve(c, ["Auto/big.md"], "hi", new Set(["Auto/big.md"]));
+		expect(warned()).toBe(false);
+	});
+
+	it("still warns when a large MANUAL note sits beside auto ones", async () => {
+		await provider(big).resolve(c, ["Manual/big.md", "Auto/big.md"], "hi", new Set(["Auto/big.md"]));
+		expect(warned()).toBe(true);
 	});
 });

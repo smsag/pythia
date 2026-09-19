@@ -332,7 +332,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 					});
 			});
 
-		renderEmbeddingSettings(containerEl, this.plugin);
+		renderEmbeddingSettings(containerEl, this.plugin, (commit) => this.numberCommits.push(commit));
 
 		new Setting(containerEl)
 			.setName(t("customInstructionsName"))
@@ -358,9 +358,9 @@ export class PythiaSettingTab extends PluginSettingTab {
 		this.addToggle(containerEl, t("injectActiveNoteOnTemplateName"), t("injectActiveNoteOnTemplateDesc"), "injectActiveNoteOnTemplate");
 
 		containerEl.createEl("h3", { text: t("promptOptimizerSection") });
-
 		this.addPromptOptimizerTemplateSetting(containerEl);
 		this.addPromptFrameworkSetting(containerEl);
+		this.addToggle(containerEl, t("optimizerSuggestsModelName"), t("optimizerSuggestsModelDesc"), "optimizerSuggestsModel");
 	}
 
 	private addPromptOptimizerTemplateSetting(containerEl: HTMLElement): void {

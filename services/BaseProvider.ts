@@ -25,9 +25,7 @@ import {
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
-
-/** Repeated verbatim in generateChapterName and generateConversationTitle below. */
-const REPLY_TITLE_ONLY_INSTRUCTION = "Reply with ONLY the title, no punctuation, no quotes.";
+import { buildRetitleDigest, chapterNamePrompt, conversationTitlePrompt, retitlePrompt } from "./titlePrompts";
 
 /** Safety net against a confused model looping on tool calls indefinitely. */
 const MAX_TOOL_ROUNDS = 25;
@@ -195,7 +193,8 @@ export abstract class BaseProvider implements LLMProvider {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: (call: ToolCall) => Promise<string>,
+		autoNotes: ReadonlySet<string> = new Set()
 	): Promise<void> {
 		this.abort();
 		const controller = new AbortController();
@@ -208,7 +207,7 @@ export abstract class BaseProvider implements LLMProvider {
 
 		try {
 			const { userContent, systemPrompt, pdfAttachments } =
-				await this.resolveUserContent(conversation, attachedNotes, newMessage);
+				await this.resolveUserContent(conversation, attachedNotes, newMessage, autoNotes);
 
 			await this.prepareStream(conversation, userContent, systemPrompt, pdfAttachments, onToolCall);
 
@@ -290,21 +289,30 @@ export abstract class BaseProvider implements LLMProvider {
 	protected async resolveUserContent(
 		conversation: Conversation,
 		attachedNotes: string[],
-		newMessage: string
+		newMessage: string,
+		autoNotes: ReadonlySet<string> = new Set()
 	): Promise<{ userContent: string; systemPrompt: string; pdfAttachments: PdfAttachment[] }> {
 		const pdfPaths = attachedNotes.filter((p) => p.toLowerCase().endsWith(".pdf"));
 		const notePaths = attachedNotes.filter((p) => !p.toLowerCase().endsWith(".pdf"));
 
 		const [
-			{ content: attachedContent, missingNotes, estimatedTokens },
+			{ content: attachedContent, missingNotes, estimatedTokens, manualTokens },
 			{ pdfs, missingPdfs, oversizedPdfs },
 		] = await Promise.all([
-			buildAttachedNotesContent(this.app, notePaths, newMessage),
+			buildAttachedNotesContent(this.app, notePaths, newMessage, autoNotes),
 			buildAttachedPdfs(this.app, pdfPaths),
 		]);
 
-		if (missingNotes.length > 0) {
-			new Notice(t("contextNotesWarning", { count: missingNotes.length }));
+		// Only ever warn about notes the USER attached (ADR-183). A vault-RAG path
+		// can go missing because the index outlived the note — the user never chose
+		// it, cannot remove it, and a warning about it is noise they can only ignore.
+		const missingManual = missingNotes.filter((p) => !autoNotes.has(p));
+		if (missingManual.length > 0) {
+			new Notice(t("contextNotesWarning", { count: missingManual.length }));
+		}
+		const missingAuto = missingNotes.filter((p) => autoNotes.has(p));
+		if (missingAuto.length > 0) {
+			debugLog(this.settings, "vault RAG: retrieved note(s) no longer in the vault", { paths: missingAuto });
 		}
 		if (missingPdfs.length > 0) {
 			new Notice(t("missingPdfsWarning", { count: missingPdfs.length }));
@@ -313,9 +321,16 @@ export abstract class BaseProvider implements LLMProvider {
 			new Notice(t("oversizedPdfWarning", { count: oversizedPdfs.length }));
 		}
 
+		// Measured on MANUAL notes only (ADR-184). ADR-183 said the attached-note
+		// warnings are about what the user attached, but only the missing-note one
+		// was filtered — so a conversation with no attached notes at all could fire
+		// "attached notes are large" every turn, about notes it never chose.
 		const noteTokenLimit = this.settings.maxAttachedNotesTokens;
-		if (noteTokenLimit > 0 && estimatedTokens > noteTokenLimit) {
-			new Notice(t("attachedNotesTokenWarning", { tokens: String(estimatedTokens) }));
+		if (noteTokenLimit > 0 && manualTokens > noteTokenLimit) {
+			new Notice(t("attachedNotesTokenWarning", { tokens: String(manualTokens) }));
+		}
+		if (estimatedTokens !== manualTokens) {
+			debugLog(this.settings, "vault RAG: auto-retrieved note tokens", { total: estimatedTokens, manual: manualTokens });
 		}
 
 		// Pass whether note text is actually being inlined (manual context notes OR
@@ -526,28 +541,21 @@ export abstract class BaseProvider implements LLMProvider {
 	}
 
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
-		const excerpt = content.slice(0, 500);
-		return cleanGeneratedTitle(await this.callUtility(
-			this.fastModel,
-			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nMessage:\n${excerpt}`,
-			15
-		));
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, chapterNamePrompt(content, this.languageLabel(conversation)), 15));
 	}
 
-	async generateConversationTitle(
-		userMessage: string,
-		assistantMessage: string,
-		conversation?: Conversation
-	): Promise<string> {
-		const userExcerpt = userMessage.slice(0, 300);
-		const assistantExcerpt = assistantMessage.slice(0, 300);
+	async generateConversationTitle(userMessage: string, assistantMessage: string, conversation?: Conversation): Promise<string> {
 		// "" on an empty reply, not a placeholder: the caller keeps the dated name
 		// it already has, which says more than "New Conversation" would.
-		return cleanGeneratedTitle(await this.callUtility(
-			this.fastModel,
-			`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
-			20
-		));
+		const prompt = conversationTitlePrompt(userMessage, assistantMessage, this.languageLabel(conversation));
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, prompt, 20));
+	}
+
+	/** Header ↻: a title for what the conversation is about now. "" = nothing to name, or no reply. */
+	async retitleConversation(conversation: Conversation): Promise<string> {
+		const digest = buildRetitleDigest(conversation);
+		if (!digest) return "";
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, retitlePrompt(digest, this.languageLabel(conversation)), 20));
 	}
 
 	async generateFavoritesSummary(conversation: Conversation): Promise<string> {

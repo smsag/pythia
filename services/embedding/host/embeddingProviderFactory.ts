@@ -1,4 +1,4 @@
-import type { EmbeddingProvider } from "../EmbeddingProvider";
+import type { EmbeddingProvider, EmbeddingBackend } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import { WorkerEmbeddingProvider } from "./workerEmbeddingProvider";
 import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddingProvider";
@@ -14,9 +14,22 @@ import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddi
  * Implements EmbeddingProvider itself so callers (ConversationIndexService /
  * VaultIndexService) are unaware of which backend is live.
  */
+/** Which backend is running the model. The label a report can quote (#306):
+ *  a silent fall back to the UI thread is what hid that the Worker never ran.
+ *  Declared on the seam (`EmbeddingProvider`) and re-exported here, so the
+ *  interface does not have to import from one of its own implementations. */
+export type { EmbeddingBackend };
+
 export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	readonly dim: number;
 	private active: EmbeddingProvider | null = null;
+	private activeBackend: EmbeddingBackend | null = null;
+	/** Why each backend the chain tried did NOT start (ADR-185). #306 made the
+	 *  WINNER visible; the reason the others lost is the rest of the diagnosis —
+	 *  "Unsupported device: wasm" and "Not allowed to load local resource: blob:"
+	 *  are different bugs with different fixes — and it went only to
+	 *  `console.warn`, where nobody looks until asked. */
+	private readonly failures: string[] = [];
 	private readyPromise: Promise<void> | null = null;
 
 	constructor(
@@ -25,9 +38,17 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		/** Optional: resolve a same-origin resource-path URL for the worker script, so
 		 *  a Worker can start where `blob:` Workers are blocked (ADR-126). When it
 		 *  yields a working Worker, inference stays OFF the UI thread. */
-		private readonly resourceWorkerUrl?: () => Promise<string>
+		private readonly resourceWorkerUrl?: () => Promise<string>,
+		/** Called ONCE, with the backend that actually started (ADR-182). The chain
+		 *  is silent by design on the happy path, and that silence is what let a
+		 *  desktop-wide fallback to the UI thread go unnoticed. */
+		private readonly onBackend?: (backend: EmbeddingBackend, failures: string[]) => void
 	) {
 		this.dim = embeddingModelConfig(modelId).dim;
+	}
+
+	private record(backend: EmbeddingBackend, err: unknown): void {
+		this.failures.push(`${backend}: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
 	ready(): Promise<void> {
@@ -40,10 +61,10 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		const blobWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
 		try {
 			await blobWorker.ready();
-			this.active = blobWorker;
-			return;
+			return this.engage(blobWorker, "worker (blob)");
 		} catch (err) {
 			blobWorker.unload();
+			this.record("worker (blob)", err);
 			console.warn("[Pythia] embedding: blob worker unavailable", err);
 		}
 		// 2. Resource-path Worker (blob-free; still OFF the UI thread) — for environments
@@ -52,17 +73,28 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 			const resWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress, this.resourceWorkerUrl);
 			try {
 				await resWorker.ready();
-				this.active = resWorker;
-				return;
+				return this.engage(resWorker, "worker (resource)");
 			} catch (err) {
 				resWorker.unload();
+				this.record("worker (resource)", err);
 				console.warn("[Pythia] embedding: resource-path worker unavailable — falling back to iframe (UI thread)", err);
 			}
 		}
 		// 3. Same-origin iframe (LAST resort; runs on the UI thread — throttled by callers).
 		const iframe = new IframeEmbeddingProvider(this.modelId, this.onProgress);
 		await iframe.ready();
-		this.active = iframe;
+		this.engage(iframe, "iframe (UI thread)");
+	}
+
+	private engage(provider: EmbeddingProvider, backend: EmbeddingBackend): void {
+		this.active = provider;
+		this.activeBackend = backend;
+		// Once per model load, at info level: which backend is live is the first
+		// thing a performance report needs, and it used to be visible only as the
+		// absence of a warning.
+		// eslint-disable-next-line no-console
+		console.info(`[Pythia] embedding: ${backend}`);
+		this.onBackend?.(backend, [...this.failures]);
 	}
 
 	async embed(texts: string[]): Promise<Float32Array[]> {
@@ -78,9 +110,22 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 		return this.active?.isOffThread?.() ?? false;
 	}
 
+	/** The backend that initialized, or null before `ready()` resolves (#306). */
+	backend(): EmbeddingBackend | null {
+		return this.activeBackend;
+	}
+
+	/** Why the backends ahead of the active one did not start (ADR-185). Empty
+	 *  when the first choice won. */
+	backendFailures(): string[] {
+		return [...this.failures];
+	}
+
 	unload(): void {
 		this.active?.unload();
 		this.active = null;
+		this.activeBackend = null;
+		this.failures.length = 0;
 		this.readyPromise = null;
 	}
 }
@@ -91,7 +136,8 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 export function createEmbeddingProvider(
 	modelId: EmbeddingModelId,
 	onProgress?: (p: ModelLoadProgress) => void,
-	resourceWorkerUrl?: () => Promise<string>
+	resourceWorkerUrl?: () => Promise<string>,
+	onBackend?: (backend: EmbeddingBackend, failures: string[]) => void
 ): EmbeddingProvider {
-	return new FallbackEmbeddingProvider(modelId, onProgress, resourceWorkerUrl);
+	return new FallbackEmbeddingProvider(modelId, onProgress, resourceWorkerUrl, onBackend);
 }

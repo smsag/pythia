@@ -1,3 +1,4 @@
+import type { Modifier, Scope } from "obsidian";
 import { t } from "../i18n";
 
 /**
@@ -30,4 +31,52 @@ export function composerKeyAction(e: ComposerKey): "send" | "insert" {
  *  two words wide. */
 export function composerPlaceholder(isMobile: boolean): string {
 	return isMobile ? t("inputPlaceholderMobile") : t("inputPlaceholder");
+}
+
+interface ComposerSendDeps {
+	/** The composer textarea — undefined until the view has built its UI. */
+	input: () => HTMLTextAreaElement | undefined;
+	/** The `#` picker's keys, which win while its dropdown is open. */
+	suggest: (e: KeyboardEvent) => boolean;
+	send: () => void;
+}
+
+/**
+ * The composer's send shortcut, from both of the places a key press arrives.
+ *
+ * Obsidian's keymap sees Cmd/Ctrl+Enter before the textarea, where a core hotkey
+ * on Mod+Enter (open link in new tab, which runs against the last active
+ * editor) can consume it. So the view's own scope — consulted before the app's
+ * hotkeys — handles it while the composer has focus. The textarea's keydown
+ * stays as the path when the keymap is not involved, and skips the event the
+ * scope already sent, so one press never sends twice.
+ */
+export class ComposerSend {
+	private scoped: KeyboardEvent | null = null;
+
+	constructor(private readonly d: ComposerSendDeps) {}
+
+	registerOn(scope: Scope): void {
+		for (const mods of [["Mod"], ["Ctrl"]] as Modifier[][]) {
+			scope.register(mods, "Enter", (e) => {
+				const input = this.d.input();
+				if (!input || input.ownerDocument.activeElement !== input) return true; // not ours
+				this.scoped = e;
+				return !this.handle(e); // false = handled: Obsidian stops here
+			});
+		}
+	}
+
+	readonly onKeydown = (e: KeyboardEvent): void => {
+		if (e !== this.scoped) this.handle(e);
+	};
+
+	/** The `#` picker first, then the rule above. True when the press was used. */
+	private handle(e: KeyboardEvent): boolean {
+		if (this.d.suggest(e)) return true;
+		if (composerKeyAction(e) !== "send") return false; // Enter is a line break (ADR-175)
+		e.preventDefault();
+		this.d.send();
+		return true;
+	}
 }

@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintMergeLinks as paintMergeLinks } from "./HighlightPainter";
-import { clampSummary } from "./clampBody";
+import { REGENERATE_ICON } from "./icons";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -245,11 +245,10 @@ export class MergeController {
 
 		anchor.createDiv({ cls: "p-merge-anchor-title", text: target.name });
 
-		// Clamped to five lines with an expand control when longer — see ADR-141.
+		// In full, like the fork anchor (ADR-142/189).
 		if (summary) {
 			const body = anchor.createDiv({ cls: "p-merge-anchor-body" });
 			this.d.renderMarkdown(summary, body);
-			clampSummary(body, anchor.createDiv({ cls: "p-anchor-more-wrap" }));
 		} else {
 			anchor.createDiv({ cls: "p-merge-anchor-empty", text: t("mergeNoSummary") });
 		}
@@ -274,10 +273,10 @@ export class MergeController {
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: `${metaParts.join(" · ")} · ` });
 
 		const refresh = meta.createEl("button", {
-			cls: `p-merge-anchor-refresh${stale ? " is-stale" : ""}`,
+			cls: `pb pb-icon is-inline p-merge-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("mergeRefreshSummary"), title: t("mergeRefreshSummary") },
 		});
-		setIcon(refresh, "rotate-cw");
+		setIcon(refresh, REGENERATE_ICON);
 		refresh.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.generateMergeSummary(anchor, link, target);
@@ -285,7 +284,7 @@ export class MergeController {
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: " · " });
 
 		const unlink = meta.createEl("button", {
-			cls: "p-merge-anchor-unlink",
+			cls: "pb pb-icon is-inline p-merge-anchor-unlink",
 			attr: { "aria-label": t("mergeRemove"), title: t("mergeRemove") },
 		});
 		setIcon(unlink, "unlink");
@@ -295,7 +294,7 @@ export class MergeController {
 		});
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: " · " });
 
-		const open = meta.createEl("button", { cls: "p-merge-anchor-open", text: t("forkOpenShort") });
+		const open = meta.createEl("button", { cls: "pb pb-link p-merge-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.d.setActiveConversation(target);

@@ -7,6 +7,8 @@ import { buildSystemPrompt } from "../services/ContextBuilder";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
+import { buildAccordion } from "./accordion";
+import { appendSourceIcon, SOURCE_ICONS } from "./icons";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -102,30 +104,27 @@ export class ContextInspectorController {
 		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
 		wrap.style.display = "";
 
-		const card = wrap.createDiv({ cls: "p-inspector" });
-		if (budgetTight) card.addClass("warn");
-
-		// ── Header (toggles the body) ────────────────────────────────
-		const header = card.createDiv({ cls: "p-inspector-header" });
-		setIcon(header.createSpan({ cls: "p-inspector-icon" }), "file-text");
+		// ── The shared accordion (ADR-192): same box as the summary cards ──
 		const shortK = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`);
 		const titleText = budgetTight
 			? `${t("ctxLabel")} · ${shortK(used)} / ${shortK(windowSize)}`
 			: `${t("ctxLabel")} · ${this.fmtTok(noteTotal + sysTokens)}`;
-		header.createSpan({ cls: "p-inspector-title", text: titleText });
-		if (budgetTight) {
-			header.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
-		}
-		const chevron = header.createSpan({ cls: "p-inspector-chevron", text: this.inspectorOpen ? "▾" : "▸" });
-		header.addEventListener("click", () => {
-			this.inspectorOpen = !this.inspectorOpen;
-			card.toggleClass("open", this.inspectorOpen);
-			chevron.setText(this.inspectorOpen ? "▾" : "▸");
+		const acc = buildAccordion(wrap, {
+			cls: "p-inspector",
+			icon: SOURCE_ICONS.note,
+			title: titleText,
+			open: this.inspectorOpen,
+			onToggle: (open) => { this.inspectorOpen = open; },
 		});
-		card.toggleClass("open", this.inspectorOpen);
+		const card = acc.root;
+		if (budgetTight) {
+			card.addClass("warn");
+			acc.meta.createSpan({ cls: "p-inspector-pct", text: `${Math.round(frac * 100)}%` });
+		}
 
 		// ── Body ─────────────────────────────────────────────────────
-		const body = card.createDiv({ cls: "p-inspector-body" });
+		const body = acc.body;
+		body.addClass("p-inspector-body");
 
 		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
 			const bar = row.createDiv({ cls: "p-ins-bar" });
@@ -136,7 +135,7 @@ export class ContextInspectorController {
 		const wikilinkRow = (parent: HTMLElement, path: string): HTMLElement => {
 			const row = parent.createDiv({ cls: "p-inspector-row" });
 			const ref = row.createSpan({ cls: "p-wikilink" });
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			appendSourceIcon(ref, "note"); // the inspector lists attached notes only
 			const name = ref.createEl("span", {
 				cls: "p-wikilink-name",
 				text: noteBasename(path),
@@ -147,7 +146,6 @@ export class ContextInspectorController {
 				if (f instanceof TFile) await this.d.plugin.app.workspace.getLeaf(false).openFile(f);
 				else new Notice(t("fileNotFound", { path }));
 			});
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			return row;
 		};
 
@@ -175,13 +173,13 @@ export class ContextInspectorController {
 			setIcon(warnRow.createSpan({ cls: "p-inspector-warn-icon" }), "alert-triangle");
 			const savings = Math.round(histTokens * 0.85);
 			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
-			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
+			const sumBtn = warnRow.createEl("button", { cls: "pb pb-secondary p-inspector-summarize", text: t("ctxSummarize") });
 			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); this.d.onSummarize(); });
 		} else {
 			for (const n of noteTok) {
 				const row = wikilinkRow(body, n.path);
 				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
-				const x = row.createEl("button", { cls: "p-wikilink-x", text: "×" });
+				const x = row.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
 				x.addEventListener("click", async () => {
 					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
 					await this.d.plugin.conversationStore.save(conv);

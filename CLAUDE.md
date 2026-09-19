@@ -34,18 +34,25 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NoteWriter.ts             ← vault write operations
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
     persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
     storageSize.ts            ← pure: storageLevel + formatBytes — MEASURED data.json thresholds (warn 25 MB · high 50 MB), ADR-174
+    rewriteTarget.ts          ← pure: rangeText · targetState · replaceRange · targetLabel — a captured range PLUS its text, verified exactly before any write (ADR-178)
+    pendingTemplate.ts        ← pure: armPendingTemplate + applyPendingTemplate — a template applied to a RUNNING conversation is a one-shot layer, never a write (ADR-177)
     conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
+    titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
-    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own (ADR-169)
+    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
+    embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
+    embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
+    embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← autocomplete widget for textarea
@@ -60,7 +67,6 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
-    clampBody.ts              ← five-line clamp + expand control for anchor summaries (ADR-141)
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
     pricingSettings.ts        ← Show-cost toggle + the estimate-not-bill disclaimer naming models.dev; no price table (ADR-163)
@@ -77,19 +83,27 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
-    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175)
+    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175) + ComposerSend: the shortcut via the view's Scope, ahead of Obsidian's Mod+Enter hotkey (ADR-187)
+    RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
+    referenceEntries.ts       ← pure: which pills the reference row shows and in what order (ADR-178)
+    editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
+    ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    accordion.ts              ← buildAccordion / setAccordionOpen: the ONE collapsible box (context inspector, summary cards) — a <button> header with aria-expanded, actions beside it (ADR-192)
+    icons.ts                  ← SOURCE_ICONS + appendSourceIcon: one icon per source type, shared by the toolbar and every reference (ADR-193); REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
+    toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1211 tests across 80 files
+  tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
   docs/
+    pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
@@ -99,10 +113,14 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
+  scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
+  scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
+  scripts/obsidian-button-rules.mjs ← reads app.css from the installed Obsidian and lists the rules that can reach a Pythia button; exits 1 when tests/fixtures/obsidianButtonRules.ts has drifted (npm run check:obsidian-cascade, local only — ADR-190)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
   .github/workflows/ci.yml   ← CI: lint → build → test on push / PR / workflow_dispatch
   .github/workflows/update-pricing.yml ← Mondays: pull models.dev, open a PR when a price changed
+  .github/workflows/update-models.yml  ← Mondays: PR when a context window changed; issue "Model catalog: upstream changes" for new/deprecated models
 ```
 
 ---
@@ -137,6 +155,8 @@ The canonical list lives here, because this file is what every session reads fir
 | UI components, CSS tokens, design rules | `docs/design.md` |
 | Architectural choice or trade-off | `docs/decisions.md` (append a new ADR) |
 | Bug found / suggestion resolved / new suggestion | `docs/engineering-review.md` |
+| **A decision postponed, parked or deliberately not done** | `docs/pythia-spec.md` → Deferred & postponed decisions (a `D-n` row, with what would make it worth revisiting) |
+| A new surface, or a renamed class | `docs/pythia-spec.md` → UI architecture (the map is the shared vocabulary; a surface missing from it cannot be asked for by name) |
 
 Keep the "Last updated" line at the top of each doc current. Commit docs changes in the same commit as the code change where possible.
 
@@ -310,8 +330,20 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - `AUTO` = no language instruction (ADR-148's `auto`). `obsidian` shows the resolved locale code. A model without effort shows a dimmed `—` (`.is-off`) and tapping says so; a stored effort on such a model is kept, not tinted
 - Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
 - **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
+- **Rename has two verbs on one row** (ADR-186): the row edits by hand; its trailing ↻ (`ActionSheetItem.trailing`) renames with AI **without opening the editor** — from the summary plus the last exchange (`retitleConversation`), never the first exchange. The editor `.p-rename-input` is the title made editable: same font, weight, line-height and padding as `.p-title`, no border/underline/fill — never let Obsidian's input chrome back in
+- **Regenerate is one glyph everywhere**: `REGENERATE_ICON` from `ui/icons.ts`, never a literal `refresh-cw`/`rotate-cw` (ADR-191). An outdated summary shows the same way wherever it sits: accent regenerate (`.is-stale`) plus `· outdated`
 - The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`
-- Icons: `setIcon`, 20×20px hit area, `--text-faint` → `--text-normal` on hover
+- Icons: `setIcon`, `pb pb-icon` — 24×24px, 12px glyph, `--text-muted` → `--text-normal` on hover (ADR-188)
+
+### Buttons (ADR-188)
+- **Every button carries `pb` + one role**, added where it is created: `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. The look lives ONLY in the "Buttons: one rule set per role" block of `styles.css`; a button's own class (`.p-send`, `.p-hdr-btn`, …) holds layout (position, margins, flex, `display: none`) and nothing visual. Never restate a font, padding, colour, border or hover on a per-button class — that is the drift ADR-188 removed (4 label sizes, 6 glyph sizes, 7 hover behaviours)
+- **A new button names a role** or `tests/buttonRoles.test.ts` fails. Exceptions are listed in that test: Obsidian's `mod-cta`/`mod-warning` dialog buttons, the mobile sheet's trailing icon, the conversation picker's delete
+- **Hover is "soft neutral"**: `--background-modifier-hover` behind everything unfilled, a filled button lightens. Under `@media (hover: hover)` only, transition only there (ADR-155)
+- **Never `--text-faint` on a control** (2.3:1 on white) and never `opacity` to express rest or hover — both failed WCAG in the audit
+- **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Pythia's reset is (0,1,1); a fill set below it is removed — which made "In Notiz ersetzen" invisible
+- **Obsidian's own button rules are measured, not guessed** (ADR-190). `npm run check:obsidian-cascade` reads app.css from the installed Obsidian and lists the ten rules that can reach a Pythia button; `tests/fixtures/obsidianButtonRules.ts` holds them with sentinel values and `tests/obsidianCascade.test.ts` fails if any sentinel reaches a role. The bare `button` rule sets **height** (`--input-height`), padding, radius and corner-shape — the `.pb` base must name every property it sets, because a role that forgets one inherits Obsidian's. Re-run the script after an Obsidian update; it exits 1 on drift
+- **`[hidden]` always hides** inside the view and its modals (`display: none !important`): the UA rule loses to any author `display`
+- The comparison tabs are `pb-tab` and keep their underline by the user's choice; chosen segments are the accent tint everywhere
 
 ### Reference row
 ```
@@ -319,6 +351,11 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 ```
 - **No label.** This spec described a `REFERENZ` label in a 54px column for a long time; `.p-ref-row` holds only `.p-pills` and no such element has ever been created (flagged in the 2026-09-10 locale audit, corrected in ADR-144). Removed rather than built: the pills carry an ✕ and read as attachments on their own
 - Pills: `--color-accent` border + text, 10px mono, `border-radius: 10px`
+
+### Accordion boxes (ADR-192)
+- The context inspector and the summary cards are ONE component: `buildAccordion` in `ui/accordion.ts`, styled only by `.p-acc*`. A new collapsible box above the conversation uses it — never a second hand-built header
+- The header is a `<button>` with `aria-expanded`; actions (↻) go in `actions`, **never inside the toggle**
+- Chevron is `chevron-right` rotated when open — never ▸/▾ text
 
 ### Summary bar (sticky, always visible)
 - `background: var(--background-secondary)`
@@ -369,14 +406,14 @@ AI:    OPUS 4.8 · 22:20 · ↑151 ↓430 · ≈ $0.012
 ```
 Template: Podcast Summary
 Vault: 1 Some Note
-Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
+Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `globe` icon, not an emoji)
 ```
 - Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
-- Vault references — the template included — render as a **bare accent-coloured name, no `[[ ]]`** (ADR-153): the run-in label already says it is a note. Web chips are numbered and end with `↗`, the one mark separating them from notes. The **context inspector keeps its brackets** — it has no label, so there they are the only signal
+- **Every reference leads with its source icon** (ADR-193, superseding ADR-153's `↗` and bracket rules): `SOURCE_ICONS` in `ui/icons.ts` — `file-text` note · `library` vault-search note · `layout-template` template · `globe` web · `save` saved note · `pencil-line` rewrite target — the icon of the toolbar control that brings it in, drawn by `appendSourceIcon`. **No `[[ ]]`, no `↗`**, in the reference row, the context box and here. The citation number stays first. Name colours are Obsidian's `--link-color` / `--link-external-color`. `tests/linkIcons.test.ts` fails on a bracket, an arrow or a literal icon id outside `ui/icons.ts`
 - `.p-sources-label` is a **run-in prefix, never a column** (ADR-153): `Template:` / `Vault:` / `Web:` in the flow ahead of the first entry, colon added in code so a translation cannot drop it. **Do not reintroduce a label column** — `.p-sources-row` wraps, flex wrapping has no hanging indent, so a column aligns only each row's first line while charging its width on every line
-- **Words, not icons** (ADR-140): template and vault note have no distinct glyph at 11px, and the column is read once rather than aimed at
+- **Words for the row labels** (ADR-140): `Template:` / `Vault:` / `Web:` stay words; the icons (ADR-193) are on the entries
 - `VAULT` lists the attached/auto-retrieved notes the model *cited*, not everything in context — it is the model's own claim, unlike `TEMPLATE`, which Pythia records
 
 ### Dates and micro-label rows (ADR-139)
@@ -393,7 +430,7 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - The contract: **substance, never the session** (no narrating what was done, produced, saved or inserted; no file names; no "as requested" — if the conversation produced a document, summarize what it *says*), **at most 5 sentences / 100 words**, **plain prose** (no headings, lists, bold or code)
 - Do NOT lower `maxTokens` to force brevity — that truncates rather than shortens, and on a reasoning model the same budget pays for hidden reasoning. The sentence count is the contract; the cap is a safety valve
 - `generateFavoritesSummary` is deliberately exempt — its `## Key learnings` structure is the point
-- The fork and merge anchors clamp the summary to five lines via `clampSummary`, because a prompt is a request and summaries already on disk will never be regenerated
+- The fork and merge anchors show the summary **in full** (ADR-189, removing ADR-141's five-line fold, from both — they are one component). Do not bring back a fold or a scroll box; the prompt contract is what keeps a summary short, and ↻ regenerates an old long one
 
 ### Tables (ADR-131)
 - Every rendered markdown table is wrapped in `.p-scroll-frame` by `decorateTables` and scrolls sideways when too wide, like code blocks and diagrams
@@ -452,6 +489,20 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **The warm never surprises**: desktop only, only when a `.bin` already exists (no unrequested ~100 MB model download at launch), ≥2 conversations, silent provider construction, fail-open into the debug log. Guards live in `warmIndex.ts` with tests, because `main.ts` has no coverage
 - **A cold sync is cancellable and commits partial progress before rethrowing** — a cancelled build must leave the next one less to do. The panel aborts on close, on leaving related mode and on the first keystroke; an abort is the panel's own doing and reports nothing
 
+### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
+
+- **The Worker must see a browser, not Node.** Obsidian gives desktop Workers Node access, so transformers.js reads `process.release.name === "node"`, binds onnxruntime-**node** (macOS device list: `['cpu']`) and rejects the `wasm` device Pythia always passes — which is why every desktop silently ran embedding on the UI-thread iframe for three ADRs. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and **nowhere else**; the iframe gets the bare bundle
+- **The prelude has three statements and needs all three.** `delete globalThis.process`, then an assignment, then `const process = void 0`. The first two are *property* operations that a non-configurable / non-writable global defeats through their own `catch`; the `const` binds the identifier, which is what `env.js:38-39` reads, and no descriptor can defeat it. The `const` is unconditional (a `const` inside the guard block would shadow only that block) and safe **only because the bundle is a module** — `import.meta` appears in it, so it cannot load any other way
+- **It cannot live in `frame/entry.ts`.** An ES `import` is hoisted, so any statement there runs after transformers has already read `process`. A textual prefix is the only position that is actually first
+- **The worker file on disk is named by its content hash**, not by version and never by a hand-typed marker. It is written only when absent, so the name is the whole cache key — a `-p1` marker had to be remembered twice and would be missed a third time
+- **A backend that loses says why.** `FallbackEmbeddingProvider` records each failure reason, exposes `backendFailures()` and passes them to `onBackend`; the winner goes to the debug log and the vault-index status line. `Unsupported device: wasm` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and `console.warn` is not a report (principle 2)
+- **An index records what it is and whether it finished** (ADR-184). Format v2 carries `complete` and `scope`; a v1 file is refused and rebuilt. Since ADR-182 persists every 25 embeds, **`size() > 0` stopped meaning "the vault is indexed"** — read `isComplete(scope)`. A scope change (folders · skip · cap · model) invalidates the index; edits during a build are buffered in `deferredChanges` and replayed
+- **Persist mid-build, and persist the whole picture.** A snapshot is what the pass rebuilt *plus* the not-yet-reached notes whose vectors are still valid — the former alone would delete the tail of the index on every interruption. `persist` assigns `this.items` as well as writing, or an in-place retry re-embeds everything the failed pass just saved. Count **embeds**, not notes processed: the `continue` paths stride past a modulus on a processed counter
+- **A failing note is skipped; five in a row rethrow.** Skipping blindly turns a dead backend into a "successful" build that indexed nothing and then reported itself ready. The streak resets on a *reused* note too, or five bad notes scattered through an unchanged vault abort the build forever
+- **An auto-retrieved note is not an attached one** (ADR-183). It gets `AUTO_NOTE_BUDGET_CHARS`, not the manual budget, and none of the attach-a-note warnings — the user cannot remove a path they never added. `pythia: false` in a note's frontmatter opts it out, read **fail-open**, and re-checked at the point the text would leave the vault
+- **Chunk size follows the model's own window** (`embedChunkChars`, vault index only). The conversation index stays at 500 chars because ADR-169's floors were measured there
+- **`truncation: true` is deliberately not set** on the embed call: it would change every vector longer than the window and silently invalidate those measured floors. Padding with an attention mask is neutral for mean pooling, which is what let batching ship without re-measuring
+
 ### Conversation search (ADR-168)
 
 - **One matching rule, in `services/tokenMatch.ts`.** `matchStrength` is graded (exact 1 · prefix .9 · infix .6 · reverse .5), never boolean — the caller multiplies IDF by it. The length floors are load-bearing: without them a 2-char stopword reverse-matches every long query and the result set becomes the corpus. **Never hand-roll a second comparison** — `bestMatchSnippet` shares it, or a row surfaces on a compound hit with no snippet to explain it
@@ -502,6 +553,32 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - **No numeric settings field commits per keystroke.** `onChange` fires per character, so lowering "200" to "0" passes through 20 and 2 — that is what deleted a vault's conversations. Every numeric field goes through `bindNumberSetting` (`ui/numberSetting.ts`), which commits on blur or Enter and restores the stored value on a rejected entry; `PythiaSettingTab.hide()` flushes the field the user is standing in, because closing the tab destroys the input before `blur` fires. `settings.ts` holds no `parseInt`, and a new field is a rule object, not another hand-rolled parse
 - A rejected entry never clamps. Storing a number the user did not type is how "0 means unlimited" became "2"
 
+### Templates (ADR-177)
+
+- **Creating a conversation from a template writes its fields onto the conversation** — that conversation *is* the template. Unchanged, and correct
+- **Applying a template to a conversation that is already running writes NOTHING.** `armPendingTemplate` snapshots it onto `conv.pendingTemplate`; `applyPendingTemplate` layers it over a clone for one send; the layer clears on a committed answer. Never go back to assigning `conv.model`/`conv.systemPrompt`/… on this path — nine permanent fields for a one-turn instruction is the bug this ADR fixed
+- **A snapshot, not the template's path**: an edit to the template file between arming and sending must not change the turn (same reasoning as ADR-163's cost snapshot)
+- **Cleared on a committed answer, not at send start** — an errored or empty reply leaves it armed so the retry is the same shape
+- `resume_mode` deliberately does **not** apply on this path: history selection is a property of the conversation, not of one answer
+- The armed template is visible as the leading `.p-wikilink--template` pill and as the template toolbar button's `.is-active` fill (same state as the research globe), and `Message.templateId` records the template that actually shaped that answer — which is what the field always claimed to mean
+
+### Rewriting a passage (ADR-178)
+
+- **The user picks the target, never the model.** There is no `rewrite_selection` tool and there must not be one: a tool means re-finding the passage by its text at write time, which is how the wrong paragraph gets overwritten. The range is captured from the editor when armed
+- **A target is a range PLUS the text that was in it**, and `targetState` compares them **exactly** — no trimming, no whitespace normalization. `stale` and `gone` refuse the write and say which; the answer stays on screen to paste by hand
+- **The answer is a proposal.** Nothing is written when it arrives; *Replace in note* is a separate press. A write that can destroy content is its own operation, and here it would destroy the user's own prose
+- **Write through the open editor when possible** — `editor.replaceRange` is one undo step, and undo is the real safety net. A closed note is opened first, never written blind
+- **Armed until applied or dismissed**, unlike ADR-177's one-shot template: a rewrite is iterated ("shorter"), so every answer while it is armed is another proposal for the same passage
+- The passage rides in the **message**, not the system prompt, so a follow-up turn can still see what is being rewritten
+
+### Model suggestion (ADR-181)
+
+- **The model rates, Pythia picks.** The optimizer reply ends with `DIFFICULTY: light | standard | deep` (same call, no second request); `recommendModel` maps it to the cheapest adequate model of `settings.defaultProvider` by `MODEL_PROFILE` + `MODEL_PRICING`. **Never let a model name a model** — it does not know the catalog, the prices or the keys
+- **Offered, never applied; one send, never written.** `.p-model-hint` beside Send; tap accepts, tap again withdraws. `layer(conv)` clones for the next send and `applyPendingTemplate` runs over it, so a template's model wins. Spent on a committed answer, like ADR-177. Never assign the suggestion to `conv.model`
+- **Cost as a tier, never dollars** (ADR-163) — the chip carries `tierDots`, not `≈ $`
+- **No suggestion** when a template pins the model, a PDF meets Mistral, the current model is adequate and not dearer, or a downgrade's cold send costs more than staying on the cached model (`sendCost`) — measured from the price table, not guessed
+- **The answer names the model that answered**: `turnConv.model`, never `conv.model`, for the message, its cost snapshot and a stream error (#305)
+
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input
 - Opens upward as popover, width 260px, max-height 384px
@@ -516,8 +593,10 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 ```
 - **Enter writes a line break; Cmd/Ctrl+Enter sends** (ADR-175). The rule lives once, in `ui/composerKeys.ts` — never re-derive it in a keydown handler, and never let a send fire while `isComposing` is true. The placeholder names the shortcut on desktop only
 - Textarea: transparent, no border, `--font-monospace`, 12px
-- Toolbar icons: inline SVG, 22×22px hit area
-- Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
+- Toolbar icons: inline SVG, `pb pb-icon` (24×24px)
+- Send: `pb pb-primary`; while streaming `.stop` renders destructive
+- **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188/190). `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` fail in the forbidden direction
+- **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
 ---
 

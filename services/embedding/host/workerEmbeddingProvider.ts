@@ -2,6 +2,7 @@ import type { EmbeddingProvider } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import type { ModelLoadProgress } from "./iframeEmbeddingProvider";
 import { getEmbeddingBundle } from "./embeddingBundle";
+import { withWorkerPrelude } from "./workerPrelude";
 
 const READY_TIMEOUT_MS = 300_000; // model can download tens of MB on first use
 const EMBED_TIMEOUT_MS = 120_000;
@@ -54,7 +55,7 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		if (this.spawnUrl) {
 			url = await this.spawnUrl(); // blob-free (resource path)
 		} else {
-			const blob = new Blob([getEmbeddingBundle()], { type: "text/javascript" });
+			const blob = new Blob([withWorkerPrelude(getEmbeddingBundle())], { type: "text/javascript" });
 			this.blobUrl = URL.createObjectURL(blob);
 			url = this.blobUrl;
 		}

@@ -1,7 +1,8 @@
 import { Setting } from "obsidian";
+import { bindNumberSetting } from "./numberSetting";
 import type PythiaPlugin from "../main";
 import { t } from "../i18n";
-import { EMBEDDING_MODELS, type EmbeddingModelId, type RelatedSimilarity } from "../models/embeddingModels";
+import { EMBEDDING_MODELS, type EmbeddingModelId, type SimilarityPreset } from "../models/embeddingModels";
 
 /**
  * On-device embedding settings, extracted from the settings tab (ADR-119): the
@@ -9,7 +10,13 @@ import { EMBEDDING_MODELS, type EmbeddingModelId, type RelatedSimilarity } from 
  * vault-context (semantic RAG) controls — enable-by-default, the folders to index
  * (empty = whole vault), and a "Rebuild index" action with a live status line.
  */
-export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: PythiaPlugin): void {
+export function renderEmbeddingSettings(
+	containerEl: HTMLElement,
+	plugin: PythiaPlugin,
+	/** Collects each numeric field's commit so the tab can flush it in `hide()` —
+	 *  closing the tab destroys the input before `blur` fires. */
+	registerCommit: (commit: () => void) => void = () => {},
+): void {
 	new Setting(containerEl)
 		.setName(t("embeddingModelName"))
 		.setDesc(t("embeddingModelDesc"))
@@ -34,7 +41,7 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 				.addOption("loose", t("relatedSimilarityLoose"))
 				.setValue(plugin.settings.relatedSimilarity)
 				.onChange(async (value) => {
-					plugin.settings.relatedSimilarity = value as RelatedSimilarity;
+					plugin.settings.relatedSimilarity = value as SimilarityPreset;
 					await plugin.saveSettings();
 				})
 		);
@@ -70,19 +77,40 @@ export function renderEmbeddingSettings(containerEl: HTMLElement, plugin: Pythia
 				})
 		);
 
+	// The ONE numeric field that still committed per keystroke, with a rejected
+	// entry falling back to 0 — which here means UNLIMITED. Clearing the box to
+	// retype therefore uncapped the index (ADR-171's rule, ADR-182's fix).
 	new Setting(containerEl)
 		.setName(t("vaultContextMaxNotesName"))
 		.setDesc(t("vaultContextMaxNotesDesc"))
-		.addText((txt) =>
-			txt
-				.setPlaceholder("5000")
-				.setValue(String(plugin.settings.vaultContextMaxIndexedNotes))
-				.onChange((value) => {
-					const n = Number.parseInt(value, 10);
-					plugin.settings.vaultContextMaxIndexedNotes = Number.isFinite(n) && n >= 0 ? n : 0;
+		.addText((txt) => {
+			registerCommit(bindNumberSetting(txt, {
+				rule: { min: 0 },
+				read: () => plugin.settings.vaultContextMaxIndexedNotes,
+				write: (n) => {
+					plugin.settings.vaultContextMaxIndexedNotes = n;
 					plugin.saveSettingsSoon();
-				})
-		);
+				},
+			}));
+		});
+
+	// How many retrieved notes reach a turn. Exposed in ADR-183; the strictness
+	// preset beside it deliberately is NOT, because `vaultRetrievalMinScore`'s
+	// three constants have never been measured (D-13) — a control over a number
+	// nobody can justify is worse than no control.
+	new Setting(containerEl)
+		.setName(t("vaultContextNotesPerTurnName"))
+		.setDesc(t("vaultContextNotesPerTurnDesc"))
+		.addText((txt) => {
+			registerCommit(bindNumberSetting(txt, {
+				rule: { min: 1, max: 20 },
+				read: () => plugin.settings.vaultContextMaxNotes,
+				write: (n) => {
+					plugin.settings.vaultContextMaxNotes = n;
+					plugin.saveSettingsSoon();
+				},
+			}));
+		});
 
 	// Rebuild action + a status line that reflects the current index state.
 	const status = new Setting(containerEl)

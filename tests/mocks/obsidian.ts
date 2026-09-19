@@ -12,7 +12,6 @@
 // the view to build its DOM. `document` is happy-dom's, available because this
 // module is only imported from tests that run in the happy-dom environment.
 
-const noop = (): void => {};
 const anoop = async (): Promise<void> => {};
 const cls = (): new () => object => class {};
 
@@ -29,7 +28,31 @@ export class Component {
 	unload(): void {}
 }
 
+/** Records what a view registers; `trigger` plays Obsidian's keymap for a test. */
+export class Scope {
+	parent?: Scope;
+	keys: { modifiers: string[] | null; key: string | null; func: (evt: KeyboardEvent) => unknown }[] = [];
+	constructor(parent?: Scope) { this.parent = parent; }
+	register(modifiers: string[] | null, key: string | null, func: (evt: KeyboardEvent) => unknown) {
+		const handler = { modifiers, key, func };
+		this.keys.push(handler);
+		return handler;
+	}
+	unregister(): void {}
+	/** First handler whose key matches — Mod counts as Meta or Ctrl. Returns its result. */
+	trigger(evt: KeyboardEvent): unknown {
+		for (const h of this.keys) {
+			if (h.key !== null && h.key !== evt.key) continue;
+			const mods = h.modifiers ?? [];
+			const ok = mods.every((m) => m === "Mod" ? evt.metaKey || evt.ctrlKey : m === "Ctrl" ? evt.ctrlKey : m === "Meta" ? evt.metaKey : m === "Shift" ? evt.shiftKey : evt.altKey);
+			if (ok) return h.func(evt);
+		}
+		return undefined;
+	}
+}
+
 export class ItemView extends Component {
+	scope: Scope | null = null;
 	leaf: unknown;
 	app: unknown;
 	containerEl: { children: Element[]; empty(): void };
@@ -65,7 +88,9 @@ export class Plugin extends Component {
 }
 
 export class Notice {
-	constructor(_msg?: string, _timeout?: number) {}
+	/** Every message shown, so a test can assert that something was said (principle 2). */
+	static shown: string[] = [];
+	constructor(msg?: string, _timeout?: number) { if (typeof msg === "string") Notice.shown.push(msg); }
 	setMessage(): void {}
 	hide(): void {}
 }
@@ -108,7 +133,8 @@ export const Setting = cls();
 
 export const Platform = { isMobile: false, isDesktop: true, isIosApp: false, isAndroidApp: false };
 
-export const setIcon = noop;
+/** Records the icon id as `data-icon`, so a test can assert which glyph was drawn. */
+export const setIcon = (el?: { setAttribute?: (k: string, v: string) => void }, id?: string): void => { el?.setAttribute?.("data-icon", String(id)); };
 /** Icons the plugin registered, so a test can assert what was handed over. */
 export const registeredIcons = new Map<string, string>();
 export const addIcon = (id: string, svg: string): void => { registeredIcons.set(id, svg); };

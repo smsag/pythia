@@ -153,7 +153,7 @@ export function decorateCodeBlocks(
 		head.createEl("span", { cls: "p-code-lang", text: lang || "code" });
 
 		const actions = head.createEl("div", { cls: "p-code-actions" });
-		const copyBtn = actions.createEl("button", { cls: "p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
+		const copyBtn = actions.createEl("button", { cls: "pb pb-icon p-code-btn p-code-copy", attr: { title: t("copyCodeTooltip") } });
 		setIcon(copyBtn, "copy");
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
@@ -176,7 +176,7 @@ export function decorateCodeBlocks(
 			const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
 
 			const copyBtn = el.createEl("button", {
-				cls:  "p-code-btn p-code-copy p-diag-copy",
+				cls:  "pb pb-icon p-code-btn p-code-copy p-diag-copy",
 				attr: { title: t("copyDiagramTooltip") },
 			});
 			setIcon(copyBtn, "copy");

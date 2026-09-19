@@ -9,10 +9,16 @@ import {
 	resolveDefaultModelForProvider,
 } from "../models/knownModels";
 import type { PythiaSettings } from "../models/settings";
+import {
+	EMBEDDING_MODELS,
+	DEFAULT_EMBEDDING_MODEL_ID,
+	embedChunkChars,
+	type EmbeddingModelId,
+} from "../models/embeddingModels";
 
 describe("isReasoningModel", () => {
-	it("is true for every OpenAI o-series model", () => {
-		for (const model of ["o3", "o3-mini", "o4-mini"]) {
+	it("is true for every OpenAI o-series and GPT-5 model", () => {
+		for (const model of ["o3", "o3-mini", "o4-mini", "gpt-5.6", "gpt-5.4-mini", "gpt-5.4-nano"]) {
 			expect(isReasoningModel(model)).toBe(true);
 		}
 	});
@@ -26,8 +32,10 @@ describe("isReasoningModel", () => {
 	it("every OpenAI model selectable in KNOWN_MODELS agrees with REASONING_MODELS", () => {
 		// Regression guard for the exact bug this module fixes: a model listed as
 		// selectable but missing from the reasoning-model set (e.g. o4-mini).
+		// GPT-5 and later reason too: they reject temperature and max_tokens the
+		// same way the o-series does (ADR-179).
 		for (const model of KNOWN_MODELS.openai) {
-			const looksLikeReasoningModel = /^o\d/.test(model);
+			const looksLikeReasoningModel = /^(o\d|gpt-([5-9]|\d\d))/.test(model);
 			expect(REASONING_MODELS.has(model)).toBe(looksLikeReasoningModel);
 		}
 	});
@@ -36,7 +44,7 @@ describe("isReasoningModel", () => {
 describe("supportsEffort", () => {
 	it("is true for every model in the effort allow-list", () => {
 		for (const model of [
-			"claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7",
+			"claude-fable-5-1", "claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7",
 			"claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6",
 		]) {
 			expect(supportsEffort(model)).toBe(true);
@@ -94,7 +102,8 @@ describe("resolveDefaultModelForProvider", () => {
 	});
 });
 
-import { parameterSupport } from "../models/knownModels";
+import { parameterSupport, mistralReasoningEffort, MODEL_CATALOG } from "../models/knownModels";
+import { EFFORT_LEVELS } from "../models/types";
 
 describe("parameterSupport (one rule for the settings tab and the conversation modal)", () => {
 	it("anthropic follows the catalog flags", () => {
@@ -105,8 +114,76 @@ describe("parameterSupport (one rule for the settings tab and the conversation m
 		expect(parameterSupport("openai", "o3")).toEqual({ temperature: false, effort: true });
 		expect(parameterSupport("openai", "gpt-4o")).toEqual({ temperature: true, effort: false });
 	});
-	it("mistral always accepts effort; magistral rejects temperature", () => {
-		expect(parameterSupport("mistral", "magistral-medium-latest")).toEqual({ temperature: false, effort: true });
-		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: true });
+	it("mistral takes effort only on the adjustable-reasoning models; magistral rejects temperature (#303)", () => {
+		expect(parameterSupport("mistral", "magistral-medium-latest")).toEqual({ temperature: false, effort: false });
+		expect(parameterSupport("mistral", "mistral-large-latest")).toEqual({ temperature: true, effort: false });
+		expect(parameterSupport("mistral", "mistral-small-latest")).toEqual({ temperature: true, effort: true });
+		expect(parameterSupport("mistral", "mistral-medium-latest")).toEqual({ temperature: true, effort: true });
+	});
+});
+
+describe("default models", () => {
+	// A default the picker cannot show is a default nobody can pick back after
+	// changing it. Hiding a deprecated model (ADR-179) must move the default first.
+	it("every provider's default model is a selectable catalog model", async () => {
+		const { DEFAULT_SETTINGS } = await import("../models/settings");
+		expect(KNOWN_MODELS.anthropic).toContain(DEFAULT_SETTINGS.defaultAnthropicModel);
+		expect(KNOWN_MODELS.openai).toContain(DEFAULT_SETTINGS.defaultOpenAIModel);
+		expect(KNOWN_MODELS.mistral).toContain(DEFAULT_SETTINGS.defaultMistralModel);
+	});
+});
+
+describe("mistralReasoningEffort (#303)", () => {
+	it("never produces a value the Mistral API does not list, for any catalog model and level", () => {
+		for (const m of MODEL_CATALOG.filter((x) => x.provider === "mistral")) {
+			for (const level of EFFORT_LEVELS) {
+				expect([undefined, "none", "high"], `${m.id} ${level}`).toContain(mistralReasoningEffort(m.id, level));
+			}
+		}
+	});
+
+	it("sends something exactly where the header says effort applies", () => {
+		for (const m of MODEL_CATALOG.filter((x) => x.provider === "mistral")) {
+			expect(mistralReasoningEffort(m.id, "high") !== undefined, m.id).toBe(parameterSupport("mistral", m.id).effort);
+		}
+	});
+
+	it("sends nothing when no level is set", () => {
+		expect(mistralReasoningEffort("mistral-small-latest", undefined)).toBeUndefined();
+	});
+});
+
+// ── ADR-182: chunk size follows the model's token window ─────────────────────
+describe("embedChunkChars (ADR-182)", () => {
+	it("gives every model a chunk that fits its own token window", () => {
+		for (const m of Object.values(EMBEDDING_MODELS)) {
+			const chars = embedChunkChars(m.id);
+			expect(chars).toBeGreaterThan(0);
+			// The window is the contract: a chunk must not need more tokens than the
+			// model will read. 3.3 chars/token is the pessimistic end for German
+			// through XLM-R, so this is the floor, not an estimate of the average.
+			expect(chars).toBeLessThanOrEqual(m.maxTokens * 4);
+			expect(chars / m.maxTokens).toBeLessThanOrEqual(4);
+		}
+	});
+
+	it("reads maxTokens rather than a shared constant — the field is no longer dead", () => {
+		// Before ADR-182 both models chunked at a hardcoded 500 chars while declaring
+		// different windows. A model with a bigger window must now get a bigger chunk.
+		const en = embedChunkChars("xenova-all-MiniLM-L6-v2");
+		const multi = embedChunkChars("xenova-paraphrase-multilingual-MiniLM-L12-v2");
+		expect(EMBEDDING_MODELS["xenova-all-MiniLM-L6-v2"].maxTokens)
+			.toBeGreaterThan(EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].maxTokens);
+		expect(en).toBeGreaterThan(multi);
+	});
+
+	it("keeps the default model's chunk under the 500 chars that overran it", () => {
+		// 500 chars is ~150 tokens of German against a 128-token window.
+		expect(embedChunkChars(DEFAULT_EMBEDDING_MODEL_ID)).toBeLessThan(500);
+	});
+
+	it("falls back to the default model's window for an unknown id", () => {
+		expect(embedChunkChars("nope" as EmbeddingModelId))
+			.toBe(embedChunkChars(DEFAULT_EMBEDDING_MODEL_ID));
 	});
 });

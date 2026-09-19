@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, setIcon, TFile, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { estimateTokensFromBytes, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
@@ -9,11 +9,14 @@ import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from ".
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { parseWebSourcesFromResult } from "./services/WebSearchService";
-import { shouldGenerateTitle, shouldGenerateChapterName } from "./services/sendPolicy";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
-import { composerKeyAction, composerPlaceholder } from "./ui/composerKeys";
+import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
+import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
+import { RewriteController } from "./ui/RewriteController";
+import { referenceEntries } from "./ui/referenceEntries";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController, type HistoryPick } from "./ui/HistoryController";
@@ -33,6 +36,8 @@ import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
 import { SendHintController } from "./ui/SendHintController";
+import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
+import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
@@ -45,6 +50,7 @@ import { describeErrorForLog } from "./services/redact";
 import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
+import { appendSourceIcon, SOURCE_ICONS } from "./ui/icons";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -122,7 +128,10 @@ export class PythiaSidebarView extends ItemView {
 	 *  popover (created lazily on first long-press). */
 	private actionSheet: ActionSheet | null = null;
 	private sendHint!: SendHintController;
+	private modelSuggestion!: ModelSuggestionController;
 	private truncation!: TruncationController;
+	/** Public: the editor entry point arms a target through it (ADR-178). */
+	rewrite!: RewriteController;
 
 	private inputAreaEl!: HTMLElement;
 	private inputCollapseBtn!: HTMLButtonElement;
@@ -134,12 +143,21 @@ export class PythiaSidebarView extends ItemView {
 	private disposeViewport: (() => void) | null = null;
 
 	private researchBtnEl!: HTMLButtonElement;
+	private templateBtnEl!: HTMLButtonElement;
+	private readonly composerSend = new ComposerSend({
+		input: () => this.inputEl,
+		suggest: (e) => this.inlineSuggest.handleKeydown(e),
+		send: () => void this.sendMessage(),
+	});
 	private vaultBtnEl!: HTMLButtonElement;
 	private optimizationController!: OptimizationController;
 
 	constructor(leaf: WorkspaceLeaf, plugin: PythiaPlugin) {
 		super(leaf);
 		this.plugin = plugin;
+		// Cmd/Ctrl+Enter reaches Obsidian's keymap before the textarea (ComposerSend).
+		this.scope = new Scope(this.app.scope);
+		this.composerSend.registerOn(this.scope);
 	}
 
 	getViewType(): string {
@@ -205,8 +223,9 @@ export class PythiaSidebarView extends ItemView {
 		this.closeSummaryMenu();
 		this.actionSheet?.close();
 
-		// Discard any pending optimization state.
+		// Discard any pending optimization state and its model offer (ADR-181).
 		this.optimizationController?.cancel();
+		this.modelSuggestion?.clear();
 
 		// Clean up navigator outside-click listener if view is closed while open (#26).
 		this.navigatorController?.close();
@@ -234,6 +253,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 		this.headerController?.exitRename(false);     // discard any in-progress rename
 		this.optimizationController?.cancel();
+		this.modelSuggestion?.clear();
 		this.activeConversation = conversation;
 		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
 		// Resetting to true here was the root cause of conversations always scrolling
@@ -242,8 +262,7 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.headerController.renderHeader();
 		this.headerController.updateInstructions();
-		this.updateResearchButton();
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 		this.renderReferencePills();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
@@ -369,6 +388,7 @@ export class PythiaSidebarView extends ItemView {
 			isStreaming: () => this.isStreaming,
 			autoResizeTextarea: () => this.autoResizeTextarea(),
 			updateSendBtnLabel: () => this.updateSendBtnLabel(),
+			onRated: (difficulty) => this.modelSuggestion.consider(difficulty),
 		});
 
 		this.navigatorController = new NavigatorController({
@@ -452,6 +472,12 @@ export class PythiaSidebarView extends ItemView {
 			startComparison: (userId, assistantId) => this.comparisonController.start(userId, assistantId),
 		});
 
+		this.rewrite = new RewriteController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			focusInput: () => this.inputEl?.focus(),
+			refreshPills: () => this.renderReferencePills(),
+		});
 		this.truncation = new TruncationController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -515,7 +541,7 @@ export class PythiaSidebarView extends ItemView {
 		const indexWrap = messagesWrapper.createDiv({ cls: "p-index-wrap" });
 		this.navigatorEl = indexWrap.createDiv({ cls: "p-navigator" });
 		this.indexTriggerEl = indexWrap.createEl("button", {
-			cls: "p-index-trigger",
+			cls: "pb pb-icon is-float p-index-trigger",
 			text: "#",
 			attr: { title: t("showChaptersTooltip") },
 		});
@@ -550,12 +576,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 			}
 		);
-		this.registerDomEvent(this.inputEl, "keydown", (e: KeyboardEvent) => {
-			if (this.inlineSuggest.handleKeydown(e)) return;
-			if (composerKeyAction(e) !== "send") return;   // Enter is a line break (ADR-175)
-			e.preventDefault();
-			void this.sendMessage();
-		});
+		this.registerDomEvent(this.inputEl, "keydown", this.composerSend.onKeydown);
 		{
 			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
 			this.registerDomEvent(this.inputEl, "input", () => {
@@ -580,68 +601,52 @@ export class PythiaSidebarView extends ItemView {
 		const toolbarLeft = toolbar.createDiv({ cls: "p-toolbar-left" });
 
 		const attachBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("attachNoteTooltip") },
 		});
-		const attachSvg = attachBtn.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		attachSvg.createSvg("path", {
-			attr: { d: "M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" },
-		});
+		drawAttachIcon(attachBtn);
 		this.registerDomEvent(attachBtn, "click", () => {
 			this.ensureInputExpanded();
 			this.onAttachNote();
 		});
 
 		const saveBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("saveResponseTooltip") },
 		});
-		const saveSvg = saveBtn.createSvg("svg", {
-			attr: { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
-		});
-		saveSvg.createSvg("path", {
-			attr: { d: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" },
-		});
-		saveSvg.createSvg("polyline", { attr: { points: "17 21 17 13 7 13 7 21" } });
-		saveSvg.createSvg("polyline", { attr: { points: "7 3 7 8 15 8" } });
+		drawSaveIcon(saveBtn);
 		this.registerDomEvent(saveBtn, "click", () => {
 			this.ensureInputExpanded();
 			void this.onSaveResponse();
 		});
 
-		// Prompt optimization now lives as a third entry in the Send long-press menu
-		// (openSummaryMenu) rather than a toolbar icon.
-
-		const applyTemplateBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+		const applyTemplateBtn = this.templateBtnEl = toolbarLeft.createEl("button", {
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("applyTemplateTooltip") },
 		});
-		setIcon(applyTemplateBtn, "layout-template");
+		setIcon(applyTemplateBtn, SOURCE_ICONS.template);
 		this.registerDomEvent(applyTemplateBtn, "click", () => {
 			this.ensureInputExpanded();
 			void this.onApplyTemplate();
 		});
 
 		this.researchBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("researchToggleTooltip") },
 		});
-		setIcon(this.researchBtnEl, "globe");
+		setIcon(this.researchBtnEl, SOURCE_ICONS.web);
 		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
-		this.updateResearchButton();
 
 		this.vaultBtnEl = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("vaultContextTooltip") },
 		});
-		setIcon(this.vaultBtnEl, "library");
+		setIcon(this.vaultBtnEl, SOURCE_ICONS.auto);
 		this.registerDomEvent(this.vaultBtnEl, "click", () => this.toggleVaultContext());
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 
 		this.inputCollapseBtn = toolbarLeft.createEl("button", {
-			cls: "p-tool-btn",
+			cls: "pb pb-icon p-tool-btn",
 			attr: { title: t("minimizeInputTooltip") },
 		});
 		setIcon(this.inputCollapseBtn, "arrow-down");
@@ -655,11 +660,18 @@ export class PythiaSidebarView extends ItemView {
 			openSettings: () => this.headerController.openConversationSettings(),
 		});
 		this.sendHint.mount(toolbar);
+		this.modelSuggestion = new ModelSuggestionController({
+			getSettings: () => this.plugin.settings,
+			getConversation: () => this.activeConversation,
+			hasApiKeyFor: (provider) => this.plugin.hasApiKeyFor(provider),
+			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+		});
+		this.modelSuggestion.mount(toolbar);
 
 		// Wrap the send button so the summary menu can open directly above it.
 		this.sendMenuWrap = toolbar.createDiv({ cls: "p-send-wrap" });
 		this.sendBtn = this.sendMenuWrap.createEl("button", {
-			cls: "p-send",
+			cls: "pb pb-primary p-send",
 			text: t("sendBtn"),
 		});
 		this.registerDomEvent(this.sendBtn, "click", () => {
@@ -796,6 +808,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private renderReferencePills(): void {
+		this.updateToolbarToggles(); // every template arm/clear repaints this row
 		this.referencePillsEl.empty();
 		const conv = this.activeConversation;
 
@@ -805,29 +818,7 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		type RefEntry =
-			| { kind: "context"; path: string }
-			| { kind: "output"; path: string; clearField: () => void }
-			| { kind: "auto"; path: string };
-
-		const entries: RefEntry[] = [];
-
-		for (const path of conv.contextNotes ?? []) {
-			entries.push({ kind: "context", path });
-		}
-		if (conv.savedNotePath) {
-			entries.push({ kind: "output", path: conv.savedNotePath, clearField: () => { conv.savedNotePath = undefined; } });
-		}
-		if (conv.summaryNote) {
-			entries.push({ kind: "output", path: conv.summaryNote, clearField: () => { conv.summaryNote = undefined; } });
-		}
-		// Vault-RAG auto-retrieved notes for the last turn (ADR-116): shown as
-		// distinct, read-only pills so the user sees what was pulled in. Excludes
-		// paths already listed as manual context to avoid duplicates.
-		const manual = new Set(conv.contextNotes ?? []);
-		for (const path of this.plugin.getAutoContext(conv.id)) {
-			if (!manual.has(path)) entries.push({ kind: "auto", path });
-		}
+		const entries = referenceEntries(conv, this.plugin.getAutoContext(conv.id));
 
 		this.referenceRowHasEntries = entries.length > 0;
 		this.updateReferenceRowVisibility();
@@ -837,16 +828,17 @@ export class PythiaSidebarView extends ItemView {
 
 		for (const entry of entries) {
 			const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
-			const displayName = noteBasename(entry.path);
+			const displayName = "label" in entry ? entry.label : noteBasename(entry.path);
 			const file = this.app.vault.getAbstractFileByPath(entry.path);
 			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
 
-			// Wikilink reference: [[ name ]] ~tokens ×
+			// Reference: <source icon> name ~tokens × (ADR-193)
 			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
 			// Auto-retrieved pills are read-only and visually distinct (no × — they
 			// are ephemeral per-turn context, not persistent conversation context).
 			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "[[" });
+			if (entry.kind === "template" || entry.kind === "rewrite") ref.addClass("p-wikilink--template");
+			appendSourceIcon(ref, entry.kind === "context" ? "note" : entry.kind);
 			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
 			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
 			label.addEventListener("click", async () => {
@@ -857,13 +849,14 @@ export class PythiaSidebarView extends ItemView {
 					new Notice(t("fileNotFound", { path: entry.path }));
 				}
 			});
-			ref.createEl("span", { cls: "p-wikilink-bracket", text: "]]" });
 			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
-			const x = ref.createEl("button", { cls: "p-wikilink-x", text: "×" });
-			if (entry.kind === "context") {
+			const x = ref.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
+			if (entry.kind !== "output") {
 				x.addEventListener("click", async () => {
-					conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
+					if (entry.kind === "template") conv.pendingTemplate = undefined;
+					else if (entry.kind === "rewrite") conv.pendingRewrite = undefined;
+					else conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
 					await this.plugin.conversationStore.save(conv);
 					this.renderReferencePills();
 				});
@@ -872,7 +865,7 @@ export class PythiaSidebarView extends ItemView {
 					new DeleteFileModal(this.app, fileName, async () => {
 						const f = this.app.vault.getAbstractFileByPath(entry.path);
 						if (f instanceof TFile) await this.app.vault.trash(f, true);
-						entry.clearField();
+						conv[entry.field] = undefined;
 						await this.plugin.conversationStore.save(conv);
 						this.renderReferencePills();
 					}).open();
@@ -881,7 +874,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		const addBtn = this.referencePillsEl.createEl("button", {
-			cls: "pythia-pill-add",
+			cls: "pb pb-link pythia-pill-add",
 			attr: { title: t("addContextNoteTooltip") },
 			text: t("addNoteInline"),
 		});
@@ -1039,7 +1032,7 @@ export class PythiaSidebarView extends ItemView {
 			this.mergeController.repaintMergeLinks(bubble, msg.id);
 			if (isLong) {
 				const toggle = row.createEl("button", {
-					cls: "p-bubble-toggle",
+					cls: "pb pb-icon p-bubble-toggle",
 					attr: { title: t("showMore") },
 				});
 				setIcon(toggle, "chevron-down");
@@ -1080,6 +1073,7 @@ export class PythiaSidebarView extends ItemView {
 		// applying, never repeated down the transcript.
 		renderSourcesRow(this.app, row, sources, turnTemplateCaption(msg, this.activeConversation));
 		this.truncation.paint(row, msg);
+		this.rewrite.paint(row, msg);
 
 		return aiBody;
 	}
@@ -1204,14 +1198,16 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	/** Reflect the active conversation's research (web-search) state on the
-	 *  toolbar toggle. Called on build and on every conversation switch, since
-	 *  the input toolbar is not rebuilt when the active conversation changes. */
-	private updateResearchButton(): void {
-		if (!this.researchBtnEl) return;
-		const on = !!this.activeConversation?.researchMode;
-		this.researchBtnEl.toggleClass("is-active", on);
-		this.researchBtnEl.setAttr("aria-pressed", String(on));
+
+
+	/** Paint the input toolbar's per-conversation toggles — web search, vault
+	 *  context, and an armed template (ADR-177) — with one shared active state.
+	 *  Called on build and on every switch: the toolbar is not rebuilt. */
+	private updateToolbarToggles(): void {
+		const conv = this.activeConversation;
+		paintToggle(this.researchBtnEl, !!conv?.researchMode);
+		paintToggle(this.vaultBtnEl, !!(conv?.vaultContext ?? this.plugin.settings.vaultContextEnabled));
+		paintToggle(this.templateBtnEl, !!conv?.pendingTemplate);
 	}
 
 	/** Briefly pulse the research globe to show web search was auto-armed for this
@@ -1229,7 +1225,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		conv.researchMode = !conv.researchMode;
-		this.updateResearchButton();
+		this.updateToolbarToggles();
 		if (conv.researchMode && !this.plugin.webSearchService.hasApiKey()) {
 			new Notice(t("researchNoKeyNotice"));
 		} else {
@@ -1238,14 +1234,6 @@ export class PythiaSidebarView extends ItemView {
 		void this.plugin.conversationStore.save(conv);
 	}
 
-	/** Reflect the conversation's vault-context state on the toggle (falls back to
-	 *  the global `vaultContextEnabled` default; mirrors `getRelevantNotes`). */
-	private updateVaultButton(): void {
-		if (!this.vaultBtnEl) return;
-		const on = this.activeConversation?.vaultContext ?? this.plugin.settings.vaultContextEnabled;
-		this.vaultBtnEl.toggleClass("is-active", !!on);
-		this.vaultBtnEl.setAttr("aria-pressed", String(!!on));
-	}
 
 	/** Toggle vault-context (semantic RAG) for the active conversation; persists.
 	 *  The first send after enabling lazily builds the embedding index. */
@@ -1253,7 +1241,7 @@ export class PythiaSidebarView extends ItemView {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		conv.vaultContext = !(conv.vaultContext ?? this.plugin.settings.vaultContextEnabled);
-		this.updateVaultButton();
+		this.updateToolbarToggles();
 		new Notice(conv.vaultContext ? t("vaultContextOn") : t("vaultContextOff"));
 		void this.plugin.conversationStore.save(conv);
 	}
@@ -1281,20 +1269,8 @@ export class PythiaSidebarView extends ItemView {
 		}
 
 		new TemplateSuggestModal(this.app, templates, async (tpl) => {
-			conv.systemPrompt = tpl.systemPrompt;
-			conv.templateId   = tpl.id;
-			if (tpl.provider)   conv.provider   = tpl.provider;
-			if (tpl.model)      conv.model      = tpl.model;
-			if (tpl.maxTokens)  conv.maxTokens  = tpl.maxTokens;
-			if (tpl.temperature !== undefined) conv.temperature = tpl.temperature;
-			if (tpl.effort !== undefined) conv.effort = tpl.effort;
-			if (tpl.resumeMode) conv.resumeMode = tpl.resumeMode;
-			if (tpl.writeMode)  conv.writeMode  = tpl.writeMode;
-
-			for (const n of tpl.contextNotes) {
-				if (!conv.contextNotes.includes(n)) conv.contextNotes.push(n);
-			}
-
+			// Armed for the next answer only, never written onto the conversation (ADR-177).
+			conv.pendingTemplate = armPendingTemplate(tpl);
 			await this.plugin.conversationStore.save(conv);
 			this.headerController.updateInstructions();
 			this.renderReferencePills();
@@ -1416,12 +1392,15 @@ export class PythiaSidebarView extends ItemView {
 		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
+		// This turn: accepted model suggestion, armed template over it (ADR-177/181).
+		const turnConv = applyPendingTemplate(this.modelSuggestion.layer(conv));
+		this.modelSuggestion.sent();
 		const userMsg: Message = {
 			id: crypto.randomUUID(),
 			role: "user",
 			content: text,
 			timestamp: new Date().toISOString(),
-			attachedNotes: conv.contextNotes.length > 0 ? [...conv.contextNotes] : undefined,
+			attachedNotes: turnConv.contextNotes.length > 0 ? [...turnConv.contextNotes] : undefined,
 		};
 		conv.messages.push(userMsg);
 		// Persist the user turn immediately so it survives an errored or empty
@@ -1432,20 +1411,18 @@ export class PythiaSidebarView extends ItemView {
 		await this.appendMessageBubble(userMsg);
 		this.lastRenderedMsgId = userMsg.id;
 
-		const attachedNotes = [...(conv.contextNotes ?? [])];
+		const attachedNotes = [...(turnConv.contextNotes ?? [])];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.pendingWebSources = [];
 
-		// Auto-arm web search for THIS send when the message reads as time-sensitive
-		// and research mode isn't already on (ADR-099). We offer the tool for this
-		// turn only — never flipping or persisting conv.researchMode — so search can
-		// fire when the user expects it without their having to toggle the globe.
-		const autoArmedSearch =
-			!conv.researchMode &&
-			this.plugin.settings.webSearchAutoArm &&
-			this.plugin.webSearchService.hasApiKey() &&
-			looksTimeSensitive(text, new Date().getFullYear());
+		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
+		const autoArmedSearch = shouldAutoArmSearch({
+			researchMode: conv.researchMode,
+			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
+			hasApiKey: this.plugin.webSearchService.hasApiKey(),
+			timeSensitive: looksTimeSensitive(text, new Date().getFullYear()),
+		});
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
@@ -1527,11 +1504,11 @@ export class PythiaSidebarView extends ItemView {
 
 				const confirmed = await new Promise<boolean>((resolve) => {
 					const actionBtn = actionsEl.createEl("button", {
-						cls: "pythia-tool-call-btn pythia-tool-call-btn--action",
+						cls: "pb pb-primary pythia-tool-call-btn pythia-tool-call-btn--action",
 						text: actionLabel,
 					});
 					const cancelBtn = actionsEl.createEl("button", {
-						cls: "pythia-tool-call-btn",
+						cls: "pb pb-quiet pythia-tool-call-btn",
 						text: t("cancelBtn"),
 					});
 					this.registerDomEvent(actionBtn, "click", () => resolve(true));
@@ -1581,8 +1558,8 @@ export class PythiaSidebarView extends ItemView {
 			// offered this turn. The clone shares conv.messages (read-only in the
 			// provider) and is never persisted — sidebar's own callbacks below save
 			// the original `conv`, so the toggle stays off after the turn.
-			autoArmedSearch ? { ...conv, researchMode: true } : conv,
-			text,
+			autoArmedSearch ? { ...turnConv, researchMode: true } : turnConv,
+			this.rewrite.decorate(text, conv),
 			attachedNotes,
 			appendToken,
 			async (fullText, tokenUsage, finish) => {
@@ -1603,22 +1580,27 @@ export class PythiaSidebarView extends ItemView {
 				}
 
 				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
-				// Priced now, with the prices in force now (ADR-163) — a later table
-				// update must not re-price an answer that was already paid for.
-				const cost = costSnapshot(conv.model, tokenUsage);
+				// Priced now (ADR-163), on the model that answered: turnConv, which a
+				// template or model suggestion can move off conv.model (ADR-181).
+				const cost = costSnapshot(turnConv.model, tokenUsage);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
 					content: fullText,
 					timestamp: new Date().toISOString(),
-					model: conv.model,
+					model: turnConv.model,
 					tokenUsage,
-					...(conv.templateId ? { templateId: conv.templateId } : {}),
+					...(turnConv.templateId ? { templateId: turnConv.templateId } : {}),
 					...(parsedSources.length ? { sources: parsedSources } : {}),
 					...(finish?.truncated ? { truncated: true as const } : {}),
 					...(cost ? { cost } : {}),
 				};
+				this.rewrite.attach(conv, assistantMsg);
 				conv.messages.push(assistantMsg);
+				// Spent. Cleared on a committed answer, not at send start, so an
+				// errored or empty reply leaves it armed for the retry (ADR-177).
+				conv.pendingTemplate = undefined;
+				this.modelSuggestion.spent(conv.id);
 				if (this.activeConversation?.id === conv.id) {
 					this.lastRenderedMsgId = assistantMsg.id;
 					// Surface any vault-RAG notes pulled in this turn as auto pills (ADR-116).
@@ -1634,6 +1616,7 @@ export class PythiaSidebarView extends ItemView {
 						else if (label) appendTokensToTurnLabel(label, tokenUsage);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
+					this.rewrite.paint(lastRow, assistantMsg);
 				}
 				await this.plugin.conversationStore.save(conv);
 				if (this.activeConversation?.id === conv.id) {
@@ -1677,7 +1660,7 @@ export class PythiaSidebarView extends ItemView {
 				// error object (avoids ever surfacing request metadata in the console).
 				console.error("[Pythia] stream error:", describeErrorForLog(error));
 
-				new Notice(buildStreamErrorMessage(error, conv.model ?? ""));
+				new Notice(buildStreamErrorMessage(error, turnConv.model ?? ""));
 
 				// Discard any partial reply and drop the streaming row. The user's
 				// message is already persisted (saved above), so they can retry from a

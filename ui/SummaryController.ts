@@ -3,6 +3,8 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
+import { REGENERATE_ICON } from "./icons";
+import { buildAccordion, setAccordionOpen } from "./accordion";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -48,10 +50,12 @@ export class SummaryController {
 		const conv = this.d.getConversation();
 		const cards: HTMLElement[] = [];
 		if (conv?.summaryText?.trim()) {
-			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt));
+			const last = conv.messages.length ? conv.messages[conv.messages.length - 1].timestamp : undefined;
+			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, last));
 		}
 		if (conv?.favoritesSummary?.text?.trim()) {
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt));
+			const newest = (conv.favorites ?? []).map((f) => f.createdAt ?? "").sort().pop() || undefined;
+			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, newest));
 		}
 		cardsEl.style.display = cards.length ? "" : "none";
 
@@ -75,45 +79,45 @@ export class SummaryController {
 	private buildSummaryCard(
 		kind: "conversation" | "favorites",
 		text: string,
-		updatedAt?: string
+		updatedAt?: string,
+		/** The newest thing the summary covers (last message, newest favorite). */
+		latestSource?: string,
 	): HTMLElement {
-		const card = this.d.getCardsEl()!.createDiv({
+		// Outdated when something newer than the summary exists — the fork and merge
+		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
+		const stale = !!(updatedAt && latestSource && latestSource > updatedAt);
+		// The shared accordion (ADR-192): same box as the context inspector.
+		const acc = buildAccordion(this.d.getCardsEl()!, {
 			cls: "p-summary-card",
-			attr: { "data-kind": kind },
+			icon: kind === "favorites" ? "star" : "align-left",
+			title: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
-		const header = card.createDiv({ cls: "p-summary-card-header" });
-		const icon = header.createSpan({ cls: "p-summary-card-icon" });
-		setIcon(icon, kind === "favorites" ? "star" : "align-left");
-		header.createSpan({
-			cls: "p-summary-card-title",
-			text: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
-		});
-		// Timestamp lives in the header now (right-aligned, faint).
+		const card = acc.root;
+		card.setAttribute("data-kind", kind);
+		// Timestamp in the header's meta slot (right-aligned, faint).
 		if (updatedAt) {
-			header.createSpan({ cls: "p-summary-ts", text: formatSummaryTimestamp(updatedAt) });
+			const ts = formatSummaryTimestamp(updatedAt);
+			acc.meta.createSpan({ cls: "p-summary-ts", text: stale ? `${ts} · ${t("forkSummaryStale")}` : ts });
 		}
-		// Regenerate icon — re-runs the summary matching this card's kind.
-		const regen = header.createEl("button", {
-			cls: "p-summary-card-regen",
-			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
+		// Regenerate icon — beside the toggle, never inside it.
+		const regenLabel = kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation");
+		const regen = acc.actions.createEl("button", {
+			cls: `pb pb-icon p-summary-card-regen${stale ? " is-stale" : ""}`,
+			attr: { title: regenLabel, "aria-label": regenLabel },
 		});
-		setIcon(regen, "refresh-cw");
+		setIcon(regen, REGENERATE_ICON);
 		regen.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (kind === "favorites") void this.summarizeFavorites();
 			else void this.generateConversationSummary();
 		});
-		header.createSpan({ cls: "p-summary-card-chevron", text: "▸" });
-		header.addEventListener("click", () =>
-			this.setSummaryCardOpen(card, !card.hasClass("open"))
-		);
-
-		const body = card.createDiv({ cls: "p-summary-card-body" });
+		const body = acc.body;
+		body.addClass("p-summary-card-body");
 		const md = body.createDiv({ cls: "p-summary-card-md" });
 		this.d.renderMarkdown(text, md);
 
 		const footer = body.createDiv({ cls: "p-summary-card-footer" });
-		const copyBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("copyBtn") });
+		const copyBtn = footer.createEl("button", { cls: "pb pb-quiet p-summary-card-action", text: t("copyBtn") });
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			navigator.clipboard.writeText(text).then(
@@ -121,7 +125,7 @@ export class SummaryController {
 				() => new Notice(t("copyFailed")),
 			);
 		});
-		const saveBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("saveToNoteBtn") });
+		const saveBtn = footer.createEl("button", { cls: "pb pb-quiet p-summary-card-action", text: t("saveToNoteBtn") });
 		saveBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.onSaveSummaryToNote(kind, text);
@@ -131,9 +135,7 @@ export class SummaryController {
 	}
 
 	private setSummaryCardOpen(card: HTMLElement, open: boolean): void {
-		card.toggleClass("open", open);
-		const chevron = card.querySelector<HTMLElement>(".p-summary-card-chevron");
-		if (chevron) chevron.setText(open ? "▾" : "▸");
+		setAccordionOpen(card, open);
 	}
 
 	private async onSaveSummaryToNote(kind: "conversation" | "favorites", text: string): Promise<void> {
