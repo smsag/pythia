@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
+*Last updated: 2026-09-20 — ADR-193 (the highlighter stroke is the family's: Klartext is the baseline, its `kit/highlight.css` is copied in, the pen is shared and only the ink differs; supersedes ADR-090).*
+
+*Previously: 2026-09-20 — ADR-192 (one accordion: the context inspector and the summary cards are built by `ui/accordion.ts` and styled by one `.p-acc` rule set; the header is a keyboard-reachable `<button>` with `aria-expanded`).*
 
 *Previously: 2026-09-20 — ADR-191 (one glyph for regenerate: `refresh-cw` from `ui/icons.ts` on all six controls, the summary card flags an outdated summary like the anchors, and an empty definition reply is reported).*
 
@@ -3749,3 +3751,34 @@ Neither header could be reached from the keyboard: each was a `div` with a click
 - The context box turns grey like the summary cards.
 - Summary cards previously toggled from a click anywhere on the header row; now the toggle covers the row except the ↻ action.
 
+
+
+### ADR-193 — The highlighter stroke is the family's, not Pythia's
+
+*2026-09-20*
+
+**Context.** Pythia, Vizardry, Schreibstube and Klartext are one author's. A reader should be able to tell that from the UI, and a mark on a run of text is the one place it shows without any of them coupling to the others. Measured in the running app, every mark the family drew was a different pen:
+
+| mark | strength | geometry |
+|---|---|---|
+| Klartext `==highlight==` | 70 | `104deg`, feathered landing and lift, square ends, no halo |
+| Pythia favorite (ADR-090) | 32 | `-100deg`, `1em 0 1em 0` corners, white text-shadow |
+| Pythia fork origin | 32 | the same |
+| Schreibstube diff insert | 312 | a flat slab from `--background-modifier-success` |
+
+Strength is the Euclidean RGB distance of the painted fill from the page, sampled over the flat middle of the stroke. The spread was a factor of ten.
+
+Two things made it worse than a table suggests. The theme's `mark` selector is unscoped, so an answer containing `==highlight==` paints the theme's stroke **inside this panel** — the two pens sat in one paragraph, leaning opposite ways. And ADR-090's ink read `--text-highlight-bg` raw, which Klartext defines as `rgba(255,200,40,0.30)` and Obsidian's default theme as near-solid yellow, so the same rule painted at half the theme's strength under one and a fifth under the other.
+
+**Decision.** Klartext is the baseline. Its stroke is written once in that repo as `kit/highlight.css` and **copied** into each plugin at the file level — no runtime dependency, because Obsidian loads every plugin's CSS globally and a shared class name would couple the plugins to each other through whichever loaded last.
+
+- **The pen is shared, the ink is not.** Both marks draw with one rule; `--hl-ink` is the only thing that differs. A shared hue would say the marks are the same thing.
+- **ADR-090 is superseded.** The asymmetric corners and the text-shadow halo are gone. They were ported from smsag.de's `a:hover`, where nothing else was drawing a marker; here the theme's own stroke lands beside them.
+- **The ink is a named colour composited onto the page**, never `--text-highlight-bg` raw: `color-mix(in srgb, var(--color-yellow) 26%, var(--background-primary))` for a favorite, `var(--color-accent) 34%` for a fork origin. Opaque and predictable under any theme, and both land in the family's 60–140 band (69 and 67, measured).
+- **The flash animates `background-color`**, a wash behind the stroke. It used to replace `background`, which dropped the gradient for the duration; animating `--hl-ink` instead would step rather than fade, since a custom property does not interpolate without `@property`.
+
+**Not adopted from the theme.** Its opaque inks and `mix-blend-mode`. Live Preview splits one highlight into a span per formatting change, so two feathered ends overlap and translucent tints would add up darker; a plugin wraps a selection in one element and never meets that case. `mix-blend-mode` is also fragile here — any ancestor with `transform`, `filter` or `opacity` ends the blend.
+
+**Guards.** `tests/highlightStroke.test.ts` pins every number of the stroke, that both marks are drawn by one rule, that the ink is a composited named colour and never `--text-highlight-bg`, that `box-decoration-break: clone` survives (anchored — a bare substring check passes on the `-webkit-` copy alone), and that radius, text-shadow and box-shadow stay at their family values. Klartext's own `tools/check-highlight-kit.mjs` holds the kit against the theme; a change there means re-copying here.
+
+**Consequences.** A favorite and a fork origin are twice as strong as before and no longer rounded. The merge link's dashed underline (ADR-130) and the term's dotted one (ADR-136) are unaffected — they are the underline vocabulary, a different signal, and they still stack on top of a highlighter fill (ADR-157).
