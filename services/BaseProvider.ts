@@ -25,9 +25,7 @@ import {
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
-
-/** Repeated verbatim in generateChapterName and generateConversationTitle below. */
-const REPLY_TITLE_ONLY_INSTRUCTION = "Reply with ONLY the title, no punctuation, no quotes.";
+import { buildRetitleDigest, chapterNamePrompt, conversationTitlePrompt, retitlePrompt } from "./titlePrompts";
 
 /** Safety net against a confused model looping on tool calls indefinitely. */
 const MAX_TOOL_ROUNDS = 25;
@@ -543,28 +541,21 @@ export abstract class BaseProvider implements LLMProvider {
 	}
 
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
-		const excerpt = content.slice(0, 500);
-		return cleanGeneratedTitle(await this.callUtility(
-			this.fastModel,
-			`Summarize this user message in 3-5 words as a chapter title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nMessage:\n${excerpt}`,
-			15
-		));
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, chapterNamePrompt(content, this.languageLabel(conversation)), 15));
 	}
 
-	async generateConversationTitle(
-		userMessage: string,
-		assistantMessage: string,
-		conversation?: Conversation
-	): Promise<string> {
-		const userExcerpt = userMessage.slice(0, 300);
-		const assistantExcerpt = assistantMessage.slice(0, 300);
+	async generateConversationTitle(userMessage: string, assistantMessage: string, conversation?: Conversation): Promise<string> {
 		// "" on an empty reply, not a placeholder: the caller keeps the dated name
 		// it already has, which says more than "New Conversation" would.
-		return cleanGeneratedTitle(await this.callUtility(
-			this.fastModel,
-			`Give this conversation a concise 3-5 word title. ${REPLY_TITLE_ONLY_INSTRUCTION}${langInstruction(this.languageLabel(conversation))}\n\nUser: ${userExcerpt}\n\nAssistant: ${assistantExcerpt}`,
-			20
-		));
+		const prompt = conversationTitlePrompt(userMessage, assistantMessage, this.languageLabel(conversation));
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, prompt, 20));
+	}
+
+	/** Header ↻: a title for what the conversation is about now. "" = nothing to name, or no reply. */
+	async retitleConversation(conversation: Conversation): Promise<string> {
+		const digest = buildRetitleDigest(conversation);
+		if (!digest) return "";
+		return cleanGeneratedTitle(await this.callUtility(this.fastModel, retitlePrompt(digest, this.languageLabel(conversation)), 20));
 	}
 
 	async generateFavoritesSummary(conversation: Conversation): Promise<string> {

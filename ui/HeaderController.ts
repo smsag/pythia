@@ -4,6 +4,8 @@ import type { Conversation } from "../models/types";
 import type { EffortLevel, OutputLanguage } from "../models/types";
 import { t, getLang, getObsidianLocale } from "../i18n";
 import { resumeDeepLink } from "../utils";
+import { debugLog } from "../services/messageUtils";
+import { describeErrorForLog } from "../services/redact";
 import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
 import { goodForModel, profileLine } from "../models/modelGuidance";
@@ -58,7 +60,8 @@ export class HeaderController {
 	private deleteConvBtn!: HTMLButtonElement;
 	private renameWrapEl!: HTMLElement;
 	private renameInputEl!: HTMLInputElement;
-	private renameLLMBtn!: HTMLButtonElement;
+	/** The conversation an AI rename is running for — one at a time. */
+	private autoRenaming: Conversation | null = null;
 	private ctxChipEl!: HTMLButtonElement;
 	private modelPopoverCleanup: (() => void) | null = null;
 	/** Close for the open effort/language picker or menu, if any. */
@@ -107,16 +110,6 @@ export class HeaderController {
 
 		this.renameWrapEl = titleGroup.createDiv({ cls: "p-rename-wrap" });
 		this.renameWrapEl.style.display = "none";
-
-		this.renameLLMBtn = this.renameWrapEl.createEl("button", {
-			cls: "p-hdr-btn p-rename-refresh",
-			attr: { title: t("renameLLMTooltip") },
-		});
-		setIcon(this.renameLLMBtn, "refresh-cw");
-		this.d.registerDomEvent(this.renameLLMBtn, "mousedown", (e) => {
-			e.preventDefault();
-			void this.onRenameLLM();
-		});
 
 		this.renameInputEl = this.renameWrapEl.createEl("input", {
 			cls: "p-rename-input",
@@ -321,9 +314,17 @@ export class HeaderController {
 	}
 
 	private openMenu(): void {
-		if (!this.d.getConversation()) return;
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		// ↻ only when there is something to name — an empty conversation has no digest.
+		const canRetitle = conv.messages.length > 0;
 		this.togglePicker(this.menuBtn, "", [
-			{ label: t("renameConvTooltip"), icon: "pencil", onSelect: () => this.enterRenameMode() },
+			{
+				label: t("renameConvTooltip"), icon: "pencil", onSelect: () => this.enterRenameMode(),
+				trailing: canRetitle
+					? { icon: "refresh-cw", label: t("renameLLMTooltip"), onSelect: () => void this.onRenameLLM() }
+					: undefined,
+			},
 			{ label: t("copyConvLinkTooltip"), icon: "link", onSelect: () => void this.onCopyConversationLink() },
 			{ label: t("openConvSettings"), icon: "sliders", onSelect: () => this.openConversationSettings() },
 		]);
@@ -521,31 +522,28 @@ export class HeaderController {
 		}
 	}
 
+	/**
+	 * The menu row's ↻: rename with AI in one tap, without opening the editor.
+	 * The current name pulses until the new one replaces it; only a failure or an
+	 * empty reply says anything (ADR-158). The conversation is captured, so a
+	 * switch mid-call renames the right one and leaves the header alone.
+	 */
 	private async onRenameLLM(): Promise<void> {
 		const conv = this.d.getConversation();
-		if (!conv) return;
-
-		this.renameLLMBtn.disabled = true;
-		this.renameLLMBtn.addClass("p-rename-refresh-loading");
-
+		if (!conv || this.autoRenaming) return;
+		this.autoRenaming = conv;
+		this.convNameEl.addClass("is-generating");
 		try {
-			const msgs = conv.messages;
-			const userMsg   = msgs.find(m => m.role === "user")?.content     ?? "";
-			const assistMsg = msgs.find(m => m.role === "assistant")?.content ?? "";
-			const title = await this.d.plugin.llmRouter.generateConversationTitle(
-				userMsg, assistMsg, conv.provider, conv
-			);
-			// "" is not a title (ADR-158): say so rather than blanking the field.
-			if (!title) { new Notice(t("summaryEmpty")); return; }
-			// Fill the input with the generated name — user can still edit before confirming
-			this.renameInputEl.value = title;
-			this.renameInputEl.focus();
-			this.renameInputEl.select();
-		} catch {
+			const title = await this.d.plugin.llmRouter.retitleConversation(conv);
+			if (!title) { new Notice(t("renameLLMEmpty")); return; }
+			if (title !== conv.name) await this.d.plugin.renameConversation(conv, title);
+			if (this.d.getConversation()?.id === conv.id) this.convNameEl.setText(conv.name);
+		} catch (e) {
+			debugLog(this.d.plugin.settings, "retitle failed", describeErrorForLog(e));
 			new Notice(t("renameLLMFailed"));
 		} finally {
-			this.renameLLMBtn.disabled = false;
-			this.renameLLMBtn.removeClass("p-rename-refresh-loading");
+			this.autoRenaming = null;
+			this.convNameEl.removeClass("is-generating");
 		}
 	}
 

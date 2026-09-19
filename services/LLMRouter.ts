@@ -143,6 +143,10 @@ export class LLMRouter {
 		return this.byProvider(provider).generateConversationTitle(userMessage, assistantMessage, conversation);
 	}
 
+	retitleConversation(conversation: Conversation): Promise<string> {
+		return this.byProvider(conversation.provider).retitleConversation(conversation);
+	}
+
 	summarizeNotes(content: string, provider: Provider, conversation?: Conversation): Promise<string> {
 		return this.byProvider(provider).summarizeNotes(content, conversation);
 	}
