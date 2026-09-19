@@ -41,7 +41,7 @@ export class ModelSuggestionController {
 	constructor(private readonly d: ModelSuggestionDeps) {}
 
 	mount(toolbar: HTMLElement): void {
-		this.el = toolbar.createEl("button", { cls: "p-model-hint" });
+		this.el = toolbar.createEl("button", { cls: "pb pb-secondary p-model-hint" });
 		this.el.style.display = "none";
 		this.d.registerDomEvent(this.el, "click", () => this.toggle());
 	}

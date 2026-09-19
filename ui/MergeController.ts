@@ -274,7 +274,7 @@ export class MergeController {
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: `${metaParts.join(" · ")} · ` });
 
 		const refresh = meta.createEl("button", {
-			cls: `p-merge-anchor-refresh${stale ? " is-stale" : ""}`,
+			cls: `pb pb-icon is-inline p-merge-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("mergeRefreshSummary"), title: t("mergeRefreshSummary") },
 		});
 		setIcon(refresh, "rotate-cw");
@@ -285,7 +285,7 @@ export class MergeController {
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: " · " });
 
 		const unlink = meta.createEl("button", {
-			cls: "p-merge-anchor-unlink",
+			cls: "pb pb-icon is-inline p-merge-anchor-unlink",
 			attr: { "aria-label": t("mergeRemove"), title: t("mergeRemove") },
 		});
 		setIcon(unlink, "unlink");
@@ -295,7 +295,7 @@ export class MergeController {
 		});
 		meta.createSpan({ cls: "p-merge-anchor-metatext", text: " · " });
 
-		const open = meta.createEl("button", { cls: "p-merge-anchor-open", text: t("forkOpenShort") });
+		const open = meta.createEl("button", { cls: "pb pb-link p-merge-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.d.setActiveConversation(target);

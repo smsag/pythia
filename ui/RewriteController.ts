@@ -95,17 +95,17 @@ export class RewriteController {
 		card.createDiv({ cls: "p-rewrite-meta", text: target.path });
 
 		const actions = card.createDiv({ cls: "p-rewrite-actions" });
-		const replace = actions.createEl("button", { cls: "p-rewrite-btn", text: t("rewriteApply") });
+		const replace = actions.createEl("button", { cls: "pb pb-primary p-rewrite-btn", text: t("rewriteApply") });
 		replace.addEventListener("click", () => void this.apply(msg, card));
 
-		const copy = actions.createEl("button", { cls: "p-rewrite-btn p-rewrite-btn--quiet", text: t("copyBtn") });
+		const copy = actions.createEl("button", { cls: "pb pb-quiet p-rewrite-btn p-rewrite-btn--quiet", text: t("copyBtn") });
 		copy.addEventListener("click", () => {
 			void navigator.clipboard.writeText(cleanOptimizedOutput(msg.content))
 				.then(() => new Notice(t("copied")))
 				.catch(() => new Notice(t("copyFailed")));
 		});
 
-		const discard = actions.createEl("button", { cls: "p-rewrite-btn p-rewrite-btn--quiet", text: t("rewriteDiscard") });
+		const discard = actions.createEl("button", { cls: "pb pb-quiet p-rewrite-btn p-rewrite-btn--quiet", text: t("rewriteDiscard") });
 		discard.addEventListener("click", () => {
 			msg.rewriteTarget = undefined;
 			card.remove();

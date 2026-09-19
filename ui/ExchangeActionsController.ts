@@ -74,9 +74,9 @@ export class ExchangeActionsController {
 		assistantRow.addClass("p-del-preview");
 
 		const bar = createDiv({ cls: "p-del-bar" });
-		const confirmBtn = bar.createEl("button", { cls: "p-del-confirm", text: t("deleteExchangeBtn") });
-		const compareBtn = bar.createEl("button", { cls: "p-del-compare", text: t("compareBtn") });
-		const cancelBtn  = bar.createEl("button", { cls: "p-del-cancel",  text: t("cancelBtn") });
+		const confirmBtn = bar.createEl("button", { cls: "pb pb-destructive p-del-confirm", text: t("deleteExchangeBtn") });
+		const compareBtn = bar.createEl("button", { cls: "pb pb-secondary p-del-compare", text: t("compareBtn") });
+		const cancelBtn  = bar.createEl("button", { cls: "pb pb-quiet p-del-cancel",  text: t("cancelBtn") });
 
 		const on = (btn: HTMLElement, fn: () => void) => {
 			const handler = (e: Event) => { e.preventDefault(); e.stopPropagation(); fn(); };

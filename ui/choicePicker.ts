@@ -83,7 +83,7 @@ export function openChoicePicker(o: ChoicePickerOptions): () => void {
 		if (item.trailing) {
 			const tr = item.trailing;
 			const btn = row.createEl("button", {
-				cls: "p-choice-trailing",
+				cls: "pb pb-icon p-choice-trailing",
 				attr: { "aria-label": tr.label, title: tr.label },
 			});
 			setIcon(btn, tr.icon);

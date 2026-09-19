@@ -175,13 +175,13 @@ export class ContextInspectorController {
 			setIcon(warnRow.createSpan({ cls: "p-inspector-warn-icon" }), "alert-triangle");
 			const savings = Math.round(histTokens * 0.85);
 			warnRow.createSpan({ cls: "p-inspector-warn-text", text: t("ctxNearFull", { n: this.fmtTok(savings) }) });
-			const sumBtn = warnRow.createEl("button", { cls: "p-inspector-summarize", text: t("ctxSummarize") });
+			const sumBtn = warnRow.createEl("button", { cls: "pb pb-secondary p-inspector-summarize", text: t("ctxSummarize") });
 			sumBtn.addEventListener("click", (e) => { e.stopPropagation(); this.d.onSummarize(); });
 		} else {
 			for (const n of noteTok) {
 				const row = wikilinkRow(body, n.path);
 				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
-				const x = row.createEl("button", { cls: "p-wikilink-x", text: "×" });
+				const x = row.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
 				x.addEventListener("click", async () => {
 					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
 					await this.d.plugin.conversationStore.save(conv);

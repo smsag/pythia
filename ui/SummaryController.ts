@@ -94,7 +94,7 @@ export class SummaryController {
 		}
 		// Regenerate icon — re-runs the summary matching this card's kind.
 		const regen = header.createEl("button", {
-			cls: "p-summary-card-regen",
+			cls: "pb pb-icon p-summary-card-regen",
 			attr: { title: kind === "favorites" ? t("menuSummarizeFavorites") : t("menuSummarizeConversation") },
 		});
 		setIcon(regen, "refresh-cw");
@@ -113,7 +113,7 @@ export class SummaryController {
 		this.d.renderMarkdown(text, md);
 
 		const footer = body.createDiv({ cls: "p-summary-card-footer" });
-		const copyBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("copyBtn") });
+		const copyBtn = footer.createEl("button", { cls: "pb pb-quiet p-summary-card-action", text: t("copyBtn") });
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			navigator.clipboard.writeText(text).then(
@@ -121,7 +121,7 @@ export class SummaryController {
 				() => new Notice(t("copyFailed")),
 			);
 		});
-		const saveBtn = footer.createEl("button", { cls: "p-summary-card-action", text: t("saveToNoteBtn") });
+		const saveBtn = footer.createEl("button", { cls: "pb pb-quiet p-summary-card-action", text: t("saveToNoteBtn") });
 		saveBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void this.onSaveSummaryToNote(kind, text);

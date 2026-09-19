@@ -209,7 +209,7 @@ export class ForkController {
 		// long-press menu. When stale it's tinted with the accent to draw the eye. The
 		// long-press menu is kept for choosing conversation vs favorites.
 		const refresh = meta.createEl("button", {
-			cls: `p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
+			cls: `pb pb-icon is-inline p-fork-anchor-refresh${stale ? " is-stale" : ""}`,
 			attr: { "aria-label": t("forkRefreshSummary"), title: t("forkRefreshSummary") },
 		});
 		setIcon(refresh, "rotate-cw");
@@ -220,7 +220,7 @@ export class ForkController {
 		meta.createSpan({ cls: "p-fork-anchor-metatext", text: " · " });
 
 		const openWrap = meta.createSpan({ cls: "p-fork-open-wrap" });
-		const open = openWrap.createEl("button", { cls: "p-fork-anchor-open", text: t("forkOpenShort") });
+		const open = openWrap.createEl("button", { cls: "pb pb-link p-fork-anchor-open", text: t("forkOpenShort") });
 		open.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (this.suppressNextForkOpen) {

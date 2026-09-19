@@ -96,7 +96,7 @@ export class SelectionController {
 		// Merge, Insert into note, Save to inbox. Merge sits next to Branch because
 		// the two are inverses of each other (ADR-130).
 		const copyBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("copyBtn"),
 			attr: { title: t("copyBtn") },
 		});
@@ -104,7 +104,7 @@ export class SelectionController {
 		this.d.registerDomEvent(copyBtn, "touchend", makeSelTouch(() => this.onCopySelection()));
 
 		this.favBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("favoriteBtn"),
 			attr: { title: t("favoriteBtn") },
 		});
@@ -112,7 +112,7 @@ export class SelectionController {
 		this.d.registerDomEvent(this.favBtn, "touchend", makeSelTouch(() => void this.onFavoriteSelection()));
 
 		this.forkBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("forkBtn"),
 			attr: { title: t("forkBtn") },
 		});
@@ -120,7 +120,7 @@ export class SelectionController {
 		this.d.registerDomEvent(this.forkBtn, "touchend", makeSelTouch(() => this.onForkConversation()));
 
 		this.mergeBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("mergeBtn"),
 			attr: { title: t("mergeBtn") },
 		});
@@ -128,7 +128,7 @@ export class SelectionController {
 		this.d.registerDomEvent(this.mergeBtn, "touchend", makeSelTouch(() => this.onMergeConversation()));
 
 		this.defineBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("defineBtn"),
 			attr: { title: t("defineBtn") },
 		});
@@ -136,7 +136,7 @@ export class SelectionController {
 		this.d.registerDomEvent(this.defineBtn, "touchend", makeSelTouch(() => this.onEntityAction("term")));
 
 		this.personBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("personBtn"),
 			attr: { title: t("personBtn") },
 		});
@@ -144,7 +144,7 @@ export class SelectionController {
 		this.d.registerDomEvent(this.personBtn, "touchend", makeSelTouch(() => this.onEntityAction("person")));
 
 		const insertBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("insertBtn"),
 			attr: { title: t("insertBtn") },
 		});
@@ -152,7 +152,7 @@ export class SelectionController {
 		this.d.registerDomEvent(insertBtn, "touchend", makeSelTouch(() => this.onInsertIntoNote()));
 
 		const inboxBtn = this.selectionToolbar.createEl("button", {
-			cls: "pythia-sel-btn",
+			cls: "pb pb-quiet pythia-sel-btn",
 			text: t("inboxBtn"),
 			attr: { title: t("inboxBtn") },
 		});

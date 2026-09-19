@@ -32,7 +32,7 @@ export class SendHintController {
 	constructor(private readonly d: SendHintDeps) {}
 
 	mount(toolbar: HTMLElement): void {
-		this.el = toolbar.createEl("button", { cls: "p-send-hint" });
+		this.el = toolbar.createEl("button", { cls: "pb pb-icon is-warning p-send-hint" });
 		setIcon(this.el, "alert-triangle");
 		this.el.style.display = "none";
 		this.d.registerDomEvent(this.el, "click", () => this.d.openSettings());

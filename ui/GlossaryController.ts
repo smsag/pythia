@@ -231,7 +231,7 @@ export class GlossaryController {
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: `${parts.join(" · ")} · ` });
 
 		const regen = meta.createEl("button", {
-			cls: "p-term-anchor-btn",
+			cls: "pb pb-icon is-inline p-term-anchor-btn",
 			attr: { "aria-label": t("glossaryRegenerate"), title: t("glossaryRegenerate") },
 		});
 		setIcon(regen, "rotate-cw");
@@ -242,7 +242,7 @@ export class GlossaryController {
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
 
 		const remove = meta.createEl("button", {
-			cls: "p-term-anchor-btn",
+			cls: "pb pb-icon is-inline p-term-anchor-btn",
 			attr: { "aria-label": t("glossaryRemove"), title: t("glossaryRemove") },
 		});
 		setIcon(remove, "trash");
@@ -256,7 +256,7 @@ export class GlossaryController {
 		// öffnen" is long enough to wrap the meta row onto a second line. The
 		// specific wording survives as the tooltip.
 		const open = meta.createEl("button", {
-			cls: "p-term-anchor-open",
+			cls: "pb pb-link p-term-anchor-open",
 			text: t("forkOpenShort"),
 			attr: { "aria-label": t("glossaryOpenNote"), title: t("glossaryOpenNote") },
 		});

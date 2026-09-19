@@ -204,7 +204,7 @@ export class ConversationSettingsModal extends Modal {
 				b.setAttribute("aria-pressed", String(on));
 			});
 		for (const opt of effortOptions) {
-			const b = effortSeg.createEl("button", { cls: "p-effort-seg-btn", text: opt.label });
+			const b = effortSeg.createEl("button", { cls: "pb pb-seg p-effort-seg-btn", text: opt.label });
 			b.type = "button";
 			b.addEventListener("click", () => { effortValue = opt.value; paintEffort(); });
 			effortBtns.push(b);
@@ -269,7 +269,7 @@ export class ConversationSettingsModal extends Modal {
 		const globalMaxTokens = this.defaultMaxTokens;
 		const adviceEl = contentEl.createDiv({ cls: "p-param-advice" });
 		const adviceText = adviceEl.createSpan({ cls: "p-param-advice-text" });
-		const adviceBtn = adviceEl.createEl("button", { cls: "p-param-advice-btn" });
+		const adviceBtn = adviceEl.createEl("button", { cls: "pb pb-secondary p-param-advice-btn" });
 		adviceBtn.type = "button";
 		adviceBtn.addEventListener("click", () => {
 			const advice = maxTokensAdvice(selectedModel, maxTokensIsDefault ? undefined : maxTokensValue, globalMaxTokens);
