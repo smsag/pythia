@@ -29,7 +29,31 @@ export class Component {
 	unload(): void {}
 }
 
+/** Records what a view registers; `trigger` plays Obsidian's keymap for a test. */
+export class Scope {
+	parent?: Scope;
+	keys: { modifiers: string[] | null; key: string | null; func: (evt: KeyboardEvent) => unknown }[] = [];
+	constructor(parent?: Scope) { this.parent = parent; }
+	register(modifiers: string[] | null, key: string | null, func: (evt: KeyboardEvent) => unknown) {
+		const handler = { modifiers, key, func };
+		this.keys.push(handler);
+		return handler;
+	}
+	unregister(): void {}
+	/** First handler whose key matches — Mod counts as Meta or Ctrl. Returns its result. */
+	trigger(evt: KeyboardEvent): unknown {
+		for (const h of this.keys) {
+			if (h.key !== null && h.key !== evt.key) continue;
+			const mods = h.modifiers ?? [];
+			const ok = mods.every((m) => m === "Mod" ? evt.metaKey || evt.ctrlKey : m === "Ctrl" ? evt.ctrlKey : m === "Meta" ? evt.metaKey : m === "Shift" ? evt.shiftKey : evt.altKey);
+			if (ok) return h.func(evt);
+		}
+		return undefined;
+	}
+}
+
 export class ItemView extends Component {
+	scope: Scope | null = null;
 	leaf: unknown;
 	app: unknown;
 	containerEl: { children: Element[]; empty(): void };

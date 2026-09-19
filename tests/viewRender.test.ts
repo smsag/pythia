@@ -200,6 +200,34 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 		send.mockRestore();
 	});
 
+	// Obsidian's keymap sees Cmd+Enter before the textarea, and a core hotkey on
+	// Mod+Enter can consume it — the view's own scope sends first.
+	it("sends Cmd+Enter through the view scope, once, when the composer has focus", async () => {
+		const { view, pane } = await openBlank();
+		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
+		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+		const scope = view.scope as unknown as { trigger(e: KeyboardEvent): unknown };
+		input.focus();
+
+		const e = new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true });
+		expect(scope.trigger(e)).toBe(false);        // false = handled, Obsidian stops here
+		input.dispatchEvent(e);                      // the same event then reaches the textarea
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(e.defaultPrevented).toBe(true);
+		send.mockRestore();
+	});
+
+	it("leaves Cmd+Enter to Obsidian when the composer does not have focus", async () => {
+		const { view } = await openBlank();
+		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
+		(document.activeElement as HTMLElement | null)?.blur();
+		const scope = view.scope as unknown as { trigger(e: KeyboardEvent): unknown };
+
+		expect(scope.trigger(new KeyboardEvent("keydown", { key: "Enter", metaKey: true }))).toBe(true);
+		expect(send).not.toHaveBeenCalled();
+		send.mockRestore();
+	});
+
 	it("completes: renders and persists the assistant reply", async () => {
 		const { view, pane, conv } = await openBlank();
 		stubStream(plugin, async (_c, _t, _n, appendToken, onComplete) => {

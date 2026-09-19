@@ -84,7 +84,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
-    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175)
+    composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175) + ComposerSend: the shortcut via the view's Scope, ahead of Obsidian's Mod+Enter hotkey (ADR-187)
     RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
     referenceEntries.ts       ← pure: which pills the reference row shows and in what order (ADR-178)
     editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)
@@ -96,7 +96,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1421 tests across 95 files
+  tests/                      ← Vitest unit tests (npm test) — 1426 tests across 96 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -577,6 +577,8 @@ Web: 2 thetransmitter.org ↗  3 sainsburywellcome.org ↗
 - Textarea: transparent, no border, `--font-monospace`, 12px
 - Toolbar icons: inline SVG, 22×22px hit area
 - Send: `--color-accent`, `--font-monospace`, 10px, `border-radius: 3px`
+- **Every Send state sets fill AND label at `.pythia-view .p-send…` (0,3,0)** (ADR-187): core's `button:not(.clickable-icon):hover` is (0,2,1) and turned the hover grey under a white label. Hover darkens the accent, never `opacity`. `tests/sendButtonCascade.test.ts` fails in the forbidden direction
+- **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
 ---
 
