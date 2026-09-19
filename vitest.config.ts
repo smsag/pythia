@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
@@ -17,6 +17,11 @@ export default defineConfig({
 		],
 	},
 	test: {
+		// Claude Code worktrees live under .claude/worktrees/ and each carries a
+		// full copy of tests/. Run from the repo root, Vitest collected all of
+		// them (303 files for 101) and their copies failed against this root's
+		// module graph. scripts/check-file-size.mjs already skips .claude.
+		exclude: [...configDefaults.exclude, ".claude/**"],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html"],
