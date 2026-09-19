@@ -56,13 +56,20 @@ jobs:
             fail=1
           fi
 
+          lock=$(jq -r '.version' package-lock.json)
+          lockroot=$(jq -r '.packages[""].version' package-lock.json)
+          if [ "$lock" != "$VERSION" ] || [ "$lockroot" != "$VERSION" ]; then
+            echo "::error::releasing $VERSION, but package-lock.json says $lock / $lockroot — run npm install --package-lock-only"
+            fail=1
+          fi
+
           if [ "$(jq -r --arg v "$VERSION" 'has($v)' versions.json)" != "true" ]; then
             echo "::error::versions.json has no entry for $VERSION"
             fail=1
           fi
 
           [ "$fail" -eq 0 ] || exit 1
-          echo "manifest.json, package.json and versions.json all agree on $VERSION"
+          echo "manifest.json, package.json, package-lock.json and versions.json all agree on $VERSION"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
