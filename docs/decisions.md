@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-188 (one look per button role: every Pythia button carries `pb` + one of nine roles, the look lives in one block of `styles.css`, hover is "soft neutral", and a test fails when a button is created without a role).*
+*Last updated: 2026-09-20 — ADR-189 (the anchor summaries are shown in full again: the five-line fold ADR-141 added to the fork and merge anchors is removed from both; the prompt contract stays).*
+
+*Previously: 2026-09-20 — ADR-188 (one look per button role: every Pythia button carries `pb` + one of nine roles, the look lives in one block of `styles.css`, hover is "soft neutral", and a test fails when a button is created without a role).*
 
 *Previously: 2026-09-19 — ADR-187 (Send works from the keyboard and reads on hover: the shortcut moves into the view's own keymap scope, ahead of Obsidian's Mod+Enter hotkey, and every Send state out-ranks core's button hover).*
 
@@ -3638,4 +3640,21 @@ The `const` is safe **only** because this is a module — in a classic script it
 - Measured in the audit page after the change: one label size, one glyph size, two icon target sizes (24px and the 36px float), four hover behaviours, and three buttons below contrast: Stop, Delete and the warning triangle. All three use Obsidian's `--text-error` (4.2:1 on white) and `--text-warning` (about 3:1) as they are, because hard rule 3 forbids our own colours. A theme with darker reds passes.
 - The header grows by 4px per icon (20 → 24) and its segments from 20 to 24px tall.
 - **Not verified in Obsidian.** Rendered in a browser against a stand-in for core's button rules; the real theme's hover colour and the phone header's fit at 32px are unchecked.
+
+### ADR-189 — Anchor summaries are shown in full
+
+*2026-09-20*
+
+**Context.** ADR-141 did two things to the summaries that the fork and merge anchors show where the passage sits. It tightened the prompt (`SUMMARY_RULES`: substance only, at most five sentences / 100 words, plain prose), and it clamped the display to five lines with a `mehr` / `weniger` control (`ui/clampBody.ts`), because summaries already on disk had been written under looser rules. The reporter asked for the fold to be removed from the fork anchor.
+
+**Decision.**
+- **Both anchors show the whole summary.** `clampSummary`, its `.p-clamped` mask, `.p-anchor-more-wrap`, the `summaryMore` / `summaryLess` strings and `tests/clampBody.test.ts` are deleted.
+- **Both, not the fork anchor alone.** ADR-142 made the merge anchor the fork anchor with two named differences, and this is not a third. The reporter chose both when asked.
+- **No other ceiling in its place**, such as a scroll box: ADR-141 already rejected an inner scroll surface mid-transcript. The reporter chose "in full" when asked.
+- **The prompt half of ADR-141 stays.** `SUMMARY_RULES` and its five-sentence contract are unchanged, and they are what keeps a new summary short.
+
+**Consequences.**
+- A summary written before ADR-141 can run longer than five sentences and now shows at its full length. The regenerate control (↻) on the anchor rewrites it under the current rules.
+- The design spec for both anchors already said "not clamped"; it went stale with ADR-141 and is true again.
+- **Guard:** `tests/anchorSummaryFull.test.ts` opens each anchor on a 24-sentence summary. It asserts the whole text, no `.p-clamped` and no fold control, both synchronously and after two frames, since happy-dom lays nothing out and a measuring clamp would remove itself there. Both cases fail on the previous code.
 

@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — Buttons (ADR-188). One look per role, defined once in `styles.css` ("Buttons: one rule set per role"): every button carries `pb` + `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. Mono 11px, weight 500, `3px 8px`, radius 3px, 24px min height (32px under `pointer: coarse`); icons 24×24 with a 12px glyph in `--text-muted` (never faint). Hover: soft neutral — `--background-modifier-hover` behind everything unfilled, a filled button lightens to `color-mix(accent 88%, white)`. Chosen segments are the accent tint everywhere; the comparison tabs keep their underline. Old per-button classes keep layout only.*
+*Last updated: 2026-09-20 — the fork and merge anchors show their summary in full (ADR-189). `.p-clamped` (the five-line mask) and `.p-anchor-more` / `.p-anchor-more-wrap` (the `mehr`/`weniger` control) are removed; both anchor specs already read "not clamped".*
+
+*Previously: 2026-09-20 — Buttons (ADR-188). One look per role, defined once in `styles.css` ("Buttons: one rule set per role"): every button carries `pb` + `pb-primary` · `pb-secondary` · `pb-quiet` · `pb-destructive` · `pb-link` · `pb-icon` · `pb-seg` · `pb-tab` · `pb-chip-warn`. Mono 11px, weight 500, `3px 8px`, radius 3px, 24px min height (32px under `pointer: coarse`); icons 24×24 with a 12px glyph in `--text-muted` (never faint). Hover: soft neutral — `--background-modifier-hover` behind everything unfilled, a filled button lightens to `color-mix(accent 88%, white)`. Chosen segments are the accent tint everywhere; the comparison tabs keep their underline. Old per-button classes keep layout only.*
 
 *Previously: 2026-09-19 — Send is readable in every state (ADR-187). Obsidian's `button:not(.clickable-icon):hover` (0,2,1) out-ranked `.p-send:not(.stop)` (0,2,0), so on hover the white label sat on light grey. Every Send state is now `.pythia-view .p-send…` (0,3,0) and sets fill **and** label (`color` + `-webkit-text-fill-color`, hard rule 6a): accent fill at rest and on hover, the hover darkened to `color-mix(accent 85%, black)` under `@media (hover: hover)` instead of faded with `opacity` (which cost the label contrast); `.stop` = `--background-modifier-hover` fill, hairline border, `--text-error` label; `:disabled` (Optimizing…) not dimmed.*
 
@@ -284,7 +286,7 @@ Every button Pythia creates carries `pb` plus **one** role class. The look lives
 | `pb-secondary` | 1px accent border, accent label | `--background-modifier-hover` behind | Continue · Retry · Compare · + Model · Use default · Summarize · model suggestion |
 | `pb-quiet` | no border, `--text-muted` | hover fill, label → `--text-normal` | Cancel · Discard · Copy · Save · selection toolbar · tool-call Cancel |
 | `pb-destructive` | `--text-error` border and label | hover fill | Delete · Send while it reads Stop (`.stop`) |
-| `pb-link` | interface 11px, accent, no box | hover fill (padding grows into a negative margin) | Open → · Show more · + Note |
+| `pb-link` | interface 11px, accent, no box | hover fill (padding grows into a negative margin) | Open → · + Note |
 | `pb-icon` | 24×24, 12px glyph, `--text-muted` | hover fill, → `--text-normal` | header, toolbar, code copy, clear, anchor icons (`.is-inline`), `#` (`.is-float`, 36px), warning (`.is-warning`) |
 | `pb-seg` | frameless inside its group | hover fill | header `.p-inst`, modal `.p-effort-seg` |
 | `pb-tab` | 2px underline slot, `--text-muted` | label → normal, faint rule | comparison tabs |

@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-20 — button roles (ADR-188). `styles.css` gains one block, "Buttons: one rule set per role", right after the reset; 98 per-button rules were rewritten: 80 dropped (look, hover, glyph size), 18 kept with layout only. Every `createEl("button")` in `sidebar.ts`, `ui/` and `suggest/` names `pb` + a role (65 call sites). `tests/buttonRoles.test.ts` replaces `tests/sendButtonCascade.test.ts`: role cascade against core-like rules + a source scan for role-less buttons (1443 across 96 files).*
+*Last updated: 2026-09-20 — anchor summaries in full (ADR-189). `ui/clampBody.ts` (`clampSummary`) and its test are deleted; `ForkController` and `MergeController` render the summary body without it; `summaryMore`/`summaryLess` leave both locales. New `tests/anchorSummaryFull.test.ts` (1439 across 96 files).*
+
+*Previously: 2026-09-20 — button roles (ADR-188). `styles.css` gains one block, "Buttons: one rule set per role", right after the reset; 98 per-button rules were rewritten: 80 dropped (look, hover, glyph size), 18 kept with layout only. Every `createEl("button")` in `sidebar.ts`, `ui/` and `suggest/` names `pb` + a role (65 call sites). `tests/buttonRoles.test.ts` replaces `tests/sendButtonCascade.test.ts`: role cascade against core-like rules + a source scan for role-less buttons (1443 across 96 files).*
 
 *Previously: 2026-09-19 — Cmd/Ctrl+Enter sends again (ADR-187). `ui/composerKeys.ts` gains `ComposerSend`: the view registers Mod+Enter and Ctrl+Enter on its own `Scope` (`this.scope = new Scope(this.app.scope)`, constructor), which Obsidian consults before the app hotkeys, and the textarea keydown stays as a fallback that skips the event the scope already sent. `sidebar.ts` only wires it. Send button CSS moved to (0,3,0) per state. +5 tests (1426 across 96 files; `tests/sendButtonCascade.test.ts` replays the cascade against core-like button rules).*
 
