@@ -89,16 +89,22 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 
 /* ── Buttons: one rule set per role (ADR-188) ──────────────────────────────
-   The rules below are `kit/button.css` with its placeholders replaced, and
-   nothing else changed — `tests/buttonKit.test.ts` fails if they drift. Edit
-   the kit, then re-instantiate; do not edit this block.
-
    Every Pythia button carries `pb` plus ONE role class; its own class keeps
    only layout (position, margins, flex). `tests/buttonRoles.test.ts` fails
    when a button is created without a role, and `tests/obsidianCascade.test.ts`
-   fails if one of Obsidian's own rules reaches a role (ADR-190). */
+   fails if one of Obsidian's own rules reaches a role (ADR-190).
+
+   THE BASE CLAIMS EVERY PROPERTY OBSIDIAN'S BARE `button` RULE SETS — height,
+   width, padding, radius, corner-shape, shadow, background, font, weight,
+   line-height and colour. A role that forgets one inherits the host's, which
+   is where all nine of these started.
+
+   The colour contract is `var(--btn-accent | --btn-on-accent | --btn-error |
+   --btn-warning, <Obsidian token>)`, so a surface overrides one property
+   rather than a rule. Pythia overrides exactly one: `--btn-on-accent`, at
+   ADR-154's contrast-computed `--p-on-accent`. */
 :is(.pythia-view, .pythia-modal) {
-  /* The one part of the kit's colour contract Pythia overrides: the label on
+  /* The one part of the colour contract Pythia overrides: the label on
      an accent fill is computed for contrast, never a theme token (ADR-154). */
   --btn-on-accent: var(--p-on-accent, var(--text-on-accent));
 }
@@ -1709,24 +1715,32 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    styles win with no specificity contest and no scoping tricks. Both default to
    inline (unknown elements are inline); .pythia-view scope kept for consistency.
 
-   THE STROKE below is the family's, copied from Klartext's `kit/highlight.css`.
-   It supersedes ADR-090's smsag.de marker: the asymmetric `1em 0 1em 0` corners
-   and the text-shadow halo are gone, because the theme's own `==highlight==`
-   lands in this same panel whenever an answer contains one, and the two were
-   visibly different marks — measured mirrored sweeps (−100deg against 104deg),
-   a rounded landing against a square one, a halo against none, and the
-   plugin's ink at less than half the theme's strength. Same pen now; only the
-   ink says which mark it is. Re-copy from the kit if that file changes — no
-   runtime dependency, by design (Obsidian loads every plugin's CSS globally,
-   so a shared class name would couple the plugins to each other).
+   THE STROKE below supersedes ADR-090's smsag.de marker: the asymmetric
+   `1em 0 1em 0` corners and the text-shadow halo are gone, because the theme's
+   own `==highlight==` lands in this same panel whenever an answer contains one,
+   and the two were visibly different marks — measured mirrored sweeps (−100deg
+   against 104deg), a rounded landing against a square one, a halo against none,
+   and the plugin's ink at less than half the other's strength. A felt tip laid
+   over the words and lifted off again: 104deg, ink in over the first half
+   character, out over the last sixth, square ends, one stroke per line.
+
+   No border-radius (a rounded end reads as a chip), no text-shadow (a halo is
+   a second treatment, and it inverts between light and dark), no box-shadow.
+   No `mix-blend-mode`: any ancestor with transform, filter or opacity creates
+   a stacking context and the blend silently stops there, and a panel cannot
+   know what it is nested in. Do not vary the angle to tell two marks apart —
+   it is not legible at text size. Vary the ink.
 
    THE INK is a named colour token composited onto the page, never
    `--text-highlight-bg` raw: that token is `rgba(255,200,40,0.30)` under
    Klartext and near-solid yellow under the default theme, so reading it
    directly made the same rule paint at wildly different strength (32 against
-   the theme's 70, measured). A `color-mix` onto `--background-primary` is
-   opaque and predictable under any theme, and the percentages here put both
-   marks in the family's 60–140 band (favourite 69, fork 67). */
+   70, measured). A `color-mix` onto `--background-primary` is opaque and
+   predictable under any theme. INK STRENGTH IS MEASURED: the percentages here
+   put both marks at 60–140 — Euclidean RGB distance from `--background-primary`
+   sampled over the flat middle of the painted stroke (favourite 69, fork 67).
+   Below that band a mark reads as a rendering artefact; above it, as a UI chip
+   dropped into prose. */
 .pythia-view pythia-favorite,
 .pythia-view pythia-fork {
   --hl-angle: 104deg;

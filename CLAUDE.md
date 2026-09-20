@@ -95,8 +95,6 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
-  kit/
-    button.css                ← the family's button role set, the canonical text (ADR-194). `styles.css` carries it INSTANTIATED: %%P%% / %%SCOPE%% / %%MODAL%% replaced, `--btn-on-accent` pointed at ADR-154's token. Edit here and re-instantiate; `tests/buttonKit.test.ts` holds the two byte-identical
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
   tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
@@ -343,6 +341,7 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - **Hover is "soft neutral"**: `--background-modifier-hover` behind everything unfilled, a filled button lightens. Under `@media (hover: hover)` only, transition only there (ADR-155)
 - **Never `--text-faint` on a control** (2.3:1 on white) and never `opacity` to express rest or hover — both failed WCAG in the audit
 - **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Pythia's reset is (0,1,1); a fill set below it is removed — which made "In Notiz ersetzen" invisible
+- **The role set is Pythia's own** (ADR-197, revising ADR-196): no shared file, no copied partial, and no test that compares this stylesheet against another repository's. Another plugin may reach the same nine roles for the same reasons; it writes them out itself. A guard that names a sibling repo is coupling wearing a different hat
 - **Obsidian's own button rules are measured, not guessed** (ADR-190). `npm run check:obsidian-cascade` reads app.css from the installed Obsidian and lists the ten rules that can reach a Pythia button; `tests/fixtures/obsidianButtonRules.ts` holds them with sentinel values and `tests/obsidianCascade.test.ts` fails if any sentinel reaches a role. The bare `button` rule sets **height** (`--input-height`), padding, radius and corner-shape — the `.pb` base must name every property it sets, because a role that forgets one inherits Obsidian's. Re-run the script after an Obsidian update; it exits 1 on drift
 - **`[hidden]` always hides** inside the view and its modals (`display: none !important`): the UA rule loses to any author `display`
 - The comparison tabs are `pb-tab` and keep their underline by the user's choice; chosen segments are the accent tint everywhere

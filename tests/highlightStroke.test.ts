@@ -3,17 +3,17 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * The highlighter stroke is the family's, not Pythia's.
+ * The highlighter stroke keeps its shape (ADR-194).
  *
- * Klartext is the baseline and `kit/highlight.css` in that repo is the
- * canonical text; this stylesheet carries a copy, because Obsidian loads every
- * plugin's CSS globally and a shared class name would couple the plugins to
- * each other. A copy drifts unless something holds it, and the numbers below
- * are that something — they are the kit's, verbatim.
+ * The numbers below ARE the mark: a felt tip laid over the words and lifted
+ * off again, square-ended, one stroke per wrapped line. They are Pythia's own
+ * and this test is the only thing holding them — a stroke is the kind of thing
+ * a later change nudges without noticing.
  *
- * The theme's own `==highlight==` renders inside this panel whenever an answer
- * contains one, so a drift here is visible immediately: two marks in one
- * paragraph, leaning different ways. That is what this replaced.
+ * It matters here more than in most panels: the theme's own `==highlight==`
+ * renders inside this one whenever an answer contains a highlight, so a drift
+ * shows up immediately as two marks in a paragraph leaning different ways.
+ * That is exactly what ADR-194 replaced.
  */
 const css = readFileSync(resolve(process.cwd(), "styles.css"), "utf8");
 
@@ -51,7 +51,7 @@ describe("the highlighter stroke", () => {
 		["--hl-lift-0", "calc(100% - 0.28em)"],
 		["--hl-pad-y", "0.14em"],
 		["--hl-pad-x", "0.42em"],
-	])("keeps the kit's %s at %s", (prop, value) => {
+	])("keeps %s at %s", (prop, value) => {
 		expect(ruleBody(STROKE)).toContain(`${prop}: ${value};`);
 	});
 
@@ -77,7 +77,7 @@ describe("the highlighter stroke", () => {
 	])("inks the %s from a named colour composited onto the page", (_name, selector, token) => {
 		const body = ruleBody(selector);
 		// Never --text-highlight-bg raw: it is rgba(255,200,40,0.30) under
-		// Klartext and near-solid yellow under the default theme, so the same
+		// one theme and near-solid yellow under another, so the same
 		// rule painted at half strength under one of them.
 		expect(body).toMatch(
 			new RegExp(`--hl-ink:\\s*color-mix\\(in srgb, var\\(${token}\\) \\d+%, var\\(--background-primary\\)\\)`),
