@@ -22,6 +22,13 @@ const css = readFileSync(resolve(root, "styles.css"), "utf8")
 	.replace(/@media \(hover: hover\)( and \(prefers-reduced-motion: no-preference\))? \{/g, "@media all {")
 	.replace(/@media \(pointer: coarse\) \{/g, "@media (max-width: 1px) {")
 	.replace(/:hover/g, HOVER)
+	// The roles reach their colour contract as `var(--btn-X, <Obsidian token>)`.
+	// happy-dom does not resolve a var() whose fallback is
+	// another var(), so both levels are flattened to the token the stand-in
+	// palette below defines. The label on an accent fill is the one Pythia
+	// overrides, so it flattens to --p-on-accent rather than the default.
+	.replace(/var\(--btn-on-accent, var\(--text-on-accent\)\)/g, "var(--p-on-accent)")
+	.replace(/var\(--btn-[\w-]+, (var\(--[\w-]+\))\)/g, "$1")
 	.replace(/var\(--p-on-accent, var\(--text-on-accent\)\)/g, "var(--p-on-accent)")
 	.replace(/var\(--text-warning, var\(--color-orange\)\)/g, "var(--text-warning)");
 const CORE_FILL = "rgb(240, 240, 240)", CORE_HOVER = "rgb(225, 225, 225)", CORE_LABEL = "rgb(30, 30, 30)";
@@ -111,6 +118,53 @@ describe("button roles against Obsidian's button rules (ADR-188)", () => {
 		expect(label(seg)).toBe(T.accent);
 		expect(fill(seg)).not.toBe(CORE_FILL);
 		expect(label(mount("pb pb-secondary p-param-advice-btn", "pythia-modal"))).toBe(T.accent);
+	});
+});
+
+/**
+ * The colour contract survives (ADR-196).
+ *
+ * Every colour in the role set is read as `var(--btn-X, <Obsidian token>)`, so
+ * a surface overrides one property instead of rewriting a rule, and Pythia
+ * overrides exactly one: the label on an accent fill, at ADR-154's
+ * contrast-computed `--p-on-accent`. This was held by the kit's own test until
+ * ADR-197 removed the kit; it is kept because the contract is the part that
+ * rots silently — a hard-coded `var(--color-accent)` in one role looks right
+ * and quietly makes that role unthemeable.
+ */
+describe("the role set's colour contract", () => {
+	const raw = readFileSync(resolve(root, "styles.css"), "utf8");
+	const from = raw.indexOf("/* ── Buttons: one rule set per role");
+	const to = raw.indexOf(":is(.pythia-view, .pythia-modal) [hidden] {", from);
+	it("brackets the block it measures", () => {
+		expect(from, "the button block's banner comment is gone").toBeGreaterThan(-1);
+		expect(to, "the block's closing [hidden] rule is gone").toBeGreaterThan(from);
+	});
+	const block = (): string => raw.slice(from, to);
+	it.each([
+		["--btn-accent", "--color-accent"],
+		["--btn-on-accent", "--text-on-accent"],
+		["--btn-error", "--text-error"],
+		["--btn-warning", "--color-orange"],
+	])("reads %s, falling back to %s", (token, fallback) => {
+		expect(block()).toContain(`var(${token}, var(${fallback}))`);
+	});
+	it("never reaches a contract colour directly", () => {
+		// The Obsidian token may appear only as a fallback INSIDE its contract
+		// property. A bare `var(--color-accent)` is the drift this catches.
+		for (const [token, fallback] of [
+			["--btn-accent", "--color-accent"],
+			["--btn-error", "--text-error"],
+			["--btn-warning", "--color-orange"],
+		]) {
+			const bare = block().split(`var(${token}, var(${fallback}))`).join("");
+			expect(bare, `${fallback} is read outside ${token}`).not.toContain(`var(${fallback})`);
+		}
+	});
+	it("overrides exactly one of the four, and it is the label on an accent fill", () => {
+		const set = [...block().matchAll(/(--btn-[\w-]+):/g)].map((m) => m[1]);
+		expect([...new Set(set)]).toEqual(["--btn-on-accent"]);
+		expect(block()).toContain("--btn-on-accent: var(--p-on-accent, var(--text-on-accent));");
 	});
 });
 

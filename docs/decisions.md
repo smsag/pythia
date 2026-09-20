@@ -1,7 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
+*Last updated: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
 
+*Previously: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
 *Previously: 2026-09-20 — ADR-194 (the highlighter stroke is the family's: Klartext is the baseline, its `kit/highlight.css` is copied in, the pen is shared and only the ink differs; supersedes ADR-090).*
 
 *Previously: 2026-09-20 — ADR-193 (one icon per source type: a reference leads with the icon of the toolbar control that brings it in — file-text, library, layout-template, globe, save, pencil-line — replacing `[[ ]]`, and the trailing `↗`; link colours are Obsidian's link tokens).*
@@ -3799,7 +3800,7 @@ Strength is the Euclidean RGB distance of the painted fill from the page, sample
 
 Two things made it worse than a table suggests. The theme's `mark` selector is unscoped, so an answer containing `==highlight==` paints the theme's stroke **inside this panel** — the two pens sat in one paragraph, leaning opposite ways. And ADR-090's ink read `--text-highlight-bg` raw, which Klartext defines as `rgba(255,200,40,0.30)` and Obsidian's default theme as near-solid yellow, so the same rule painted at half the theme's strength under one and a fifth under the other.
 
-**Decision.** Klartext is the baseline. Its stroke is written once in that repo as `kit/highlight.css` and **copied** into each plugin at the file level — no runtime dependency, because Obsidian loads every plugin's CSS globally and a shared class name would couple the plugins to each other through whichever loaded last.
+**Decision.** Pythia's marks take the marker-pen stroke: 104deg, ink in over the first half character and out over the last sixth, square ends, one stroke per wrapped line, and the ink composited to land 60–140 from the page. *(Amended by ADR-197: this ADR originally named Klartext the baseline and had the stroke copied in from a `kit/highlight.css` in that repo. The geometry is unchanged and is now Pythia's own — no file is shared and no guard compares the two.)*
 
 - **The pen is shared, the ink is not.** Both marks draw with one rule; `--hl-ink` is the only thing that differs. A shared hue would say the marks are the same thing.
 - **ADR-090 is superseded.** The asymmetric corners and the text-shadow halo are gone. They were ported from smsag.de's `a:hover`, where nothing else was drawing a marker; here the theme's own stroke lands beside them.
@@ -3808,7 +3809,7 @@ Two things made it worse than a table suggests. The theme's `mark` selector is u
 
 **Not adopted from the theme.** Its opaque inks and `mix-blend-mode`. Live Preview splits one highlight into a span per formatting change, so two feathered ends overlap and translucent tints would add up darker; a plugin wraps a selection in one element and never meets that case. `mix-blend-mode` is also fragile here — any ancestor with `transform`, `filter` or `opacity` ends the blend.
 
-**Guards.** `tests/highlightStroke.test.ts` pins every number of the stroke, that both marks are drawn by one rule, that the ink is a composited named colour and never `--text-highlight-bg`, that `box-decoration-break: clone` survives (anchored — a bare substring check passes on the `-webkit-` copy alone), and that radius, text-shadow and box-shadow stay at their family values. Klartext's own `tools/check-highlight-kit.mjs` holds the kit against the theme; a change there means re-copying here.
+**Guards.** `tests/highlightStroke.test.ts` pins every number of the stroke, that both marks are drawn by one rule, that the ink is a composited named colour and never `--text-highlight-bg`, that `box-decoration-break: clone` survives (anchored — a bare substring check passes on the `-webkit-` copy alone), and that radius, text-shadow and box-shadow stay where they belong. **Amended by ADR-197**: the numbers are Pythia's own and this test is the only thing holding them. There is no kit file and no cross-repo drift guard.
 
 **Consequences.** A favorite and a fork origin are twice as strong as before and no longer rounded. The merge link's dashed underline (ADR-130) and the term's dotted one (ADR-136) are unaffected — they are the underline vocabulary, a different signal, and they still stack on top of a highlighter fill (ADR-157).
 
@@ -3822,3 +3823,49 @@ Two things made it worse than a table suggests. The theme's `mark` selector is u
 
 **Guard.** `tests/pluginIcon.test.ts` fails if the group or any shape carries a `stroke-width`.
 
+
+
+### ADR-196 — Nine button roles, each claiming everything Obsidian sets
+
+*2026-09-20*
+
+**Context.** ADR-188 gave every Pythia button one of nine roles and ADR-190 measured the ten Obsidian rules each role has to out-rank. That work is the most complete button treatment in the family, so it is the baseline — but it lived only here, as 253 lines of `styles.css` that another plugin could read and nothing more.
+
+Two things were measured across the family first. Schreibstube's one styled button claims layout only — no background, border, radius or colour — so Obsidian's ten rules reach it unopposed. And Klartext's `button:not(.mod-cta):hover` carried `!important`, which no plugin can out-rank at any specificity: every role here hovered to the theme's grey, including the accent-filled primary, whose white label then sat on `#f2f2ee` at **1.12:1**. That is fixed in the theme, not here — the theme keeps the rule, which is doing something useful for plugins that define no hover, and drops the `!important`.
+
+**Decision.** Two things, both about this stylesheet only.
+
+- **The base claims every property Obsidian's bare `button` rule sets** — height, width, padding, min-height, border, radius, corner-shape, shadow, background, font-family, size, weight, line-height, and colour with its `-webkit-text-fill-color` twin. A role that forgets one inherits the host's; that is how all nine started.
+- **A four-property colour contract**, each read as `var(--btn-X, <Obsidian token>)` so the set is coherent with nothing overridden: `--btn-accent`, `--btn-on-accent`, `--btn-error`, `--btn-warning`. Pythia overrides exactly one — `--btn-on-accent` points at ADR-154's contrast-computed `--p-on-accent`. The contract is what makes a surface's own label colour one property rather than a rewritten rule.
+- **The rules do not decide which role a button takes.** That stays where the button is created, and `tests/buttonRoles.test.ts` still fails when one is created without a role.
+
+**What this ADR first said, and why it changed.** It shipped the role set as `kit/button.css` with three placeholders, called it the family's canonical text, and held `styles.css` byte-identical to it so another plugin could copy the file. **ADR-197 withdraws that.** The file and `tests/buttonKit.test.ts` are gone. A test that fails because a sibling repository changed is coupling however the bytes are stored, and the extensions are meant to be separate at all times. Another plugin reaching the same nine roles writes them out itself.
+
+**Guards.** `tests/buttonRoles.test.ts` (every button names a role; each role keeps its label and fill at rest and hovered; every colour is read through its contract property and `--btn-on-accent` is the only one overridden) and `tests/obsidianCascade.test.ts` (no sentinel from Obsidian's ten measured rules reaches a role). Both flatten the contract's `var()` fallbacks, which happy-dom does not resolve. Both test this repository against its host, and name no other repository.
+
+**Addendum, 2026-09-20.** The contract was incomplete where it was least visible: `pb-chip-warn` built its border and fill with `color-mix(… var(--color-orange) …)`, reading the Obsidian token directly instead of `var(--btn-warning, …)`. A surface that set `--btn-warning` got a themed label on an unthemed chip. Both tints now go through the contract, which changes nothing while the property is unset — measured in Obsidian, the chip paints `color(srgb 0.92549 0.458824 0 / 0.14)` either way — and moves with it when it is set. The `never reaches a contract colour directly` test is what found it and is what keeps it.
+
+**Consequences.** Nothing renders differently: verified in Obsidian, all six measurable roles paint the same hover fill as before the extraction and after the withdrawal.
+
+---
+
+### ADR-197 — Align on the design; implement it separately
+
+*2026-09-20*
+
+**Context.** ADR-194 and ADR-196 gave the extensions a shared highlighter stroke and a shared button role set, and delivered both as `kit/` files — the highlighter's in Klartext, the buttons' here — each with a guard that failed when a copy drifted from its original. The goal was a recognisable shared identity. The delivery was coupling.
+
+Three concrete symptoms, none visible from one repository:
+
+- A byte-identity test means a sibling's change is a red build here. Schreibstube could not alter its own buttons without failing a test against a file that came from Pythia.
+- Source comments named other repositories as authority (*"the canonical text"*, *"Klartext is the baseline"*), so a reader of one repo could not find out why a number is that number without leaving it.
+- Klartext carried a file whose whole purpose was to be copied by plugins. That made a theme a dependency of plugins that must work under **any** theme — and its unmerged branch a blocker for two of them.
+
+**Decision.** The shared identity is agreed **outside** the repositories and written out **inside** each one, by hand, in that repository's own idiom.
+
+- **No repository holds another's canonical text.** No `kit/` directory, no copied partial, no placeholder substitution.
+- **No guard names a sibling.** Every test compares this repository against Obsidian, its own stylesheet, or its own source — never against another project. `tests/buttonKit.test.ts` is deleted; `tests/highlightStroke.test.ts` keeps its assertions and drops the claim that the numbers are borrowed.
+- **Each repository states its own values with the reasoning**, in the comment above the rule and in its own docs. Duplicated prose is the price of independence and it is cheap. A reader of `styles.css` now finds the 60–140 ink band and why the angle is 104deg without leaving Pythia.
+- **The values stay identical today** because they were chosen once for reasons that apply to all three, and each is free to diverge tomorrow without asking anyone.
+
+**Consequences.** Nothing renders differently anywhere. Klartext stops being a dependency, so its branch stops blocking the plugins. The cost is real and accepted: a future change to the stroke or the roles is now three edits in three repositories rather than one edit and two re-copies, and nothing will fail if only two of them are made. The list that holds the family honest is a document, not a build step.
