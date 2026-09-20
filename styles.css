@@ -268,10 +268,10 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn,
 :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn:hover {
   padding: 3px var(--s2, 8px);
-  border-color: var(--color-orange);                                    /* no color-mix: plain */
-  border-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
+  border-color: var(--btn-warning, var(--color-orange));                /* no color-mix: plain */
+  border-color: color-mix(in srgb, var(--btn-warning, var(--color-orange)) 50%, transparent);
   background: transparent;
-  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+  background: color-mix(in srgb, var(--btn-warning, var(--color-orange)) 14%, transparent);
   color: var(--text-normal);
   -webkit-text-fill-color: var(--text-normal);
 }
@@ -310,7 +310,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
     border-bottom-color: var(--background-modifier-border);
   }
   :is(.pythia-view, .pythia-modal) .pb.pb-chip-warn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-orange) 22%, transparent);
+    background: color-mix(in srgb, var(--btn-warning, var(--color-orange)) 22%, transparent);
   }
 }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {

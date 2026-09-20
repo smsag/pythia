@@ -122,6 +122,53 @@ describe("button roles against Obsidian's button rules (ADR-188)", () => {
 });
 
 /**
+ * The colour contract survives (ADR-196).
+ *
+ * Every colour in the role set is read as `var(--btn-X, <Obsidian token>)`, so
+ * a surface overrides one property instead of rewriting a rule, and Pythia
+ * overrides exactly one: the label on an accent fill, at ADR-154's
+ * contrast-computed `--p-on-accent`. This was held by the kit's own test until
+ * ADR-197 removed the kit; it is kept because the contract is the part that
+ * rots silently — a hard-coded `var(--color-accent)` in one role looks right
+ * and quietly makes that role unthemeable.
+ */
+describe("the role set's colour contract", () => {
+	const raw = readFileSync(resolve(root, "styles.css"), "utf8");
+	const from = raw.indexOf("/* ── Buttons: one rule set per role");
+	const to = raw.indexOf(":is(.pythia-view, .pythia-modal) [hidden] {", from);
+	it("brackets the block it measures", () => {
+		expect(from, "the button block's banner comment is gone").toBeGreaterThan(-1);
+		expect(to, "the block's closing [hidden] rule is gone").toBeGreaterThan(from);
+	});
+	const block = (): string => raw.slice(from, to);
+	it.each([
+		["--btn-accent", "--color-accent"],
+		["--btn-on-accent", "--text-on-accent"],
+		["--btn-error", "--text-error"],
+		["--btn-warning", "--color-orange"],
+	])("reads %s, falling back to %s", (token, fallback) => {
+		expect(block()).toContain(`var(${token}, var(${fallback}))`);
+	});
+	it("never reaches a contract colour directly", () => {
+		// The Obsidian token may appear only as a fallback INSIDE its contract
+		// property. A bare `var(--color-accent)` is the drift this catches.
+		for (const [token, fallback] of [
+			["--btn-accent", "--color-accent"],
+			["--btn-error", "--text-error"],
+			["--btn-warning", "--color-orange"],
+		]) {
+			const bare = block().split(`var(${token}, var(${fallback}))`).join("");
+			expect(bare, `${fallback} is read outside ${token}`).not.toContain(`var(${fallback})`);
+		}
+	});
+	it("overrides exactly one of the four, and it is the label on an accent fill", () => {
+		const set = [...block().matchAll(/(--btn-[\w-]+):/g)].map((m) => m[1]);
+		expect([...new Set(set)]).toEqual(["--btn-on-accent"]);
+		expect(block()).toContain("--btn-on-accent: var(--p-on-accent, var(--text-on-accent));");
+	});
+});
+
+/**
  * Every button Pythia creates carries a role, so a new one cannot quietly bring
  * its own look back. Obsidian's own dialog buttons (mod-cta / mod-warning /
  * plain) stay Obsidian's; the mobile sheet's trailing icon matches the sheet's
