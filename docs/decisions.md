@@ -1,7 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
+*Last updated: 2026-09-20 — ADR-194 (the button role set moves to `kit/button.css` with three placeholders and a four-property colour contract; `styles.css` carries it instantiated and a test holds the two byte-identical).*
 
+*Previously: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
 *Previously: 2026-09-20 — ADR-194 (the highlighter stroke is the family's: Klartext is the baseline, its `kit/highlight.css` is copied in, the pen is shared and only the ink differs; supersedes ADR-090).*
 
 *Previously: 2026-09-20 — ADR-193 (one icon per source type: a reference leads with the icon of the toolbar control that brings it in — file-text, library, layout-template, globe, save, pencil-line — replacing `[[ ]]`, and the trailing `↗`; link colours are Obsidian's link tokens).*
@@ -3822,3 +3823,25 @@ Two things made it worse than a table suggests. The theme's `mark` selector is u
 
 **Guard.** `tests/pluginIcon.test.ts` fails if the group or any shape carries a `stroke-width`.
 
+
+
+### ADR-194 — The button role set is the family's, and the kit is the baseline's
+
+*2026-09-20*
+
+**Context.** ADR-188 gave every Pythia button one of nine roles and ADR-190 measured the ten Obsidian rules each role has to out-rank. That work is the most complete button treatment in the family, so it is the baseline — but it lived only here, as 253 lines of `styles.css` that another plugin could read and nothing more.
+
+Two things were measured across the family first. Schreibstube's one styled button claims layout only — no background, border, radius or colour — so Obsidian's ten rules reach it unopposed. And Klartext's `button:not(.mod-cta):hover` carried `!important`, which no plugin can out-rank at any specificity: every role here hovered to the theme's grey, including the accent-filled primary, whose white label then sat on `#f2f2ee` at **1.12:1**. That is fixed in the theme, not here — the theme keeps the rule, which is doing something useful for plugins that define no hover, and drops the `!important`.
+
+**Decision.** The role set moves to `kit/button.css`, and `styles.css` carries it **instantiated**. The kit is the canonical text; another plugin copies the file and replaces its placeholders.
+
+- **Three placeholders**: `%%P%%` (the class prefix), `%%SCOPE%%` (the `:is()` list of surfaces), `%%MODAL%%` (the plugin's modal class, needed only by the phone rule that must reach (0,5,1)).
+- **A four-property colour contract**, each read as `var(--btn-X, <Obsidian token>)` so a host that sets nothing still gets a coherent set: `--btn-accent`, `--btn-on-accent`, `--btn-error`, `--btn-warning`. Pythia overrides exactly one — `--btn-on-accent` points at ADR-154's contrast-computed `--p-on-accent`, which is Pythia's, not the family's.
+- **Copied, never shared.** Obsidian loads every plugin's CSS globally, so a shared class name would couple the plugins through whichever loaded last. Same reasoning as ADR-193's stroke.
+- **The kit does not decide which role a button takes.** That stays where the button is created, and `tests/buttonRoles.test.ts` still fails when one is created without a role.
+
+**Where the kit lives.** With the baseline, not in one shared home: the drift guard has to compare the kit against the implementation it describes, and that implementation is here. The highlighter's kit lives in Klartext for the same reason (ADR-193). The cost is that "where is the kit?" now depends on the component.
+
+**Guards.** `tests/buttonKit.test.ts` substitutes the kit's placeholders and requires the result to equal the block byte for byte, so the block cannot be edited in place; it also fails if a placeholder is lost, if the rules name a plugin, or if a colour is read outside its contract property. `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` are unchanged in intent — both learned to flatten the contract's `var()` fallbacks, which happy-dom does not resolve.
+
+**Consequences.** Nothing renders differently: verified in Obsidian, all six measurable roles paint the same hover fill as before the extraction. A change to a role is now a change to the kit plus a re-instantiation, which the guard enforces rather than suggests.

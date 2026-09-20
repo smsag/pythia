@@ -22,6 +22,13 @@ const css = readFileSync(resolve(root, "styles.css"), "utf8")
 	.replace(/@media \(hover: hover\)( and \(prefers-reduced-motion: no-preference\))? \{/g, "@media all {")
 	.replace(/@media \(pointer: coarse\) \{/g, "@media (max-width: 1px) {")
 	.replace(/:hover/g, HOVER)
+	// The kit reaches its colour contract as `var(--btn-X, <Obsidian token>)`
+	// (kit/button.css). happy-dom does not resolve a var() whose fallback is
+	// another var(), so both levels are flattened to the token the stand-in
+	// palette below defines. The label on an accent fill is the one Pythia
+	// overrides, so it flattens to --p-on-accent rather than the default.
+	.replace(/var\(--btn-on-accent, var\(--text-on-accent\)\)/g, "var(--p-on-accent)")
+	.replace(/var\(--btn-[\w-]+, (var\(--[\w-]+\))\)/g, "$1")
 	.replace(/var\(--p-on-accent, var\(--text-on-accent\)\)/g, "var(--p-on-accent)")
 	.replace(/var\(--text-warning, var\(--color-orange\)\)/g, "var(--text-warning)");
 const CORE_FILL = "rgb(240, 240, 240)", CORE_HOVER = "rgb(225, 225, 225)", CORE_LABEL = "rgb(30, 30, 30)";

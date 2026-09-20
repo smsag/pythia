@@ -89,26 +89,19 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 
 /* ── Buttons: one rule set per role (ADR-188) ──────────────────────────────
+   The rules below are `kit/button.css` with its placeholders replaced, and
+   nothing else changed — `tests/buttonKit.test.ts` fails if they drift. Edit
+   the kit, then re-instantiate; do not edit this block.
+
    Every Pythia button carries `pb` plus ONE role class; its own class keeps
-   only layout (position, margins, flex). The look lives here and nowhere else.
-
-   Roles: primary · secondary · quiet · destructive · link · icon · seg · tab ·
-   chip-warn. Hover is "soft neutral": one grey wash behind everything that is
-   not filled; a filled button lightens.
-
-   Specificity is the point of this block. Pythia's reset above is (0,1,1).
-   Obsidian 1.13.7 reaches a button with ten rules (npm run
-   check:obsidian-cascade): a bare `button` that also sets height, padding,
-   radius and corner-shape; `button:not(.clickable-icon)` and `button:hover`
-   fills at (0,1,1); `button[disabled]` opacity; `.is-tablet` padding at (0,2,1);
-   and a phone modal's Setting control at (0,4,1). So the base claims every
-   property the bare rule sets, each role restates its padding at (0,3,0), and a
-   role's rest rule also names `:hover` at (0,4,0); the real hover is (0,5,0)
-   under `@media (hover: hover)` (ADR-155). Fill and label are always set
-   together (hard rule 6a). Spacing and type tokens carry fallbacks because
-   .pythia-modal does not define them. tests/obsidianCascade.test.ts loads
-   those rules with sentinel values and fails if one leaks into any role
-   (ADR-190); tests/buttonRoles.test.ts checks each role's label and fill. */
+   only layout (position, margins, flex). `tests/buttonRoles.test.ts` fails
+   when a button is created without a role, and `tests/obsidianCascade.test.ts`
+   fails if one of Obsidian's own rules reaches a role (ADR-190). */
+:is(.pythia-view, .pythia-modal) {
+  /* The one part of the kit's colour contract Pythia overrides: the label on
+     an accent fill is computed for contrast, never a theme token (ADR-154). */
+  --btn-on-accent: var(--p-on-accent, var(--text-on-accent));
+}
 :is(.pythia-view, .pythia-modal) .pb {
   -webkit-appearance: none;
   appearance: none;
@@ -139,7 +132,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   -webkit-text-fill-color: var(--text-muted);
 }
 :is(.pythia-view, .pythia-modal) .pb svg { width: 12px; height: 12px; stroke-width: 1.6; flex-shrink: 0; pointer-events: none; }
-:is(.pythia-view, .pythia-modal) .pb:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+:is(.pythia-view, .pythia-modal) .pb:focus-visible { outline: 2px solid var(--btn-accent, var(--color-accent)); outline-offset: 1px; }
 :is(.pythia-view, .pythia-modal) .pb:disabled { cursor: default; opacity: 1; } /* core: button[disabled] { opacity: 0.7 } */
 /* A disabled Send is the "Optimizing…" label (ADR-187): readable, so never dimmed. */
 :is(.pythia-view, .pythia-modal) .pb:disabled:not(.pb-primary) { opacity: 0.5; }
@@ -148,19 +141,19 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 :is(.pythia-view, .pythia-modal) .pb.pb-primary,
 :is(.pythia-view, .pythia-modal) .pb.pb-primary:hover {
   padding: 3px var(--s2, 8px);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--p-on-accent, var(--text-on-accent));
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+  background: var(--btn-accent, var(--color-accent));
+  border-color: var(--btn-accent, var(--color-accent));
+  color: var(--btn-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--btn-on-accent, var(--text-on-accent));
 }
 /* Secondary — offered next to it. A toggle (model hint) fills while on. */
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary,
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary:hover {
   padding: 3px var(--s2, 8px);
   background: transparent;
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  -webkit-text-fill-color: var(--color-accent);
+  border-color: var(--btn-accent, var(--color-accent));
+  color: var(--btn-accent, var(--color-accent));
+  -webkit-text-fill-color: var(--btn-accent, var(--color-accent));
 }
 /* Quiet — cancel, discard, copy. */
 :is(.pythia-view, .pythia-modal) .pb.pb-quiet,
@@ -172,9 +165,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 :is(.pythia-view, .pythia-modal) .pb.pb-primary.stop:hover {
   padding: 3px var(--s2, 8px);
   background: transparent;
-  border-color: var(--text-error);
-  color: var(--text-error);
-  -webkit-text-fill-color: var(--text-error);
+  border-color: var(--btn-error, var(--text-error));
+  color: var(--btn-error, var(--text-error));
+  -webkit-text-fill-color: var(--btn-error, var(--text-error));
 }
 /* Link — inline text action. The negative margin gives a 24px target without
    growing the line it sits in. */
@@ -186,8 +179,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin-block: -4px;
   border: 0;
   background: transparent;
-  color: var(--color-accent);
-  -webkit-text-fill-color: var(--color-accent);
+  color: var(--btn-accent, var(--color-accent));
+  -webkit-text-fill-color: var(--btn-accent, var(--color-accent));
 }
 /* Icon — one 24px box, one 12px glyph. */
 :is(.pythia-view, .pythia-modal) .pb.pb-icon,
@@ -199,8 +192,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-inline { margin-block: -4px; vertical-align: middle; }
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning,
-:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning:hover { color: var(--text-warning, var(--color-orange)); -webkit-text-fill-color: var(--text-warning, var(--color-orange)); }
-:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-stale { color: var(--color-accent); -webkit-text-fill-color: var(--color-accent); }
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-warning:hover { color: var(--btn-warning, var(--color-orange)); -webkit-text-fill-color: var(--btn-warning, var(--color-orange)); }
+:is(.pythia-view, .pythia-modal) .pb.pb-icon.is-stale { color: var(--btn-accent, var(--color-accent)); -webkit-text-fill-color: var(--btn-accent, var(--color-accent)); }
 /* The floating # trigger: the one deliberate exception to the 24px box. */
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-float,
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-float:hover {
@@ -210,18 +203,18 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   font-weight: 600;
   background: var(--background-secondary);
   border-color: var(--background-modifier-border);
-  color: var(--color-accent);
-  -webkit-text-fill-color: var(--color-accent);
+  color: var(--btn-accent, var(--color-accent));
+  -webkit-text-fill-color: var(--btn-accent, var(--color-accent));
 }
 /* On: a toggle that is set (toolbar web/vault/template, accepted model hint). */
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active,
 :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active:hover,
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted,
 :is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted:hover {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--p-on-accent, var(--text-on-accent));
-  -webkit-text-fill-color: var(--p-on-accent, var(--text-on-accent));
+  background: var(--btn-accent, var(--color-accent));
+  border-color: var(--btn-accent, var(--color-accent));
+  color: var(--btn-on-accent, var(--text-on-accent));
+  -webkit-text-fill-color: var(--btn-on-accent, var(--text-on-accent));
 }
 /* Segment — one choice from a group (header instructions, effort). The group's
    container draws the frame; chosen = accent tint, in both places. */
@@ -238,9 +231,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 :is(.pythia-view, .pythia-modal) .pb.pb-seg.is-pinned:hover,
 :is(.pythia-view, .pythia-modal) .pb.pb-seg.active,
 :is(.pythia-view, .pythia-modal) .pb.pb-seg.active:hover {
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  color: var(--color-accent);
-  -webkit-text-fill-color: var(--color-accent);
+  background: color-mix(in srgb, var(--btn-accent, var(--color-accent)) 14%, transparent);
+  color: var(--btn-accent, var(--color-accent));
+  -webkit-text-fill-color: var(--btn-accent, var(--color-accent));
   font-weight: 500;
 }
 /* A model without effort: the dimmed dash is a statement, not a control state. */
@@ -260,7 +253,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 :is(.pythia-view, .pythia-modal) .pb.pb-tab.is-active,
 :is(.pythia-view, .pythia-modal) .pb.pb-tab.is-active:hover {
   font-weight: 600;
-  border-bottom-color: var(--color-accent);
+  border-bottom-color: var(--btn-accent, var(--color-accent));
   color: var(--text-normal);
   -webkit-text-fill-color: var(--text-normal);
 }
@@ -284,7 +277,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   :is(.pythia-view, .pythia-modal) .pb.pb-primary:hover:not(:disabled):not(.stop),
   :is(.pythia-view, .pythia-modal) .pb.pb-icon.is-active:hover:not(:disabled),
   :is(.pythia-view, .pythia-modal) .pb.pb-secondary.is-accepted:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-accent) 88%, white);
+    background: color-mix(in srgb, var(--btn-accent, var(--color-accent)) 88%, white);
   }
   :is(.pythia-view, .pythia-modal) .pb.pb-secondary:hover:not(:disabled):not(.is-accepted),
   :is(.pythia-view, .pythia-modal) .pb.pb-destructive:hover:not(:disabled),
@@ -338,7 +331,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   .modal.pythia-modal .setting-item-control button.pb.pb { min-height: 32px; }
 }
 /* `hidden` must hide. The UA's `[hidden] { display: none }` loses to ANY
-   author `display`, so `.pb`'s inline-flex (and any layout rule) would show
+   author `display`, so the base rule's inline-flex (and any layout rule) would show
    an element the code hid — the search panel's clear ✕ was always visible. */
 :is(.pythia-view, .pythia-modal) [hidden] { display: none !important; }
 

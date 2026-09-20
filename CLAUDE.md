@@ -95,6 +95,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
+  kit/
+    button.css                ← the family's button role set, the canonical text (ADR-194). `styles.css` carries it INSTANTIATED: %%P%% / %%SCOPE%% / %%MODAL%% replaced, `--btn-on-accent` pointed at ADR-154's token. Edit here and re-instantiate; `tests/buttonKit.test.ts` holds the two byte-identical
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
   tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
