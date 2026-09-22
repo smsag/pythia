@@ -88,7 +88,7 @@ describe("one reader of the model setting (ADR-199)", () => {
 	// A second reader of `settings.embeddingModelId` would load, index or score
 	// with the model the SETTING names — on a phone, the one that crashes it.
 	// Everything goes through `EmbeddingHub.activeModelId()` (engineering-review
-	// #358 moved it out of `main.ts`; `plugin.activeEmbeddingModelId()` is a facade).
+	// #366 moved it out of `main.ts`; `plugin.activeEmbeddingModelId()` is a facade).
 	const root = process.cwd();
 	const sources = ["main.ts", "settings.ts", "sidebar.ts", ...["ui", "suggest", "services", "models"].flatMap((d) =>
 		readdirSync(resolve(root, d), { recursive: true }).map(String).filter((f) => f.endsWith(".ts")).map((f) => join(d, f)))];

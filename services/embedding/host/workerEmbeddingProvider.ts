@@ -1,58 +1,43 @@
-import type { EmbeddingProvider } from "../EmbeddingProvider";
-import { visibleClock } from "./visibleClock";
-import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
-import type { ModelLoadProgress } from "./iframeEmbeddingProvider";
+import { PostMessageEmbeddingProvider, type BackendChannel, type BackendMessage, type ModelLoadProgress } from "./postMessageBackend";
+import type { EmbeddingModelId } from "../../../models/embeddingModels";
 import { getEmbeddingBundle } from "./embeddingBundle";
 import { withWorkerPrelude } from "./workerPrelude";
-
-const READY_TIMEOUT_MS = 300_000; // model can download tens of MB on first use
-const EMBED_TIMEOUT_MS = 120_000;
-
-interface Pending {
-	resolve: (vectors: number[][]) => void;
-	reject: (err: Error) => void;
-	/** Cancels the visible-time timeout (ADR-202). */
-	cancelTimeout: () => void;
-}
 
 /**
  * Runs the embedding model in a real Web Worker (ADR-119) so inference executes on
  * a BACKGROUND thread — unlike the same-origin iframe, which shares Obsidian's UI
  * thread and freezes it while embedding a large vault. The worker is loaded from a
- * Blob URL built from the bundled worker source; the protocol mirrors the iframe's
- * (init → ping-proven ready → texts[]→vectors[]). If the environment refuses a
- * blob worker (CSP) or the runtime fails, `ready()` rejects and the caller falls
- * back to the iframe provider (see embeddingProviderFactory).
+ * Blob URL built from the bundled worker source. If the environment refuses a blob
+ * worker (CSP) or the runtime fails, `ready()` rejects and the caller falls back to
+ * the iframe provider (see embeddingProviderFactory).
+ *
+ * Everything about the conversation with the backend — the ping-proven ready poll,
+ * requests, timeouts, teardown — is `PostMessageEmbeddingProvider` (ADR-204). What
+ * is here is how a Worker is started and stopped.
  */
-export class WorkerEmbeddingProvider implements EmbeddingProvider {
-	readonly dim: number;
-	private readonly config = embeddingModelConfig(this.modelId);
-	private worker: Worker | null = null;
+export class WorkerEmbeddingProvider extends PostMessageEmbeddingProvider {
+	protected readonly label = "Embedding worker";
 	private blobUrl: string | null = null;
-	private reqId = 0;
-	private readonly pending = new Map<number, Pending>();
-	private loadError: Error | null = null;
-	private readyPromise: Promise<void> | null = null;
 
 	constructor(
-		private readonly modelId: EmbeddingModelId,
-		private readonly onProgress?: (p: ModelLoadProgress) => void,
+		modelId: EmbeddingModelId,
+		onProgress?: (p: ModelLoadProgress) => void,
 		/** Optional: resolve a same-origin, loadable URL for the worker script (e.g. a
 		 *  plugin resource path). When omitted, the worker loads from a `blob:` URL.
 		 *  Some environments (Obsidian mobile, and desktop builds on `capacitor://`)
 		 *  block `blob:` Workers — a resource-path URL is the blob-free alternative that
 		 *  keeps inference OFF the UI thread (ADR-126). */
-		private readonly spawnUrl?: () => Promise<string>
+		private readonly spawnUrl?: () => Promise<string>,
 	) {
-		this.dim = this.config.dim;
+		super(modelId, onProgress);
 	}
 
-	ready(): Promise<void> {
-		if (!this.readyPromise) this.readyPromise = this.initialize();
-		return this.readyPromise;
+	/** A real Web Worker → inference runs off the UI thread. */
+	isOffThread(): boolean {
+		return true;
 	}
 
-	private async initialize(): Promise<void> {
+	protected async mount(): Promise<BackendChannel> {
 		let url: string;
 		if (this.spawnUrl) {
 			url = await this.spawnUrl(); // blob-free (resource path)
@@ -62,104 +47,22 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 			url = this.blobUrl;
 		}
 		const worker = new Worker(url, { type: "module" });
-		this.worker = worker;
-		worker.addEventListener("message", this.onMessage);
-		worker.addEventListener("error", this.onError);
+		const onMessage = (event: MessageEvent): void => this.receive(event.data as BackendMessage);
+		const onError = (event: ErrorEvent): void => this.failLoad(new Error(event.message || "Embedding worker error"));
+		worker.addEventListener("message", onMessage);
+		worker.addEventListener("error", onError);
 		worker.postMessage({ type: "init", config: this.config });
-
-		// Ready is proven by a ping round-trip once the model has loaded.
-		return new Promise<void>((resolve, reject) => {
-			// Visible time, not wall time (ADR-202): a first download interrupted by
-			// switching apps must not "time out" the moment Obsidian returns.
-			const started = visibleClock.elapsed();
-			const tick = () => {
-				if (this.loadError) return reject(this.loadError);
-				if (visibleClock.elapsed() - started > READY_TIMEOUT_MS) return reject(new Error("Embedding worker load timed out"));
-				this.ping()
-					.then(resolve)
-					.catch(() => setTimeout(tick, 1500));
-			};
-			setTimeout(tick, 300);
-		});
-	}
-
-	private ping(): Promise<void> {
-		return this.request({ ping: true }, 5_000).then(() => undefined);
-	}
-
-	async embed(texts: string[]): Promise<Float32Array[]> {
-		await this.ready();
-		if (texts.length === 0) return [];
-		const vectors = await this.request({ texts }, EMBED_TIMEOUT_MS);
-		return vectors.map((v) => Float32Array.from(v));
-	}
-
-	/** A real Web Worker → inference runs off the UI thread. */
-	isOffThread(): boolean {
-		return true;
-	}
-
-	private request(payload: Record<string, unknown>, timeoutMs: number): Promise<number[][]> {
-		const worker = this.worker;
-		if (!worker) return Promise.reject(new Error("Embedding worker is not available"));
-		if (this.loadError) return Promise.reject(this.loadError);
-		const requestId = this.reqId++;
-		return new Promise<number[][]>((resolve, reject) => {
-			const cancelTimeout = visibleClock.timeout(() => {
-				this.pending.delete(requestId);
-				reject(new Error(`Embedding request ${requestId} timed out`));
-			}, timeoutMs);
-			this.pending.set(requestId, { resolve, reject, cancelTimeout });
-			worker.postMessage({ requestId, ...payload });
-		});
-	}
-
-	private onError = (event: ErrorEvent): void => {
-		this.loadError = new Error(event.message || "Embedding worker error");
-		for (const [id, p] of this.pending) {
-			p.cancelTimeout();
-			p.reject(this.loadError);
-			this.pending.delete(id);
-		}
-	};
-
-	private onMessage = (event: MessageEvent): void => {
-		const msg = event.data as {
-			type?: string; requestId?: number; vectors?: number[][]; error?: string;
-			message?: string; progress?: number; file?: string; loaded?: number; total?: number;
+		return {
+			send: (message) => worker.postMessage(message),
+			close: () => {
+				worker.removeEventListener("message", onMessage);
+				worker.removeEventListener("error", onError);
+				worker.terminate();
+				if (this.blobUrl) {
+					URL.revokeObjectURL(this.blobUrl);
+					this.blobUrl = null;
+				}
+			},
 		};
-
-		if (msg.type === "model-load-progress") {
-			this.onProgress?.({ progress: msg.progress ?? 0, file: msg.file ?? "", loaded: msg.loaded ?? 0, total: msg.total ?? 0 });
-			return;
-		}
-		if (msg.type === "model-load-error") {
-			this.loadError = new Error(msg.message ?? "Embedding model failed to load");
-			for (const [id, p] of this.pending) {
-				p.cancelTimeout();
-				p.reject(this.loadError);
-				this.pending.delete(id);
-			}
-			return;
-		}
-		if (typeof msg.requestId !== "number") return;
-		const pending = this.pending.get(msg.requestId);
-		if (!pending) return;
-		this.pending.delete(msg.requestId);
-		pending.cancelTimeout();
-		if (msg.error) pending.reject(new Error(`Embedding worker: ${msg.error}`));
-		else pending.resolve(msg.vectors ?? []);
-	};
-
-	unload(): void {
-		for (const [, p] of this.pending) {
-			p.cancelTimeout();
-			p.reject(new Error("Embedding provider unloaded"));
-		}
-		this.pending.clear();
-		this.worker?.terminate();
-		this.worker = null;
-		if (this.blobUrl) { URL.revokeObjectURL(this.blobUrl); this.blobUrl = null; }
-		this.readyPromise = null;
 	}
 }

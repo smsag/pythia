@@ -7,6 +7,9 @@ const built: string[] = [];
 /** The worker-URL getter each constructed provider was handed, so a test can
  *  drive it the way the real factory's Worker path does. */
 const spawnUrls: (() => Promise<string>)[] = [];
+/** Set to hold `embed` open, so a test can observe work that is still running. */
+const hold: { gate: Promise<void> | null; release: (() => void) | null } = { gate: null, release: null };
+const holdEmbeds = (): void => { hold.gate = new Promise((r) => { hold.release = () => r(); }); };
 vi.mock("../services/embedding/host/embeddingProviderFactory", () => ({
 	createEmbeddingProvider: (modelId: string, _p?: unknown, resourceWorkerUrl?: () => Promise<string>) => {
 		built.push(modelId);
@@ -15,6 +18,7 @@ vi.mock("../services/embedding/host/embeddingProviderFactory", () => ({
 			dim: 4,
 			async ready(): Promise<void> {},
 			async embed(texts: string[]): Promise<Float32Array[]> {
+				if (hold.gate) await hold.gate;
 				return texts.map(() => Float32Array.from([1, 0, 0, 0]));
 			},
 			isOffThread: () => true,
@@ -126,7 +130,7 @@ function harness(over: { isMobile?: boolean; settings?: Partial<PythiaSettings> 
 	return h;
 }
 
-beforeEach(() => { built.length = 0; spawnUrls.length = 0; });
+beforeEach(() => { built.length = 0; spawnUrls.length = 0; hold.gate = null; hold.release = null; });
 
 describe("which model this device embeds with (ADR-199/200)", () => {
 	it("a desktop runs exactly the model the setting names", () => {
@@ -354,6 +358,26 @@ describe("the vault-RAG facades", () => {
 		// The conversation index is a DIFFERENT file: same format, independent rows.
 		h.hub.ensureProvider();
 		expect(h.stores.some((s) => s.prefix === undefined)).toBe(false);
+	});
+
+	it("the residency counts the related sync as work in progress too (#362)", async () => {
+		const h = harness();
+		h.conversations = talky(3);
+		h.indexExists = true;
+		holdEmbeds();
+
+		const warming = h.hub.warm();
+		await Promise.resolve(); // let the sync open
+		// A phone that released the model here would abandon a sync that is still
+		// embedding through it. The vault build is NOT running, so this is true only
+		// if the related index is counted as well — the wiring #362 fixed, which sat
+		// in `main.ts` untested until the hub took ownership of both.
+		expect(h.rag.isBuilding()).toBe(false);
+		expect(h.residencyDeps?.building()).toBe(true);
+
+		hold.release?.();
+		await warming;
+		expect(h.residencyDeps?.building()).toBe(false);
 	});
 
 	it("the residency sees the live provider and the live build state (ADR-202)", () => {

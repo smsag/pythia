@@ -2,7 +2,7 @@ import { debounce, TFile, type EventRef, type TAbstractFile, type Vault } from "
 
 /**
  * Keeping the vault index fresh (ADR-121), lifted out of `main.ts`
- * (engineering-review #358).
+ * (engineering-review #366).
  *
  * The watcher is EVENT-DRIVEN and targeted: an edit re-embeds that one note
  * instead of rescanning the corpus. Changed and deleted paths are batched and

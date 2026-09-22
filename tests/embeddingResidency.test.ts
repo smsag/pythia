@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { VisibleClock } from "../services/embedding/host/visibleClock";
-import { EmbeddingResidency, IDLE_RELEASE_MS, ResidentProvider } from "../services/embedding/residency";
+import { EmbeddingResidency, IDLE_RELEASE_MS, ResidentProvider, installEmbeddingResidency } from "../services/embedding/residency";
 import type { EmbeddingProvider } from "../services/embedding/EmbeddingProvider";
 import { BuildGuard, foregroundDeaths, mayAutoBuild, markBuildStarted, parseBuildMarker, type BuildMarker } from "../services/embedding/buildGuard";
 
@@ -59,12 +59,20 @@ describe("VisibleClock — time the work could actually run", () => {
 	});
 });
 
-describe("both embedding providers measure deadlines on the visible clock (ADR-202)", () => {
-	for (const f of ["workerEmbeddingProvider.ts", "iframeEmbeddingProvider.ts"]) {
+describe("every embedding deadline is measured on the visible clock (ADR-202)", () => {
+	const read = (f: string): string => readFileSync(resolve(process.cwd(), "services/embedding/host", f), "utf8");
+
+	it("the shared protocol client arms its timeouts on it (ADR-204)", () => {
+		// Both backends' deadlines live here since the extraction, so this is the
+		// one file that has to name the clock.
+		const src = read("postMessageBackend.ts");
+		expect(src).toContain("visibleClock.timeout(");
+		expect(src).toContain("visibleClock.elapsed()");
+	});
+
+	for (const f of ["postMessageBackend.ts", "workerEmbeddingProvider.ts", "iframeEmbeddingProvider.ts"]) {
 		it(`${f} has no wall-clock deadline left`, () => {
-			const src = readFileSync(resolve(process.cwd(), "services/embedding/host", f), "utf8");
-			expect(src).toContain("visibleClock.timeout(");
-			expect(src).toContain("visibleClock.elapsed()");
+			const src = read(f);
 			expect(src).not.toMatch(/Date\.now\(\)\s*-\s*started/);
 			expect(src).not.toMatch(/clearTimeout\(\w+\.timeout\)/);
 		});
@@ -225,6 +233,25 @@ describe("EmbeddingResidency — the model on a phone (ADR-202)", () => {
 		residency.prewarm();
 		await Promise.resolve(); await Promise.resolve();
 		expect(inner.loads).toBe(2);
+	});
+
+	it("arms the idle timer on a phone only — a desktop's tick has nothing to do", () => {
+		const intervals: unknown[] = [];
+		vi.stubGlobal("document", { hidden: false });
+		vi.stubGlobal("window", { setInterval: () => 7 });
+		try {
+			const plugin = {
+				registerDomEvent: () => {},
+				registerInterval: (id: number) => { intervals.push(id); return id; },
+			};
+			const deps = { provider: () => null, building: () => false, onBackground: () => {}, log: () => {} };
+			installEmbeddingResidency(plugin as never, { ...deps, mobile: false });
+			expect(intervals).toHaveLength(0);
+			installEmbeddingResidency(plugin as never, { ...deps, mobile: true });
+			expect(intervals).toEqual([7]);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it("the desktop never releases, but still feeds the clock and the guard", async () => {

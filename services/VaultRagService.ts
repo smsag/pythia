@@ -12,6 +12,7 @@ import type { BuildGuard } from "./embedding/buildGuard";
 import { isOutOfMemoryError } from "./embedding/memoryError";
 import { peekIndexMeta } from "./embedding/embeddingIndex";
 import { stateFromFile, type VaultIndexStatus } from "./embedding/indexStatus";
+import { decideBuild } from "./embedding/buildDecision";
 import { hashPolicyFor } from "./embedding/rowProvenance";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
@@ -48,7 +49,9 @@ type Phase =
 	| { kind: "idle" }
 	| { kind: "loading" }
 	| { kind: "building"; done: number; total: number }
-	| { kind: "failed"; error: string; outOfMemory: boolean };
+	/** `loadFailed`: the model never loaded, so the provider has memoized the
+	 *  rejection and an automatic retry cannot do anything but fail again (#358). */
+	| { kind: "failed"; error: string; outOfMemory: boolean; loadFailed: boolean };
 export class VaultRagService {
 	private service: VaultIndexService | null = null;
 	/** Paths auto-retrieved on the last turn, per conversation id (for the "auto" pills). */
@@ -69,6 +72,13 @@ export class VaultRagService {
 	 *  dropped for the rest of the session — `applyChanges` no-ops until the index
 	 *  is ready, and the first build is exactly when it is not. */
 	private deferredChanges: { changed: Map<string, TFile>; deleted: Set<string> } | null = null;
+	/** The index file's header, remembered between status reads (#361).
+	 *  `undefined` = not read yet, `null` = read and there is no usable file.
+	 *  `IndexStore.read()` returns the WHOLE binary — ~19 MB at the 5 000-note cap —
+	 *  and the settings row asks for the status on every change event, so a partial
+	 *  or out-of-date index had the user paying for that file repeatedly to learn
+	 *  64 bytes. Dropped whenever this session could have changed the file. */
+	private fileMeta: ReturnType<typeof peekIndexMeta> | undefined = undefined;
 
 	constructor(
 		private readonly app: App,
@@ -93,6 +103,7 @@ export class VaultRagService {
 		this.capWarned = false;
 		this.backend = null;
 		this.deferredChanges = null;
+		this.fileMeta = undefined; // a different model means a different file
 		this.emit();
 	}
 
@@ -185,14 +196,18 @@ export class VaultRagService {
 		if (phase.kind === "failed") return { ...base, state: "failed", error: phase.error, outOfMemory: phase.outOfMemory };
 		const scope = this.scopeSignature();
 		if (this.service?.isComplete(scope)) return { ...base, state: "ready", count: this.service.size() };
-		let file: ReturnType<typeof peekIndexMeta> = null;
-		try {
-			const buf = await this.makeStore().read();
-			file = buf ? peekIndexMeta(buf) : null;
-		} catch (e) {
-			// Reported as "not built", which is what the next build will act on —
-			// but logged, because an unreadable index file is worth a report.
-			console.warn("[Pythia] vault RAG: could not read the index for its status", e);
+		let file = this.fileMeta ?? null;
+		if (this.fileMeta === undefined) {
+			try {
+				const buf = await this.makeStore().read();
+				file = buf ? peekIndexMeta(buf) : null;
+				this.fileMeta = file;
+			} catch (e) {
+				// Reported as "not built", which is what the next build will act on —
+				// but logged, because an unreadable index file is worth a report. NOT
+				// cached: a read that threw has told us nothing to remember.
+				console.warn("[Pythia] vault RAG: could not read the index for its status", e);
+			}
 		}
 		const state = stateFromFile(file, scope);
 		// Paused whatever the file says (ADR-201). A paused session never loads the
@@ -289,36 +304,37 @@ export class VaultRagService {
 	 *  (ADR-125). Incremental edits keep it fresh via `applyChanges`. */
 	refresh(opts: { force?: boolean; manual?: boolean; clear?: boolean } = {}): void {
 		if (this.syncing) return;
-		// A COMPLETE index is kept fresh by the watcher's targeted `applyChanges`
-		// (ADR-121), so re-running a whole-corpus scan on every turn re-paid the
-		// exact cost that ADR removed: reading, chunking and hashing every in-scope
-		// note, on the host thread, per send — plus a "Building the vault index…"
-		// notice flashing each time. `reindex` passes `force`.
-		//
-		// COMPLETE, not ready (ADR-184). `isReady()` is true the moment a persisted
-		// file is hydrated, and since ADR-182 that file can be a fifth of an
-		// interrupted build — gating on it meant such a build was never resumed and
-		// reported itself finished. It is also false when the scope changed, so
-		// narrowing the folders rebuilds instead of leaving them retrievable.
-		if (!opts.force && this.service?.isComplete(this.scopeSignature())) return;
 		const guard = this.deps.guard;
-		// Builds kept dying (ADR-199): the OS killed the process before the last
-		// ones could finish, so starting another on this send is how the app
-		// reloaded every minute. An automatic build waits; one the user asks for
-		// forgets the history and runs.
-		if (!opts.manual && guard && !guard.mayAutoBuild()) {
-			if (!this.pausedNoticeShown) {
-				this.pausedNoticeShown = true;
-				new Notice(t("vaultIndexPausedNotice"), 12000);
+		// Whether this build runs at all is a decision with six inputs, so it is
+		// made in one pure place and tested as a table (ADR-203) — `buildDecision.ts`
+		// holds the reasoning behind each answer.
+		const decision = decideBuild(opts, {
+			syncing: false, // returned above
+			// COMPLETE, not ready (ADR-184): `isReady()` is true the moment a
+			// persisted file is hydrated, and that file may be a fifth of an
+			// interrupted build.
+			complete: this.service?.isComplete(this.scopeSignature()) ?? false,
+			mayAutoBuild: guard?.mayAutoBuild() ?? true,
+			loadFailed: this.phase.kind === "failed" && this.phase.loadFailed,
+		});
+		if (!decision.run) {
+			if (decision.blocked === "paused") {
+				if (!this.pausedNoticeShown) {
+					this.pausedNoticeShown = true;
+					new Notice(t("vaultIndexPausedNotice"), 12000);
+				}
+				debugLog(this.getSettings(), "vault RAG: automatic build paused after interrupted builds", guard?.marker());
+			} else if (decision.blocked === "loadFailed") {
+				// No Notice and no marker: the status line already says what happened
+				// and names "Build now", and starting the build here is what turned
+				// one failed load into a pause (#358).
+				debugLog(this.getSettings(), "vault RAG: automatic build skipped — the model failed to load in this session");
 			}
-			debugLog(this.getSettings(), "vault RAG: automatic build paused after interrupted builds", guard.marker());
 			return;
 		}
 		if (opts.manual) guard?.end();
-		// Read BEFORE the phase moves on: only a failed previous attempt needs the
-		// provider reset (#357); a healthy loaded model is kept.
-		const retryLoad = this.phase.kind === "failed";
 		this.syncing = true;
+		this.fileMeta = undefined; // this build is about to change the file
 		guard?.start(this.deps.modelId());
 		// Loading, not "building 0 of 0": the model download and load is the longest
 		// part of a first build on a phone, and the part that must not look stuck.
@@ -326,6 +342,10 @@ export class VaultRagService {
 		void (async () => {
 			const startedAt = Date.now();
 			let notice: Notice | null = null;
+			/** Whether the model itself loaded. Everything after this point fails
+			 *  with a model known to be good, which is a different thing to retry
+			 *  (#358/#359) — see `buildDecision.ts`. */
+			let loaded = false;
 			try {
 				// Resolve the backend so we know whether inference is off-thread; ready()
 				// is memoized, so this is cheap after the first call.
@@ -335,8 +355,9 @@ export class VaultRagService {
 				// which must not hammer an out-of-memory load — so without this reset a
 				// manual retry failed in a millisecond and the status never moved: the
 				// buttons looked dead.
-				if (opts.manual && retryLoad) provider.unload();
+				if (decision.reloadProvider) provider.unload();
 				await provider.ready();
+				loaded = true;
 				const offThread = provider.isOffThread?.() ?? false;
 				this.backend = provider.backend?.() ?? null;
 				const svc = this.ensure();
@@ -360,6 +381,13 @@ export class VaultRagService {
 					if (svc.isComplete(scope)) {
 						guard?.end();
 						this.setPhase({ kind: "idle" });
+						// The edits buffered while the index was not yet hydrated land
+						// HERE or nowhere (#360). This return is the phone's normal path —
+						// a complete index, a UI-thread backend — and it used to skip the
+						// replay that the build path below does, so every note edited
+						// between launch and the first send stayed at its old vector until
+						// it happened to be edited again.
+						await this.flushDeferredChanges();
 						return;
 					}
 					if (svc.size() > 0) {
@@ -400,11 +428,12 @@ export class VaultRagService {
 				// EXCEPT out of memory, which is the same event one allocation short of
 				// a kill. Its marker stays, so it counts toward the pause (ADR-199).
 				if (!outOfMemory) guard?.end();
-				this.setPhase({ kind: "failed", error: e instanceof Error ? e.message : String(e), outOfMemory });
+				this.setPhase({ kind: "failed", error: e instanceof Error ? e.message : String(e), outOfMemory, loadFailed: !loaded });
 				console.warn("[Pythia] vault RAG: index sync failed", e);
 			} finally {
 				notice?.hide();
 				this.syncing = false;
+				this.fileMeta = undefined; // the build has rewritten it (or tried to)
 				this.emit();
 			}
 		})();
@@ -445,6 +474,7 @@ export class VaultRagService {
 		}
 		// One persist for the whole batch (ADR-122), not one per note.
 		await svc.applyBatch({ updates, removes }, { cap: settings.vaultContextMaxIndexedNotes });
+		this.fileMeta = undefined; // the batch may have rewritten the file
 		this.emit();
 	}
 

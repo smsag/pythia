@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-203 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
+*Last updated: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
+
+*Previously: 2026-09-22 — ADR-204 (the two embedding backends are one postMessage client and two ways to mount a model; the protocol gets its first tests).*
+
+*Previously: 2026-09-22 — ADR-203 (whether a vault-index build runs is one pure decision: a failed load does not pause the index, the phone's short-circuit replays buffered edits, and the status line stops re-reading the index file).*
 
 *Previously: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
 
@@ -4010,7 +4014,60 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 
 **Guards.** `tests/embeddingResidency.test.ts`: the visible clock (frozen while hidden; no overdue fire on return; cancel), the source guard on both providers, the background rule (strict parse; excused vs counted deaths; ten background kills never pause; two foreground crashes still do), and the residency (release on hide, preload on return, never under a build or embed, never a never-loaded or failed model, idle release at exactly 3 min, use resets it, the input preloads only a released model, the desktop never releases). `tests/vaultRagGuard.test.ts`: a running build's marker toggles with visibility and clears at the end. Each rule was checked by reverting it.
 
-### ADR-203 — `main.ts` holds wiring; anything with a rule moves out behind a host seam
+### ADR-203 — Whether a build runs is a decision, not six flags
+
+*2026-09-22*
+
+**Context.** A senior review of the ADR-199..202 work (the iOS reload investigation and everything that came out of it) read the code back rather than the symptom. The head of `VaultRagService.refresh` had accumulated six interacting inputs — `force`, `manual`, `clear`, a complete index, the crash-loop guard and the previous attempt's failure — written as a run of early returns, and two defects were living in exactly that tangle. Three more came from the same work.
+
+1. **One failed load became "the last 2 builds died" (#358).** `FallbackEmbeddingProvider` memoizes its rejection for the session — deliberately, so an out-of-memory load is not hammered. But every subsequent send re-entered `refresh`, which called `guard.start()` (another interrupted-build marker), awaited the memoized rejection, failed in a millisecond and, on out of memory, kept the marker. Three sends after ONE out-of-memory load reported "the last 2 builds ended without finishing" and paused automatic indexing. The pause is ADR-199's protection against a crash loop; here it fired on a single failure that never crashed anything.
+2. **A phone dropped the edits made before its first send (#360).** `applyChanges` buffers edits while the index is not hydrated (ADR-184) and the build replays them at the end. But the UI-thread backend — every phone — takes a short-circuit when the index is already complete: hydrate, report ready, return. That return skipped the replay, so a note edited between launch and the first send kept its old vector until it happened to be edited again after a build. Off the phone a full `sync` re-reads every note, which hid it.
+3. **A manual build reloaded a healthy model (#359).** #357's retry reset the provider whenever the last attempt had failed — including a build that failed *after* a good load (five bad embeds, a failed write). On the desktop that terminates the Worker and reparses the model for nothing.
+4. **The status line re-read the whole index to see 64 bytes (#361).** `status()` falls back to the file header when the session has not built; `IndexStore.read()` returns the entire binary (~19 MB at the 5 000-note cap) and the settings row asks on every change event.
+5. **A sync's edges were invisible to the residency (#362).** ADR-202 asks `vaultRag.isBuilding()` before releasing a phone's idle model, which says nothing about the related-conversations sync. Its embed loop is safe on its own — one await per conversation, so the in-flight count never reaches zero at a macrotask boundary, and `visibilitychange` can only run at one — but the file read that opens a sync and the write that closes it are such boundaries, with the model needed on the far side of both.
+
+**Decision.**
+
+- **The decision is pure and tested as a table** (`services/embedding/buildDecision.ts`). `decideBuild(request, facts)` answers `{ run: false, blocked }` or `{ run: true, reloadProvider }`; `refresh` reads the answer and performs it. Each blocked reason keeps its reasoning next to the branch that returns it, where a table test can hold it.
+- **An automatic build does not retry a load that failed in this session.** The provider has memoized the rejection, so the retry can only fail — and each attempt left another marker. No `Notice` and no marker: the status line already names the failure and "Build now". A manual build (which resets the provider) or a new session clears it. This subsumes the out-of-memory case and the offline one, which had the same shape.
+- **The provider is reset only after a failed LOAD.** The failure phase records which half failed (`loadFailed`), so a build that failed with a good model keeps it.
+- **The UI-thread short-circuit replays the buffered edits** before it returns — that return is the phone's normal path, so it is where the replay has to happen.
+- **The index header is remembered between status reads**, and dropped whenever this session could have changed the file (a build starting or ending, a targeted batch, a model change). A read that threw caches nothing.
+- **`ConversationIndexService.isSyncing()`**, OR-ed into the residency's `building`.
+
+**Also.** A corrupt stored index now says so in the log instead of silently re-embedding the vault (principle 2); the idle timer is armed on a phone only, where something can actually be released; `VisibleClock.timeout` floors its poll interval at 50 ms so a zero deadline cannot spin.
+
+**Guards.** `tests/buildDecision.test.ts` is the table: what stops a build (busy · complete · paused · a failed load) and when the provider is reloaded. `tests/vaultIndexRecovery.test.ts` drives the service: one failed load stays one failed load across three sends and does not hammer the provider, Build now still retries, the phone's short-circuit replays buffered edits exactly once, and the status file is read once but re-read after a build. `tests/ConversationIndexService.test.ts` holds the sync's edges; `tests/embeddingResidency.test.ts` the mobile-only timer. Each fix was reverted to confirm its test fails.
+
+**A second pass, through the provider chain (#363–#365).**
+
+- **A load in flight is owned.** `FallbackEmbeddingProvider` engages a backend only once it is ready, which meant `unload()` had nothing to unload during the first download: the chain ran on, and `engage()` parked the finished model on a provider the plugin had already dropped — unreachable memory for the life of the process. It now carries a generation. `unload()` moves it on and unloads every backend the current load has built; `engage()` releases a backend from an older generation and fails that load. Both providers stop their ready poll when their generation moves (it used to retry against a terminated backend for the rest of the five-minute deadline) and clear the load error, which `unload()` had kept — so a later `ready()` was rejected instantly by a backend that no longer existed.
+- **The frame answers its host only**, matching the check the host already makes in the other direction.
+
+The first of these is reachable by changing the model mid-download and by `onunload` — a plugin update or reload inside the running app, which is what the device did right before the out-of-memory of #357. Obsidian's page survives an in-app plugin reload; so did the orphaned model.
+
+**Not measured.** ADR-202's own "not measured yet" still stands — nothing here changes what the phone does with memory, only when it decides to try, and whether it can let go. Whether #363 was a *contributing* cause of the reported out-of-memory is argued from the code path, not measured: it would take a plugin reload mid-download with the phone attached.
+
+### ADR-204 — One postMessage client, two ways to mount a model
+
+*2026-09-22*
+
+**Context.** `WorkerEmbeddingProvider` and `IframeEmbeddingProvider` were the same class twice. Both held the `Pending` map, the request/response protocol, the ping-proven ready poll, the two timeouts and the teardown; they differed in how the backend is started (a Worker from a blob or resource URL vs a hidden `srcdoc` iframe), in one error string, and in `isOffThread()`. Roughly 120 of each file's 165 lines were the same lines.
+
+That is principle 4 ("one implementation per interaction"), and #363 is what it costs: a model that finished loading after `unload()` was engaged on a provider nobody held, and the fix — a generation, a stopped ready poll, a cleared load error — had to be written twice, correctly, in two files. The next such fix would be written twice again, and the copy that quietly misses it is the iframe, because **no unit test can reach it**: it needs a real Obsidian window, which is why its own header had said "runtime-only" since ADR-119.
+
+**Decision.** `services/embedding/host/postMessageBackend.ts` holds `PostMessageEmbeddingProvider`: everything about the conversation with a backend. A subclass supplies three things — `mount()`, which starts the backend and returns a `BackendChannel` (`send`, `close`); `label`, the name it gives itself in an error; and `isOffThread()`. `WorkerEmbeddingProvider` drops to 68 lines, `IframeEmbeddingProvider` to 59; 282 lines of duplication become 69.
+
+Two consequences beyond the line count:
+
+- **The protocol is testable for the first time.** Against a fake channel it is ordinary code, so `tests/postMessageBackend.test.ts` now pins what the two runtime-only files used to assert only by being read: ready waits for a ping, an empty batch sends nothing, a stray reply is ignored, a backend error comes back named, a throwing send fails its request rather than waiting out the timeout, and all of #363 — the poll stops on unload, a backend that finishes mounting afterwards is closed, the load error does not survive an unload. Each was checked by reverting it.
+- **`mount()` carries a rule.** The channel it returns may arrive after `unload()`; the base closes it in that case, so `mount` must not leave anything reachable only from its own local scope. That is #363's lesson stated where the next backend will read it.
+
+**What did not change.** The wire protocol, the timeouts, the fallback order, and the iframe's origin/source checks. Two error strings did: the iframe's load timeout now names the iframe rather than "the model", and each backend's request errors are prefixed with its own label — both better for a report that has to say which backend failed.
+
+**Not done.** The backend chain still constructs these eagerly in order; nothing here changes the fallback. `frame/model.ts` keeps its own `ModelLoadProgress` type — it is inside the embedding bundle, and crossing that boundary for a four-field type is not worth it.
+
+### ADR-205 — `main.ts` holds wiring; anything with a rule moves out behind a host seam
 
 *2026-09-22*
 
@@ -4027,6 +4084,7 @@ Size was the trigger, not the problem. The problem is that **`main.ts` is exclud
 - **The seam is a structural host interface, not the plugin.** Each module takes an object describing what it needs from Obsidian — `EmbeddingHubHost`, `VaultWatcherHost`, `DeepLinkHost` — which a test satisfies with a plain object. This is the shape `installEmbeddingResidency` (ADR-202) and `ui/vaultIndexStatusSetting.ts` (ADR-199) already use, and it is why `EmbeddingHub` imports no Obsidian runtime at all. Passing `plugin` would have moved the code without moving the testability, which is the failure mode this ADR exists to avoid: an extraction that only buys lines.
 - **`VaultRagLike` is a structural type, not the class.** The hub owns vault RAG's lifecycle but never imports `VaultRagService` as a value; the plugin's `makeVaultRag` constructs it. `plugin.vaultRag` becomes a getter onto the hub, so no call site changed.
 - **The plugin keeps thin facades** for the public API the settings tab, the sidebar and the tests call (`activeEmbeddingModelId`, `getRelatedConversations`, `getAutoContext`, `vaultIndexStatus`, `buildVaultIndexNow`, `reindexVault`, `onVaultIndexChange`, `prewarmEmbedding`, `invalidateRelatedService`) — the pattern ADR-103 / #121 established. Zero ripple outside `main.ts`.
+- **A rule that arrives later lands in the hub, not in `onload`.** Merging `main` brought #362, which widened the residency's "something is running" test to cover the related-index sync as well as the vault build. On `main` that predicate sits in `main.ts` reaching across two plugin fields, and is therefore untested; in the hub both are private fields of the one object that owns them, and the merge resolution gave it its first test. That is the shape this ADR is arguing for, arriving on its own.
 - **The ceiling is not raised.** `scripts/check-file-size.mjs` keeps `DEFAULT_MAX = 600` with no entry for `main.ts`; the file is 400 lines, and the ratchet only ever goes down.
 
 **Behaviour is unchanged**, deliberately, including two pre-existing quirks left exactly as they were:
@@ -4034,4 +4092,4 @@ Size was the trigger, not the problem. The problem is that **`main.ts` is exclud
 - A first `ensureProvider()` calls `vaultRag.reset()` before anything has been built. The early return needs an existing provider, so call #1 falls through the teardown block. It is idempotent (`service = null`, `phase = idle`, three flags, one status emit — all already true) and unreachable in a state where it would matter, since vault RAG gets its provider through this method. A guard would put a branch on a teardown path, and a teardown that sometimes skips is the failure the block exists to prevent.
 - A rename whose new path is not markdown records the delete of the old path but does not schedule a flush: `markChanged` returns on the extension check before `flush()`. The case that occurs is `note.md` → `note.txt`, so **the old path genuinely was indexed** and its row goes stale until the next vault event fires a flush. `inScopeNow` filters retrieval results by folder scope and `pythia: false`, not by existence, so a stale path can occupy one of the ~5 auto-retrieval slots; `ContextBuilder` then gets `null` from `getAbstractFileByPath`, contributes nothing and files it under `missingNotes`, which for an auto note reaches the debug log rather than a `Notice` (ADR-183). Nothing wrong reaches the model — the cost is a wasted slot for the width of the window. Worth fixing on its own (flush unconditionally on rename); not worth smuggling into a behaviour-preserving extraction.
 
-**Guards.** `tests/embeddingHub.test.ts` (24), `tests/vaultWatcher.test.ts` (18), `tests/deepLink.test.ts` (13). 28 mutations applied across the three modules — every claim above broken one at a time — and all 28 killed; two survived the first pass and both were flaws in the new tests (a warm that stopped at its index guard before it could have shown a notice, and a cap asserted as a constant rather than observed on a result list). `tests/embeddingModelRule.test.ts` follows the one-reader rule to its new home and its regex now also catches the `settings().embeddingModelId` getter form, which the field-only pattern would have missed.
+**Guards.** `tests/embeddingHub.test.ts` (25), `tests/vaultWatcher.test.ts` (18), `tests/deepLink.test.ts` (13). 29 mutations applied across the three modules — every claim above broken one at a time — and all 29 killed; two survived the first pass and both were flaws in the new tests (a warm that stopped at its index guard before it could have shown a notice, and a cap asserted as a constant rather than observed on a result list). `tests/embeddingModelRule.test.ts` follows the one-reader rule to its new home and its regex now also catches the `settings().embeddingModelId` getter form, which the field-only pattern would have missed.

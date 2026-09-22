@@ -15,7 +15,7 @@ import type { VaultIndexSnapshot } from "../VaultRagService";
 import type { VaultIndexStatus } from "./indexStatus";
 
 /**
- * Everything on-device embedding, in one place (engineering-review #358).
+ * Everything on-device embedding, in one place (engineering-review #366).
  *
  * "Related conversations" (ADR-109) and vault-wide semantic RAG (ADR-116) share
  * ONE lazily-built provider — the model is heavy, so it loads once and both index
@@ -117,7 +117,10 @@ export class EmbeddingHub {
 		});
 		this.residency = host.installResidency({
 			provider: () => this.provider,
-			building: () => this.vaultRag.isBuilding(),
+			// The related-index sync counts as "running" too (#362): it embeds
+			// through the same provider, and releasing the model under it would
+			// abandon a build halfway. The hub owns both, so it can say so.
+			building: () => this.vaultRag.isBuilding() || (this.relatedService?.isSyncing() ?? false),
 			mobile: host.isMobile,
 			onBackground: (hidden) => this.vaultRag.onBackground(hidden),
 			log: (m, d) => host.log(m, d as Record<string, unknown>),

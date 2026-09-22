@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 
 /**
- * The `obsidian://pythia` protocol handler (engineering-review #358), lifted out
+ * The `obsidian://pythia` protocol handler (engineering-review #366), lifted out
  * of `main.ts` so its routing and validation can be tested.
  *
  * Everything here is a rule about *parameters*, not about Obsidian: which `cmd`
