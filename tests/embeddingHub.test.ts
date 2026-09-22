@@ -46,8 +46,18 @@ const talky = (n: number): Conversation[] =>
 		messages: [{ id: `m${i}`, role: "user", content: `a note about topic ${i}` }],
 	})) as unknown as Conversation[];
 
-/** Records every call the hub makes, so a test can assert on the teardown order. */
-function makeVaultRag(): VaultRagLike & { resets: number; snapshot: VaultIndexSnapshot } {
+/** Records every call the hub makes, so a test can assert on the teardown order.
+ *  The counters are named in the return type as well as set in the object: the
+ *  `VaultRagLike` half is what keeps this fixture honest about the real service's
+ *  shape, and an inferred return type would drop that check. */
+function makeVaultRag(): VaultRagLike & {
+	resets: number;
+	disposed: number;
+	reindexed: number;
+	builds: number;
+	snapshot: VaultIndexSnapshot;
+	listeners: Set<() => void>;
+} {
 	const rag = {
 		resets: 0,
 		disposed: 0,
