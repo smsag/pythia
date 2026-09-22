@@ -73,7 +73,7 @@ export type SimilarityPreset = "strict" | "balanced" | "loose";
 
 /** Where the pruned variant is published (ADR-199). A fork of the upstream model,
  *  Apache-2.0, built reproducibly by scripts/prune-embedding-model.py. */
-export const LATIN_VARIANT_REPO_ID = "smsag/paraphrase-multilingual-MiniLM-L12-v2-latin";
+export const LATIN_VARIANT_REPO_ID = "smsag007/paraphrase-multilingual-MiniLM-L12-v2-latin";
 
 export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = {
 	"xenova-all-MiniLM-L6-v2": {
