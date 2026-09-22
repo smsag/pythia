@@ -31,6 +31,19 @@ export class ConversationIndexService {
 	private loaded = false;
 	private syncing: Promise<void> | null = null;
 
+	/** A sync is in flight (ADR-202/#362), which the residency asks as well as the
+	 *  vault build before releasing a phone's model.
+	 *
+	 *  The embed loop itself is safe without this: one await per conversation means
+	 *  the in-flight count never reaches zero at a macrotask boundary, and
+	 *  `visibilitychange` can only run at one. The file read that opens a sync and
+	 *  the write that closes it ARE such boundaries, and the model is needed on the
+	 *  far side of both — a narrow window, but a real one, and the provider cannot
+	 *  see it because nothing is in flight there. */
+	isSyncing(): boolean {
+		return this.syncing !== null;
+	}
+
 	constructor(
 		private readonly provider: EmbeddingProvider,
 		private readonly store: IndexStore,

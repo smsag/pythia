@@ -164,7 +164,13 @@ export class VaultIndexService {
 				// A dim mismatch means a different model built the index — drop it and
 				// let the next sync rebuild from scratch.
 				if (dim === this.provider.dim) { this.items = items; this.meta = meta; }
-			} catch {
+			} catch (e) {
+				// A corrupt or truncated file (an interrupted write, a half-synced
+				// iCloud copy) is not fatal: an empty index rebuilds on the next sync.
+				// Logged rather than swallowed (principle 2) — this is the only place
+				// that can report it, and it would otherwise show up as a silent
+				// whole-vault re-embed.
+				console.warn("[Pythia] vault RAG: the stored index could not be read — rebuilding it", e);
 				this.items = [];
 				this.meta = EMPTY_INDEX_META;
 			}

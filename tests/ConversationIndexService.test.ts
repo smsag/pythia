@@ -186,3 +186,38 @@ describe("ConversationIndexService — abort", () => {
 		await expect(svc.sync(many(3))).resolves.toBeUndefined();
 	});
 });
+
+describe("a running sync is visible to the residency (#362)", () => {
+	/** A store whose read takes a macrotask — a real one reads a multi-MB file. */
+	class SlowStore extends MemStore {
+		release: (() => void) | null = null;
+		async read(): Promise<ArrayBuffer | null> {
+			await new Promise<void>((r) => { this.release = r; });
+			return super.read();
+		}
+	}
+
+	it("says so while the sync is between embeds — loading the index, and writing it", async () => {
+		// Where this matters: a phone releases the idle embedding model on
+		// `visibilitychange`, which can only run when the stack is empty. Inside the
+		// embed loop there is no such moment (one await per conversation, so the
+		// in-flight count never reaches zero at a macrotask boundary) — but the file
+		// read that opens a sync and the write that closes it are exactly that, and
+		// the model is needed on the far side of both.
+		const provider = new FakeProvider();
+		const store = new SlowStore();
+		const svc = new ConversationIndexService(provider, store);
+		expect(svc.isSyncing()).toBe(false);
+
+		const running = svc.sync([conv({ id: "s0", name: "sync", messages: [msg("body")] })]);
+		await new Promise((r) => setTimeout(r, 0)); // the read is pending; nothing is embedding
+		expect(store.release).not.toBeNull();
+		expect(provider.embedded).toHaveLength(0);
+		expect(svc.isSyncing()).toBe(true);
+
+		store.release?.();
+		await running;
+		expect(provider.embedded.length).toBeGreaterThan(0);
+		expect(svc.isSyncing()).toBe(false);
+	});
+});

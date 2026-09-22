@@ -32,6 +32,9 @@ export class IframeEmbeddingProvider implements EmbeddingProvider {
 	private readonly pending = new Map<number, Pending>();
 	private loadError: Error | null = null;
 	private readyPromise: Promise<void> | null = null;
+	/** Bumped by `unload()`, so the ready poll below can tell that the load it is
+	 *  waiting on has been abandoned (#363). */
+	private generation = 0;
 
 	constructor(
 		private readonly modelId: EmbeddingModelId,
@@ -65,7 +68,12 @@ export class IframeEmbeddingProvider implements EmbeddingProvider {
 			// Visible time, not wall time (ADR-202): a first download interrupted by
 			// switching apps must not "time out" the moment Obsidian returns.
 			const started = visibleClock.elapsed();
+			const gen = this.generation;
 			const tick = () => {
+				// Unloaded while loading: stop. Without this the poll kept retrying
+				// against a terminated backend every 1.5 s for the whole five-minute
+				// deadline, and the promise nobody held rejected at the end of it.
+				if (gen !== this.generation) return reject(new Error("Embedding provider unloaded"));
 				if (this.loadError) return reject(this.loadError);
 				if (visibleClock.elapsed() - started > READY_TIMEOUT_MS) return reject(new Error("Embedding model load timed out"));
 				this.ping()
@@ -145,6 +153,10 @@ export class IframeEmbeddingProvider implements EmbeddingProvider {
 			p.reject(new Error("Embedding provider unloaded"));
 		}
 		this.pending.clear();
+		// `readyPromise = null` below invites a later `ready()`; a load error kept
+		// from the backend that has just been torn down would reject it instantly.
+		this.generation++;
+		this.loadError = null;
 		this.iframe?.remove();
 		this.iframe = null;
 		this.readyPromise = null;
