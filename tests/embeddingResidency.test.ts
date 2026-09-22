@@ -134,12 +134,13 @@ const setup = (over: { mobile?: boolean; building?: boolean } = {}) => {
 	const inner = new Inner();
 	const background: boolean[] = [];
 	const clock = new VisibleClock(() => t);
-	let residency!: EmbeddingResidency;
-	const provider = new ResidentProvider(inner, () => residency.noteUse());
-	residency = new EmbeddingResidency({
+	const ref: { residency?: EmbeddingResidency } = {};
+	const provider = new ResidentProvider(inner, () => ref.residency?.noteUse());
+	const residency = new EmbeddingResidency({
 		provider: () => provider, building: () => over.building ?? false, mobile: over.mobile ?? true,
 		onBackground: (h) => background.push(h), log: () => {}, now: () => t, clock,
 	});
+	ref.residency = residency;
 	return { inner, provider, residency, background, clock, advance: (ms: number) => { t += ms; } };
 };
 
