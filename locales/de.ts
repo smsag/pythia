@@ -54,6 +54,7 @@ const de: Strings = {
 	glossaryDiscuss:          "Diskutieren",
 	glossaryDiscussTooltip:   "Gespräch über diesen Begriff öffnen",
 	glossaryDiscussFailed:    "Gespräch über „{{term}}“ konnte nicht geöffnet werden: {{error}}",
+	glossaryDiscussionLabel:  "DISKUSSION",
 	termDiscussionSave:       "In „{{term}}“ sichern",
 	termDiscussionSaving:     "Verdichte das Gespräch über „{{term}}“…",
 	termDiscussionSaved:      "Was dieses Gespräch über „{{term}}“ geklärt hat, wurde gesichert",

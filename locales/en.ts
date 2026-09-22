@@ -53,6 +53,7 @@ const en = {
 	glossaryDiscuss:          "Discuss",
 	glossaryDiscussTooltip:   "Open a conversation about this term",
 	glossaryDiscussFailed:    "Could not open a conversation about \"{{term}}\": {{error}}",
+	glossaryDiscussionLabel:  "DISCUSSION",
 	termDiscussionSave:       "Save to \"{{term}}\"",
 	termDiscussionSaving:     "Distilling the discussion about \"{{term}}\"…",
 	termDiscussionSaved:      "Saved what this conversation established about \"{{term}}\"",
