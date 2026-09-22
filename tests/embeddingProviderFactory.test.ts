@@ -4,6 +4,10 @@ import type { EmbeddingBackend } from "../services/embedding/EmbeddingProvider";
 // Which constructed provider should fail `ready()`. The factory news these up
 // itself (no injection), so the modules are mocked rather than the instances.
 const fail = { blobWorker: false, resourceWorker: false, iframe: false };
+/** When set, a backend's `ready()` blocks until the test releases it (#363). */
+const hold: { release: (() => void) | null; on: string | null } = { release: null, on: null };
+/** Every backend instance that was told to unload — the model's only release. */
+const unloaded: string[] = [];
 /** The message a failing backend throws, when a test needs a specific one. */
 const failWith: { message: string | null } = { message: null };
 const built: string[] = [];
@@ -17,11 +21,12 @@ vi.mock("../services/embedding/host/workerEmbeddingProvider", () => ({
 			built.push(this.kind);
 		}
 		async ready(): Promise<void> {
+			if (hold.on === this.kind) await new Promise<void>((r) => { hold.release = r; });
 			if (fail[this.kind as "blobWorker" | "resourceWorker"]) throw new Error(failWith.message ?? `${this.kind} unavailable`);
 		}
 		async embed(): Promise<Float32Array[]> { return []; }
 		isOffThread(): boolean { return true; }
-		unload(): void {}
+		unload(): void { unloaded.push(this.kind); }
 	},
 }));
 
@@ -29,10 +34,13 @@ vi.mock("../services/embedding/host/iframeEmbeddingProvider", () => ({
 	IframeEmbeddingProvider: class {
 		readonly dim = 4;
 		constructor() { built.push("iframe"); }
-		async ready(): Promise<void> { if (fail.iframe) throw new Error("iframe unavailable"); }
+		async ready(): Promise<void> {
+			if (hold.on === "iframe") await new Promise<void>((r) => { hold.release = r; });
+			if (fail.iframe) throw new Error("iframe unavailable");
+		}
 		async embed(): Promise<Float32Array[]> { return []; }
 		isOffThread(): boolean { return false; }
-		unload(): void {}
+		unload(): void { unloaded.push("iframe"); }
 	},
 }));
 
@@ -56,6 +64,9 @@ beforeEach(() => {
 	fail.iframe = false;
 	failWith.message = null;
 	built.length = 0;
+	hold.on = null;
+	hold.release = null;
+	unloaded.length = 0;
 	vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -182,5 +193,51 @@ describe("FallbackEmbeddingProvider — out of memory ends the chain (ADR-199)",
 		const { provider } = make();
 		await provider.ready();
 		expect(built).toEqual(["blobWorker", "resourceWorker"]);
+	});
+});
+
+describe("FallbackEmbeddingProvider — unloaded while the model is still loading (#363)", () => {
+	// A model change or a plugin reload during the first download. `unload()` could
+	// not reach the backend, because a backend becomes `active` only once it is
+	// ready — so the model finished loading into a provider nobody held, and on a
+	// phone several hundred MB stayed in the process with nothing able to free it.
+
+	it("releases a backend that becomes ready after the unload", async () => {
+		hold.on = "blobWorker";
+		const { provider } = make();
+		const loading = provider.ready().catch(() => "rejected");
+		await Promise.resolve();
+		expect(hold.release).not.toBeNull();
+
+		provider.unload();
+		hold.release?.();                      // the download finishes regardless
+		await expect(loading).resolves.toBe("rejected");
+		expect(unloaded).toContain("blobWorker");
+		expect(provider.backend?.()).toBeNull();
+	});
+
+	it("unloads the backend the load is waiting on, right away", async () => {
+		hold.on = "blobWorker";
+		const { provider } = make();
+		void provider.ready().catch(() => undefined);
+		await Promise.resolve();
+		provider.unload();
+		expect(unloaded).toContain("blobWorker");
+		hold.release?.();
+	});
+
+	it("a load after the unload starts again and engages normally", async () => {
+		hold.on = "blobWorker";
+		const { provider, seen } = make();
+		void provider.ready().catch(() => undefined);
+		await Promise.resolve();
+		provider.unload();
+		hold.release?.();
+		await Promise.resolve();
+
+		hold.on = null;
+		await provider.ready();
+		expect(provider.backend?.()).toBe("worker (blob)");
+		expect(seen).toEqual(["worker (blob)"]);
 	});
 });

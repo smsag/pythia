@@ -4035,4 +4035,11 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 
 **Guards.** `tests/buildDecision.test.ts` is the table: what stops a build (busy · complete · paused · a failed load) and when the provider is reloaded. `tests/vaultIndexRecovery.test.ts` drives the service: one failed load stays one failed load across three sends and does not hammer the provider, Build now still retries, the phone's short-circuit replays buffered edits exactly once, and the status file is read once but re-read after a build. `tests/ConversationIndexService.test.ts` holds the sync's edges; `tests/embeddingResidency.test.ts` the mobile-only timer. Each fix was reverted to confirm its test fails.
 
-**Not measured.** ADR-202's own "not measured yet" still stands — nothing here changes what the phone does with memory, only when it decides to try.
+**A second pass, through the provider chain (#363–#365).**
+
+- **A load in flight is owned.** `FallbackEmbeddingProvider` engages a backend only once it is ready, which meant `unload()` had nothing to unload during the first download: the chain ran on, and `engage()` parked the finished model on a provider the plugin had already dropped — unreachable memory for the life of the process. It now carries a generation. `unload()` moves it on and unloads every backend the current load has built; `engage()` releases a backend from an older generation and fails that load. Both providers stop their ready poll when their generation moves (it used to retry against a terminated backend for the rest of the five-minute deadline) and clear the load error, which `unload()` had kept — so a later `ready()` was rejected instantly by a backend that no longer existed.
+- **The frame answers its host only**, matching the check the host already makes in the other direction.
+
+The first of these is reachable by changing the model mid-download and by `onunload` — a plugin update or reload inside the running app, which is what the device did right before the out-of-memory of #357. Obsidian's page survives an in-app plugin reload; so did the orphaned model.
+
+**Not measured.** ADR-202's own "not measured yet" still stands — nothing here changes what the phone does with memory, only when it decides to try, and whether it can let go. Whether #363 was a *contributing* cause of the reported out-of-memory is argued from the code path, not measured: it would take a plugin reload mid-download with the phone attached.

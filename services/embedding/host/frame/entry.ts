@@ -82,7 +82,11 @@ if (typeof window === "undefined") {
 	makeModel(w.__EMBEDDING_MODEL_CONFIG__, (m) => window.parent.postMessage(m, window.origin));
 	window.addEventListener("message", (event: MessageEvent) => {
 		const source = event.source as Window | null;
-		if (!source) return;
+		// Only the host that mounted this frame (principle 1). The host already
+		// checks the origin and the source of what comes back; this is the same
+		// check in the other direction, so another frame in the window cannot ask
+		// this one to embed text for it.
+		if (!source || source !== window.parent) return;
 		void handle(event.data ?? {}, (m) => source.postMessage(m, window.origin));
 	});
 }

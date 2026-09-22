@@ -32,6 +32,12 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	 *  `console.warn`, where nobody looks until asked. */
 	private readonly failures: string[] = [];
 	private readyPromise: Promise<void> | null = null;
+	/** Bumped by `unload()`. A load that was in flight when it happened belongs to
+	 *  an older generation and must not engage (#363). */
+	private generation = 0;
+	/** Backends this load has built and not yet handed over or discarded — the only
+	 *  handle on a model that is still loading. */
+	private readonly starting = new Set<EmbeddingProvider>();
 
 	constructor(
 		private readonly modelId: EmbeddingModelId,
@@ -62,36 +68,59 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	}
 
 	private async initialize(): Promise<void> {
+		// Which load this is. `unload()` moves the counter on, and a backend that
+		// becomes ready afterwards is released rather than engaged (#363).
+		const gen = this.generation;
 		// 1. Blob-URL Worker (off-thread; works on most desktops).
 		const blobWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress);
+		this.starting.add(blobWorker);
 		try {
 			await blobWorker.ready();
-			return this.engage(blobWorker, "worker (blob)");
+			return this.engage(blobWorker, "worker (blob)", gen);
 		} catch (err) {
 			blobWorker.unload();
 			this.record("worker (blob)", err);
 			console.warn("[Pythia] embedding: blob worker unavailable", err);
+		} finally {
+			this.starting.delete(blobWorker);
 		}
 		// 2. Resource-path Worker (blob-free; still OFF the UI thread) — for environments
 		//    that block blob: Workers (Obsidian mobile, capacitor:// desktop builds).
 		if (this.resourceWorkerUrl) {
 			const resWorker = new WorkerEmbeddingProvider(this.modelId, this.onProgress, this.resourceWorkerUrl);
+			this.starting.add(resWorker);
 			try {
 				await resWorker.ready();
-				return this.engage(resWorker, "worker (resource)");
+				return this.engage(resWorker, "worker (resource)", gen);
 			} catch (err) {
 				resWorker.unload();
 				this.record("worker (resource)", err);
 				console.warn("[Pythia] embedding: resource-path worker unavailable — falling back to iframe (UI thread)", err);
+			} finally {
+				this.starting.delete(resWorker);
 			}
 		}
 		// 3. Same-origin iframe (LAST resort; runs on the UI thread — throttled by callers).
 		const iframe = new IframeEmbeddingProvider(this.modelId, this.onProgress);
-		await iframe.ready();
-		this.engage(iframe, "iframe (UI thread)");
+		this.starting.add(iframe);
+		try {
+			await iframe.ready();
+			this.engage(iframe, "iframe (UI thread)", gen);
+		} finally {
+			this.starting.delete(iframe);
+		}
 	}
 
-	private engage(provider: EmbeddingProvider, backend: EmbeddingBackend): void {
+	private engage(provider: EmbeddingProvider, backend: EmbeddingBackend, gen: number): void {
+		if (gen !== this.generation) {
+			// Unloaded while this model was still loading (#363) — a model change, or
+			// the plugin going away. Engaging it now would park the loaded model on a
+			// provider nobody holds a reference to: on a phone, several hundred MB
+			// that no later `unload()` can reach, which is exactly the memory that
+			// gets Obsidian killed. Release it and fail the load that asked for it.
+			provider.unload();
+			throw new Error("Embedding provider was unloaded while the model was loading");
+		}
 		this.active = provider;
 		this.activeBackend = backend;
 		// Once per model load, at info level: which backend is live is the first
@@ -127,7 +156,13 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 	}
 
 	unload(): void {
+		// Ahead of everything else: a backend that becomes ready after this point
+		// must see a generation it does not belong to (#363).
+		this.generation++;
 		this.active?.unload();
+		// A load in flight owns a Worker or an iframe that `active` cannot reach.
+		for (const p of this.starting) p.unload();
+		this.starting.clear();
 		this.active = null;
 		this.activeBackend = null;
 		this.failures.length = 0;
