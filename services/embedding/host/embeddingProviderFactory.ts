@@ -1,7 +1,8 @@
 import type { EmbeddingProvider, EmbeddingBackend } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import { WorkerEmbeddingProvider } from "./workerEmbeddingProvider";
-import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddingProvider";
+import { IframeEmbeddingProvider } from "./iframeEmbeddingProvider";
+import type { ModelLoadProgress } from "./postMessageBackend";
 import { EmbeddingOutOfMemoryError, isOutOfMemoryError } from "../memoryError";
 
 /**
