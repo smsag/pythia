@@ -2034,6 +2034,26 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   top: -0.09em;
 }
 
+/* The "other sense" field (ADR-208). The row it hangs under is a mono micro-label
+   line, so the field matches it rather than bringing Obsidian's input chrome into
+   a card that has none — the same reasoning as the header's rename editor. The
+   rule under it is the search field's (ADR-198), for the same 3:1 reason: on its
+   own in a card, a field's only affordance is its underline. */
+.p-term-anchor-sensebox { margin-top: var(--s2); }
+.p-term-anchor-senseinput {
+  all: unset;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-interface);
+  font-size: 11.5px;
+  color: var(--text-normal);
+  padding: 2px 0;
+  border-bottom: 1px solid var(--p-field-rule);
+}
+.p-term-anchor-senseinput:focus { border-bottom: 2px solid var(--color-accent); padding-bottom: 1px; }
+.p-term-anchor-senseinput::placeholder { color: var(--text-muted); }
+
 /* ── Merge links + inline anchor (ADR-130) ───────────────────── */
 /* The inverse of a fork origin: a passage pointed AT another conversation.
    Deliberately NOT a highlighter sweep — favorites (yellow ink) and fork origins

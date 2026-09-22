@@ -88,6 +88,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
+    termDiscussion.ts         ← saveTermDiscussion + TermDiscussionHost: a forked discussion written back into its term's note; the header owns the menu row, this owns the rule (ADR-208)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
     outsideDismiss.ts         ← the one deferred outside-press / Escape dismisser for popovers and menus (ADR-161)
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
@@ -113,7 +114,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1728 tests across 117 files
+  tests/                      ← Vitest unit tests (npm test) — 1753 tests across 118 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -486,6 +487,8 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - `repaintTerms` calls `body.normalize()` after unwrapping: a term is matched **within one text node**, and unwrapping a mark leaves its text split, so a term straddling the seam would silently stop matching
 - The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
+- **A mute definition has two exits, and neither touches the definition's protection** (ADR-208). **"Anderer Sinn"**: a one-line field in the anchor whose text is appended to the lookup prompt as a correction — **never stored**, a one-shot layer like ADR-177's template, and never offered for a person. **"Diskutieren"**: a conversation forked from the ENTRY, not from a conversation — the term note rides as an **attached note** (never copied into prompt text), the passage as `forkedFromSelection`, the composer **prefilled but unsent**, `theme` pinned to the term. The header's *In &lt;Begriff&gt; sichern* then distils it into a `## Discussion` section through `termDiscussionPrompt` — **never `generateSummary`**, which would write the conversation's tangents into the note
+- **The discussion is a section, never the definition.** The two answer different questions and a re-lookup may replace only the definition; a discussion is dropped by nothing and **replaced outright** by the next one. The heading is English and **comes last**, so an older note parses unchanged and everything after it is the reader's. `saveDiscussion` **hydrates before it writes** — a bare `{ term, discussion }` would let `mergeEntry` replace a model-written definition with an empty one. The rule lives in `ui/termDiscussion.ts` behind a host seam, not in the header
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
 - **The anchor shows the definition in the conversation's language** (ADR-166): the instructed language, or under `auto` the language of the tapped answer (`displayLanguage`). The stored definition is never rewritten for this — a translation is cached in the note as `definition_<lang>`, valid while `translated_from` equals `definitionHash(definition)`; an edit or regenerate makes every cached language stale and the next translation clears them (`applyTranslation`). The anchor never shows the untranslated text first: a faint `Translating to EN…` placeholder, then the translation with `translated from DE` in the meta line — for a hand-written definition too. Term titles and context quotes are never translated: one is the word in the text, the other a verbatim attestation
 - Language detection is local and returns `null` rather than guess (`services/languageDetect.ts`, function words, winner needs ≥2 hits and 1.5× the runner-up). A new entry records `language`; an old one is detected when needed

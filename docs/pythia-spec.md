@@ -180,6 +180,8 @@ One component, three strokes on the left rule — solid fork, dashed merge, dott
 | `pythia-merge` (dashed accent underline) | `.p-merge-anchor` (same parts) | `ui/MergeController.ts` |
 | `pythia-term` / `pythia-person` (dotted / solid faint underline) | `.p-term-anchor` (+ `--person`) | `ui/GlossaryController.ts` |
 
+The term anchor's meta row carries five controls (ADR-208): regenerate · `.p-term-anchor-sense` ("other sense", opening `.p-term-anchor-sensebox` / `-senseinput`) · remove · `.p-term-anchor-discuss` · open. The conversation that last one creates carries `Conversation.glossaryTerm`, which is what puts *Save to &lt;term&gt;* in the header menu (`ui/termDiscussion.ts`).
+
 Marks nest; the innermost owns the tap (`ui/markTap.ts`).
 
 ### Asking for a change
@@ -276,6 +278,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-26 | **PDF and vision input for Mistral.** | ADR-045 | Explicit non-goal of the integration pass, deferred rather than guessed at. |
 | D-29 | **A model suggestion is never applied automatically.** | ADR-181 | A silent model switch is the kind of change this plugin has never made: the chip is offered, the answer's label names the model. |
 | D-27 | **`sidebar.ts` is excluded from coverage.** | #98 | Its logic is extracted into tested controllers instead; the view file is the thin coordinator. |
+| D-30 | **A discussion never revises the definition.** | ADR-208 | The most valuable thing a forked discussion could produce is a better definition — but that field is protected from model writes on purpose, and rewriting it automatically would need the proposal card this flow deliberately does without. Worth revisiting once the discussion section has been used enough to say whether the definitions beside it actually go stale. |
 
 ### Closed by a decision, kept here so it is not re-litigated
 

@@ -5,6 +5,7 @@ import type { EffortLevel, OutputLanguage } from "../models/types";
 import { t, getLang, getObsidianLocale } from "../i18n";
 import { resumeDeepLink } from "../utils";
 import { debugLog } from "../services/messageUtils";
+import { saveTermDiscussion, vaultTermDiscussionHost } from "./termDiscussion";
 import { describeErrorForLog } from "../services/redact";
 import { abbreviateModel, MODEL_CATALOG } from "../models/knownModels";
 import type { ModelInfo } from "../models/knownModels";
@@ -328,7 +329,25 @@ export class HeaderController {
 			},
 			{ label: t("copyConvLinkTooltip"), icon: "link", onSelect: () => void this.onCopyConversationLink() },
 			{ label: t("openConvSettings"), icon: "sliders", onSelect: () => this.openConversationSettings() },
+		// Only on a conversation opened from a term, and only once it has said
+		// something: there is nothing to distil out of an empty discussion (ADR-208).
+		...(conv.glossaryTerm && canRetitle
+			? [{
+				label: t("termDiscussionSave", { term: conv.glossaryTerm }),
+				icon: "book-open",
+				onSelect: () => void this.onSaveTermDiscussion(),
+			} as ChoiceItem]
+			: []),
 		]);
+	}
+
+	/** Distil this conversation into the term it was opened from (ADR-208). The
+	 *  rule and every outcome live in `ui/termDiscussion.ts`; the header owns the
+	 *  menu row and nothing else. */
+	private async onSaveTermDiscussion(): Promise<void> {
+		const conv = this.d.getConversation();
+		if (!conv) return;
+		await saveTermDiscussion(vaultTermDiscussionHost(this.d.plugin), conv);
 	}
 
 	/** Update just the title text (e.g. after an auto-generated title). */

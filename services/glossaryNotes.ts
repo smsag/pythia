@@ -271,27 +271,56 @@ export function entryFromFrontmatter(
 }
 
 /**
- * Render a term note's body: the definition, then one blockquote per context.
+ * The heading that opens the discussion section (ADR-208).
+ *
+ * English, like `Forms:` and `Translations:` before it (ADR-149) and for the
+ * same reason: it is a key an external reader has to find without per-vault
+ * configuration, not prose. A real `##` heading rather than a labelled line
+ * because what follows is paragraphs, and because Obsidian can then link to
+ * `[[Kartellrecht#Discussion]]`.
+ */
+export const DISCUSSION_HEADING = "Discussion";
+
+/** Matches the discussion heading on its own line, however it is spaced. */
+const DISCUSSION_RE = new RegExp(`^##\\s+${DISCUSSION_HEADING}\\s*$`, "i");
+
+/**
+ * Render a term note's body: the definition, one blockquote per context, then
+ * the discussion section if there is one.
  *
  * Contexts are blockquotes rather than a property because they are prose, there
  * can be several — a term met in three conversations has three — and a property
  * that grows without bound makes a useless Base column.
+ *
+ * The discussion comes **last** (ADR-208) so everything above it parses exactly
+ * as it did before the section existed, and so a note written by an older build
+ * reads correctly with no migration: no heading means no discussion.
  */
 export function renderBody(entry: GlossaryEntry): string {
-	const definition = entry.definition.trim();
+	const parts: string[] = [entry.definition.trim()];
 	const quotes = (entry.contexts ?? [])
 		.map((c) => c.replace(/[\r\n]+/g, " ").trim())
 		.filter(Boolean)
 		.map((c) => `> ${c}`);
-	return quotes.length > 0 ? `${definition}\n\n${quotes.join("\n\n")}\n` : `${definition}\n`;
+	if (quotes.length > 0) parts.push(quotes.join("\n\n"));
+	const discussion = entry.discussion?.trim();
+	if (discussion) parts.push(`## ${DISCUSSION_HEADING}\n\n${discussion}`);
+	return `${parts.join("\n\n")}\n`;
 }
 
-/** Split a term note's body back into its definition and its context quotes.
- *  Frontmatter must already be stripped by the caller. */
-export function parseBody(body: string): { definition: string; contexts: string[] } {
+/** Split a term note's body into its definition, its context quotes and its
+ *  discussion. Frontmatter must already be stripped by the caller. */
+export function parseBody(body: string): { definition: string; contexts: string[]; discussion?: string } {
 	const definition: string[] = [];
 	const contexts: string[] = [];
-	for (const line of body.split("\n")) {
+	const lines = body.split("\n");
+	// Everything from the heading to the end of the file is the discussion — it is
+	// prose the user drove, so a `>` quote or a heading inside it is theirs and
+	// must not be re-read as a context or as the start of a second section.
+	const at = lines.findIndex((line) => DISCUSSION_RE.test(line.trim()));
+	const head = at === -1 ? lines : lines.slice(0, at);
+	const discussion = at === -1 ? "" : lines.slice(at + 1).join("\n").trim();
+	for (const line of head) {
 		const quote = /^>\s?(.*)$/.exec(line);
 		if (quote) {
 			const text = quote[1].trim();
@@ -300,7 +329,11 @@ export function parseBody(body: string): { definition: string; contexts: string[
 		}
 		definition.push(line);
 	}
-	return { definition: definition.join("\n").trim(), contexts };
+	return {
+		definition: definition.join("\n").trim(),
+		contexts,
+		...(discussion ? { discussion } : {}),
+	};
 }
 
 /** Strip a leading YAML frontmatter block, returning the body alone. */
@@ -349,6 +382,10 @@ export function mergeEntry(
 		language: keepDefinition ? existing.language : incoming.language,
 		definitionTranslations: existing.definitionTranslations,
 		translatedFrom: existing.translatedFrom,
+		// A re-lookup carries no discussion and must never drop the one on disk;
+		// a second discussion replaces the first outright, because it distils the
+		// same understanding as it now stands, not an addition to it (ADR-208).
+		discussion: incoming.discussion ?? existing.discussion,
 		aliases: union(existing.aliases, incoming.aliases),
 		translations: translations.length > 0 ? translations : undefined,
 		theme: union(existing.theme, incoming.theme),

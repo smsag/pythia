@@ -414,3 +414,55 @@ describe("translated definitions", () => {
 		expect(replaced.language).toBe("en");
 	});
 });
+
+// ── ADR-208: the discussion section ─────────────────────────────────────────
+
+describe("the discussion section (ADR-208)", () => {
+	const base = entry({ definition: "Das Recht gegen Preisabsprachen.", contexts: ["Kartellrecht verbietet Absprachen."] });
+
+	it("round-trips through render and parse", () => {
+		const e = { ...base, discussion: "Es trennt Absprachen von Marktmacht.\n\nZwei Absätze bleiben zwei." };
+		const parsed = parseBody(renderBody(e));
+		expect(parsed.definition).toBe(base.definition);
+		expect(parsed.contexts).toEqual(base.contexts);
+		expect(parsed.discussion).toBe(e.discussion);
+	});
+
+	it("writes nothing when there is no discussion, so an old note is unchanged", () => {
+		const body = renderBody(base);
+		expect(body).not.toContain("##");
+		expect(parseBody(body).discussion).toBeUndefined();
+	});
+
+	it("reads a note written before the section existed", () => {
+		const old = "Das Recht gegen Preisabsprachen.\n\n> Kartellrecht verbietet Absprachen.\n";
+		expect(parseBody(old)).toEqual({ definition: base.definition, contexts: base.contexts });
+	});
+
+	it("keeps quotes and headings inside the discussion out of the contexts", () => {
+		// Everything after the heading is the reader's own prose, not our format.
+		const e = { ...base, discussion: "> Ein Zitat, das der Nutzer behalten will.\n\n## Eigene Zwischenüberschrift\n\nText." };
+		const parsed = parseBody(renderBody(e));
+		expect(parsed.contexts).toEqual(base.contexts);
+		expect(parsed.discussion).toBe(e.discussion);
+	});
+
+	it("survives a re-lookup, which carries no discussion", () => {
+		const existing = { ...base, discussion: "Hart erarbeitet." };
+		const relookup = entry({ definition: "Eine neue Definition.", source: "model" as const });
+		expect(mergeEntry(existing, relookup).discussion).toBe("Hart erarbeitet.");
+	});
+
+	it("is replaced outright by a second discussion, never appended", () => {
+		const existing = { ...base, discussion: "Erster Durchgang." };
+		const second = { ...entry(), discussion: "Zweiter Durchgang." };
+		expect(mergeEntry(existing, second).discussion).toBe("Zweiter Durchgang.");
+	});
+
+	it("does not disturb the definition's own protection", () => {
+		const manual = { ...base, source: "manual" as const, discussion: "Vorher." };
+		const merged = mergeEntry(manual, { ...entry({ definition: "Vom Modell." }), discussion: "Nachher." });
+		expect(merged.definition).toBe(base.definition); // manual definitions are kept
+		expect(merged.discussion).toBe("Nachher.");
+	});
+});

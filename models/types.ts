@@ -55,6 +55,15 @@ export interface Conversation {
 	 * to a concrete value, and setting it in the conversation settings pins it.
 	 */
 	theme?: string;
+	/**
+	 * The glossary entry this conversation was forked from, to work out what it
+	 * means (ADR-208). Set only by that fork; it is what the header's "save to
+	 * the term" row acts on, and what makes the row appear at all.
+	 *
+	 * The term as written, not a path: a note's file name is sanitized, and the
+	 * lookup has to work for a person and a term that share a name.
+	 */
+	glossaryTerm?: string;
 	/** Per-conversation override of the global `outputLanguage` setting (ADR-148).
 	 *  Undefined → inherit the global default. */
 	outputLanguage?: OutputLanguage;

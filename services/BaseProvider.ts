@@ -15,7 +15,12 @@ import {
 } from "./messageUtils";
 import { parseTranslationReply } from "./glossaryReply";
 import type { TranslatedDefinition } from "./glossaryReply";
-import { defineTermPrompt, describePersonPrompt, translateDefinitionPrompt } from "./glossaryPrompts";
+import {
+	defineTermPrompt,
+	describePersonPrompt,
+	termDiscussionPrompt,
+	translateDefinitionPrompt,
+} from "./glossaryPrompts";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
@@ -412,9 +417,34 @@ export abstract class BaseProvider implements LLMProvider {
 
 	/** Define `term` as used in `passage` (ADR-136). Runs on the fast model with a
 	 *  small token budget: this is a gloss, not an essay, and it is fetched while
-	 *  the reader waits. */
-	async defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string> {
-		return this.callUtility(this.fastModel, defineTermPrompt(term, passage, this.languageLabel(conversation)), 420);
+	 *  the reader waits. `senseHint` is the reader's own correction when the first
+	 *  answer defined the wrong sense (ADR-208) — it shapes this call and is not stored. */
+	async defineTerm(
+		term: string,
+		passage: string,
+		conversation?: Conversation,
+		senseHint?: string,
+	): Promise<string> {
+		const prompt = defineTermPrompt(term, passage, this.languageLabel(conversation), senseHint);
+		return this.callUtility(this.fastModel, prompt, 420);
+	}
+
+	/**
+	 * Distil a forked conversation back into its term's note (ADR-208).
+	 *
+	 * Runs on the **conversation's** model, not `fastModel` — the fourth utility
+	 * call to do so, and for the same reason as the three summary calls: it reads
+	 * a whole conversation and has to hold on to what was actually settled in it.
+	 * Which also means it meets reasoning models and their leading thinking
+	 * blocks, and depends on `callUtility` collecting every text block (ADR-158).
+	 */
+	async summarizeTermDiscussion(term: string, definition: string, conversation: Conversation): Promise<string> {
+		const model = this.resolveModel(conversation.model);
+		const text = conversation.messages
+			.map((m) => `${m.role === "user" ? "User" : this.assistantLabel}: ${m.content}`)
+			.join("\n\n");
+		const prompt = termDiscussionPrompt(term, definition, text, this.languageLabel(conversation));
+		return this.callUtility(model, prompt, 700);
 	}
 
 	/** Describe a person named in an answer (ADR-151). */

@@ -44,7 +44,10 @@ class TestProvider extends BaseProvider {
 	prompts: string[] = [];
 	/** What the next utility call replies, so a reply parser is assertable (ADR-206). */
 	reply = "";
-	protected callUtility(_model: string, userMessage: string): Promise<string> {
+	/** The model each utility call ran on, so "which model" is assertable (ADR-208). */
+	models: string[] = [];
+	protected callUtility(model: string, userMessage: string): Promise<string> {
+		this.models.push(model);
 		this.prompts.push(userMessage);
 		return Promise.resolve(this.reply);
 	}
@@ -298,5 +301,49 @@ describe("BaseProvider.resolveUserContent — the token warning is manual-only",
 	it("still warns when a large MANUAL note sits beside auto ones", async () => {
 		await provider(big).resolve(c, ["Manual/big.md", "Auto/big.md"], "hi", new Set(["Auto/big.md"]));
 		expect(warned()).toBe(true);
+	});
+});
+
+// ── ADR-208: the wrong sense, and the discussion that fixes it ──────────────
+
+describe("term discussion and the sense hint (ADR-208)", () => {
+	it("defineTerm carries the reader's correction, and says what to do when the passage disagrees", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"), "nicht die Eisenbahn, der Schachzug");
+		expect(p.prompts[0]).toContain("nicht die Eisenbahn, der Schachzug");
+		expect(p.prompts[0]).toContain("never silently define something else");
+	});
+
+	it("says nothing about a sense when none was given", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"));
+		expect(p.prompts[0]).not.toContain("which sense they mean");
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"), "   ");
+		expect(p.prompts[1]).not.toContain("which sense they mean");
+	});
+
+	it("summarizes the discussion on the conversation's own model, not the fast one", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		const c = {
+			model: "conversation-model",
+			messages: [
+				{ role: "user", content: "Gilt das auch für Einkaufsgemeinschaften?" },
+				{ role: "assistant", content: "Nur oberhalb einer Marktanteilsschwelle." },
+			],
+		} as unknown as Conversation;
+		await p.summarizeTermDiscussion("Kartellrecht", "Das Recht gegen Preisabsprachen.", c);
+		expect(p.models[0]).toBe("conversation-model");
+		expect(p.models[0]).not.toBe(p.fastModel);
+		expect(p.prompts[0]).toContain("Einkaufsgemeinschaften");
+		expect(p.prompts[0]).toContain("Das Recht gegen Preisabsprachen.");
+	});
+
+	it("tells the summarizer to keep the session and the tangents out of the note", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.summarizeTermDiscussion("Kartellrecht", "Eine Definition.", { model: "m", messages: [] } as unknown as Conversation);
+		expect(p.prompts[0]).toContain("Never narrate the session");
+		expect(p.prompts[0]).toContain("reply with nothing at all");
+		// It must not try to fix the definition — that field has its own repair.
+		expect(p.prompts[0]).toContain("do not correct it here");
 	});
 });

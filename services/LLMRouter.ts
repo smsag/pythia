@@ -113,8 +113,19 @@ export class LLMRouter {
 		return this.get(conversation).generateFavoritesSummary(conversation);
 	}
 
-	defineTerm(term: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
-		return this.byProvider(provider).defineTerm(term, passage, conversation);
+	defineTerm(
+		term: string,
+		passage: string,
+		provider?: Provider,
+		conversation?: Conversation,
+		senseHint?: string,
+	): Promise<string> {
+		return this.byProvider(provider).defineTerm(term, passage, conversation, senseHint);
+	}
+
+	/** Runs on the conversation's own provider: it is that conversation being read. */
+	summarizeTermDiscussion(term: string, definition: string, conversation: Conversation): Promise<string> {
+		return this.byProvider(conversation.provider).summarizeTermDiscussion(term, definition, conversation);
 	}
 
 	describePerson(name: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
