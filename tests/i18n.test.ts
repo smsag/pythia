@@ -12,7 +12,7 @@ const SOURCE_FILES = [
 	"main.ts",
 	"settings.ts",
 	// Recursive: a key used only in services/embedding/ read as dead, and one
-	// MISSING there was invisible to the missing-key test below (ADR-198).
+	// MISSING there was invisible to the missing-key test below (ADR-199).
 	...["suggest", "services", "ui"].flatMap((d) =>
 		readdirSync(join(ROOT, d), { recursive: true }).map(String).filter((f) => f.endsWith(".ts")).map((f) => `${d}/${f}`)),
 ].map(f => join(ROOT, f));

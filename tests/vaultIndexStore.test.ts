@@ -21,7 +21,7 @@ const pathFor = async (modelId: string, prefix?: string): Promise<string> => {
 	return written[0];
 };
 
-describe("VaultIndexStore — one index file per vector family (ADR-199)", () => {
+describe("VaultIndexStore — one index file per vector family (ADR-200)", () => {
 	it("names the file by the family, so the variant and the full model share it", async () => {
 		expect(await pathFor("xenova-paraphrase-multilingual-MiniLM-L12-v2-latin", "vault-embeddings"))
 			.toBe(await pathFor("xenova-paraphrase-multilingual-MiniLM-L12-v2", "vault-embeddings"));

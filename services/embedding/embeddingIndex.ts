@@ -122,7 +122,7 @@ export function serializeIndex(
 
 /**
  * What a persisted index says about itself — rows, completeness, scope — read
- * from the header alone (ADR-198). For the settings status line, which must be
+ * from the header alone (ADR-199). For the settings status line, which must be
  * able to say "ready" or "unfinished" without loading the model: `deserializeIndex`
  * needs no model either, but copies every vector. Null for anything unreadable,
  * which the status reports as "not built".

@@ -13,7 +13,7 @@ import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
  * shared embedding model + "related conversations" similarity, plus the
  * vault-context (semantic RAG) controls — enable-by-default, the folders to index
  * (empty = whole vault), and the live index status with its two actions
- * (ADR-198). Each section opens with a plain explanation of what it does.
+ * (ADR-199). Each section opens with a plain explanation of what it does.
  */
 export function renderEmbeddingSettings(
 	containerEl: HTMLElement,
@@ -26,13 +26,13 @@ export function renderEmbeddingSettings(
 	new Setting(containerEl).setDesc(t("embeddingIntro"));
 
 	// The model row reads the setting — it is the one place that edits it — and
-	// says what this device will actually run (ADR-198).
+	// says what this device will actually run (ADR-199).
 	const modelRow = new Setting(containerEl).setName(t("embeddingModelName"));
 	const describeModel = (): void => { modelRow.setDesc(modelDescription(plugin)); };
 	describeModel();
 	let refreshStatus: () => void = () => {};
 	modelRow.addDropdown((drop) => {
-		// Variants are never offered: the device picks them (ADR-199).
+		// Variants are never offered: the device picks them (ADR-200).
 		for (const id of SELECTABLE_EMBEDDING_MODEL_IDS) drop.addOption(id, EMBEDDING_MODELS[id].label);
 		drop
 			.setValue(plugin.settings.embeddingModelId)
@@ -133,7 +133,7 @@ export function renderEmbeddingSettings(
 }
 
 /** The model row's explanation: what the two models are, plus — when the chosen
- *  one cannot run on a phone — which one this device uses instead (ADR-198). */
+ *  one cannot run on a phone — which one this device uses instead (ADR-199). */
 function modelDescription(plugin: PythiaPlugin): string {
 	const vars = {
 		multiMb: EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].downloadMb,
@@ -142,7 +142,7 @@ function modelDescription(plugin: PythiaPlugin): string {
 	const chosen = embeddingModelConfig(plugin.settings.embeddingModelId);
 	const active = embeddingModelConfig(plugin.activeEmbeddingModelId());
 	// What a phone runs for this choice — the same answer whichever device shows
-	// the note, so the desktop can say what the phone will do (ADR-198/199).
+	// the note, so the desktop can say what the phone will do (ADR-199/199).
 	const onPhone = embeddingModelConfig(effectiveEmbeddingModel(chosen.id, true));
 	const names = { model: onPhone.label, chosen: chosen.label };
 	const notes: string[] = [t("embeddingModelDesc", vars)];

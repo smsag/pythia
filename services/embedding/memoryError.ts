@@ -1,4 +1,4 @@
-// Out-of-memory, told apart from every other way a model can fail to load (ADR-198).
+// Out-of-memory, told apart from every other way a model can fail to load (ADR-199).
 //
 // The fallback chain (blob Worker → resource Worker → iframe) exists for backends
 // that are REFUSED — a blocked `blob:` URL, a missing wasm device. Running out of

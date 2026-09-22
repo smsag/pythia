@@ -2,7 +2,7 @@ import type { Strings } from "./en";
 import embeddingDe from "./embedding.de";
 
 const de: Strings = {
-	// On-device embeddings live in their own module (ADR-198, review #301).
+	// On-device embeddings live in their own module (ADR-199, review #301).
 	...embeddingDe,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",

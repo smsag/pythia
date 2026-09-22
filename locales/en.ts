@@ -1,7 +1,7 @@
 import embeddingEn from "./embedding.en";
 
 const en = {
-	// On-device embeddings live in their own module (ADR-198, review #301).
+	// On-device embeddings live in their own module (ADR-199, review #301).
 	...embeddingEn,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "No conversation",

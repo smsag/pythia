@@ -164,7 +164,7 @@ describe("FallbackEmbeddingProvider — why the others failed (ADR-185)", () => 
 	});
 });
 
-describe("FallbackEmbeddingProvider — out of memory ends the chain (ADR-198)", () => {
+describe("FallbackEmbeddingProvider — out of memory ends the chain (ADR-199)", () => {
 	it("does not load the model again in the next backend when the first ran out of memory", async () => {
 		// Measured on iOS: every backend shares one WebContent process, so the
 		// chain went on to load the model twice more — the last time on the UI thread.

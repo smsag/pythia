@@ -11,7 +11,7 @@ const base: VaultIndexStatus = {
 	backend: null, modelId: "xenova-paraphrase-multilingual-MiniLM-L12-v2", modelSubstituted: false, enabledByDefault: true,
 };
 
-describe("stateFromFile — what a persisted index means today (ADR-198)", () => {
+describe("stateFromFile — what a persisted index means today (ADR-199)", () => {
 	it("no file, or an empty one, is not built", () => {
 		expect(stateFromFile(null, "s")).toBe("notBuilt");
 		expect(stateFromFile({ count: 0, complete: true, scope: "s" }, "s")).toBe("notBuilt");
@@ -66,7 +66,7 @@ describe("describeVaultIndexStatus — every state says what it is and what to d
 	});
 });
 
-describe("isOutOfMemoryError (ADR-198)", () => {
+describe("isOutOfMemoryError (ADR-199)", () => {
 	it("recognises the shapes seen on iOS and emitted by the runtimes", () => {
 		for (const msg of [
 			"no available backend found. ERR: [wasm] RangeError: Out of memory",
@@ -84,7 +84,7 @@ describe("isOutOfMemoryError (ADR-198)", () => {
 	});
 });
 
-describe("peekIndexMeta — the header, without the vectors (ADR-198)", () => {
+describe("peekIndexMeta — the header, without the vectors (ADR-199)", () => {
 	it("reads count, completeness and scope", () => {
 		const items = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2])] }];
 		expect(peekIndexMeta(serializeIndex(items, 2, { complete: true, scope: "s" }))).toEqual({ count: 1, complete: true, scope: "s" });

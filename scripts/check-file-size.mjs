@@ -26,7 +26,7 @@ const CEILINGS = {
 	"settings.ts": 528,
 	// locales/en.ts and de.ts dropped under DEFAULT_MAX once the embedding strings
 	// moved to locales/embedding.{en,de}.ts — the per-feature split review #301
-	// proposed (ADR-198). No ceiling needed; split the next area the same way.
+	// proposed (ADR-199). No ceiling needed; split the next area the same way.
 	// tests/viewRender.test.ts dropped under DEFAULT_MAX once the mount fixture
 	// moved to tests/helpers/viewHarness.ts and the conversation-panel describes
 	// moved to tests/historyPanel.test.ts (ADR-143) — no ceiling needed.

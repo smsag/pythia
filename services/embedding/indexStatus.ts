@@ -1,4 +1,4 @@
-// What the settings tab says about the vault index (ADR-198). Pure: the service
+// What the settings tab says about the vault index (ADR-199). Pure: the service
 // gathers the facts, this decides the words, and a test pins every state.
 //
 // The status used to be one string set as a side effect of the build, so the tab

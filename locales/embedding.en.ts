@@ -1,5 +1,5 @@
 // On-device embeddings: the model, related conversations, vault context and its
-// index (ADR-198). The first feature area split out of `en.ts`, as engineering-
+// index (ADR-199). The first feature area split out of `en.ts`, as engineering-
 // review #301 proposed — merged into the table by `en.ts`, so `t()` and the
 // `Strings` type are unchanged. `embedding.de.ts` must name the same keys.
 

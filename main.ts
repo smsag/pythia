@@ -84,7 +84,7 @@ export default class PythiaPlugin extends Plugin {
 	 *  extracted to its own service; uses the shared embedding provider below. */
 	vaultRag!: VaultRagService;
 
-	/** The model this device embeds with (ADR-198) — the English one on mobile when
+	/** The model this device embeds with (ADR-199) — the English one on mobile when
 	 *  the setting names a model a phone cannot hold. The ONLY reader of
 	 *  `settings.embeddingModelId` outside the settings tab. */
 	activeEmbeddingModelId(): EmbeddingModelId {
@@ -206,7 +206,7 @@ export default class PythiaPlugin extends Plugin {
 		return this.vaultRag.reindex();
 	}
 
-	/** "Build now" in settings: finish or update the index, keeping its rows (ADR-198). */
+	/** "Build now" in settings: finish or update the index, keeping its rows (ADR-199). */
 	buildVaultIndexNow(): void {
 		this.vaultRag.buildNow();
 	}
@@ -215,7 +215,7 @@ export default class PythiaPlugin extends Plugin {
 		return this.vaultRag.onChange(listener);
 	}
 
-	/** Where the vault index stands, for the settings tab (ADR-198). Never loads the model. */
+	/** Where the vault index stands, for the settings tab (ADR-199). Never loads the model. */
 	async vaultIndexStatus(): Promise<VaultIndexStatus> {
 		const modelId = this.activeEmbeddingModelId();
 		return {

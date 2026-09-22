@@ -4,7 +4,7 @@ import {
 	type BuildMarker,
 } from "../services/embedding/buildGuard";
 
-// ADR-198: the only witness to a build the OS killed is a marker written before it.
+// ADR-199: the only witness to a build the OS killed is a marker written before it.
 
 describe("parseBuildMarker — a stored marker is untrusted (principle 1)", () => {
 	it("accepts a well-formed marker", () => {

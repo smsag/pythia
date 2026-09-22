@@ -8,11 +8,11 @@ import {
 import { relatedMinScore } from "../services/embedding/relatedConversations";
 import { SIMILARITY_PRESETS } from "../models/embeddingModels";
 
-// ADR-198: the multilingual model took Obsidian's WebContent process on iOS to
+// ADR-199: the multilingual model took Obsidian's WebContent process on iOS to
 // ~1.65 GB of a ~2 GB limit, and the first inference got it killed — a hard
 // reload every minute or two. These tests fail in the forbidden direction.
 
-describe("effectiveEmbeddingModel — what a device actually runs (ADR-198)", () => {
+describe("effectiveEmbeddingModel — what a device actually runs (ADR-199)", () => {
 	it("never hands a phone a model that is not marked mobile, whatever the setting", () => {
 		for (const id of EMBEDDING_MODEL_IDS) {
 			expect(EMBEDDING_MODELS[effectiveEmbeddingModel(id, true)].mobile).toBe(true);
@@ -27,7 +27,7 @@ describe("effectiveEmbeddingModel — what a device actually runs (ADR-198)", ()
 		expect(EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].mobile).toBe(false);
 	});
 
-	it("a phone runs the vector-identical variant for it, not a different model (ADR-199)", () => {
+	it("a phone runs the vector-identical variant for it, not a different model (ADR-200)", () => {
 		const onPhone = effectiveEmbeddingModel("xenova-paraphrase-multilingual-MiniLM-L12-v2", true);
 		expect(onPhone).toBe("xenova-paraphrase-multilingual-MiniLM-L12-v2-latin");
 		expect(vectorFamily(onPhone)).toBe("xenova-paraphrase-multilingual-MiniLM-L12-v2");
@@ -48,7 +48,7 @@ describe("effectiveEmbeddingModel — what a device actually runs (ADR-198)", ()
 	});
 });
 
-describe("a variant is the same vectors under another name (ADR-199)", () => {
+describe("a variant is the same vectors under another name (ADR-200)", () => {
 	const variants = EMBEDDING_MODEL_IDS.filter((id) => EMBEDDING_MODELS[id].variantOf);
 
 	it("there is one, and it is the mobile stand-in for the multilingual model", () => {
@@ -84,7 +84,7 @@ describe("a variant is the same vectors under another name (ADR-199)", () => {
 	});
 });
 
-describe("one reader of the model setting (ADR-198)", () => {
+describe("one reader of the model setting (ADR-199)", () => {
 	// A second reader of `settings.embeddingModelId` would load, index or score
 	// with the model the SETTING names — on a phone, the one that crashes it.
 	// Everything goes through `plugin.activeEmbeddingModelId()`.

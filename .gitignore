@@ -39,7 +39,7 @@ desktop.ini
 # Note: CLAUDE.md (agent instructions) IS tracked intentionally
 .claude/
 
-# ── Pruned embedding model (ADR-199) ────────────────────────────────────────
+# ── Pruned embedding model (ADR-200) ────────────────────────────────────────
 # Built by npm run model:prune, published to Hugging Face — never committed.
 dist-models/
 

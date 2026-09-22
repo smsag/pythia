@@ -1,4 +1,4 @@
-// Shared fixtures for the VaultRagService tests (split out when ADR-198's tests
+// Shared fixtures for the VaultRagService tests (split out when ADR-199's tests
 // pushed the one file past the 600-line budget). The importing test file mocks
 // "obsidian" itself; nothing here touches it.
 
@@ -47,7 +47,7 @@ export const settings = (over: Partial<PythiaSettings> = {}): PythiaSettings => 
 
 export const conv = { id: "c1" } as Conversation;
 
-/** The model id and (no) guard every existing test ran under before ADR-198. */
+/** The model id and (no) guard every existing test ran under before ADR-199. */
 export const DEPS = { modelId: () => DEFAULT_EMBEDDING_MODEL_ID };
 
 /** Let the fire-and-forget `refresh()` inside `getRelevantNotes` finish. */

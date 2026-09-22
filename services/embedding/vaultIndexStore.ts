@@ -10,7 +10,7 @@ import { vectorFamily, type EmbeddingModelId } from "../../models/embeddingModel
  * conversation "related" index (default `related-embeddings`) and the vault-RAG
  * note index (`vault-embeddings`, ADR-116).
  *
- * The name carries the model's VECTOR FAMILY, not the variant (ADR-199): a phone
+ * The name carries the model's VECTOR FAMILY, not the variant (ADR-200): a phone
  * on the Latin-script variant produces the full model's vectors, so it reads —
  * and keeps fresh — the index the desktop built, instead of building its own.
  */

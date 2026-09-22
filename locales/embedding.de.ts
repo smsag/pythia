@@ -1,6 +1,6 @@
 import type embeddingEn from "./embedding.en";
 
-// German for `embedding.en.ts` — same keys, enforced by the type (ADR-198).
+// German for `embedding.en.ts` — same keys, enforced by the type (ADR-199).
 
 const embeddingDe: typeof embeddingEn = {
 	// ── Der Abschnitt und was er tut ──────────────────────────────────────────

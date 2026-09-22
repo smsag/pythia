@@ -191,7 +191,7 @@ describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-182 fix)", () => 
 	});
 });
 
-describe("model row explains what this device runs (ADR-198)", () => {
+describe("model row explains what this device runs (ADR-199)", () => {
 	const modelRow = () => rows.find((r) => r.name === t("embeddingModelName"))!;
 
 	it("on desktop with Multilingual, says phones use the Latin-script variant and what that means", () => {
@@ -209,7 +209,7 @@ describe("model row explains what this device runs (ADR-198)", () => {
 		expect(desc).toContain(t("embeddingModelLatinNote"));
 	});
 
-	it("the dropdown offers the two full models, never the variant (ADR-199)", () => {
+	it("the dropdown offers the two full models, never the variant (ADR-200)", () => {
 		renderEmbeddingSettings(document.createElement("div"), fakePlugin() as unknown as PythiaPlugin);
 		// The model dropdown is the first one rendered; the similarity presets follow.
 		expect(dropdownOptions.slice(0, 2)).toEqual(["xenova-all-MiniLM-L6-v2", "xenova-paraphrase-multilingual-MiniLM-L12-v2"]);
@@ -224,7 +224,7 @@ describe("model row explains what this device runs (ADR-198)", () => {
 	});
 });
 
-describe("index status row (ADR-198)", () => {
+describe("index status row (ADR-199)", () => {
 	const statusRow = () => rows.find((r) => r.name === t("vaultIndexStatusName"))!;
 	const text = (): string => (statusRow().desc as DocumentFragment).textContent ?? "";
 

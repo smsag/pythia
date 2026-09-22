@@ -12,7 +12,7 @@ export interface VaultIndexStatusSource {
 }
 
 /**
- * The "Index status" row in settings (ADR-198): a headline naming the state and
+ * The "Index status" row in settings (ADR-199): a headline naming the state and
  * what to do about it, a detail line (model · engine · default), and two actions —
  * "Build now" finishes or updates the index keeping its rows, "Rebuild index"
  * starts over.

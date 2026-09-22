@@ -32,7 +32,7 @@ import { t } from "../i18n";
  * "related conversations" and injected via `getProvider`; `reset()` drops the
  * per-model index when the model changes.
  *
- * Automatic builds go through a `BuildGuard` (ADR-198): a build the OS killed
+ * Automatic builds go through a `BuildGuard` (ADR-199): a build the OS killed
  * leaves a marker behind, and after two of those in a row the next one waits
  * for the user instead of crashing the app again on the next send.
  */
@@ -53,7 +53,7 @@ export class VaultRagService {
 	private lastAutoContext = new Map<string, string[]>();
 	private syncing = false;
 	private phase: Phase = { kind: "idle" };
-	/** One-time "the build is paused" notice per session (ADR-198). */
+	/** One-time "the build is paused" notice per session (ADR-199). */
 	private pausedNoticeShown = false;
 	private readonly listeners = new Set<() => void>();
 	/** One-time "vault too large, capped" warning per session/model. */
@@ -77,7 +77,7 @@ export class VaultRagService {
 		private readonly makeStore: () => IndexStore,
 		private readonly deps: {
 			/** The model this device embeds with — `effectiveEmbeddingModel`, never
-			 *  the raw setting (ADR-198). */
+			 *  the raw setting (ADR-199). */
 			modelId: () => EmbeddingModelId;
 			/** The crash-loop breaker; absent in tests that do not exercise it. */
 			guard?: BuildGuard | null;
@@ -127,7 +127,7 @@ export class VaultRagService {
 		const s = this.getSettings();
 		const folders = [...s.vaultContextFolders].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
 		const skip = [s.conversationsFolder, s.scratchFolder].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
-		// The family, not the variant (ADR-199): the desktop's index must read as
+		// The family, not the variant (ADR-200): the desktop's index must read as
 		// complete on a phone running the vector-identical variant.
 		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, vectorFamily(this.deps.modelId())]);
 	}
@@ -152,7 +152,7 @@ export class VaultRagService {
 	}
 
 	/**
-	 * Where the index stands, for the settings tab (ADR-198). Never loads the
+	 * Where the index stands, for the settings tab (ADR-199). Never loads the
 	 * model: a session that has not built reads the file's header instead, so a
 	 * complete index on disk says "ready" rather than "builds on first use". The
 	 * backend is included once known (ADR-182) — `iframe (UI thread)` is the
@@ -212,7 +212,7 @@ export class VaultRagService {
 		this.refresh(); // background FIRST build only — never awaited; no-op once ready
 
 		// The service exists once a build has resolved the provider. Not `ensure()`:
-		// that constructs the provider, and a paused build (ADR-198) must not so
+		// that constructs the provider, and a paused build (ADR-199) must not so
 		// much as announce a model it is not going to load.
 		const svc = this.service;
 		if (!svc?.isReady()) {
@@ -281,7 +281,7 @@ export class VaultRagService {
 		// narrowing the folders rebuilds instead of leaving them retrievable.
 		if (!opts.force && this.service?.isComplete(this.scopeSignature())) return;
 		const guard = this.deps.guard;
-		// Builds kept dying (ADR-198): the OS killed the process before the last
+		// Builds kept dying (ADR-199): the OS killed the process before the last
 		// ones could finish, so starting another on this send is how the app
 		// reloaded every minute. An automatic build waits; one the user asks for
 		// forgets the history and runs.
@@ -362,7 +362,7 @@ export class VaultRagService {
 				const outOfMemory = isOutOfMemoryError(e);
 				// A caught error is not a crash — the process survived to report it —
 				// EXCEPT out of memory, which is the same event one allocation short of
-				// a kill. Its marker stays, so it counts toward the pause (ADR-198).
+				// a kill. Its marker stays, so it counts toward the pause (ADR-199).
 				if (!outOfMemory) guard?.end();
 				this.setPhase({ kind: "failed", error: e instanceof Error ? e.message : String(e), outOfMemory });
 				console.warn("[Pythia] vault RAG: index sync failed", e);
@@ -444,7 +444,7 @@ export class VaultRagService {
 	}
 
 	/** "Build now": finish or resume the index WITHOUT discarding what is there —
-	 *  the settings action for a paused, unfinished or outdated index (ADR-198). */
+	 *  the settings action for a paused, unfinished or outdated index (ADR-199). */
 	buildNow(): void {
 		if (this.syncing) { new Notice(t("vaultIndexBusy")); return; }
 		this.refresh({ force: true, manual: true });

@@ -2498,7 +2498,7 @@ body.is-phone .workspace-drawer .p-input-area {
   font-size: var(--font-smaller, 12px);
 }
 
-/* Vault index status row in the settings tab (ADR-198): the headline is the
+/* Vault index status row in the settings tab (ADR-199): the headline is the
    state and what to do about it, so it reads at body contrast; the detail line
    (model · engine · default) is reference, in the mono micro-label voice. The
    settings tab sits outside `.pythia-view`, where --s1 is not defined. */

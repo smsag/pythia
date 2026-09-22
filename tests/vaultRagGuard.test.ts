@@ -18,7 +18,7 @@ import { BuildGuard, type BuildMarker } from "../services/embedding/buildGuard";
 import { serializeIndex } from "../services/embedding/embeddingIndex";
 import { FakeProvider, MemStore, fakeApp, settings, conv, DEPS, settle } from "./helpers/vaultRagFixtures";
 
-// ── The crash-loop breaker (ADR-198) ─────────────────────────────────────────
+// ── The crash-loop breaker (ADR-199) ─────────────────────────────────────────
 
 /** A guard over a plain variable — what Obsidian's localStorage is in production. */
 const memGuard = (initial: BuildMarker | null = null) => {
@@ -29,7 +29,7 @@ const memGuard = (initial: BuildMarker | null = null) => {
 
 const noticesShown = (): string[] => (Notice as unknown as { shown: string[] }).shown;
 
-describe("VaultRagService — the crash-loop breaker (ADR-198)", () => {
+describe("VaultRagService — the crash-loop breaker (ADR-199)", () => {
 	it("marks a build while it runs and clears the mark when it finishes", async () => {
 		const { box, guard } = memGuard();
 		let seenDuring: BuildMarker | null = null;
@@ -115,7 +115,7 @@ describe("VaultRagService — the crash-loop breaker (ADR-198)", () => {
 	});
 });
 
-describe("VaultRagService — status without loading the model (ADR-198)", () => {
+describe("VaultRagService — status without loading the model (ADR-199)", () => {
 	const scopeOf = (svc: VaultRagService): string => (svc as unknown as { scopeSignature(): string }).scopeSignature();
 	const fileWith = (complete: boolean, scope: string, rows = 3): MemStore => {
 		const store = new MemStore();
@@ -143,7 +143,7 @@ describe("VaultRagService — status without loading the model (ADR-198)", () =>
 	});
 });
 
-describe("a variant reads the family's index as its own (ADR-199)", () => {
+describe("a variant reads the family's index as its own (ADR-200)", () => {
 	const scopeOf = (svc: VaultRagService): string => (svc as unknown as { scopeSignature(): string }).scopeSignature();
 
 	it("phone (variant) and desktop (full model) agree on the scope signature", () => {

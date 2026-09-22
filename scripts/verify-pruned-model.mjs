@@ -1,4 +1,4 @@
-// Verify that the Latin-script variant (ADR-199) produces the FULL model's
+// Verify that the Latin-script variant (ADR-200) produces the FULL model's
 // vectors for Latin-script text — the claim everything else rests on: the
 // desktop's index, the measured floors, and "a German question finds an
 // English note" on the phone.

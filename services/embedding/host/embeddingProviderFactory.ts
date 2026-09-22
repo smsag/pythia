@@ -50,7 +50,7 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 
 	private record(backend: EmbeddingBackend, err: unknown): void {
 		this.failures.push(`${backend}: ${err instanceof Error ? err.message : String(err)}`);
-		// Out of memory ends the chain (ADR-198). Every backend shares one process,
+		// Out of memory ends the chain (ADR-199). Every backend shares one process,
 		// so the next one would load the same model into the same exhausted heap —
 		// on iOS that was two more loads, the last on the UI thread.
 		if (isOutOfMemoryError(err)) throw new EmbeddingOutOfMemoryError(err);

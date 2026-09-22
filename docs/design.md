@@ -1,6 +1,6 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-22 — the settings tab's vault-index status row (ADR-198): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
+*Last updated: 2026-09-22 — the settings tab's vault-index status row (ADR-199): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
 
 *Previously: 2026-09-20 — align on the design, implement it separately (ADR-197). `kit/button.css` and the byte-identity test are withdrawn: the nine roles are Pythia's own rules in `styles.css`, and no test compares this stylesheet against another repository's. Nothing renders differently. The colour contract stays — every colour is reached through `var(--btn-accent | --btn-on-accent | --btn-error | --btn-warning, <Obsidian token>)`, and Pythia overrides only `--btn-on-accent`, at `var(--p-on-accent, var(--text-on-accent))` (ADR-154).*
 
@@ -493,7 +493,7 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 
 The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` — accent fill, `--p-on-accent`, **and weight 600**, so selection never rests on colour alone — plus `aria-pressed`; the group carries `role="group"`. The leading **Standard** segment means "no override" and names the effort that will actually apply (`Standard · Mittel`) when a global default is configured, plain `Standard` otherwise; the long parenthetical `effortUnsetOption` string stays in the settings-tab dropdown, which can carry it. Every segment rule is **scoped to `.pythia-modal`**: `all: unset` alone is (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at (0,1,1) — the modal has no equivalent of the `.pythia-view` reset at the top of `styles.css`, so the segments inherited core's grey and the selected one was hard to pick out. Segments are ≥28px tall, ≥36px under `@media (pointer: coarse)`. When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
 
-### Settings: the vault index status row (ADR-198)
+### Settings: the vault index status row (ADR-199)
 
 An Obsidian `Setting` row named **Index status** in the Vault context section, placed first in it, because it is what the rest of the section is about. Its description is two lines:
 

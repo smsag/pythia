@@ -1,4 +1,4 @@
-// The crash-loop breaker for the vault index build (ADR-198).
+// The crash-loop breaker for the vault index build (ADR-199).
 //
 // When the OS kills the process mid-build (iOS: `jetsam per-process-limit`), no
 // catch runs and nothing is logged by us — the next thing that happens is a

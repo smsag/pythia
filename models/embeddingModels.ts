@@ -34,7 +34,7 @@ export interface EmbeddingModelConfig {
 	/** Approximate size of the quantized model download, in MB — shown in the
 	 *  settings explainer so "downloads on first use" has a number attached. */
 	downloadMb: number;
-	/** Whether this model may run on Obsidian mobile (ADR-198).
+	/** Whether this model may run on Obsidian mobile (ADR-199).
 	 *
 	 *  MEASURED on an iPhone 15 Pro Max, iOS 26.6.2, 2026-09-22: iOS kills
 	 *  Obsidian's WebContent process at ~2 048 MB (`per-process-limit`). Obsidian
@@ -44,7 +44,7 @@ export interface EmbeddingModelConfig {
 	 *  lever (batch 1 died too). Re-measure before flipping a flag. */
 	mobile: boolean;
 	/** Set on a VARIANT: a model that produces the same vectors as `variantOf`
-	 *  (ADR-199) and therefore shares its index files and its measured floors.
+	 *  (ADR-200) and therefore shares its index files and its measured floors.
 	 *  A variant is never offered in the settings dropdown — it is what a device
 	 *  runs on behalf of the model the user chose. */
 	variantOf?: EmbeddingModelId;
@@ -71,7 +71,7 @@ export interface EmbeddingModelConfig {
  */
 export type SimilarityPreset = "strict" | "balanced" | "loose";
 
-/** Where the pruned variant is published (ADR-199). A fork of the upstream model,
+/** Where the pruned variant is published (ADR-200). A fork of the upstream model,
  *  Apache-2.0, built reproducibly by scripts/prune-embedding-model.py. */
 export const LATIN_VARIANT_REPO_ID = "smsag007/paraphrase-multilingual-MiniLM-L12-v2-latin";
 
@@ -102,7 +102,7 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 		mobile: false,
 	},
 	// The multilingual model with its vocabulary cut to Latin-script pieces
-	// (ADR-199): 128 507 of 250 002 pieces, built by scripts/prune-embedding-model.py
+	// (ADR-200): 128 507 of 250 002 pieces, built by scripts/prune-embedding-model.py
 	// from the upstream files. Latin-script text can only ever tokenize to kept
 	// pieces, so its segmentation — and its vector — is IDENTICAL to the full
 	// model's (verified: cosine 1.0000 on 408 texts in five languages). Other
@@ -139,7 +139,7 @@ export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBE
 export const SELECTABLE_EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] =
 	EMBEDDING_MODEL_IDS.filter((id) => !EMBEDDING_MODELS[id].variantOf);
 
-/** The model whose vectors `id` produces (ADR-199): a variant's family, else itself.
+/** The model whose vectors `id` produces (ADR-200): a variant's family, else itself.
  *  Index files are named by this, so a device on a variant reads — and extends —
  *  the index another device built with the full model. */
 export function vectorFamily(id: EmbeddingModelId): EmbeddingModelId {
@@ -150,12 +150,12 @@ export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];
 }
 
-/** The model a phone or tablet runs when the chosen one is not `mobile` (ADR-198). */
+/** The model a phone or tablet runs when the chosen one is not `mobile` (ADR-199). */
 export const MOBILE_EMBEDDING_MODEL_ID: EmbeddingModelId = "xenova-all-MiniLM-L6-v2";
 
 /**
  * The model that actually embeds on this device — the ONE place that answers it
- * (ADR-198, variants ADR-199). Everything that loads a model, opens an index file, or picks a
+ * (ADR-199, variants ADR-200). Everything that loads a model, opens an index file, or picks a
  * floor goes through here; `settings.embeddingModelId` is read nowhere else
  * (`tests/embeddingModelRule.test.ts` fails on a second reader).
  *
@@ -167,7 +167,7 @@ export const MOBILE_EMBEDDING_MODEL_ID: EmbeddingModelId = "xenova-all-MiniLM-L6
 export function effectiveEmbeddingModel(setting: EmbeddingModelId, isMobile: boolean): EmbeddingModelId {
 	const chosen = embeddingModelConfig(setting);
 	if (!isMobile || chosen.mobile) return chosen.id;
-	// A mobile variant with the same vectors beats a different model (ADR-199):
+	// A mobile variant with the same vectors beats a different model (ADR-200):
 	// the phone keeps cross-language matching AND the desktop's index.
 	const variant = EMBEDDING_MODEL_IDS.find((id) => {
 		const c = EMBEDDING_MODELS[id];

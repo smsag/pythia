@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Latin-script variant of the multilingual embedding model (ADR-199).
+"""Build the Latin-script variant of the multilingual embedding model (ADR-200).
 
 The upstream model's 250 002-piece vocabulary is most of what it costs in
 memory: on an iPhone the full model added ~0.9–1 GB to Obsidian's web process

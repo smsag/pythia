@@ -1,8 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-199 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
+*Last updated: 2026-09-22 — ADR-200 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
 
-*Previously: 2026-09-22 — ADR-198 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
+*Previously: 2026-09-22 — ADR-199 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
 
 *Previously: 2026-09-22 — ADR-196 addendum (`touch-action: manipulation` on the role base: Obsidian exempts its own controls from iOS's double-tap wait through `.is-clickable`/`.clickable-icon`, and a button built here is neither).*
 
@@ -3880,7 +3880,7 @@ Three concrete symptoms, none visible from one repository:
 
 ---
 
-### ADR-198 — A phone embeds with the model it can hold
+### ADR-199 — A phone embeds with the model it can hold
 
 *2026-09-22*
 
@@ -3913,11 +3913,11 @@ With the multilingual model resident the process sat at ~1.65 GB, and the first 
 
 ---
 
-### ADR-199 — A phone runs the multilingual model with a Latin-script vocabulary
+### ADR-200 — A phone runs the multilingual model with a Latin-script vocabulary
 
 *2026-09-22*
 
-**Context.** ADR-198 gave phones the English model because the multilingual one crashed them, and recorded the cost as D-40: on the phone, a question in one language no longer found a note in the other by meaning. For a vault that is mostly English with German questions, that is the case that matters most. "Just use a leaner multilingual model" was surveyed and does not exist for this runtime: every multilingual model with a transformers.js build carries a vocabulary of 120k–500k pieces (multilingual-e5-small shares this model's 250k exactly; jina-v2-de has 61k but wider layers and a bigger file), and on a MiniLM-sized model the vocabulary *is* the memory.
+**Context.** ADR-199 gave phones the English model because the multilingual one crashed them, and recorded the cost as D-40: on the phone, a question in one language no longer found a note in the other by meaning. For a vault that is mostly English with German questions, that is the case that matters most. "Just use a leaner multilingual model" was surveyed and does not exist for this runtime: every multilingual model with a transformers.js build carries a vocabulary of 120k–500k pieces (multilingual-e5-small shares this model's 250k exactly; jina-v2-de has 61k but wider layers and a bigger file), and on a MiniLM-sized model the vocabulary *is* the memory.
 
 Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM): of the full model's ≈ 600 MB on a Mac, the 17 MB `tokenizer.json` expands to **153 MB of JS heap** and the 96 MB int8 embedding table drives a **332 MB WASM heap**; the twelve transformer layers are ~22 MB. Counting by script: 110k of the 250k pieces are Latin, 97k are CJK/Arabic/Devanagari/Thai and other scripts, 32k Cyrillic, 5k Greek.
 
@@ -3933,4 +3933,4 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 
 **Guards.** `tests/embeddingModelRule.test.ts`: a phone with the multilingual setting runs the variant, not English; exactly one variant exists and is mobile; a variant equals its family in dim, pooling, window, chunk size, floors and `relatedMinScore`, and declares what it gives up; variants never appear in `SELECTABLE_EMBEDDING_MODEL_IDS`; a full model is its own family. `tests/vaultIndexStore.test.ts`: the variant and the full model name the same file. `tests/vaultRagGuard.test.ts`: the same scope signature, and a complete desktop index reads as *ready* on the phone without loading a model. `tests/embeddingSettings.test.ts`: the dropdown offers the two full models only; the desktop note names the variant and its limit.
 
-**Consequences.** A phone keeps cross-language matching and returns the same related conversations and retrieved notes as the desktop, from the same index. D-40 closes. ADR-198's English substitution remains the general rule for a model with no variant.
+**Consequences.** A phone keeps cross-language matching and returns the same related conversations and retrieved notes as the desktop, from the same index. D-40 closes. ADR-199's English substitution remains the general rule for a model with no variant.
