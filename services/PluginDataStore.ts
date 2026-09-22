@@ -3,7 +3,7 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
-import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
+import { loadedPythiaViews } from "./ViewManager";
 import { debugLog } from "./messageUtils";
 import { describeErrorForLog } from "./redact";
 import { archiveFolderOf } from "./conversationArchive";
@@ -163,9 +163,8 @@ export class PluginDataStore {
 	 * opened in more than one leaf, so every leaf's conversation counts.
 	 */
 	private activeConversationIds(): string[] {
-		return this.plugin.app.workspace
-			.getLeavesOfType(PYTHIA_VIEW_TYPE)
-			.map((leaf) => (leaf.view as PythiaSidebarView).activeConversationId)
+		return loadedPythiaViews(this.plugin.app.workspace)
+			.map((view) => view.activeConversationId)
 			.filter((id): id is string => id !== null);
 	}
 
@@ -290,9 +289,11 @@ export class PluginDataStore {
 		// Anything memory won during the merge is newer than disk; write it back now
 		// rather than leaving the file stale until the next edit (ADR-133).
 		await p.conversationStore?.flush();
-		const leaves = p.app.workspace.getLeavesOfType(PYTHIA_VIEW_TYPE);
-		for (const leaf of leaves) {
-			const view = leaf.view as PythiaSidebarView;
+		// Every LOADED view must be re-pointed: when disk won the merge, the view
+		// still holds the replaced object, and its next save would write that
+		// stale copy back over the newer one. Deferred leaves are skipped, not
+		// failed on — they read `p.conversations` when they load (#342).
+		for (const view of loadedPythiaViews(p.app.workspace)) {
 			const still = p.conversations.find(c => c.id === view.activeConversationId);
 			const next  = still ?? p.conversations[0] ?? null;
 			if (next) {

@@ -32,6 +32,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ConversationStore.ts      ← in-memory store + debounced persistence
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
+    ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
@@ -97,7 +98,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
+  tests/                      ← Vitest unit tests (npm test) — 1495 tests across 102 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
