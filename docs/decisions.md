@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-198 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
+*Last updated: 2026-09-22 — ADR-199 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
+
+*Previously: 2026-09-22 — ADR-198 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
 
 *Previously: 2026-09-22 — ADR-196 addendum (`touch-action: manipulation` on the role base: Obsidian exempts its own controls from iOS's double-tap wait through `.is-clickable`/`.clickable-icon`, and a button built here is neither).*
 
@@ -3909,3 +3911,26 @@ With the multilingual model resident the process sat at ~1.65 GB, and the first 
 
 **Consequences.** On a phone, vault context and related conversations work, with the English model's limits: German text is matched mainly through shared words, and a question in one language no longer finds a note in the other by meaning. For a mostly-English vault that is a small cost; the desktop keeps the multilingual model unchanged. Phone and desktop can return different related conversations and retrieved notes, since they index with different models. The embedding strings moved to `locales/embedding.{en,de}.ts` — the per-feature split engineering-review #301 proposed — which took both tables back under the file-size default, and the dead-key test now scans subdirectories, which it silently had not.
 
+---
+
+### ADR-199 — A phone runs the multilingual model with a Latin-script vocabulary
+
+*2026-09-22*
+
+**Context.** ADR-198 gave phones the English model because the multilingual one crashed them, and recorded the cost as D-40: on the phone, a question in one language no longer found a note in the other by meaning. For a vault that is mostly English with German questions, that is the case that matters most. "Just use a leaner multilingual model" was surveyed and does not exist for this runtime: every multilingual model with a transformers.js build carries a vocabulary of 120k–500k pieces (multilingual-e5-small shares this model's 250k exactly; jina-v2-de has 61k but wider layers and a bigger file), and on a MiniLM-sized model the vocabulary *is* the memory.
+
+Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM): of the full model's ≈ 600 MB on a Mac, the 17 MB `tokenizer.json` expands to **153 MB of JS heap** and the 96 MB int8 embedding table drives a **332 MB WASM heap**; the twelve transformer layers are ~22 MB. Counting by script: 110k of the 250k pieces are Latin, 97k are CJK/Arabic/Devanagari/Thai and other scripts, 32k Cyrillic, 5k Greek.
+
+**Decision.** Publish a variant of the same model with its vocabulary cut to Latin-script pieces, and let a phone run *that* for a multilingual setting.
+
+- **The rule is by script, not by usage.** Every piece that is Latin or script-neutral (digits, punctuation, symbols, marks) is kept, plus every single-character piece of any script. A Latin-script string can only segment into kept pieces, so its segmentation — and its vector — is identical to the full model's: **cosine 1.000000 with identical token counts on 413 texts** (thirteen sentences in nine languages plus 400 chunks of the reporter's vault; `npm run model:verify`). Pruning to the pieces one vault uses was tried first and is **not** exact: new Italian and Spanish sentences fell to cosine 0.44–0.53, and 55 of 400 vault chunks re-segmented. Other scripts fall back to single characters and degrade instead of producing `<unk>`.
+- **Measured on the iPhone** (fresh process, 16-chunk batch embedded, then ballast to the pressure line): **≈ +370–400 MB**, against +900–1 000 MB for the full model and +130 MB for English; the process then absorbed a further ~1 GB before the kill. 128 507 of 250 002 pieces; 72 MB `q8` file, 4.7 MB tokenizer.
+- **The variant is a `variantOf` the full model**, never a dropdown entry: `effectiveEmbeddingModel` prefers a mobile variant of the chosen model over `MOBILE_EMBEDDING_MODEL_ID`, and `SELECTABLE_EMBEDDING_MODEL_IDS` is what settings offer. Its `relatedFloors` are the family's — not re-measured, because the same vectors have the same distribution — and a test holds dim, pooling, window and floors equal.
+- **Index files are named by vector family** (`vectorFamily(id)` in `VaultIndexStore`), and `scopeSignature` uses the family too. A phone on the variant therefore reads the index the desktop built and keeps it fresh, instead of building its own — most of the phone's work is gone, not just made smaller. Both devices already wrote the same file when they ran the same model; nothing new about sync conflicts is introduced.
+- **Reproducible, and published as a fork.** `scripts/prune-embedding-model.py` builds the variant from the upstream files (Apache-2.0; the model card credits the original) and is what produced the published files byte for byte; `scripts/verify-pruned-model.mjs` is the equivalence check. It lives at `LATIN_VARIANT_REPO_ID` on Hugging Face because that is where Pythia's model loader already fetches from, and the alternative — the desktop pruning and syncing 77 MB through every vault — was weighed and declined: more plugin code, a quota cost per vault, and phones without a desktop left on English.
+
+**Not done.** The English model stays the stand-in for anything that has no variant. Non-Latin scripts are the one thing the variant gives up, and the settings note says so (`embeddingModelLatinNote`). The full model's own cross-language retrieval quality on this vault is still unmeasured (D-13) — pruning does not change it, so the measurement is unaffected.
+
+**Guards.** `tests/embeddingModelRule.test.ts`: a phone with the multilingual setting runs the variant, not English; exactly one variant exists and is mobile; a variant equals its family in dim, pooling, window, chunk size, floors and `relatedMinScore`, and declares what it gives up; variants never appear in `SELECTABLE_EMBEDDING_MODEL_IDS`; a full model is its own family. `tests/vaultIndexStore.test.ts`: the variant and the full model name the same file. `tests/vaultRagGuard.test.ts`: the same scope signature, and a complete desktop index reads as *ready* on the phone without loading a model. `tests/embeddingSettings.test.ts`: the dropdown offers the two full models only; the desktop note names the variant and its limit.
+
+**Consequences.** A phone keeps cross-language matching and returns the same related conversations and retrieved notes as the desktop, from the same index. D-40 closes. ADR-198's English substitution remains the general rule for a model with no variant.

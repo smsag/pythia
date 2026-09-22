@@ -3,7 +3,7 @@ import { bindNumberSetting } from "./numberSetting";
 import type PythiaPlugin from "../main";
 import { t } from "../i18n";
 import {
-	EMBEDDING_MODELS, MOBILE_EMBEDDING_MODEL_ID, embeddingModelConfig,
+	EMBEDDING_MODELS, SELECTABLE_EMBEDDING_MODEL_IDS, embeddingModelConfig, effectiveEmbeddingModel,
 	type EmbeddingModelId, type SimilarityPreset,
 } from "../models/embeddingModels";
 import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
@@ -32,7 +32,8 @@ export function renderEmbeddingSettings(
 	describeModel();
 	let refreshStatus: () => void = () => {};
 	modelRow.addDropdown((drop) => {
-		for (const m of Object.values(EMBEDDING_MODELS)) drop.addOption(m.id, m.label);
+		// Variants are never offered: the device picks them (ADR-199).
+		for (const id of SELECTABLE_EMBEDDING_MODEL_IDS) drop.addOption(id, EMBEDDING_MODELS[id].label);
 		drop
 			.setValue(plugin.settings.embeddingModelId)
 			.onChange(async (value) => {
@@ -139,10 +140,14 @@ function modelDescription(plugin: PythiaPlugin): string {
 		enMb: EMBEDDING_MODELS["xenova-all-MiniLM-L6-v2"].downloadMb,
 	};
 	const chosen = embeddingModelConfig(plugin.settings.embeddingModelId);
-	const active = plugin.activeEmbeddingModelId();
-	const names = { model: embeddingModelConfig(active).label, chosen: chosen.label };
-	let note = "";
-	if (active !== chosen.id) note = t("embeddingModelMobileNote", names);
-	else if (!chosen.mobile) note = t("embeddingModelDesktopNote", { ...names, model: embeddingModelConfig(MOBILE_EMBEDDING_MODEL_ID).label });
-	return note ? `${t("embeddingModelDesc", vars)} ${note}` : t("embeddingModelDesc", vars);
+	const active = embeddingModelConfig(plugin.activeEmbeddingModelId());
+	// What a phone runs for this choice — the same answer whichever device shows
+	// the note, so the desktop can say what the phone will do (ADR-198/199).
+	const onPhone = embeddingModelConfig(effectiveEmbeddingModel(chosen.id, true));
+	const names = { model: onPhone.label, chosen: chosen.label };
+	const notes: string[] = [t("embeddingModelDesc", vars)];
+	if (active.id !== chosen.id) notes.push(t("embeddingModelMobileNote", names));
+	else if (onPhone.id !== chosen.id) notes.push(t("embeddingModelDesktopNote", names));
+	if (onPhone.id !== chosen.id && onPhone.variantNote === "latinScript") notes.push(t("embeddingModelLatinNote"));
+	return notes.join(" ");
 }

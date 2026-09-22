@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Minimal `Setting` chain — enough to let renderEmbeddingSettings build its rows
 // and hand us the text inputs it created.
 const inputs: HTMLInputElement[] = [];
+const dropdownOptions: string[] = [];
 /** Every Setting row, with what it was told — for the status and model rows. */
 const rows: { name: string; desc: unknown; buttons: { text: string; disabled: boolean; click: () => void }[]; el: HTMLElement }[] = [];
 
@@ -40,8 +41,8 @@ vi.mock("obsidian", () => {
 			return this;
 		}
 		addDropdown(cb: (d: Record<string, () => unknown>) => void): this {
-			const d: Record<string, () => unknown> = {
-				addOption: () => d, setValue: () => d, onChange: () => d,
+			const d: Record<string, (...a: never[]) => unknown> = {
+				addOption: (v: string) => { dropdownOptions.push(v); return d; }, setValue: () => d, onChange: () => d,
 			};
 			cb(d);
 			return this;
@@ -100,7 +101,7 @@ const fakePlugin = (over: { active?: EmbeddingModelId; status?: Partial<VaultInd
 
 const flush = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 
-beforeEach(() => { inputs.length = 0; rows.length = 0; });
+beforeEach(() => { inputs.length = 0; rows.length = 0; dropdownOptions.length = 0; });
 
 describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-182 fix)", () => {
 	const render = () => {
@@ -193,16 +194,26 @@ describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-182 fix)", () => 
 describe("model row explains what this device runs (ADR-198)", () => {
 	const modelRow = () => rows.find((r) => r.name === t("embeddingModelName"))!;
 
-	it("on desktop with Multilingual, says phones use English and why", () => {
+	it("on desktop with Multilingual, says phones use the Latin-script variant and what that means", () => {
 		renderEmbeddingSettings(document.createElement("div"), fakePlugin() as unknown as PythiaPlugin);
 		const desc = String(modelRow().desc);
-		expect(desc).toContain(t("embeddingModelDesktopNote", { model: "English", chosen: "Multilingual" }));
+		expect(desc).toContain(t("embeddingModelDesktopNote", { model: "Multilingual (Latin script)", chosen: "Multilingual" }));
+		expect(desc).toContain(t("embeddingModelLatinNote"));
 		expect(desc).toContain("120 MB");
 	});
 
-	it("on a phone, says it is using English instead and that the choice still holds on desktop", () => {
-		renderEmbeddingSettings(document.createElement("div"), fakePlugin({ active: "xenova-all-MiniLM-L6-v2" }) as unknown as PythiaPlugin);
-		expect(String(modelRow().desc)).toContain(t("embeddingModelMobileNote", { model: "English", chosen: "Multilingual" }));
+	it("on a phone, says it is using the variant and that the choice still holds on desktop", () => {
+		renderEmbeddingSettings(document.createElement("div"), fakePlugin({ active: "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin" }) as unknown as PythiaPlugin);
+		const desc = String(modelRow().desc);
+		expect(desc).toContain(t("embeddingModelMobileNote", { model: "Multilingual (Latin script)", chosen: "Multilingual" }));
+		expect(desc).toContain(t("embeddingModelLatinNote"));
+	});
+
+	it("the dropdown offers the two full models, never the variant (ADR-199)", () => {
+		renderEmbeddingSettings(document.createElement("div"), fakePlugin() as unknown as PythiaPlugin);
+		// The model dropdown is the first one rendered; the similarity presets follow.
+		expect(dropdownOptions.slice(0, 2)).toEqual(["xenova-all-MiniLM-L6-v2", "xenova-paraphrase-multilingual-MiniLM-L12-v2"]);
+		expect(dropdownOptions).not.toContain("xenova-paraphrase-multilingual-MiniLM-L12-v2-latin");
 	});
 
 	it("adds no note when the chosen model runs everywhere", () => {

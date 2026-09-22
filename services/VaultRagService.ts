@@ -7,7 +7,7 @@ import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexSer
 import { retrievalQuery, isIndexingOptedOut } from "./embedding/vaultRetrieval";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
-import { embedChunkChars, type EmbeddingModelId } from "../models/embeddingModels";
+import { embedChunkChars, vectorFamily, type EmbeddingModelId } from "../models/embeddingModels";
 import type { BuildGuard } from "./embedding/buildGuard";
 import { isOutOfMemoryError } from "./embedding/memoryError";
 import { peekIndexMeta } from "./embedding/embeddingIndex";
@@ -127,7 +127,9 @@ export class VaultRagService {
 		const s = this.getSettings();
 		const folders = [...s.vaultContextFolders].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
 		const skip = [s.conversationsFolder, s.scratchFolder].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
-		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, this.deps.modelId()]);
+		// The family, not the variant (ADR-199): the desktop's index must read as
+		// complete on a phone running the vector-identical variant.
+		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, vectorFamily(this.deps.modelId())]);
 	}
 
 	private ensure(): VaultIndexService {

@@ -1,6 +1,6 @@
 import { normalizePath, type Plugin } from "obsidian";
 import type { IndexStore } from "./ConversationIndexService";
-import type { EmbeddingModelId } from "../../models/embeddingModels";
+import { vectorFamily, type EmbeddingModelId } from "../../models/embeddingModels";
 
 /**
  * Persists a vector index as a binary file in the plugin directory, keyed by
@@ -9,6 +9,10 @@ import type { EmbeddingModelId } from "../../models/embeddingModels";
  * `prefix` also separates independent indexes that share the format: the
  * conversation "related" index (default `related-embeddings`) and the vault-RAG
  * note index (`vault-embeddings`, ADR-116).
+ *
+ * The name carries the model's VECTOR FAMILY, not the variant (ADR-199): a phone
+ * on the Latin-script variant produces the full model's vectors, so it reads —
+ * and keeps fresh — the index the desktop built, instead of building its own.
  */
 export class VaultIndexStore implements IndexStore {
 	private readonly dir: string;
@@ -18,7 +22,7 @@ export class VaultIndexStore implements IndexStore {
 		this.dir = normalizePath(
 			plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`
 		);
-		this.path = normalizePath(`${this.dir}/${prefix}-${modelId}.bin`);
+		this.path = normalizePath(`${this.dir}/${prefix}-${vectorFamily(modelId)}.bin`);
 	}
 
 	/** Whether an index has been built, WITHOUT reading it.
