@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-22 — **#353–#355: switching apps on iOS (ADR-202).** #353 — the model-load and request timeouts were wall-clock, so returning after a long background absence during a download failed the load for the session. #354 — a build killed while backgrounded counted as a crash; two app switches paused indexing. #355 — the idle model kept ~400 MB resident, making Obsidian the app iOS ends first; a phone now releases it on hide and after 3 min idle and preloads it on return and on input focus.*
+*Updated: 2026-09-22 — **#356: the data.json watcher reloaded itself every few seconds.** A reload of an unchanged file is all ties; `mergeConversations` counted ties as newer in memory, `loadPluginData` then marked every conversation dirty, the flush rewrote the whole file, and the watcher's 3 s own-write window lost to its 5 s poll — so the write read as the next external change. Ties no longer count (`newerInMemory`), only those ids are marked dirty, and the watcher absorbs the mtime of its own writes.*
+
+*Previously updated: 2026-09-22 — **#353–#355: switching apps on iOS (ADR-202).** #353 — the model-load and request timeouts were wall-clock, so returning after a long background absence during a download failed the load for the session. #354 — a build killed while backgrounded counted as a crash; two app switches paused indexing. #355 — the idle model kept ~400 MB resident, making Obsidian the app iOS ends first; a phone now releases it on hide and after 3 min idle and preloads it on return and on input focus.*
 
 *Previously updated: 2026-09-22 — **#349–#352: review fixes to ADR-199/200 (ADR-201).** #349 — a phone-written row for non-Latin text was reused by the desktop forever; rows now carry whether the variant could reproduce them. #350 — a paused guard over a complete index read "Ready" with vault context dead and *Build now* disabled. #351 — `mergeSettings` accepted the variant id as a stored choice. #352 — the status read "0 of 0 notes" through the model load.*
 
@@ -1757,3 +1759,10 @@ Found along the way and fixed separately as #342: the data.json watcher threw `A
 | 353 | **Timeouts were wall-clock.** `READY_TIMEOUT_MS` compared `Date.now()`; each request armed a one-shot `setTimeout`. Returning after >5 min in the background during a first download rejected the load at once, and the rejection is memoized for the session. | Medium | **Fixed (ADR-202).** `VisibleClock`; both providers; a source test forbids the old shapes. |
 | 354 | **A background kill counted as a crash.** Two app switches during a first build paused automatic indexing. | Medium | **Fixed (ADR-202).** `background` on the marker; `foregroundDeaths`. |
 | 355 | **The idle model stayed resident (~400 MB).** Obsidian became the first app iOS ends in the background, and cold-starts on return. | Medium | **Fixed (ADR-202), not yet measured on the device.** `EmbeddingResidency`: release on hide / after 3 min idle on a phone; preload on return and input focus. |
+
+## Bug (#356) — the data.json watcher reloaded itself, 2026-09-22
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 356 | **A reload loop that rewrote data.json every 5–10 s.** Seen in the console as endless `loadPluginData kept newer in-memory conversations {kept: 28, onDisk: 28}` pairs. Three parts: `mergeConversations` counted a tie (`>=`) as "kept from memory"; `loadPluginData` marked **every** conversation dirty whenever that count was > 0; and the watcher recognised its own write only inside a 3 s window it polls every 5 s. Each reload therefore rewrote the whole file (and re-synced it through iCloud), and the next poll took that for an external change. | Medium | **Fixed.** Ties keep the memory object but are not counted; `MergeOutcome.newerInMemory` names the conversations disk is actually behind on and only those are marked dirty; `persist` and the watcher's reload absorb the mtime they produced (`ownWriteLanded`). `tests/pluginDataStore.test.ts` drives the real watcher: one external change → exactly one reload over 30 s. Each part was reverted to confirm its test fails. |
+

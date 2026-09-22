@@ -53,6 +53,24 @@ describe("mergeConversations", () => {
 		expect(mergeConversations(memory, disk).conversations[0].messages).toHaveLength(4);
 	});
 
+	it("does NOT count a tie as newer — the reload loop (#356)", () => {
+		// Every reload of an unchanged file is all ties. Counting them marked every
+		// conversation dirty, rewrote data.json, and the watcher read that write as
+		// the next external change — a reload every few seconds, forever.
+		const memory = [at("a", "2026-01-01T01:00:00.000Z"), at("b", "2026-01-01T02:00:00.000Z")];
+		const disk   = [at("a", "2026-01-01T01:00:00.000Z"), at("b", "2026-01-01T02:00:00.000Z")];
+		const out = mergeConversations(memory, disk);
+		expect(out.keptFromMemory).toBe(0);
+		expect(out.newerInMemory).toEqual([]);
+		expect(out.conversations[0]).toBe(memory[0]); // still the memory object on a tie
+	});
+
+	it("names exactly the conversations disk is behind on", () => {
+		const memory = [at("same", "2026-01-01T00:00:00.000Z"), at("newer", "2026-01-05T00:00:00.000Z"), at("onlyHere", "2026-01-03T00:00:00.000Z")];
+		const disk   = [at("same", "2026-01-01T00:00:00.000Z"), at("newer", "2026-01-01T00:00:00.000Z"), at("diskNewer", "2026-01-09T00:00:00.000Z")];
+		expect(mergeConversations(memory, disk).newerInMemory).toEqual(["newer", "onlyHere"]);
+	});
+
 	it("keeps a conversation that exists only in memory", () => {
 		const out = mergeConversations([at("new", "2026-01-02T00:00:00.000Z")], [at("old", "2026-01-01T00:00:00.000Z")]);
 		expect(out.conversations.map((c) => c.id)).toEqual(["old", "new"]);
