@@ -164,3 +164,27 @@ describe("sanitizeConversationFields — pendingTemplate", () => {
 		expect(sanitize(undefined)).toBeUndefined();
 	});
 });
+
+// ── ADR-208: the term a conversation was opened from ────────────────────────
+
+describe("sanitizeConversationFields — glossaryTerm", () => {
+	const field = (value: unknown): unknown => {
+		const conv = { name: "c", systemPrompt: "", glossaryTerm: value } as never;
+		sanitizeConversationFields(conv);
+		return (conv as Record<string, unknown>).glossaryTerm;
+	};
+
+	it("keeps a real term", () => {
+		expect(field("Kartellrecht")).toBe("Kartellrecht");
+	});
+
+	it("drops anything that is not one, so the header cannot offer to write nowhere", () => {
+		for (const bad of [7, null, {}, [], "", "   ", true]) expect(field(bad)).toBeUndefined();
+	});
+
+	it("leaves an ordinary conversation without one alone", () => {
+		const conv = { name: "c", systemPrompt: "" } as never;
+		sanitizeConversationFields(conv);
+		expect("glossaryTerm" in (conv as object)).toBe(false);
+	});
+});

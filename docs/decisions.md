@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-207 (a term is matched across the whole message body, and the words of a multi-word form may be joined any way — the English half of a German glossary is nearly all phrases).*
+*Last updated: 2026-09-22 — ADR-208 (a mute definition has two exits: name the sense you meant, or fork a conversation about the term and distil it back into its own section of the note).*
+
+*Previously: 2026-09-22 — ADR-207 (a term is matched across the whole message body, and the words of a multi-word form may be joined any way — the English half of a German glossary is nearly all phrases).*
 
 *Previously: 2026-09-22 — ADR-206 (a term's equivalent in another language is asked for rather than waited for, and the translation call backfills the entries written before it).*
 
@@ -4145,3 +4147,47 @@ The rule was not arbitrary. A translation is marked in *every* conversation from
 **What this does not change.** Marks still nest under ADR-157's rule (only term-inside-term is refused), terms still paint last, and `repaintTerms` is still idempotent — now including the split case. `findRange`, `computeOccurrenceIndex` and `paintRange` are untouched; the new `rangeFromOffsets` is `findRange`'s own mapping, lifted so both callers share it.
 
 **Guards.** `tests/termPainter.test.ts` +7 (a phrase split by emphasis, by a soft line break, spelled with a hyphen, overlapping a favorite; a match refused across a code span; offsets still true after an earlier paint; idempotence while split) and `tests/glossary.test.ts` +5 (each spelling matched, `cartellaw` and `cartel or law` still refused, every spelling resolving to the one entry, a single-word term not loosened, `surfaceKey`'s fold). Three mutations applied — a literal space in the alternation, `canonicalTerm` back to `normalizeTerm`, no masking — and all three killed, by 3, 2 and 2 tests.
+
+### ADR-208 — A mute definition has two exits: name the sense, or go and discuss it
+
+*2026-09-22*
+
+**Context.** A glossary definition is sometimes *mute* — it comes back and says nothing. Reported as two distinct failures, and they are not the same problem:
+
+- **Correct but useless.** It restates the term at the level the reader already had. This is partly by design: the prompt asks for two or three ISO-704 sentences on a 420-token budget, and a real concept does not fit there. No prompt change fixes it, because the missing thing is not in the model's first answer — it is in the questions the reader has not asked yet.
+- **The wrong sense.** It gives the general meaning where the passage meant a specific one. This one is cheap: the reader knows which sense they meant, and one sentence of theirs is worth more than any amount of re-prompting.
+
+The glossary already had one repair for both — regenerate, which re-asks the same question and reliably gets the same answer.
+
+**Decision — two exits, sized to the two problems.**
+
+**1. "Other sense" (the cheap half).** A one-line field in the anchor. What the reader types is appended to the lookup prompt as a correction, after the format rules, and the model is told that if the passage does not support that sense it must define the named sense anyway and say how the passage differs — never silently define a third thing. The hint is **not stored**: it shapes one lookup and is gone, like ADR-177's one-shot template layer. A person takes no hint — a name has the one sense the passage gives it.
+
+**2. "Discuss" (the expensive half).** Opens a conversation about the term, and a later command distils it back into the note.
+
+- **It is a fork of an *entry*, not of a conversation.** A term note is met in several conversations (ADR-150), so there is no single source to branch from. What the discussion needs is the note and the sentence the reader was stuck on.
+- **The note travels as an attached note**, not as prompt text. It is a vault note, so `ContextBuilder` already puts it in front of the model, the reference row already shows it as a pill, and an edit to the definition reaches the next turn with no bookkeeping of ours. Copying its text into a message would freeze it and duplicate machinery that exists. The passage rides in `forkedFromSelection`, whose framing — "the thing the first question points at" — is exactly its role here even though nothing was forked.
+- **The composer is prefilled, never sent.** The reader edits it into the question they actually have. An empty conversation would make them restate what they just tapped; sending it for them would spend a turn on our guess.
+- **`theme` is pinned to the term** (ADR-150) rather than left to follow the conversation name, which the titler rewrites after the first exchange. The consequence is deliberate and visible: other terms defined while working this one out file under its deck, which is where they belong.
+
+**3. The write-back lands in its own section, and never in the definition.** `## Discussion` at the end of the note body, after the context blockquotes.
+
+- **The two answer different questions.** A definition is terminological — short, substitutable, ISO 704 — and is exactly the field a re-lookup is allowed to replace. The discussion is the reader's own understanding, and only another discussion may overwrite it. Putting the discussion in `definition` would also invalidate every cached translation (ADR-166) and make a model re-lookup able to destroy work the reader did.
+- **The heading is English**, like `Forms:` and `Translations:` before it (ADR-149): a key an external reader finds without per-vault configuration, not prose. A real `##` heading rather than a labelled line because what follows is paragraphs, and because Obsidian can then link to `[[Kartellrecht#Discussion]]`.
+- **It comes last**, so everything above parses exactly as it did before the section existed and a note from an older build needs no migration — no heading means no discussion. Everything after the heading is the reader's, so a `>` quote or a heading inside it is never re-read as a context or as a second section.
+- **A re-lookup carries no discussion and must never drop the one on disk**; a second discussion **replaces** the first, because it distils the same understanding as it now stands rather than adding to it. The conversations stay reachable through the theme.
+- **`saveDiscussion` hydrates before it writes.** Passing a bare `{ term, discussion }` would be a data-loss bug, not a shortcut: `mergeEntry` protects a definition only when its source is `manual`, so on a model-written entry an empty incoming definition would replace the real one.
+
+**4. The summary is its own prompt, not `generateSummary`.** That prompt summarizes a *conversation*; a conversation forked from a term wanders — into examples, adjacent terms, the reader's own case — all of it worth keeping in the conversation and none of it in the note. `termDiscussionPrompt` asks one question instead: what does the reader now understand about this term that the definition does not say. It shares `SUMMARY_RULES`' shape (substance, never the session, plain prose) because a note read months later cannot use "as discussed above", and it is told to reply with nothing rather than pad — which `saveDiscussion` then refuses and reports, so `""` is never a silent no-op (ADR-158).
+
+It runs on the **conversation's** model, the fourth utility call to do so after the three summary calls and for their reason: it reads a whole conversation. Which also means it meets reasoning models and their leading thinking blocks, and depends on `callUtility` collecting every text block.
+
+**5. The request is the confirmation.** No proposal card, unlike a rewrite (ADR-178), because the write lands in a section that holds nothing but earlier runs of this same command — not in the user's own prose. That reasoning would not survive letting it revise the definition, which is why it does not.
+
+**`Conversation.glossaryTerm` is validated where it enters** (`sanitizeConversationFields`, principle 1): it decides whether the header offers to write into a vault note and which one, so a malformed value from `data.json` is dropped rather than carried.
+
+**One file split** to stay under ADR-097's ratchet, along the seam that was already wrong: `ui/termDiscussion.ts` takes the write out of `HeaderController`, which owns a menu row and not a vault write — and which is the one file in the UI layer where a rule of this kind cannot be tested, because it needs a mounted view (604 → 585 lines). The seam is structural (`TermDiscussionHost`), so a test satisfies it with a plain object; the shape ADR-205 used for the embedding hub.
+
+**Guards.** `tests/termDiscussion.test.ts` (new, 7 — the entry gone, the discussion empty, the call failing, the progress notice dismissed on every path, the hydrate that stops an empty definition being reported as news), `tests/glossaryNotes.test.ts` +7 (round-trip, an old note, quotes and headings inside the discussion, surviving a re-lookup, replaced not appended, the definition's own protection), `tests/glossaryAnchor.test.ts` +4, `tests/BaseProvider.test.ts` +4, `tests/persistenceSanitize.test.ts` +3. Five mutations applied — a re-lookup dropping the discussion, contexts parsed out of it, no hydrate, the progress notice left open on failure, blur firing the lookup — and all five killed.
+
+**Not done: the definition is still not revised by the discussion.** The most valuable thing a discussion could produce is a better definition, and this ADR deliberately does not write one — that field is protected, and an automatic rewrite of it would need the proposal card this flow does without. Recorded as a deferred decision.

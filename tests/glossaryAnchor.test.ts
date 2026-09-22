@@ -12,6 +12,7 @@ import "./helpers/viewHarness";
 import { GlossaryController } from "../ui/GlossaryController";
 import type PythiaPlugin from "../main";
 import type { GlossaryEntry } from "../services/glossary";
+import type { Conversation } from "../models/types";
 import type { TranslationResult } from "../services/GlossaryService";
 import { t } from "../i18n";
 
@@ -39,6 +40,8 @@ function makeController(entry: GlossaryEntry = ENTRY): GlossaryController {
 		getConversation: () => null,
 		getMessagesEl: () => document.body,
 		renderMarkdown: (md, el) => { el.textContent = md; },
+		openConversation: async () => {},
+		prefillInput: () => {},
 	});
 }
 
@@ -126,6 +129,8 @@ describe("glossary anchor language (ADR-166)", () => {
 			getConversation: () => null,
 			getMessagesEl: () => document.body,
 			renderMarkdown: (md, el) => { el.textContent = md; },
+		openConversation: async () => {},
+		prefillInput: () => {},
 		});
 	}
 	const body = () => document.querySelector<HTMLElement>(".p-term-anchor-body")!;
@@ -169,5 +174,118 @@ describe("glossary anchor language (ADR-166)", () => {
 		resolve({ text: "A device.", form: null });
 		await opening;
 		expect(body().textContent).toBe("A device.");
+	});
+});
+
+// ── ADR-208: the two ways out of a mute definition ──────────────────────────
+
+describe("glossary anchor: other sense and discuss (ADR-208)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	interface Calls {
+		lookups: { term: string; force: boolean; hint?: string }[];
+		created: { term: string; passage: string }[];
+		opened: string[];
+		prefilled: string[];
+	}
+
+	function controllerWith(calls: Calls, entry: GlossaryEntry = ENTRY): GlossaryController {
+		const plugin = {
+			settings: { defaultAnthropicModel: "claude-sonnet-4-6" },
+			app: { workspace: { openLinkText: () => {} } },
+			glossaryService: {
+				all: async () => [entry],
+				find: () => entry,
+				hydrate: async (e: GlossaryEntry) => e,
+				pathFor: () => "Glossary/Terms/Zähler.md",
+				lookup: async (term: string, _p: string, force: boolean, _c: unknown, hint?: string) => {
+					calls.lookups.push({ term, force, hint });
+					return entry;
+				},
+			},
+			conversationService: {
+				createTermConversation: async (e: GlossaryEntry, passage: string) => {
+					calls.created.push({ term: e.term, passage });
+					return { id: "c1", name: e.term } as unknown as Conversation;
+				},
+			},
+		} as unknown as InstanceType<typeof PythiaPlugin>;
+
+		return new GlossaryController({
+			plugin,
+			getConversation: () => null,
+			getMessagesEl: () => document.body,
+			renderMarkdown: (md, el) => { el.textContent = md; },
+			openConversation: async (conv) => { calls.opened.push(conv.id); },
+		prefillInput: (text) => { calls.prefilled.push(text); },
+		});
+	}
+
+	const field = () => document.querySelector<HTMLInputElement>(".p-term-anchor-senseinput");
+	const click = (sel: string) => document.querySelector<HTMLElement>(sel)!.dispatchEvent(
+		new MouseEvent("click", { bubbles: true }),
+	);
+	const press = (el: HTMLElement, key: string) => el.dispatchEvent(
+		new KeyboardEvent("keydown", { key, bubbles: true }),
+	);
+
+	it("asks which sense was meant, then defines again with it", async () => {
+		const calls: Calls = { lookups: [], created: [], opened: [], prefilled: [] };
+		await controllerWith(calls).toggleAnchor("Zähler", paragraphWithMark());
+		click(".p-term-anchor-sense");
+		const input = field()!;
+		expect(input).not.toBeNull();
+		input.value = "nicht das Messgerät, die Person";
+		press(input, "Enter");
+		await Promise.resolve(); await Promise.resolve();
+		expect(calls.lookups).toEqual([
+			{ term: "Zähler", force: true, hint: "nicht das Messgerät, die Person" },
+		]);
+	});
+
+	it("an empty answer defines nothing — the field is a correction, not a retry", async () => {
+		const calls: Calls = { lookups: [], created: [], opened: [], prefilled: [] };
+		await controllerWith(calls).toggleAnchor("Zähler", paragraphWithMark());
+		click(".p-term-anchor-sense");
+		press(field()!, "Enter");
+		await Promise.resolve();
+		expect(calls.lookups).toEqual([]);
+		expect(field()).toBeNull();
+	});
+
+	it("Escape and blur close the field without spending a model call", async () => {
+		const calls: Calls = { lookups: [], created: [], opened: [], prefilled: [] };
+		const c = controllerWith(calls);
+		await c.toggleAnchor("Zähler", paragraphWithMark());
+		click(".p-term-anchor-sense");
+		field()!.value = "etwas";
+		press(field()!, "Escape");
+		expect(field()).toBeNull();
+
+		click(".p-term-anchor-sense");
+		field()!.value = "etwas anderes";
+		field()!.dispatchEvent(new FocusEvent("blur"));
+		expect(field()).toBeNull();
+		await Promise.resolve();
+		expect(calls.lookups).toEqual([]);
+	});
+
+	it("discuss opens a conversation about the term, carrying the passage", async () => {
+		const calls: Calls = { lookups: [], created: [], opened: [], prefilled: [] };
+		await controllerWith(calls).toggleAnchor("Zähler", paragraphWithMark());
+		click(".p-term-anchor-discuss");
+		await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+		expect(calls.created).toHaveLength(1);
+		expect(calls.created[0].term).toBe("Zähler");
+		expect(calls.created[0].passage).toContain("monatlich abgelesen");
+		expect(calls.opened).toEqual(["c1"]);
+		// A ready question, unsent: the reader edits it rather than restating what
+		// they just tapped, and no turn is spent on our guess.
+		expect(calls.prefilled).toHaveLength(1);
+		expect(calls.prefilled[0]).toContain("Zähler");
+		expect(calls.prefilled[0]).toContain("monatlich abgelesen");
+		// The anchor goes first: switching conversations rebuilds the transcript,
+		// so a card left open would hang off a mark that no longer exists.
+		expect(document.querySelector(".p-term-anchor")).toBeNull();
 	});
 });

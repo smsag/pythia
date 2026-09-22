@@ -153,7 +153,12 @@ export class GlossaryService {
 		if (!(file instanceof TFile)) return entry;
 		try {
 			const body = parseBody(stripFrontmatter(await this.plugin.app.vault.read(file)));
-			return { ...entry, definition: body.definition, contexts: body.contexts.length > 0 ? body.contexts : undefined };
+			return {
+				...entry,
+				definition: body.definition,
+				contexts: body.contexts.length > 0 ? body.contexts : undefined,
+				discussion: body.discussion,
+			};
 		} catch (e) {
 			console.error("[Pythia] glossary term read failed:", e);
 			return entry;
@@ -203,7 +208,10 @@ export class GlossaryService {
 		force = false,
 		/** Conversation the term was selected in — carries the language override
 		 *  the definition is written in (ADR-148). */
-		conversation?: Conversation
+		conversation?: Conversation,
+		/** The reader's correction when the stored definition took the wrong sense
+		 *  (ADR-208). Only meaningful with `force`, which is what re-asks. */
+		senseHint?: string,
 	): Promise<GlossaryEntry | null> {
 		const clean = term.trim();
 		if (!clean) return null;
@@ -216,7 +224,7 @@ export class GlossaryService {
 			if (inFlight) return inFlight;
 		}
 
-		const run = this.defineAndStore(clean, passage, conversation, force);
+		const run = this.defineAndStore(clean, passage, conversation, force, senseHint);
 		this.pending.set(key, run);
 		try {
 			return await run;
@@ -294,7 +302,8 @@ export class GlossaryService {
 		term: string,
 		passage: string,
 		conversation?: Conversation,
-		force = false
+		force = false,
+		senseHint?: string,
 	): Promise<GlossaryEntry | null> {
 		const notice = new Notice(t("glossaryLookingUp", { term }), 0);
 		try {
@@ -302,7 +311,7 @@ export class GlossaryService {
 			// provider's fast model regardless of which conversation it was
 			// triggered from (the stored entry records that model). The
 			// conversation is passed for its language override only (ADR-148).
-			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation);
+			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation, senseHint);
 			const { definition, variants, translations, context } = parseDefinitionReply(raw);
 			// "" is never "nothing happened" (ADR-158): nothing is saved, and the user is told.
 			if (!definition) { new Notice(t("lookupEmptyReply", { term })); return null; }
@@ -367,6 +376,27 @@ export class GlossaryService {
 		for (const theme of merged.theme ?? []) await this.ensureThemeNote(theme);
 		this.invalidate();
 		return merged;
+	}
+
+	/**
+	 * Write what a forked conversation established into the term's note (ADR-208).
+	 *
+	 * The entry is **hydrated first**, so the definition, contexts and everything
+	 * else go back through `save` exactly as they came off disk. Passing a bare
+	 * `{ term, discussion }` would be a data-loss bug rather than a shortcut:
+	 * `mergeEntry` only protects a definition whose source is `manual`, so on a
+	 * model-written entry an empty incoming definition would replace the real one.
+	 *
+	 * An empty summary is never written and never silent (ADR-158): a discussion
+	 * that settled nothing leaves the note alone and says so.
+	 */
+	async saveDiscussion(term: string, text: string): Promise<GlossaryEntry | null> {
+		const clean = text.trim();
+		if (!clean) { new Notice(t("termDiscussionEmpty", { term })); return null; }
+		const found = this.find(await this.all(), term);
+		if (!found) { new Notice(t("termDiscussionNoEntry", { term })); return null; }
+		const entry = await this.hydrate(found);
+		return this.save({ ...entry, discussion: clean });
 	}
 
 	/**

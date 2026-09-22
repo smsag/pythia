@@ -27,6 +27,10 @@ const PASSAGE_CHARS = 1200;
 /** How much of a definition travels with a translation request. */
 const DEFINITION_CHARS = 2000;
 
+/** How much of a forked conversation is read when distilling it back into the
+ *  term note. Generous: the point of the fork is the whole discussion. */
+const DISCUSSION_CHARS = 24000;
+
 /**
  * The language line for a definition or person entry (ADR-166).
  *
@@ -73,7 +77,12 @@ export function translationTargets(languageLabel: string): string {
  * whether the answer's English "cartel law" means it too. Asking separately
  * would double the latency of a lookup the reader is waiting on.
  */
-export function defineTermPrompt(term: string, passage: string, languageLabel: string): string {
+export function defineTermPrompt(
+	term: string,
+	passage: string,
+	languageLabel: string,
+	senseHint?: string,
+): string {
 	return (
 		`Define the term "${term}" as it is used in the passage below, and list its other surface forms.\n\n` +
 		`Reply in EXACTLY this format — no other text before or after:\n` +
@@ -106,7 +115,8 @@ export function defineTermPrompt(term: string, passage: string, languageLabel: s
 		`For the context: copy ONE short sentence or clause from the passage in which the term ` +
 		`actually appears, verbatim and unedited. Leave the line empty if no single sentence shows ` +
 		`it in use.` +
-		`${definitionLanguageLine(languageLabel)}\n\nPassage:\n${passage.slice(0, PASSAGE_CHARS)}`
+		`${definitionLanguageLine(languageLabel)}${senseLine(senseHint ?? "")}` +
+		`\n\nPassage:\n${passage.slice(0, PASSAGE_CHARS)}`
 	);
 }
 
@@ -171,5 +181,83 @@ export function translateDefinitionPrompt(definition: string, language: string, 
 		`description, and never a common everyday word that would match unrelated sentences. Leave it ` +
 		`empty when the term travels into ${language} unchanged, or when it has no single accepted ` +
 		`equivalent there.${body}`
+	);
+}
+
+/**
+ * The sense line a re-lookup carries (ADR-208).
+ *
+ * "Correct but says nothing" and "defines the wrong sense" are the two ways a
+ * gloss fails, and only the second is cheap to fix: the reader knows which sense
+ * they meant, and one sentence of theirs is worth more than any amount of
+ * re-prompting. It is placed **after** the format rules and before the passage,
+ * so it reads as a correction to the task rather than as part of it — and it is
+ * never stored: it shapes one lookup and is gone, like ADR-177's one-shot layer.
+ */
+function senseLine(hint: string): string {
+	const clean = hint.trim().slice(0, 300);
+	if (!clean) return "";
+	return (
+		`\n\nThe reader has told you which sense they mean: "${clean}". ` +
+		`That is the sense to define. If the passage does not support it, define ` +
+		`the sense they named anyway and say in the definition how the passage uses ` +
+		`the term differently — never silently define something else.`
+	);
+}
+
+/**
+ * What a forked conversation established about the term it was forked from
+ * (ADR-208).
+ *
+ * Deliberately NOT `generateSummary`. That prompt summarizes a conversation, and
+ * a conversation forked from a term wanders — into examples, adjacent terms, the
+ * reader's own case — all of which is worth keeping in the conversation and none
+ * of which belongs in the term's note. This asks one question instead: what does
+ * the reader now understand about this term that the definition does not say?
+ *
+ * It shares `SUMMARY_RULES`' shape — substance, never the session, plain prose —
+ * for the same reason the two summary prompts share theirs: a note read months
+ * later cannot use "as discussed above".
+ */
+export function termDiscussionPrompt(
+	term: string,
+	definition: string,
+	conversationText: string,
+	languageLabel: string,
+): string {
+	return (
+		`The conversation below was opened to work out what "${term}" means. Write down what it ` +
+		`established about the term — nothing else.\n\n` +
+		`The definition already on file is:\n${definition.trim() || "(none)"}\n\n` +
+		`Rules:\n` +
+		`- Say what the reader now understands about "${term}" that the definition above does not ` +
+		`say: the distinctions drawn, the boundaries of the concept, the cases it does and does not ` +
+		`cover, what it is commonly confused with.\n` +
+		`- Leave out everything the conversation touched that is not about this term — examples ` +
+		`chosen only to illustrate, adjacent concepts, the reader's own situation, anything they ` +
+		`asked you to do.\n` +
+		`- Never narrate the session: no "we discussed", no "as established above", no "you asked". ` +
+		`This is read months later beside the definition, with the conversation nowhere in sight.\n` +
+		`- Do not restate the definition, and do not correct it here — if it is wrong, that is a ` +
+		`different repair.\n` +
+		`- At most 8 sentences. Plain prose: no headings, no lists, no bold, no code.\n` +
+		`- If the conversation settled nothing about the term, reply with nothing at all rather ` +
+		`than padding.` +
+		`${langInstruction(languageLabel)}\n\n${conversationText.slice(0, DISCUSSION_CHARS)}`
+	);
+}
+
+/**
+ * The opening message of a conversation forked from a term (ADR-208).
+ *
+ * The term note rides along as an attached note, so the definition and its
+ * attested contexts reach the model through `ContextBuilder` like any other
+ * vault note; what this carries is the part the note does not hold — the
+ * sentence the reader was actually stuck on.
+ */
+export function termForkOpeningPrompt(term: string, passage: string): string {
+	return (
+		`I want to understand "${term}" properly. The definition on file is attached; ` +
+		`it is not enough.\n\nHere is where I met it:\n\n${passage.slice(0, PASSAGE_CHARS)}`
 	);
 }

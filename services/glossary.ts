@@ -117,6 +117,17 @@ export interface GlossaryEntry {
 	 * several decks.
 	 */
 	theme?: string[];
+	/**
+	 * What a conversation about this term established (ADR-208).
+	 *
+	 * Written by summarizing a discussion the user forked from the anchor, and
+	 * kept in its own body section rather than in `definition`, because the two
+	 * answer different questions: a definition is a terminological one — short,
+	 * substitutable, ISO 704 — and is exactly what a re-lookup is allowed to
+	 * replace. This is the reader's own understanding, and nothing but another
+	 * discussion may overwrite it.
+	 */
+	discussion?: string;
 	/** ISO 639-1 code of the language `definition` is written in (ADR-166).
 	 *  Recorded on lookups since then; absent on older entries, where it is
 	 *  detected from the text when needed. */

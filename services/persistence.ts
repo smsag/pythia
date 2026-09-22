@@ -246,6 +246,11 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	if (c.writeMode !== undefined && !(WRITE_MODES as readonly unknown[]).includes(c.writeMode)) delete c.writeMode;
 	if (c.outputLanguage !== undefined && !(OUTPUT_LANGUAGES as readonly unknown[]).includes(c.outputLanguage)) delete c.outputLanguage;
 	if (c.favorites !== undefined && !Array.isArray(c.favorites)) delete c.favorites;
+	// A term read back from disk decides whether the header offers to write into a
+	// vault note, and which one (ADR-208) — so it is validated where it enters.
+	if (c.glossaryTerm !== undefined && (typeof c.glossaryTerm !== "string" || !c.glossaryTerm.trim())) {
+		delete c.glossaryTerm;
+	}
 	sanitizePendingTemplate(c);
 }
 
