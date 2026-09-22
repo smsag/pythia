@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-203 (whether a vault-index build runs is one pure decision: a failed load does not pause the index, the phone's short-circuit replays buffered edits, and the status line stops re-reading the index file).*
+*Last updated: 2026-09-22 — ADR-204 (the two embedding backends are one postMessage client and two ways to mount a model; the protocol gets its first tests).*
+
+*Previously: 2026-09-22 — ADR-203 (whether a vault-index build runs is one pure decision: a failed load does not pause the index, the phone's short-circuit replays buffered edits, and the status line stops re-reading the index file).*
 
 *Previously: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
 
@@ -4043,3 +4045,22 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 The first of these is reachable by changing the model mid-download and by `onunload` — a plugin update or reload inside the running app, which is what the device did right before the out-of-memory of #357. Obsidian's page survives an in-app plugin reload; so did the orphaned model.
 
 **Not measured.** ADR-202's own "not measured yet" still stands — nothing here changes what the phone does with memory, only when it decides to try, and whether it can let go. Whether #363 was a *contributing* cause of the reported out-of-memory is argued from the code path, not measured: it would take a plugin reload mid-download with the phone attached.
+
+### ADR-204 — One postMessage client, two ways to mount a model
+
+*2026-09-22*
+
+**Context.** `WorkerEmbeddingProvider` and `IframeEmbeddingProvider` were the same class twice. Both held the `Pending` map, the request/response protocol, the ping-proven ready poll, the two timeouts and the teardown; they differed in how the backend is started (a Worker from a blob or resource URL vs a hidden `srcdoc` iframe), in one error string, and in `isOffThread()`. Roughly 120 of each file's 165 lines were the same lines.
+
+That is principle 4 ("one implementation per interaction"), and #363 is what it costs: a model that finished loading after `unload()` was engaged on a provider nobody held, and the fix — a generation, a stopped ready poll, a cleared load error — had to be written twice, correctly, in two files. The next such fix would be written twice again, and the copy that quietly misses it is the iframe, because **no unit test can reach it**: it needs a real Obsidian window, which is why its own header had said "runtime-only" since ADR-119.
+
+**Decision.** `services/embedding/host/postMessageBackend.ts` holds `PostMessageEmbeddingProvider`: everything about the conversation with a backend. A subclass supplies three things — `mount()`, which starts the backend and returns a `BackendChannel` (`send`, `close`); `label`, the name it gives itself in an error; and `isOffThread()`. `WorkerEmbeddingProvider` drops to 68 lines, `IframeEmbeddingProvider` to 59; 282 lines of duplication become 69.
+
+Two consequences beyond the line count:
+
+- **The protocol is testable for the first time.** Against a fake channel it is ordinary code, so `tests/postMessageBackend.test.ts` now pins what the two runtime-only files used to assert only by being read: ready waits for a ping, an empty batch sends nothing, a stray reply is ignored, a backend error comes back named, a throwing send fails its request rather than waiting out the timeout, and all of #363 — the poll stops on unload, a backend that finishes mounting afterwards is closed, the load error does not survive an unload. Each was checked by reverting it.
+- **`mount()` carries a rule.** The channel it returns may arrive after `unload()`; the base closes it in that case, so `mount` must not leave anything reachable only from its own local scope. That is #363's lesson stated where the next backend will read it.
+
+**What did not change.** The wire protocol, the timeouts, the fallback order, and the iframe's origin/source checks. Two error strings did: the iframe's load timeout now names the iframe rather than "the model", and each backend's request errors are prefixed with its own label — both better for a report that has to say which backend failed.
+
+**Not done.** The backend chain still constructs these eagerly in order; nothing here changes the fallback. `frame/model.ts` keeps its own `ModelLoadProgress` type — it is inside the embedding bundle, and crossing that boundary for a four-field type is not worth it.

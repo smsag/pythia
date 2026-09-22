@@ -59,12 +59,20 @@ describe("VisibleClock — time the work could actually run", () => {
 	});
 });
 
-describe("both embedding providers measure deadlines on the visible clock (ADR-202)", () => {
-	for (const f of ["workerEmbeddingProvider.ts", "iframeEmbeddingProvider.ts"]) {
+describe("every embedding deadline is measured on the visible clock (ADR-202)", () => {
+	const read = (f: string): string => readFileSync(resolve(process.cwd(), "services/embedding/host", f), "utf8");
+
+	it("the shared protocol client arms its timeouts on it (ADR-204)", () => {
+		// Both backends' deadlines live here since the extraction, so this is the
+		// one file that has to name the clock.
+		const src = read("postMessageBackend.ts");
+		expect(src).toContain("visibleClock.timeout(");
+		expect(src).toContain("visibleClock.elapsed()");
+	});
+
+	for (const f of ["postMessageBackend.ts", "workerEmbeddingProvider.ts", "iframeEmbeddingProvider.ts"]) {
 		it(`${f} has no wall-clock deadline left`, () => {
-			const src = readFileSync(resolve(process.cwd(), "services/embedding/host", f), "utf8");
-			expect(src).toContain("visibleClock.timeout(");
-			expect(src).toContain("visibleClock.elapsed()");
+			const src = read(f);
 			expect(src).not.toMatch(/Date\.now\(\)\s*-\s*started/);
 			expect(src).not.toMatch(/clearTimeout\(\w+\.timeout\)/);
 		});
