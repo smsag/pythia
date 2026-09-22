@@ -87,13 +87,15 @@ describe("a variant is the same vectors under another name (ADR-200)", () => {
 describe("one reader of the model setting (ADR-199)", () => {
 	// A second reader of `settings.embeddingModelId` would load, index or score
 	// with the model the SETTING names — on a phone, the one that crashes it.
-	// Everything goes through `plugin.activeEmbeddingModelId()`.
+	// Everything goes through `EmbeddingHub.activeModelId()` (engineering-review
+	// #366 moved it out of `main.ts`; `plugin.activeEmbeddingModelId()` is a facade).
 	const root = process.cwd();
 	const sources = ["main.ts", "settings.ts", "sidebar.ts", ...["ui", "suggest", "services", "models"].flatMap((d) =>
 		readdirSync(resolve(root, d), { recursive: true }).map(String).filter((f) => f.endsWith(".ts")).map((f) => join(d, f)))];
 
 	const ALLOWED: Record<string, number> = {
-		"main.ts": 2,                  // activeEmbeddingModelId() + the "substituted?" comparison beside it
+		// activeModelId() + the "substituted?" comparison in vaultIndexStatus()
+		"services/embedding/EmbeddingHub.ts": 2,
 		"ui/embeddingSettings.ts": 3,  // the control that edits the setting
 	};
 
@@ -102,7 +104,9 @@ describe("one reader of the model setting (ADR-199)", () => {
 		for (const f of sources) {
 			// Code only: the rule is written about in comments, and that is not a read.
 			const code = readFileSync(resolve(root, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-			const n = (code.match(/settings\.embeddingModelId\b/g) ?? []).length;
+			// `settings()` too: the hub reads the setting through an injected getter,
+			// and a rule that only knows the field form would not see a second reader there.
+			const n = (code.match(/settings(\(\))?\.embeddingModelId\b/g) ?? []).length;
 			if (n > 0) found[f.split("\\").join("/")] = n;
 		}
 		expect(found).toEqual(ALLOWED);
