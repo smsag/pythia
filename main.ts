@@ -254,8 +254,9 @@ export default class PythiaPlugin extends Plugin {
 			{ modelId: () => this.activeEmbeddingModelId(), guard: vaultBuildGuard(this.app) },
 		);
 		this.residency = installEmbeddingResidency(this, {
-			provider: () => this.embeddingProvider, building: () => this.vaultRag.isBuilding(), mobile: Platform.isMobile,
-			onBackground: (hidden) => this.vaultRag.onBackground(hidden), log: (m, d) => debugLog(this.settings, m, d),
+			provider: () => this.embeddingProvider, mobile: Platform.isMobile, log: (m, d) => debugLog(this.settings, m, d),
+			building: () => this.vaultRag.isBuilding() || (this.relatedService?.isSyncing() ?? false), // the sync too (#362)
+			onBackground: (hidden) => this.vaultRag.onBackground(hidden),
 		});
 		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
 		// non-blocking — returns [] until the background index is ready).

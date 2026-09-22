@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
+*Last updated: 2026-09-22 — ADR-203 (whether a vault-index build runs is one pure decision: a failed load does not pause the index, the phone's short-circuit replays buffered edits, and the status line stops re-reading the index file).*
+
+*Previously: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
 
 *Previously: 2026-09-22 — ADR-201 (review fixes to ADR-199/200: a shared index row is reused only by a device that would have produced it; a paused session reports paused whatever the file says; a stored variant id is refused; the model load is its own status).*
 
@@ -4007,3 +4009,30 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 **Not measured yet.** The release's effect on how often iOS ends Obsidian in the background is argued from jetsam's largest-first order, not measured on the device. Worth checking with the phone attached before merging: footprint after hide, and a cold vs warm return after opening a memory-heavy app.
 
 **Guards.** `tests/embeddingResidency.test.ts`: the visible clock (frozen while hidden; no overdue fire on return; cancel), the source guard on both providers, the background rule (strict parse; excused vs counted deaths; ten background kills never pause; two foreground crashes still do), and the residency (release on hide, preload on return, never under a build or embed, never a never-loaded or failed model, idle release at exactly 3 min, use resets it, the input preloads only a released model, the desktop never releases). `tests/vaultRagGuard.test.ts`: a running build's marker toggles with visibility and clears at the end. Each rule was checked by reverting it.
+
+### ADR-203 — Whether a build runs is a decision, not six flags
+
+*2026-09-22*
+
+**Context.** A senior review of the ADR-199..202 work (the iOS reload investigation and everything that came out of it) read the code back rather than the symptom. The head of `VaultRagService.refresh` had accumulated six interacting inputs — `force`, `manual`, `clear`, a complete index, the crash-loop guard and the previous attempt's failure — written as a run of early returns, and two defects were living in exactly that tangle. Three more came from the same work.
+
+1. **One failed load became "the last 2 builds died" (#358).** `FallbackEmbeddingProvider` memoizes its rejection for the session — deliberately, so an out-of-memory load is not hammered. But every subsequent send re-entered `refresh`, which called `guard.start()` (another interrupted-build marker), awaited the memoized rejection, failed in a millisecond and, on out of memory, kept the marker. Three sends after ONE out-of-memory load reported "the last 2 builds ended without finishing" and paused automatic indexing. The pause is ADR-199's protection against a crash loop; here it fired on a single failure that never crashed anything.
+2. **A phone dropped the edits made before its first send (#360).** `applyChanges` buffers edits while the index is not hydrated (ADR-184) and the build replays them at the end. But the UI-thread backend — every phone — takes a short-circuit when the index is already complete: hydrate, report ready, return. That return skipped the replay, so a note edited between launch and the first send kept its old vector until it happened to be edited again after a build. Off the phone a full `sync` re-reads every note, which hid it.
+3. **A manual build reloaded a healthy model (#359).** #357's retry reset the provider whenever the last attempt had failed — including a build that failed *after* a good load (five bad embeds, a failed write). On the desktop that terminates the Worker and reparses the model for nothing.
+4. **The status line re-read the whole index to see 64 bytes (#361).** `status()` falls back to the file header when the session has not built; `IndexStore.read()` returns the entire binary (~19 MB at the 5 000-note cap) and the settings row asks on every change event.
+5. **A sync's edges were invisible to the residency (#362).** ADR-202 asks `vaultRag.isBuilding()` before releasing a phone's idle model, which says nothing about the related-conversations sync. Its embed loop is safe on its own — one await per conversation, so the in-flight count never reaches zero at a macrotask boundary, and `visibilitychange` can only run at one — but the file read that opens a sync and the write that closes it are such boundaries, with the model needed on the far side of both.
+
+**Decision.**
+
+- **The decision is pure and tested as a table** (`services/embedding/buildDecision.ts`). `decideBuild(request, facts)` answers `{ run: false, blocked }` or `{ run: true, reloadProvider }`; `refresh` reads the answer and performs it. Each blocked reason keeps its reasoning next to the branch that returns it, where a table test can hold it.
+- **An automatic build does not retry a load that failed in this session.** The provider has memoized the rejection, so the retry can only fail — and each attempt left another marker. No `Notice` and no marker: the status line already names the failure and "Build now". A manual build (which resets the provider) or a new session clears it. This subsumes the out-of-memory case and the offline one, which had the same shape.
+- **The provider is reset only after a failed LOAD.** The failure phase records which half failed (`loadFailed`), so a build that failed with a good model keeps it.
+- **The UI-thread short-circuit replays the buffered edits** before it returns — that return is the phone's normal path, so it is where the replay has to happen.
+- **The index header is remembered between status reads**, and dropped whenever this session could have changed the file (a build starting or ending, a targeted batch, a model change). A read that threw caches nothing.
+- **`ConversationIndexService.isSyncing()`**, OR-ed into the residency's `building`.
+
+**Also.** A corrupt stored index now says so in the log instead of silently re-embedding the vault (principle 2); the idle timer is armed on a phone only, where something can actually be released; `VisibleClock.timeout` floors its poll interval at 50 ms so a zero deadline cannot spin.
+
+**Guards.** `tests/buildDecision.test.ts` is the table: what stops a build (busy · complete · paused · a failed load) and when the provider is reloaded. `tests/vaultIndexRecovery.test.ts` drives the service: one failed load stays one failed load across three sends and does not hammer the provider, Build now still retries, the phone's short-circuit replays buffered edits exactly once, and the status file is read once but re-read after a build. `tests/ConversationIndexService.test.ts` holds the sync's edges; `tests/embeddingResidency.test.ts` the mobile-only timer. Each fix was reverted to confirm its test fails.
+
+**Not measured.** ADR-202's own "not measured yet" still stands — nothing here changes what the phone does with memory, only when it decides to try.

@@ -165,7 +165,11 @@ export function installEmbeddingResidency(
 	deps: ResidencyDeps,
 ): EmbeddingResidency {
 	const residency = new EmbeddingResidency(deps);
+	// The handler is installed everywhere: the visible clock and the build guard
+	// need it on a desktop too (only the RELEASE is mobile-only).
 	plugin.registerDomEvent(document, "visibilitychange", () => residency.onVisibility(document.hidden));
-	plugin.registerInterval(window.setInterval(() => residency.tick(document.hidden), IDLE_CHECK_MS));
+	// The timer is not: `tick` returns at once off a phone, so a desktop was
+	// waking twice a minute to decide it had nothing to do.
+	if (deps.mobile) plugin.registerInterval(window.setInterval(() => residency.tick(document.hidden), IDLE_CHECK_MS));
 	return residency;
 }

@@ -11,6 +11,9 @@
 // Fed by the ONE `visibilitychange` handler (services/embedding/residency.ts).
 // Pure apart from the injected `now`, so it is tested with a fake clock.
 
+/** Floor on the poll interval — see `timeout`. */
+const MIN_POLL_MS = 50;
+
 export class VisibleClock {
 	private hiddenSince: number | null = null;
 	private hiddenTotal = 0;
@@ -40,13 +43,16 @@ export class VisibleClock {
 	 * the bug. Returns the cancel function.
 	 */
 	timeout(fire: () => void, ms: number, pollMs = Math.min(1_000, ms)): () => void {
+		// Never 0: `setInterval(…, 0)` is a spin, and a deadline of 0 is a caller
+		// mistake rather than a reason to burn the thread the timeout protects.
+		const poll = Math.max(MIN_POLL_MS, pollMs);
 		const start = this.elapsed();
 		const handle = setInterval(() => {
 			if (this.elapsed() - start >= ms) {
 				clearInterval(handle);
 				fire();
 			}
-		}, pollMs);
+		}, poll);
 		return () => clearInterval(handle);
 	}
 }
