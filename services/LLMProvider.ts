@@ -1,5 +1,6 @@
 import type { Conversation, ToolCall, TokenUsage, StreamFinish } from "../models/types";
 import type { PythiaSettings } from "../settings";
+import type { TranslatedDefinition } from "./glossaryReply";
 
 export interface LLMProvider {
 	updateSettings(settings: PythiaSettings): void;
@@ -26,8 +27,10 @@ export interface LLMProvider {
 	/** Define `term` as used in `passage` (ADR-136). */
 	defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string>;
 	describePerson(name: string, passage: string, conversation?: Conversation): Promise<string>;
-	/** Translate a stored glossary definition into `language` (an English language name) — ADR-166. */
-	translateDefinition(definition: string, language: string): Promise<string>;
+	/** Translate a stored glossary definition into `language` (an English language name) — ADR-166.
+	 *  `term` asks for the term's equivalent in that language in the same reply (ADR-206); omit it
+	 *  for a person, whose name is not translated. */
+	translateDefinition(definition: string, language: string, term?: string): Promise<TranslatedDefinition>;
 	/** The model `defineTerm` and the other utility calls run on. */
 	readonly fastModel: string;
 	generateConversationTitle(

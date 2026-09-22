@@ -42,9 +42,11 @@ class TestProvider extends BaseProvider {
 	get fastModel(): string { return "fast"; }
 	/** Every utility prompt sent, so prompt wording is assertable (ADR-166). */
 	prompts: string[] = [];
+	/** What the next utility call replies, so a reply parser is assertable (ADR-206). */
+	reply = "";
 	protected callUtility(_model: string, userMessage: string): Promise<string> {
 		this.prompts.push(userMessage);
-		return Promise.resolve("");
+		return Promise.resolve(this.reply);
 	}
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
 	protected runStreamRound(): Promise<RoundResult> {
@@ -189,9 +191,48 @@ describe("glossary prompts follow the passage under AUTO", () => {
 
 	it("translateDefinition names the target and carries the definition", async () => {
 		const p = makeProvider({ outputLanguage: "auto" });
-		await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
+		p.reply = "A device that records events.";
+		const out = await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
 		expect(p.prompts[0]).toContain("into English");
 		expect(p.prompts[0]).toContain("Ein Gerät, das Ereignisse erfasst.");
+		expect(out).toEqual({ definition: "A device that records events.", term: "" });
+	});
+});
+
+// ── ADR-206: the term's equivalent is asked for, not waited for ──────────────
+
+describe("cross-language surface forms (ADR-206)", () => {
+	it("defineTerm asks for English and for the conversation's language", async () => {
+		const p = makeProvider({ outputLanguage: "de" });
+		await p.defineTerm("Kartellrecht", "Cartel law prohibits price-fixing.", conv("en"));
+		expect(p.prompts[0]).toContain("established equivalent in English");
+		await p.defineTerm("Kartellrecht", "Kartellrecht verbietet Preisabsprachen.", conv("it"));
+		expect(p.prompts[1]).toContain("established equivalent in English and Italian");
+	});
+
+	it("under AUTO it still asks for English, and never waits for a bilingual passage", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Kartellrecht", "Kartellrecht verbietet Preisabsprachen.", conv("auto"));
+		expect(p.prompts[0]).toContain("established equivalent in English");
+		// ADR-149's scope rule is what left "cartel law" unmarked; it must not return.
+		expect(p.prompts[0]).not.toContain("Leave the line empty if the passage is monolingual");
+		expect(p.prompts[0]).toContain("even when the passage is monolingual");
+	});
+
+	it("translateDefinition asks for the term and reads it back", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		p.reply = "TERM: cartel law\nDEFINITION:\nThe body of rules against price-fixing.";
+		const out = await p.translateDefinition("Das Recht gegen Preisabsprachen.", "English", "Kartellrecht");
+		expect(p.prompts[0]).toContain('equivalent of "Kartellrecht"');
+		expect(out).toEqual({ definition: "The body of rules against price-fixing.", term: "cartel law" });
+	});
+
+	it("a person is translated without being asked for a name", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		p.reply = "A lawyer at the firm.";
+		const out = await p.translateDefinition("Eine Anwältin der Kanzlei.", "English");
+		expect(p.prompts[0]).not.toContain("TERM:");
+		expect(out.term).toBe("");
 	});
 });
 

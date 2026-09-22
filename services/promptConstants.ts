@@ -37,6 +37,11 @@ export const VARIANTS_MARKER = "VARIANTS";
 export const TRANSLATIONS_MARKER = "TRANSLATIONS";
 export const CONTEXT_MARKER = "CONTEXT";
 
+/** Marker for the term itself in the translation reply (ADR-206). `translateDefinition`
+ *  already pays for a model call in the target language, so it asks for the term's
+ *  equivalent in the same breath — a surface form the index can mark from then on. */
+export const TERM_MARKER = "TERM";
+
 /** Fallback max-output-tokens when neither the conversation nor the global
  *  setting specifies one. */
 export const DEFAULT_MAX_TOKENS = 8192;

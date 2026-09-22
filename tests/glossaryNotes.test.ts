@@ -18,6 +18,7 @@ import {
 	definitionHash,
 	cachedTranslation,
 	applyTranslation,
+	newTranslation,
 	displayLanguage,
 	needsTranslation,
 } from "../services/glossaryNotes";
@@ -355,6 +356,38 @@ describe("translated definitions", () => {
 		applyTranslation(fm, "en", "A device.", def, "de");
 		expect(fm.definition_it).toBe("Un dispositivo.");
 		expect(fm.definition_en).toBe("A device.");
+	});
+
+	// ── ADR-206: the term's own equivalent rides along ────────────────────────
+
+	it("applyTranslation records the term's equivalent, and never overwrites one", () => {
+		const fm: Record<string, unknown> = {};
+		applyTranslation(fm, "en", "A device.", def, "de", "counter");
+		expect(fm.term_en).toBe("counter");
+		// A value already in the note may have been corrected by hand.
+		applyTranslation(fm, "en", "A device.", def, "de", "meter");
+		expect(fm.term_en).toBe("counter");
+	});
+
+	it("applyTranslation does not treat a surface form as stale when the definition changes", () => {
+		const fm: Record<string, unknown> = { term_en: "counter", definition_en: "A device.", translated_from: "stale" };
+		applyTranslation(fm, "it", "Un dispositivo.", def, "de", "contatore");
+		expect(fm.definition_en).toBeUndefined(); // made from an older definition
+		expect(fm.term_en).toBe("counter"); // a word does not go stale with the prose
+		expect(fm.term_it).toBe("contatore");
+	});
+
+	it("newTranslation takes a real equivalent and refuses the rest", () => {
+		const e = entry({ aliases: ["Zählern"], translations: [{ lang: "it", term: "contatore" }] });
+		expect(newTranslation(e, "en", "counter")).toEqual({ lang: "en", term: "counter" });
+		expect(newTranslation(e, "en", "  ")).toBeNull();
+		// The term itself is not a translation of itself — it just travels unchanged.
+		expect(newTranslation(e, "en", "zähler")).toBeNull();
+		// A language the entry already answers for is settled, possibly by hand.
+		expect(newTranslation(e, "it", "misuratore")).toBeNull();
+		// Already in the index under this entry, by either route.
+		expect(newTranslation(e, "en", "Zählern")).toBeNull();
+		expect(newTranslation(entry({ translations: [{ lang: "it", term: "contatore" }] }), "en", "Contatore")).toBeNull();
 	});
 
 	it("shows the instructed language, or under AUTO the passage's", () => {

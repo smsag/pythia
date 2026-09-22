@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
+*Last updated: 2026-09-22 — ADR-207 (a term is matched across the whole message body, and the words of a multi-word form may be joined any way — the English half of a German glossary is nearly all phrases).*
+
+*Previously: 2026-09-22 — ADR-206 (a term's equivalent in another language is asked for rather than waited for, and the translation call backfills the entries written before it).*
+
+*Previously: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
 
 *Previously: 2026-09-22 — ADR-204 (the two embedding backends are one postMessage client and two ways to mount a model; the protocol gets its first tests).*
 
@@ -4093,3 +4097,51 @@ Size was the trigger, not the problem. The problem is that **`main.ts` is exclud
 - A rename whose new path is not markdown records the delete of the old path but does not schedule a flush: `markChanged` returns on the extension check before `flush()`. The case that occurs is `note.md` → `note.txt`, so **the old path genuinely was indexed** and its row goes stale until the next vault event fires a flush. `inScopeNow` filters retrieval results by folder scope and `pythia: false`, not by existence, so a stale path can occupy one of the ~5 auto-retrieval slots; `ContextBuilder` then gets `null` from `getAbstractFileByPath`, contributes nothing and files it under `missingNotes`, which for an auto note reaches the debug log rather than a `Notice` (ADR-183). Nothing wrong reaches the model — the cost is a wasted slot for the width of the window. Worth fixing on its own (flush unconditionally on rename); not worth smuggling into a behaviour-preserving extraction.
 
 **Guards.** `tests/embeddingHub.test.ts` (25), `tests/vaultWatcher.test.ts` (18), `tests/deepLink.test.ts` (13). 29 mutations applied across the three modules — every claim above broken one at a time — and all 29 killed; two survived the first pass and both were flaws in the new tests (a warm that stopped at its index guard before it could have shown a notice, and a cap asserted as a constant rather than observed on a result list). `tests/embeddingModelRule.test.ts` follows the one-reader rule to its new home and its regex now also catches the `settings().embeddingModelId` getter form, which the field-only pattern would have missed.
+
+### ADR-206 — A term's equivalent in another language is asked for, not waited for
+
+*2026-09-22*
+
+**Context.** A German term defined from an English answer — `Kartellrecht`, glossed in a passage that also says "cartel law" throughout — marked the German word and left the English one plain. The mechanism was never the problem: ADR-149 already registers every `translations` entry as a surface form in the same alternation as an alias (`buildTermIndex`), and the painter has no rule that would skip the phrase. The entry simply held no `term_en`.
+
+It held none because of the scope rule in the lookup prompt: *"the term's equivalent in any OTHER language **the passage uses** … Leave the line empty if the passage is monolingual."* A passage of English prose with one German word in parentheses reads as monolingual English, with the term as the foreign body — and the far more common case reads that way too: an all-German answer, the term defined, the conversation switched to English three turns later. A cross-language form was something that happened by accident.
+
+The rule was not arbitrary. A translation is marked in *every* conversation from then on, so a careless `Zähler → counter` underlines the word "counter" in every English answer forever. ADR-149 bought precision by narrowing scope. This ADR keeps the precision and pays for it with a quality bar instead.
+
+**Decision.**
+
+- **The lookup asks for English and for the conversation's own language, whatever the passage contains.** `translationTargets` resolves the pair; "give them even when the passage is monolingual" replaces the scope rule. English always, because it is the language a vault's second reader is most likely to use and the one an answer drifts into.
+- **The guard moves from scope to quality**, stated in the prompt at both call sites: an established, domain-specific equivalent only — never a coinage, never a description, never a common everyday word that would match unrelated sentences — and a language left out entirely when the term travels unchanged (a proper noun, a product name, an acronym) or has no single accepted equivalent. "cartel law" passes; "counter" does not.
+- **The translation call backfills what the lookup could not know.** Opening an anchor in a language the entry is not written in already pays for a model call (ADR-166). It now carries `TERM:` alongside `DEFINITION:` and records the answer as `term_<lang>`, in the same `processFrontMatter` write that caches the definition. No extra request, and it fills exactly the language the reader is actually reading in — so entries written before this ADR acquire their forms as they get used, rather than needing a migration.
+- **A person is never asked.** A name is not translated, so `translateDefinition` keeps its pre-ADR-206 shape — reply with the translation only — when no term is named. Asking could only produce an invented one.
+- **A recorded form is never overwritten and never goes stale.** `applyTranslation` writes `term_<lang>` only when the note has none, and the staleness sweep that drops every `definition_<lang>` on a reworded definition leaves the forms alone: a word does not expire when the prose around it is edited, and the one in the note may have been corrected by hand — which is the whole promise of a property (ADR-149/150). `newTranslation` is the decision: it refuses a form equal to the term itself, one that repeats an alias or another translation, and any language the entry already answers for.
+- **The new mark is drawn when the anchor closes.** A repaint unwraps every mark, including the one the open anchor hangs from, so `GlossaryController` records the debt and pays it on the next real close — or immediately when nothing is open. The one close that must not repaint is the one inside `toggleAnchor` that precedes opening another anchor, because the caller is still holding the mark it is about to insert after.
+
+**Two files split** rather than grow past ADR-097's 600 lines, each along a seam that was already there: `services/glossaryReply.ts` (the lookup's reply parsers, out of `messageUtils.ts`) and `services/glossaryPrompts.ts` (the four glossary prompts as pure builders, out of `BaseProvider.ts` — the shape `titlePrompts.ts` already uses). `BaseProvider` 588 → 486. The move is what made the prompt wording assertable without a provider.
+
+**One cleaner for every surface form.** `cleanSurfaceForm` was three near-copies — the variants loop had one, the translations loop had a shorter one that never rejected a placeholder, and ADR-206's term needed a third. `en: none` was a storable surface form until this merge (principle 4). It also strips a trailing `*`, which the leading class always did: a model that writes `*Zählern*` left an asterisk welded to the form, and a form that ends in one can never match.
+
+**Guards.** `tests/glossaryReply.test.ts` (new, 21 — the parsers moved out of `tests/messageUtils.test.ts` plus 9 for the translation reply, including every rejection above), `tests/glossaryNotes.test.ts` (+3 on `applyTranslation` and `newTranslation`), `tests/BaseProvider.test.ts` (+4 on what the prompts ask for, one of which fails if ADR-149's scope sentence returns). 1716 tests across 117 files.
+
+**Follow-up: a form split across inline formatting.** Matching was per text node, so `*cartel* law` did not match. This ADR left it, reasoning it was rare; it is not — German compounds make the multi-word English side the normal case rather than an edge one, so the exposure lands squarely on the half of the glossary this ADR just filled. Fixed in ADR-207.
+
+### ADR-207 — A term is matched across the whole body, and its words may be joined any way
+
+*2026-09-22*
+
+**Context.** ADR-206 made a German term record its English equivalent. That equivalent is almost always two words, because German merges what English separates: `Kartellrecht` → `cartel law`, `Wettbewerbsrecht` → `competition law`, `Preisabsprache` → `price fixing`. So on the English side of a German vault's glossary, **a multi-word form is the rule, not the edge case** — and the matcher held those two words together with a literal space inside a regex run against one text node at a time. Both halves of that are wrong for a phrase:
+
+- **A literal space** is one of several ways the same compound is written. A soft line break in the source lands in the rendered text node as `\n`; the hyphenated spelling (`cartel-law`) is the same term; two spaces is a typo nobody sees.
+- **One text node at a time** means any inline boundary inside the phrase hides it: `**Cartel** law`, or a phrase that overlaps the end of a favorite or fork mark. The German term, being one word, never splits — so the failure lands entirely on the side where multi-word forms are the norm. It was easy to dismiss as rare by picturing English terms in English prose; it is not rare in the vault this feature exists for.
+
+**Decision.**
+
+- **The gap between two words of a form matches any run of whitespace or a hyphen.** `buildTermIndex` escapes each surface form and then replaces its spaces with `[\s‐‑-]+`. A single-word term is untouched — the boundary lookarounds still refuse `Zählerstand` for `Zähler`, which is the German compounding case and is answered by stored variants (ADR-137), never by loosening the boundary.
+- **`surfaceKey` is the key a matched form resolves under**, and it folds exactly what the matcher was allowed to vary. This is not decoration: the moment the alternation accepts `cartel-law` for the form `cartel law`, the matched text stops being a key `canonical` holds, and the mark gets a `data-term` no entry answers for — a mark that does nothing when tapped, with no error anywhere (principle 2). It is deliberately coarser than `normalizeTerm`, and used only for this resolution; everywhere else a term is stored and compared as written.
+- **`repaintTerms` matches over the whole body's text, not node by node.** One `collectTextNodes` gives the concatenated text; the alternation runs against it once; each hit becomes a Range and is painted by `paintRange`, which has split boundary-crossing selections into one wrapper per node since favorites shipped. A phrase broken by `<strong>` becomes two `<pythia-term>` fragments carrying the same `data-term`, and either one opens the entry.
+- **A skipped region is masked, not omitted.** Text inside `code`, `pre`, `a`, a citation chip or another term mark is replaced with a `￿` filler of the same length. Omitting it would let a match span the gap and paint over a link; masking keeps every offset true to the real text while making a match across the region impossible, because no term contains a noncharacter.
+- **Every hit is located before any is painted, and the node list is rebuilt per paint.** Wrapping splits the node it touches and invalidates the list — but it never changes the text, so the offsets stay valid and only the mapping has to be redone. The alternative, painting from a stale list, depends on exactly how `Range.surroundContents` splits a text node, which is not something to rely on.
+
+**What this does not change.** Marks still nest under ADR-157's rule (only term-inside-term is refused), terms still paint last, and `repaintTerms` is still idempotent — now including the split case. `findRange`, `computeOccurrenceIndex` and `paintRange` are untouched; the new `rangeFromOffsets` is `findRange`'s own mapping, lifted so both callers share it.
+
+**Guards.** `tests/termPainter.test.ts` +7 (a phrase split by emphasis, by a soft line break, spelled with a hyphen, overlapping a favorite; a match refused across a code span; offsets still true after an earlier paint; idempotence while split) and `tests/glossary.test.ts` +5 (each spelling matched, `cartellaw` and `cartel or law` still refused, every spelling resolving to the one entry, a single-word term not loosened, `surfaceKey`'s fold). Three mutations applied — a literal space in the alternation, `canonicalTerm` back to `normalizeTerm`, no masking — and all three killed, by 3, 2 and 2 tests.

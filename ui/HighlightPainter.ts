@@ -76,7 +76,17 @@ export function findRange(
 	}
 	const matchEnd = matchStart + text.length;
 
-	// Map the global start/end offsets back to (text node, local offset).
+	return rangeFromOffsets(nodes, matchStart, matchEnd);
+}
+
+/**
+ * Build a Range from two offsets in the concatenated body text.
+ *
+ * The scan runs backwards because an offset on a node boundary belongs to the
+ * *later* node when it starts a match and the earlier one when it ends it — and
+ * taking the last node that contains it gets both right.
+ */
+function rangeFromOffsets(nodes: TextPos[], from: number, to: number): Range | null {
 	const locate = (offset: number): { node: Text; offset: number } | null => {
 		for (let i = nodes.length - 1; i >= 0; i--) {
 			const { node, start } = nodes[i];
@@ -87,8 +97,8 @@ export function findRange(
 		return null;
 	};
 
-	const startLoc = locate(matchStart);
-	const endLoc = locate(matchEnd);
+	const startLoc = locate(from);
+	const endLoc = locate(to);
 	if (!startLoc || !endLoc) return null;
 
 	const range = document.createRange();
@@ -243,17 +253,55 @@ export function repaintMergeLinks(
 const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
 
 /**
+ * The character a skipped node's text is replaced with while matching.
+ *
+ * Masking rather than omitting is what lets a match cross an element boundary
+ * safely: offsets stay true to the real text, so a range built from them lands
+ * where it should, and no term can span a skipped region because no term
+ * contains a Unicode noncharacter.
+ */
+const MASK = "￿";
+
+/** The concatenated body text with every skipped node blanked out, same length. */
+function maskedText(nodes: TextPos[]): string {
+	let out = "";
+	for (const { node } of nodes) {
+		const parent = node.parentElement;
+		const skip =
+			!parent ||
+			parent.closest(TERM_SKIP) !== null ||
+			// Only another term/person mark is excluded — a term must not nest inside
+			// a term. Favorites, fork origins and merge links are fine to sit inside
+			// (ADR-157).
+			parent.closest(`.${TERM_CLASS}, .${PERSON_CLASS}`) !== null;
+		out += skip ? MASK.repeat(node.data.length) : node.data;
+	}
+	return out;
+}
+
+/**
  * Mark every occurrence of every known term in `body`.
  *
  * `index` carries one alternation over every surface form of every term (see
- * `buildTermIndex`), so this is a single pass over the text nodes rather than
- * one pass per term — the difference between linear and quadratic as a glossary
+ * `buildTermIndex`), so this is a single pass over the body text rather than one
+ * pass per term — the difference between linear and quadratic as a glossary
  * grows. The mark records the *canonical* term, not the form that matched, so
  * tapping "Zählern" opens the entry filed under "Zähler".
  *
+ * **Matching runs over the whole body's text, not node by node** (ADR-207). A
+ * German term is one word and never splits; its English equivalent is usually
+ * two ("Kartellrecht" → "cartel law"), and two words are exactly what markdown
+ * can put in different text nodes — `**Cartel** law`, or a phrase that overlaps
+ * the end of a favorite. Per-node matching missed all of them, and it missed
+ * them on the side of the glossary where multi-word forms are the rule rather
+ * than the exception. A match that crosses a boundary is painted as one mark per
+ * node it touches, all carrying the same `data-term`, exactly as a favorite
+ * spanning a bold span already was.
+ *
  * Text inside code, links and citation chips is skipped: a term inside an
  * identifier is not the term, and marking inside a link would nest two
- * interactive elements.
+ * interactive elements. Skipping is done by masking (see `MASK`) so that a match
+ * can never straddle a skipped region.
  *
  * **Text inside a favorite, fork origin or merge link is NOT skipped** (ADR-157).
  * It used to be, to avoid "overlapping wrappers that later unwrapping would have
@@ -264,61 +312,47 @@ const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
  * a reader is most likely to be working through.
  *
  * `normalize()` first: unwrapping a mark leaves its text split into adjacent
- * nodes, and a term is matched within a single node — so without it, a term that
- * happened to sit where a mark used to end would stop matching.
+ * nodes, and while that no longer decides whether a term matches, it decides how
+ * many fragments the mark is painted in.
  *
- * Nodes are collected before mutating, because wrapping a node invalidates a
- * live TreeWalker mid-iteration.
+ * Every match is located before any is painted, and the node list is rebuilt for
+ * each paint: wrapping splits the node it touches, which invalidates the list,
+ * but it never changes the text — so the offsets stay valid and only the mapping
+ * has to be redone.
  */
 export function repaintTerms(body: HTMLElement, index: TermIndex | null): void {
 	unwrapMarks(body.querySelectorAll<HTMLElement>(`.${TERM_CLASS}, .${PERSON_CLASS}`));
-	body.normalize(); // rejoin text split by the unwrap above, so terms still match
+	body.normalize(); // rejoin text split by the unwrap above
 	if (!index) return;
-	const matcher = index.matcher;
 
-	const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-	const targets: Text[] = [];
-	let node = walker.nextNode() as Text | null;
-	while (node) {
-		const parent = node.parentElement;
-		// Only another term/person mark is excluded — a term must not nest inside a
-		// term. Favorites, fork origins and merge links are fine to sit inside
-		// (ADR-157).
-		if (parent && node.data.trim() && !parent.closest(TERM_SKIP) &&
-			!parent.closest(`.${TERM_CLASS}, .${PERSON_CLASS}`)) {
-			targets.push(node);
-		}
-		node = walker.nextNode() as Text | null;
+	const masked = maskedText(collectTextNodes(body).nodes);
+	const matcher = index.matcher;
+	matcher.lastIndex = 0;
+
+	const hits: { from: number; to: number; surface: string }[] = [];
+	let match = matcher.exec(masked);
+	while (match) {
+		// A zero-length match would loop forever; the matcher cannot produce one
+		// (every form is at least two characters) but the guard is cheap.
+		if (match[0].length === 0) break;
+		hits.push({ from: match.index, to: match.index + match[0].length, surface: match[0] });
+		match = matcher.exec(masked);
 	}
 
-	for (const text of targets) {
-		matcher.lastIndex = 0;
-		const data = text.data;
-		let match = matcher.exec(data);
-		if (!match) continue;
-
-		// Build a replacement fragment for the whole node in one pass, rather than
-		// splitting repeatedly, which would re-walk the same text for each hit.
-		const frag = document.createDocumentFragment();
-		let cursor = 0;
-		while (match) {
-			if (match.index > cursor) frag.appendChild(document.createTextNode(data.slice(cursor, match.index)));
-			// People and terms share the index and the anchor; only the mark differs,
-			// because the mark is the sole signal of what a tap will open (ADR-151).
-			const isPerson = entryKind(index, match[0]) === "person";
-			const mark = document.createElement(isPerson ? PERSON_TAG : TERM_TAG);
-			mark.className = isPerson ? PERSON_CLASS : TERM_CLASS;
-			mark.setAttribute("data-term", canonicalTerm(index, match[0]));
-			mark.textContent = match[0];
-			frag.appendChild(mark);
-			cursor = match.index + match[0].length;
-			// A zero-length match would loop forever; the matcher cannot produce one
-			// (every term is at least two characters) but the guard is cheap.
-			if (match[0].length === 0) break;
-			match = matcher.exec(data);
-		}
-		if (cursor < data.length) frag.appendChild(document.createTextNode(data.slice(cursor)));
-		text.parentNode?.replaceChild(frag, text);
+	for (const hit of hits) {
+		const { nodes } = collectTextNodes(body);
+		const range = rangeFromOffsets(nodes, hit.from, hit.to);
+		if (!range) continue;
+		// People and terms share the index and the anchor; only the mark differs,
+		// because the mark is the sole signal of what a tap will open (ADR-151).
+		const isPerson = entryKind(index, hit.surface) === "person";
+		paintRange(
+			range,
+			canonicalTerm(index, hit.surface),
+			isPerson ? PERSON_CLASS : TERM_CLASS,
+			"data-term",
+			isPerson ? PERSON_TAG : TERM_TAG,
+		);
 	}
 }
 
