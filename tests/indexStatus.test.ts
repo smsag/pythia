@@ -26,7 +26,7 @@ describe("stateFromFile — what a persisted index means today (ADR-199)", () =>
 });
 
 describe("describeVaultIndexStatus — every state says what it is and what to do", () => {
-	const states: VaultIndexState[] = ["notBuilt", "building", "ready", "partial", "outdated", "failed", "paused"];
+	const states: VaultIndexState[] = ["notBuilt", "loading", "building", "ready", "partial", "outdated", "failed", "paused"];
 
 	it("gives every state its own headline", () => {
 		const headlines = states.map((state) => describeVaultIndexStatus({ ...base, state, error: "boom" }).headline);
@@ -44,6 +44,11 @@ describe("describeVaultIndexStatus — every state says what it is and what to d
 	it("names out-of-memory as such instead of quoting the raw error", () => {
 		const d = describeVaultIndexStatus({ ...base, state: "failed", outOfMemory: true, error: "RangeError: Out of memory" });
 		expect(d.headline).toBe(t("vaultIndexStateOutOfMemory"));
+	});
+
+	it("the loading headline names the model's download size", () => {
+		expect(describeVaultIndexStatus({ ...base, state: "loading" }).headline).toContain("120");
+		expect(describeVaultIndexStatus({ ...base, state: "loading", modelId: "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin" }).headline).toContain("75");
 	});
 
 	it("the paused headline counts the builds that died", () => {

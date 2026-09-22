@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-200 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
+*Last updated: 2026-09-22 — ADR-201 (review fixes to ADR-199/200: a shared index row is reused only by a device that would have produced it; a paused session reports paused whatever the file says; a stored variant id is refused; the model load is its own status).*
+
+*Previously: 2026-09-22 — ADR-200 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
 
 *Previously: 2026-09-22 — ADR-199 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
 
@@ -3962,3 +3964,21 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 
 **Addendum, 2026-09-22 — verified on the device with the shipped build.** The published model matches `npm run model:prune` byte for byte (all six files). On the iPhone the plugin resolved `…-latin` by itself and built the vault index (51 notes) on the blob Worker in 6.5 min; the file synced back to the desktop. Then two back-to-back full rebuilds in one process: 13 min, **no memory warning during either**. The one warning in that process fired as the model *loaded* (1 640 MB, WebKit's warning line, ~400 MB under the kill) and not again — the load is a transient peak (the model bytes, the Cache API copy and the tokenizer parse coexist for a moment), the builds do not accumulate. Measured with the bundled runtime on a Mac, the WASM heap stays at 215 MB through 300 batches of 121 different lengths, so the model's memory does not scale with the vault. Recorded as D-41: the load peak is the remaining margin.
 
+---
+
+### ADR-201 — Review fixes to the phone's embedding model and its index
+
+*2026-09-22*
+
+**Context.** A review of #200 (ADR-199/200 as merged) found four defects. Two change behaviour a user would notice; two are validation and wording.
+
+**Decision.**
+
+- **A shared index row is reused only by a device that would have produced it** (`services/embedding/rowProvenance.ts`). ADR-200 keys index files by vector family, and the variant's vectors equal the full model's for Latin-script text only. A row the phone wrote for a note containing a Cyrillic, Greek or CJK word carried the same content hash as the desktop's, so the desktop reused the phone's degraded vector forever. Now the variant writes `<hash>~latinScript` for text with a non-Latin letter (`isLatinExact`) and the plain hash for everything else; the full model accepts only the plain hash and re-embeds a tagged row; the variant accepts both — the full model's vector is the better one, and refusing it would make the devices overwrite each other on every sync. One decision, `resolveRowHash`, used by the vault index (full sync and `updateNote`) and the conversation index. The tag lives inside the hash string both services already compare, so no format change and no invalidation of existing files.
+- **Paused means paused, whatever the file says.** `status()` exempted a complete index from `paused`, but a paused session never loads the model — not even to embed a query — so vault context was dead behind a green "Ready" and a disabled *Build now*, the one control that recovers it without discarding the index. The ordinary way to get there: every session's first send runs the incremental sync under the guard, so two background kills during it pause a vault that was complete. The paused headline now says vault context stays off until *Build now*, and that what is indexed is kept.
+- **The stored model id is a choice, never a variant.** `mergeSettings` validated `embeddingModelId` against every id, the variant included; it now uses `SELECTABLE_EMBEDDING_MODEL_IDS`, so a hand-edited or mis-written variant falls back to the default instead of moving the desktop onto it with no matching dropdown option (principle 1).
+- **Loading the model is its own state.** The status read "Building… 0 of 0 notes" through the whole model download and load — the longest, and on a phone the most memory-critical, part of a first build. A `loading` phase now covers it, and its headline names the download size.
+
+**Guards.** `tests/rowProvenance.test.ts`: the Latin test, both policies, the desktop re-embedding a tagged row, the phone keeping the desktop's row (no ping-pong), tagged vs plain rows on write, Latin rows shared both ways, `updateNote`, and the conversation index end to end. `tests/vaultRagGuard.test.ts`: a complete index under a blocking guard reports `paused` with its count and *Build now* offered; a pending model load reports `loading`. `tests/persistence.test.ts`: a stored variant id falls back. `tests/indexStatus.test.ts`: every state including `loading` has its own headline. Each guard was checked by reverting its fix and watching it fail.
+
+**Consequences.** A desktop re-embeds each non-Latin note or conversation a phone wrote, once. Nothing changes for Latin-script text, which remains shared without re-embedding.
