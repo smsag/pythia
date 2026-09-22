@@ -2,6 +2,8 @@
 
 *Last updated: 2026-09-22 — ADR-198 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
 
+*Previously: 2026-09-22 — ADR-196 addendum (`touch-action: manipulation` on the role base: Obsidian exempts its own controls from iOS's double-tap wait through `.is-clickable`/`.clickable-icon`, and a button built here is neither).*
+
 *Previously: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
 
 *Previously: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
@@ -3848,6 +3850,8 @@ Two things were measured across the family first. Schreibstube's one styled butt
 **Addendum, 2026-09-20.** The contract was incomplete where it was least visible: `pb-chip-warn` built its border and fill with `color-mix(… var(--color-orange) …)`, reading the Obsidian token directly instead of `var(--btn-warning, …)`. A surface that set `--btn-warning` got a themed label on an unthemed chip. Both tints now go through the contract, which changes nothing while the property is unset — measured in Obsidian, the chip paints `color(srgb 0.92549 0.458824 0 / 0.14)` either way — and moves with it when it is set. The `never reaches a contract colour directly` test is what found it and is what keeps it.
 
 **Consequences.** Nothing renders differently: verified in Obsidian, all six measurable roles paint the same hover fill as before the extraction and after the withdrawal.
+
+**Addendum, 2026-09-22 — the role base declares `touch-action: manipulation`.** iOS holds the first tap back while it waits to see whether a second one follows, because two taps mean zoom, and during that wait the tap can be lost — most easily when the element changes underneath it. Obsidian exempts its **own** controls by marking them `.is-clickable` or `.clickable-icon`, both of which carry `touch-action: manipulation` in app.css; a button built here is neither and declared nothing, so it got a wait the app's own controls do not. That is why a plugin's buttons can feel slower to a thumb than Obsidian's. `.p-sheet` keeps `touch-action: none` for its drag-to-dismiss, which already covers everything inside it. Reported against the sibling plugin on an iPhone — every button, not one — and fixed here for the same reason rather than because it was reproduced: this environment is Chromium and the behaviour is WebKit's. `tests/buttonRoles.test.ts` fails if the base stops declaring it.
 
 ---
 

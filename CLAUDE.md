@@ -32,6 +32,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ConversationStore.ts      ← in-memory store + debounced persistence
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
+    ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
@@ -101,7 +102,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-198)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1536 tests across 105 files
+  tests/                      ← Vitest unit tests (npm test) — 1543 tests across 106 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -348,6 +349,7 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - **Specificity is the mechanism**: rest (0,3,0) that also names `:hover` (0,4,0), real hover (0,5,0). Pythia's reset is (0,1,1); a fill set below it is removed — which made "In Notiz ersetzen" invisible
 - **The role set is Pythia's own** (ADR-197, revising ADR-196): no shared file, no copied partial, and no test that compares this stylesheet against another repository's. Another plugin may reach the same nine roles for the same reasons; it writes them out itself. A guard that names a sibling repo is coupling wearing a different hat
 - **Obsidian's own button rules are measured, not guessed** (ADR-190). `npm run check:obsidian-cascade` reads app.css from the installed Obsidian and lists the ten rules that can reach a Pythia button; `tests/fixtures/obsidianButtonRules.ts` holds them with sentinel values and `tests/obsidianCascade.test.ts` fails if any sentinel reaches a role. The bare `button` rule sets **height** (`--input-height`), padding, radius and corner-shape — the `.pb` base must name every property it sets, because a role that forgets one inherits Obsidian's. Re-run the script after an Obsidian update; it exits 1 on drift
+- **The base declares `touch-action: manipulation`** (ADR-196 addendum): iOS holds a first tap back while it waits for a second that would mean zoom, and Obsidian exempts only its own `.is-clickable`/`.clickable-icon`. A button built here is neither. `.p-sheet` keeps `touch-action: none` for its drag-to-dismiss
 - **`[hidden]` always hides** inside the view and its modals (`display: none !important`): the UA rule loses to any author `display`
 - The comparison tabs are `pb-tab` and keep their underline by the user's choice; chosen segments are the accent tint everywhere
 
