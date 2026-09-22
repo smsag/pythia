@@ -12,6 +12,7 @@ import type { BuildGuard } from "./embedding/buildGuard";
 import { isOutOfMemoryError } from "./embedding/memoryError";
 import { peekIndexMeta } from "./embedding/embeddingIndex";
 import { stateFromFile, type VaultIndexStatus } from "./embedding/indexStatus";
+import { hashPolicyFor } from "./embedding/rowProvenance";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
 
@@ -45,6 +46,7 @@ export type VaultIndexSnapshot = Pick<
 
 type Phase =
 	| { kind: "idle" }
+	| { kind: "loading" }
 	| { kind: "building"; done: number; total: number }
 	| { kind: "failed"; error: string; outOfMemory: boolean };
 export class VaultRagService {
@@ -141,6 +143,9 @@ export class VaultRagService {
 			// measured there.
 			this.service = new VaultIndexService(provider, this.makeStore(), {
 				maxChars: embedChunkChars(this.deps.modelId()),
+				// Rows shared with the other device are reused only when this model
+				// would have produced them (ADR-201).
+				hashPolicy: hashPolicyFor(this.deps.modelId()),
 			});
 		}
 		return this.service;
@@ -164,6 +169,7 @@ export class VaultRagService {
 			marker: this.deps.guard?.marker() ?? null, backend: this.backend,
 		};
 		const phase = this.phase;
+		if (phase.kind === "loading") return { ...base, state: "loading" };
 		if (phase.kind === "building") return { ...base, state: "building", done: phase.done, total: phase.total };
 		if (phase.kind === "failed") return { ...base, state: "failed", error: phase.error, outOfMemory: phase.outOfMemory };
 		const scope = this.scopeSignature();
@@ -178,7 +184,11 @@ export class VaultRagService {
 			console.warn("[Pythia] vault RAG: could not read the index for its status", e);
 		}
 		const state = stateFromFile(file, scope);
-		const paused = state !== "ready" && !(this.deps.guard?.mayAutoBuild() ?? true);
+		// Paused whatever the file says (ADR-201). A paused session never loads the
+		// model — not even to embed a query — so a COMPLETE index is not used either;
+		// calling that "ready" left vault context dead behind a green status with
+		// Build now disabled. The count still says what is kept.
+		const paused = !(this.deps.guard?.mayAutoBuild() ?? true);
 		return { ...base, state: paused ? "paused" : state, count: file?.count ?? 0 };
 	}
 
@@ -296,7 +306,9 @@ export class VaultRagService {
 		if (opts.manual) guard?.end();
 		this.syncing = true;
 		guard?.start(this.deps.modelId());
-		this.setPhase({ kind: "building", done: 0, total: 0 });
+		// Loading, not "building 0 of 0": the model download and load is the longest
+		// part of a first build on a phone, and the part that must not look stuck.
+		this.setPhase({ kind: "loading" });
 		void (async () => {
 			const startedAt = Date.now();
 			let notice: Notice | null = null;

@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-22 — the settings tab's vault-index status row (ADR-199): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
+*Last updated: 2026-09-22 — ADR-201: the index status row gains an eighth state, *Loading the model… (≈ N MB)*, shown until the first note; *paused* now shows over a complete index too, with *Build now* enabled.*
+
+*Previously: 2026-09-22 — the settings tab's vault-index status row (ADR-199): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
 
 *Previously: 2026-09-20 — align on the design, implement it separately (ADR-197). `kit/button.css` and the byte-identity test are withdrawn: the nine roles are Pythia's own rules in `styles.css`, and no test compares this stylesheet against another repository's. Nothing renders differently. The colour contract stays — every colour is reached through `var(--btn-accent | --btn-on-accent | --btn-error | --btn-warning, <Obsidian token>)`, and Pythia overrides only `--btn-on-accent`, at `var(--p-on-accent, var(--text-on-accent))` (ADR-154).*
 

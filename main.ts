@@ -32,6 +32,7 @@ import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
 import { effectiveEmbeddingModel, type EmbeddingModelId } from "./models/embeddingModels";
 import { vaultBuildGuard } from "./services/embedding/buildGuard";
+import { hashPolicyFor } from "./services/embedding/rowProvenance";
 import type { VaultIndexStatus } from "./services/embedding/indexStatus";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
@@ -181,7 +182,8 @@ export default class PythiaPlugin extends Plugin {
 		if (!this.relatedService) {
 			this.relatedService = new ConversationIndexService(
 				provider,
-				new VaultIndexStore(this, this.embeddingModelId!)
+				new VaultIndexStore(this, this.embeddingModelId!),
+				{ hashPolicy: hashPolicyFor(this.embeddingModelId!) },
 			);
 		}
 		return this.relatedService;

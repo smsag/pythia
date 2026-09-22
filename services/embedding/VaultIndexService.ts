@@ -1,13 +1,14 @@
 import type { EmbeddingProvider } from "./EmbeddingProvider";
 import type { IndexStore } from "./ConversationIndexService";
 import {
-	conversationContentHash,
 	serializeIndex,
 	deserializeIndex,
 	EMPTY_INDEX_META,
 	type IndexedConversation,
 	type IndexMeta,
 } from "./embeddingIndex";
+import { hashPolicyFor, resolveRowHash, type HashPolicy } from "./rowProvenance";
+import { DEFAULT_EMBEDDING_MODEL_ID } from "../../models/embeddingModels";
 import { quantize, cosine } from "./vectorMath";
 import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
 
@@ -94,8 +95,13 @@ export class VaultIndexService {
 		/** `persistIntervalMs` overrides MIN_PERSIST_INTERVAL_MS — a test seam, so the
 		 *  mid-build flush can be exercised without a fake clock (a real build's
 		 *  embeds take seconds; a fake provider's take microseconds). */
-		private readonly opts: { maxChars?: number; persistIntervalMs?: number } = {}
+		private readonly opts: { maxChars?: number; persistIntervalMs?: number; hashPolicy?: HashPolicy } = {}
 	) {}
+
+	/** Which stored rows this device may reuse (ADR-201). */
+	private get policy(): HashPolicy {
+		return this.opts.hashPolicy ?? hashPolicyFor(DEFAULT_EMBEDDING_MODEL_ID);
+	}
 
 	private enqueue<T>(fn: () => Promise<T>): Promise<T> {
 		const run = this.chain.then(fn, fn); // run regardless of the prior op's outcome
@@ -255,9 +261,9 @@ export class VaultIndexService {
 		}
 		if (chunks.length === 0) return this.removeInMemory(note.path); // emptied → drop
 
-		const hash = conversationContentHash(chunks);
 		const idx = this.items.findIndex((i) => i.id === note.path);
-		if (idx >= 0 && this.items[idx].contentHash === hash) return false; // unchanged
+		const { hash, reuse } = resolveRowHash(this.policy, idx >= 0 ? this.items[idx].contentHash : undefined, chunks);
+		if (reuse) return false; // unchanged (or a row this device accepts — ADR-201)
 		if (idx < 0 && cap && cap > 0 && this.items.length >= cap) return false; // cap new adds
 
 		const raw = await this.provider.embed(chunks);
@@ -347,9 +353,9 @@ export class VaultIndexService {
 				}
 				if (chunks.length === 0) { onProgress?.(processed, total); continue; } // empty note
 
-				const hash = conversationContentHash(chunks);
 				const prev = existing.get(note.path);
-				if (prev && prev.contentHash === hash) {
+				const { hash, reuse } = resolveRowHash(this.policy, prev?.contentHash, chunks);
+				if (prev && reuse) {
 					kept.push(prev); // unchanged — reuse vectors, no re-embed
 					seen.add(note.path);
 					// Resets the failure streak too. Not resetting here would let five

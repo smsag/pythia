@@ -12,6 +12,7 @@ import type { BuildMarker } from "./buildGuard";
 
 export type VaultIndexState =
 	| "notBuilt"   // no usable file for this model
+	| "loading"    // the model is downloading / loading, before the first note
 	| "building"   // a build is running in this session
 	| "ready"      // complete, under the current scope
 	| "partial"    // rows on disk, the build that wrote them never finished
@@ -53,7 +54,7 @@ export function stateFromFile(
 
 /** Whether "Build now" has something to do — everything short of a live or finished build. */
 export function canBuildNow(state: VaultIndexState): boolean {
-	return state !== "building" && state !== "ready";
+	return state !== "loading" && state !== "building" && state !== "ready";
 }
 
 export function describeVaultIndexStatus(s: VaultIndexStatus): { headline: string; detail: string } {
@@ -68,6 +69,8 @@ export function describeVaultIndexStatus(s: VaultIndexStatus): { headline: strin
 
 function headline(s: VaultIndexStatus): string {
 	switch (s.state) {
+		case "loading":
+			return t("vaultIndexStateLoading", { mb: embeddingModelConfig(s.modelId).downloadMb });
 		case "building":
 			return t("vaultIndexStateBuilding", { done: s.done, total: s.total });
 		case "ready":

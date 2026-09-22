@@ -162,3 +162,37 @@ describe("a variant reads the family's index as its own (ADR-200)", () => {
 		expect((await phone.status()).state).toBe("ready");
 	});
 });
+
+describe("paused means paused, whatever the file says (ADR-201)", () => {
+	const scopeOf = (svc: VaultRagService): string => (svc as unknown as { scopeSignature(): string }).scopeSignature();
+
+	it("reports paused — not ready — for a complete index while automatic builds are blocked", async () => {
+		// A paused session never loads the model, so not even a complete index is
+		// queried. Calling that "ready" hid a dead vault context behind a green
+		// status and disabled the one button that recovers it.
+		const { guard } = memGuard({ attempts: 2, startedAt: 1, modelId: DEFAULT_EMBEDDING_MODEL_ID });
+		const probe = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new FakeProvider(), () => new MemStore(), DEPS);
+		const store = new MemStore();
+		store.buf = serializeIndex([{ id: "n.md", contentHash: "h", chunks: [Int8Array.from([1, 0, 0, 0])] }], 4, { complete: true, scope: scopeOf(probe) });
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new FakeProvider(), () => store, { ...DEPS, guard });
+		const status = await svc.status();
+		expect(status).toMatchObject({ state: "paused", count: 1 });
+		const { canBuildNow } = await import("../services/embedding/indexStatus");
+		expect(canBuildNow(status.state)).toBe(true);
+	});
+});
+
+describe("loading the model is its own state (ADR-201)", () => {
+	it("says loading — not 'building 0 of 0' — until the model is ready", async () => {
+		let release!: () => void;
+		class Slow extends FakeProvider { ready(): Promise<void> { return new Promise((r) => { release = r; }); } }
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new Slow(), () => new MemStore(), DEPS);
+		void svc.getRelevantNotes(conv, "anything");
+		await settle();
+		expect((await svc.status()).state).toBe("loading");
+		release();
+		await settle();
+		expect((await svc.status()).state).toBe("ready");
+	});
+});
+

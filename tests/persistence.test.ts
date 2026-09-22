@@ -395,3 +395,16 @@ describe("shouldRefuseLoad", () => {
 		expect(shouldRefuseLoad([makeConv("a")], 0)).toBe(false);
 	});
 });
+
+describe("mergeSettings — the embedding model is a CHOICE, never a device's variant (ADR-201)", () => {
+	it("refuses a stored variant id and falls back to the default", () => {
+		const result = mergeSettings({ embeddingModelId: "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin" });
+		expect(result.embeddingModelId).toBe(DEFAULT_SETTINGS.embeddingModelId);
+	});
+	it("keeps both selectable models", () => {
+		for (const id of ["xenova-all-MiniLM-L6-v2", "xenova-paraphrase-multilingual-MiniLM-L12-v2"]) {
+			expect(mergeSettings({ embeddingModelId: id }).embeddingModelId).toBe(id);
+		}
+	});
+});
+

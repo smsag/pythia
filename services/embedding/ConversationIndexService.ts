@@ -2,12 +2,13 @@ import type { Conversation } from "../../models/types";
 import type { EmbeddingProvider } from "./EmbeddingProvider";
 import { conversationChunks } from "./conversationText";
 import {
-	conversationContentHash,
 	diffIndex,
 	serializeIndex,
 	deserializeIndex,
 	type IndexedConversation,
 } from "./embeddingIndex";
+import { hashPolicyFor, resolveRowHash, type HashPolicy } from "./rowProvenance";
+import { DEFAULT_EMBEDDING_MODEL_ID } from "../../models/embeddingModels";
 import { quantize } from "./vectorMath";
 import { rankRelated, type RelatedResult } from "./relatedConversations";
 
@@ -33,7 +34,9 @@ export class ConversationIndexService {
 	constructor(
 		private readonly provider: EmbeddingProvider,
 		private readonly store: IndexStore,
-		private readonly opts: { maxChars?: number } = {}
+		/** `hashPolicy`: which stored rows this device may reuse (ADR-201) — the
+		 *  default is exact-hash, the full model's rule. */
+		private readonly opts: { maxChars?: number; hashPolicy?: HashPolicy } = {}
 	) {}
 
 	private async load(): Promise<void> {
@@ -76,11 +79,15 @@ export class ConversationIndexService {
 		await this.load();
 		const maxChars = this.opts.maxChars ?? 500;
 
+		const policy = this.opts.hashPolicy ?? hashPolicyFor(DEFAULT_EMBEDDING_MODEL_ID);
+		const existing = new Map(this.items.map((i) => [i.id, i.contentHash]));
+		// The desired hash is the STORED one when this device accepts that row
+		// (ADR-201), so diffIndex sees it as unchanged — a variant keeps the full
+		// model's rows, and the full model re-embeds rows a variant tagged.
 		const desired = conversations.map((c) => {
 			const chunks = conversationChunks(c, maxChars);
-			return { id: c.id, contentHash: conversationContentHash(chunks), chunks };
+			return { id: c.id, contentHash: resolveRowHash(policy, existing.get(c.id), chunks).hash, chunks };
 		});
-		const existing = new Map(this.items.map((i) => [i.id, i.contentHash]));
 		const { toEmbed, toDrop } = diffIndex(
 			existing,
 			desired.map((d) => ({ id: d.id, contentHash: d.contentHash }))
