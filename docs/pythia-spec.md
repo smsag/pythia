@@ -256,6 +256,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-38 | **ADR-182's premise may be wrong for desktop.** The M2 Air still reports `iframe (UI thread)` after the `process` fix. | #332 | ADR-185 closes the one hole it could find (a non-configurable global defeating `defineProperty`) and makes the failure reasons visible. If the log says `Unsupported device`, the premise held and this closes it; if it says a blocked `blob:` plus a cross-origin resource path, ADR-125's original theory was right all along and the `process` work was necessary but not sufficient. | The next run's `embedding: backend resolved` log line. |
 | D-39 | **The related-conversations index is not behind the build guard.** ADR-199's crash-loop breaker wraps the vault index only. | ADR-199 | That index is built only when the user asks for related conversations, and the background warm is desktop-only (ADR-169), so it cannot loop by itself; since ADR-199 it also uses the device's model, so a phone no longer loads the multilingual one for it. | A crash report from the related panel on a phone, or the warm is ever enabled on mobile. |
 | D-40 | **A multilingual model a phone can hold.** ADR-199 gave phones the English model, losing cross-language matching there. | ADR-199 | **Closed by ADR-200 (2026-09-22).** Not a smaller model — none exists for this runtime — but the same model with its vocabulary cut to Latin script: identical vectors for Latin-script text (cosine 1.000000 on 413 texts), ≈ +370–400 MB on the iPhone against +900–1 000, and the phone reads the desktop's index. Non-Latin scripts degrade to character matching there; that is the residue, stated in the settings note. | A user whose notes are in Cyrillic, Greek or an Asian script wants them matched by meaning on a phone. |
+| D-41 | **The model load is the phone's tightest moment.** With the Latin-script variant a build never warned, but the load itself touched WebKit's warning line (1 640 MB, ~400 MB under the kill) once per process. | ADR-200 | Transient: the downloaded bytes, the Cache API copy and the tokenizer parse coexist for a moment inside the Worker. Survived every load on the reporter's phone (three). Candidates if it ever bites: release the fetched buffer before session creation, or skip the cache write when the file came from cache. | A crash report at model load on a phone, or a phone with less memory than an iPhone 15 Pro Max. |
 
 ### Deliberately out of scope
 
@@ -288,6 +289,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-22 | D-41: the phone's model-load peak (ADR-200 addendum, verified on the device). |
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
