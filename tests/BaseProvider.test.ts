@@ -46,9 +46,12 @@ class TestProvider extends BaseProvider {
 	reply = "";
 	/** The model each utility call ran on, so "which model" is assertable (ADR-208). */
 	models: string[] = [];
-	protected callUtility(model: string, userMessage: string): Promise<string> {
+	/** The max-output budget each utility call asked for (ADR-208 review). */
+	budgets: number[] = [];
+	protected callUtility(model: string, userMessage: string, maxTokens: number): Promise<string> {
 		this.models.push(model);
 		this.prompts.push(userMessage);
+		this.budgets.push(maxTokens);
 		return Promise.resolve(this.reply);
 	}
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
@@ -345,5 +348,33 @@ describe("term discussion and the sense hint (ADR-208)", () => {
 		expect(p.prompts[0]).toContain("reply with nothing at all");
 		// It must not try to fix the definition — that field has its own repair.
 		expect(p.prompts[0]).toContain("do not correct it here");
+	});
+});
+
+// ── Review of ADR-208: the budget and which end of a long discussion is kept ──
+
+describe("term discussion — budget and truncation (ADR-208 review)", () => {
+	const longConv = (turns: number): Conversation => ({
+		model: "m",
+		messages: Array.from({ length: turns }, (_, i) => ({
+			role: i % 2 === 0 ? "user" : "assistant",
+			content: `turn ${i} ${"x".repeat(400)}`,
+		})),
+	} as unknown as Conversation);
+
+	it("keeps the END of a discussion that does not fit — understanding is where it lands", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		const c = longConv(120);
+		await p.summarizeTermDiscussion("Kartellrecht", "Eine Definition.", c);
+		expect(p.prompts[0]).toContain("turn 119");
+		expect(p.prompts[0]).not.toContain("turn 0 ");
+	});
+
+	it("is not given a smaller budget than the shorter summary it is modelled on", async () => {
+		// Lowering a cap truncates rather than shortens, and on a reasoning model
+		// the same budget pays for hidden reasoning (ADR-141).
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.summarizeTermDiscussion("X", "d", longConv(2));
+		expect(p.budgets[0]).toBeGreaterThanOrEqual(1024);
 	});
 });

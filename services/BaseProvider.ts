@@ -444,7 +444,11 @@ export abstract class BaseProvider implements LLMProvider {
 			.map((m) => `${m.role === "user" ? "User" : this.assistantLabel}: ${m.content}`)
 			.join("\n\n");
 		const prompt = termDiscussionPrompt(term, definition, text, this.languageLabel(conversation));
-		return this.callUtility(model, prompt, 700);
+		// 1024, like `generateSummary`, and for its reason: lowering a cap does not
+		// shorten an answer, it truncates one — and on a reasoning model this same
+		// budget also pays for the hidden reasoning. The sentence count is the
+		// contract; the cap is a safety valve (ADR-141).
+		return this.callUtility(model, prompt, 1024);
 	}
 
 	/** Describe a person named in an answer (ADR-151). */

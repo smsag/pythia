@@ -229,13 +229,16 @@ export function entryFrontmatter(entry: GlossaryEntry): Record<string, unknown> 
 	return fm;
 }
 
-/** Rebuild an entry from a note's frontmatter. `definition` and `contexts` come
- *  from the body, which the caller reads separately — the index only needs the
- *  frontmatter, and reading every body to paint one message would not scale. */
+/** Rebuild an entry from a note's frontmatter. `definition`, `contexts` and the
+ *  `discussion` come from the body, which the caller reads separately — the index
+ *  only needs the frontmatter, and reading every body to paint one message would
+ *  not scale. A caller that HAS the body must pass all of it: `save` merges a
+ *  fresh lookup into what this returns, so a field missing here is a field the
+ *  next write deletes. */
 export function entryFromFrontmatter(
 	term: string,
 	fm: Record<string, unknown> | undefined,
-	body?: { definition: string; contexts: string[] }
+	body?: { definition: string; contexts: string[]; discussion?: string }
 ): GlossaryEntry {
 	const f = fm ?? {};
 	const translations: Translation[] = [];
@@ -264,6 +267,11 @@ export function entryFromFrontmatter(
 		translations: translations.length > 0 ? translations : undefined,
 		theme: theme.length > 0 ? theme : undefined,
 		contexts: body && body.contexts.length > 0 ? body.contexts : undefined,
+		// The discussion is body content like the contexts, and `save` rebuilds the
+		// on-disk entry through here before merging a fresh lookup into it — so
+		// dropping it here means every re-lookup silently deletes the section
+		// `mergeEntry` is written to protect (ADR-208).
+		discussion: body?.discussion,
 		language,
 		definitionTranslations: Object.keys(definitionTranslations).length > 0 ? definitionTranslations : undefined,
 		translatedFrom: typeof f[TRANSLATED_FROM_KEY] === "string" ? f[TRANSLATED_FROM_KEY] : undefined,

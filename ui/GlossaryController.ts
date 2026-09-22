@@ -377,7 +377,10 @@ export class GlossaryController {
 			// tapped, and sending it for them would spend a turn on our guess.
 			this.d.prefillInput(termForkOpeningPrompt(entry.term, passage));
 		} catch (e) {
-			new Notice(t("glossaryLookupFailed", { error: e instanceof Error ? e.message : String(e) }));
+			new Notice(t("glossaryDiscussFailed", {
+				term: entry.term,
+				error: e instanceof Error ? e.message : String(e),
+			}));
 		}
 	}
 
