@@ -136,3 +136,41 @@ describe("PluginDataStore — archive before eviction", () => {
 		expect(plugin.conversations).toHaveLength(3);
 	});
 });
+
+describe("the data.json watcher does not re-trigger itself (#356)", () => {
+	it("one external change → one reload, even though the reload's flush writes the file", async () => {
+		vi.useFakeTimers();
+		try {
+			let mtime = 1_000;
+			const p = makePlugin(0, {
+				manifest: { dir: ".obsidian/plugins/pythia", id: "pythia" },
+				register: () => {},
+				// Every write bumps the file's mtime, the way a real save does.
+				saveData: vi.fn(async () => { mtime += 1_000; }),
+				app: {
+					workspace: { getLeavesOfType: () => [] },
+					vault: { configDir: ".obsidian", adapter: { stat: async () => ({ mtime }) } },
+				},
+			});
+			const s = new PluginDataStore(p as never);
+			// Stand-in for reloadFromDisk: what the real one does to the file — a
+			// flush that writes it (the write that used to loop).
+			const reload = vi.spyOn(s, "reloadFromDisk").mockImplementation(async () => { await s.persist(); });
+			s.watchDataJson();
+			const poll = async (): Promise<void> => { await vi.advanceTimersByTimeAsync(5_000); };
+
+			await poll();                  // seeds the baseline
+			mtime += 1_000;                // another device writes data.json
+			await vi.advanceTimersByTimeAsync(4_000); // outside the 3 s own-write window
+			await poll();                  // → one reload, whose flush writes again
+			for (let i = 0; i < 6; i++) {  // 30 s of further polling
+				await vi.advanceTimersByTimeAsync(4_000);
+				await poll();
+			}
+			expect(reload).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
