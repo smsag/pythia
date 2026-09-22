@@ -50,6 +50,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
+    embedding/buildGuard.ts   ← pure: BuildGuard + vaultBuildGuard — the per-device marker that pauses automatic index builds after two the OS killed (ADR-199)
+    embedding/memoryError.ts  ← isOutOfMemoryError + EmbeddingOutOfMemoryError — out of memory ends the backend fallback chain (ADR-199)
+    embedding/indexStatus.ts  ← pure: the vault index's seven states + describeVaultIndexStatus, the words the settings tab shows (ADR-199)
+    embedding/vaultIndexStore.ts ← the .bin per index, named by vectorFamily(modelId) — a variant shares its family's file (ADR-200)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
     embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
     embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
@@ -96,13 +100,15 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
+    vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1495 tests across 102 files
+  tests/                      ← Vitest unit tests (npm test) — 1564 tests across 108 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
+    embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-199)
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
@@ -116,6 +122,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
   scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
+  scripts/prune-embedding-model.py ← builds the Latin-script variant of the multilingual model from the upstream files (npm run model:prune) — what LATIN_VARIANT_REPO_ID holds, byte for byte (ADR-200)
+  scripts/verify-pruned-model.mjs ← proves the variant vector-identical to the full model on Latin-script text (npm run model:verify); fails on any drift
   scripts/obsidian-button-rules.mjs ← reads app.css from the installed Obsidian and lists the rules that can reach a Pythia button; exits 1 when tests/fixtures/obsidianButtonRules.ts has drifted (npm run check:obsidian-cascade, local only — ADR-190)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -494,6 +502,11 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
 
+- **A phone embeds with a model marked `mobile`** (ADR-199, measured on an iPhone: the multilingual model adds ~0.9–1 GB to a WebContent process iOS kills at ~2 GB; English adds ~130 MB). For the multilingual model that is its **Latin-script variant** (ADR-200, `variantOf`, ≈ +370–400 MB measured): the same vectors, so it shares the family's floors and — because `VaultIndexStore` and `scopeSignature` go by `vectorFamily` — the desktop's index file. A variant is never a dropdown entry (`SELECTABLE_EMBEDDING_MODEL_IDS`) and must stay equal to its family in dim, pooling, window and floors (a test holds it). Rebuild it only with `npm run model:prune` and prove it with `npm run model:verify` before publishing. The ONE resolver is `effectiveEmbeddingModel` → `plugin.activeEmbeddingModelId()`. **Never read `settings.embeddingModelId` anywhere else** — `tests/embeddingModelRule.test.ts` fails on a second reader — and **never write the substitute into the setting**: it syncs, and the desktop keeps its choice (principle 6). A new model gets `mobile: true` only on a measurement from the device
+- **Out of memory is not a refusal.** The fallback chain exists for backends that are *refused*; every backend shares one process, so `isOutOfMemoryError` ends the chain instead of loading the model again. Do not add a backend that bypasses `record`
+- **A build the OS kills leaves a marker** (`BuildGuard`, per-device localStorage — never data.json). Two deaths in a row pause *automatic* builds until the user presses *Build now*; a caught error clears the marker **except out of memory**; `dispose()` clears it on a normal unload. Any new automatic path that starts the vault build goes through `refresh()`, never around it
+- **The status never loads the model.** `VaultRagService.status()` reads the file header (`peekIndexMeta`) when the session has not built. Words live in `describeVaultIndexStatus` only
+
 - **The Worker must see a browser, not Node.** Obsidian gives desktop Workers Node access, so transformers.js reads `process.release.name === "node"`, binds onnxruntime-**node** (macOS device list: `['cpu']`) and rejects the `wasm` device Pythia always passes — which is why every desktop silently ran embedding on the UI-thread iframe for three ADRs. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and **nowhere else**; the iframe gets the bare bundle
 - **The prelude has three statements and needs all three.** `delete globalThis.process`, then an assignment, then `const process = void 0`. The first two are *property* operations that a non-configurable / non-writable global defeats through their own `catch`; the `const` binds the identifier, which is what `env.js:38-39` reads, and no descriptor can defeat it. The `const` is unconditional (a `const` inside the guard block would shadow only that block) and safe **only because the bundle is a module** — `import.meta` appears in it, so it cannot load any other way
 - **It cannot live in `frame/entry.ts`.** An ES `import` is hoisted, so any statement there runs after transformers has already read `process`. A textual prefix is the only position that is actually first
@@ -518,6 +531,13 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **The snippet is the expensive part, not the ranking** (ADR-170, `scripts/bench-search.mjs`). Ranking the whole corpus costs <1ms; re-tokenizing message lines for every rendered row cost 398ms per keystroke at 500 conversations. Line tokens are cached lazily on `ConversationFields.lines`, and `bestMatchSnippet` **requires** the fields — never add an overload that takes only a conversation, or the uncached path survives
 - **`SEARCH_RESULT_LIMIT` caps rendered rows at 20**, applied in `searchConversations` so the panel and the palette modal inherit it together. A short query matches a share of the corpus, so an uncapped list makes cost a function of vault size. The cap is applied AFTER the widen decision and can never change it
 - **`ScoredField` names the keys that are scored**; `lines` is a cache and must never join `FIELD_WEIGHTS`. The compiler enforces it
+
+### The search field's boundary (ADR-198)
+- **The row IS the control.** There is no box around the field — the panel is already one — so `.p-switcher-search`'s bottom rule is the whole affordance and is held to WCAG's **3:1**. `--background-modifier-border` is a divider between surfaces and drew it at **1.23:1**; never use it here
+- **`--p-field-rule` is mixed from `--text-normal`**, never a named colour and never a border token: a plugin does not get to know the theme, so the rule derives from one the theme must define
+- **Two percentages, 53% light / 42% dark**, because white sits at the end of the luminance scale and a dark ground does not — one mix lands at 3.1:1 on one and 2.2:1 on the other. `.theme-light`/`.theme-dark` are Obsidian's own body classes
+- **Focus thickens the rule to 2px accent and does nothing else**, on the row (the loupe and ✕ are part of the same control), never a ring — `.p-history` clips its top edge. The pixel comes out of the padding so the row never moves, and there is no transition (ADR-155)
+- `tests/searchField.test.ts` recomputes the contrast from `tests/fixtures/themeGrounds.ts` (measured grounds for the default theme and Klartext), so lowering a percentage fails. It is evidence for two themes, not a proof for all — the fixture says so
 
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search

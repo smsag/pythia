@@ -120,6 +120,35 @@ export function serializeIndex(
 	return buf;
 }
 
+/**
+ * What a persisted index says about itself — rows, completeness, scope — read
+ * from the header alone (ADR-199). For the settings status line, which must be
+ * able to say "ready" or "unfinished" without loading the model: `deserializeIndex`
+ * needs no model either, but copies every vector. Null for anything unreadable,
+ * which the status reports as "not built".
+ */
+export function peekIndexMeta(buf: ArrayBuffer): (IndexMeta & { count: number }) | null {
+	try {
+		const dv = new DataView(buf);
+		if (buf.byteLength < HEADER_LEN || dv.getUint32(0) !== MAGIC || dv.getUint8(4) !== VERSION) return null;
+		const count = dv.getUint32(7);
+		const metaLen = dv.getUint32(11);
+		if (HEADER_LEN + metaLen > buf.byteLength) return null;
+		const head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, HEADER_LEN, metaLen))) as {
+			complete?: unknown; scope?: unknown;
+		};
+		return {
+			count,
+			complete: head?.complete === true,
+			scope: typeof head?.scope === "string" ? head.scope : "",
+		};
+	} catch {
+		// Malformed JSON in a header is the same fact as a bad magic: this file
+		// cannot vouch for an index, and the caller says "not built".
+		return null;
+	}
+}
+
 export function deserializeIndex(
 	buf: ArrayBuffer,
 ): { items: IndexedConversation[]; dim: number; meta: IndexMeta } {

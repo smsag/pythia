@@ -167,6 +167,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Send menu | `.p-send-menu` → `-icon`, `-label` | `sidebar.ts` | long-press on Send |
 | Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the textarea |
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
+| Settings: index status | a `Setting` row whose description is `.p-index-status-headline` + `.p-index-status-detail`; buttons *Build now* · *Rebuild index* | `ui/vaultIndexStatusSetting.ts` | the plugin settings tab, Vault context section (ADR-199) |
 
 ### Inline anchors (the three cards that open at a mark)
 
@@ -253,6 +254,9 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-36 | **The embedding model is the wrong class for the job.** `paraphrase-multilingual-MiniLM` is a sentence-similarity (STS) model doing query-to-passage retrieval. | #319 | Chosen for ADR-109's symmetric conversation-pair question and inherited by vault RAG without re-deciding. It is upstream of D-13: measuring floors for a model you may replace calibrates the wrong thing. A retrieval model (e5, bge) needs asymmetric `query:`/`passage:` prefixes — a change to `EmbeddingProvider.embed`, not a dropdown entry — plus newly measured floors and a one-time reindex. | Before D-13's measurement, not after. Retrieval quality is reported as poor, or the spike is scheduled. |
 | D-37 | **Sticky retrieval** — hold a note set for the conversation instead of re-retrieving per turn. | #322 | ADR-183 took the cheap half (carry the previous answer into the query). The set still churns turn to turn underneath a conversation still discussing turn 1's notes. Needs a "topic changed" rule, which is the whole decision. | The carry-over proves insufficient in use. |
 | D-38 | **ADR-182's premise may be wrong for desktop.** The M2 Air still reports `iframe (UI thread)` after the `process` fix. | #332 | ADR-185 closes the one hole it could find (a non-configurable global defeating `defineProperty`) and makes the failure reasons visible. If the log says `Unsupported device`, the premise held and this closes it; if it says a blocked `blob:` plus a cross-origin resource path, ADR-125's original theory was right all along and the `process` work was necessary but not sufficient. | The next run's `embedding: backend resolved` log line. |
+| D-39 | **The related-conversations index is not behind the build guard.** ADR-199's crash-loop breaker wraps the vault index only. | ADR-199 | That index is built only when the user asks for related conversations, and the background warm is desktop-only (ADR-169), so it cannot loop by itself; since ADR-199 it also uses the device's model, so a phone no longer loads the multilingual one for it. | A crash report from the related panel on a phone, or the warm is ever enabled on mobile. |
+| D-40 | **A multilingual model a phone can hold.** ADR-199 gave phones the English model, losing cross-language matching there. | ADR-199 | **Closed by ADR-200 (2026-09-22).** Not a smaller model — none exists for this runtime — but the same model with its vocabulary cut to Latin script: identical vectors for Latin-script text (cosine 1.000000 on 413 texts), ≈ +370–400 MB on the iPhone against +900–1 000, and the phone reads the desktop's index. Non-Latin scripts degrade to character matching there; that is the residue, stated in the settings note. | A user whose notes are in Cyrillic, Greek or an Asian script wants them matched by meaning on a phone. |
+| D-41 | **The model load is the phone's tightest moment.** With the Latin-script variant a build never warned, but the load itself touched WebKit's warning line (1 640 MB, ~400 MB under the kill) once per process. | ADR-200 | Transient: the downloaded bytes, the Cache API copy and the tokenizer parse coexist for a moment inside the Worker. Survived every load on the reporter's phone (three). Candidates if it ever bites: release the fetched buffer before session creation, or skip the cache write when the file came from cache. | A crash report at model load on a phone, or a phone with less memory than an iPhone 15 Pro Max. |
 
 ### Deliberately out of scope
 
@@ -285,6 +289,9 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-22 | D-41: the phone's model-load peak (ADR-200 addendum, verified on the device). |
+| 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
+| 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-18 | Rewritten from the 0.1 MVP draft: current product framing, the UI vocabulary map, and the deferred-decision register (D-1…D-27). |
 | 2026-09-18 | D-31…D-35 added from ADR-182 (embedding off the UI thread, a resumable vault build): the live-verification the fix still needs, backend recycling, the iframe fallback's future, why `truncation` was not taken, and the append-only index that would remove the flush-rate trade-off. |

@@ -567,15 +567,48 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 /* ── Conversation search: input row + shared row bits ───────────────
    Used by the history panel (ADR-107); the former quick-switcher popover
    that also used these was removed. */
+/* The search row's boundary, and the reason it is not
+   --background-modifier-border.
+   That token is a hairline BETWEEN SURFACES and is meant to be quiet: measured
+   in Obsidian it draws this row's edge at 1.23:1 under Klartext and 1.19:1
+   under the default theme, where WCAG 1.4.11 asks 3:1 for the boundary of a
+   control. The row IS the control here — there is no box around the field, by
+   choice: the panel is already a box and a second one at the top of it
+   competes with the list it filters.
+   Mixed from --text-normal so it follows any theme rather than naming a
+   colour (hard rule 3). The two percentages are MEASURED, not one value used
+   twice: white sits at the end of the scale and #1a1a1a does not, so a single
+   mix lands at 3.1:1 on one ground and 2.2:1 on the other. 53 / 42 clears 3:1
+   against --background-primary under both Obsidian's own themes and Klartext
+   — 3.45 / 3.07 light, 3.15 / 3.12 dark. Obsidian sets .theme-light and
+   .theme-dark on <body> itself, so this asks nothing of any theme. */
+.theme-light .pythia-view { --p-field-rule: color-mix(in srgb, var(--text-normal) 53%, transparent); }
+.theme-dark .pythia-view { --p-field-rule: color-mix(in srgb, var(--text-normal) 42%, transparent); }
+
 .p-switcher-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
+  /* The bottom pixel is the rule's; focus takes a second one out of the
+     padding so the row never changes height. */
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--p-field-rule);
   flex-shrink: 0;
 }
-.p-switcher-search-icon { display: flex; color: var(--text-faint); flex-shrink: 0; }
+
+/* Focus is the rule thickening and taking the accent, and nothing else. On the
+   ROW rather than the input, because the loupe and the ✕ belong to the same
+   control; and never a ring, which .p-history would clip along its top edge
+   into something that reads as a rendering fault. No transition: this is
+   state, and ADR-155 is about exactly that. */
+.p-switcher-search:focus-within {
+  padding-bottom: 7px;
+  border-bottom: 2px solid var(--color-accent);
+}
+
+/* --text-muted, never --text-faint: this is part of a control, and faint is
+   2.3:1 on white — the rule the button roles already live by (ADR-188). */
+.p-switcher-search-icon { display: flex; color: var(--text-muted); flex-shrink: 0; }
 .p-switcher-search-icon svg { width: 13px; height: 13px; }
 .pythia-view .p-switcher-input {
   all: unset;
@@ -2496,6 +2529,19 @@ body.is-phone .workspace-drawer .p-input-area {
   resize: vertical;
   font-family: var(--font-monospace);
   font-size: var(--font-smaller, 12px);
+}
+
+/* Vault index status row in the settings tab (ADR-199): the headline is the
+   state and what to do about it, so it reads at body contrast; the detail line
+   (model · engine · default) is reference, in the mono micro-label voice. The
+   settings tab sits outside `.pythia-view`, where --s1 is not defined. */
+.p-index-status-headline {
+  color: var(--text-normal);
+}
+.p-index-status-detail {
+  margin-top: 4px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 11px);
 }
 
 /* Auto-armed web search (ADR-099): pulse the globe accent to show a search was

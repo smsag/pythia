@@ -2,13 +2,18 @@ import { Setting } from "obsidian";
 import { bindNumberSetting } from "./numberSetting";
 import type PythiaPlugin from "../main";
 import { t } from "../i18n";
-import { EMBEDDING_MODELS, type EmbeddingModelId, type SimilarityPreset } from "../models/embeddingModels";
+import {
+	EMBEDDING_MODELS, SELECTABLE_EMBEDDING_MODEL_IDS, embeddingModelConfig, effectiveEmbeddingModel,
+	type EmbeddingModelId, type SimilarityPreset,
+} from "../models/embeddingModels";
+import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
 
 /**
  * On-device embedding settings, extracted from the settings tab (ADR-119): the
  * shared embedding model + "related conversations" similarity, plus the
  * vault-context (semantic RAG) controls — enable-by-default, the folders to index
- * (empty = whole vault), and a "Rebuild index" action with a live status line.
+ * (empty = whole vault), and the live index status with its two actions
+ * (ADR-199). Each section opens with a plain explanation of what it does.
  */
 export function renderEmbeddingSettings(
 	containerEl: HTMLElement,
@@ -17,19 +22,28 @@ export function renderEmbeddingSettings(
 	 *  closing the tab destroys the input before `blur` fires. */
 	registerCommit: (commit: () => void) => void = () => {},
 ): void {
-	new Setting(containerEl)
-		.setName(t("embeddingModelName"))
-		.setDesc(t("embeddingModelDesc"))
-		.addDropdown((drop) => {
-			for (const m of Object.values(EMBEDDING_MODELS)) drop.addOption(m.id, m.label);
-			drop
-				.setValue(plugin.settings.embeddingModelId)
-				.onChange(async (value) => {
-					plugin.settings.embeddingModelId = value as EmbeddingModelId;
-					await plugin.saveSettings();
-					plugin.invalidateRelatedService();
-				});
-		});
+	new Setting(containerEl).setName(t("embeddingSectionName")).setHeading();
+	new Setting(containerEl).setDesc(t("embeddingIntro"));
+
+	// The model row reads the setting — it is the one place that edits it — and
+	// says what this device will actually run (ADR-199).
+	const modelRow = new Setting(containerEl).setName(t("embeddingModelName"));
+	const describeModel = (): void => { modelRow.setDesc(modelDescription(plugin)); };
+	describeModel();
+	let refreshStatus: () => void = () => {};
+	modelRow.addDropdown((drop) => {
+		// Variants are never offered: the device picks them (ADR-200).
+		for (const id of SELECTABLE_EMBEDDING_MODEL_IDS) drop.addOption(id, EMBEDDING_MODELS[id].label);
+		drop
+			.setValue(plugin.settings.embeddingModelId)
+			.onChange(async (value) => {
+				plugin.settings.embeddingModelId = value as EmbeddingModelId;
+				await plugin.saveSettings();
+				plugin.invalidateRelatedService();
+				describeModel();
+				refreshStatus();
+			});
+	});
 
 	new Setting(containerEl)
 		.setName(t("relatedSimilarityName"))
@@ -48,6 +62,10 @@ export function renderEmbeddingSettings(
 
 	// ── Vault context (semantic RAG) ──────────────────────────────────────────
 	new Setting(containerEl).setName(t("vaultContextSectionName")).setHeading();
+	new Setting(containerEl).setDesc(t("vaultContextIntro"));
+
+	// Status first: it is what the rest of the section is about.
+	refreshStatus = renderVaultIndexStatus(containerEl, plugin);
 
 	new Setting(containerEl)
 		.setName(t("vaultContextEnabledName"))
@@ -58,6 +76,7 @@ export function renderEmbeddingSettings(
 				.onChange(async (value) => {
 					plugin.settings.vaultContextEnabled = value;
 					await plugin.saveSettings();
+					refreshStatus();
 				})
 		);
 
@@ -111,18 +130,24 @@ export function renderEmbeddingSettings(
 				},
 			}));
 		});
+}
 
-	// Rebuild action + a status line that reflects the current index state.
-	const status = new Setting(containerEl)
-		.setName(t("vaultContextReindexName"))
-		.setDesc(plugin.getVaultIndexStatus());
-	status.addButton((btn) =>
-		btn
-			.setButtonText(t("vaultContextReindexBtn"))
-			.onClick(() => {
-				void plugin.reindexVault();
-				// Reflect the new status shortly after the rebuild kicks off.
-				window.setTimeout(() => status.setDesc(plugin.getVaultIndexStatus()), 400);
-			})
-	);
+/** The model row's explanation: what the two models are, plus — when the chosen
+ *  one cannot run on a phone — which one this device uses instead (ADR-199). */
+function modelDescription(plugin: PythiaPlugin): string {
+	const vars = {
+		multiMb: EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].downloadMb,
+		enMb: EMBEDDING_MODELS["xenova-all-MiniLM-L6-v2"].downloadMb,
+	};
+	const chosen = embeddingModelConfig(plugin.settings.embeddingModelId);
+	const active = embeddingModelConfig(plugin.activeEmbeddingModelId());
+	// What a phone runs for this choice — the same answer whichever device shows
+	// the note, so the desktop can say what the phone will do (ADR-199/199).
+	const onPhone = embeddingModelConfig(effectiveEmbeddingModel(chosen.id, true));
+	const names = { model: onPhone.label, chosen: chosen.label };
+	const notes: string[] = [t("embeddingModelDesc", vars)];
+	if (active.id !== chosen.id) notes.push(t("embeddingModelMobileNote", names));
+	else if (onPhone.id !== chosen.id) notes.push(t("embeddingModelDesktopNote", names));
+	if (onPhone.id !== chosen.id && onPhone.variantNote === "latinScript") notes.push(t("embeddingModelLatinNote"));
+	return notes.join(" ");
 }
