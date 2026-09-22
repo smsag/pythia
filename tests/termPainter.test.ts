@@ -112,3 +112,76 @@ describe("repaintTerms with aliases", () => {
 		expect(mark.getAttribute("data-term")).toBe("Zähler"); // but it resolves to the entry
 	});
 });
+
+// ── ADR-207: a multi-word form is the normal case on the English side ────────
+//
+// German merges what English separates ("Kartellrecht" → "cartel law"), so every
+// English equivalent of a German term is a phrase — and a phrase is exactly what
+// markdown can break in half.
+
+describe("repaintTerms across text-node boundaries (ADR-207)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	const term = () => idx(["cartel law"]);
+
+	it("marks a phrase split by emphasis, as one mark per node it touches", () => {
+		const root = render("<p>A <strong>cartel</strong> law question.</p>");
+		repaintTerms(root, term());
+		expect(marks(root)).toEqual(["cartel", " law"]);
+		// One entry, whichever fragment is tapped.
+		expect(Array.from(root.querySelectorAll(".p-term")).map((e) => e.getAttribute("data-term")))
+			.toEqual(["cartel law", "cartel law"]);
+		expect(root.textContent).toBe("A cartel law question.");
+		expect(root.querySelector("strong")).not.toBeNull();
+	});
+
+	it("marks a phrase broken by a soft line break in the source", () => {
+		const root = render("<p>The cartel\nlaw applies.</p>");
+		repaintTerms(root, term());
+		expect(marks(root)).toEqual(["cartel\nlaw"]);
+		expect(root.querySelector(".p-term")!.getAttribute("data-term")).toBe("cartel law");
+	});
+
+	it("marks the hyphenated spelling of the same compound", () => {
+		const root = render("<p>A cartel-law question.</p>");
+		repaintTerms(root, term());
+		expect(marks(root)).toEqual(["cartel-law"]);
+		expect(root.querySelector(".p-term")!.getAttribute("data-term")).toBe("cartel law");
+	});
+
+	it("marks a phrase that overlaps the end of a favorite", () => {
+		const root = render("<p>alpha cartel law omega</p>");
+		repaintBody(root, [{ id: "f1", text: "alpha cartel", occurrenceIndex: 0 }]);
+		repaintTerms(root, term());
+		expect(root.textContent).toBe("alpha cartel law omega");
+		expect(marks(root).join("")).toBe("cartel law");
+		// The favorite survives, and the fragment inside it stays inside it (ADR-157).
+		expect(root.querySelector(".p-highlight")).not.toBeNull();
+		expect(root.querySelector(".p-highlight .p-term")).not.toBeNull();
+	});
+
+	it("never lets a match straddle skipped text", () => {
+		// "count" is inside a code span, so "neuron count" is not present as a term
+		// however the characters line up.
+		const root = render("<p>The neuron <code>count</code> rises.</p>");
+		repaintTerms(root, idx(["neuron count"]));
+		expect(marks(root)).toEqual([]);
+	});
+
+	it("keeps later offsets true after an earlier phrase has been painted", () => {
+		const root = render("<p>A <strong>cartel</strong> law and another cartel law.</p>");
+		repaintTerms(root, term());
+		expect(marks(root).join("|")).toBe("cartel| law|cartel law");
+		expect(root.textContent).toBe("A cartel law and another cartel law.");
+	});
+
+	it("is still idempotent when a phrase is split", () => {
+		const root = render("<p>A <strong>cartel</strong> law question.</p>");
+		const m = term();
+		repaintTerms(root, m);
+		repaintTerms(root, m);
+		expect(marks(root)).toEqual(["cartel", " law"]);
+		expect(root.querySelector(".p-term .p-term")).toBeNull();
+		expect(root.textContent).toBe("A cartel law question.");
+	});
+});

@@ -5,6 +5,7 @@ import {
 	buildTermIndex,
 	canonicalTerm,
 	entryKind,
+	surfaceKey,
 	type GlossaryEntry,
 } from "../services/glossary";
 
@@ -274,5 +275,42 @@ describe("entryKind", () => {
 			{ term: "Anna Weber", kind: "person" },
 		])!;
 		expect("Anna Weber prüft den Zähler.".match(ix.matcher)).toEqual(["Anna Weber", "Zähler"]);
+	});
+});
+
+// ── ADR-207: a multi-word form holds together across its separator ──────────
+
+describe("separator-tolerant surface forms (ADR-207)", () => {
+	const ix = () => buildTermIndex([{ term: "Kartellrecht", translations: [{ lang: "en", term: "cartel law" }] }])!;
+
+	it("matches a phrase however its words are joined", () => {
+		for (const text of ["cartel law", "cartel-law", "cartel\nlaw", "cartel  law"]) {
+			expect(text.match(ix().matcher)).not.toBeNull();
+		}
+	});
+
+	it("still requires both words — the gap is a separator, not an option", () => {
+		expect("cartellaw".match(ix().matcher)).toBeNull();
+		expect("cartel or law".match(ix().matcher)).toBeNull();
+	});
+
+	it("resolves every spelling back to the one entry", () => {
+		// Without this the mark would carry a data-term no entry answers for, and a
+		// tap would do nothing at all — silently.
+		for (const form of ["cartel law", "Cartel-Law", "cartel\nlaw"]) {
+			expect(canonicalTerm(ix(), form)).toBe("Kartellrecht");
+		}
+	});
+
+	it("does not loosen a single-word term", () => {
+		const single = buildTermIndex([{ term: "Zähler" }])!;
+		expect("Zähler".match(single.matcher)).toEqual(["Zähler"]);
+		expect("Zählerstand".match(single.matcher)).toBeNull();
+	});
+
+	it("surfaceKey folds only what the matcher varies", () => {
+		expect(surfaceKey("  Cartel   Law ")).toBe("cartel law");
+		expect(surfaceKey("cartel-law")).toBe("cartel law");
+		expect(surfaceKey("Kartellrecht")).toBe("kartellrecht");
 	});
 });

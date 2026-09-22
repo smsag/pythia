@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-206 (a term's equivalent in another language is asked for rather than waited for, and the translation call backfills the entries written before it).*
+*Last updated: 2026-09-22 — ADR-207 (a term is matched across the whole message body, and the words of a multi-word form may be joined any way — the English half of a German glossary is nearly all phrases).*
+
+*Previously: 2026-09-22 — ADR-206 (a term's equivalent in another language is asked for rather than waited for, and the translation call backfills the entries written before it).*
 
 *Previously: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
 
@@ -4121,4 +4123,25 @@ The rule was not arbitrary. A translation is marked in *every* conversation from
 
 **Guards.** `tests/glossaryReply.test.ts` (new, 21 — the parsers moved out of `tests/messageUtils.test.ts` plus 9 for the translation reply, including every rejection above), `tests/glossaryNotes.test.ts` (+3 on `applyTranslation` and `newTranslation`), `tests/BaseProvider.test.ts` (+4 on what the prompts ask for, one of which fails if ADR-149's scope sentence returns). 1716 tests across 117 files.
 
-**Not done: a form split across inline formatting.** Matching is per text node, so `*cartel* law` still does not match. German compounds make the multi-word English side the normal case rather than an edge one, which is an argument for fixing it — but cross-node matching is a change to the painter, not to the glossary, and it belongs in its own decision.
+**Follow-up: a form split across inline formatting.** Matching was per text node, so `*cartel* law` did not match. This ADR left it, reasoning it was rare; it is not — German compounds make the multi-word English side the normal case rather than an edge one, so the exposure lands squarely on the half of the glossary this ADR just filled. Fixed in ADR-207.
+
+### ADR-207 — A term is matched across the whole body, and its words may be joined any way
+
+*2026-09-22*
+
+**Context.** ADR-206 made a German term record its English equivalent. That equivalent is almost always two words, because German merges what English separates: `Kartellrecht` → `cartel law`, `Wettbewerbsrecht` → `competition law`, `Preisabsprache` → `price fixing`. So on the English side of a German vault's glossary, **a multi-word form is the rule, not the edge case** — and the matcher held those two words together with a literal space inside a regex run against one text node at a time. Both halves of that are wrong for a phrase:
+
+- **A literal space** is one of several ways the same compound is written. A soft line break in the source lands in the rendered text node as `\n`; the hyphenated spelling (`cartel-law`) is the same term; two spaces is a typo nobody sees.
+- **One text node at a time** means any inline boundary inside the phrase hides it: `**Cartel** law`, or a phrase that overlaps the end of a favorite or fork mark. The German term, being one word, never splits — so the failure lands entirely on the side where multi-word forms are the norm. It was easy to dismiss as rare by picturing English terms in English prose; it is not rare in the vault this feature exists for.
+
+**Decision.**
+
+- **The gap between two words of a form matches any run of whitespace or a hyphen.** `buildTermIndex` escapes each surface form and then replaces its spaces with `[\s‐‑-]+`. A single-word term is untouched — the boundary lookarounds still refuse `Zählerstand` for `Zähler`, which is the German compounding case and is answered by stored variants (ADR-137), never by loosening the boundary.
+- **`surfaceKey` is the key a matched form resolves under**, and it folds exactly what the matcher was allowed to vary. This is not decoration: the moment the alternation accepts `cartel-law` for the form `cartel law`, the matched text stops being a key `canonical` holds, and the mark gets a `data-term` no entry answers for — a mark that does nothing when tapped, with no error anywhere (principle 2). It is deliberately coarser than `normalizeTerm`, and used only for this resolution; everywhere else a term is stored and compared as written.
+- **`repaintTerms` matches over the whole body's text, not node by node.** One `collectTextNodes` gives the concatenated text; the alternation runs against it once; each hit becomes a Range and is painted by `paintRange`, which has split boundary-crossing selections into one wrapper per node since favorites shipped. A phrase broken by `<strong>` becomes two `<pythia-term>` fragments carrying the same `data-term`, and either one opens the entry.
+- **A skipped region is masked, not omitted.** Text inside `code`, `pre`, `a`, a citation chip or another term mark is replaced with a `￿` filler of the same length. Omitting it would let a match span the gap and paint over a link; masking keeps every offset true to the real text while making a match across the region impossible, because no term contains a noncharacter.
+- **Every hit is located before any is painted, and the node list is rebuilt per paint.** Wrapping splits the node it touches and invalidates the list — but it never changes the text, so the offsets stay valid and only the mapping has to be redone. The alternative, painting from a stale list, depends on exactly how `Range.surroundContents` splits a text node, which is not something to rely on.
+
+**What this does not change.** Marks still nest under ADR-157's rule (only term-inside-term is refused), terms still paint last, and `repaintTerms` is still idempotent — now including the split case. `findRange`, `computeOccurrenceIndex` and `paintRange` are untouched; the new `rangeFromOffsets` is `findRange`'s own mapping, lifted so both callers share it.
+
+**Guards.** `tests/termPainter.test.ts` +7 (a phrase split by emphasis, by a soft line break, spelled with a hyphen, overlapping a favorite; a match refused across a code span; offsets still true after an earlier paint; idempotence while split) and `tests/glossary.test.ts` +5 (each spelling matched, `cartellaw` and `cartel or law` still refused, every spelling resolving to the one entry, a single-word term not loosened, `surfaceKey`'s fold). Three mutations applied — a literal space in the alternation, `canonicalTerm` back to `normalizeTerm`, no masking — and all three killed, by 3, 2 and 2 tests.

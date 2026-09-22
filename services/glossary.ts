@@ -187,6 +187,25 @@ export function normalizeTerm(term: string): string {
 	return term.trim().toLocaleLowerCase().replace(/\s+/g, " ");
 }
 
+/** The separators a multi-word form is allowed to vary across: any run of
+ *  whitespace, and the hyphens that join what another writer spaces (ADR-207). */
+const SEPARATORS = "[\\s\\u2010\\u2011-]+";
+
+/**
+ * The key a *matched* surface form resolves under — `normalizeTerm`, plus the
+ * separators the matcher was allowed to vary.
+ *
+ * It exists because the two must agree. The moment the alternation accepts
+ * "cartel-law" and "cartel\nlaw" for the form "cartel law", the matched text
+ * stops being a key the canonical map holds — and a mark whose `data-term` no
+ * entry answers for is a mark that does nothing when tapped, silently
+ * (principle 2). Coarser than `normalizeTerm` on purpose, and used only here:
+ * everywhere else a term is stored and compared as written.
+ */
+export function surfaceKey(form: string): string {
+	return normalizeTerm(form).replace(new RegExp(SEPARATORS, "gu"), " ").trim();
+}
+
 /**
  * Parse a glossary note into entries.
  *
@@ -328,8 +347,8 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 		const clean = form.trim();
 		// One-character forms match far too much to be useful as a reading aid.
 		if (clean.length < 2) return;
-		const key = normalizeTerm(clean);
-		if (canonical.has(key)) return;
+		const key = surfaceKey(clean);
+		if (!key || canonical.has(key)) return;
 		canonical.set(key, term);
 		surfaces.push(clean);
 	};
@@ -351,13 +370,20 @@ export function buildTermIndex(entries: TermSource[]): TermIndex | null {
 	surfaces.sort((a, b) => b.length - a.length);
 
 	const L = "\\p{L}\\p{N}_";
-	const body = surfaces.map(escapeRegExp).join("|");
+	// A German term is one word; its English equivalent is usually two ("Kartellrecht"
+	// → "cartel law"), so the multi-word side is the normal case rather than an edge
+	// one — and a literal space is the wrong thing to hold it together. The gap
+	// between two words of a form matches any run of whitespace (a soft line break
+	// in the source lands in the text node as "\n") or a hyphen, which is the other
+	// way the same compound gets written (ADR-207).
+	// `escapeRegExp` never touches whitespace, so the gaps are still plain spaces here.
+	const body = surfaces.map((s) => escapeRegExp(s).replace(/\s+/g, SEPARATORS)).join("|");
 	return { matcher: new RegExp(`(?<![${L}])(?:${body})(?![${L}])`, "giu"), canonical, kinds };
 }
 
 /** Resolve a matched surface form back to the term that owns it. */
 export function canonicalTerm(index: TermIndex, surface: string): string {
-	return index.canonical.get(normalizeTerm(surface)) ?? surface;
+	return index.canonical.get(surfaceKey(surface)) ?? surface;
 }
 
 /** What a matched surface form is — a term unless the entry says otherwise. */
