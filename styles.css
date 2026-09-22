@@ -112,6 +112,14 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   -webkit-appearance: none;
   appearance: none;
   box-sizing: border-box;
+  /* iOS holds the first tap back while it waits to see whether a second one
+     follows, because two taps mean zoom; during that wait the tap can be
+     lost. Obsidian exempts its OWN controls by marking them `.is-clickable`
+     or `.clickable-icon`, both of which carry `touch-action: manipulation` in
+     app.css — a button built here is neither, so it says so itself. `.p-sheet`
+     sets `touch-action: none` for its drag-to-dismiss, which already covers
+     everything inside it. */
+  touch-action: manipulation;
   /* Obsidian's `button` rule sets height (--input-height), corner-shape and
      padding that no role would otherwise name — claim each one (ADR-190). */
   height: auto;
