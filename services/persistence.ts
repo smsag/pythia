@@ -309,6 +309,9 @@ export interface MergeOutcome {
 	conversations: Conversation[];
 	/** How many conversations were taken from memory because disk was stale or missing them. */
 	keptFromMemory: number;
+	/** Their ids — the conversations disk is BEHIND on, and so the only ones a
+	 *  flush has to write. A tie is not among them (#356). */
+	newerInMemory: string[];
 }
 
 /**
@@ -327,7 +330,12 @@ export interface MergeOutcome {
  * copy can no longer overwrite fresher state, and a genuinely newer copy from
  * another device still wins.
  *
- * Ties go to memory, which may hold edits not yet stamped onto disk.
+ * Ties go to memory, which may hold edits not yet stamped onto disk — but a tie
+ * is not NEWER, so it is not counted and not reported for writing (#356). Edits
+ * not yet on disk are already dirty in the store; counting every tie made each
+ * reload mark every conversation dirty, rewrite the whole file, and trip the
+ * watcher into the next reload — a loop that re-synced data.json every few
+ * seconds.
  *
  * A conversation present in only one side is KEPT rather than treated as deleted.
  * Without tombstones, "deleted elsewhere" and "created here and not yet saved"
@@ -348,6 +356,7 @@ export function mergeConversations(
 	const byId = new Map(memory.map((c) => [c.id, c]));
 	const taken = new Set<string>();
 	const conversations: Conversation[] = [];
+	const newerInMemory: string[] = [];
 
 	for (const diskConv of disk) {
 		const memConv = byId.get(diskConv.id);
@@ -359,16 +368,16 @@ export function mergeConversations(
 		// ISO 8601 sorts chronologically, so a plain compare is enough. A missing
 		// timestamp sorts oldest, which is the safe direction: it loses only to a
 		// copy that actually carries one.
-		const memWins = (memConv.updatedAt ?? "") >= (diskConv.updatedAt ?? "");
-		conversations.push(memWins ? memConv : diskConv);
+		const memStamp = memConv.updatedAt ?? "", diskStamp = diskConv.updatedAt ?? "";
+		conversations.push(memStamp >= diskStamp ? memConv : diskConv);
+		if (memStamp > diskStamp) newerInMemory.push(memConv.id);
 	}
 
 	const memoryOnly = memory.filter((c) => !taken.has(c.id));
 	conversations.push(...memoryOnly);
+	newerInMemory.push(...memoryOnly.map((c) => c.id));
 
-	const keptFromMemory =
-		conversations.filter((c) => byId.get(c.id) === c).length;
-	return { conversations, keptFromMemory };
+	return { conversations, keptFromMemory: newerInMemory.length, newerInMemory };
 }
 
 /**

@@ -32,6 +32,9 @@ const SETTINGS_SAVE_DEBOUNCE_MS = 400;
 export class PluginDataStore {
 	/** Set by watchDataJson() so persist() can stamp the own-write time. */
 	private saveDataRecordTime: (() => void) | null = null;
+	/** Set by the watcher: record the mtime our own completed write produced, so
+	 *  the next poll cannot mistake it for another device's (#356). */
+	private ownWriteLanded: (() => Promise<void>) | null = null;
 	/** The one coalesced save for text/number settings fields — the settings tab
 	 *  and its sub-panels all go through it, so no surface writes per keystroke. */
 	private readonly settingsSaveSoon = debounce(() => void this.saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS, true);
@@ -96,10 +99,11 @@ export class PluginDataStore {
 		const merged = mergeConversations(existing, loaded);
 		p.conversations = merged.conversations;
 		if (merged.keptFromMemory > 0) {
-			// Disk is behind for these. Mark them so the next flush corrects it;
-			// markDirty deliberately does not itself trigger a write, so startup
-			// stays read-only and the reload path decides when to persist.
-			for (const conv of merged.conversations) p.conversationStore?.markDirty(conv.id);
+			// Disk is behind for THESE — not for every conversation (#356). Marking all
+			// of them rewrote the whole file on every reload, which the watcher then
+			// read as the next external change. markDirty does not itself write, so
+			// startup stays read-only and the reload path decides when to persist.
+			for (const id of merged.newerInMemory) p.conversationStore?.markDirty(id);
 			debugLog(p.settings, "loadPluginData kept newer in-memory conversations", {
 				kept: merged.keptFromMemory,
 				onDisk: loaded.length,
@@ -255,6 +259,10 @@ export class PluginDataStore {
 			// watcher's own-write window is measured from the stamp. Without this a
 			// slow write lands outside its own window and is re-read as external.
 			this.saveDataRecordTime?.();
+			// And absorb the mtime it produced: a time window alone loses to a poll
+			// that lands after it, which is how our own flush re-triggered the
+			// watcher every cycle (#356).
+			await this.ownWriteLanded?.();
 			if (snapshot) p.conversationStore?.clearDirtySnapshot(snapshot);
 		} catch (err) {
 			new Notice(
@@ -371,6 +379,18 @@ export class PluginDataStore {
 
 		// Record whenever WE write so we can ignore our own saves.
 		this.saveDataRecordTime = () => { lastOwnWrite = Date.now(); };
+		// The file our own write left behind is not news. Absorbing its mtime here
+		// is what ends the reload → flush → "external change" → reload loop (#356).
+		const absorbOwnMtime = async (): Promise<void> => {
+			try {
+				const s = await p.app.vault.adapter.stat(DATA_JSON_PATH);
+				if (s) lastKnownMtime = Math.max(lastKnownMtime, s.mtime);
+			} catch (e) {
+				// The next poll re-reads the file; worst case is one redundant reload.
+				console.warn("[Pythia] data.json watcher: could not stat after own write:", describeErrorForLog(e));
+			}
+		};
+		this.ownWriteLanded = absorbOwnMtime;
 
 		const handle = window.setInterval(async () => {
 			try {
@@ -395,6 +415,8 @@ export class PluginDataStore {
 					// conversations stay fresh — it just doesn't announce itself.
 					try {
 						await this.reloadFromDisk({ notify: false });
+						// Its flush (if any) wrote the file; that write is ours too.
+						await absorbOwnMtime();
 					} finally {
 						reloading = false;
 					}
