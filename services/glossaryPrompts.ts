@@ -28,7 +28,9 @@ const PASSAGE_CHARS = 1200;
 const DEFINITION_CHARS = 2000;
 
 /** How much of a forked conversation is read when distilling it back into the
- *  term note. Generous: the point of the fork is the whole discussion. */
+ *  term note. Generous: the point of the fork is the whole discussion — and when
+ *  it does not fit, the LAST part is kept, because understanding is where a
+ *  discussion lands, not where it starts. */
 const DISCUSSION_CHARS = 24000;
 
 /**
@@ -243,7 +245,7 @@ export function termDiscussionPrompt(
 		`- At most 8 sentences. Plain prose: no headings, no lists, no bold, no code.\n` +
 		`- If the conversation settled nothing about the term, reply with nothing at all rather ` +
 		`than padding.` +
-		`${langInstruction(languageLabel)}\n\n${conversationText.slice(0, DISCUSSION_CHARS)}`
+		`${langInstruction(languageLabel)}\n\n${conversationText.slice(-DISCUSSION_CHARS)}`
 	);
 }
 

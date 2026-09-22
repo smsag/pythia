@@ -53,6 +53,7 @@ const de: Strings = {
 	glossarySenseHintPlaceholder:"z. B. nicht der juristische, sondern der…",
 	glossaryDiscuss:          "Diskutieren",
 	glossaryDiscussTooltip:   "Gespräch über diesen Begriff öffnen",
+	glossaryDiscussFailed:    "Gespräch über „{{term}}“ konnte nicht geöffnet werden: {{error}}",
 	termDiscussionSave:       "In „{{term}}“ sichern",
 	termDiscussionSaving:     "Verdichte das Gespräch über „{{term}}“…",
 	termDiscussionSaved:      "Was dieses Gespräch über „{{term}}“ geklärt hat, wurde gesichert",

@@ -466,3 +466,33 @@ describe("the discussion section (ADR-208)", () => {
 		expect(merged.discussion).toBe("Nachher.");
 	});
 });
+
+// ── The composition `GlossaryService.save` actually performs ─────────────────
+//
+// The earlier mergeEntry tests passed an `existing` built by hand, which is not
+// where `existing` comes from: `save` reads the note, parses the body and
+// rebuilds the entry through `entryFromFrontmatter`. A field that survives
+// mergeEntry but is dropped there is deleted by the next write regardless.
+
+describe("round-tripping a note through save's own composition (ADR-208)", () => {
+	const reload = (entry: GlossaryEntry, fm: Record<string, unknown>) =>
+		entryFromFrontmatter(entry.term, fm, parseBody(stripFrontmatter(`---\ntype: term\n---\n\n${renderBody(entry)}`)));
+
+	it("a re-lookup keeps the discussion that is on disk", () => {
+		const onDisk = entry({ definition: "Alte Definition.", discussion: "Hart erarbeitet." });
+		const merged = mergeEntry(
+			reload(onDisk, { type: "term", source: "model" }),
+			entry({ definition: "Neue Definition." }),
+		);
+		expect(merged.definition).toBe("Neue Definition.");
+		expect(merged.discussion).toBe("Hart erarbeitet.");
+		expect(renderBody(merged)).toContain("Hart erarbeitet.");
+	});
+
+	it("carries the contexts through the same path", () => {
+		const onDisk = entry({ contexts: ["Ein belegter Satz."], discussion: "Text." });
+		const back = reload(onDisk, { type: "term", source: "model" });
+		expect(back.contexts).toEqual(["Ein belegter Satz."]);
+		expect(back.discussion).toBe("Text.");
+	});
+});
