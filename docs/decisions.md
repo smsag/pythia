@@ -1,6 +1,12 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-198 (a search field's boundary is a control's boundary: `--background-modifier-border` drew the conversation search row at 1.23:1, where 3:1 is the bar, so the row's rule is now mixed from `--text-normal` at a measured percentage per mode and focus thickens it to the accent).*
+*Last updated: 2026-09-22 — ADR-200 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
+
+*Previously: 2026-09-22 — ADR-199 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
+
+*Previously: 2026-09-22 — ADR-196 addendum (`touch-action: manipulation` on the role base: Obsidian exempts its own controls from iOS's double-tap wait through `.is-clickable`/`.clickable-icon`, and a button built here is neither).*
+
+*Previously: 2026-09-22 — ADR-198 (a search field's boundary is a control's boundary: `--background-modifier-border` drew the conversation search row at 1.23:1, where 3:1 is the bar, so the row's rule is now mixed from `--text-normal` at a measured percentage per mode and focus thickens it to the accent).*
 
 *Previously: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
 
@@ -3896,3 +3902,60 @@ That token is not at fault. `--background-modifier-border` is a hairline **betwe
 Painted and sampled off the screen: **3.45 / 3.07** light and **3.20 / 3.12** dark, for the default theme and Klartext respectively, against 1.19 / 1.23 before.
 
 **Consequences.** The same decision is being made separately in the theme and in the sibling plugin, each in its own idiom and with its own guard — ADR-197 is what forbids a shared file, and nothing here names another repository. The cost is the familiar one: three edits rather than one, and a number that could drift. What the guard holds is the *requirement* (3:1 against the grounds we measured), not the value, so a drift that still clears the bar is not a failure and a drift that does not is.
+
+---
+
+### ADR-199 — A phone embeds with the model it can hold
+
+*2026-09-22*
+
+**Context.** On an iPhone, Obsidian hard-reloaded every minute or two once vault context was switched on. Attached to the phone (`ios_webkit_debug_proxy` on the WebContent inspector, `idevicesyslog`, `idevicecrashreport`), the cause was unambiguous: `memorystatus: killing_specific_process pid … [com.apple.WebKit.WebContent] (per-process-limit …) 2097203KB` — iOS killed Obsidian's web process at ~2 GB, one second after `[Pythia] embedding: worker (blob)`. Measured on an iPhone 15 Pro Max, iOS 26.6.2, each run in a fresh process, with a ballast allocation to locate the baseline:
+
+| Web process | footprint |
+|---|---|
+| Obsidian + the user's 14 plugins, no model | ≈ 640 MB |
+| + English `all-MiniLM-L6-v2` loaded | ≈ +130 MB |
+| + multilingual `paraphrase-multilingual-MiniLM-L12-v2` loaded | ≈ +900–1 000 MB (bmalloc ≈ 1 280 MB, JS heap 4 MB) |
+
+With the multilingual model resident the process sat at ~1.65 GB, and the first inference — or any other plugin's allocation — crossed the limit. **Batch size was not the lever**: batch 1 died like batch 16. The spike is the model load itself (a 250 k-token vocabulary, against the English model's 30 k). Three things made one crash a loop:
+
+1. The index was never complete, so the next send started the same build again.
+2. The fallback chain (blob Worker → resource Worker → iframe) treats every failure as a refusal. After `RangeError: Out of memory` it loaded the model twice more, the last time on the UI thread — every backend shares the one process.
+3. Obsidian's own `app:reload` keeps the same WebContent process; only a kill or a force-quit returns the memory.
+
+**Decision.** Three changes, plus the status the user could not see.
+
+- **A phone embeds with a model marked `mobile`** — `effectiveEmbeddingModel(setting, isMobile)` in `models/embeddingModels.ts`, the ONE answer to "which model runs here". The multilingual model is `mobile: false` (measured, recorded on the config); a phone uses `MOBILE_EMBEDDING_MODEL_ID` (English) instead. **The setting is never rewritten** — it syncs through data.json, and storing the substitute would move the desktop too (principle 6). Index files are named per model, so the phone builds `vault-embeddings-xenova-all-MiniLM-L6-v2.bin` beside the desktop's multilingual one and neither disturbs the other. Every reader goes through `plugin.activeEmbeddingModelId()`; `VaultRagService` receives it as `deps.modelId`.
+- **Out of memory ends the fallback chain** (`services/embedding/memoryError.ts`). A refusal still falls through — that is what the chain is for. Memory exhaustion throws `EmbeddingOutOfMemoryError` instead of loading the model again into the same heap.
+- **A build the OS kills leaves a witness** (`services/embedding/buildGuard.ts`). A marker is saved before the build and removed when it ends; finding it at the next start means the last build never reached its end. After **two** in a row, automatic builds pause — one `Notice` per session — until the user presses *Build now*. Two, not one: iOS also ends backgrounded apps and people swipe Obsidian away, and a single interruption should resume by itself. The marker lives in Obsidian's vault-scoped, **per-device** localStorage, never in data.json — it records this device's crash, and a synced copy would pause a desktop that never crashed. A caught error ends the marker (the process survived to report it) **except out of memory**, which is the same event one allocation short of the kill. A normal unload mid-build ends it too.
+- **The settings tab says where the index stands** (`services/embedding/indexStatus.ts`, `ui/vaultIndexStatusSetting.ts`). Seven states — not built · building n/N · ready · unfinished · out of date · failed (out of memory named as such) · paused — each saying what to do, plus a detail line (model, `(mobile)` when substituted, engine, "off by default"). It never loads the model: a session that has not built reads the file's header (`peekIndexMeta`), so a complete index on disk says *ready* rather than the old "Idle — the index builds on first use". It follows a running build live and unsubscribes itself once its row has left the DOM. *Build now* finishes or updates keeping the rows; *Rebuild index* discards and starts over. Each section of the embedding settings opens with a plain explanation of what it does, and the model row says which model this device runs and why.
+
+**Not done.** The related-conversations index (ADR-109) is not behind the guard: it is built only when the user asks for related conversations (the background warm is desktop-only, ADR-169), so it cannot loop on its own. It does use the effective model, so a phone no longer loads the multilingual model for it either. Recorded as D-39.
+
+**Guards.** `tests/embeddingModelRule.test.ts` fails if a phone can ever be handed a non-mobile model, and — scanning code, not comments — if any file other than `main.ts` (two reads: the resolver and the "substituted?" comparison) and the settings control reads `settings.embeddingModelId`. `tests/buildGuard.test.ts` pins the marker's validation, the two-deaths rule, and that a write failure is logged. `tests/vaultRagGuard.test.ts` drives the service: a mark during a build and none after; no automatic build — not even a constructed provider — after two deaths; resume after one; *Build now* clears the history; ordinary failure clears, out-of-memory keeps; unload clears; and status read from the header without constructing a provider. `tests/embeddingProviderFactory.test.ts` asserts the chain stops at out-of-memory and still falls through on a refusal. `tests/indexStatus.test.ts` gives every state its own filled headline.
+
+**Consequences.** On a phone, vault context and related conversations work, with the English model's limits: German text is matched mainly through shared words, and a question in one language no longer finds a note in the other by meaning. For a mostly-English vault that is a small cost; the desktop keeps the multilingual model unchanged. Phone and desktop can return different related conversations and retrieved notes, since they index with different models. The embedding strings moved to `locales/embedding.{en,de}.ts` — the per-feature split engineering-review #301 proposed — which took both tables back under the file-size default, and the dead-key test now scans subdirectories, which it silently had not.
+
+---
+
+### ADR-200 — A phone runs the multilingual model with a Latin-script vocabulary
+
+*2026-09-22*
+
+**Context.** ADR-199 gave phones the English model because the multilingual one crashed them, and recorded the cost as D-40: on the phone, a question in one language no longer found a note in the other by meaning. For a vault that is mostly English with German questions, that is the case that matters most. "Just use a leaner multilingual model" was surveyed and does not exist for this runtime: every multilingual model with a transformers.js build carries a vocabulary of 120k–500k pieces (multilingual-e5-small shares this model's 250k exactly; jina-v2-de has 61k but wider layers and a bigger file), and on a MiniLM-sized model the vocabulary *is* the memory.
+
+Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM): of the full model's ≈ 600 MB on a Mac, the 17 MB `tokenizer.json` expands to **153 MB of JS heap** and the 96 MB int8 embedding table drives a **332 MB WASM heap**; the twelve transformer layers are ~22 MB. Counting by script: 110k of the 250k pieces are Latin, 97k are CJK/Arabic/Devanagari/Thai and other scripts, 32k Cyrillic, 5k Greek.
+
+**Decision.** Publish a variant of the same model with its vocabulary cut to Latin-script pieces, and let a phone run *that* for a multilingual setting.
+
+- **The rule is by script, not by usage.** Every piece that is Latin or script-neutral (digits, punctuation, symbols, marks) is kept, plus every single-character piece of any script. A Latin-script string can only segment into kept pieces, so its segmentation — and its vector — is identical to the full model's: **cosine 1.000000 with identical token counts on 413 texts** (thirteen sentences in nine languages plus 400 chunks of the reporter's vault; `npm run model:verify`). Pruning to the pieces one vault uses was tried first and is **not** exact: new Italian and Spanish sentences fell to cosine 0.44–0.53, and 55 of 400 vault chunks re-segmented. Other scripts fall back to single characters and degrade instead of producing `<unk>`.
+- **Measured on the iPhone** (fresh process, 16-chunk batch embedded, then ballast to the pressure line): **≈ +370–400 MB**, against +900–1 000 MB for the full model and +130 MB for English; the process then absorbed a further ~1 GB before the kill. 128 507 of 250 002 pieces; 72 MB `q8` file, 4.7 MB tokenizer.
+- **The variant is a `variantOf` the full model**, never a dropdown entry: `effectiveEmbeddingModel` prefers a mobile variant of the chosen model over `MOBILE_EMBEDDING_MODEL_ID`, and `SELECTABLE_EMBEDDING_MODEL_IDS` is what settings offer. Its `relatedFloors` are the family's — not re-measured, because the same vectors have the same distribution — and a test holds dim, pooling, window and floors equal.
+- **Index files are named by vector family** (`vectorFamily(id)` in `VaultIndexStore`), and `scopeSignature` uses the family too. A phone on the variant therefore reads the index the desktop built and keeps it fresh, instead of building its own — most of the phone's work is gone, not just made smaller. Both devices already wrote the same file when they ran the same model; nothing new about sync conflicts is introduced.
+- **Reproducible, and published as a fork.** `scripts/prune-embedding-model.py` builds the variant from the upstream files (Apache-2.0; the model card credits the original) and is what produced the published files byte for byte; `scripts/verify-pruned-model.mjs` is the equivalence check. It lives at `LATIN_VARIANT_REPO_ID` on Hugging Face because that is where Pythia's model loader already fetches from, and the alternative — the desktop pruning and syncing 77 MB through every vault — was weighed and declined: more plugin code, a quota cost per vault, and phones without a desktop left on English.
+
+**Not done.** The English model stays the stand-in for anything that has no variant. Non-Latin scripts are the one thing the variant gives up, and the settings note says so (`embeddingModelLatinNote`). The full model's own cross-language retrieval quality on this vault is still unmeasured (D-13) — pruning does not change it, so the measurement is unaffected.
+
+**Guards.** `tests/embeddingModelRule.test.ts`: a phone with the multilingual setting runs the variant, not English; exactly one variant exists and is mobile; a variant equals its family in dim, pooling, window, chunk size, floors and `relatedMinScore`, and declares what it gives up; variants never appear in `SELECTABLE_EMBEDDING_MODEL_IDS`; a full model is its own family. `tests/vaultIndexStore.test.ts`: the variant and the full model name the same file. `tests/vaultRagGuard.test.ts`: the same scope signature, and a complete desktop index reads as *ready* on the phone without loading a model. `tests/embeddingSettings.test.ts`: the dropdown offers the two full models only; the desktop note names the variant and its limit.
+
+**Consequences.** A phone keeps cross-language matching and returns the same related conversations and retrieved notes as the desktop, from the same index. D-40 closes. ADR-199's English substitution remains the general rule for a model with no variant.

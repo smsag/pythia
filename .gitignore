@@ -39,6 +39,10 @@ desktop.ini
 # Note: CLAUDE.md (agent instructions) IS tracked intentionally
 .claude/
 
+# ── Pruned embedding model (ADR-200) ────────────────────────────────────────
+# Built by npm run model:prune, published to Hugging Face — never committed.
+dist-models/
+
 # ── Local docs ─────────────────────────────────────────────────────────────────
 # Large design-reference assets used by agents — not distributed with the plugin.
 docs/pythia-v3.html

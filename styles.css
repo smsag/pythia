@@ -2531,6 +2531,19 @@ body.is-phone .workspace-drawer .p-input-area {
   font-size: var(--font-smaller, 12px);
 }
 
+/* Vault index status row in the settings tab (ADR-199): the headline is the
+   state and what to do about it, so it reads at body contrast; the detail line
+   (model · engine · default) is reference, in the mono micro-label voice. The
+   settings tab sits outside `.pythia-view`, where --s1 is not defined. */
+.p-index-status-headline {
+  color: var(--text-normal);
+}
+.p-index-status-detail {
+  margin-top: 4px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 11px);
+}
+
 /* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
    allowed for this send, without the persistent .is-active toggled state. */
 .p-tool-btn.is-auto-armed {

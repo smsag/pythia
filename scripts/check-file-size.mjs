@@ -24,12 +24,9 @@ const CEILINGS = {
 	// Settings tab monolith; grows one setting at a time (embedding model, related-
 	// similarity preset, …). TODO: split into grouped sections. Split later.
 	"settings.ts": 528,
-	// The two string tables. A line here is one user-visible string, so the budget
-	// measures vocabulary rather than structure — the thing ADR-097 exists to
-	// bound. Ratchet these down only by REMOVING strings, never by reflowing
-	// them; splitting the tables per feature area is the real fix (review #301).
-	"locales/en.ts": 620,
-	"locales/de.ts": 620,
+	// locales/en.ts and de.ts dropped under DEFAULT_MAX once the embedding strings
+	// moved to locales/embedding.{en,de}.ts — the per-feature split review #301
+	// proposed (ADR-199). No ceiling needed; split the next area the same way.
 	// tests/viewRender.test.ts dropped under DEFAULT_MAX once the mount fixture
 	// moved to tests/helpers/viewHarness.ts and the conversation-panel describes
 	// moved to tests/historyPanel.test.ts (ADR-143) — no ceiling needed.
