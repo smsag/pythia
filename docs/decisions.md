@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-201 (review fixes to ADR-199/200: a shared index row is reused only by a device that would have produced it; a paused session reports paused whatever the file says; a stored variant id is refused; the model load is its own status).*
+*Last updated: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
+
+*Previously: 2026-09-22 — ADR-201 (review fixes to ADR-199/200: a shared index row is reused only by a device that would have produced it; a paused session reports paused whatever the file says; a stored variant id is refused; the model load is its own status).*
 
 *Previously: 2026-09-22 — ADR-200 (a phone runs the multilingual model with its vocabulary cut to Latin script — the same vectors, a third of the memory — and shares the desktop's index; closes D-40).*
 
@@ -3982,3 +3984,26 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 **Guards.** `tests/rowProvenance.test.ts`: the Latin test, both policies, the desktop re-embedding a tagged row, the phone keeping the desktop's row (no ping-pong), tagged vs plain rows on write, Latin rows shared both ways, `updateNote`, and the conversation index end to end. `tests/vaultRagGuard.test.ts`: a complete index under a blocking guard reports `paused` with its count and *Build now* offered; a pending model load reports `loading`. `tests/persistence.test.ts`: a stored variant id falls back. `tests/indexStatus.test.ts`: every state including `loading` has its own headline. Each guard was checked by reverting its fix and watching it fail.
 
 **Consequences.** A desktop re-embeds each non-Latin note or conversation a phone wrote, once. Nothing changes for Latin-script text, which remains shared without re-embedding.
+
+---
+
+### ADR-202 — Switching apps on iOS during indexing and afterwards
+
+*2026-09-22*
+
+**Context.** Nothing in Pythia reacted to Obsidian going to the background. iOS freezes a backgrounded app within seconds — JavaScript and the embedding Worker alike — and ends it outright when it needs the memory, largest apps first. Three consequences:
+
+1. **Wall-clock timeouts.** The model-load deadline compared `Date.now()` with a start time, and each embed request armed a one-shot `setTimeout`. Six minutes away during a first download and the load "timed out" the instant Obsidian returned — a rejection `FallbackEmbeddingProvider` memoizes, so embedding stayed dead for the session.
+2. **False pauses.** ADR-199's guard counted every build that never recorded an end. A build killed while Obsidian sat in the background counted like a crash, so two ordinary app switches during a first build paused automatic indexing.
+3. **An idle model held ~400 MB.** After a build the loaded model stays resident whether anything is embedded or not — which makes Obsidian the app iOS ends first, and an ended app cold-starts on return: the "hard reload" this work began with, by another route.
+
+**Decision.**
+
+- **Deadlines count visible time only** (`services/embedding/host/visibleClock.ts`). `VisibleClock.elapsed()` stops while hidden; `timeout()` polls it, because a one-shot timer cannot be paused and fires overdue on resume. Both providers' load deadline and request timeouts use it; a test fails if either goes back to `Date.now() - started` or a `clearTimeout(x.timeout)`.
+- **A background death is not a crash.** The marker gains `background`, set while Obsidian is hidden during a build (`VaultRagService.onBackground` → `BuildGuard.markBackground`). `foregroundDeaths` does not count the latest attempt when it died backgrounded, and `markBuildStarted` carries only foreground deaths forward — so any number of iOS background kills never pauses a build, while two foreground crashes still do, even with background kills between them.
+- **A phone releases the idle model and preloads it ahead of need** (`services/embedding/residency.ts`). `ResidentProvider` wraps the provider and records whether it is loaded (successfully — a failed out-of-memory load is never "released" and so never silently retried), whether an embed is in flight, and when it was last used. `EmbeddingResidency` releases on hide and after `IDLE_RELEASE_MS` (3 min) without use — never under a build or an in-flight embed — and preloads a model **it** released when Obsidian returns and when the chat input gets focus. A model that never loaded is never preloaded: that would be a download nobody asked for. The desktop never releases. Reload from cache measured 0.7 s on the iPhone, which typing hides.
+- **One `visibilitychange` handler** (`installEmbeddingResidency`, through `registerDomEvent`) feeds all three: the clock, the guard and the release.
+
+**Not measured yet.** The release's effect on how often iOS ends Obsidian in the background is argued from jetsam's largest-first order, not measured on the device. Worth checking with the phone attached before merging: footprint after hide, and a cold vs warm return after opening a memory-heavy app.
+
+**Guards.** `tests/embeddingResidency.test.ts`: the visible clock (frozen while hidden; no overdue fire on return; cancel), the source guard on both providers, the background rule (strict parse; excused vs counted deaths; ten background kills never pause; two foreground crashes still do), and the residency (release on hide, preload on return, never under a build or embed, never a never-loaded or failed model, idle release at exactly 3 min, use resets it, the input preloads only a released model, the desktop never releases). `tests/vaultRagGuard.test.ts`: a running build's marker toggles with visibility and clears at the end. Each rule was checked by reverting it.

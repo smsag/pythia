@@ -24,6 +24,10 @@ export interface BuildMarker {
 	startedAt: number;
 	/** The model it was loading — the likeliest suspect when it was a crash. */
 	modelId: string;
+	/** True while Obsidian is in the background (ADR-202). iOS ends backgrounded
+	 *  apps to reclaim memory as a matter of course; a build that died there was
+	 *  not a crash loop, so the latest attempt does not count against it. */
+	background?: boolean;
 }
 
 /** Where the marker lives. Obsidian's `app.loadLocalStorage`/`saveLocalStorage`
@@ -41,21 +45,31 @@ export function parseBuildMarker(raw: unknown): BuildMarker | null {
 	const r = raw as Record<string, unknown>;
 	const attempts = r.attempts;
 	if (typeof attempts !== "number" || !Number.isInteger(attempts) || attempts < 1) return null;
-	return {
+	const marker: BuildMarker = {
 		attempts,
 		startedAt: typeof r.startedAt === "number" && Number.isFinite(r.startedAt) ? r.startedAt : 0,
 		modelId: typeof r.modelId === "string" ? r.modelId : "",
 	};
+	if (r.background === true) marker.background = true;
+	return marker;
+}
+
+/** Builds that died while Obsidian was in the FOREGROUND — the only deaths that
+ *  point at a crash loop. The latest attempt is not one when it was still marked
+ *  as backgrounded: iOS ended the app, it did not crash (ADR-202). */
+export function foregroundDeaths(marker: BuildMarker | null): number {
+	if (!marker) return 0;
+	return marker.attempts - (marker.background ? 1 : 0);
 }
 
 /** Whether an AUTOMATIC build may start. A build the user asks for always may. */
 export function mayAutoBuild(marker: BuildMarker | null): boolean {
-	return (marker?.attempts ?? 0) < MAX_INTERRUPTED_BUILDS;
+	return foregroundDeaths(marker) < MAX_INTERRUPTED_BUILDS;
 }
 
 /** The marker to save as a build starts. */
 export function markBuildStarted(prior: BuildMarker | null, now: number, modelId: string): BuildMarker {
-	return { attempts: (prior?.attempts ?? 0) + 1, startedAt: now, modelId };
+	return { attempts: foregroundDeaths(prior) + 1, startedAt: now, modelId };
 }
 
 /** The persistence around one build: `start` before any model work, `end` when the
@@ -88,6 +102,17 @@ export class BuildGuard {
 
 	end(): void {
 		this.write(null);
+	}
+
+	/** Mark the running build as backgrounded (or back in the foreground). A no-op
+	 *  without a marker: nothing is running, so there is nothing to excuse. */
+	markBackground(hidden: boolean): void {
+		const marker = this.read();
+		if (!marker || (marker.background === true) === hidden) return;
+		const next: BuildMarker = { ...marker };
+		if (hidden) next.background = true;
+		else delete next.background;
+		this.write(next);
 	}
 
 	private write(marker: BuildMarker | null): void {

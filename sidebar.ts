@@ -592,6 +592,7 @@ export class PythiaSidebarView extends ItemView {
 
 		this.registerDomEvent(this.inputEl, "focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
+			this.plugin.prewarmEmbedding(); // typing hides a released model's reload (ADR-202)
 		});
 		this.registerDomEvent(this.inputEl, "blur", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);

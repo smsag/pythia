@@ -33,6 +33,7 @@ import { relatedMinScore, type RelatedResult } from "./services/embedding/relate
 import { effectiveEmbeddingModel, type EmbeddingModelId } from "./models/embeddingModels";
 import { vaultBuildGuard } from "./services/embedding/buildGuard";
 import { hashPolicyFor } from "./services/embedding/rowProvenance";
+import { installEmbeddingResidency, ResidentProvider, type EmbeddingResidency } from "./services/embedding/residency";
 import type { VaultIndexStatus } from "./services/embedding/indexStatus";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
@@ -75,7 +76,9 @@ export default class PythiaPlugin extends Plugin {
 	// RAG (ADR-116) share ONE lazily-built provider (the model/iframe is heavy), so
 	// the model loads once and both index services reuse it. Switching the embedding
 	// model tears everything down so the next use rebuilds against the new model.
-	private embeddingProvider: EmbeddingProvider | null = null;
+	private embeddingProvider: ResidentProvider | null = null;
+	/** Releases the model on a phone when idle or backgrounded, and preloads it (ADR-202). */
+	private residency: EmbeddingResidency | null = null;
 	private embeddingModelId: EmbeddingModelId | null = null;
 	private relatedService: ConversationIndexService | null = null;
 	/** Memoized resource-path URL for the embedding worker script (written once per
@@ -85,9 +88,7 @@ export default class PythiaPlugin extends Plugin {
 	 *  extracted to its own service; uses the shared embedding provider below. */
 	vaultRag!: VaultRagService;
 
-	/** The model this device embeds with (ADR-199) — the English one on mobile when
-	 *  the setting names a model a phone cannot hold. The ONLY reader of
-	 *  `settings.embeddingModelId` outside the settings tab. */
+	/** The model this device embeds with (ADR-199/200) — the ONLY reader of `settings.embeddingModelId` outside settings. */
 	activeEmbeddingModelId(): EmbeddingModelId {
 		return effectiveEmbeddingModel(this.settings.embeddingModelId, Platform.isMobile);
 	}
@@ -158,7 +159,7 @@ export default class PythiaPlugin extends Plugin {
 		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
 		// Worker (off the UI thread) with a blob→resource-path→iframe fallback chain
 		// (ADR-119/126). The resource-path URL lets the Worker start where blob: is blocked.
-		this.embeddingProvider = createEmbeddingProvider(
+		this.embeddingProvider = new ResidentProvider(createEmbeddingProvider(
 			modelId,
 			(p) =>
 				debugLog(this.settings, "embedding: model load", {
@@ -172,7 +173,7 @@ export default class PythiaPlugin extends Plugin {
 			// happy path, so a desktop-wide fallback to the UI-thread iframe looked
 			// exactly like a working Worker until someone read the source.
 			(backend, failures) => debugLog(this.settings, "embedding: backend resolved", { backend, modelId, failures }),
-		);
+		), () => this.residency?.noteUse());
 		this.embeddingModelId = modelId;
 		return this.embeddingProvider;
 	}
@@ -213,19 +214,16 @@ export default class PythiaPlugin extends Plugin {
 		this.vaultRag.buildNow();
 	}
 
-	onVaultIndexChange(listener: () => void): () => void {
-		return this.vaultRag.onChange(listener);
-	}
+	/** The chat input got focus: load a model the phone released, before the send needs it (ADR-202). */
+	prewarmEmbedding(): void { this.residency?.prewarm(); }
+
+	onVaultIndexChange(listener: () => void): () => void { return this.vaultRag.onChange(listener); }
 
 	/** Where the vault index stands, for the settings tab (ADR-199). Never loads the model. */
 	async vaultIndexStatus(): Promise<VaultIndexStatus> {
 		const modelId = this.activeEmbeddingModelId();
-		return {
-			...(await this.vaultRag.status()),
-			modelId,
-			modelSubstituted: modelId !== this.settings.embeddingModelId,
-			enabledByDefault: this.settings.vaultContextEnabled,
-		};
+		const substituted = modelId !== this.settings.embeddingModelId;
+		return { ...(await this.vaultRag.status()), modelId, modelSubstituted: substituted, enabledByDefault: this.settings.vaultContextEnabled };
 	}
 
 	/** Drop the embedding provider + index services so the next use rebuilds with
@@ -255,6 +253,10 @@ export default class PythiaPlugin extends Plugin {
 			() => new VaultIndexStore(this, this.activeEmbeddingModelId(), "vault-embeddings"),
 			{ modelId: () => this.activeEmbeddingModelId(), guard: vaultBuildGuard(this.app) },
 		);
+		this.residency = installEmbeddingResidency(this, {
+			provider: () => this.embeddingProvider, building: () => this.vaultRag.isBuilding(), mobile: Platform.isMobile,
+			onBackground: (hidden) => this.vaultRag.onBackground(hidden), log: (m, d) => debugLog(this.settings, m, d),
+		});
 		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
 		// non-blocking — returns [] until the background index is ready).
 		this.llmRouter.setVaultRetriever((conv, query, exclude) =>
