@@ -38,13 +38,34 @@ export class GlossaryController {
 	/** Bumped per toggle so a second tap during the async lookup below does not
 	 *  leave two anchors open. */
 	private openGeneration = 0;
+	/** A translation recorded a new surface form while an anchor was open
+	 *  (ADR-206), so the transcript owes a repaint once it closes. */
+	private formRecorded = false;
 
 	constructor(private readonly d: GlossaryDeps) {}
 
 	/** Close the inline anchor — teardown and pre-rebuild. */
 	closeAnchor(): void {
+		this.close(true);
+	}
+
+	/**
+	 * `repaint` is false only when another anchor is about to open: repainting
+	 * unwraps every mark, including the one the caller still holds a reference to
+	 * and is about to insert after, which would leave the new anchor on a detached
+	 * node. The pending repaint is not lost — it is taken by the next real close.
+	 */
+	private close(repaint: boolean): void {
 		this.openAnchor?.remove();
 		this.openAnchor = null;
+		if (repaint) this.flushRepaint();
+	}
+
+	/** Draw the marks a newly recorded surface form earned, if one is owed. */
+	private flushRepaint(): void {
+		if (!this.formRecorded) return;
+		this.formRecorded = false;
+		this.repaintAll();
 	}
 
 	/**
@@ -106,7 +127,7 @@ export class GlossaryController {
 			this.closeAnchor();
 			return;
 		}
-		this.closeAnchor();
+		this.close(false); // `markEl` must survive until the new anchor hangs off it
 		const generation = ++this.openGeneration;
 
 		const service = this.d.plugin.glossaryService;
@@ -168,9 +189,15 @@ export class GlossaryController {
 		if (!needsTranslation(entry, target)) { this.build(anchor, entry, markEl); return; }
 		const from = definitionLanguageOf(entry);
 		this.build(anchor, entry, markEl, { pending: target });
-		const text = await this.d.plugin.glossaryService.translate(entry, target);
+		const result = await this.d.plugin.glossaryService.translate(entry, target);
+		// Owed even if the anchor has since closed — the form is in the note either
+		// way. With nothing open there is no mark to protect, so it is paid now.
+		if (result?.form) {
+			this.formRecorded = true;
+			if (!this.openAnchor) this.flushRepaint();
+		}
 		if (this.openAnchor !== anchor) return; // closed or replaced meanwhile
-		this.build(anchor, entry, markEl, text ? { text, from } : undefined);
+		this.build(anchor, entry, markEl, result ? { text: result.text, from } : undefined);
 	}
 
 	private build(

@@ -4,7 +4,6 @@ import {
 	formatDate,
 	formatMonthYear,
 	formatSummaryTimestamp,
-	parseDefinitionReply,
 	normalizeMessages,
 	selectHistoryForSend,
 	trimHistoryToBudget,
@@ -420,100 +419,6 @@ describe("unwrapCodeFence", () => {
 
 	it("is a no-op on text with no fences", () => {
 		expect(unwrapCodeFence("just prose")).toBe("just prose");
-	});
-});
-
-describe("parseDefinitionReply — translations and context (ADR-149)", () => {
-	const reply = [
-		"DEFINITION:",
-		"Ein Gerät, das diskrete Ereignisse erfasst.",
-		"VARIANTS: Zählers | Zählern",
-		"TRANSLATIONS: en: counter | it: contatore",
-		"CONTEXT: Der Zähler wird monatlich abgelesen.",
-	].join("\n");
-
-	it("separates same-language forms from language-tagged translations", () => {
-		const { variants, translations } = parseDefinitionReply(reply);
-		expect(variants).toEqual(["Zählers", "Zählern"]);
-		expect(translations).toEqual([
-			{ lang: "en", term: "counter" },
-			{ lang: "it", term: "contatore" },
-		]);
-	});
-
-	it("keeps the definition free of every marker line", () => {
-		expect(parseDefinitionReply(reply).definition).toBe("Ein Gerät, das diskrete Ereignisse erfasst.");
-	});
-
-	it("keeps a multi-paragraph definition whole when markers follow it", () => {
-		const raw = "DEFINITION:\nErster Absatz.\n\nZweiter Absatz.\nCONTEXT: Ein Satz.";
-		expect(parseDefinitionReply(raw).definition).toBe("Erster Absatz.\n\nZweiter Absatz.");
-	});
-
-	it("drops a translation with no language code rather than guessing one", () => {
-		expect(parseDefinitionReply("DEFINITION:\nX.\nTRANSLATIONS: counter | it: contatore").translations)
-			.toEqual([{ lang: "it", term: "contatore" }]);
-	});
-
-	it("treats an empty or 'none' context as absent", () => {
-		expect(parseDefinitionReply("DEFINITION:\nX.\nCONTEXT:").context).toBe("");
-		expect(parseDefinitionReply("DEFINITION:\nX.\nCONTEXT: none").context).toBe("");
-	});
-
-	it("returns empty collections for a reply that carries no markers at all", () => {
-		const { definition, variants, translations, context } = parseDefinitionReply("Just prose.");
-		expect(definition).toBe("Just prose.");
-		expect(variants).toEqual([]);
-		expect(translations).toEqual([]);
-		expect(context).toBe("");
-	});
-});
-
-describe("parseDefinitionReply", () => {
-	it("reads the definition and the pipe-separated variants", () => {
-		const { definition, variants } = parseDefinitionReply(
-			"DEFINITION:\nEin Zähler misst den Verbrauch.\nVARIANTS: Zählers | Zählern | counter"
-		);
-		expect(definition).toBe("Ein Zähler misst den Verbrauch.");
-		expect(variants).toEqual(["Zählers", "Zählern", "counter"]);
-	});
-
-	it("keeps a multi-line definition intact and stops it at the variants line", () => {
-		const { definition, variants } = parseDefinitionReply(
-			"DEFINITION:\nFirst line.\n\nSecond line.\nVARIANTS: Neuronen"
-		);
-		expect(definition).toBe("First line.\n\nSecond line.");
-		expect(variants).toEqual(["Neuronen"]);
-	});
-
-	it("falls back to the whole reply when the model ignores the markers", () => {
-		const { definition, variants } = parseDefinitionReply("Just prose, no markers.");
-		expect(definition).toBe("Just prose, no markers.");
-		expect(variants).toEqual([]);
-	});
-
-	it("accepts commas only when no pipe is present, so a spaced form is not split", () => {
-		expect(parseDefinitionReply("DEFINITION:\nX.\nVARIANTS: Neuronen, neuronal").variants)
-			.toEqual(["Neuronen", "neuronal"]);
-		expect(parseDefinitionReply("DEFINITION:\nX.\nVARIANTS: sparse coding | Coding").variants)
-			.toEqual(["sparse coding", "Coding"]);
-	});
-
-	it("strips list decoration, annotations and duplicates", () => {
-		expect(
-			parseDefinitionReply('DEFINITION:\nX.\nVARIANTS: - "Zählers" (genitive) | Zählers | Zählern.').variants
-		).toEqual(["Zählers", "Zählern"]);
-	});
-
-	it("drops an empty or explicitly-none variants line", () => {
-		expect(parseDefinitionReply("DEFINITION:\nX.\nVARIANTS:").variants).toEqual([]);
-		expect(parseDefinitionReply("DEFINITION:\nX.\nVARIANTS: none").variants).toEqual([]);
-		expect(parseDefinitionReply("DEFINITION:\nX.\nVARIANTS: keine").variants).toEqual([]);
-	});
-
-	it("caps the list, so one bad reply cannot mark a dozen phrases everywhere", () => {
-		const many = Array.from({ length: 20 }, (_, i) => `form${i}`).join(" | ");
-		expect(parseDefinitionReply(`DEFINITION:\nX.\nVARIANTS: ${many}`).variants).toHaveLength(8);
 	});
 });
 

@@ -1,4 +1,5 @@
 import type { EntryKind, GlossaryEntry, Translation } from "./glossary";
+import { normalizeTerm } from "./glossary";
 import type { Conversation } from "../models/types";
 import { detectLanguage } from "./languageDetect";
 
@@ -111,6 +112,12 @@ export function cachedTranslation(entry: GlossaryEntry, lang: string): string | 
  * `processFrontMatter`. When the stored hash is not this definition's, every
  * `definition_<lang>` there was made from an older text: all are dropped before
  * the new one is set, so a stale language cannot survive beside a fresh one.
+ *
+ * `term` is the term's own equivalent in that language (ADR-206), recorded so
+ * the index marks it from then on. It is **not** cleared by the staleness sweep
+ * above and never overwrites a value already in the file: a surface form does
+ * not expire when the definition is reworded, and the one in the note may have
+ * been corrected by hand — which is the whole promise of a property.
  */
 export function applyTranslation(
 	fm: Record<string, unknown>,
@@ -118,6 +125,7 @@ export function applyTranslation(
 	text: string,
 	definition: string,
 	sourceLanguage: string | null,
+	term?: string | null,
 ): void {
 	const hash = definitionHash(definition);
 	if (fm[TRANSLATED_FROM_KEY] !== hash) {
@@ -126,6 +134,35 @@ export function applyTranslation(
 	fm[definitionKey(lang)] = text;
 	fm[TRANSLATED_FROM_KEY] = hash;
 	if (!fm.language && sourceLanguage) fm.language = sourceLanguage;
+	if (term && !fm[translationKey(lang)]) fm[translationKey(lang)] = term;
+}
+
+/**
+ * Whether a term the translation call came back with is a surface form worth
+ * recording — and null whenever it is not (ADR-206).
+ *
+ * Every rejection here is a mark the reader would otherwise meet in the wrong
+ * place. A form equal to the term itself says only that the word travels
+ * unchanged; one that repeats an alias is already in the index; and a language
+ * the entry already answers for is settled, possibly by hand, so a model's
+ * second opinion must not quietly replace it.
+ *
+ * A person is excluded at the call site rather than here: a name is not
+ * translated, so the question never arises.
+ */
+export function newTranslation(
+	entry: GlossaryEntry,
+	lang: string,
+	term: string,
+): Translation | null {
+	const form = term.trim();
+	if (!form) return null;
+	const key = normalizeTerm(form);
+	if (key === normalizeTerm(entry.term)) return null;
+	if (entry.translations?.some((t) => t.lang === lang)) return null;
+	if ((entry.aliases ?? []).some((a) => normalizeTerm(a) === key)) return null;
+	if (entry.translations?.some((t) => normalizeTerm(t.term) === key)) return null;
+	return { lang, term: form };
 }
 
 /** The language `entry`'s definition is written in: recorded, else detected. */

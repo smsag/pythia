@@ -12,6 +12,7 @@ import "./helpers/viewHarness";
 import { GlossaryController } from "../ui/GlossaryController";
 import type PythiaPlugin from "../main";
 import type { GlossaryEntry } from "../services/glossary";
+import type { TranslationResult } from "../services/GlossaryService";
 import { t } from "../i18n";
 
 const ENTRY: GlossaryEntry = {
@@ -105,7 +106,10 @@ describe("glossary anchor placement (ADR-156)", () => {
 describe("glossary anchor language (ADR-166)", () => {
 	beforeEach(() => { document.body.innerHTML = ""; });
 
-	function controllerFor(outputLanguage: string, translate: (e: GlossaryEntry, lang: string) => Promise<string | null>): GlossaryController {
+	function controllerFor(
+		outputLanguage: string,
+		translate: (e: GlossaryEntry, lang: string) => Promise<TranslationResult | null>,
+	): GlossaryController {
 		const plugin = {
 			settings: { defaultAnthropicModel: "claude-sonnet-4-6", outputLanguage },
 			app: { workspace: { openLinkText: () => {} } },
@@ -129,7 +133,10 @@ describe("glossary anchor language (ADR-166)", () => {
 
 	it("shows the translation into the instructed language and says it is one", async () => {
 		const calls: string[] = [];
-		const c = controllerFor("en", async (_e, lang) => { calls.push(lang); return "A device that records discrete events."; });
+		const c = controllerFor("en", async (_e, lang) => {
+			calls.push(lang);
+			return { text: "A device that records discrete events.", form: null };
+		});
 		await c.toggleAnchor("Zähler", paragraphWithMark());
 		expect(calls).toEqual(["en"]);
 		expect(body().textContent).toBe("A device that records discrete events.");
@@ -138,7 +145,7 @@ describe("glossary anchor language (ADR-166)", () => {
 
 	it("under AUTO a German answer shows the German definition without a call", async () => {
 		const calls: string[] = [];
-		const c = controllerFor("auto", async (_e, lang) => { calls.push(lang); return "x"; });
+		const c = controllerFor("auto", async (_e, lang) => { calls.push(lang); return { text: "x", form: null }; });
 		await c.toggleAnchor("Zähler", paragraphWithMark());
 		expect(calls).toEqual([]);
 		expect(body().textContent).toBe(ENTRY.definition);
@@ -153,13 +160,13 @@ describe("glossary anchor language (ADR-166)", () => {
 	});
 
 	it("shows a placeholder, never the untranslated text, while the translation runs", async () => {
-		let resolve!: (v: string) => void;
-		const c = controllerFor("en", () => new Promise<string>((r) => { resolve = r; }));
+		let resolve!: (v: TranslationResult) => void;
+		const c = controllerFor("en", () => new Promise<TranslationResult>((r) => { resolve = r; }));
 		const opening = c.toggleAnchor("Zähler", paragraphWithMark());
 		await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 		expect(body().classList.contains("is-pending")).toBe(true);
 		expect(body().textContent).toBe(t("glossaryTranslating", { code: "EN" }));
-		resolve("A device.");
+		resolve({ text: "A device.", form: null });
 		await opening;
 		expect(body().textContent).toBe("A device.");
 	});

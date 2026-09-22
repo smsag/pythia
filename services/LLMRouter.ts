@@ -4,6 +4,7 @@ import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
 import type { MistralService } from "./MistralService";
 import type { PythiaSettings } from "../settings";
+import type { TranslatedDefinition } from "./glossaryReply";
 
 export class LLMRouter {
 	private providers: Record<Provider, LLMProvider>;
@@ -120,8 +121,13 @@ export class LLMRouter {
 		return this.byProvider(provider).describePerson(name, passage, conversation);
 	}
 
-	translateDefinition(definition: string, language: string, provider?: Provider): Promise<string> {
-		return this.byProvider(provider).translateDefinition(definition, language);
+	translateDefinition(
+		definition: string,
+		language: string,
+		term?: string,
+		provider?: Provider
+	): Promise<TranslatedDefinition> {
+		return this.byProvider(provider).translateDefinition(definition, language, term);
 	}
 
 	/** Which model `defineTerm` will actually use, so a stored definition can
