@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-22 — #357: `VaultRagService.refresh` takes `clear` (the rows are cleared after the model loaded, `reindex` passes it) and resets the provider on a manual build that follows a failed attempt.*
+*Last updated: 2026-09-22 — #358 (ADR-203): `main.ts` 600 → 400 lines. New `services/embedding/EmbeddingHub.ts` (`EmbeddingHub`, `EmbeddingHubHost`, `VaultRagLike`, `VaultRagWiring`, `RELATED_RESULT_LIMIT`) owns the shared provider, `activeModelId()`, the related query, the warm and the vault-RAG lifecycle; `main.ts` supplies the Obsidian-shaped pieces (`makeStore`, `workerUrl`, `makeVaultRag`, `installResidency`, `notice`, `log`) and keeps thin facades, with `plugin.vaultRag` now a getter onto the hub. New `services/vaultWatcher.ts` (`VaultChangeBatch`, `registerVaultWatcher`, `VAULT_FLUSH_DELAY_MS`) and `services/deepLink.ts` (`handleDeepLink`, `DeepLinkHost`). New `tests/{embeddingHub,vaultWatcher,deepLink}.test.ts` (+55 tests, 1664 across 113 files).*
+
+*Previously: 2026-09-22 — #357: `VaultRagService.refresh` takes `clear` (the rows are cleared after the model loaded, `reindex` passes it) and resets the provider on a manual build that follows a failed attempt.*
 
 *Previously: 2026-09-22 — #356: `MergeOutcome` gains `newerInMemory` (ties are no longer counted as newer); `loadPluginData` marks only those ids dirty; `PluginDataStore` gains `ownWriteLanded`, set by `watchDataJson` to absorb the mtime of its own writes after `persist` and after a watcher reload.*
 
@@ -268,7 +270,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 |---|---:|---|
 | `sidebar.ts` | 2 028 | `PythiaSidebarView` — UI, rendering, streaming, interaction; `buildUI()` split into `buildHeader()`/`buildChatArea()`/`buildInputArea()` |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
-| `main.ts` | 908 | Plugin entry, commands, conversation lifecycle, data.json watcher; `createConversation()` takes options object; `createConversationFromTemplate()` helper |
+| `main.ts` | 400 | Plugin entry: `onload` wiring, view/ribbon/command/file-menu registration, and thin facades onto the extracted services (ADR-203 — the embedding block, the vault watcher and the deep-link handler live in `services/`) |
 | `settings.ts` | 460 | Settings schema, defaults, settings tab UI (incl. temperature/effort reactive availability gating) |
 | `utils.ts` | 55 | Root-level pure helpers: `getFilesInFolder` (md + pdf), `todayISO` (local date), `resumeDeepLink` (the one `obsidian://pythia` builder), `withConversationBacklink` |
 | `services/OpenAIProvider.ts` | 304 | OpenAI streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls` for the template method loop; retry, temperature/`reasoning_effort`, PDF file-block splice, resumeMode gating |
@@ -297,6 +299,9 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/embedding/relatedConversations.ts` | 66 | `rankRelated` — max-pairwise cosine ranking of the index vs a source conversation, min-score floor, source excluded; `relatedMinScore(preset, modelId)` reads the model's own floors (ADR-169), `vaultRetrievalMinScore` keeps vault RAG on the original constants |
 | `services/embedding/warmIndex.ts` | 74 | The background index warm (ADR-169): `shouldWarmIndex` (desktop only · an index must exist · ≥2 conversations) and `warmIndex` — fail-open, silent, logged |
 | `services/embedding/host/workerBundleUrl.ts` | 30 | Writes the embedding worker bundle to the plugin folder once per version and returns a same-origin resource-path URL (ADR-126); moved out of `main.ts` for the file-size ceiling |
+| `services/embedding/EmbeddingHub.ts` | 291 | Everything on-device embedding, out of `main.ts` (ADR-203): the ONE shared provider and its cache-and-invalidate rule, `activeModelId()` (the only reader of `settings.embeddingModelId` outside the settings control), `getRelated` (the model's measured floor + `RELATED_RESULT_LIMIT`), `warm`, and the vault-RAG lifecycle. Obsidian reaches it through `EmbeddingHubHost`; the module itself imports no Obsidian runtime |
+| `services/vaultWatcher.ts` | 130 | Vault-index freshness (ADR-121/203): `VaultChangeBatch` — a path is changed or deleted, never both, last event wins, non-markdown ignored, `take()` drains — plus `registerVaultWatcher` for the four listeners and the debounced flush |
+| `services/deepLink.ts` | 89 | `obsidian://pythia` routing and validation (ADR-203): which `cmd` values exist, which parameter each needs, what is said when one is missing or names nothing; never rejects, because Obsidian does not await a protocol handler |
 | `services/embedding/ConversationIndexService.ts` | 110 | Orchestrator (ADR-109 M2): sync the index (embed new/changed via provider, drop removed, persist via `IndexStore`), `getRelated`; provider + store injected → unit-tested with fakes |
 | `services/embedding/host/frame/model.ts` | 95 | **Iframe-only.** transformers.js feature-extraction pipeline (WebGPU/WASM, model downloaded on first use). The only file importing `@huggingface/transformers` |
 | `services/embedding/host/frame/bootstrap.ts` | 60 | Iframe entry: reads the injected model config, answers `texts[] → vectors[]` over postMessage |
@@ -363,6 +368,12 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 PythiaPlugin (main.ts)
 ├── ConversationStore          — persists conversations[] via Obsidian's saveData()
 ├── watchDataJson()            — polls adapter.stat() every 5 s for cross-device sync
+├── EmbeddingHub               — the ONE shared embedding provider + model identity (ADR-203)
+│   ├── ConversationIndexService — "related conversations" (ADR-109)
+│   ├── VaultRagService          — vault-wide semantic RAG (ADR-116/118/119)
+│   └── EmbeddingResidency       — release/preload the model on a phone (ADR-202)
+├── registerVaultWatcher()     — VaultChangeBatch + the four vault listeners (ADR-121)
+├── handleDeepLink()           — obsidian://pythia routing and validation
 ├── LLMRouter                  — routes to AnthropicService, OpenAIProvider, or MistralService
 │   ├── AnthropicService       — Anthropic SDK streaming; extends BaseProvider
 │   ├── OpenAIProvider         — OpenAI SDK streaming; extends BaseProvider
@@ -630,14 +641,18 @@ See ADR-042 for why summary resolution is awaited synchronously rather than fire
 
 ### Deep-link navigation (`obsidian://pythia`)
 
-`main.ts` registers a protocol handler for `obsidian://pythia`. Supported `cmd` values:
+`main.ts` registers the protocol handler for `obsidian://pythia` and supplies the actions; the routing and validation live in `services/deepLink.ts` (`handleDeepLink`, ADR-203). Supported `cmd` values:
 
 | `cmd` | Behaviour |
 |---|---|
+| *(none)* | Same as `open` — a link with no verb means "show me Pythia" |
 | `open` | Activate the sidebar view |
 | `new` | Create a new conversation and open it |
 | `resume?id=<id>` | Open a specific conversation, scroll to **top** |
 | `template?name=<name>` | Create a new conversation from a named template |
+| `inject?text=<text>` | Pick a template, then auto-prompt with `text` (used verbatim — Obsidian has already decoded it, and decoding again throws on a bare `%`) |
+
+Every failure says something: a missing parameter, an id or name that matches nothing, an unknown `cmd`, or a thrown error all produce a `Notice`. `handleDeepLink` never rejects — Obsidian does not await an async protocol handler, so a rejection would be swallowed by the platform.
 
 All conversation switches scroll to the top. New messages during a live session scroll to the bottom via `scrollToBottom()`.
 

@@ -1,4 +1,4 @@
-import { debounce, Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
+import { Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -22,24 +22,19 @@ import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
-import { createEmbeddingProvider } from "./services/embedding/host/embeddingProviderFactory";
 import { embeddingWorkerUrl } from "./services/embedding/host/workerBundleUrl";
-import type { EmbeddingProvider } from "./services/embedding/EmbeddingProvider";
-import { ConversationIndexService } from "./services/embedding/ConversationIndexService";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
-import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
+import { scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
-import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
-import { effectiveEmbeddingModel, type EmbeddingModelId } from "./models/embeddingModels";
+import { EmbeddingHub, type VaultRagLike } from "./services/embedding/EmbeddingHub";
+import type { RelatedResult } from "./services/embedding/relatedConversations";
+import type { EmbeddingModelId } from "./models/embeddingModels";
 import { vaultBuildGuard } from "./services/embedding/buildGuard";
-import { hashPolicyFor } from "./services/embedding/rowProvenance";
-import { installEmbeddingResidency, ResidentProvider, type EmbeddingResidency } from "./services/embedding/residency";
+import { installEmbeddingResidency } from "./services/embedding/residency";
 import type { VaultIndexStatus } from "./services/embedding/indexStatus";
+import { registerVaultWatcher } from "./services/vaultWatcher";
+import { handleDeepLink } from "./services/deepLink";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
-
-/** Related conversations shown at once. A cap, not a filter: the floor decides
- *  relevance, this decides how much of it fits on a screen (ADR-169). */
-const RELATED_RESULT_LIMIT = 20;
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -72,169 +67,42 @@ export default class PythiaPlugin extends Plugin {
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
-	// On-device embeddings: "related conversations" (ADR-109) and vault-wide semantic
-	// RAG (ADR-116) share ONE lazily-built provider (the model/iframe is heavy), so
-	// the model loads once and both index services reuse it. Switching the embedding
-	// model tears everything down so the next use rebuilds against the new model.
-	private embeddingProvider: ResidentProvider | null = null;
-	/** Releases the model on a phone when idle or backgrounded, and preloads it (ADR-202). */
-	private residency: EmbeddingResidency | null = null;
-	private embeddingModelId: EmbeddingModelId | null = null;
-	private relatedService: ConversationIndexService | null = null;
-	/** Memoized resource-path URL for the embedding worker script (written once per
-	 *  plugin version). Lets the Worker start where `blob:` Workers are blocked (ADR-126). */
-	private embeddingWorkerUrlPromise: Promise<string> | null = null;
-	/** Vault-wide semantic RAG (ADR-116/118/119) — index lifecycle + retrieval,
-	 *  extracted to its own service; uses the shared embedding provider below. */
-	vaultRag!: VaultRagService;
+	/** On-device embeddings: the shared provider, "related conversations" (ADR-109)
+	 *  and vault-wide semantic RAG (ADR-116) — see `services/embedding/EmbeddingHub.ts`.
+	 *  The methods below are thin facades kept for settings.ts, the sidebar and tests. */
+	embedding!: EmbeddingHub;
 
-	/** The model this device embeds with (ADR-199/200) — the ONLY reader of `settings.embeddingModelId` outside settings. */
-	activeEmbeddingModelId(): EmbeddingModelId {
-		return effectiveEmbeddingModel(this.settings.embeddingModelId, Platform.isMobile);
-	}
+	/** Vault-wide semantic RAG — index lifecycle + retrieval (ADR-116/118/119). */
+	get vaultRag(): VaultRagLike { return this.embedding.vaultRag; }
+
+	/** The model this device embeds with (ADR-199/200). */
+	activeEmbeddingModelId(): EmbeddingModelId { return this.embedding.activeModelId(); }
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
-	getAutoContext(conversationId: string): string[] {
-		return this.vaultRag.getAutoContext(conversationId);
+	getAutoContext(conversationId: string): string[] { return this.embedding.getAutoContext(conversationId); }
+
+	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109). */
+	getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
+		return this.embedding.getRelated(sourceId, signal);
 	}
 
-	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109).
-	 *
-	 *  In-app diagnostic (enable "Debug mode" in settings): traces the embedding
-	 *  path so a "shows nothing" report can be triaged from the developer console
-	 *  without a rebuild. Three outcomes are distinguishable in the log:
-	 *   • a "query failed" warning (always logged) → the model/iframe never produced
-	 *     vectors — inspect the attached error (offline, download failed, timeout);
-	 *   • "returned 0" with no error → the index built and ranking ran, but nothing
-	 *     cleared the minScore floor (raise the floor or the vault is too sparse);
-	 *   • "returned N" with per-id scores → the path works end to end. */
-	async getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
-		const startedAt = Date.now();
-		const minScore = relatedMinScore(this.settings.relatedSimilarity, this.activeEmbeddingModelId());
-		debugLog(this.settings, "related: query start", {
-			sourceId,
-			model: this.activeEmbeddingModelId(),
-			conversations: this.conversations.length,
-			similarity: this.settings.relatedSimilarity,
-			minScore,
-		});
-		try {
-			const results = await this.ensureRelatedService().getRelated(sourceId, this.conversations, {
-				minScore,
-				// A screenful, not everything above the floor: the number of pairs
-				// clearing a fixed cosine grows linearly with the vault, so without a
-				// cap the list length is a function of vault size rather than of
-				// relevance (ADR-169).
-				limit: RELATED_RESULT_LIMIT,
-				signal,
-			});
-			debugLog(this.settings, `related: query ok (${Date.now() - startedAt}ms)`, {
-				returned: results.length,
-				top: results.slice(0, 5).map((r) => ({ id: r.id, score: Math.round(r.score * 1000) / 1000 })),
-			});
-			return results;
-		} catch (e) {
-			// Genuine failure — surface it unconditionally (not gated on debugMode) so a
-			// model-load/inference error is always in the console behind the UI Notice.
-			console.warn("[Pythia] related: query failed", e);
-			throw e;
-		}
-	}
-
-	/** Build (or reuse) the shared embedding provider for the current model. On a
-	 *  model change, the old provider AND both index services are torn down so the
-	 *  next use rebuilds against the new model. The onProgress callback traces the
-	 *  model download/load (debug mode only) — the single hardest part to diagnose
-	 *  blind, since it happens inside the hidden iframe. */
-	private ensureEmbeddingProvider(opts: { silent?: boolean } = {}): EmbeddingProvider {
-		const modelId = this.activeEmbeddingModelId();
-		if (this.embeddingProvider && this.embeddingModelId === modelId) return this.embeddingProvider;
-		this.embeddingProvider?.unload();
-		this.relatedService = null;
-		this.vaultRag?.reset();
-		// Silent for the background warm (warmRelatedIndex): that path runs without
-		// the user asking for anything, so a "preparing the model" Notice on every
-		// launch would be noise about work they did not request.
-		if (!opts.silent) new Notice(t("relatedFirstRun"));
-		debugLog(this.settings, "embedding: initializing model", { modelId, priorModel: this.embeddingModelId });
-		// Worker (off the UI thread) with a blob→resource-path→iframe fallback chain
-		// (ADR-119/126). The resource-path URL lets the Worker start where blob: is blocked.
-		this.embeddingProvider = new ResidentProvider(createEmbeddingProvider(
-			modelId,
-			(p) =>
-				debugLog(this.settings, "embedding: model load", {
-					file: p.file,
-					percent: Math.round(p.progress),
-					loaded: p.loaded,
-					total: p.total,
-				}),
-			() => (this.embeddingWorkerUrlPromise ??= embeddingWorkerUrl(this)),
-			// Which backend actually started (ADR-182). The chain was silent on the
-			// happy path, so a desktop-wide fallback to the UI-thread iframe looked
-			// exactly like a working Worker until someone read the source.
-			(backend, failures) => debugLog(this.settings, "embedding: backend resolved", { backend, modelId, failures }),
-		), () => this.residency?.noteUse());
-		this.embeddingModelId = modelId;
-		return this.embeddingProvider;
-	}
-
-	private ensureRelatedService(opts: { silent?: boolean } = {}): ConversationIndexService {
-		const provider = this.ensureEmbeddingProvider(opts);
-		if (!this.relatedService) {
-			this.relatedService = new ConversationIndexService(
-				provider,
-				new VaultIndexStore(this, this.embeddingModelId!),
-				{ hashPolicy: hashPolicyFor(this.embeddingModelId!) },
-			);
-		}
-		return this.relatedService;
-	}
-
-	/** Warm the related index in the background so the first "related" click is a
-	 *  ranking pass rather than a cold build (ADR-169). Guards, deps and the
-	 *  reasoning live in `services/embedding/warmIndex.ts`. */
-	private warmRelatedIndex(): Promise<void> {
-		return warmIndex({
-			isMobile: Platform.isMobile,
-			conversationCount: this.conversations.length,
-			hasIndex: () => new VaultIndexStore(this, this.activeEmbeddingModelId()).exists(),
-			sync: () => this.ensureRelatedService({ silent: true }).sync(this.conversations),
-			log: (message, data) => debugLog(this.settings, message, data),
-		});
-	}
-
-	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background.
-	 *  Exposed for the settings "Rebuild index" button and the command. */
-	reindexVault(): Promise<void> {
-		return this.vaultRag.reindex();
-	}
+	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background. */
+	reindexVault(): Promise<void> { return this.embedding.reindexVault(); }
 
 	/** "Build now" in settings: finish or update the index, keeping its rows (ADR-199). */
-	buildVaultIndexNow(): void {
-		this.vaultRag.buildNow();
-	}
+	buildVaultIndexNow(): void { this.embedding.buildVaultIndexNow(); }
 
-	/** The chat input got focus: load a model the phone released, before the send needs it (ADR-202). */
-	prewarmEmbedding(): void { this.residency?.prewarm(); }
+	/** The chat input got focus: load a model the phone released (ADR-202). */
+	prewarmEmbedding(): void { this.embedding.prewarm(); }
 
-	onVaultIndexChange(listener: () => void): () => void { return this.vaultRag.onChange(listener); }
+	onVaultIndexChange(listener: () => void): () => void { return this.embedding.onVaultIndexChange(listener); }
 
-	/** Where the vault index stands, for the settings tab (ADR-199). Never loads the model. */
-	async vaultIndexStatus(): Promise<VaultIndexStatus> {
-		const modelId = this.activeEmbeddingModelId();
-		const substituted = modelId !== this.settings.embeddingModelId;
-		return { ...(await this.vaultRag.status()), modelId, modelSubstituted: substituted, enabledByDefault: this.settings.vaultContextEnabled };
-	}
+	/** Where the vault index stands, for the settings tab (ADR-199). */
+	vaultIndexStatus(): Promise<VaultIndexStatus> { return this.embedding.vaultIndexStatus(); }
 
-	/** Drop the embedding provider + index services so the next use rebuilds with
-	 *  the current model. Called by the settings tab on a model change. */
-	invalidateRelatedService(): void {
-		this.embeddingProvider?.unload();
-		this.embeddingProvider = null;
-		this.embeddingModelId = null;
-		this.relatedService = null;
-		this.vaultRag?.reset();
-	}
+	/** Drop the provider + index services so the next use rebuilds with the current
+	 *  model. Called by the settings tab on a model change. */
+	invalidateRelatedService(): void { this.embedding.invalidate(); }
 
 	async onload(): Promise<void> {
 		// ConversationStore owns the conversation list and must exist before
@@ -244,18 +112,27 @@ export default class PythiaPlugin extends Plugin {
 		this.conversationStore = new ConversationStore(this);
 		this.container = await AppContainer.create(this);
 
-		// Vault-wide semantic RAG (ADR-116/118/119): the service owns the index
-		// lifecycle + retrieval and shares the embedding provider (worker/iframe).
-		this.vaultRag = new VaultRagService(
-			this.app,
-			() => this.settings,
-			() => this.ensureEmbeddingProvider(),
-			() => new VaultIndexStore(this, this.activeEmbeddingModelId(), "vault-embeddings"),
-			{ modelId: () => this.activeEmbeddingModelId(), guard: vaultBuildGuard(this.app) },
-		);
-		this.residency = installEmbeddingResidency(this, {
-			provider: () => this.embeddingProvider, building: () => this.vaultRag.isBuilding(), mobile: Platform.isMobile,
-			onBackground: (hidden) => this.vaultRag.onBackground(hidden), log: (m, d) => debugLog(this.settings, m, d),
+		// On-device embeddings (ADR-109 related conversations + ADR-116 vault RAG):
+		// ONE lazily-built provider shared by both index services, plus the phone's
+		// residency rule. The Obsidian-shaped pieces are supplied here; everything
+		// with a rule to it lives in `services/embedding/EmbeddingHub.ts`.
+		this.embedding = new EmbeddingHub({
+			settings: () => this.settings,
+			conversations: () => this.conversations,
+			isMobile: Platform.isMobile,
+			makeStore: (modelId, prefix) => new VaultIndexStore(this, modelId, prefix),
+			workerUrl: () => embeddingWorkerUrl(this),
+			makeVaultRag: (w) => new VaultRagService(
+				this.app,
+				() => this.settings,
+				w.getProvider,
+				w.makeStore,
+				{ modelId: w.modelId, guard: vaultBuildGuard(this.app) },
+			),
+			installResidency: (deps) => installEmbeddingResidency(this, deps),
+			notice: (message) => new Notice(message),
+			log: (m, d) => debugLog(this.settings, m, d),
+			firstRunMessage: t("relatedFirstRun"),
 		});
 		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
 		// non-blocking — returns [] until the background index is ready).
@@ -275,7 +152,7 @@ export default class PythiaPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			this.viewManager.initLeaf();
 			// After the workspace is up, not during it (ADR-169/170).
-			scheduleWarm({ run: () => void this.warmRelatedIndex(), register: (c) => this.register(c) });
+			scheduleWarm({ run: () => void this.embedding.warm(), register: (c) => this.register(c) });
 		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
@@ -373,47 +250,14 @@ export default class PythiaPlugin extends Plugin {
 			callback: () => void this.reindexVault(),
 		});
 
-		// Watcher (ADR-121): keep the vault index fresh with EVENT-DRIVEN, targeted
-		// updates — an edit re-embeds just that one note instead of rescanning the
-		// whole corpus. Changed/deleted paths are batched and flushed on a debounce
-		// so a burst of edits coalesces; `applyChanges` no-ops until the index is
-		// built (a full build happens on a turn), so this never eagerly loads the model.
-		const changedFiles = new Map<string, TFile>();
-		const deletedPaths = new Set<string>();
-		const flushChanges = debounce(() => {
-			const changed = [...changedFiles.values()];
-			const deleted = [...deletedPaths];
-			changedFiles.clear();
-			deletedPaths.clear();
-			if (changed.length || deleted.length) void this.vaultRag.applyChanges(changed, deleted);
-		}, 2000);
-		// A flush still pending at unload would run against a torn-down provider.
-		this.register(() => flushChanges.cancel());
-		const markChanged = (file: TFile) => {
-			if (file.extension !== "md") return;
-			// Editing the glossary note by hand must take effect without a reload,
-			// so the cached entries are dropped as soon as the file changes (ADR-136).
-			if (this.glossaryService?.isGlossaryNote(file.path)) this.glossaryService.invalidate();
-			changedFiles.set(file.path, file);
-			deletedPaths.delete(file.path);
-			flushChanges();
-		};
-		this.registerEvent(this.app.vault.on("modify", (f) => { if (f instanceof TFile) markChanged(f); }));
-		this.registerEvent(this.app.vault.on("create", (f) => { if (f instanceof TFile) markChanged(f); }));
-		this.registerEvent(this.app.vault.on("delete", (f) => {
-			if (!(f instanceof TFile)) return;
-			// A deleted term note must stop marking its term now, not at the next edit.
-			if (this.glossaryService?.isGlossaryNote(f.path)) this.glossaryService.invalidate();
-			deletedPaths.add(f.path);
-			changedFiles.delete(f.path);
-			flushChanges();
-		}));
-		this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
-			if (this.glossaryService?.isGlossaryNote(oldPath)) this.glossaryService.invalidate();
-			deletedPaths.add(oldPath);
-			if (f instanceof TFile) markChanged(f);
-			else flushChanges();
-		}));
+		// Keep the vault index fresh with EVENT-DRIVEN, targeted updates (ADR-121).
+		// The batching rules live in `services/vaultWatcher.ts`, where they are tested.
+		registerVaultWatcher(this, {
+			applyChanges: (changed, deleted) => void this.vaultRag.applyChanges(changed, deleted),
+			invalidateGlossary: (path) => {
+				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
+			},
+		});
 
 		registerEditorSelectionEntries(this);
 		this.registerEvent(
@@ -457,85 +301,43 @@ export default class PythiaPlugin extends Plugin {
 			})
 		);
 
-		// obsidian://pythia deep-link handler — Obsidian does not await async
-		// protocol handlers, so errors would be silently swallowed without try/catch.
-		this.registerObsidianProtocolHandler("pythia", async (params) => {
-			try {
-			const action = params.cmd ?? "open";
-
-				if (action === "open") {
-					await this.activateView();
-					return;
-				}
-
-					if (action === "new") {
-					const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
-					const view = await this.activateView();
-					await view.setActiveConversation(conv);
-					return;
-				}
-
-				if (action === "resume") {
-					if (!params.id) {
-						new Notice(t("uriMissingId"));
-						return;
-					}
-					const conv = this.conversationStore.getById(params.id);
-					if (!conv) {
-						new Notice(t("convNotFound", { id: params.id }));
-						return;
-					}
-					const view = await this.activateView();
-					await view.setActiveConversation(conv, true, "top");
-					return;
-				}
-
-				if (action === "template") {
-					if (!params.name) {
-						new Notice(t("uriMissingName"));
-						return;
-					}
-					const templates = await this.templateLoader.loadTemplates();
-					const tpl = templates.find((tpl) => tpl.name === params.name);
-					if (!tpl) {
-						new Notice(t("templateNotFound", { name: params.name }));
-						return;
-					}
+		// obsidian://pythia — routing and validation live in `services/deepLink.ts`;
+		// this is the Obsidian half. `handleDeepLink` never rejects, which matters
+		// because Obsidian does not await an async protocol handler.
+		this.registerObsidianProtocolHandler("pythia", (params) => void handleDeepLink(params, {
+			open: async () => void (await this.activateView()),
+			create: async () => {
+				const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
+				await (await this.activateView()).setActiveConversation(conv);
+			},
+			resume: async (id) => {
+				const conv = this.conversationStore.getById(id);
+				if (!conv) return false;
+				await (await this.activateView()).setActiveConversation(conv, true, "top");
+				return true;
+			},
+			template: async (name) => {
+				const tpl = (await this.templateLoader.loadTemplates()).find((x) => x.name === name);
+				if (!tpl) return false;
+				const conv = await this.createConversationFromTemplate(tpl);
+				await (await this.activateView()).setActiveConversation(conv);
+				return true;
+			},
+			inject: async (text) => {
+				const templates = await this.templateLoader.loadTemplates();
+				if (templates.length === 0) return false;
+				await this.activateView();
+				new TemplateSuggestModal(this.app, templates, async (tpl) => {
 					const conv = await this.createConversationFromTemplate(tpl);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
-					return;
-				}
-
-				if (action === "inject") {
-					// Obsidian already decodes protocol-handler params — decoding again
-					// throws on any text containing a bare "%" (e.g. "50% off").
-					const rawText = params.text ?? "";
-					if (!rawText) {
-						new Notice(t("uriMissingText"));
-						return;
-					}
-					const templates = await this.templateLoader.loadTemplates();
-					if (templates.length === 0) {
-						new Notice(t("noTemplatesFound", { folder: this.settings.templatesFolder }));
-						return;
-					}
-					await this.activateView();
-					new TemplateSuggestModal(this.app, templates, async (tpl) => {
-						const conv = await this.createConversationFromTemplate(tpl);
-						const view = await this.activateView();
-						await view.setActiveConversation(conv);
-						view.triggerAutoPrompt(rawText);
-					}).open();
-					return;
-				}
-
-					new Notice(t("unknownAction", { action }));
-			} catch (err) {
-				new Notice(t("deepLinkError", { error: err instanceof Error ? err.message : String(err) }));
-				console.error("[Pythia] protocol handler error", err);
-			}
-		});
+					view.triggerAutoPrompt(text);
+				}).open();
+				return true;
+			},
+			templatesFolder: () => this.settings.templatesFolder,
+			notice: (message) => new Notice(message),
+		}));
 	}
 
 	async onunload(): Promise<void> {
@@ -543,8 +345,7 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
-		this.vaultRag?.dispose();
-		this.embeddingProvider?.unload();
+		this.embedding?.dispose();
 	}
 
 	// ── Facades delegating to the extracted services (ADR-103 / #121) ──────────

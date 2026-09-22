@@ -10,7 +10,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
 
 ```
 /
-  main.ts                     ← plugin entry point, onload(), view registration
+  main.ts                     ← plugin entry point: onload() wiring, view/ribbon/command/file-menu registration, thin facades. Holds NO rules — a branch, guard or cache rule goes behind a host seam in services/ (ADR-203)
   sidebar.ts                  ← PythiaSidebarView (ItemView), all UI construction
   settings.ts                 ← PythiaSettings interface, defaults, settings tab UI
   styles.css                  ← all plugin CSS
@@ -33,6 +33,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
+    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take() drains) + registerVaultWatcher — the four vault listeners and the debounced flush (ADR-121/203)
+    deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-203)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
@@ -56,6 +58,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     embedding/vaultIndexStore.ts ← the .bin per index, named by vectorFamily(modelId) — a variant shares its family's file (ADR-200)
     embedding/rowProvenance.ts ← pure: which shared-index rows a device may reuse — the variant tags non-Latin rows, the full model re-embeds them (ADR-201)
     embedding/residency.ts    ← ResidentProvider + EmbeddingResidency: a phone releases the idle model on hide / after 3 min and preloads it on return and input focus; the ONE visibilitychange handler (ADR-202)
+    embedding/EmbeddingHub.ts ← the ONE embedding unit (ADR-203): the shared provider + its cache-and-invalidate rule, activeModelId() (the only reader of settings.embeddingModelId outside the settings control), getRelated, the warm, the vault-RAG lifecycle. Obsidian arrives as EmbeddingHubHost; the module imports no Obsidian runtime
     embedding/host/visibleClock.ts ← VisibleClock: time that stops while Obsidian is hidden — every embedding deadline is measured on it (ADR-202)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
     embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
@@ -106,7 +109,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1609 tests across 110 files
+  tests/                      ← Vitest unit tests (npm test) — 1664 tests across 113 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
+*Last updated: 2026-09-22 — ADR-203 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
+
+*Previously: 2026-09-22 — ADR-202 (switching apps on iOS: timeouts count only visible time, a build killed in the background is not a crash, and a phone releases the idle model and preloads it ahead of need).*
 
 *Previously: 2026-09-22 — ADR-201 (review fixes to ADR-199/200: a shared index row is reused only by a device that would have produced it; a paused session reports paused whatever the file says; a stored variant id is refused; the model load is its own status).*
 
@@ -4007,3 +4009,29 @@ Where the memory goes, measured with the runtime Pythia bundles (Node, same WASM
 **Not measured yet.** The release's effect on how often iOS ends Obsidian in the background is argued from jetsam's largest-first order, not measured on the device. Worth checking with the phone attached before merging: footprint after hide, and a cold vs warm return after opening a memory-heavy app.
 
 **Guards.** `tests/embeddingResidency.test.ts`: the visible clock (frozen while hidden; no overdue fire on return; cancel), the source guard on both providers, the background rule (strict parse; excused vs counted deaths; ten background kills never pause; two foreground crashes still do), and the residency (release on hide, preload on return, never under a build or embed, never a never-loaded or failed model, idle release at exactly 3 min, use resets it, the input preloads only a released model, the desktop never releases). `tests/vaultRagGuard.test.ts`: a running build's marker toggles with visibility and clears at the end. Each rule was checked by reverting it.
+
+### ADR-203 — `main.ts` holds wiring; anything with a rule moves out behind a host seam
+
+*2026-09-22*
+
+**Context.** `main.ts` reached exactly 600 lines — `DEFAULT_MAX` in `scripts/check-file-size.mjs` (ADR-097). The ratchet fails at 601, so the next line anyone added would have forced an unplanned split, decided under the pressure of a red build rather than on its merits. The file had drifted back into holding three substantial blocks: the whole on-device embedding surface (provider lifecycle, model identity, both index services, the warm, the vault-RAG facades — the largest), the vault watcher, and the `obsidian://pythia` handler.
+
+Size was the trigger, not the problem. The problem is that **`main.ts` is excluded from coverage by design** (`vitest.config.ts`), for a good reason: it is a `Plugin` subclass whose job is to call Obsidian. Every rule that drifted into it was therefore a rule nothing could fail on. Three of them were load-bearing: "a model change tears down both index services", "a path is either changed or deleted, never both", "every deep-link failure says something".
+
+**Decision.**
+
+- **The entry point wires; it does not decide.** `onload` may construct, register and delegate. A branch, a guard, a validation or a cache rule belongs in a module with a test. Three moved out:
+  - `services/embedding/EmbeddingHub.ts` — the shared provider and its cache-and-invalidate rule, `activeModelId()` (still the ONE reader of `settings.embeddingModelId` outside the settings control, ADR-199/200), the related query with the model's measured floor and the screenful cap (ADR-169), the warm, and the vault-RAG lifecycle facades.
+  - `services/vaultWatcher.ts` — `VaultChangeBatch` (Obsidian-free) plus `registerVaultWatcher` for the listeners.
+  - `services/deepLink.ts` — `handleDeepLink`, the routing and the messages.
+- **The seam is a structural host interface, not the plugin.** Each module takes an object describing what it needs from Obsidian — `EmbeddingHubHost`, `VaultWatcherHost`, `DeepLinkHost` — which a test satisfies with a plain object. This is the shape `installEmbeddingResidency` (ADR-202) and `ui/vaultIndexStatusSetting.ts` (ADR-199) already use, and it is why `EmbeddingHub` imports no Obsidian runtime at all. Passing `plugin` would have moved the code without moving the testability, which is the failure mode this ADR exists to avoid: an extraction that only buys lines.
+- **`VaultRagLike` is a structural type, not the class.** The hub owns vault RAG's lifecycle but never imports `VaultRagService` as a value; the plugin's `makeVaultRag` constructs it. `plugin.vaultRag` becomes a getter onto the hub, so no call site changed.
+- **The plugin keeps thin facades** for the public API the settings tab, the sidebar and the tests call (`activeEmbeddingModelId`, `getRelatedConversations`, `getAutoContext`, `vaultIndexStatus`, `buildVaultIndexNow`, `reindexVault`, `onVaultIndexChange`, `prewarmEmbedding`, `invalidateRelatedService`) — the pattern ADR-103 / #121 established. Zero ripple outside `main.ts`.
+- **The ceiling is not raised.** `scripts/check-file-size.mjs` keeps `DEFAULT_MAX = 600` with no entry for `main.ts`; the file is 400 lines, and the ratchet only ever goes down.
+
+**Behaviour is unchanged**, deliberately, including two pre-existing quirks left exactly as they were:
+
+- A first `ensureProvider()` calls `vaultRag.reset()` before anything has been built. The early return needs an existing provider, so call #1 falls through the teardown block. It is idempotent (`service = null`, `phase = idle`, three flags, one status emit — all already true) and unreachable in a state where it would matter, since vault RAG gets its provider through this method. A guard would put a branch on a teardown path, and a teardown that sometimes skips is the failure the block exists to prevent.
+- A rename whose new path is not markdown records the delete of the old path but does not schedule a flush: `markChanged` returns on the extension check before `flush()`. The case that occurs is `note.md` → `note.txt`, so **the old path genuinely was indexed** and its row goes stale until the next vault event fires a flush. `inScopeNow` filters retrieval results by folder scope and `pythia: false`, not by existence, so a stale path can occupy one of the ~5 auto-retrieval slots; `ContextBuilder` then gets `null` from `getAbstractFileByPath`, contributes nothing and files it under `missingNotes`, which for an auto note reaches the debug log rather than a `Notice` (ADR-183). Nothing wrong reaches the model — the cost is a wasted slot for the width of the window. Worth fixing on its own (flush unconditionally on rename); not worth smuggling into a behaviour-preserving extraction.
+
+**Guards.** `tests/embeddingHub.test.ts` (24), `tests/vaultWatcher.test.ts` (18), `tests/deepLink.test.ts` (13). 28 mutations applied across the three modules — every claim above broken one at a time — and all 28 killed; two survived the first pass and both were flaws in the new tests (a warm that stopped at its index guard before it could have shown a notice, and a cap asserted as a constant rather than observed on a result list). `tests/embeddingModelRule.test.ts` follows the one-reader rule to its new home and its regex now also catches the `settings().embeddingModelId` getter form, which the field-only pattern would have missed.
