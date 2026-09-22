@@ -218,3 +218,77 @@ describe("a build marks its marker when Obsidian goes to the background (ADR-202
 	});
 });
 
+// ── The buttons after a failed load (#357) ───────────────────────────────────
+
+/** A provider that, like FallbackEmbeddingProvider, MEMOIZES its load until unloaded. */
+class MemoLoad extends FakeProvider {
+	loads = 0;
+	failNext: number;
+	private promise: Promise<void> | null = null;
+	constructor(failures: number) { super(); this.failNext = failures; }
+	ready(): Promise<void> {
+		this.promise ??= (async () => {
+			this.loads++;
+			if (this.failNext > 0) { this.failNext--; throw new Error("no available backend found. ERR: [wasm] RangeError: Out of memory"); }
+		})();
+		return this.promise;
+	}
+	unload(): void { this.promise = null; }
+}
+
+describe("Build now after a failed load really loads again (#357)", () => {
+	it("an out-of-memory load, then Build now → a fresh load, and the index builds", async () => {
+		const provider = new MemoLoad(1);
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => provider, () => new MemStore(), DEPS);
+		await svc.getRelevantNotes(conv, "anything");
+		await settle();
+		expect((await svc.status()).state).toBe("failed");
+		svc.buildNow();
+		await settle();
+		// Before: the memoized rejection came back in a millisecond, the status never
+		// moved, and the button looked dead.
+		expect(provider.loads).toBe(2);
+		expect((await svc.status()).state).toBe("ready");
+	});
+
+	it("a healthy loaded model is NOT reloaded by Build now", async () => {
+		const provider = new MemoLoad(0);
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings({ vaultContextFolders: ["x"] }), () => provider, () => new MemStore(), DEPS);
+		await svc.getRelevantNotes(conv, "anything");
+		await settle();
+		svc.buildNow();
+		await settle();
+		expect(provider.loads).toBe(1);
+	});
+});
+
+describe("Rebuild index never discards the index for a model that cannot load (#357)", () => {
+	const scopeOf = (svc: VaultRagService): string => (svc as unknown as { scopeSignature(): string }).scopeSignature();
+
+	it("keeps every row when the load fails", async () => {
+		const probe = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new FakeProvider(), () => new MemStore(), DEPS);
+		const store = new MemStore();
+		store.buf = serializeIndex([
+			{ id: "a.md", contentHash: "h", chunks: [Int8Array.from([1, 0, 0, 0])] },
+			{ id: "b.md", contentHash: "h", chunks: [Int8Array.from([0, 1, 0, 0])] },
+		], 4, { complete: true, scope: scopeOf(probe) });
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new MemoLoad(99), () => store, DEPS);
+		await svc.reindex();
+		await settle();
+		expect((await svc.status()).state).toBe("failed");
+		const { peekIndexMeta } = await import("../services/embedding/embeddingIndex");
+		expect(peekIndexMeta(store.buf!)).toMatchObject({ count: 2, complete: true });
+	});
+
+	it("still clears and rebuilds when the model loads", async () => {
+		const provider = new FakeProvider();
+		const store = new MemStore();
+		store.buf = serializeIndex([{ id: "stale.md", contentHash: "h", chunks: [Int8Array.from([1, 0, 0, 0])] }], 4, { complete: true, scope: "" });
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => provider, () => store, DEPS);
+		await svc.reindex();
+		await settle();
+		const { deserializeIndex } = await import("../services/embedding/embeddingIndex");
+		expect(deserializeIndex(store.buf!).items.map((i) => i.id)).toEqual(["Notes/long.md"]);
+	});
+});
+

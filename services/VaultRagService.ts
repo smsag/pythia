@@ -287,7 +287,7 @@ export class VaultRagService {
 	 *  THROTTLED (fine yields + a breather) so it never freezes the app, and an
 	 *  already-populated index is served as-is rather than re-embedded each session
 	 *  (ADR-125). Incremental edits keep it fresh via `applyChanges`. */
-	refresh(opts: { force?: boolean; manual?: boolean } = {}): void {
+	refresh(opts: { force?: boolean; manual?: boolean; clear?: boolean } = {}): void {
 		if (this.syncing) return;
 		// A COMPLETE index is kept fresh by the watcher's targeted `applyChanges`
 		// (ADR-121), so re-running a whole-corpus scan on every turn re-paid the
@@ -315,6 +315,9 @@ export class VaultRagService {
 			return;
 		}
 		if (opts.manual) guard?.end();
+		// Read BEFORE the phase moves on: only a failed previous attempt needs the
+		// provider reset (#357); a healthy loaded model is kept.
+		const retryLoad = this.phase.kind === "failed";
 		this.syncing = true;
 		guard?.start(this.deps.modelId());
 		// Loading, not "building 0 of 0": the model download and load is the longest
@@ -327,10 +330,20 @@ export class VaultRagService {
 				// Resolve the backend so we know whether inference is off-thread; ready()
 				// is memoized, so this is cheap after the first call.
 				const provider = this.getProvider();
+				// A press after a failed load must LOAD again (#357). The provider
+				// memoizes its rejection for the session — right for automatic retries,
+				// which must not hammer an out-of-memory load — so without this reset a
+				// manual retry failed in a millisecond and the status never moved: the
+				// buttons looked dead.
+				if (opts.manual && retryLoad) provider.unload();
 				await provider.ready();
 				const offThread = provider.isOffThread?.() ?? false;
 				this.backend = provider.backend?.() ?? null;
 				const svc = this.ensure();
+				// "Rebuild index" discards the rows only now, with a model that loaded
+				// (#357). Clearing first and then failing to load destroyed a good index
+				// for nothing.
+				if (opts.clear) await svc.clear();
 
 				const scope = this.scopeSignature();
 				// UI-thread backend: don't re-embed a vault that is already indexed — that
@@ -458,12 +471,8 @@ export class VaultRagService {
 	 *  the backend runs on the UI thread — see `refresh`). */
 	async reindex(): Promise<void> {
 		if (this.syncing) { new Notice(t("vaultIndexBusy")); return; }
-		try {
-			await this.ensure().clear();
-		} catch (e) {
-			console.warn("[Pythia] vault RAG: clear failed", e);
-		}
-		this.refresh({ force: true, manual: true }); // an explicit rebuild is the one caller that always runs
+		// The rows are cleared inside the build, after the model has loaded (#357).
+		this.refresh({ force: true, manual: true, clear: true }); // an explicit rebuild is the one caller that always runs
 	}
 
 	/** "Build now": finish or resume the index WITHOUT discarding what is there —

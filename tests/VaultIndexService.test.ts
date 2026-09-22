@@ -306,3 +306,18 @@ describe("VaultIndexService", () => {
 	});
 });
 
+describe("adding a folder embeds only the new notes (#357)", () => {
+	it("a scope change keeps every unchanged note's vectors", async () => {
+		// The status once said the index "rebuilds" when the folders change. It never
+		// re-embedded: the rows of unchanged notes are reused by content hash.
+		const p = new FakeProvider();
+		const store = new MemStore();
+		const svc = new VaultIndexService(p, store);
+		await svc.sync([alpha, beta], undefined, {}, JSON.stringify([["Lesestapel"]]));
+		p.embedded.length = 0;
+		await svc.sync([alpha, beta, gamma], undefined, {}, JSON.stringify([["Lesestapel", "Summaries"]]));
+		expect(p.embedded).toEqual(["unrelated gamma material"]);
+		expect(svc.isComplete(JSON.stringify([["Lesestapel", "Summaries"]]))).toBe(true);
+	});
+});
+

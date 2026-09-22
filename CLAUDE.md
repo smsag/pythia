@@ -106,7 +106,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1604 tests across 110 files
+  tests/                      ← Vitest unit tests (npm test) — 1609 tests across 110 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -509,6 +509,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Out of memory is not a refusal.** The fallback chain exists for backends that are *refused*; every backend shares one process, so `isOutOfMemoryError` ends the chain instead of loading the model again. Do not add a backend that bypasses `record`
 - **A build the OS kills leaves a marker** (`BuildGuard`, per-device localStorage — never data.json). Two deaths in a row pause *automatic* builds until the user presses *Build now*; a caught error clears the marker **except out of memory**; `dispose()` clears it on a normal unload. Any new automatic path that starts the vault build goes through `refresh()`, never around it
 - **Deadlines count visible time** (ADR-202). Every embedding timeout goes through `visibleClock` — never `Date.now() - start` or a one-shot `setTimeout`, which fire overdue the moment iOS unfreezes the app (a test fails on either). **A build killed in the background is not a crash**: the marker's `background` flag excuses it (`foregroundDeaths`). **A phone releases an idle model** (`EmbeddingResidency`) and preloads only a model it released — never a first download, never under a build or an in-flight embed, never after a failed load
+- **A manual build after a failure really reloads** (#357): the provider memoizes a failed load for automatic retries, so `refresh({ manual })` resets it when the last attempt failed. **Rebuild clears only after the model has loaded** (`refresh({ clear })`) — never clear first and fail after
 - **The status never loads the model.** `VaultRagService.status()` reads the file header (`peekIndexMeta`) when the session has not built. Words live in `describeVaultIndexStatus` only. **Paused wins over the file** (ADR-201): a paused session loads no model, so a complete index is not used either — never report it as ready
 - **A shared row is reused only by a device that would have produced it** (ADR-201). Reuse goes through `resolveRowHash(hashPolicyFor(modelId), …)` in BOTH index services — never compare `contentHash` directly again. The variant writes `<hash>~latinScript` for text with a non-Latin letter; the full model re-embeds such rows; the variant accepts the full model's
 

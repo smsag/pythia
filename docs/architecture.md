@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-22 — #356: `MergeOutcome` gains `newerInMemory` (ties are no longer counted as newer); `loadPluginData` marks only those ids dirty; `PluginDataStore` gains `ownWriteLanded`, set by `watchDataJson` to absorb the mtime of its own writes after `persist` and after a watcher reload.*
+*Last updated: 2026-09-22 — #357: `VaultRagService.refresh` takes `clear` (the rows are cleared after the model loaded, `reindex` passes it) and resets the provider on a manual build that follows a failed attempt.*
+
+*Previously: 2026-09-22 — #356: `MergeOutcome` gains `newerInMemory` (ties are no longer counted as newer); `loadPluginData` marks only those ids dirty; `PluginDataStore` gains `ownWriteLanded`, set by `watchDataJson` to absorb the mtime of its own writes after `persist` and after a watcher reload.*
 
 *Previously: 2026-09-22 — ADR-202. New `services/embedding/host/visibleClock.ts` (`VisibleClock`, `visibleClock`); both embedding providers' load deadline and request timeouts use it (`Pending.cancelTimeout`). New `services/embedding/residency.ts` (`ResidentProvider`, `EmbeddingResidency`, `installEmbeddingResidency`, `IDLE_RELEASE_MS`): `main.ts` wraps the provider in `ResidentProvider`, installs the residency (one `visibilitychange` handler + one interval) and exposes `prewarmEmbedding()`, which the chat input's focus handler in `sidebar.ts` calls. `BuildGuard.markBackground` + `foregroundDeaths`; `VaultRagService.onBackground` / `isBuilding`. New `tests/embeddingResidency.test.ts`.*
 
