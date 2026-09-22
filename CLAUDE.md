@@ -53,6 +53,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     embedding/buildGuard.ts   ← pure: BuildGuard + vaultBuildGuard — the per-device marker that pauses automatic index builds after two the OS killed (ADR-198)
     embedding/memoryError.ts  ← isOutOfMemoryError + EmbeddingOutOfMemoryError — out of memory ends the backend fallback chain (ADR-198)
     embedding/indexStatus.ts  ← pure: the vault index's seven states + describeVaultIndexStatus, the words the settings tab shows (ADR-198)
+    embedding/vaultIndexStore.ts ← the .bin per index, named by vectorFamily(modelId) — a variant shares its family's file (ADR-199)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
     embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
     embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
@@ -102,7 +103,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-198)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1543 tests across 106 files
+  tests/                      ← Vitest unit tests (npm test) — 1553 tests across 107 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -121,6 +122,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
   scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
+  scripts/prune-embedding-model.py ← builds the Latin-script variant of the multilingual model from the upstream files (npm run model:prune) — what LATIN_VARIANT_REPO_ID holds, byte for byte (ADR-199)
+  scripts/verify-pruned-model.mjs ← proves the variant vector-identical to the full model on Latin-script text (npm run model:verify); fails on any drift
   scripts/obsidian-button-rules.mjs ← reads app.css from the installed Obsidian and lists the rules that can reach a Pythia button; exits 1 when tests/fixtures/obsidianButtonRules.ts has drifted (npm run check:obsidian-cascade, local only — ADR-190)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -499,7 +502,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
 
-- **A phone embeds with a model marked `mobile`** (ADR-198, measured on an iPhone: the multilingual model adds ~0.9–1 GB to a WebContent process iOS kills at ~2 GB; English adds ~130 MB). The ONE resolver is `effectiveEmbeddingModel` → `plugin.activeEmbeddingModelId()`. **Never read `settings.embeddingModelId` anywhere else** — `tests/embeddingModelRule.test.ts` fails on a second reader — and **never write the substitute into the setting**: it syncs, and the desktop keeps its choice (principle 6). A new model gets `mobile: true` only on a measurement from the device
+- **A phone embeds with a model marked `mobile`** (ADR-198, measured on an iPhone: the multilingual model adds ~0.9–1 GB to a WebContent process iOS kills at ~2 GB; English adds ~130 MB). For the multilingual model that is its **Latin-script variant** (ADR-199, `variantOf`, ≈ +370–400 MB measured): the same vectors, so it shares the family's floors and — because `VaultIndexStore` and `scopeSignature` go by `vectorFamily` — the desktop's index file. A variant is never a dropdown entry (`SELECTABLE_EMBEDDING_MODEL_IDS`) and must stay equal to its family in dim, pooling, window and floors (a test holds it). Rebuild it only with `npm run model:prune` and prove it with `npm run model:verify` before publishing. The ONE resolver is `effectiveEmbeddingModel` → `plugin.activeEmbeddingModelId()`. **Never read `settings.embeddingModelId` anywhere else** — `tests/embeddingModelRule.test.ts` fails on a second reader — and **never write the substitute into the setting**: it syncs, and the desktop keeps its choice (principle 6). A new model gets `mobile: true` only on a measurement from the device
 - **Out of memory is not a refusal.** The fallback chain exists for backends that are *refused*; every backend shares one process, so `isOutOfMemoryError` ends the chain instead of loading the model again. Do not add a backend that bypasses `record`
 - **A build the OS kills leaves a marker** (`BuildGuard`, per-device localStorage — never data.json). Two deaths in a row pause *automatic* builds until the user presses *Build now*; a caught error clears the marker **except out of memory**; `dispose()` clears it on a normal unload. Any new automatic path that starts the vault build goes through `refresh()`, never around it
 - **The status never loads the model.** `VaultRagService.status()` reads the file header (`peekIndexMeta`) when the session has not built. Words live in `describeVaultIndexStatus` only

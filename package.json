@@ -13,7 +13,9 @@
     "coverage": "vitest run --coverage",
     "update:pricing": "node scripts/update-pricing.mjs",
     "update:models": "node scripts/update-models.mjs",
-    "check:obsidian-cascade": "node scripts/obsidian-button-rules.mjs"
+    "check:obsidian-cascade": "node scripts/obsidian-button-rules.mjs",
+    "model:prune": "python3 scripts/prune-embedding-model.py",
+    "model:verify": "node scripts/verify-pruned-model.mjs"
   },
   "keywords": [],
   "author": "",

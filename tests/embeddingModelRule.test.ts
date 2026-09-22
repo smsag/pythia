@@ -2,8 +2,11 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import {
-	EMBEDDING_MODELS, EMBEDDING_MODEL_IDS, MOBILE_EMBEDDING_MODEL_ID, effectiveEmbeddingModel,
+	EMBEDDING_MODELS, EMBEDDING_MODEL_IDS, MOBILE_EMBEDDING_MODEL_ID, SELECTABLE_EMBEDDING_MODEL_IDS,
+	effectiveEmbeddingModel, vectorFamily, embedChunkChars,
 } from "../models/embeddingModels";
+import { relatedMinScore } from "../services/embedding/relatedConversations";
+import { SIMILARITY_PRESETS } from "../models/embeddingModels";
 
 // ADR-198: the multilingual model took Obsidian's WebContent process on iOS to
 // ~1.65 GB of a ~2 GB limit, and the first inference got it killed — a hard
@@ -22,7 +25,12 @@ describe("effectiveEmbeddingModel — what a device actually runs (ADR-198)", ()
 
 	it("the multilingual model is the one a phone cannot hold (measured, not a default)", () => {
 		expect(EMBEDDING_MODELS["xenova-paraphrase-multilingual-MiniLM-L12-v2"].mobile).toBe(false);
-		expect(effectiveEmbeddingModel("xenova-paraphrase-multilingual-MiniLM-L12-v2", true)).toBe(MOBILE_EMBEDDING_MODEL_ID);
+	});
+
+	it("a phone runs the vector-identical variant for it, not a different model (ADR-199)", () => {
+		const onPhone = effectiveEmbeddingModel("xenova-paraphrase-multilingual-MiniLM-L12-v2", true);
+		expect(onPhone).toBe("xenova-paraphrase-multilingual-MiniLM-L12-v2-latin");
+		expect(vectorFamily(onPhone)).toBe("xenova-paraphrase-multilingual-MiniLM-L12-v2");
 	});
 
 	it("leaves the desktop on exactly the model the setting names", () => {
@@ -37,6 +45,42 @@ describe("effectiveEmbeddingModel — what a device actually runs (ADR-198)", ()
 		const bogus = "not-a-model" as never;
 		expect(EMBEDDING_MODEL_IDS).toContain(effectiveEmbeddingModel(bogus, false));
 		expect(EMBEDDING_MODELS[effectiveEmbeddingModel(bogus, true)].mobile).toBe(true);
+	});
+});
+
+describe("a variant is the same vectors under another name (ADR-199)", () => {
+	const variants = EMBEDDING_MODEL_IDS.filter((id) => EMBEDDING_MODELS[id].variantOf);
+
+	it("there is one, and it is the mobile stand-in for the multilingual model", () => {
+		expect(variants).toEqual(["xenova-paraphrase-multilingual-MiniLM-L12-v2-latin"]);
+		expect(EMBEDDING_MODELS[variants[0]].mobile).toBe(true);
+	});
+
+	it("matches its family in everything that shapes a vector or reads one", () => {
+		// Same dim, pooling and window → the same chunks and the same index rows;
+		// same floors → "Balanced" means the same thing on both devices. A drift in
+		// any of these would make the phone silently read the desktop's index wrong.
+		for (const id of variants) {
+			const v = EMBEDDING_MODELS[id], f = EMBEDDING_MODELS[v.variantOf!];
+			expect([v.dim, v.pooling, v.maxTokens]).toEqual([f.dim, f.pooling, f.maxTokens]);
+			expect(v.relatedFloors).toEqual(f.relatedFloors);
+			expect(embedChunkChars(id)).toBe(embedChunkChars(f.id));
+			for (const p of SIMILARITY_PRESETS) expect(relatedMinScore(p, id)).toBe(relatedMinScore(p, f.id));
+			expect(v.variantNote).toBeDefined(); // the settings note must say what it gives up
+		}
+	});
+
+	it("is never offered in the dropdown, and a full model is its own family", () => {
+		for (const id of variants) expect(SELECTABLE_EMBEDDING_MODEL_IDS).not.toContain(id);
+		for (const id of SELECTABLE_EMBEDDING_MODEL_IDS) expect(vectorFamily(id)).toBe(id);
+		expect(SELECTABLE_EMBEDDING_MODEL_IDS.length).toBe(EMBEDDING_MODEL_IDS.length - variants.length);
+	});
+
+	it("a variant chosen directly stays put on both platforms", () => {
+		for (const id of variants) {
+			expect(effectiveEmbeddingModel(id, true)).toBe(id);
+			expect(effectiveEmbeddingModel(id, false)).toBe(id);
+		}
 	});
 });
 

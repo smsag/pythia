@@ -142,3 +142,23 @@ describe("VaultRagService — status without loading the model (ADR-198)", () =>
 		expect((await make(new MemStore()).status()).state).toBe("notBuilt");
 	});
 });
+
+describe("a variant reads the family's index as its own (ADR-199)", () => {
+	const scopeOf = (svc: VaultRagService): string => (svc as unknown as { scopeSignature(): string }).scopeSignature();
+
+	it("phone (variant) and desktop (full model) agree on the scope signature", () => {
+		const mk = (modelId: "xenova-paraphrase-multilingual-MiniLM-L12-v2" | "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin") =>
+			new VaultRagService(fakeApp("hello") as never, () => settings(), () => new FakeProvider(), () => new MemStore(), { modelId: () => modelId });
+		// Different, and the desktop's complete index would read as "outdated" on
+		// the phone and be rebuilt — the exact work the variant exists to avoid.
+		expect(scopeOf(mk("xenova-paraphrase-multilingual-MiniLM-L12-v2-latin"))).toBe(scopeOf(mk("xenova-paraphrase-multilingual-MiniLM-L12-v2")));
+	});
+
+	it("a complete index the desktop wrote is ready on the phone", async () => {
+		const desktop = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new FakeProvider(), () => new MemStore(), { modelId: () => "xenova-paraphrase-multilingual-MiniLM-L12-v2" });
+		const store = new MemStore();
+		store.buf = serializeIndex([{ id: "n.md", contentHash: "h", chunks: [Int8Array.from([1, 0, 0, 0])] }], 4, { complete: true, scope: scopeOf(desktop) });
+		const phone = new VaultRagService(fakeApp("hello") as never, () => settings(), () => { throw new Error("must not load"); }, () => store, { modelId: () => "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin" });
+		expect((await phone.status()).state).toBe("ready");
+	});
+});
