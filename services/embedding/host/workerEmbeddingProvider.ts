@@ -1,4 +1,5 @@
 import type { EmbeddingProvider } from "../EmbeddingProvider";
+import { visibleClock } from "./visibleClock";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import type { ModelLoadProgress } from "./iframeEmbeddingProvider";
 import { getEmbeddingBundle } from "./embeddingBundle";
@@ -10,7 +11,8 @@ const EMBED_TIMEOUT_MS = 120_000;
 interface Pending {
 	resolve: (vectors: number[][]) => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	/** Cancels the visible-time timeout (ADR-202). */
+	cancelTimeout: () => void;
 }
 
 /**
@@ -67,10 +69,12 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 
 		// Ready is proven by a ping round-trip once the model has loaded.
 		return new Promise<void>((resolve, reject) => {
-			const started = Date.now();
+			// Visible time, not wall time (ADR-202): a first download interrupted by
+			// switching apps must not "time out" the moment Obsidian returns.
+			const started = visibleClock.elapsed();
 			const tick = () => {
 				if (this.loadError) return reject(this.loadError);
-				if (Date.now() - started > READY_TIMEOUT_MS) return reject(new Error("Embedding worker load timed out"));
+				if (visibleClock.elapsed() - started > READY_TIMEOUT_MS) return reject(new Error("Embedding worker load timed out"));
 				this.ping()
 					.then(resolve)
 					.catch(() => setTimeout(tick, 1500));
@@ -101,11 +105,11 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		if (this.loadError) return Promise.reject(this.loadError);
 		const requestId = this.reqId++;
 		return new Promise<number[][]>((resolve, reject) => {
-			const timeout = setTimeout(() => {
+			const cancelTimeout = visibleClock.timeout(() => {
 				this.pending.delete(requestId);
 				reject(new Error(`Embedding request ${requestId} timed out`));
 			}, timeoutMs);
-			this.pending.set(requestId, { resolve, reject, timeout });
+			this.pending.set(requestId, { resolve, reject, cancelTimeout });
 			worker.postMessage({ requestId, ...payload });
 		});
 	}
@@ -113,7 +117,7 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 	private onError = (event: ErrorEvent): void => {
 		this.loadError = new Error(event.message || "Embedding worker error");
 		for (const [id, p] of this.pending) {
-			clearTimeout(p.timeout);
+			p.cancelTimeout();
 			p.reject(this.loadError);
 			this.pending.delete(id);
 		}
@@ -132,7 +136,7 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		if (msg.type === "model-load-error") {
 			this.loadError = new Error(msg.message ?? "Embedding model failed to load");
 			for (const [id, p] of this.pending) {
-				clearTimeout(p.timeout);
+				p.cancelTimeout();
 				p.reject(this.loadError);
 				this.pending.delete(id);
 			}
@@ -142,14 +146,14 @@ export class WorkerEmbeddingProvider implements EmbeddingProvider {
 		const pending = this.pending.get(msg.requestId);
 		if (!pending) return;
 		this.pending.delete(msg.requestId);
-		clearTimeout(pending.timeout);
+		pending.cancelTimeout();
 		if (msg.error) pending.reject(new Error(`Embedding worker: ${msg.error}`));
 		else pending.resolve(msg.vectors ?? []);
 	};
 
 	unload(): void {
 		for (const [, p] of this.pending) {
-			clearTimeout(p.timeout);
+			p.cancelTimeout();
 			p.reject(new Error("Embedding provider unloaded"));
 		}
 		this.pending.clear();

@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-22 — **#349–#352: review fixes to ADR-199/200 (ADR-201).** #349 — a phone-written row for non-Latin text was reused by the desktop forever; rows now carry whether the variant could reproduce them. #350 — a paused guard over a complete index read "Ready" with vault context dead and *Build now* disabled. #351 — `mergeSettings` accepted the variant id as a stored choice. #352 — the status read "0 of 0 notes" through the model load.*
+*Updated: 2026-09-22 — **#353–#355: switching apps on iOS (ADR-202).** #353 — the model-load and request timeouts were wall-clock, so returning after a long background absence during a download failed the load for the session. #354 — a build killed while backgrounded counted as a crash; two app switches paused indexing. #355 — the idle model kept ~400 MB resident, making Obsidian the app iOS ends first; a phone now releases it on hide and after 3 min idle and preloads it on return and on input focus.*
+
+*Previously updated: 2026-09-22 — **#349–#352: review fixes to ADR-199/200 (ADR-201).** #349 — a phone-written row for non-Latin text was reused by the desktop forever; rows now carry whether the variant could reproduce them. #350 — a paused guard over a complete index read "Ready" with vault context dead and *Build now* disabled. #351 — `mergeSettings` accepted the variant id as a stored choice. #352 — the status read "0 of 0 notes" through the model load.*
 
 *Previously updated: 2026-09-22 — **#348: the phone gets its multilingual model back (ADR-200).** #344's English substitution traded away cross-language matching on the phone. Measured where the memory goes (the 250k-piece vocabulary: 153 MB of JS heap for the tokenizer, 332 MB of WASM heap for the embedding table; the transformer itself ~22 MB), surveyed the leaner multilingual models (none has a smaller vocabulary and a transformers.js build), and pruned this model's vocabulary to Latin script: vectors identical for Latin-script text, ≈ +370–400 MB on the iPhone. Published as a fork, built by `scripts/prune-embedding-model.py`, verified by `scripts/verify-pruned-model.mjs`; index files keyed by vector family so the phone reads the desktop's index (1564 across 108 files after merging main).*
 
@@ -1747,3 +1749,11 @@ Found along the way and fixed separately as #342: the data.json watcher threw `A
 | 350 | **Paused over a complete index read "Ready".** `status()` exempted `ready` from `paused`, yet a paused session never loads the model, so retrieval returned nothing while the status was green and *Build now* disabled. Reachable by two background kills during the per-session sync. | Medium | **Fixed (ADR-201).** Paused whenever the guard blocks; the headline says vault context is off until *Build now* and that rows are kept. |
 | 351 | **A stored variant id passed settings validation.** `ENUM_KEYS.embeddingModelId` was `EMBEDDING_MODEL_IDS`, which includes the variant. | Low | **Fixed (ADR-201).** `SELECTABLE_EMBEDDING_MODEL_IDS`. |
 | 352 | **"Building… 0 of 0 notes" during the model load.** | Low | **Fixed (ADR-201).** A `loading` phase and headline naming the download size. |
+
+## Follow-up (#353–#355) — switching apps on iOS, 2026-09-22
+
+| # | Item | Severity | Status |
+|---|---|---|---|
+| 353 | **Timeouts were wall-clock.** `READY_TIMEOUT_MS` compared `Date.now()`; each request armed a one-shot `setTimeout`. Returning after >5 min in the background during a first download rejected the load at once, and the rejection is memoized for the session. | Medium | **Fixed (ADR-202).** `VisibleClock`; both providers; a source test forbids the old shapes. |
+| 354 | **A background kill counted as a crash.** Two app switches during a first build paused automatic indexing. | Medium | **Fixed (ADR-202).** `background` on the marker; `foregroundDeaths`. |
+| 355 | **The idle model stayed resident (~400 MB).** Obsidian became the first app iOS ends in the background, and cold-starts on return. | Medium | **Fixed (ADR-202), not yet measured on the device.** `EmbeddingResidency`: release on hide / after 3 min idle on a phone; preload on return and input focus. |

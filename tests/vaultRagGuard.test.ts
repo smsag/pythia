@@ -196,3 +196,25 @@ describe("loading the model is its own state (ADR-201)", () => {
 	});
 });
 
+describe("a build marks its marker when Obsidian goes to the background (ADR-202)", () => {
+	it("marks a running build, and only a running build", async () => {
+		const { box, guard } = memGuard();
+		let release!: () => void;
+		class Slow extends FakeProvider { ready(): Promise<void> { return new Promise((r) => { release = r; }); } }
+		const svc = new VaultRagService(fakeApp("hello") as never, () => settings(), () => new Slow(), () => new MemStore(), { ...DEPS, guard });
+		svc.onBackground(true);
+		expect(box.marker).toBeNull(); // idle: nothing to mark
+		void svc.getRelevantNotes(conv, "anything");
+		await settle();
+		expect(svc.isBuilding()).toBe(true);
+		svc.onBackground(true);
+		expect(box.marker?.background).toBe(true);
+		svc.onBackground(false);
+		expect(box.marker?.background).toBeUndefined();
+		release();
+		await settle();
+		expect(box.marker).toBeNull();
+		expect(svc.isBuilding()).toBe(false);
+	});
+});
+

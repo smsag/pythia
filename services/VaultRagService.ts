@@ -108,6 +108,17 @@ export class VaultRagService {
 		}
 	}
 
+	/** Obsidian went to the background or came back (ADR-202). While a build runs,
+	 *  its marker records that, so an iOS background kill is not counted as a crash. */
+	onBackground(hidden: boolean): void {
+		if (this.syncing) this.deps.guard?.markBackground(hidden);
+	}
+
+	/** Whether a build is running — the embedding model must not be released under it. */
+	isBuilding(): boolean {
+		return this.syncing;
+	}
+
 	/** Plugin unload. A build cut short by a normal unload (quit, reload, disable)
 	 *  is not a crash, so its marker must not count toward the pause. */
 	dispose(): void {

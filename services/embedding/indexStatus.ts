@@ -8,7 +8,7 @@
 
 import { t } from "../../i18n";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../models/embeddingModels";
-import type { BuildMarker } from "./buildGuard";
+import { foregroundDeaths, type BuildMarker } from "./buildGuard";
 
 export type VaultIndexState =
 	| "notBuilt"   // no usable file for this model
@@ -84,7 +84,7 @@ function headline(s: VaultIndexStatus): string {
 				? t("vaultIndexStateOutOfMemory")
 				: t("vaultIndexStateFailed", { error: s.error ?? "?" });
 		case "paused":
-			return t("vaultIndexStatePaused", { count: s.marker?.attempts ?? 0 });
+			return t("vaultIndexStatePaused", { count: foregroundDeaths(s.marker) });
 		case "notBuilt":
 			return t("vaultIndexStateNotBuilt");
 	}
