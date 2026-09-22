@@ -6,6 +6,8 @@
 
 *Previously: 2026-09-22 — ADR-196 addendum (`touch-action: manipulation` on the role base: Obsidian exempts its own controls from iOS's double-tap wait through `.is-clickable`/`.clickable-icon`, and a button built here is neither).*
 
+*Previously: 2026-09-22 — ADR-198 (a search field's boundary is a control's boundary: `--background-modifier-border` drew the conversation search row at 1.23:1, where 3:1 is the bar, so the row's rule is now mixed from `--text-normal` at a measured percentage per mode and focus thickens it to the accent).*
+
 *Previously: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
 
 *Previously: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
@@ -3877,6 +3879,29 @@ Three concrete symptoms, none visible from one repository:
 - **The values stay identical today** because they were chosen once for reasons that apply to all three, and each is free to diverge tomorrow without asking anyone.
 
 **Consequences.** Nothing renders differently anywhere. Klartext stops being a dependency, so its branch stops blocking the plugins. The cost is real and accepted: a future change to the stroke or the roles is now three edits in three repositories rather than one edit and two re-copies, and nothing will fail if only two of them are made. The list that holds the family honest is a document, not a build step.
+
+---
+
+### ADR-198 — A search field's boundary is a control's boundary
+
+*2026-09-22*
+
+**Context.** The conversation panel's search row was drawn with `border-bottom: 1px solid var(--background-modifier-border)`. Measured in Obsidian 1.13.7, that paints the row's edge at **1.23:1** under Klartext and **1.19:1** under the default theme. WCAG 2.2's 1.4.11 asks **3:1** for the boundary of a user-interface component, and this row *is* the component: there is no box around the field, so the rule is the entire affordance. It had no focus state at all — the field is 17px of transparent text beside a loupe, and the only thing that changed when it took focus was the caret.
+
+That token is not at fault. `--background-modifier-border` is a hairline **between surfaces** and is meant to be quiet; it is the right thing for a divider and the wrong thing for a control. The same mistake was found in all three of the family's search surfaces and in Obsidian's own — under the default dark theme its form-field fill and its border are both `#2e2e2e`, so a field drawn as fill-plus-border has a boundary of exactly 1.00:1.
+
+**Decision.** The row keeps its silhouette — no box, the panel's own ground, one rule underneath — and that rule is held to 3:1.
+
+- **`--p-field-rule`, mixed from `--text-normal`**, never a named colour (hard rule 3) and never a border token. A plugin does not get to know the theme, so the rule is derived from one the theme must define.
+- **Two percentages, not one: 53% light, 42% dark.** White sits at the end of the luminance scale and a dark ground does not, so a single mix lands at 3.1:1 on one and 2.2:1 on the other. Obsidian sets `.theme-light` and `.theme-dark` on `<body>` itself, so this asks nothing of any particular theme.
+- **Focus is the rule thickening to 2px in the accent, and nothing else.** On the *row*, because the loupe and the ✕ are part of the same control; never a ring, which `.p-history` clips along its top edge into something that reads as a rendering fault. The second pixel comes out of the padding, so the row never changes height. No transition — this is state (ADR-155).
+- **The loupe moves from `--text-faint` to `--text-muted`**, the rule the button roles have lived by since ADR-188: faint is 2.3:1 on white and is not allowed on a control.
+
+**Why the percentages can be tested at all.** They cannot be checked against "the theme". `tests/fixtures/themeGrounds.ts` records `--background-primary` and `--text-normal` as measured in Obsidian 1.13.7 for the default theme and for Klartext, and `tests/searchField.test.ts` recomputes the composite and the contrast from them. That is evidence for two themes, not a proof for all of them, and the fixture says so. Klartext is the binding case in both modes — its body text is softer than Obsidian's, so the same mix lands paler.
+
+Painted and sampled off the screen: **3.45 / 3.07** light and **3.20 / 3.12** dark, for the default theme and Klartext respectively, against 1.19 / 1.23 before.
+
+**Consequences.** The same decision is being made separately in the theme and in the sibling plugin, each in its own idiom and with its own guard — ADR-197 is what forbids a shared file, and nothing here names another repository. The cost is the familiar one: three edits rather than one, and a number that could drift. What the guard holds is the *requirement* (3:1 against the grounds we measured), not the value, so a drift that still clears the bar is not a failure and a drift that does not is.
 
 ---
 

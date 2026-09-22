@@ -103,7 +103,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1553 tests across 107 files
+  tests/                      ← Vitest unit tests (npm test) — 1564 tests across 108 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -531,6 +531,13 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **The snippet is the expensive part, not the ranking** (ADR-170, `scripts/bench-search.mjs`). Ranking the whole corpus costs <1ms; re-tokenizing message lines for every rendered row cost 398ms per keystroke at 500 conversations. Line tokens are cached lazily on `ConversationFields.lines`, and `bestMatchSnippet` **requires** the fields — never add an overload that takes only a conversation, or the uncached path survives
 - **`SEARCH_RESULT_LIMIT` caps rendered rows at 20**, applied in `searchConversations` so the panel and the palette modal inherit it together. A short query matches a share of the corpus, so an uncapped list makes cost a function of vault size. The cap is applied AFTER the widen decision and can never change it
 - **`ScoredField` names the keys that are scored**; `lines` is a cache and must never join `FIELD_WEIGHTS`. The compiler enforces it
+
+### The search field's boundary (ADR-198)
+- **The row IS the control.** There is no box around the field — the panel is already one — so `.p-switcher-search`'s bottom rule is the whole affordance and is held to WCAG's **3:1**. `--background-modifier-border` is a divider between surfaces and drew it at **1.23:1**; never use it here
+- **`--p-field-rule` is mixed from `--text-normal`**, never a named colour and never a border token: a plugin does not get to know the theme, so the rule derives from one the theme must define
+- **Two percentages, 53% light / 42% dark**, because white sits at the end of the luminance scale and a dark ground does not — one mix lands at 3.1:1 on one and 2.2:1 on the other. `.theme-light`/`.theme-dark` are Obsidian's own body classes
+- **Focus thickens the rule to 2px accent and does nothing else**, on the row (the loupe and ✕ are part of the same control), never a ring — `.p-history` clips its top edge. The pixel comes out of the padding so the row never moves, and there is no transition (ADR-155)
+- `tests/searchField.test.ts` recomputes the contrast from `tests/fixtures/themeGrounds.ts` (measured grounds for the default theme and Klartext), so lowering a percentage fails. It is evidence for two themes, not a proof for all — the fixture says so
 
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
