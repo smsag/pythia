@@ -149,7 +149,19 @@ describe("the role set's colour contract", () => {
 	])("reads %s, falling back to %s", (token, fallback) => {
 		expect(block()).toContain(`var(${token}, var(${fallback}))`);
 	});
-	it("never reaches a contract colour directly", () => {
+	it("marks a button as a fast tap target, the way Obsidian marks its own", () => {
+		// Without this, iOS holds the first tap back while it waits for a second
+		// that would mean zoom, and the tap can be lost. Obsidian's own controls
+		// are exempt through `.is-clickable` / `.clickable-icon`; a button built
+		// here is neither.
+		const at = raw.indexOf(":is(.pythia-view, .pythia-modal) .pb {");
+		expect(at, "the role base rule is gone").toBeGreaterThan(-1);
+		const base = raw.slice(at, raw.indexOf("}", at));
+		expect(base, "the role base does not declare touch-action").toMatch(
+			/(^|[;{\s])touch-action:\s*manipulation\s*;/,
+		);
+	});
+		it("never reaches a contract colour directly", () => {
 		// The Obsidian token may appear only as a fallback INSIDE its contract
 		// property. A bare `var(--color-accent)` is the drift this catches.
 		for (const [token, fallback] of [
