@@ -14,6 +14,15 @@ import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
  * vault-context (semantic RAG) controls — enable-by-default, the folders to index
  * (empty = whole vault), and the live index status with its two actions
  * (ADR-199). Each section opens with a plain explanation of what it does.
+ *
+ * **Every control here that changes what the index is an index OF refreshes the
+ * status row** (#367). The row disables "Build now" while the index is ready and
+ * repaints only on index events, so a setting that moves the scope without
+ * repainting leaves the user looking at "Ready" with the one non-destructive
+ * action greyed out — which is what adding a second folder did. The scope is
+ * `VaultRagService.scopeSignature`: the indexed folders, the note cap and the
+ * model here; the two skip folders are picked in the tab's own folder section,
+ * which cannot reach this refresh yet (see review #367).
  */
 export function renderEmbeddingSettings(
 	containerEl: HTMLElement,
@@ -93,6 +102,10 @@ export function renderEmbeddingSettings(
 						.map((s) => s.trim().replace(/\/+$/, ""))
 						.filter(Boolean);
 					plugin.saveSettingsSoon();
+					// The scope just moved: the index is out of date and Build now has
+					// something to do again (#367). Cheap — the status reads a remembered
+					// header rather than the index file (#361).
+					refreshStatus();
 				})
 		);
 
@@ -109,6 +122,7 @@ export function renderEmbeddingSettings(
 				write: (n) => {
 					plugin.settings.vaultContextMaxIndexedNotes = n;
 					plugin.saveSettingsSoon();
+					refreshStatus(); // the cap is part of the scope (#367)
 				},
 			}));
 		});
@@ -130,6 +144,7 @@ export function renderEmbeddingSettings(
 				},
 			}));
 		});
+
 }
 
 /** The model row's explanation: what the two models are, plus — when the chosen

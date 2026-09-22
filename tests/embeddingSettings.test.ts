@@ -7,6 +7,8 @@ const inputs: HTMLInputElement[] = [];
 const dropdownOptions: string[] = [];
 /** Every Setting row, with what it was told — for the status and model rows. */
 const rows: { name: string; desc: unknown; buttons: { text: string; disabled: boolean; click: () => void }[]; el: HTMLElement }[] = [];
+/** Every textarea the settings built, with a way to type into it. */
+const textAreas: { value: string; fire: (v: string) => void }[] = [];
 
 vi.mock("obsidian", () => {
 	class TextComponent {
@@ -36,8 +38,17 @@ vi.mock("obsidian", () => {
 		setDesc(d: unknown): this { this.row.desc = d; return this; }
 		setHeading(): this { return this; }
 		addText(cb: (t: TextComponent) => void): this { cb(new TextComponent(this.el)); return this; }
-		addTextArea(cb: (t: { setPlaceholder(): unknown; setValue(): unknown; onChange(): unknown }) => void): this {
-			cb({ setPlaceholder() { return this; }, setValue() { return this; }, onChange() { return this; } });
+		addTextArea(cb: (t: { setPlaceholder(): unknown; setValue(v: string): unknown; onChange(fn: (v: string) => void): unknown }) => void): this {
+			const area = {
+				setPlaceholder() { return this; },
+				setValue(v: string) { textAreas.push({ value: v, fire: () => {} }); return this; },
+				onChange(fn: (v: string) => void) {
+					const last = textAreas[textAreas.length - 1];
+					if (last) last.fire = (v: string) => { last.value = v; fn(v); };
+					return this;
+				},
+			};
+			cb(area as never);
 			return this;
 		}
 		addDropdown(cb: (d: Record<string, () => unknown>) => void): this {
@@ -101,7 +112,7 @@ const fakePlugin = (over: { active?: EmbeddingModelId; status?: Partial<VaultInd
 
 const flush = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 
-beforeEach(() => { inputs.length = 0; rows.length = 0; dropdownOptions.length = 0; });
+beforeEach(() => { inputs.length = 0; rows.length = 0; dropdownOptions.length = 0; textAreas.length = 0; });
 
 describe("vaultContextMaxIndexedNotes field (ADR-171 rule, ADR-182 fix)", () => {
 	const render = () => {
@@ -271,5 +282,66 @@ describe("index status row (ADR-199)", () => {
 		host.remove();
 		for (const l of [...plugin.listeners]) l();
 		expect(plugin.listeners.size).toBe(0);
+	});
+});
+
+describe("the status row follows a scope change (#367)", () => {
+	const statusRowOf = () => rows.find((r) => r.name === t("vaultIndexStatusName"))!;
+	const buildNowBtn = () => statusRowOf().buttons.find((b) => b.text === t("vaultIndexBuildNow"))!;
+
+	/** A plugin whose status answers like the real service: complete under the
+	 *  scope the index was built with, out of date once the folders change. */
+	const render = async () => {
+		const plugin = fakePlugin({ status: { state: "ready", count: 12 } });
+		const indexedFolders = ["Notes"];
+		plugin.settings.vaultContextFolders = [...indexedFolders];
+		plugin.vaultIndexStatus = async () => ({
+			...plugin.status,
+			state: plugin.settings.vaultContextFolders.join("|") === indexedFolders.join("|") ? "ready" : "outdated",
+		});
+		renderEmbeddingSettings(document.createElement("div"), plugin as unknown as PythiaPlugin);
+		await flush();
+		return { plugin };
+	};
+
+	it("enables Build now once a folder is added", async () => {
+		const { plugin } = await render();
+		expect(buildNowBtn().disabled).toBe(true); // ready: nothing to do, correctly
+
+		// The user adds a second folder. The index is now out of date, and the one
+		// control that would fix it non-destructively must become available —
+		// otherwise the only working button is the one that re-embeds everything.
+		textAreas[0].fire("Notes\nInsights");
+		await flush();
+		expect(plugin.settings.vaultContextFolders).toEqual(["Notes", "Insights"]);
+		expect(buildNowBtn().disabled).toBe(false);
+	});
+
+	it("enables it when the note cap changes too — the cap is part of the scope", async () => {
+		const plugin = fakePlugin({ status: { state: "ready", count: 12 } });
+		const indexedCap = plugin.settings.vaultContextMaxIndexedNotes;
+		plugin.vaultIndexStatus = async () => ({
+			...plugin.status,
+			state: plugin.settings.vaultContextMaxIndexedNotes === indexedCap ? "ready" : "outdated",
+		});
+		const commits: (() => void)[] = [];
+		renderEmbeddingSettings(document.createElement("div"), plugin as unknown as PythiaPlugin, (c) => commits.push(c));
+		await flush();
+		expect(buildNowBtn().disabled).toBe(true);
+
+		const [cap] = inputs;
+		cap.value = "200";
+		cap.dispatchEvent(new Event("blur"));
+		await flush();
+		expect(plugin.settings.vaultContextMaxIndexedNotes).toBe(200);
+		expect(buildNowBtn().disabled).toBe(false);
+	});
+
+	it("says the index is out of date, rather than still claiming ready", async () => {
+		await render();
+		textAreas[0].fire("Notes\nInsights");
+		await flush();
+		const desc = statusRowOf().desc as DocumentFragment;
+		expect(desc.textContent).toContain(t("vaultIndexStateOutdated"));
 	});
 });
