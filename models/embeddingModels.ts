@@ -30,6 +30,18 @@ export interface EmbeddingModelConfig {
 	 *  throughout. One shared constant therefore meant two different features
 	 *  depending on which model the dropdown selected. */
 	relatedFloors: Record<SimilarityPreset, number>;
+	/** Approximate size of the quantized model download, in MB — shown in the
+	 *  settings explainer so "downloads on first use" has a number attached. */
+	downloadMb: number;
+	/** Whether this model may run on Obsidian mobile (ADR-198).
+	 *
+	 *  MEASURED on an iPhone 15 Pro Max, iOS 26.6.2, 2026-09-22: iOS kills
+	 *  Obsidian's WebContent process at ~2 048 MB (`per-process-limit`). Obsidian
+	 *  plus a typical plugin set sits at ~640 MB; loading the English model adds
+	 *  ~130 MB, the multilingual one ~900–1 000 MB — after which the first
+	 *  inference crosses the limit and Obsidian reloads. Batch size was not the
+	 *  lever (batch 1 died too). Re-measure before flipping a flag. */
+	mobile: boolean;
 }
 
 /** How strict the "related conversations" similarity floor is. A named preset so
@@ -61,6 +73,8 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 		pooling: "mean",
 		// p75 / p90 / p95 of this model's own pair distribution (ADR-169).
 		relatedFloors: { loose: 0.45, balanced: 0.57, strict: 0.67 },
+		downloadMb: 25,
+		mobile: true,
 	},
 	"xenova-paraphrase-multilingual-MiniLM-L12-v2": {
 		id: "xenova-paraphrase-multilingual-MiniLM-L12-v2",
@@ -72,6 +86,8 @@ export const EMBEDDING_MODELS: Record<EmbeddingModelId, EmbeddingModelConfig> = 
 		// The same percentiles, ~0.08 higher throughout — this model scores every
 		// pair hotter, which is exactly why the floors cannot be shared (ADR-169).
 		relatedFloors: { loose: 0.55, balanced: 0.65, strict: 0.75 },
+		downloadMb: 120,
+		mobile: false,
 	},
 };
 
@@ -87,6 +103,25 @@ export const EMBEDDING_MODEL_IDS: readonly EmbeddingModelId[] = Object.keys(EMBE
 
 export function embeddingModelConfig(id: EmbeddingModelId): EmbeddingModelConfig {
 	return EMBEDDING_MODELS[id] ?? EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL_ID];
+}
+
+/** The model a phone or tablet runs when the chosen one is not `mobile` (ADR-198). */
+export const MOBILE_EMBEDDING_MODEL_ID: EmbeddingModelId = "xenova-all-MiniLM-L6-v2";
+
+/**
+ * The model that actually embeds on this device — the ONE place that answers it
+ * (ADR-198). Everything that loads a model, opens an index file, or picks a
+ * floor goes through here; `settings.embeddingModelId` is read nowhere else
+ * (`tests/embeddingModelRule.test.ts` fails on a second reader).
+ *
+ * The setting is never rewritten: it syncs through data.json, so storing the
+ * mobile substitute would switch the desktop too (principle 6). The phone uses
+ * its own model and its own index file (`<prefix>-<modelId>.bin`) beside the
+ * desktop's.
+ */
+export function effectiveEmbeddingModel(setting: EmbeddingModelId, isMobile: boolean): EmbeddingModelId {
+	const chosen = embeddingModelConfig(setting);
+	return isMobile && !chosen.mobile ? MOBILE_EMBEDDING_MODEL_ID : chosen.id;
 }
 
 /** Conservative chars-per-token for sizing a chunk against a token window.

@@ -49,6 +49,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
+    embedding/buildGuard.ts   ← pure: BuildGuard + vaultBuildGuard — the per-device marker that pauses automatic index builds after two the OS killed (ADR-198)
+    embedding/memoryError.ts  ← isOutOfMemoryError + EmbeddingOutOfMemoryError — out of memory ends the backend fallback chain (ADR-198)
+    embedding/indexStatus.ts  ← pure: the vault index's seven states + describeVaultIndexStatus, the words the settings tab shows (ADR-198)
     embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
     embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
     embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
@@ -95,13 +98,15 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
+    vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-198)
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1481 tests across 101 files
+  tests/                      ← Vitest unit tests (npm test) — 1536 tests across 105 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
+    embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-198)
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
@@ -491,6 +496,11 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **A cold sync is cancellable and commits partial progress before rethrowing** — a cancelled build must leave the next one less to do. The panel aborts on close, on leaving related mode and on the first keystroke; an abort is the panel's own doing and reports nothing
 
 ### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
+
+- **A phone embeds with a model marked `mobile`** (ADR-198, measured on an iPhone: the multilingual model adds ~0.9–1 GB to a WebContent process iOS kills at ~2 GB; English adds ~130 MB). The ONE resolver is `effectiveEmbeddingModel` → `plugin.activeEmbeddingModelId()`. **Never read `settings.embeddingModelId` anywhere else** — `tests/embeddingModelRule.test.ts` fails on a second reader — and **never write the substitute into the setting**: it syncs, and the desktop keeps its choice (principle 6). A new model gets `mobile: true` only on a measurement from the device
+- **Out of memory is not a refusal.** The fallback chain exists for backends that are *refused*; every backend shares one process, so `isOutOfMemoryError` ends the chain instead of loading the model again. Do not add a backend that bypasses `record`
+- **A build the OS kills leaves a marker** (`BuildGuard`, per-device localStorage — never data.json). Two deaths in a row pause *automatic* builds until the user presses *Build now*; a caught error clears the marker **except out of memory**; `dispose()` clears it on a normal unload. Any new automatic path that starts the vault build goes through `refresh()`, never around it
+- **The status never loads the model.** `VaultRagService.status()` reads the file header (`peekIndexMeta`) when the session has not built. Words live in `describeVaultIndexStatus` only
 
 - **The Worker must see a browser, not Node.** Obsidian gives desktop Workers Node access, so transformers.js reads `process.release.name === "node"`, binds onnxruntime-**node** (macOS device list: `['cpu']`) and rejects the `wasm` device Pythia always passes — which is why every desktop silently ran embedding on the UI-thread iframe for three ADRs. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and **nowhere else**; the iframe gets the bare bundle
 - **The prelude has three statements and needs all three.** `delete globalThis.process`, then an assignment, then `const process = void 0`. The first two are *property* operations that a non-configurable / non-writable global defeats through their own `catch`; the `const` binds the identifier, which is what `env.js:38-39` reads, and no descriptor can defeat it. The `const` is unconditional (a `const` inside the guard block would shadow only that block) and safe **only because the bundle is a module** — `import.meta` appears in it, so it cannot load any other way

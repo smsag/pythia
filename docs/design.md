@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-20 — align on the design, implement it separately (ADR-197). `kit/button.css` and the byte-identity test are withdrawn: the nine roles are Pythia's own rules in `styles.css`, and no test compares this stylesheet against another repository's. Nothing renders differently. The colour contract stays — every colour is reached through `var(--btn-accent | --btn-on-accent | --btn-error | --btn-warning, <Obsidian token>)`, and Pythia overrides only `--btn-on-accent`, at `var(--p-on-accent, var(--text-on-accent))` (ADR-154).*
+*Last updated: 2026-09-22 — the settings tab's vault-index status row (ADR-198): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
+
+*Previously: 2026-09-20 — align on the design, implement it separately (ADR-197). `kit/button.css` and the byte-identity test are withdrawn: the nine roles are Pythia's own rules in `styles.css`, and no test compares this stylesheet against another repository's. Nothing renders differently. The colour contract stays — every colour is reached through `var(--btn-accent | --btn-on-accent | --btn-error | --btn-warning, <Obsidian token>)`, and Pythia overrides only `--btn-on-accent`, at `var(--p-on-accent, var(--text-on-accent))` (ADR-154).*
 
 *Previously: 2026-09-20 — the button role set moved to `kit/button.css`, instantiated into `styles.css` (ADR-196). Withdrawn by ADR-197; the roles and their values are unchanged.*
 
@@ -490,6 +492,15 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 ### Effort segmented control (`.p-effort-seg`, F8)
 
 The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` — accent fill, `--p-on-accent`, **and weight 600**, so selection never rests on colour alone — plus `aria-pressed`; the group carries `role="group"`. The leading **Standard** segment means "no override" and names the effort that will actually apply (`Standard · Mittel`) when a global default is configured, plain `Standard` otherwise; the long parenthetical `effortUnsetOption` string stays in the settings-tab dropdown, which can carry it. Every segment rule is **scoped to `.pythia-modal`**: `all: unset` alone is (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at (0,1,1) — the modal has no equivalent of the `.pythia-view` reset at the top of `styles.css`, so the segments inherited core's grey and the selected one was hard to pick out. Segments are ≥28px tall, ≥36px under `@media (pointer: coarse)`. When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
+
+### Settings: the vault index status row (ADR-198)
+
+An Obsidian `Setting` row named **Index status** in the Vault context section, placed first in it, because it is what the rest of the section is about. Its description is two lines:
+
+- `.p-index-status-headline` — the state and what to do about it, in `--text-normal` (Obsidian's description text is muted; this line is the answer, not a footnote). One of seven: not built · building *n of N* · ready · unfinished · out of date · failed (out of memory said in words, never the raw `RangeError`) · paused.
+- `.p-index-status-detail` — reference: `Model: English (mobile) · Engine: worker (blob) · Vault context is off by default`, in `--font-monospace` at `--font-smaller`, 4px under the headline (the settings tab sits outside `.pythia-view`, so the `--s*` tokens are not in scope there).
+
+Two buttons, Obsidian's own `ButtonComponent`s: **Build now** (finish or update, keeping rows; *disabled* — not hidden — while a build runs or the index is ready, so the row does not reflow) and **Rebuild index** (discard and start over). Each embedding section opens with a description-only `Setting` that says in plain words what the feature does; the model row adds, on a phone, which model this device runs instead and why.
 
 ### Conversation settings modal (temperature, max tokens, language, theme)
 

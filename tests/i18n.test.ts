@@ -11,9 +11,10 @@ const SOURCE_FILES = [
 	"sidebar.ts",
 	"main.ts",
 	"settings.ts",
-	...readdirSync(join(ROOT, "suggest")).map(f => `suggest/${f}`),
-	...readdirSync(join(ROOT, "services")).map(f => `services/${f}`),
-	...readdirSync(join(ROOT, "ui")).map(f => `ui/${f}`),
+	// Recursive: a key used only in services/embedding/ read as dead, and one
+	// MISSING there was invisible to the missing-key test below (ADR-198).
+	...["suggest", "services", "ui"].flatMap((d) =>
+		readdirSync(join(ROOT, d), { recursive: true }).map(String).filter((f) => f.endsWith(".ts")).map((f) => `${d}/${f}`)),
 ].map(f => join(ROOT, f));
 
 function collectUsedKeys(): Set<string> {

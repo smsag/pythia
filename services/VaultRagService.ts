@@ -7,7 +7,11 @@ import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexSer
 import { retrievalQuery, isIndexingOptedOut } from "./embedding/vaultRetrieval";
 import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
-import { embedChunkChars } from "../models/embeddingModels";
+import { embedChunkChars, type EmbeddingModelId } from "../models/embeddingModels";
+import type { BuildGuard } from "./embedding/buildGuard";
+import { isOutOfMemoryError } from "./embedding/memoryError";
+import { peekIndexMeta } from "./embedding/embeddingIndex";
+import { stateFromFile, type VaultIndexStatus } from "./embedding/indexStatus";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
 
@@ -27,13 +31,31 @@ import { t } from "../i18n";
  * The embedding provider (worker-with-iframe-fallback) is shared with
  * "related conversations" and injected via `getProvider`; `reset()` drops the
  * per-model index when the model changes.
+ *
+ * Automatic builds go through a `BuildGuard` (ADR-198): a build the OS killed
+ * leaves a marker behind, and after two of those in a row the next one waits
+ * for the user instead of crashing the app again on the next send.
  */
+
+/** The index half of the settings status; the plugin adds the model half. */
+export type VaultIndexSnapshot = Pick<
+	VaultIndexStatus,
+	"state" | "count" | "done" | "total" | "error" | "outOfMemory" | "marker" | "backend"
+>;
+
+type Phase =
+	| { kind: "idle" }
+	| { kind: "building"; done: number; total: number }
+	| { kind: "failed"; error: string; outOfMemory: boolean };
 export class VaultRagService {
 	private service: VaultIndexService | null = null;
 	/** Paths auto-retrieved on the last turn, per conversation id (for the "auto" pills). */
 	private lastAutoContext = new Map<string, string[]>();
 	private syncing = false;
-	private status = "";
+	private phase: Phase = { kind: "idle" };
+	/** One-time "the build is paused" notice per session (ADR-198). */
+	private pausedNoticeShown = false;
+	private readonly listeners = new Set<() => void>();
 	/** One-time "vault too large, capped" warning per session/model. */
 	private capWarned = false;
 	/** One-time "indexing is throttled on this device" notice per session. */
@@ -53,15 +75,42 @@ export class VaultRagService {
 		private readonly getProvider: () => EmbeddingProvider,
 		/** Builds the vault-index persistence store for the current model. */
 		private readonly makeStore: () => IndexStore,
+		private readonly deps: {
+			/** The model this device embeds with — `effectiveEmbeddingModel`, never
+			 *  the raw setting (ADR-198). */
+			modelId: () => EmbeddingModelId;
+			/** The crash-loop breaker; absent in tests that do not exercise it. */
+			guard?: BuildGuard | null;
+		},
 	) {}
 
 	/** Drop the per-model index/service (on a model change). */
 	reset(): void {
 		this.service = null;
-		this.status = "";
+		this.phase = { kind: "idle" };
 		this.capWarned = false;
 		this.backend = null;
 		this.deferredChanges = null;
+		this.emit();
+	}
+
+	/** Called on every status change (settings tab live line). Returns the unsubscribe. */
+	onChange(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	private emit(): void {
+		for (const l of this.listeners) {
+			try { l(); } catch (e) { console.warn("[Pythia] vault RAG: status listener failed", e); }
+		}
+	}
+
+	/** Plugin unload. A build cut short by a normal unload (quit, reload, disable)
+	 *  is not a crash, so its marker must not count toward the pause. */
+	dispose(): void {
+		if (this.syncing) this.deps.guard?.end();
+		this.listeners.clear();
 	}
 
 	/**
@@ -78,7 +127,7 @@ export class VaultRagService {
 		const s = this.getSettings();
 		const folders = [...s.vaultContextFolders].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
 		const skip = [s.conversationsFolder, s.scratchFolder].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
-		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, s.embeddingModelId]);
+		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, this.deps.modelId()]);
 	}
 
 	private ensure(): VaultIndexService {
@@ -89,7 +138,7 @@ export class VaultRagService {
 			// The conversation index keeps 500 on purpose: ADR-169's floors were
 			// measured there.
 			this.service = new VaultIndexService(provider, this.makeStore(), {
-				maxChars: embedChunkChars(this.getSettings().embeddingModelId),
+				maxChars: embedChunkChars(this.deps.modelId()),
 			});
 		}
 		return this.service;
@@ -100,12 +149,35 @@ export class VaultRagService {
 		return this.service?.isReady() ?? false;
 	}
 
-	/** Human-readable index status for the settings tab, with the embedding backend
-	 *  once it is known (ADR-182) — `iframe (UI thread)` there is the single fact
-	 *  that explains a slow build, and it used to be invisible. */
-	getStatus(): string {
-		const status = this.status || t("vaultIndexStatusIdle");
-		return this.backend ? `${status} ${t("vaultIndexBackend", { backend: this.backend })}` : status;
+	/**
+	 * Where the index stands, for the settings tab (ADR-198). Never loads the
+	 * model: a session that has not built reads the file's header instead, so a
+	 * complete index on disk says "ready" rather than "builds on first use". The
+	 * backend is included once known (ADR-182) — `iframe (UI thread)` is the
+	 * single fact that explains a slow build.
+	 */
+	async status(): Promise<VaultIndexSnapshot> {
+		const base: VaultIndexSnapshot = {
+			state: "notBuilt", count: 0, done: 0, total: 0, error: null, outOfMemory: false,
+			marker: this.deps.guard?.marker() ?? null, backend: this.backend,
+		};
+		const phase = this.phase;
+		if (phase.kind === "building") return { ...base, state: "building", done: phase.done, total: phase.total };
+		if (phase.kind === "failed") return { ...base, state: "failed", error: phase.error, outOfMemory: phase.outOfMemory };
+		const scope = this.scopeSignature();
+		if (this.service?.isComplete(scope)) return { ...base, state: "ready", count: this.service.size() };
+		let file: ReturnType<typeof peekIndexMeta> = null;
+		try {
+			const buf = await this.makeStore().read();
+			file = buf ? peekIndexMeta(buf) : null;
+		} catch (e) {
+			// Reported as "not built", which is what the next build will act on —
+			// but logged, because an unreadable index file is worth a report.
+			console.warn("[Pythia] vault RAG: could not read the index for its status", e);
+		}
+		const state = stateFromFile(file, scope);
+		const paused = state !== "ready" && !(this.deps.guard?.mayAutoBuild() ?? true);
+		return { ...base, state: paused ? "paused" : state, count: file?.count ?? 0 };
 	}
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
@@ -137,8 +209,11 @@ export class VaultRagService {
 
 		this.refresh(); // background FIRST build only — never awaited; no-op once ready
 
-		const svc = this.ensure();
-		if (!svc.isReady()) {
+		// The service exists once a build has resolved the provider. Not `ensure()`:
+		// that constructs the provider, and a paused build (ADR-198) must not so
+		// much as announce a model it is not going to load.
+		const svc = this.service;
+		if (!svc?.isReady()) {
 			this.lastAutoContext.set(conversation.id, []);
 			return [];
 		}
@@ -189,7 +264,7 @@ export class VaultRagService {
 	 *  THROTTLED (fine yields + a breather) so it never freezes the app, and an
 	 *  already-populated index is served as-is rather than re-embedded each session
 	 *  (ADR-125). Incremental edits keep it fresh via `applyChanges`. */
-	refresh(opts: { force?: boolean } = {}): void {
+	refresh(opts: { force?: boolean; manual?: boolean } = {}): void {
 		if (this.syncing) return;
 		// A COMPLETE index is kept fresh by the watcher's targeted `applyChanges`
 		// (ADR-121), so re-running a whole-corpus scan on every turn re-paid the
@@ -203,7 +278,23 @@ export class VaultRagService {
 		// reported itself finished. It is also false when the scope changed, so
 		// narrowing the folders rebuilds instead of leaving them retrievable.
 		if (!opts.force && this.service?.isComplete(this.scopeSignature())) return;
+		const guard = this.deps.guard;
+		// Builds kept dying (ADR-198): the OS killed the process before the last
+		// ones could finish, so starting another on this send is how the app
+		// reloaded every minute. An automatic build waits; one the user asks for
+		// forgets the history and runs.
+		if (!opts.manual && guard && !guard.mayAutoBuild()) {
+			if (!this.pausedNoticeShown) {
+				this.pausedNoticeShown = true;
+				new Notice(t("vaultIndexPausedNotice"), 12000);
+			}
+			debugLog(this.getSettings(), "vault RAG: automatic build paused after interrupted builds", guard.marker());
+			return;
+		}
+		if (opts.manual) guard?.end();
 		this.syncing = true;
+		guard?.start(this.deps.modelId());
+		this.setPhase({ kind: "building", done: 0, total: 0 });
 		void (async () => {
 			const startedAt = Date.now();
 			let notice: Notice | null = null;
@@ -229,7 +320,8 @@ export class VaultRagService {
 				if (!offThread) {
 					await svc.hydrateForQuery();
 					if (svc.isComplete(scope)) {
-						this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
+						guard?.end();
+						this.setPhase({ kind: "idle" });
 						return;
 					}
 					if (svc.size() > 0) {
@@ -252,23 +344,30 @@ export class VaultRagService {
 					new Notice(t("vaultIndexThrottled"), 10000);
 				}
 				notice = new Notice(t("vaultIndexBuilding"), 0);
-				this.status = t("vaultIndexStatusIndexing", { done: "0", total: String(notes.length) });
+				this.setPhase({ kind: "building", done: 0, total: notes.length });
 				// On the UI thread, yield after every note with a breather so Obsidian stays
 				// responsive during the build; off-thread keeps the coarse default cadence.
 				const throttle = offThread ? {} : { yieldEveryNotes: 1, breatherMs: 12 };
 				await svc.sync(notes, (done, tot) => {
 					notice?.setMessage(t("vaultIndexProgress", { done: String(done), total: String(tot) }));
-					this.status = t("vaultIndexStatusIndexing", { done: String(done), total: String(tot) });
+					this.setPhase({ kind: "building", done, total: tot });
 				}, throttle, scope);
-				this.status = t("vaultIndexStatusReady", { count: String(notes.length) });
+				guard?.end();
+				this.setPhase({ kind: "idle" });
 				await this.flushDeferredChanges();
 				debugLog(this.getSettings(), `vault RAG: index synced (${Date.now() - startedAt}ms)`, { indexed: notes.length, inScope: total, capped, offThread, backend: this.backend });
 			} catch (e) {
-				this.status = t("vaultIndexStatusFailed");
+				const outOfMemory = isOutOfMemoryError(e);
+				// A caught error is not a crash — the process survived to report it —
+				// EXCEPT out of memory, which is the same event one allocation short of
+				// a kill. Its marker stays, so it counts toward the pause (ADR-198).
+				if (!outOfMemory) guard?.end();
+				this.setPhase({ kind: "failed", error: e instanceof Error ? e.message : String(e), outOfMemory });
 				console.warn("[Pythia] vault RAG: index sync failed", e);
 			} finally {
 				notice?.hide();
 				this.syncing = false;
+				this.emit();
 			}
 		})();
 	}
@@ -308,7 +407,12 @@ export class VaultRagService {
 		}
 		// One persist for the whole batch (ADR-122), not one per note.
 		await svc.applyBatch({ updates, removes }, { cap: settings.vaultContextMaxIndexedNotes });
-		this.status = t("vaultIndexStatusReady", { count: String(svc.size()) });
+		this.emit();
+	}
+
+	private setPhase(phase: Phase): void {
+		this.phase = phase;
+		this.emit();
 	}
 
 	/** Replay the edits that arrived mid-build (ADR-184). Runs after a completed
@@ -334,7 +438,14 @@ export class VaultRagService {
 		} catch (e) {
 			console.warn("[Pythia] vault RAG: clear failed", e);
 		}
-		this.refresh({ force: true }); // an explicit rebuild is the one caller that always runs
+		this.refresh({ force: true, manual: true }); // an explicit rebuild is the one caller that always runs
+	}
+
+	/** "Build now": finish or resume the index WITHOUT discarding what is there —
+	 *  the settings action for a paused, unfinished or outdated index (ADR-198). */
+	buildNow(): void {
+		if (this.syncing) { new Notice(t("vaultIndexBusy")); return; }
+		this.refresh({ force: true, manual: true });
 	}
 
 	/** Whether this note opts out of the index with `pythia: false` in its

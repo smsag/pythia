@@ -8,56 +8,10 @@ vi.mock("obsidian", () => ({
 }));
 
 import { VaultRagService } from "../services/VaultRagService";
-import type { IndexStore } from "../services/embedding/ConversationIndexService";
-import type { EmbeddingProvider, EmbeddingBackend } from "../services/embedding/EmbeddingProvider";
 import { embedChunkChars, DEFAULT_EMBEDDING_MODEL_ID } from "../models/embeddingModels";
-import { DEFAULT_SETTINGS } from "../models/settings";
-import type { PythiaSettings } from "../models/settings";
-import type { Conversation } from "../models/types";
 import { TFile } from "obsidian";
-
-class FakeProvider implements EmbeddingProvider {
-	readonly dim = 4;
-	embedded: string[] = [];
-	constructor(private readonly reported: EmbeddingBackend | null = "worker (blob)") {}
-	async ready(): Promise<void> {}
-	async embed(texts: string[]): Promise<Float32Array[]> {
-		this.embedded.push(...texts);
-		return texts.map(() => Float32Array.from([1, 0, 0, 0]));
-	}
-	isOffThread(): boolean { return true; }
-	backend(): EmbeddingBackend | null { return this.reported; }
-	unload(): void {}
-}
-
-class MemStore implements IndexStore {
-	buf: ArrayBuffer | null = null;
-	async read(): Promise<ArrayBuffer | null> { return this.buf; }
-	async write(b: ArrayBuffer): Promise<void> { this.buf = b; }
-}
-
-/** A vault of one very long note, so the chunk WIDTH is observable. */
-const fakeApp = (body: string) => ({
-	vault: {
-		getMarkdownFiles: () => [{ path: "Notes/long.md", stat: { mtime: 1 } }],
-		cachedRead: async () => body,
-		getAbstractFileByPath: () => null,
-	},
-	metadataCache: { getFileCache: () => ({ frontmatter: undefined }) },
-});
-
-const settings = (over: Partial<PythiaSettings> = {}): PythiaSettings => ({
-	...DEFAULT_SETTINGS,
-	vaultContextEnabled: true,
-	...over,
-});
-
-const conv = { id: "c1" } as Conversation;
-
-/** Let the fire-and-forget `refresh()` inside `getRelevantNotes` finish. */
-const settle = async (): Promise<void> => {
-	for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0));
-};
+import type { Conversation } from "../models/types";
+import { FakeProvider, MemStore, fakeApp, settings, conv, DEPS, settle } from "./helpers/vaultRagFixtures";
 
 describe("VaultRagService — chunk sizing (ADR-182)", () => {
 	it("chunks vault notes to the MODEL's window, not a shared 500", async () => {
@@ -68,6 +22,7 @@ describe("VaultRagService — chunk sizing (ADR-182)", () => {
 			() => settings(),
 			() => provider,
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
@@ -90,23 +45,25 @@ describe("VaultRagService — backend visibility (ADR-182)", () => {
 			() => settings(),
 			() => new FakeProvider("iframe (UI thread)"),
 			() => new MemStore(),
+			DEPS,
 		);
-		expect(svc.getStatus()).not.toContain("iframe");
+		expect((await svc.status()).backend).toBeNull();
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
 		// `iframe (UI thread)` in the settings tab is the single fact that explains
 		// a slow build, and it used to be invisible.
-		expect(svc.getStatus()).toContain("iframe (UI thread)");
+		expect((await svc.status()).backend).toBe("iframe (UI thread)");
 	});
 
-	it("says nothing about a backend it has not resolved yet", () => {
+	it("says nothing about a backend it has not resolved yet", async () => {
 		const svc = new VaultRagService(
 			fakeApp("hello") as never,
 			() => settings(),
 			() => new FakeProvider(null),
 			() => new MemStore(),
+			DEPS,
 		);
-		expect(svc.getStatus()).not.toContain("Engine");
+		expect((await svc.status()).backend).toBeNull();
 	});
 
 	it("forgets the backend on reset, so a model switch cannot show a stale one", async () => {
@@ -115,12 +72,13 @@ describe("VaultRagService — backend visibility (ADR-182)", () => {
 			() => settings(),
 			() => new FakeProvider("worker (blob)"),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
-		expect(svc.getStatus()).toContain("worker (blob)");
+		expect((await svc.status()).backend).toBe("worker (blob)");
 		svc.reset();
-		expect(svc.getStatus()).not.toContain("worker (blob)");
+		expect((await svc.status()).backend).toBeNull();
 	});
 });
 
@@ -149,6 +107,7 @@ describe("VaultRagService — the send path stops rescanning the vault (ADR-182)
 			() => settings(),
 			() => new FakeProvider(),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "first turn");
 		await settle();
@@ -169,6 +128,7 @@ describe("VaultRagService — the send path stops rescanning the vault (ADR-182)
 			() => settings(),
 			() => new FakeProvider(),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "first turn");
 		await settle();
@@ -207,7 +167,7 @@ describe("VaultRagService — privacy and scope (ADR-183)", () => {
 			{ path: "Notes/public.md" },
 			{ path: "Notes/private.md", frontmatter: { pythia: false } },
 		]);
-		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore(), DEPS);
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
 		expect(seen).toContain("Notes/public.md");
@@ -220,7 +180,7 @@ describe("VaultRagService — privacy and scope (ADR-183)", () => {
 			{ path: "Notes/b.md", frontmatter: { tags: ["x"] } },
 			{ path: "Notes/c.md" },
 		]);
-		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore(), DEPS);
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
 		expect(seen.sort()).toEqual(["Notes/a.md", "Notes/b.md", "Notes/c.md"]);
@@ -240,6 +200,7 @@ describe("VaultRagService — privacy and scope (ADR-183)", () => {
 			() => settings({ vaultContextMaxIndexedNotes: 2 }),
 			() => new FakeProvider(),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "anything");
 		await settle();
@@ -255,6 +216,7 @@ describe("VaultRagService — the retrieval query (ADR-183)", () => {
 			() => settings(),
 			() => provider,
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "seed the index");
 		await settle();
@@ -279,6 +241,7 @@ describe("VaultRagService — the retrieval query (ADR-183)", () => {
 			() => settings(),
 			() => provider,
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "seed");
 		await settle();
@@ -307,7 +270,7 @@ describe("VaultRagService.applyChanges — the opt-out holds on edits too (ADR-1
 	const edited = { path: "Notes/secret.md", extension: "md" };
 
 	const built = async (app: unknown, provider: FakeProvider) => {
-		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore(), DEPS);
 		await svc.getRelevantNotes(conv, "seed");
 		await settle();
 		provider.embedded.length = 0;
@@ -373,12 +336,12 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-184
 	it("resumes an interrupted build instead of serving the fragment forever", async () => {
 		const store = new MemStore();
 		const { state, app } = countingVault(eightNotes);
-		const first = new VaultRagService(app as never, () => settings(), () => new DyingProvider(), () => store);
+		const first = new VaultRagService(app as never, () => settings(), () => new DyingProvider(), () => store, DEPS);
 		await first.getRelevantNotes(conv, "seed");
 		await settle();
 		expect(state.scans).toBe(1);
 
-		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => store);
+		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => store, DEPS);
 		await svc.getRelevantNotes(conv, "later turn");
 		await settle();
 		expect(state.scans).toBe(2);
@@ -391,12 +354,12 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-184
 		// as complete, permanently. Only `isComplete` distinguishes them.
 		const store = new MemStore();
 		const { state, app } = countingVault(eightNotes);
-		const first = new VaultRagService(app as never, () => settings(), () => new DyingUiProvider(), () => store);
+		const first = new VaultRagService(app as never, () => settings(), () => new DyingUiProvider(), () => store, DEPS);
 		await first.getRelevantNotes(conv, "seed");
 		await settle();
 		expect(state.scans).toBe(1);
 
-		const svc = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store);
+		const svc = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store, DEPS);
 		await svc.getRelevantNotes(conv, "later session");
 		await settle();
 		expect(state.scans).toBe(2); // resumed, not short-circuited
@@ -407,12 +370,12 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-184
 		// every session on this backend, or ADR-125's freeze comes back.
 		const store = new MemStore();
 		const { state, app } = countingVault(["Notes/a.md"]);
-		const first = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store);
+		const first = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store, DEPS);
 		await first.getRelevantNotes(conv, "seed");
 		await settle();
 		expect(state.scans).toBe(1);
 
-		const svc = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store);
+		const svc = new VaultRagService(app as never, () => settings(), () => new UiThreadProvider(), () => store, DEPS);
 		await svc.getRelevantNotes(conv, "next session");
 		await settle();
 		expect(state.scans).toBe(1);
@@ -422,7 +385,7 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-184
 		const store = new MemStore();
 		const { state, app } = countingVault(["Work/a.md", "Private/b.md"]);
 		let folders: string[] = [];
-		const svc = new VaultRagService(app as never, () => settings({ vaultContextFolders: folders }), () => new FakeProvider(), () => store);
+		const svc = new VaultRagService(app as never, () => settings({ vaultContextFolders: folders }), () => new FakeProvider(), () => store, DEPS);
 		await svc.getRelevantNotes(conv, "seed");
 		await settle();
 		expect(state.scans).toBe(1);
@@ -441,7 +404,7 @@ describe("VaultRagService — an unfinished index is not a finished one (ADR-184
 		const store = new MemStore();
 		const { state, app } = countingVault(["Notes/a.md"]);
 		let cap = 5000;
-		const svc = new VaultRagService(app as never, () => settings({ vaultContextMaxIndexedNotes: cap }), () => new FakeProvider(), () => store);
+		const svc = new VaultRagService(app as never, () => settings({ vaultContextMaxIndexedNotes: cap }), () => new FakeProvider(), () => store, DEPS);
 		await svc.getRelevantNotes(conv, "seed");
 		await settle();
 		cap = 10;
@@ -476,6 +439,7 @@ describe("VaultRagService — the live scope wins over the index (ADR-184)", () 
 			() => settings(),
 			() => new FakeProvider(),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "alpha");
 		await settle();
@@ -497,6 +461,7 @@ describe("VaultRagService — the live scope wins over the index (ADR-184)", () 
 			() => settings({ vaultContextFolders: folders }),
 			() => new FakeProvider(),
 			() => new MemStore(),
+			DEPS,
 		);
 		await svc.getRelevantNotes(conv, "alpha");
 		await settle();
@@ -509,7 +474,7 @@ describe("VaultRagService — the live scope wins over the index (ADR-184)", () 
 	it("survives a vault that cannot resolve a path, rather than disabling retrieval", async () => {
 		const app = vaultWith(["Notes/a.md"], () => []);
 		app.vault.getAbstractFileByPath = () => { throw new Error("no such API"); };
-		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => new FakeProvider(), () => new MemStore(), DEPS);
 		await svc.getRelevantNotes(conv, "alpha");
 		await settle();
 		expect((await svc.getRelevantNotes(conv, "alpha")).length).toBeGreaterThan(0);
@@ -530,7 +495,7 @@ describe("VaultRagService — edits during the first build are not lost (ADR-184
 			},
 			metadataCache: { getFileCache: () => ({ frontmatter: undefined }) },
 		};
-		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore(), DEPS);
 
 		await svc.applyChanges([{ path: "Notes/edited.md", extension: "md" } as never], []);
 		expect(svc.isReady()).toBe(false);
@@ -552,7 +517,7 @@ describe("VaultRagService — edits during the first build are not lost (ADR-184
 			},
 			metadataCache: { getFileCache: () => ({ frontmatter: undefined }) },
 		};
-		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore());
+		const svc = new VaultRagService(app as never, () => settings(), () => provider, () => new MemStore(), DEPS);
 		await svc.applyChanges([{ path: "Notes/edited.md", extension: "md" } as never], []);
 		await svc.getRelevantNotes(conv, "seed");
 		await settle();

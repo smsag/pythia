@@ -30,7 +30,9 @@ import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
 import { warmIndex, scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
 import { relatedMinScore, type RelatedResult } from "./services/embedding/relatedConversations";
-import type { EmbeddingModelId } from "./models/embeddingModels";
+import { effectiveEmbeddingModel, type EmbeddingModelId } from "./models/embeddingModels";
+import { vaultBuildGuard } from "./services/embedding/buildGuard";
+import type { VaultIndexStatus } from "./services/embedding/indexStatus";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
 /** Related conversations shown at once. A cap, not a filter: the floor decides
@@ -82,6 +84,13 @@ export default class PythiaPlugin extends Plugin {
 	 *  extracted to its own service; uses the shared embedding provider below. */
 	vaultRag!: VaultRagService;
 
+	/** The model this device embeds with (ADR-198) — the English one on mobile when
+	 *  the setting names a model a phone cannot hold. The ONLY reader of
+	 *  `settings.embeddingModelId` outside the settings tab. */
+	activeEmbeddingModelId(): EmbeddingModelId {
+		return effectiveEmbeddingModel(this.settings.embeddingModelId, Platform.isMobile);
+	}
+
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
 	getAutoContext(conversationId: string): string[] {
 		return this.vaultRag.getAutoContext(conversationId);
@@ -99,10 +108,10 @@ export default class PythiaPlugin extends Plugin {
 	 *   • "returned N" with per-id scores → the path works end to end. */
 	async getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
 		const startedAt = Date.now();
-		const minScore = relatedMinScore(this.settings.relatedSimilarity, this.settings.embeddingModelId);
+		const minScore = relatedMinScore(this.settings.relatedSimilarity, this.activeEmbeddingModelId());
 		debugLog(this.settings, "related: query start", {
 			sourceId,
-			model: this.settings.embeddingModelId,
+			model: this.activeEmbeddingModelId(),
 			conversations: this.conversations.length,
 			similarity: this.settings.relatedSimilarity,
 			minScore,
@@ -136,7 +145,7 @@ export default class PythiaPlugin extends Plugin {
 	 *  model download/load (debug mode only) — the single hardest part to diagnose
 	 *  blind, since it happens inside the hidden iframe. */
 	private ensureEmbeddingProvider(opts: { silent?: boolean } = {}): EmbeddingProvider {
-		const modelId = this.settings.embeddingModelId;
+		const modelId = this.activeEmbeddingModelId();
 		if (this.embeddingProvider && this.embeddingModelId === modelId) return this.embeddingProvider;
 		this.embeddingProvider?.unload();
 		this.relatedService = null;
@@ -185,7 +194,7 @@ export default class PythiaPlugin extends Plugin {
 		return warmIndex({
 			isMobile: Platform.isMobile,
 			conversationCount: this.conversations.length,
-			hasIndex: () => new VaultIndexStore(this, this.settings.embeddingModelId).exists(),
+			hasIndex: () => new VaultIndexStore(this, this.activeEmbeddingModelId()).exists(),
 			sync: () => this.ensureRelatedService({ silent: true }).sync(this.conversations),
 			log: (message, data) => debugLog(this.settings, message, data),
 		});
@@ -197,9 +206,24 @@ export default class PythiaPlugin extends Plugin {
 		return this.vaultRag.reindex();
 	}
 
-	/** Human-readable vault-index status for the settings tab. */
-	getVaultIndexStatus(): string {
-		return this.vaultRag.getStatus();
+	/** "Build now" in settings: finish or update the index, keeping its rows (ADR-198). */
+	buildVaultIndexNow(): void {
+		this.vaultRag.buildNow();
+	}
+
+	onVaultIndexChange(listener: () => void): () => void {
+		return this.vaultRag.onChange(listener);
+	}
+
+	/** Where the vault index stands, for the settings tab (ADR-198). Never loads the model. */
+	async vaultIndexStatus(): Promise<VaultIndexStatus> {
+		const modelId = this.activeEmbeddingModelId();
+		return {
+			...(await this.vaultRag.status()),
+			modelId,
+			modelSubstituted: modelId !== this.settings.embeddingModelId,
+			enabledByDefault: this.settings.vaultContextEnabled,
+		};
 	}
 
 	/** Drop the embedding provider + index services so the next use rebuilds with
@@ -226,7 +250,8 @@ export default class PythiaPlugin extends Plugin {
 			this.app,
 			() => this.settings,
 			() => this.ensureEmbeddingProvider(),
-			() => new VaultIndexStore(this, this.embeddingModelId!, "vault-embeddings"),
+			() => new VaultIndexStore(this, this.activeEmbeddingModelId(), "vault-embeddings"),
+			{ modelId: () => this.activeEmbeddingModelId(), guard: vaultBuildGuard(this.app) },
 		);
 		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
 		// non-blocking — returns [] until the background index is ready).
@@ -514,6 +539,7 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
+		this.vaultRag?.dispose();
 		this.embeddingProvider?.unload();
 	}
 

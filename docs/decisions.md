@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
+*Last updated: 2026-09-22 — ADR-198 (a phone embeds with the English model whatever the setting says, out of memory ends the backend chain, a build the OS killed twice waits for the user, and the settings tab shows the index's real state).*
+
+*Previously: 2026-09-20 — ADR-197 (the extensions align on a design and implement it separately; `kit/` and every cross-repo guard are withdrawn, and ADR-194/196 are amended to match).*
 
 *Previously: 2026-09-20 — ADR-195 (the plugin icon inherits Obsidian's stroke width instead of pinning `stroke-width="2"`, which the group's scale() turned into 8.33% of the icon against core's 7.29%; amends ADR-164).*
 *Previously: 2026-09-20 — ADR-194 (the highlighter stroke is the family's: Klartext is the baseline, its `kit/highlight.css` is copied in, the pen is shared and only the ink differs; supersedes ADR-090).*
@@ -3869,3 +3871,37 @@ Three concrete symptoms, none visible from one repository:
 - **The values stay identical today** because they were chosen once for reasons that apply to all three, and each is free to diverge tomorrow without asking anyone.
 
 **Consequences.** Nothing renders differently anywhere. Klartext stops being a dependency, so its branch stops blocking the plugins. The cost is real and accepted: a future change to the stroke or the roles is now three edits in three repositories rather than one edit and two re-copies, and nothing will fail if only two of them are made. The list that holds the family honest is a document, not a build step.
+
+---
+
+### ADR-198 — A phone embeds with the model it can hold
+
+*2026-09-22*
+
+**Context.** On an iPhone, Obsidian hard-reloaded every minute or two once vault context was switched on. Attached to the phone (`ios_webkit_debug_proxy` on the WebContent inspector, `idevicesyslog`, `idevicecrashreport`), the cause was unambiguous: `memorystatus: killing_specific_process pid … [com.apple.WebKit.WebContent] (per-process-limit …) 2097203KB` — iOS killed Obsidian's web process at ~2 GB, one second after `[Pythia] embedding: worker (blob)`. Measured on an iPhone 15 Pro Max, iOS 26.6.2, each run in a fresh process, with a ballast allocation to locate the baseline:
+
+| Web process | footprint |
+|---|---|
+| Obsidian + the user's 14 plugins, no model | ≈ 640 MB |
+| + English `all-MiniLM-L6-v2` loaded | ≈ +130 MB |
+| + multilingual `paraphrase-multilingual-MiniLM-L12-v2` loaded | ≈ +900–1 000 MB (bmalloc ≈ 1 280 MB, JS heap 4 MB) |
+
+With the multilingual model resident the process sat at ~1.65 GB, and the first inference — or any other plugin's allocation — crossed the limit. **Batch size was not the lever**: batch 1 died like batch 16. The spike is the model load itself (a 250 k-token vocabulary, against the English model's 30 k). Three things made one crash a loop:
+
+1. The index was never complete, so the next send started the same build again.
+2. The fallback chain (blob Worker → resource Worker → iframe) treats every failure as a refusal. After `RangeError: Out of memory` it loaded the model twice more, the last time on the UI thread — every backend shares the one process.
+3. Obsidian's own `app:reload` keeps the same WebContent process; only a kill or a force-quit returns the memory.
+
+**Decision.** Three changes, plus the status the user could not see.
+
+- **A phone embeds with a model marked `mobile`** — `effectiveEmbeddingModel(setting, isMobile)` in `models/embeddingModels.ts`, the ONE answer to "which model runs here". The multilingual model is `mobile: false` (measured, recorded on the config); a phone uses `MOBILE_EMBEDDING_MODEL_ID` (English) instead. **The setting is never rewritten** — it syncs through data.json, and storing the substitute would move the desktop too (principle 6). Index files are named per model, so the phone builds `vault-embeddings-xenova-all-MiniLM-L6-v2.bin` beside the desktop's multilingual one and neither disturbs the other. Every reader goes through `plugin.activeEmbeddingModelId()`; `VaultRagService` receives it as `deps.modelId`.
+- **Out of memory ends the fallback chain** (`services/embedding/memoryError.ts`). A refusal still falls through — that is what the chain is for. Memory exhaustion throws `EmbeddingOutOfMemoryError` instead of loading the model again into the same heap.
+- **A build the OS kills leaves a witness** (`services/embedding/buildGuard.ts`). A marker is saved before the build and removed when it ends; finding it at the next start means the last build never reached its end. After **two** in a row, automatic builds pause — one `Notice` per session — until the user presses *Build now*. Two, not one: iOS also ends backgrounded apps and people swipe Obsidian away, and a single interruption should resume by itself. The marker lives in Obsidian's vault-scoped, **per-device** localStorage, never in data.json — it records this device's crash, and a synced copy would pause a desktop that never crashed. A caught error ends the marker (the process survived to report it) **except out of memory**, which is the same event one allocation short of the kill. A normal unload mid-build ends it too.
+- **The settings tab says where the index stands** (`services/embedding/indexStatus.ts`, `ui/vaultIndexStatusSetting.ts`). Seven states — not built · building n/N · ready · unfinished · out of date · failed (out of memory named as such) · paused — each saying what to do, plus a detail line (model, `(mobile)` when substituted, engine, "off by default"). It never loads the model: a session that has not built reads the file's header (`peekIndexMeta`), so a complete index on disk says *ready* rather than the old "Idle — the index builds on first use". It follows a running build live and unsubscribes itself once its row has left the DOM. *Build now* finishes or updates keeping the rows; *Rebuild index* discards and starts over. Each section of the embedding settings opens with a plain explanation of what it does, and the model row says which model this device runs and why.
+
+**Not done.** The related-conversations index (ADR-109) is not behind the guard: it is built only when the user asks for related conversations (the background warm is desktop-only, ADR-169), so it cannot loop on its own. It does use the effective model, so a phone no longer loads the multilingual model for it either. Recorded as D-39.
+
+**Guards.** `tests/embeddingModelRule.test.ts` fails if a phone can ever be handed a non-mobile model, and — scanning code, not comments — if any file other than `main.ts` (two reads: the resolver and the "substituted?" comparison) and the settings control reads `settings.embeddingModelId`. `tests/buildGuard.test.ts` pins the marker's validation, the two-deaths rule, and that a write failure is logged. `tests/vaultRagGuard.test.ts` drives the service: a mark during a build and none after; no automatic build — not even a constructed provider — after two deaths; resume after one; *Build now* clears the history; ordinary failure clears, out-of-memory keeps; unload clears; and status read from the header without constructing a provider. `tests/embeddingProviderFactory.test.ts` asserts the chain stops at out-of-memory and still falls through on a refusal. `tests/indexStatus.test.ts` gives every state its own filled headline.
+
+**Consequences.** On a phone, vault context and related conversations work, with the English model's limits: German text is matched mainly through shared words, and a question in one language no longer finds a note in the other by meaning. For a mostly-English vault that is a small cost; the desktop keeps the multilingual model unchanged. Phone and desktop can return different related conversations and retrieved notes, since they index with different models. The embedding strings moved to `locales/embedding.{en,de}.ts` — the per-feature split engineering-review #301 proposed — which took both tables back under the file-size default, and the dead-key test now scans subdirectories, which it silently had not.
+

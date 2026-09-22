@@ -2,6 +2,7 @@ import type { EmbeddingProvider, EmbeddingBackend } from "../EmbeddingProvider";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../../models/embeddingModels";
 import { WorkerEmbeddingProvider } from "./workerEmbeddingProvider";
 import { IframeEmbeddingProvider, type ModelLoadProgress } from "./iframeEmbeddingProvider";
+import { EmbeddingOutOfMemoryError, isOutOfMemoryError } from "../memoryError";
 
 /**
  * The embedding provider Pythia actually uses (ADR-119): a Web Worker (off the UI
@@ -49,6 +50,10 @@ export class FallbackEmbeddingProvider implements EmbeddingProvider {
 
 	private record(backend: EmbeddingBackend, err: unknown): void {
 		this.failures.push(`${backend}: ${err instanceof Error ? err.message : String(err)}`);
+		// Out of memory ends the chain (ADR-198). Every backend shares one process,
+		// so the next one would load the same model into the same exhausted heap —
+		// on iOS that was two more loads, the last on the UI thread.
+		if (isOutOfMemoryError(err)) throw new EmbeddingOutOfMemoryError(err);
 	}
 
 	ready(): Promise<void> {

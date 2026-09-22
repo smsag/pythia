@@ -4,6 +4,8 @@ import type { EmbeddingBackend } from "../services/embedding/EmbeddingProvider";
 // Which constructed provider should fail `ready()`. The factory news these up
 // itself (no injection), so the modules are mocked rather than the instances.
 const fail = { blobWorker: false, resourceWorker: false, iframe: false };
+/** The message a failing backend throws, when a test needs a specific one. */
+const failWith: { message: string | null } = { message: null };
 const built: string[] = [];
 
 vi.mock("../services/embedding/host/workerEmbeddingProvider", () => ({
@@ -15,7 +17,7 @@ vi.mock("../services/embedding/host/workerEmbeddingProvider", () => ({
 			built.push(this.kind);
 		}
 		async ready(): Promise<void> {
-			if (fail[this.kind as "blobWorker" | "resourceWorker"]) throw new Error(`${this.kind} unavailable`);
+			if (fail[this.kind as "blobWorker" | "resourceWorker"]) throw new Error(failWith.message ?? `${this.kind} unavailable`);
 		}
 		async embed(): Promise<Float32Array[]> { return []; }
 		isOffThread(): boolean { return true; }
@@ -52,6 +54,7 @@ beforeEach(() => {
 	fail.blobWorker = false;
 	fail.resourceWorker = false;
 	fail.iframe = false;
+	failWith.message = null;
 	built.length = 0;
 	vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -158,5 +161,26 @@ describe("FallbackEmbeddingProvider — why the others failed (ADR-185)", () => 
 		expect(provider.backendFailures?.()).toHaveLength(1);
 		provider.unload();
 		expect(provider.backendFailures?.()).toEqual([]);
+	});
+});
+
+describe("FallbackEmbeddingProvider — out of memory ends the chain (ADR-198)", () => {
+	it("does not load the model again in the next backend when the first ran out of memory", async () => {
+		// Measured on iOS: every backend shares one WebContent process, so the
+		// chain went on to load the model twice more — the last time on the UI thread.
+		fail.blobWorker = true;
+		failWith.message = "no available backend found. ERR: [wasm] RangeError: Out of memory";
+		const { provider, seen } = make();
+		await expect(provider.ready()).rejects.toThrow(/ran out of memory/);
+		expect(built).toEqual(["blobWorker"]);
+		expect(seen).toEqual([]);
+	});
+
+	it("still falls through on a refusal, which is what the chain is for", async () => {
+		fail.blobWorker = true;
+		failWith.message = "Not allowed to load local resource: blob:";
+		const { provider } = make();
+		await provider.ready();
+		expect(built).toEqual(["blobWorker", "resourceWorker"]);
 	});
 });
