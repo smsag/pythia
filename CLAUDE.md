@@ -77,6 +77,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     NavigatorController.ts    ← # navigator popover logic
     ForkController.ts         ← fork banner, origin marks, inline fork anchor
     MergeController.ts        ← merge-link marks, inline merge anchor, merged-from banner (ADR-130)
+    composerTokens.ts         ← pure: the note link a `#` attachment leaves in the composer — matched by the LITERAL text Pythia wrote, never a pattern, and counted not tested (ADR-211)
+    ComposerAttachments.ts    ← the tracked links and their two-way sync with contextNotes; cleared on send
+    ReferenceRowController.ts ← the pill strip above the composer, and the × that also clears a note's link from the composer
     accentContrast.ts         ← readable --p-on-accent for the current theme accent
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
     dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
@@ -675,6 +678,16 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **No search field, tabs, folds or "Advanced" section** (D-44), no price table (ADR-163), and no `h2` title — Obsidian already titles the tab
 
 ---
+
+### The `#` note link in the composer (ADR-211)
+
+- **Picking a note leaves `[[Basename]]` at the cursor.** Not `#Name`: the user bubble renders markdown and **Obsidian paints `#word` as a tag**, which cannot contain spaces — `#Q3 revenue` would render as a tag chip plus a stray word. A wikilink also renders in the sent turn as a link that opens the note
+- **A token is matched by the LITERAL text Pythia inserted, never by a pattern.** A basename may contain spaces and brackets, so no regex can say where `[[Q3 revenue]]` ends in a sentence that continues after it. This is also why the wikilink form is safe — Pythia never has to tell a link you typed from one it wrote
+- **Presence is counted, not tested.** Two notes in different folders share a basename and therefore a token; deleting one occurrence detaches one note
+- **It is a SYNC, not a one-way detach.** An undo that brings a link back re-attaches its note. Cost is one string scan per note this composition attached — never the vault (principle 5)
+- **Tracking clears on send.** The note stays in `contextNotes` (conversation-scoped, unchanged), but its link left with the message — which is what stops an edit three turns later detaching a note earlier answers were built on. Afterwards the pill is the only handle
+- **Every surface that detaches a note must call the hook.** The reference pill AND the context inspector; without it the inspector's removal silently undoes itself on the next keystroke
+- **`InlineSuggest` stays out of it** — it removes its own `#query` and leaves the cursor there, which is where the link goes
 
 ### Charts in an answer (ADR-210)
 
