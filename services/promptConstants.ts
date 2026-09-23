@@ -151,6 +151,58 @@ export const WEB_CITATION_INSTRUCTION =
 	"When a statement draws on a web-search result, append a citation marker immediately after it, in this exact format: ⟦cite:web:<domain>⟧ (bare domain, no scheme, e.g. ⟦cite:web:example.com⟧). " +
 	"Do not number the markers yourself and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
 
+/**
+ * What a chart block contains — the shape both doors onto it are told.
+ *
+ * Kept here beside `WEB_CITATION_INSTRUCTION` rather than inside the tool
+ * definition because two things say it: the `render_chart` tool description, and
+ * the standing rule below for a model that has no tools. A second copy of a
+ * format is a second format.
+ */
+export const CHART_BLOCK_SCHEMA =
+	"type: bar | line | pie. categories: the labels along the axis (or the pie's slices). " +
+	"series: one object per data set, each with a name and a values array holding exactly one " +
+	"number per category — use null for a genuine gap, never 0. Optional: title, unit (appended " +
+	"to every axis label), stacked (bar only), note, and per series a source. " +
+	"A pie takes exactly one series, no negative values and at most 8 slices.";
+
+/**
+ * The research half of the chart rule, added only inside `<recent_context>`.
+ *
+ * Separate from `CHART_WHEN_INSTRUCTION` because it is only true when a search
+ * actually ran, and a standing prompt should not describe a tool the model was
+ * not given.
+ */
+export const CHART_SOURCE_INSTRUCTION =
+	"If you chart figures taken from search results, put the bare domain they came from on each " +
+	"series' source field, and keep the citation markers in the prose as well — the chart names " +
+	"where its numbers came from, and the sentences still name theirs.";
+
+/**
+ * When to draw a chart instead of writing the numbers out (ADR-210).
+ *
+ * Unconditional, not gated on research mode: numbers worth charting come out of
+ * a vault note or a pasted table as often as out of a web search. The one
+ * research-specific half — putting the source domain on the series — lives in
+ * ContextBuilder's `<recent_context>` block, which is already gated.
+ *
+ * "Instead of, not in addition to" is the load-bearing sentence. Left to itself
+ * a model draws the chart AND writes the table, which is the worst of both: the
+ * answer doubles in length and the reader has to check one against the other.
+ */
+export const CHART_WHEN_INSTRUCTION =
+	"When an answer turns on a handful of comparable numbers — a comparison across categories, a " +
+	"trend over time, or a breakdown of a whole — draw a chart. Use the render_chart tool if you " +
+	"have it; otherwise write the data yourself as a ```pythia-chart fenced block containing JSON, " +
+	"for example:\n" +
+	'```pythia-chart\n{"type":"bar","title":"Revenue by region","categories":["2023","2024"],' +
+	'"series":[{"name":"EMEA","values":[12.4,15.1],"source":"example.com"}],"unit":"%"}\n```\n' +
+	CHART_BLOCK_SCHEMA + "\n" +
+	"Draw the chart INSTEAD OF a table or a list of the same numbers, never as well as one — keep " +
+	"the prose that says what the chart shows, but do not restate every value in it. Do not chart " +
+	"fewer than three data points, a single figure, or anything that is not numeric: say those in " +
+	"words.";
+
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves
  *  headroom for the ~27MB encoded payload plus system prompt, history, and
