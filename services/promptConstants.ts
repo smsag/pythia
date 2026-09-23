@@ -189,6 +189,12 @@ export const CHART_SOURCE_INSTRUCTION =
  * "Instead of, not in addition to" is the load-bearing sentence. Left to itself
  * a model draws the chart AND writes the table, which is the worst of both: the
  * answer doubles in length and the reader has to check one against the other.
+ *
+ * But it is a default, not a veto. This block sits AFTER the conversation's own
+ * system prompt and after the user's custom instructions, so without the carve-out
+ * it was the later and more emphatic voice — a standing "always show the numbers
+ * too" had to argue with a flat "never", and so did a plain request in the chat.
+ * A rule Pythia wrote must not outrank what the user asked for.
  */
 export const CHART_WHEN_INSTRUCTION =
 	"When an answer turns on a handful of comparable numbers — a comparison across categories, a " +
@@ -199,9 +205,11 @@ export const CHART_WHEN_INSTRUCTION =
 	'"series":[{"name":"EMEA","values":[12.4,15.1],"source":"example.com"}],"unit":"%"}\n```\n' +
 	CHART_BLOCK_SCHEMA + "\n" +
 	"Draw the chart INSTEAD OF a table or a list of the same numbers, never as well as one — keep " +
-	"the prose that says what the chart shows, but do not restate every value in it. Do not chart " +
-	"fewer than three data points, a single figure, or anything that is not numeric: say those in " +
-	"words.";
+	"the prose that says what the chart shows, but do not restate every value in it. This is about " +
+	"duplication only: a table of DIFFERENT numbers is not a duplicate, and if the user asks for " +
+	"the table as well, or for the figures written out, give them both — their request wins. " +
+	"Do not chart fewer than three data points, a single figure, or anything that is not numeric: " +
+	"say those in words.";
 
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves

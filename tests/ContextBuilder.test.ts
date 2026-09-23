@@ -492,6 +492,29 @@ describe("chart instructions", () => {
 		expect(CHART_WHEN_INSTRUCTION).toContain("INSTEAD OF");
 	});
 
+	// The block sits after the conversation's system prompt AND after the user's
+	// custom instructions, so without this it was the later, more emphatic voice:
+	// a standing "show the numbers too" had to argue with a flat "never".
+	it("lets an explicit request for both win", () => {
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/their request wins/i);
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/asks for the table as well/i);
+	});
+
+	// The rule is against duplicating the same numbers, not against tables.
+	it("says the rule is about duplication, not about tables", () => {
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/DIFFERENT numbers is not a duplicate/);
+	});
+
+	// A user instruction reaching the model AFTER this rule is what makes the
+	// carve-out reachable at all; if custom instructions ever move below it, the
+	// carve-out is the only thing still holding.
+	it("still sits after the user's own standing instructions", () => {
+		const prompt = buildSystemPrompt(baseConv({ systemPrompt: "Mine" }), "Always show the numbers too.");
+		expect(prompt.indexOf("Always show the numbers too.")).toBeLessThan(
+			prompt.indexOf(CHART_WHEN_INSTRUCTION),
+		);
+	});
+
 	it("names the block language the processor actually registers", () => {
 		expect(CHART_WHEN_INSTRUCTION).toContain("```" + CHART_BLOCK_LANG);
 	});
