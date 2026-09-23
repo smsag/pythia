@@ -2754,6 +2754,31 @@ body.is-phone .workspace-drawer .p-input-area {
 .p-sheet-item-trailing svg { width: 18px; height: 18px; }
 .p-sheet-item-trailing:active { color: var(--color-accent); background: var(--background-modifier-hover); }
 
+/* ── Settings — section intro (ADR-209) ─────────────────────── */
+/* Every section opens with one sentence naming its remit. It is a Setting row
+   with no name, so the empty name column is dropped and the whole width is the
+   sentence; the top rule is Obsidian's own between-rows border, kept, so the
+   intro reads as belonging to the heading above it rather than to the first row
+   below. Muted, because it is orientation and not a value. */
+.pythia-section-intro {
+  border-top: none;
+  padding-top: 0;
+}
+.pythia-section-intro .setting-item-info {
+  margin-right: 0;
+}
+.pythia-section-intro .setting-item-description {
+  color: var(--text-muted);
+  font-size: var(--font-small, 13px);
+  line-height: 1.45;
+  max-width: 62ch;
+}
+/* The free-text model id, shown only when "Custom…" is chosen. A class rather
+   than an inline style so the row has no visual rules of its own in TypeScript. */
+.pythia-custom-model {
+  margin-left: 8px;
+}
+
 /* ── Settings — folder picker display ───────────────────────── */
 .pythia-folder-display {
   margin-left: 8px;
