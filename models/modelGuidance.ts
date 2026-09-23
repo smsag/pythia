@@ -10,6 +10,7 @@
 
 export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	// ── Anthropic ────────────────────────────────────────────────────────────
+	"claude-opus-5-5":   { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
 	"claude-opus-5":     { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
 	"claude-fable-5-1":  { en: "Demanding analysis, long multi-step tasks",            de: "Anspruchsvolle Analysen, lange mehrstufige Aufgaben" },
 	"claude-fable-5":    { en: "Stories, creative writing, brainstorming ideas",       de: "Geschichten, kreatives Schreiben, Ideen sammeln" },
@@ -22,7 +23,12 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	"claude-haiku-4-5":  { en: "Quick facts, short rewrites, simple asks",              de: "Schnelle Fakten, kurze Umformulierungen, Einfaches" },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
-	"gpt-5.6":      { en: "Complex work, careful analysis, hard problems", de: "Komplexe Aufgaben, sorgfältige Analyse, schwere Probleme" },
+	"gpt-6-astra":   { en: "The hardest problems, long careful analysis",   de: "Die schwersten Probleme, lange sorgfältige Analyse" },
+	"gpt-6-sol":     { en: "Complex work and code, at a mid price",         de: "Komplexe Aufgaben und Code, zum mittleren Preis" },
+	"gpt-6-luna":    { en: "Quick, simple tasks, very low cost",            de: "Schnelle, einfache Aufgaben, sehr günstig" },
+	"gpt-5.6":       { en: "Complex work, careful analysis, hard problems", de: "Komplexe Aufgaben, sorgfältige Analyse, schwere Probleme" },
+	"gpt-5.6-terra": { en: "Everyday questions and analysis, balanced",     de: "Alltagsfragen und Analysen, ausgewogen" },
+	"gpt-5.6-luna":  { en: "Quick everyday tasks at lower cost",            de: "Schnelle Alltagsaufgaben, günstiger" },
 	"gpt-5.4-mini": { en: "Everyday questions and analysis, lower cost",   de: "Alltagsfragen und Analysen, günstiger" },
 	"gpt-5.4-nano": { en: "Quick, simple tasks, very low cost",            de: "Schnelle, einfache Aufgaben, sehr günstig" },
 	"gpt-4.1":      { en: "Everyday questions, very long documents",       de: "Alltagsfragen, sehr lange Dokumente" },
@@ -42,6 +48,7 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	"codestral-latest":        { en: "Writing and explaining code",         de: "Code schreiben und erklären" },
 	"magistral-medium-latest": { en: "Step-by-step reasoning problems",     de: "Schritt-für-Schritt-Denkaufgaben" },
 	"magistral-small-latest":  { en: "Quicker reasoning tasks",             de: "Schnellere Denkaufgaben" },
+	"zai-glm-5-3":             { en: "Step-by-step problems, very long documents", de: "Schritt-für-Schritt-Probleme, sehr lange Dokumente" },
 };
 
 /** The "good for" example string for a model in the given language, or "" when
@@ -65,6 +72,7 @@ export interface ModelProfile { speed: Tier; depth: Tier; cost: Tier }
 
 export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	// ── Anthropic ────────────────────────────────────────────────────────────
+	"claude-opus-5-5":   { speed: 1, depth: 3, cost: 3 },
 	"claude-opus-5":     { speed: 1, depth: 3, cost: 3 },
 	"claude-fable-5-1":  { speed: 1, depth: 3, cost: 3 },
 	"claude-fable-5":    { speed: 1, depth: 3, cost: 3 },
@@ -77,7 +85,12 @@ export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	"claude-haiku-4-5":  { speed: 3, depth: 1, cost: 1 },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
-	"gpt-5.6":      { speed: 1, depth: 3, cost: 3 },
+	"gpt-6-astra":   { speed: 1, depth: 3, cost: 3 },
+	"gpt-6-sol":     { speed: 2, depth: 3, cost: 2 },
+	"gpt-6-luna":    { speed: 3, depth: 1, cost: 1 },
+	"gpt-5.6":       { speed: 1, depth: 3, cost: 3 },
+	"gpt-5.6-terra": { speed: 2, depth: 2, cost: 2 },
+	"gpt-5.6-luna":  { speed: 3, depth: 1, cost: 1 },
 	"gpt-5.4-mini": { speed: 2, depth: 2, cost: 2 },
 	"gpt-5.4-nano": { speed: 3, depth: 1, cost: 1 },
 	"gpt-4.1":      { speed: 2, depth: 2, cost: 2 },
@@ -97,6 +110,7 @@ export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	"codestral-latest":        { speed: 3, depth: 2, cost: 1 },
 	"magistral-medium-latest": { speed: 1, depth: 3, cost: 2 },
 	"magistral-small-latest":  { speed: 2, depth: 2, cost: 1 },
+	"zai-glm-5-3":             { speed: 2, depth: 2, cost: 2 },
 };
 
 const AXIS_LABELS: Record<"en" | "de", [string, string, string]> = {
