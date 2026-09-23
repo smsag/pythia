@@ -19,7 +19,7 @@ const DEFAULT_MAX = 600;
 // DOWN as ADR-097 extractions land; delete an entry once the file drops under
 // DEFAULT_MAX on its own.
 const CEILINGS = {
-	"sidebar.ts": 1716,
+	"sidebar.ts": 1596,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
 	// ui/settings/ (ADR-209) — the split this comment used to ask for. No ceiling

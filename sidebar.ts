@@ -8,7 +8,6 @@ import { noteBasename, safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
-import { parseWebSourcesFromResult } from "./services/WebSearchService";
 import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "./services/sendPolicy";
 import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
@@ -39,15 +38,15 @@ import { SendHintController } from "./ui/SendHintController";
 import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
+import { ToolCallController } from "./ui/ToolCallController";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
-import type { Conversation, Message, ToolCall } from "./models/types";
+import type { Conversation, Message } from "./models/types";
 import type PythiaPlugin from "./main";
 import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { buildStreamErrorMessage } from "./services/apiError";
 import { describeErrorForLog } from "./services/redact";
-import { ToolHandler } from "./services/ToolHandler";
 import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { appendSourceIcon, SOURCE_ICONS } from "./ui/icons";
@@ -90,10 +89,9 @@ export class PythiaSidebarView extends ItemView {
 	// Mono next-send token estimate shown left of the Send button.
 	// Quick switcher (F9), history overlay (F10), and delete-with-confirm (ADR-103).
 	private historyController!: HistoryController;
-	// Web-search sources captured (deterministically) during the current send,
-	// so the sources row reflects the real Tavily results regardless of how the
-	// model chooses to cite them.
-	private pendingWebSources: { title: string; url: string }[] = [];
+	// Tool calls mid-answer: the chips, and what they leave for the commit
+	// (the real Tavily sources, whatever the model chose to cite) — ADR-210.
+	private toolCalls!: ToolCallController;
 	private referencePillsEl!: HTMLElement;
 	private referenceSectionEl!: HTMLElement;
 	private referenceRowHasEntries = false;
@@ -479,6 +477,12 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			focusInput: () => this.inputEl?.focus(),
 			refreshPills: () => this.renderReferencePills(),
+		});
+		this.toolCalls = new ToolCallController({
+			app: this.app,
+			plugin: this.plugin,
+			messagesEl: () => this.messagesEl,
+			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
 		});
 		this.truncation = new TruncationController({
 			plugin: this.plugin,
@@ -1115,7 +1119,7 @@ export class PythiaSidebarView extends ItemView {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers);
-				const sources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
+				const sources = appendWebSources(parseCitations(fullText), this.toolCalls.takeWebSources());
 				paintCitations(this.app, aiBody, sources);
 				renderSourcesRow(this.app, row, sources, streamTemplate);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
@@ -1417,7 +1421,7 @@ export class PythiaSidebarView extends ItemView {
 		const attachedNotes = [...(turnConv.contextNotes ?? [])];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
-		this.pendingWebSources = [];
+		this.toolCalls.reset();
 
 		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
 		const autoArmedSearch = shouldAutoArmSearch({
@@ -1429,131 +1433,7 @@ export class PythiaSidebarView extends ItemView {
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
-		const onToolCall = async (call: ToolCall): Promise<string> => {
-				// web_search is read-only — run it directly with a live status chip,
-				// no write-confirmation prompt (that would make research unusable).
-				if (call.name === "web_search") {
-					const query =
-						typeof call.input["query"] === "string" ? call.input["query"] : "";
-					const searchChip = this.messagesEl.createDiv({ cls: "pythia-tool-call" });
-					searchChip.createSpan({
-						cls: "pythia-tool-call-label",
-						text: t("searchingLabel", { query }),
-					});
-					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-
-					const allowedSearch = ToolHandler.allowedToolNames(
-						conv.writeMode ?? "all",
-						researchActive
-					);
-					const searchResult = await this.plugin.toolHandler.execute(call, allowedSearch);
-
-					searchChip.empty();
-					if (searchResult.startsWith("Error")) {
-						searchChip.addClass("pythia-tool-call--error");
-						searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchFailedLabel") });
-					} else {
-						searchChip.addClass("pythia-tool-call--done");
-						searchChip.createSpan({
-							cls: "pythia-tool-call-label",
-							text: t("searchedLabel", { query }),
-						});
-						// Capture the real Tavily sources for the message's sources row.
-						this.pendingWebSources.push(...parseWebSourcesFromResult(searchResult));
-					}
-					return searchResult;
-				}
-
-				const rawPath =
-					typeof call.input["path"] === "string"
-						? call.input["path"]
-						: call.name;
-				const noteName = noteBasename(rawPath);
-				const isRewrite = call.name === "rewrite_note";
-				const isPrepend = call.name === "prepend_note";
-
-				const chipEl = this.messagesEl.createDiv({ cls: "pythia-tool-call" });
-				this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-
-				// Path guard: rewrite/prepend may only target context notes
-				if (isRewrite || isPrepend) {
-					const targetPath =
-						typeof call.input["path"] === "string" ? call.input["path"] : "";
-					if (!conv.contextNotes.includes(targetPath)) {
-						chipEl.addClass("pythia-tool-call--error");
-						chipEl.createSpan({
-							cls: "pythia-tool-call-label",
-							text: t("toolPathNotInContext", { path: targetPath }),
-						});
-						return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
-					}
-				}
-
-				// Confirm chip — ask before writing
-				const questionText = isRewrite
-					? t("confirmRewriteNote", { name: noteName })
-					: isPrepend
-					? t("confirmPrependNote", { name: noteName })
-					: t("confirmCreateNote", { name: noteName });
-
-				chipEl.createSpan({ cls: "pythia-tool-call-label", text: questionText });
-
-				const actionsEl = chipEl.createDiv({ cls: "pythia-tool-call-actions" });
-				const actionLabel = isRewrite
-					? t("confirmRewriteBtn")
-					: isPrepend
-					? t("confirmPrependBtn")
-					: t("confirmCreateBtn");
-
-				const confirmed = await new Promise<boolean>((resolve) => {
-					const actionBtn = actionsEl.createEl("button", {
-						cls: "pb pb-primary pythia-tool-call-btn pythia-tool-call-btn--action",
-						text: actionLabel,
-					});
-					const cancelBtn = actionsEl.createEl("button", {
-						cls: "pb pb-quiet pythia-tool-call-btn",
-						text: t("cancelBtn"),
-					});
-					this.registerDomEvent(actionBtn, "click", () => resolve(true));
-					this.registerDomEvent(cancelBtn, "click", () => resolve(false));
-				});
-
-				chipEl.empty();
-
-				if (!confirmed) {
-					chipEl.addClass("pythia-tool-call--cancelled");
-					chipEl.createSpan({
-						cls: "pythia-tool-call-label",
-						text: t("toolCallCancelled"),
-					});
-					return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
-				}
-
-				const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
-				const result = await this.plugin.toolHandler.execute(call, allowed, conv.contextNotes);
-
-				if (result.startsWith("Error")) {
-					chipEl.addClass("pythia-tool-call--error");
-					chipEl.createSpan({ cls: "pythia-tool-call-label", text: result });
-				} else {
-					chipEl.addClass("pythia-tool-call--done");
-					const doneText = isRewrite
-						? t("rewrittenNote", { name: noteName })
-						: isPrepend
-						? t("prependedNote", { name: noteName })
-						: t("createdNote", { name: noteName });
-					const link = chipEl.createEl("a", {
-						cls: "pythia-tool-call-link",
-						text: doneText,
-					});
-					link.addEventListener("click", (e) => {
-						e.preventDefault();
-						void this.app.workspace.openLinkText(noteName, "");
-					});
-				}
-
-				return result;
-		};
+		const onToolCall = this.toolCalls.handler(conv, researchActive);
 
 		try {
 		await this.plugin.llmRouter.streamMessage(
@@ -1582,7 +1462,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
-				const parsedSources = appendWebSources(parseCitations(fullText), this.pendingWebSources);
+				const parsedSources = appendWebSources(parseCitations(fullText), this.toolCalls.takeWebSources());
 				// Priced now (ADR-163), on the model that answered: turnConv, which a
 				// template or model suggestion can move off conv.model (ADR-181).
 				const cost = costSnapshot(turnConv.model, tokenUsage);
