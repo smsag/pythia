@@ -38,6 +38,7 @@ import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
 import { spliceChartBlocks } from "./services/chartSpec";
+import { ComposerAttachments } from "./ui/ComposerAttachments";
 import { ReferenceRowController } from "./ui/ReferenceRowController";
 import { ToolCallController } from "./ui/ToolCallController";
 import { TruncationController } from "./ui/TruncationController";
@@ -93,6 +94,7 @@ export class PythiaSidebarView extends ItemView {
 	// (the real Tavily sources, whatever the model chose to cite) — ADR-210.
 	private toolCalls!: ToolCallController;
 	private referenceRow!: ReferenceRowController;
+	private composerAttachments!: ComposerAttachments;
 
 	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
@@ -377,7 +379,7 @@ export class PythiaSidebarView extends ItemView {
 			isInputCollapsed: () => this.inputAreaCollapsed,
 			refreshToolbarToggles: () => this.updateToolbarToggles(),
 			refreshContextInspector: () => this.contextInspector.refresh(),
-			onContextNoteRemoved: () => { /* the composer hook lands here next (ADR-211) */ },
+			onContextNoteRemoved: (path) => this.composerAttachments.forget(path),
 		});
 		this.referenceRow.mount(container);
 
@@ -440,6 +442,7 @@ export class PythiaSidebarView extends ItemView {
 			getLastTokenUsageMsg: () => lastTokenUsageMessage(this.activeConversation?.messages ?? []),
 			scrollToTop: () => this.scrollToTop(),
 			refreshReferencePills: () => this.referenceRow.render(),
+			onContextNoteRemoved: (path) => this.composerAttachments.forget(path),
 			onSummarize: () => void this.summaryController.generateConversationSummary(),
 		});
 
@@ -570,22 +573,20 @@ export class PythiaSidebarView extends ItemView {
 			cls: "p-textarea",
 			attr: { placeholder: composerPlaceholder(Platform.isMobile), rows: "2" },
 		});
+		this.composerAttachments = new ComposerAttachments({
+			inputEl: () => this.inputEl,
+			getConversation: () => this.activeConversation,
+			saveConversation: (conv) => void this.plugin.conversationStore.save(conv),
+			refreshPills: () => this.referenceRow.render(),
+			onComposerChanged: () => { this.autoResizeTextarea(); this.updateSendBtnLabel(); },
+		});
+		// The picker removes its own `#query` and leaves the cursor there; the link
+		// goes in at that cursor (ADR-211).
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
 			this.inputEl,
 			inputArea,
-			(paths) => {
-				const conv = this.activeConversation;
-				if (!conv) return;
-				let changed = false;
-				for (const p of paths) {
-					if (!conv.contextNotes.includes(p)) { conv.contextNotes.push(p); changed = true; }
-				}
-				if (changed) {
-					void this.plugin.conversationStore.save(conv);
-					this.referenceRow.render();
-				}
-			}
+			(paths) => this.composerAttachments.attach(paths)
 		);
 		this.registerDomEvent(this.inputEl, "keydown", this.composerSend.onKeydown);
 		{
@@ -593,6 +594,8 @@ export class PythiaSidebarView extends ItemView {
 			this.registerDomEvent(this.inputEl, "input", () => {
 				this.autoResizeTextarea();
 				this.inlineSuggest.handleInput();
+				// Deleting a note's link detaches it, and an undo re-attaches it.
+				this.composerAttachments.sync();
 				if (tokenDebounce !== null) clearTimeout(tokenDebounce);
 				tokenDebounce = setTimeout(() => {
 					tokenDebounce = null;
@@ -1313,6 +1316,9 @@ export class PythiaSidebarView extends ItemView {
 		if (!text) return;
 
 		this.inputEl.value = "";
+		// The links went out with the message. The notes stay attached to the
+		// conversation, and the pill is their handle from here (ADR-211).
+		this.composerAttachments.clear();
 		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
