@@ -26,6 +26,10 @@ export interface ContextInspectorDeps {
 	scrollToTop(): void;
 	/** Re-render the reference pills after a context note is added/removed here. */
 	refreshReferencePills(): void;
+	/** A note removed here may have been attached from the composer, where its
+	 *  `[[link]]` is still sitting. Without this the composer sync re-attaches it
+	 *  on the next keystroke and the removal silently undoes itself (ADR-211). */
+	onContextNoteRemoved(path: string): void;
 	/** Trigger a conversation summary (the budget-tight "Zusammenfassen" action). */
 	onSummarize(): void;
 }
@@ -182,6 +186,7 @@ export class ContextInspectorController {
 				const x = row.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
 				x.addEventListener("click", async () => {
 					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
+					this.d.onContextNoteRemoved(n.path);
 					await this.d.plugin.conversationStore.save(conv);
 					this.d.refreshReferencePills();
 				});
