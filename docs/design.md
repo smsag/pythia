@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-22 — ADR-201: the index status row gains an eighth state, *Loading the model… (≈ N MB)*, shown until the first note; *paused* now shows over a complete index too, with *Build now* enabled.*
+*Last updated: 2026-09-23 — ADR-206: the settings tab is organised by scope, and every section now opens with one sentence naming its remit — `.pythia-section-intro`, a `Setting` row with no name (empty name column dropped, no top rule, `--text-muted` at `--font-small`, `max-width: 62ch`). Eight headings, all through `section()`: Connections · New conversations · While answering · Prompt optimizer · On-device semantic search (+ Vault context) · Notes Pythia writes (+ Glossary) · History and storage · Troubleshooting. Every row in **New conversations** ends with "Conversations follow this unless you pin a different value." and no row elsewhere does. `Anthropic`/`OpenAI`/`Mistral`/`Web search`/`Defaults`/`Vault folders`/`Behaviour`/`Features` are retired, as is the redundant `h2 "Pythia"` — Obsidian already titles the tab. New `.pythia-custom-model` replaces an inline `margin-left`.*
+
+*Previously: 2026-09-22 — ADR-201: the index status row gains an eighth state, *Loading the model… (≈ N MB)*, shown until the first note; *paused* now shows over a complete index too, with *Build now* enabled.*
 
 *Previously: 2026-09-22 — the settings tab's vault-index status row (ADR-199): `.p-index-status-headline` (the state, `--text-normal`) over `.p-index-status-detail` (model · engine · default, mono micro-label), and a plain-language intro at the head of each embedding section.*
 
@@ -499,6 +501,15 @@ Empty conversations render a centered welcome via `renderWelcome()`: an accent `
 ### Effort segmented control (`.p-effort-seg`, F8)
 
 The conversation-settings Effort control is a segmented control: **Standard · Niedrig · Mittel · Hoch**. The active segment gets `.active` — accent fill, `--p-on-accent`, **and weight 600**, so selection never rests on colour alone — plus `aria-pressed`; the group carries `role="group"`. The leading **Standard** segment means "no override" and names the effort that will actually apply (`Standard · Mittel`) when a global default is configured, plain `Standard` otherwise; the long parenthetical `effortUnsetOption` string stays in the settings-tab dropdown, which can carry it. Every segment rule is **scoped to `.pythia-modal`**: `all: unset` alone is (0,1,0) and loses to Obsidian core's `button:not(.clickable-icon)` fill at (0,1,1) — the modal has no equivalent of the `.pythia-view` reset at the top of `styles.css`, so the segments inherited core's grey and the selected one was hard to pick out. Segments are ≥28px tall, ≥36px under `@media (pointer: coarse)`. When the selected model doesn't support effort, the whole control is greyed + disabled (`.disabled`).
+
+### Settings tab: sections and their intros (ADR-206)
+
+The tab is one linear scroll of eight sections, in the order the shell renders them, and **the order is the architecture**: what Pythia needs to work at all → what a new conversation inherits → what applies to every answer → the machinery nobody touches twice.
+
+- **Headings** are Obsidian's own `Setting().setHeading()`, made only by `section()` in `ui/settings/section.ts`. The tab used to mix that with raw `createEl("h3")`, which does not render alike — one idea with two visual tiers. A test fails on an `h3` anywhere in the settings tab.
+- **Intro `.pythia-section-intro`** — the sentence under each heading, a `Setting` row with no name: `border-top: none` and no top padding (so it reads as belonging to the heading above, not to the first row below), the empty name column collapsed (`.setting-item-info { margin-right: 0 }`), and the text `--text-muted` at `--font-small`, line-height 1.45, `max-width: 62ch`. Extended from the two embedding sections, which were the only part of the tab that named their own remit.
+- **The inheritance sentence** — every row of **New conversations** ends with "Conversations follow this unless you pin a different value." It is one shared string (`overridable()`), never re-worded per row, and it is the user-facing half of principle 6: the header's effort and language segments and the conversation dialog sit *on top of* these values without changing them. A gated row replaces it with `(not supported by the selected model)`, because a control the model ignores is the more urgent fact.
+- **No new chrome.** Plain Obsidian `Setting` rows throughout: no cards, no folds, no tabs, no search field, no "Advanced" section — Obsidian's settings pane is a single scroll and core plugins do none of these.
 
 ### Settings: the vault index status row (ADR-199)
 

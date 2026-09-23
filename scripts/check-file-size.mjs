@@ -21,9 +21,9 @@ const DEFAULT_MAX = 600;
 const CEILINGS = {
 	"sidebar.ts": 1716,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
-	// Settings tab monolith; grows one setting at a time (embedding model, related-
-	// similarity preset, …). TODO: split into grouped sections. Split later.
-	"settings.ts": 528,
+	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
+	// ui/settings/ (ADR-206) — the split this comment used to ask for. No ceiling
+	// needed; the locale files split the same way (locales/settings.{en,de}.ts).
 	// locales/en.ts and de.ts dropped under DEFAULT_MAX once the embedding strings
 	// moved to locales/embedding.{en,de}.ts — the per-feature split review #301
 	// proposed (ADR-199). No ceiling needed; split the next area the same way.

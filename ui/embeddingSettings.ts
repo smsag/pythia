@@ -7,6 +7,7 @@ import {
 	type EmbeddingModelId, type SimilarityPreset,
 } from "../models/embeddingModels";
 import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
+import { section } from "./settings/section";
 
 /**
  * On-device embedding settings, extracted from the settings tab (ADR-119): the
@@ -22,7 +23,9 @@ import { renderVaultIndexStatus } from "./vaultIndexStatusSetting";
  * action greyed out — which is what adding a second folder did. The scope is
  * `VaultRagService.scopeSignature`: the indexed folders, the note cap and the
  * model here; the two skip folders are picked in the tab's own folder section,
- * which cannot reach this refresh yet (see review #367).
+ * which are picked in other sections of the tab and reach this refresh through
+ * `SettingsContext.refreshIndexStatus` — which is why the refresh is RETURNED
+ * (ADR-206, closing review #367's remainder).
  */
 export function renderEmbeddingSettings(
 	containerEl: HTMLElement,
@@ -30,9 +33,8 @@ export function renderEmbeddingSettings(
 	/** Collects each numeric field's commit so the tab can flush it in `hide()` —
 	 *  closing the tab destroys the input before `blur` fires. */
 	registerCommit: (commit: () => void) => void = () => {},
-): void {
-	new Setting(containerEl).setName(t("embeddingSectionName")).setHeading();
-	new Setting(containerEl).setDesc(t("embeddingIntro"));
+): () => void {
+	section(containerEl, t("embeddingSectionName"), t("embeddingIntro"));
 
 	// The model row reads the setting — it is the one place that edits it — and
 	// says what this device will actually run (ADR-199).
@@ -70,8 +72,7 @@ export function renderEmbeddingSettings(
 		);
 
 	// ── Vault context (semantic RAG) ──────────────────────────────────────────
-	new Setting(containerEl).setName(t("vaultContextSectionName")).setHeading();
-	new Setting(containerEl).setDesc(t("vaultContextIntro"));
+	section(containerEl, t("vaultContextSectionName"), t("vaultContextIntro"));
 
 	// Status first: it is what the rest of the section is about.
 	refreshStatus = renderVaultIndexStatus(containerEl, plugin);
@@ -145,6 +146,7 @@ export function renderEmbeddingSettings(
 			}));
 		});
 
+	return refreshStatus;
 }
 
 /** The model row's explanation: what the two models are, plus — when the chosen

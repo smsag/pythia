@@ -167,6 +167,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Send menu | `.p-send-menu` → `-icon`, `-label` | `sidebar.ts` | long-press on Send |
 | Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the textarea |
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
+| Settings: section | a `Setting` heading plus `.pythia-section-intro`, the one sentence naming the section's remit | `ui/settings/section.ts` | every section of the plugin settings tab (ADR-206) |
+| Settings: sections | Connections · New conversations · While answering · Prompt optimizer · On-device semantic search (+ Vault context) · Notes Pythia writes (+ Glossary) · History and storage · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
 | Settings: index status | a `Setting` row whose description is `.p-index-status-headline` + `.p-index-status-detail`; buttons *Build now* · *Rebuild index* | `ui/vaultIndexStatusSetting.ts` | the plugin settings tab, Vault context section (ADR-199) |
 
 ### Inline anchors (the three cards that open at a mark)
@@ -275,6 +277,8 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-25 | **Caching fetched web sources into the vault.** | ADR-062 | Search + recency only in that pass. |
 | D-26 | **PDF and vision input for Mistral.** | ADR-045 | Explicit non-goal of the integration pass, deferred rather than guessed at. |
 | D-29 | **A model suggestion is never applied automatically.** | ADR-181 | A silent model switch is the kind of change this plugin has never made: the chip is offered, the answer's label names the model. |
+| D-44 | **No search field, tabs, folds or "Advanced" section in the settings tab.** Eight sections in one scroll, ~42 rows. | ADR-206 | Deliberate: Obsidian's settings pane is a single scroll and no core plugin nests navigation inside its own tab, so a plugin that does stops feeling native. The section intros are the orientation a search field would otherwise be asked to provide. | A section grows past roughly a screenful of rows on a phone, or someone reports hunting for a setting they knew existed. |
+| D-45 | **Web search is spread across three sections** — the key in Connections, "research mode on" in New conversations, auto-arm and results-per-query in While answering. | ADR-206 | The cost of one consistent axis: those three rows genuinely differ in scope. Re-grouping them by topic is the arrangement ADR-206 removed. The descriptions cross-reference. | Someone looks for the Tavily key and does not find it, or a second feature ends up split the same way and the pattern reads as arbitrary. |
 | D-27 | **`sidebar.ts` is excluded from coverage.** | #98 | Its logic is extracted into tested controllers instead; the view file is the thin coordinator. |
 
 ### Closed by a decision, kept here so it is not re-litigated
@@ -291,6 +295,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-23 | ADR-206: the settings tab's sections and its section component added to the UI map; D-44 (no search field or nested navigation in the settings tab) and D-45 (web search spread across three sections). |
 | 2026-09-22 | D-41: the phone's model-load peak (ADR-200 addendum, verified on the device). |
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
+*Last updated: 2026-09-23 — ADR-206 (the settings tab is organised by scope: one section holds what a conversation can override and says so on every row, a folder lives with the feature that writes to it, and `settings.ts` becomes a shell over one module per section).*
+
+*Previously: 2026-09-22 — ADR-205 (`main.ts` is wiring only: the embedding block, the vault watcher and the deep-link handler move out behind structural host seams, and what was untestable by design became tested).*
 
 *Previously: 2026-09-22 — ADR-204 (the two embedding backends are one postMessage client and two ways to mount a model; the protocol gets its first tests).*
 
@@ -4093,3 +4095,49 @@ Size was the trigger, not the problem. The problem is that **`main.ts` is exclud
 - A rename whose new path is not markdown records the delete of the old path but does not schedule a flush: `markChanged` returns on the extension check before `flush()`. The case that occurs is `note.md` → `note.txt`, so **the old path genuinely was indexed** and its row goes stale until the next vault event fires a flush. `inScopeNow` filters retrieval results by folder scope and `pythia: false`, not by existence, so a stale path can occupy one of the ~5 auto-retrieval slots; `ContextBuilder` then gets `null` from `getAbstractFileByPath`, contributes nothing and files it under `missingNotes`, which for an auto note reaches the debug log rather than a `Notice` (ADR-183). Nothing wrong reaches the model — the cost is a wasted slot for the width of the window. Worth fixing on its own (flush unconditionally on rename); not worth smuggling into a behaviour-preserving extraction.
 
 **Guards.** `tests/embeddingHub.test.ts` (25), `tests/vaultWatcher.test.ts` (18), `tests/deepLink.test.ts` (13). 29 mutations applied across the three modules — every claim above broken one at a time — and all 29 killed; two survived the first pass and both were flaws in the new tests (a warm that stopped at its index guard before it could have shown a notice, and a cap asserted as a constant rather than observed on a result list). `tests/embeddingModelRule.test.ts` follows the one-reader rule to its new home and its regex now also catches the `settings().embeddingModelId` getter form, which the field-only pattern would have missed.
+
+### ADR-206 — The settings tab is organised by scope: what a conversation can override, and what it cannot
+
+*2026-09-23*
+
+**Context.** The settings tab had grown to ~42 controls under 11 headings in one linear scroll, and `settings.ts` sat exactly on its ratchet ceiling (528 lines), whose own comment had been asking for a split since ADR-097. Size was the trigger; the arrangement was the problem. Five things were wrong with it, and one was a defect rather than a matter of taste:
+
+1. **Two rows were mis-parented.** `customInstructions` and "Debug mode" were emitted *after* `renderEmbeddingSettings`, which creates its own two headings — so on screen both read as vault-context settings. Nothing in the code said "this section ends here", because a section was a bare `createEl("h3")` with no scope of any kind.
+2. **The glossary's three rows had no heading at all**, rendered inside "Vault folders", so they read as folder settings.
+3. **"Defaults" was a one-row section placed after the three sections it governed.** Anthropic, OpenAI and Mistral each got a heading with a key row and a model row, and the row that decided which of them mattered — `defaultProvider` — arrived below all three.
+4. **"Behaviour" and "Features" were dumping grounds.** Ten unrelated rows sat under the first: resume mode, token caps, temperature, the history limit, the archive folder, the attached-notes budget, the output language. Every setting is behaviour; every setting is a feature. A heading nobody can write a sentence for is where rows go when nobody decided where they belonged.
+5. **Two heading mechanisms.** Raw `createEl("h3")` in `settings.ts`, Obsidian's `setHeading()` in `embeddingSettings.ts`. They do not render alike, so one idea had two visual tiers.
+
+Underneath all five: the tab grouped by *what a setting is made of* (a provider, a folder, a number) rather than by *what a user came to answer*. "Vault folders" is the clearest case — it grouped by value type, which is exactly why `archiveFolder` had to be exiled into "Behaviour" beside the toggle that uses it.
+
+**Decision — one axis: scope.** The rows were already of three kinds in the code and the UI said none of it. Credentials, which no conversation can change; **defaults a conversation inherits and can override**; and global rules it cannot. That second/third split is principle 6 ("inherited stays inherited") — enforced in `ConversationSettingsModal`, in `ui/instructionState.ts`, in the header's `.is-pinned` tint, and invisible in the tab. It is now the primary axis, because it is the one grouping the codebase already believes in and therefore the one that will not drift.
+
+Eight sections, in this order — **the order is the architecture**, from what Pythia needs to work at all, through what a new conversation inherits, to what applies to every answer, to machinery nobody touches twice:
+
+| Section | Remit | Rows |
+|---|---|---|
+| **Connections** | can Pythia reach anything | the four keys, each saying whether a key is actually selected |
+| **New conversations** | what a fresh conversation starts with | provider · model · effort · temperature · max tokens · answer language · resume mode · research mode |
+| **While answering** | every answer, every conversation | custom instructions · auto-search · results per query · attached-notes warning · inject active note · show cost |
+| **Prompt optimizer** | the ✦ rewrite | template · framework · model suggestion |
+| **On-device semantic search** + **Vault context** | unchanged (ADR-199) | the block whose intro the rest of the tab now imitates |
+| **Notes Pythia writes** | what you go on to read and edit | templates folder · default notes folder · inbox note · **Glossary** subsection |
+| **History and storage** | how much is kept, where, at what cost | conversations folder · message cap · history limit + size readout · archive toggle · archive folder |
+| **Troubleshooting** | when it is not working | debug mode |
+
+Four rules hold it together:
+
+- **Every section opens with one sentence naming its remit.** Extended from the embedding block, which was the only part of the tab that did this. The test requires it, because a section with no sentence to write has no remit — that is how "Behaviour" happened.
+- **Only "New conversations" rows are overridable, and every one of them says so.** `overridable()` appends one shared sentence; a test fails if a row there loses it *or* a row elsewhere gains it. This is what moved `customInstructions` out of the defaults: it applies to conversations already underway, so it is not something a new conversation "starts with".
+- **A folder lives with the feature that writes to it.** "Vault folders" is gone. The archive folder sits under the toggle that writes to it (a test pins the adjacency), the indexed folders stay in the vault-context block, and the conversations and default-notes pickers — `scopeSignature`'s two skip folders — repaint the index status row, which closes review #367's remainder.
+- **One model row, for the provider chosen above it.** Three providers with a default model each meant three headings; another provider's model is now reached by switching the provider, stated in the row's own description. The row is rebuilt rather than mutated on a provider change: its options, its stored value and its custom-id input all belong to one provider, and a half-updated row is how the three copies drifted.
+
+**Structure.** `settings.ts` is a ~90-line shell holding the section order, the numeric fields' flush on close, and nothing else; a test fails on a `new Setting(` in it. Each section is a module under `ui/settings/`, taking one `SettingsContext` — the plugin, the debounced save, the numeric-commit registry, and `refreshIndexStatus`. That last field is the reason the context exists rather than a widening argument list: the status row is created by the embedding section and two *other* sections hold controls that invalidate it. The section grammar (`section()`, `overridable()`) lives in `ui/settings/section.ts`, apart from the plugin-bound helpers, so `embeddingSettings.ts` can use it without importing the modal-carrying ones. The locale strings split the same way, into `locales/settings.{en,de}.ts` — both locale files sat just under the 600-line default, and the section intros are the strings that would have broken it (the per-feature split of review #301, again).
+
+**What did not change.** Every setting's meaning, every stored key, every default. `renderEmbeddingSettings`, `renderGlossarySettings`, `renderPricingSettings`, `renderConversationCapSetting` and `renderVaultIndexStatus` keep their behaviour; the embedding block gained only `section()` for its two headings and a `return` of the refresh it already built. No price table (ADR-163), no "Enter sends" toggle (D-10), no setting added or removed.
+
+**The trade-off, stated.** Web search is now spread across three sections: the key is a connection, "research mode on" is a per-conversation default, auto-arm and results-per-query are global rules. One consistent axis costs a feature its contiguity. The alternative — a "Web search" section — is the grouping this ADR removes, and the descriptions cross-reference in both directions.
+
+**Not done.** No search field, no tabs or nested navigation, no collapse-by-default, no "Advanced" fold: Obsidian's settings pane is a single scroll and core plugins do none of these, so a plugin that does stops feeling native. Recorded as D-44. The one-row "Troubleshooting" section is deliberate and is not the "Defaults" mistake repeated — it sits last and governs nothing above it, where "Defaults" held the single choice deciding which of the three sections *preceding* it mattered.
+
+**Guards.** `tests/settingsIA.test.ts` (16): every section has a heading, a non-empty intro and at least one control; every "New conversations" row carries the inheritance sentence and no row elsewhere does; `customInstructions` and debug mode are in the sections that own them; one model row, naming its provider; temperature and effort gated against that provider's default model (`claude-sonnet-5` takes effort but no temperature, so the unsupported suffix replaces the sentence); the archive folder sits directly under its toggle; the two skip-folder pickers pass `refreshIndexStatus`; no `createEl("h3")` anywhere in the settings tab and `setHeading()` in exactly one module; the eight renderers in the documented order, with the embedding block before the two sections that repaint its status row. The rules scan a comment-stripped copy of each file, because each names the construct it forbids in its own prose. Verified by breaking five of them at once — five failed, eleven passed. `scripts/check-file-size.mjs` loses the `settings.ts` entry: the ratchet only ever goes down, and this one reaches zero.
