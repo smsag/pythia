@@ -16,6 +16,7 @@ import {
 	folderOf,
 	entryFromFrontmatter,
 	mergeEntry,
+	newTranslation,
 	parseBody,
 	renderBody,
 	stripFrontmatter,
@@ -28,7 +29,8 @@ import {
 	definitionHash,
 	definitionLanguageOf,
 } from "./glossaryNotes";
-import { LANG_LABELS, parseDefinitionReply } from "./messageUtils";
+import { LANG_LABELS } from "./messageUtils";
+import { parseDefinitionReply } from "./glossaryReply";
 import { detectLanguage } from "./languageDetect";
 import type { Conversation } from "../models/types";
 
@@ -51,6 +53,15 @@ import type { Conversation } from "../models/types";
  * change to the note, so editing the glossary by hand takes effect without a
  * reload.
  */
+/** What a translation produced: the definition in the requested language, and a
+ *  surface form newly recorded for it (ADR-206) — null when the call added none,
+ *  which is every repeat and every entry that already answered for that language.
+ *  The caller repaints on a form, because the index now marks a word it did not. */
+export interface TranslationResult {
+	text: string;
+	form: string | null;
+}
+
 export class GlossaryService {
 	private entries: GlossaryEntry[] | null = null;
 	private index: TermIndex | null = null;
@@ -58,7 +69,7 @@ export class GlossaryService {
 	/** In-flight lookups, so tapping the same term twice does not call twice. */
 	private pending = new Map<string, Promise<GlossaryEntry | null>>();
 	/** In-flight translations, so reopening an anchor mid-call does not call twice. */
-	private pendingTranslations = new Map<string, Promise<string | null>>();
+	private pendingTranslations = new Map<string, Promise<TranslationResult | null>>();
 	/** Translations made this session, until the metadata cache has caught up with the note. */
 	private recentTranslations = new Map<string, string>();
 
@@ -142,7 +153,12 @@ export class GlossaryService {
 		if (!(file instanceof TFile)) return entry;
 		try {
 			const body = parseBody(stripFrontmatter(await this.plugin.app.vault.read(file)));
-			return { ...entry, definition: body.definition, contexts: body.contexts.length > 0 ? body.contexts : undefined };
+			return {
+				...entry,
+				definition: body.definition,
+				contexts: body.contexts.length > 0 ? body.contexts : undefined,
+				discussion: body.discussion,
+			};
 		} catch (e) {
 			console.error("[Pythia] glossary term read failed:", e);
 			return entry;
@@ -192,7 +208,10 @@ export class GlossaryService {
 		force = false,
 		/** Conversation the term was selected in — carries the language override
 		 *  the definition is written in (ADR-148). */
-		conversation?: Conversation
+		conversation?: Conversation,
+		/** The reader's correction when the stored definition took the wrong sense
+		 *  (ADR-208). Only meaningful with `force`, which is what re-asks. */
+		senseHint?: string,
 	): Promise<GlossaryEntry | null> {
 		const clean = term.trim();
 		if (!clean) return null;
@@ -205,7 +224,7 @@ export class GlossaryService {
 			if (inFlight) return inFlight;
 		}
 
-		const run = this.defineAndStore(clean, passage, conversation, force);
+		const run = this.defineAndStore(clean, passage, conversation, force, senseHint);
 		this.pending.set(key, run);
 		try {
 			return await run;
@@ -283,7 +302,8 @@ export class GlossaryService {
 		term: string,
 		passage: string,
 		conversation?: Conversation,
-		force = false
+		force = false,
+		senseHint?: string,
 	): Promise<GlossaryEntry | null> {
 		const notice = new Notice(t("glossaryLookingUp", { term }), 0);
 		try {
@@ -291,7 +311,7 @@ export class GlossaryService {
 			// provider's fast model regardless of which conversation it was
 			// triggered from (the stored entry records that model). The
 			// conversation is passed for its language override only (ADR-148).
-			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation);
+			const raw = await this.plugin.llmRouter.defineTerm(term, passage, undefined, conversation, senseHint);
 			const { definition, variants, translations, context } = parseDefinitionReply(raw);
 			// "" is never "nothing happened" (ADR-158): nothing is saved, and the user is told.
 			if (!definition) { new Notice(t("lookupEmptyReply", { term })); return null; }
@@ -359,6 +379,27 @@ export class GlossaryService {
 	}
 
 	/**
+	 * Write what a forked conversation established into the term's note (ADR-208).
+	 *
+	 * The entry is **hydrated first**, so the definition, contexts and everything
+	 * else go back through `save` exactly as they came off disk. Passing a bare
+	 * `{ term, discussion }` would be a data-loss bug rather than a shortcut:
+	 * `mergeEntry` only protects a definition whose source is `manual`, so on a
+	 * model-written entry an empty incoming definition would replace the real one.
+	 *
+	 * An empty summary is never written and never silent (ADR-158): a discussion
+	 * that settled nothing leaves the note alone and says so.
+	 */
+	async saveDiscussion(term: string, text: string): Promise<GlossaryEntry | null> {
+		const clean = text.trim();
+		if (!clean) { new Notice(t("termDiscussionEmpty", { term })); return null; }
+		const found = this.find(await this.all(), term);
+		if (!found) { new Notice(t("termDiscussionNoEntry", { term })); return null; }
+		const entry = await this.hydrate(found);
+		return this.save({ ...entry, discussion: clean });
+	}
+
+	/**
 	 * The definition in `lang`, from the note's cache or translated now and cached
 	 * (ADR-166). Null when it cannot be had — the caller shows the stored text.
 	 *
@@ -367,41 +408,50 @@ export class GlossaryService {
 	 * from an older definition is stale by its hash; the first new translation
 	 * clears every stale language at once rather than leaving them to mislead.
 	 */
-	async translate(entry: GlossaryEntry, lang: string): Promise<string | null> {
+	async translate(entry: GlossaryEntry, lang: string): Promise<TranslationResult | null> {
 		const cached = cachedTranslation(entry, lang);
-		if (cached) return cached;
+		if (cached) return { text: cached, form: null };
 		const key = `translate:${entry.kind ?? "term"}:${normalizeTerm(entry.term)}:${lang}:${definitionHash(entry.definition)}`;
 		// Obsidian re-parses the frontmatter we just wrote asynchronously; until it
 		// has, the note still reads as untranslated. Keyed by the definition's hash,
 		// so an edit is never answered from here.
 		const recent = this.recentTranslations.get(key);
-		if (recent) return recent;
+		// No form on a repeat: it was recorded by the call that produced the text,
+		// and a caller repainting for it twice would repaint for nothing.
+		if (recent) return { text: recent, form: null };
 		const inFlight = this.pendingTranslations.get(key);
 		if (inFlight) return inFlight;
 		const run = this.translateAndStore(entry, lang);
 		this.pendingTranslations.set(key, run);
 		try {
-			const text = await run;
-			if (text) this.recentTranslations.set(key, text);
-			return text;
+			const result = await run;
+			if (result) this.recentTranslations.set(key, result.text);
+			return result;
 		} finally {
 			this.pendingTranslations.delete(key);
 		}
 	}
 
-	private async translateAndStore(entry: GlossaryEntry, lang: string): Promise<string | null> {
+	private async translateAndStore(entry: GlossaryEntry, lang: string): Promise<TranslationResult | null> {
 		try {
-			const text = (await this.plugin.llmRouter.translateDefinition(entry.definition, LANG_LABELS[lang] ?? lang)).trim();
+			// A person's name is not translated, so none is asked for (ADR-206).
+			const asked = entry.kind === "person" ? undefined : entry.term;
+			const reply = await this.plugin.llmRouter.translateDefinition(
+				entry.definition,
+				LANG_LABELS[lang] ?? lang,
+				asked
+			);
+			const text = reply.definition.trim();
 			// "" is not a translation (ADR-158): say so, and let the anchor keep the original.
 			if (!text) { new Notice(t("glossaryTranslateEmpty", { term: entry.term })); return null; }
+			const addition = asked ? newTranslation(entry, lang, reply.term) : null;
 			const file = this.plugin.app.vault.getAbstractFileByPath(termPath(this.root, entry.term, entry.kind));
-			if (file instanceof TFile) {
-				const source = definitionLanguageOf(entry);
-				await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) =>
-					applyTranslation(fm, lang, text, entry.definition, source));
-				this.invalidate();
-			}
-			return text;
+			if (!(file instanceof TFile)) return { text, form: null };
+			const source = definitionLanguageOf(entry);
+			await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) =>
+				applyTranslation(fm, lang, text, entry.definition, source, addition?.term));
+			this.invalidate();
+			return { text, form: addition?.term ?? null };
 		} catch (e) {
 			new Notice(t("glossaryTranslateFailed", { error: e instanceof Error ? e.message : String(e) }));
 			return null;

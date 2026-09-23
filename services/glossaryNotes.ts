@@ -1,4 +1,5 @@
 import type { EntryKind, GlossaryEntry, Translation } from "./glossary";
+import { normalizeTerm } from "./glossary";
 import type { Conversation } from "../models/types";
 import { detectLanguage } from "./languageDetect";
 
@@ -111,6 +112,12 @@ export function cachedTranslation(entry: GlossaryEntry, lang: string): string | 
  * `processFrontMatter`. When the stored hash is not this definition's, every
  * `definition_<lang>` there was made from an older text: all are dropped before
  * the new one is set, so a stale language cannot survive beside a fresh one.
+ *
+ * `term` is the term's own equivalent in that language (ADR-206), recorded so
+ * the index marks it from then on. It is **not** cleared by the staleness sweep
+ * above and never overwrites a value already in the file: a surface form does
+ * not expire when the definition is reworded, and the one in the note may have
+ * been corrected by hand — which is the whole promise of a property.
  */
 export function applyTranslation(
 	fm: Record<string, unknown>,
@@ -118,6 +125,7 @@ export function applyTranslation(
 	text: string,
 	definition: string,
 	sourceLanguage: string | null,
+	term?: string | null,
 ): void {
 	const hash = definitionHash(definition);
 	if (fm[TRANSLATED_FROM_KEY] !== hash) {
@@ -126,6 +134,35 @@ export function applyTranslation(
 	fm[definitionKey(lang)] = text;
 	fm[TRANSLATED_FROM_KEY] = hash;
 	if (!fm.language && sourceLanguage) fm.language = sourceLanguage;
+	if (term && !fm[translationKey(lang)]) fm[translationKey(lang)] = term;
+}
+
+/**
+ * Whether a term the translation call came back with is a surface form worth
+ * recording — and null whenever it is not (ADR-206).
+ *
+ * Every rejection here is a mark the reader would otherwise meet in the wrong
+ * place. A form equal to the term itself says only that the word travels
+ * unchanged; one that repeats an alias is already in the index; and a language
+ * the entry already answers for is settled, possibly by hand, so a model's
+ * second opinion must not quietly replace it.
+ *
+ * A person is excluded at the call site rather than here: a name is not
+ * translated, so the question never arises.
+ */
+export function newTranslation(
+	entry: GlossaryEntry,
+	lang: string,
+	term: string,
+): Translation | null {
+	const form = term.trim();
+	if (!form) return null;
+	const key = normalizeTerm(form);
+	if (key === normalizeTerm(entry.term)) return null;
+	if (entry.translations?.some((t) => t.lang === lang)) return null;
+	if ((entry.aliases ?? []).some((a) => normalizeTerm(a) === key)) return null;
+	if (entry.translations?.some((t) => normalizeTerm(t.term) === key)) return null;
+	return { lang, term: form };
 }
 
 /** The language `entry`'s definition is written in: recorded, else detected. */
@@ -192,13 +229,16 @@ export function entryFrontmatter(entry: GlossaryEntry): Record<string, unknown> 
 	return fm;
 }
 
-/** Rebuild an entry from a note's frontmatter. `definition` and `contexts` come
- *  from the body, which the caller reads separately — the index only needs the
- *  frontmatter, and reading every body to paint one message would not scale. */
+/** Rebuild an entry from a note's frontmatter. `definition`, `contexts` and the
+ *  `discussion` come from the body, which the caller reads separately — the index
+ *  only needs the frontmatter, and reading every body to paint one message would
+ *  not scale. A caller that HAS the body must pass all of it: `save` merges a
+ *  fresh lookup into what this returns, so a field missing here is a field the
+ *  next write deletes. */
 export function entryFromFrontmatter(
 	term: string,
 	fm: Record<string, unknown> | undefined,
-	body?: { definition: string; contexts: string[] }
+	body?: { definition: string; contexts: string[]; discussion?: string }
 ): GlossaryEntry {
 	const f = fm ?? {};
 	const translations: Translation[] = [];
@@ -227,6 +267,11 @@ export function entryFromFrontmatter(
 		translations: translations.length > 0 ? translations : undefined,
 		theme: theme.length > 0 ? theme : undefined,
 		contexts: body && body.contexts.length > 0 ? body.contexts : undefined,
+		// The discussion is body content like the contexts, and `save` rebuilds the
+		// on-disk entry through here before merging a fresh lookup into it — so
+		// dropping it here means every re-lookup silently deletes the section
+		// `mergeEntry` is written to protect (ADR-208).
+		discussion: body?.discussion,
 		language,
 		definitionTranslations: Object.keys(definitionTranslations).length > 0 ? definitionTranslations : undefined,
 		translatedFrom: typeof f[TRANSLATED_FROM_KEY] === "string" ? f[TRANSLATED_FROM_KEY] : undefined,
@@ -234,27 +279,56 @@ export function entryFromFrontmatter(
 }
 
 /**
- * Render a term note's body: the definition, then one blockquote per context.
+ * The heading that opens the discussion section (ADR-208).
+ *
+ * English, like `Forms:` and `Translations:` before it (ADR-149) and for the
+ * same reason: it is a key an external reader has to find without per-vault
+ * configuration, not prose. A real `##` heading rather than a labelled line
+ * because what follows is paragraphs, and because Obsidian can then link to
+ * `[[Kartellrecht#Discussion]]`.
+ */
+export const DISCUSSION_HEADING = "Discussion";
+
+/** Matches the discussion heading on its own line, however it is spaced. */
+const DISCUSSION_RE = new RegExp(`^##\\s+${DISCUSSION_HEADING}\\s*$`, "i");
+
+/**
+ * Render a term note's body: the definition, one blockquote per context, then
+ * the discussion section if there is one.
  *
  * Contexts are blockquotes rather than a property because they are prose, there
  * can be several — a term met in three conversations has three — and a property
  * that grows without bound makes a useless Base column.
+ *
+ * The discussion comes **last** (ADR-208) so everything above it parses exactly
+ * as it did before the section existed, and so a note written by an older build
+ * reads correctly with no migration: no heading means no discussion.
  */
 export function renderBody(entry: GlossaryEntry): string {
-	const definition = entry.definition.trim();
+	const parts: string[] = [entry.definition.trim()];
 	const quotes = (entry.contexts ?? [])
 		.map((c) => c.replace(/[\r\n]+/g, " ").trim())
 		.filter(Boolean)
 		.map((c) => `> ${c}`);
-	return quotes.length > 0 ? `${definition}\n\n${quotes.join("\n\n")}\n` : `${definition}\n`;
+	if (quotes.length > 0) parts.push(quotes.join("\n\n"));
+	const discussion = entry.discussion?.trim();
+	if (discussion) parts.push(`## ${DISCUSSION_HEADING}\n\n${discussion}`);
+	return `${parts.join("\n\n")}\n`;
 }
 
-/** Split a term note's body back into its definition and its context quotes.
- *  Frontmatter must already be stripped by the caller. */
-export function parseBody(body: string): { definition: string; contexts: string[] } {
+/** Split a term note's body into its definition, its context quotes and its
+ *  discussion. Frontmatter must already be stripped by the caller. */
+export function parseBody(body: string): { definition: string; contexts: string[]; discussion?: string } {
 	const definition: string[] = [];
 	const contexts: string[] = [];
-	for (const line of body.split("\n")) {
+	const lines = body.split("\n");
+	// Everything from the heading to the end of the file is the discussion — it is
+	// prose the user drove, so a `>` quote or a heading inside it is theirs and
+	// must not be re-read as a context or as the start of a second section.
+	const at = lines.findIndex((line) => DISCUSSION_RE.test(line.trim()));
+	const head = at === -1 ? lines : lines.slice(0, at);
+	const discussion = at === -1 ? "" : lines.slice(at + 1).join("\n").trim();
+	for (const line of head) {
 		const quote = /^>\s?(.*)$/.exec(line);
 		if (quote) {
 			const text = quote[1].trim();
@@ -263,7 +337,11 @@ export function parseBody(body: string): { definition: string; contexts: string[
 		}
 		definition.push(line);
 	}
-	return { definition: definition.join("\n").trim(), contexts };
+	return {
+		definition: definition.join("\n").trim(),
+		contexts,
+		...(discussion ? { discussion } : {}),
+	};
 }
 
 /** Strip a leading YAML frontmatter block, returning the body alone. */
@@ -312,6 +390,10 @@ export function mergeEntry(
 		language: keepDefinition ? existing.language : incoming.language,
 		definitionTranslations: existing.definitionTranslations,
 		translatedFrom: existing.translatedFrom,
+		// A re-lookup carries no discussion and must never drop the one on disk;
+		// a second discussion replaces the first outright, because it distils the
+		// same understanding as it now stands, not an addition to it (ADR-208).
+		discussion: incoming.discussion ?? existing.discussion,
 		aliases: union(existing.aliases, incoming.aliases),
 		translations: translations.length > 0 ? translations : undefined,
 		theme: union(existing.theme, incoming.theme),

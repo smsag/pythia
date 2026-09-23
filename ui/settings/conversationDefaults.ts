@@ -21,7 +21,7 @@ const PROVIDER_LABEL: Record<Provider, () => string> = {
 };
 
 /**
- * New conversations — what a fresh conversation inherits (ADR-206).
+ * New conversations — what a fresh conversation inherits (ADR-209).
  *
  * This is the section the whole tab is organised around: **every row here can be
  * overridden for one conversation, and no row outside it can.** That is principle

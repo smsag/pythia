@@ -1,8 +1,8 @@
 /** Die Strings des Einstellungs-Tabs — aus `de.ts` ausgelagert wie die
  *  Embedding-Strings (ADR-199, Review #301). Reihenfolge und Schlüssel
- *  identisch zu `settings.en.ts` (ADR-206). */
+ *  identisch zu `settings.en.ts` (ADR-209). */
 const settingsDe = {
-	// ── Abschnitte, in Renderreihenfolge (ADR-206) ────────────────────────────
+	// ── Abschnitte, in Renderreihenfolge (ADR-209) ────────────────────────────
 	connectionsSection:      "Verbindungen",
 	connectionsIntro:        "Welche Dienste Pythia erreichen kann. Schlüssel liegen in Obsidians Secret-Storage und werden nie in data.json geschrieben.",
 	newConvSection:          "Neue Gespräche",

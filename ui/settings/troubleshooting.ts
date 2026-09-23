@@ -2,7 +2,7 @@ import { section, toggleRow, type SettingsContext } from "./context";
 import { t } from "../../i18n";
 
 /**
- * Troubleshooting (ADR-206) — last, and deliberately small.
+ * Troubleshooting (ADR-209) — last, and deliberately small.
  *
  * One row is fine here in a way it was not for the old one-row "Defaults"
  * section: this one sits at the end and governs nothing above it, whereas

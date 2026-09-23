@@ -8,11 +8,11 @@ import { t } from "../../i18n";
 
 // The section grammar lives in ./section.ts so the embedding block can use it
 // without pulling these plugin-bound helpers in; re-exported so a section module
-// imports everything it needs from one place (ADR-206).
+// imports everything it needs from one place (ADR-209).
 export { section, overridable };
 
 /**
- * What every settings section is handed (ADR-206).
+ * What every settings section is handed (ADR-209).
  *
  * The tab used to be one 528-line `display()`; it is now a shell that calls one
  * `render*Section` per section in order, and this is the only thing they share.
@@ -26,7 +26,7 @@ export { section, overridable };
  *   an index OF repaints the status row** (#367). That is the indexed folders,
  *   the note cap and the embedding model (`ui/embeddingSettings.ts`) *and* the
  *   two skip folders — the conversations and default-notes pickers, which live in
- *   other sections. Before ADR-206 those two had no way to reach the row, and
+ *   other sections. Before ADR-209 those two had no way to reach the row, and
  *   moving where conversations are stored left it reading "Ready" with the one
  *   non-destructive action greyed out.
  */

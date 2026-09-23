@@ -15,7 +15,7 @@ import { renderTroubleshootingSection } from "./ui/settings/troubleshooting";
 export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
 
 /**
- * The settings tab is a shell (ADR-206): it owns the section order, the numeric
+ * The settings tab is a shell (ADR-209): it owns the section order, the numeric
  * fields' flush on close, and nothing else. Each section is a module under
  * `ui/settings/`, rendered in the order below.
  *

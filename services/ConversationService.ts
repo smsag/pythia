@@ -6,6 +6,7 @@ import { todayISO } from "../utils";
 import { safeNoteName } from "./pathUtils";
 import { t } from "../i18n";
 import { effectiveTheme } from "./glossaryNotes";
+import type { GlossaryEntry } from "./glossary";
 import { archiveFolderOf } from "./conversationArchive";
 import { describeErrorForLog } from "./redact";
 import type { ForkSpec } from "./comparison";
@@ -282,6 +283,56 @@ export class ConversationService {
 
 		const view = await p.activateView();
 		await view.setActiveConversation(conv);
+	}
+
+	/**
+	 * Open a conversation to work out what a term means (ADR-208).
+	 *
+	 * Not a fork of a conversation — a fork of an *entry*. A term note is met in
+	 * several conversations (ADR-150), so there is no single source to branch
+	 * from; what the discussion needs is the note and the sentence the reader was
+	 * stuck on, and those are exactly the two things carried here.
+	 *
+	 * **The note travels as an attached note, not as prompt text.** It is a vault
+	 * note, so `ContextBuilder` already knows how to put one in front of the
+	 * model, the reference row already shows it as a pill, and an edit to the
+	 * definition reaches the next turn with no bookkeeping of ours. Copying its
+	 * text into a message would freeze it and duplicate machinery that exists.
+	 *
+	 * `theme` is pinned to the term rather than left to follow the conversation
+	 * name (ADR-150): terms met while working this one out belong to its deck, and
+	 * the name will be rewritten by the titler after the first exchange.
+	 */
+	async createTermConversation(
+		entry: Pick<GlossaryEntry, "term" | "kind">,
+		passage: string,
+		source?: Conversation,
+	): Promise<Conversation> {
+		const p = this.plugin;
+		const notePath = p.glossaryService.pathFor(entry);
+		const conv = await this.createConversation({
+			name: entry.term,
+			// The source's own settings where there is a source, so the discussion
+			// answers in the same voice and language as the answer that prompted it.
+			systemPrompt: source?.systemPrompt ?? "",
+			provider: source?.provider,
+			model: source?.model,
+			maxTokens: source?.maxTokens,
+			contextNotes: [notePath],
+			outputFolder: source?.outputFolder,
+		});
+		conv.glossaryTerm = entry.term;
+		conv.theme = entry.term;
+		if (source?.outputLanguage) conv.outputLanguage = source.outputLanguage;
+		if (source?.temperature !== undefined) conv.temperature = source.temperature;
+		if (source?.effort !== undefined) conv.effort = source.effort;
+		// The passage rides in `forkedFromSelection`, which is what frames a quoted
+		// excerpt as "the thing the first question points at" (FORKED_EXCERPT_*).
+		// That is precisely its role here, even though nothing was forked.
+		const excerpt = passage.trim();
+		if (excerpt) conv.forkedFromSelection = excerpt;
+		await p.saveConversations();
+		return conv;
 	}
 
 	/**

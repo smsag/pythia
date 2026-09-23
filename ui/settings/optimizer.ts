@@ -6,7 +6,7 @@ import { t } from "../../i18n";
 
 const FRAMEWORKS: PythiaSettings["defaultPromptFramework"][] = ["none", "CO-STAR", "RACE", "RISEN"];
 
-/** Prompt optimizer (ADR-206): the one section that was already a section, kept. */
+/** Prompt optimizer (ADR-209): the one section that was already a section, kept. */
 export function renderOptimizerSection(containerEl: HTMLElement, ctx: SettingsContext): void {
 	section(containerEl, t("promptOptimizerSection"), t("promptOptimizerIntro"));
 	const { plugin } = ctx;

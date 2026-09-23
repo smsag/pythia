@@ -4,6 +4,7 @@ import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
 import type { MistralService } from "./MistralService";
 import type { PythiaSettings } from "../settings";
+import type { TranslatedDefinition } from "./glossaryReply";
 
 export class LLMRouter {
 	private providers: Record<Provider, LLMProvider>;
@@ -112,16 +113,32 @@ export class LLMRouter {
 		return this.get(conversation).generateFavoritesSummary(conversation);
 	}
 
-	defineTerm(term: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
-		return this.byProvider(provider).defineTerm(term, passage, conversation);
+	defineTerm(
+		term: string,
+		passage: string,
+		provider?: Provider,
+		conversation?: Conversation,
+		senseHint?: string,
+	): Promise<string> {
+		return this.byProvider(provider).defineTerm(term, passage, conversation, senseHint);
+	}
+
+	/** Runs on the conversation's own provider: it is that conversation being read. */
+	summarizeTermDiscussion(term: string, definition: string, conversation: Conversation): Promise<string> {
+		return this.byProvider(conversation.provider).summarizeTermDiscussion(term, definition, conversation);
 	}
 
 	describePerson(name: string, passage: string, provider?: Provider, conversation?: Conversation): Promise<string> {
 		return this.byProvider(provider).describePerson(name, passage, conversation);
 	}
 
-	translateDefinition(definition: string, language: string, provider?: Provider): Promise<string> {
-		return this.byProvider(provider).translateDefinition(definition, language);
+	translateDefinition(
+		definition: string,
+		language: string,
+		term?: string,
+		provider?: Provider
+	): Promise<TranslatedDefinition> {
+		return this.byProvider(provider).translateDefinition(definition, language, term);
 	}
 
 	/** Which model `defineTerm` will actually use, so a stored definition can

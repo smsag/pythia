@@ -1,14 +1,14 @@
 /**
  * The settings tab's strings, split out of `en.ts` the way the embedding strings
  * were (ADR-199, review #301): both locale files sat just under the file-size
- * ceiling, and ADR-206's section intros are the strings that would have broken it.
+ * ceiling, and ADR-209's section intros are the strings that would have broken it.
  *
  * Section names and intros come first, in the order the tab renders them. Every
  * section has an intro naming its remit, because the embedding block's intro was
- * the only thing in the tab that said what a group of rows was FOR (ADR-206).
+ * the only thing in the tab that said what a group of rows was FOR (ADR-209).
  */
 const settingsEn = {
-	// ── Sections, in render order (ADR-206) ───────────────────────────────────
+	// ── Sections, in render order (ADR-209) ───────────────────────────────────
 	connectionsSection:      "Connections",
 	connectionsIntro:        "Which services Pythia can reach. Keys live in Obsidian's secret storage and are never written to data.json.",
 	newConvSection:          "New conversations",

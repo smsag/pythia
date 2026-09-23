@@ -13,15 +13,16 @@ import {
 	buildFavoritesDigest,
 	cleanGeneratedTitle,
 } from "./messageUtils";
-import { resolveDefaultModelForProvider } from "../models/knownModels";
+import { parseTranslationReply } from "./glossaryReply";
+import type { TranslatedDefinition } from "./glossaryReply";
 import {
-	TITLE_MARKER,
-	SUMMARY_MARKER,
-	DEFINITION_MARKER,
-	VARIANTS_MARKER,
-	TRANSLATIONS_MARKER,
-	CONTEXT_MARKER,
-} from "./promptConstants";
+	defineTermPrompt,
+	describePersonPrompt,
+	termDiscussionPrompt,
+	translateDefinitionPrompt,
+} from "./glossaryPrompts";
+import { resolveDefaultModelForProvider } from "../models/knownModels";
+import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
 import { ABORT_ERROR_NAMES } from "./retry";
@@ -414,130 +415,61 @@ export abstract class BaseProvider implements LLMProvider {
 		return parseTitleAndSummary(raw);
 	}
 
-	/**
-	 * Define one term as it is used in a specific passage (ADR-136).
-	 *
-	 * The passage is the whole point. A dictionary can say what "Bauteil" means in
-	 * general; only the surrounding sentences can say which sense an answer meant,
-	 * and that sense is what the reader is stuck on. Sending the passage is also
-	 * what keeps this from needing a new prompt in the conversation.
-	 *
-	 * The same call also returns the term's other surface forms, because the
-	 * model that just read the passage knows whether "Zählern" is the same word
-	 * and whether the answer's English "counter" means it too. Asking separately
-	 * would double the latency of a lookup the reader is waiting on.
-	 *
-	 * Runs on the fast model with a small token budget: this is a gloss, not an
-	 * essay, and it is fetched while the reader waits.
-	 */
-	async defineTerm(term: string, passage: string, conversation?: Conversation): Promise<string> {
-		const excerpt = passage.slice(0, 1200);
-		return this.callUtility(
-			this.fastModel,
-			`Define the term "${term}" as it is used in the passage below, and list its other surface forms.\n\n` +
-				`Reply in EXACTLY this format — no other text before or after:\n` +
-				`${DEFINITION_MARKER}:\n<two or three sentences>\n` +
-				`${VARIANTS_MARKER}: <forms separated by | , or leave empty>\n` +
-				`${TRANSLATIONS_MARKER}: <lang: term, separated by | , or leave empty>\n` +
-				`${CONTEXT_MARKER}: <one sentence from the passage, or leave empty>\n\n` +
-				`For the definition: explain the sense that applies here, not every possible meaning. ` +
-				`Do not repeat the passage, do not add a heading, do not use the word "context".\n` +
-				// ISO 704's rules for a terminological definition. They matter because
-				// the definition is read away from this passage — in the glossary note,
-				// or by another tool — where a circular or "is when" definition says
-				// nothing at all (ADR-149).
-				`Write it as a terminological definition: name the broader category the term belongs to and ` +
-				`then what distinguishes it from others in that category, so that the definition could be ` +
-				`substituted for the term in a sentence. Never define a term with itself or a word built ` +
-				`from it, and never open with "is when", "is where" or "describes the fact that".\n` +
-				`For the variants: the inflected forms of this term **in the same language** a reader would ` +
-				`meet in running text (plural, genitive, dative, declined adjective forms), plus a common ` +
-				`abbreviation or spelling variant if one exists. Forms only — never related concepts, never ` +
-				`explanations, never a translation, and never a form so generic it would match unrelated ` +
-				`sentences. Leave the line empty if there are none.\n` +
-				`For the translations: the term's equivalent in any OTHER language the passage uses, each ` +
-				`written as an ISO 639-1 code, a colon and the term ("en: counter"). Only languages actually ` +
-				`present in the passage — never a translation you were not asked for. Leave the line empty ` +
-				`if the passage is monolingual.\n` +
-				`For the context: copy ONE short sentence or clause from the passage in which the term ` +
-				`actually appears, verbatim and unedited. Leave the line empty if no single sentence shows ` +
-				`it in use.` +
-				`${this.definitionLanguage(conversation)}\n\nPassage:\n${excerpt}`,
-			420
-		);
+	/** Define `term` as used in `passage` (ADR-136). Runs on the fast model with a
+	 *  small token budget: this is a gloss, not an essay, and it is fetched while
+	 *  the reader waits. `senseHint` is the reader's own correction when the first
+	 *  answer defined the wrong sense (ADR-208) — it shapes this call and is not stored. */
+	async defineTerm(
+		term: string,
+		passage: string,
+		conversation?: Conversation,
+		senseHint?: string,
+	): Promise<string> {
+		const prompt = defineTermPrompt(term, passage, this.languageLabel(conversation), senseHint);
+		return this.callUtility(this.fastModel, prompt, 420);
 	}
 
 	/**
-	 * Describe a person named in an answer (ADR-151).
+	 * Distil a forked conversation back into its term's note (ADR-208).
 	 *
-	 * Deliberately different from `defineTerm` in one way that matters: the
-	 * passage is the primary source and the model's own knowledge is the fallback,
-	 * stated in that order, because a person is far more likely than a term to be
-	 * someone the model has never heard of — a colleague, a client, a local
-	 * counterparty. A model that leads with recall invents a plausible biography;
-	 * one told to prefer the passage says what the conversation actually
-	 * established. What it produces is stored as `source: model` either way, so
-	 * the note never presents a generated claim as a recorded one.
+	 * Runs on the **conversation's** model, not `fastModel` — the fourth utility
+	 * call to do so, and for the same reason as the three summary calls: it reads
+	 * a whole conversation and has to hold on to what was actually settled in it.
+	 * Which also means it meets reasoning models and their leading thinking
+	 * blocks, and depends on `callUtility` collecting every text block (ADR-158).
 	 */
+	async summarizeTermDiscussion(term: string, definition: string, conversation: Conversation): Promise<string> {
+		const model = this.resolveModel(conversation.model);
+		const text = conversation.messages
+			.map((m) => `${m.role === "user" ? "User" : this.assistantLabel}: ${m.content}`)
+			.join("\n\n");
+		const prompt = termDiscussionPrompt(term, definition, text, this.languageLabel(conversation));
+		// 1024, like `generateSummary`, and for its reason: lowering a cap does not
+		// shorten an answer, it truncates one — and on a reasoning model this same
+		// budget also pays for the hidden reasoning. The sentence count is the
+		// contract; the cap is a safety valve (ADR-141).
+		return this.callUtility(model, prompt, 1024);
+	}
+
+	/** Describe a person named in an answer (ADR-151). */
 	async describePerson(name: string, passage: string, conversation?: Conversation): Promise<string> {
-		const excerpt = passage.slice(0, 1200);
-		return this.callUtility(
-			this.fastModel,
-			`Who is "${name}", as referred to in the passage below?\n\n` +
-				`Reply in EXACTLY this format — no other text before or after:\n` +
-				`${DEFINITION_MARKER}:\n<two or three sentences>\n` +
-				`${VARIANTS_MARKER}: <other names this person is called, separated by | , or leave empty>\n` +
-				`${CONTEXT_MARKER}: <one sentence from the passage, or leave empty>\n\n` +
-				`Use the passage first: say what it establishes about this person — their role, ` +
-				`their relation to the subject, what they did. Only add what you independently know ` +
-				`if you are confident it is the same person, and never pad the answer with generic ` +
-				`description to reach three sentences.\n` +
-				`If the passage does not make clear who this is and you do not recognise the name, ` +
-				`say exactly that in one sentence rather than guessing — an invented biography is ` +
-				`worse than an empty entry, because it will be read later as something that was recorded.\n` +
-				`For the variants: other names the same person is called in running text — surname ` +
-				`alone, given name alone, an initial form, a former name. Names only, never roles, ` +
-				`and never a name so common it would match unrelated sentences.\n` +
-				`For the context: copy ONE short sentence or clause from the passage naming this ` +
-				`person, verbatim. Leave the line empty if none does.` +
-				`${this.definitionLanguage(conversation)}\n\nPassage:\n${excerpt}`,
-			420
-		);
+		return this.callUtility(this.fastModel, describePersonPrompt(name, passage, this.languageLabel(conversation)), 420);
 	}
 
 	/**
-	 * The language line for a definition or person entry (ADR-166).
-	 *
-	 * A named language is instructed exactly as every utility prompt does. AUTO
-	 * is the one place this departs from ADR-148's "add no instruction": in a chat
-	 * turn silence lets the model follow the user, but this prompt is written in
-	 * English, so silence made the model answer in English whatever the passage
-	 * said — and the note kept that English for good. Naming the passage keeps
-	 * AUTO's meaning (follow the conversation) instead of inventing a language.
+	 * Translate a stored glossary definition for display (ADR-166). `term` also
+	 * asks for the term's own equivalent in that language (ADR-206); the caller
+	 * caches both in the term note, so each definition is translated once per
+	 * language and the form is recorded once.
 	 */
-	private definitionLanguage(conversation?: Conversation): string {
-		const label = this.languageLabel(conversation);
-		return label
-			? langInstruction(label)
-			: "\n\nWrite the definition in the language the passage is written in.";
-	}
-
-	/**
-	 * Translate a stored glossary definition for display (ADR-166).
-	 *
-	 * Exempt from `languageLabel`, like the prompt optimizer: the target language
-	 * is the whole request. The result is cached in the term note by the caller,
-	 * so each definition is translated once per language.
-	 */
-	async translateDefinition(definition: string, language: string): Promise<string> {
-		return this.callUtility(
+	async translateDefinition(definition: string, language: string, term?: string): Promise<TranslatedDefinition> {
+		const raw = await this.callUtility(
 			this.fastModel,
-			`Translate this glossary definition into ${language}. Keep its meaning and its precision: ` +
-				`use the established ${language} terminology, and keep proper names, code and Markdown as they are. ` +
-				`If it is already in ${language}, return it unchanged. ` +
-				`Reply with the translation only — no preamble, no quotation marks.\n\nDefinition:\n${definition.slice(0, 2000)}`,
-			500
+			translateDefinitionPrompt(definition, language, term),
+			term ? 560 : 500
 		);
+		// Without a term there are no markers to read — the reply IS the translation.
+		return term ? parseTranslationReply(raw) : { definition: raw.trim(), term: "" };
 	}
 
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {

@@ -4,7 +4,7 @@ import { renderPricingSettings } from "../pricingSettings";
 import { t } from "../../i18n";
 
 /**
- * While answering — the global rules (ADR-206).
+ * While answering — the global rules (ADR-209).
  *
  * The counterpart to "New conversations": nothing here can be set for a single
  * conversation, so no row carries the inheritance sentence. That is the whole
@@ -12,7 +12,7 @@ import { t } from "../../i18n";
  * rather than with the defaults — it applies to conversations already underway,
  * not only to new ones.
  *
- * It is also where two orphans landed: before ADR-206 `customInstructions` and
+ * It is also where two orphans landed: before ADR-209 `customInstructions` and
  * "Debug mode" were emitted AFTER the embedding block, which creates its own
  * headings, so both read on screen as vault-context settings.
  */

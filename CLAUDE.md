@@ -12,7 +12,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
 /
   main.ts                     ← plugin entry point: onload() wiring, view/ribbon/command/file-menu registration, thin facades. Holds NO rules — a branch, guard or cache rule goes behind a host seam in services/ (ADR-205)
   sidebar.ts                  ← PythiaSidebarView (ItemView), all UI construction
-  settings.ts                 ← the settings tab SHELL (ADR-206): the section order, the numeric flush on close, nothing else. A `new Setting(` here fails a test
+  settings.ts                 ← the settings tab SHELL (ADR-209): the section order, the numeric flush on close, nothing else. A `new Setting(` here fails a test
   styles.css                  ← all plugin CSS
   models/
     types.ts                  ← shared TypeScript interfaces (Conversation, Message, …)
@@ -46,6 +46,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     rewriteTarget.ts          ← pure: rangeText · targetState · replaceRange · targetLabel — a captured range PLUS its text, verified exactly before any write (ADR-178)
     pendingTemplate.ts        ← pure: armPendingTemplate + applyPendingTemplate — a template applied to a RUNNING conversation is a one-shot layer, never a write (ADR-177)
     conversationArchive.ts    ← pure: archiveNotePath (never a taken path), archiveNoteContent, archiveFolderOf (the ONE folder resolution) — a conversation as a vault note (ADR-172/173)
+    glossaryReply.ts          ← pure: the lookup's reply parsers — parseDefinitionReply · parseTranslationReply · cleanSurfaceForm, the ONE rule for what counts as a surface form (ADR-206)
+    glossaryPrompts.ts        ← pure: the four glossary prompts — define · describe person · translate · the language line; what a lookup ASKS for lives here, not in the class that sends it (ADR-206)
     glossary.ts               ← pure: parseGlossary (legacy reader, migration only) + buildTermIndex (ADR-136/137/149)
     glossaryNotes.ts          ← pure: the note-per-entity format — paths, frontmatter mapping, body, mergeEntry, effectiveTheme (ADR-150/151)
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
@@ -86,6 +88,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
+    termDiscussion.ts         ← saveTermDiscussion + TermDiscussionHost: a forked discussion written back into its term's note; the header owns the menu row, this owns the rule (ADR-208)
     citationPainter.ts        ← swaps ⟦cite:…⟧ markers for numbered chips
     outsideDismiss.ts         ← the one deferred outside-press / Escape dismisser for popovers and menus (ADR-161)
     emptyState.ts             ← renderNoConversation / renderWelcome — the chat area's two empty surfaces (pure, unit-tested)
@@ -109,7 +112,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
-    settings/section.ts       ← the ONE place a settings heading is made: section(el, name, intro) + overridable(desc) (ADR-206)
+    settings/section.ts       ← the ONE place a settings heading is made: section(el, name, intro) + overridable(desc) (ADR-209)
     settings/context.ts       ← SettingsContext (plugin · saveSoon · registerCommit · refreshIndexStatus) + toggleRow / folderRow / numberRow
     settings/connections.ts   ← §1 the four API keys, each saying whether a key is selected
     settings/conversationDefaults.ts ← §2 the ONLY overridable section: provider · one model row for it · effort · temperature · max tokens · language · resume mode · research default
@@ -120,13 +123,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     settings/troubleshooting.ts ← §8 debug mode
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1717 tests across 117 files
+  tests/                      ← Vitest unit tests (npm test) — 1773 tests across 119 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
     embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-199)
-    settings.{en,de}.ts       ← the settings tab's strings, section names and intros first in render order (ADR-206)
+    settings.{en,de}.ts       ← the settings tab's strings, section names and intros first in render order (ADR-209)
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
@@ -476,6 +479,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - The definition lives in the glossary note (`glossaryNote` setting), never on the conversation. **Do not add a `Conversation` field for terms** — the note is the only source of truth and terms are matched, not stored
 - Every occurrence is marked in every conversation, via `repaintTerms` and a single alternation from `buildTermIndex`
 - An entry also carries `aliases` — inflections and plurals **in the term's own language** (ADR-137). They are **stored, never derived**: a stemmer is language-specific, lossy on German compounds, and cannot be corrected by hand, which the note can
+- **A translation is asked for, not waited for** (ADR-206). The lookup asks for the term's established equivalent in **English and the conversation's own language**, whatever the passage contains — ADR-149's "only languages the passage uses" is withdrawn: it made a cross-language form accidental, so "Kartellrecht" was marked and "cartel law" beside it was not. The guard against a form that marks unrelated sentences is a **quality bar in the prompt** (established, domain-specific, never a common everyday word), never a narrower scope. `translateDefinition` asks for the term alongside the definition and records `term_<lang>` in the same write, which backfills entries written before this — **never a person**, whose name is not translated. A recorded form is never overwritten and never goes stale with the definition; `newTranslation` is the ONE decision about whether to record one
 - Cross-language equivalents are `translations`, not aliases (ADR-149) — each tagged with its ISO 639-1 code, because a flat list cannot say which language a form belongs to, and ADR-148 made that six languages rather than two. Matched and marked exactly like an alias. An entry also carries `context`: one verbatim sentence from the passage, because `defineTerm` explains "the sense that applies here" and the entry otherwise keeps nothing of the here. The model returns all four in one `DEFINITION:` / `VARIANTS:` / `TRANSLATIONS:` / `CONTEXT:` reply
 - **One note per term** (ADR-150), in `<glossaryFolder>/Terms/`. Not a preference — **Bases rows are files** ("each row is a file, and each column is a property of that file") and Dataview inline fields attach to the *page*, so a term inside a shared note is invisible as a row, and a theme-filtered deck is exactly a per-term view. ADR-149's visible `Forms:`/`Translations:`/`Context:` labels are superseded; that format survives only in `parseGlossary`, the migration reader
 - **Properties, not our own labels.** `aliases` is Obsidian's native property; translations are flat `term_<lang>` keys (properties have no object type, and a flat key is a Base column); `theme` holds `[[links]]` so the theme note gets backlinks. Never re-introduce a custom label for something a property can carry
@@ -486,12 +490,15 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **The person mark is a solid faint underline; the person anchor is `.p-term-anchor` + `.p-term-anchor--person`** (double left rule, `user` icon, `PERSON` label). Never restate a `.p-term-anchor-*` rule for a person
 - **`describePerson` leads with the passage and must decline rather than guess.** A person the model has never met is the normal case in a working vault, and a generated biography reads later as a recorded fact — which is why model-sourced person entries carry `source: model` visibly. Vault-first-then-model is a user decision (ADR-151), not a default to loosen
 - **Do not build a flashcard reviewer, a scheduler or an export.** Pythia captures terms; browsing and drilling them is Bases' job. The note format is the integration surface (ADR-149/150)
+- **A multi-word form is the normal case, and it is matched as one** (ADR-207). German merges what English separates, so nearly every English equivalent of a German term is a phrase. The gap between two words of a form matches **any run of whitespace or a hyphen** (`cartel law` · `cartel-law` · a soft line break), and `repaintTerms` runs the alternation over the **whole body's text**, not node by node — a phrase split by `**Cartel** law` or by the end of a favorite paints as one mark per node with the same `data-term`. Skipped regions (code · links · citation chips · another term mark) are **masked to a same-length filler**, never omitted, so a match can never straddle one. **A loosened matcher needs `surfaceKey` on both sides** — registration and `canonicalTerm` — or the mark carries a `data-term` no entry answers for and a tap does nothing, silently. The boundary lookarounds are NOT loosened: `Zählerstand` still does not match `Zähler`; German compounds are answered by stored variants (ADR-137)
 - A mark records the **canonical** term in `data-term`, not the form that matched, so tapping "Zählern" opens the entry filed under "Zähler". Use `canonicalTerm`; never assume `match[0]` is the term
 - Marks are `<pythia-term class="p-term">`: a **dotted faint underline**, the quietest of the four mark types because it is the only one that repeats
 - **Marks nest, and the innermost one owns the tap** (ADR-157). A term may sit inside a favorite, fork origin or merge link — only term-inside-term is refused. Resolution lives in `ui/markTap.ts`: never reintroduce a fixed type order, because the outer mark stays tappable along the rest of its span while the inner one has nowhere else to be tapped. `resolveMarkTap` matches `.p-term, .p-person` — a person mark opens the same anchor
 - `repaintTerms` calls `body.normalize()` after unwrapping: a term is matched **within one text node**, and unwrapping a mark leaves its text split, so a term straddling the seam would silently stop matching
 - The anchor opens **immediately after the tapped mark** (`markEl.after(anchor)`), exactly as the fork and merge anchors do (ADR-156) — never after the mark's paragraph. Placement is part of being the same component; a card at the end of a paragraph is a footnote, and a repeating mark makes the distance ambiguous as well as long
 - The **anchor** is not quiet: it matches `.p-fork-anchor` exactly (accent left rule, accent icon, `--text-muted` 600 label, 11.5px title, shared `Öffnen →` control). Only the rule's stroke varies across the three — solid fork, dashed merge, dotted term (ADR-138). Quietness belongs to marks, which repeat; not to anchors, which do not
+- **A mute definition has two exits, and neither touches the definition's protection** (ADR-208). **"Anderer Sinn"**: a one-line field in the anchor whose text is appended to the lookup prompt as a correction — **never stored**, a one-shot layer like ADR-177's template, and never offered for a person. **"Diskutieren"**: a conversation forked from the ENTRY, not from a conversation — the term note rides as an **attached note** (never copied into prompt text), the passage as `forkedFromSelection`, the composer **prefilled but unsent**, `theme` pinned to the term. The header's *In &lt;Begriff&gt; sichern* then distils it into a `## Discussion` section through `termDiscussionPrompt` — **never `generateSummary`**, which would write the conversation's tangents into the note
+- **The discussion is a section, never the definition.** The two answer different questions and a re-lookup may replace only the definition; a discussion is dropped by nothing and **replaced outright** by the next one. The heading is English and **comes last**, so an older note parses unchanged and everything after it is the reader's. `saveDiscussion` **hydrates before it writes** — a bare `{ term, discussion }` would let `mergeEntry` replace a model-written definition with an empty one. And **`entryFromFrontmatter` must carry every body field** (#375): `save` merges a fresh lookup into what it returns, so a field it does not read is a field the next re-lookup deletes — test the composition `save` performs, never `mergeEntry` with an `existing` you built yourself. The rule lives in `ui/termDiscussion.ts` behind a host seam, not in the header
 - A glossary definition never enters the system prompt, for the same reason a merge link does not
 - **The anchor shows the definition in the conversation's language** (ADR-166): the instructed language, or under `auto` the language of the tapped answer (`displayLanguage`). The stored definition is never rewritten for this — a translation is cached in the note as `definition_<lang>`, valid while `translated_from` equals `definitionHash(definition)`; an edit or regenerate makes every cached language stale and the next translation clears them (`applyTranslation`). The anchor never shows the untranslated text first: a faint `Translating to EN…` placeholder, then the translation with `translated from DE` in the meta line — for a hand-written definition too. Term titles and context quotes are never translated: one is the word in the text, the other a verbatim attestation
 - Language detection is local and returns `null` rather than guess (`services/languageDetect.ts`, function words, winner needs ≥2 hits and 1.5× the runner-up). A new entry records `language`; an old one is detected when needed
@@ -647,7 +654,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188/190). `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` fail in the forbidden direction
 - **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
-### The settings tab (ADR-206)
+### The settings tab (ADR-209)
 
 - **One axis: scope.** Eight sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **On-device semantic search** (+ **Vault context**) · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`
 - **Adding a setting means deciding which section's one-sentence remit covers it.** If none does, that is the finding — the old tab's answer was "Behaviour" or "Features", which is how ten unrelated rows landed under one heading and how `customInstructions` and Debug mode ended up rendered *inside* the embedding block by accident

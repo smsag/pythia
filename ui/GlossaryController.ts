@@ -8,6 +8,7 @@ import { definitionLanguageOf, displayLanguage, needsTranslation } from "../serv
 import { resolveLanguageState } from "./instructionState";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintTerms } from "./HighlightPainter";
+import { termForkOpeningPrompt } from "../services/glossaryPrompts";
 import { REGENERATE_ICON } from "./icons";
 
 export interface GlossaryDeps {
@@ -19,6 +20,10 @@ export interface GlossaryDeps {
 	getMessagesEl(): HTMLElement;
 	/** Render markdown into `el` using the view as the owning Component. */
 	renderMarkdown(md: string, el: HTMLElement): void;
+	/** Switch the view to a conversation this controller just created (ADR-208). */
+	openConversation(conv: Conversation): Promise<void>;
+	/** Put a ready question in the composer, unsent (ADR-208). */
+	prefillInput(text: string): void;
 }
 
 /**
@@ -38,13 +43,34 @@ export class GlossaryController {
 	/** Bumped per toggle so a second tap during the async lookup below does not
 	 *  leave two anchors open. */
 	private openGeneration = 0;
+	/** A translation recorded a new surface form while an anchor was open
+	 *  (ADR-206), so the transcript owes a repaint once it closes. */
+	private formRecorded = false;
 
 	constructor(private readonly d: GlossaryDeps) {}
 
 	/** Close the inline anchor — teardown and pre-rebuild. */
 	closeAnchor(): void {
+		this.close(true);
+	}
+
+	/**
+	 * `repaint` is false only when another anchor is about to open: repainting
+	 * unwraps every mark, including the one the caller still holds a reference to
+	 * and is about to insert after, which would leave the new anchor on a detached
+	 * node. The pending repaint is not lost — it is taken by the next real close.
+	 */
+	private close(repaint: boolean): void {
 		this.openAnchor?.remove();
 		this.openAnchor = null;
+		if (repaint) this.flushRepaint();
+	}
+
+	/** Draw the marks a newly recorded surface form earned, if one is owed. */
+	private flushRepaint(): void {
+		if (!this.formRecorded) return;
+		this.formRecorded = false;
+		this.repaintAll();
 	}
 
 	/**
@@ -106,7 +132,7 @@ export class GlossaryController {
 			this.closeAnchor();
 			return;
 		}
-		this.closeAnchor();
+		this.close(false); // `markEl` must survive until the new anchor hangs off it
 		const generation = ++this.openGeneration;
 
 		const service = this.d.plugin.glossaryService;
@@ -168,9 +194,15 @@ export class GlossaryController {
 		if (!needsTranslation(entry, target)) { this.build(anchor, entry, markEl); return; }
 		const from = definitionLanguageOf(entry);
 		this.build(anchor, entry, markEl, { pending: target });
-		const text = await this.d.plugin.glossaryService.translate(entry, target);
+		const result = await this.d.plugin.glossaryService.translate(entry, target);
+		// Owed even if the anchor has since closed — the form is in the note either
+		// way. With nothing open there is no mark to protect, so it is paid now.
+		if (result?.form) {
+			this.formRecorded = true;
+			if (!this.openAnchor) this.flushRepaint();
+		}
 		if (this.openAnchor !== anchor) return; // closed or replaced meanwhile
-		this.build(anchor, entry, markEl, text ? { text, from } : undefined);
+		this.build(anchor, entry, markEl, result ? { text: result.text, from } : undefined);
 	}
 
 	private build(
@@ -253,6 +285,32 @@ export class GlossaryController {
 		});
 		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
 
+		// "Other sense" sits beside regenerate because it is regenerate with one
+		// thing added — the reader saying which sense they meant (ADR-208). The two
+		// halves of a mute definition are "says nothing" and "wrong sense", and only
+		// the second has a cheap fix.
+		const resense = meta.createEl("button", {
+			cls: "pb pb-link p-term-anchor-sense",
+			text: t("glossarySenseHint"),
+			attr: { title: t("glossarySenseHintPrompt") },
+		});
+		resense.addEventListener("click", (e) => {
+			e.stopPropagation();
+			this.askSense(anchor, entry.term, markEl);
+		});
+		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
+
+		const discuss = meta.createEl("button", {
+			cls: "pb pb-link p-term-anchor-discuss",
+			text: t("glossaryDiscuss"),
+			attr: { title: t("glossaryDiscussTooltip") },
+		});
+		discuss.addEventListener("click", (e) => {
+			e.stopPropagation();
+			void this.discuss(entry, markEl);
+		});
+		meta.createSpan({ cls: "p-term-anchor-metatext", text: " · " });
+
 		// Same short label and arrow as the fork and merge anchors — "Im Glossar
 		// öffnen" is long enough to wrap the meta row onto a second line. The
 		// specific wording survives as the tooltip.
@@ -270,14 +328,77 @@ export class GlossaryController {
 		});
 	}
 
-	private async regenerate(anchor: HTMLElement, term: string, markEl: HTMLElement): Promise<void> {
+	/**
+	 * Ask which sense was meant, then define again with that answer (ADR-208).
+	 *
+	 * An inline field inside the anchor rather than a modal: the passage the wrong
+	 * sense came from is on screen behind it, and that is what the reader is
+	 * reading off while they type. The hint is never stored — it shapes one
+	 * lookup, like ADR-177's one-shot template layer.
+	 */
+	private askSense(anchor: HTMLElement, term: string, markEl: HTMLElement): void {
+		anchor.querySelector(".p-term-anchor-sensebox")?.remove();
+		const box = anchor.createDiv({ cls: "p-term-anchor-sensebox" });
+		const input = box.createEl("input", {
+			cls: "p-term-anchor-senseinput",
+			attr: { type: "text", placeholder: t("glossarySenseHintPlaceholder") },
+		});
+		const submit = (): void => {
+			const hint = input.value.trim();
+			box.remove();
+			if (hint) void this.regenerate(anchor, term, markEl, hint);
+		};
+		input.addEventListener("keydown", (e) => {
+			e.stopPropagation(); // the view's Scope owns Enter; this field owns it here
+			if (e.key === "Enter") { e.preventDefault(); submit(); }
+			if (e.key === "Escape") { e.preventDefault(); box.remove(); }
+		});
+		// Blur closes without asking: a stray tap must not fire a model call.
+		input.addEventListener("blur", () => box.remove());
+		input.addEventListener("click", (e) => e.stopPropagation());
+		input.focus();
+	}
+
+	/**
+	 * Open a conversation about this term (ADR-208).
+	 *
+	 * The anchor closes first: the conversation switch rebuilds the transcript,
+	 * so an anchor left open would be pointing at a mark that no longer exists.
+	 */
+	private async discuss(entry: GlossaryEntry, markEl: HTMLElement): Promise<void> {
+		const passage = markEl.closest("[data-msg-id]")?.textContent ?? "";
+		const source = this.d.getConversation() ?? undefined;
+		this.closeAnchor();
+		try {
+			const conv = await this.d.plugin.conversationService.createTermConversation(entry, passage, source);
+			await this.d.openConversation(conv);
+			// Prefilled, never sent: the reader edits it into the question they actually
+			// have. Opening an empty conversation would make them restate what they just
+			// tapped, and sending it for them would spend a turn on our guess.
+			this.d.prefillInput(termForkOpeningPrompt(entry.term, passage));
+		} catch (e) {
+			new Notice(t("glossaryDiscussFailed", {
+				term: entry.term,
+				error: e instanceof Error ? e.message : String(e),
+			}));
+		}
+	}
+
+	private async regenerate(
+		anchor: HTMLElement,
+		term: string,
+		markEl: HTMLElement,
+		/** Which sense the reader meant (ADR-208); shapes this lookup and is not stored. */
+		senseHint?: string,
+	): Promise<void> {
 		const passage = markEl.closest("[data-msg-id]")?.textContent ?? "";
 		const service = this.d.plugin.glossaryService;
 		const conv = this.d.getConversation() ?? undefined;
 		const known = service.find(await service.all(), term);
+		// A person takes no sense hint: a name has one sense, the one the passage names.
 		const entry = known?.kind === "person"
 			? await service.lookupPerson(term, passage, true, conv)
-			: await service.lookup(term, passage, true, conv);
+			: await service.lookup(term, passage, true, conv, senseHint);
 		if (entry && this.openAnchor === anchor) await this.show(anchor, entry, markEl);
 	}
 

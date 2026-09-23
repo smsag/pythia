@@ -456,6 +456,8 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getMessagesEl: () => this.messagesEl,
 			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			openConversation: (conv) => this.setActiveConversation(conv),
+			prefillInput: (text) => this.prefillInput(text),
 		});
 
 		this.exchangeActions = new ExchangeActionsController({

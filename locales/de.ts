@@ -5,7 +5,7 @@ import settingsDe from "./settings.de";
 const de: Strings = {
 	// On-device embeddings live in their own module (ADR-199, review #301).
 	...embeddingDe,
-	// The settings tab's strings likewise (ADR-206).
+	// The settings tab's strings likewise (ADR-209).
 	...settingsDe,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",
@@ -51,6 +51,18 @@ const de: Strings = {
 	glossaryRegenerate:        "Neu erklären",
 	glossaryRemove:            "Aus dem Glossar entfernen",
 	glossarySourceManual:      "von Hand",
+	glossarySenseHint:        "Anderer Sinn",
+	glossarySenseHintPrompt:  "Welcher Sinn war gemeint?",
+	glossarySenseHintPlaceholder:"z. B. nicht der juristische, sondern der…",
+	glossaryDiscuss:          "Diskutieren",
+	glossaryDiscussTooltip:   "Gespräch über diesen Begriff öffnen",
+	glossaryDiscussFailed:    "Gespräch über „{{term}}“ konnte nicht geöffnet werden: {{error}}",
+	termDiscussionSave:       "In „{{term}}“ sichern",
+	termDiscussionSaving:     "Verdichte das Gespräch über „{{term}}“…",
+	termDiscussionSaved:      "Was dieses Gespräch über „{{term}}“ geklärt hat, wurde gesichert",
+	termDiscussionEmpty:      "Dieses Gespräch hat zu „{{term}}“ nichts geklärt — die Notiz bleibt unverändert.",
+	termDiscussionNoEntry:    "„{{term}}“ steht nicht mehr im Glossar — es wurde nichts geschrieben.",
+	termDiscussionFailed:     "Das Gespräch konnte nicht zusammengefasst werden: {{error}}",
 	glossaryNoTerm:            "Bitte einen einzelnen Begriff markieren.",
 	glossaryTranslating:       "Übersetze nach {{code}}…",
 	glossaryTranslatedFrom:    "übersetzt aus {{code}}",
@@ -336,7 +348,7 @@ const de: Strings = {
 
 	// ── Settings ─────────────────────────────────────────────────────────────
 	// The settings tab's own strings live in settings.de.ts, spread in above
-	// (ADR-206) — the same per-feature split as the embedding strings.
+	// (ADR-209) — the same per-feature split as the embedding strings.
 
 	// ── Prompt optimizer ─────────────────────────────────────────────────────
 	cmdNewConversationFromPrompt:     "Neue Unterhaltung aus Prompt",

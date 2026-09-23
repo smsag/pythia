@@ -3,7 +3,7 @@ import { section, type SettingsContext } from "./context";
 import { t } from "../../i18n";
 
 /**
- * Connections — the first section (ADR-206): can Pythia reach anything at all.
+ * Connections — the first section (ADR-209): can Pythia reach anything at all.
  *
  * The four keys used to be four separate headings, each with a key row and a
  * model row under it, which made "which provider does Pythia use?" a question

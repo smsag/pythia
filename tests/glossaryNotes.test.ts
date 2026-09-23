@@ -18,6 +18,7 @@ import {
 	definitionHash,
 	cachedTranslation,
 	applyTranslation,
+	newTranslation,
 	displayLanguage,
 	needsTranslation,
 } from "../services/glossaryNotes";
@@ -357,6 +358,38 @@ describe("translated definitions", () => {
 		expect(fm.definition_en).toBe("A device.");
 	});
 
+	// ── ADR-206: the term's own equivalent rides along ────────────────────────
+
+	it("applyTranslation records the term's equivalent, and never overwrites one", () => {
+		const fm: Record<string, unknown> = {};
+		applyTranslation(fm, "en", "A device.", def, "de", "counter");
+		expect(fm.term_en).toBe("counter");
+		// A value already in the note may have been corrected by hand.
+		applyTranslation(fm, "en", "A device.", def, "de", "meter");
+		expect(fm.term_en).toBe("counter");
+	});
+
+	it("applyTranslation does not treat a surface form as stale when the definition changes", () => {
+		const fm: Record<string, unknown> = { term_en: "counter", definition_en: "A device.", translated_from: "stale" };
+		applyTranslation(fm, "it", "Un dispositivo.", def, "de", "contatore");
+		expect(fm.definition_en).toBeUndefined(); // made from an older definition
+		expect(fm.term_en).toBe("counter"); // a word does not go stale with the prose
+		expect(fm.term_it).toBe("contatore");
+	});
+
+	it("newTranslation takes a real equivalent and refuses the rest", () => {
+		const e = entry({ aliases: ["Zählern"], translations: [{ lang: "it", term: "contatore" }] });
+		expect(newTranslation(e, "en", "counter")).toEqual({ lang: "en", term: "counter" });
+		expect(newTranslation(e, "en", "  ")).toBeNull();
+		// The term itself is not a translation of itself — it just travels unchanged.
+		expect(newTranslation(e, "en", "zähler")).toBeNull();
+		// A language the entry already answers for is settled, possibly by hand.
+		expect(newTranslation(e, "it", "misuratore")).toBeNull();
+		// Already in the index under this entry, by either route.
+		expect(newTranslation(e, "en", "Zählern")).toBeNull();
+		expect(newTranslation(entry({ translations: [{ lang: "it", term: "contatore" }] }), "en", "Contatore")).toBeNull();
+	});
+
 	it("shows the instructed language, or under AUTO the passage's", () => {
 		expect(displayLanguage({ instructed: true, code: "EN" }, "Der Zähler wird abgelesen und die Rechnung folgt.")).toBe("en");
 		expect(displayLanguage({ instructed: false, code: "AUTO" }, "Der Zähler wird abgelesen und die Rechnung folgt.")).toBe("de");
@@ -379,5 +412,87 @@ describe("translated definitions", () => {
 		expect(kept.definitionTranslations).toEqual({ en: "A device." });
 		const replaced = mergeEntry(existing, entry({ definition: "The counter.", language: "en" }), true);
 		expect(replaced.language).toBe("en");
+	});
+});
+
+// ── ADR-208: the discussion section ─────────────────────────────────────────
+
+describe("the discussion section (ADR-208)", () => {
+	const base = entry({ definition: "Das Recht gegen Preisabsprachen.", contexts: ["Kartellrecht verbietet Absprachen."] });
+
+	it("round-trips through render and parse", () => {
+		const e = { ...base, discussion: "Es trennt Absprachen von Marktmacht.\n\nZwei Absätze bleiben zwei." };
+		const parsed = parseBody(renderBody(e));
+		expect(parsed.definition).toBe(base.definition);
+		expect(parsed.contexts).toEqual(base.contexts);
+		expect(parsed.discussion).toBe(e.discussion);
+	});
+
+	it("writes nothing when there is no discussion, so an old note is unchanged", () => {
+		const body = renderBody(base);
+		expect(body).not.toContain("##");
+		expect(parseBody(body).discussion).toBeUndefined();
+	});
+
+	it("reads a note written before the section existed", () => {
+		const old = "Das Recht gegen Preisabsprachen.\n\n> Kartellrecht verbietet Absprachen.\n";
+		expect(parseBody(old)).toEqual({ definition: base.definition, contexts: base.contexts });
+	});
+
+	it("keeps quotes and headings inside the discussion out of the contexts", () => {
+		// Everything after the heading is the reader's own prose, not our format.
+		const e = { ...base, discussion: "> Ein Zitat, das der Nutzer behalten will.\n\n## Eigene Zwischenüberschrift\n\nText." };
+		const parsed = parseBody(renderBody(e));
+		expect(parsed.contexts).toEqual(base.contexts);
+		expect(parsed.discussion).toBe(e.discussion);
+	});
+
+	it("survives a re-lookup, which carries no discussion", () => {
+		const existing = { ...base, discussion: "Hart erarbeitet." };
+		const relookup = entry({ definition: "Eine neue Definition.", source: "model" as const });
+		expect(mergeEntry(existing, relookup).discussion).toBe("Hart erarbeitet.");
+	});
+
+	it("is replaced outright by a second discussion, never appended", () => {
+		const existing = { ...base, discussion: "Erster Durchgang." };
+		const second = { ...entry(), discussion: "Zweiter Durchgang." };
+		expect(mergeEntry(existing, second).discussion).toBe("Zweiter Durchgang.");
+	});
+
+	it("does not disturb the definition's own protection", () => {
+		const manual = { ...base, source: "manual" as const, discussion: "Vorher." };
+		const merged = mergeEntry(manual, { ...entry({ definition: "Vom Modell." }), discussion: "Nachher." });
+		expect(merged.definition).toBe(base.definition); // manual definitions are kept
+		expect(merged.discussion).toBe("Nachher.");
+	});
+});
+
+// ── The composition `GlossaryService.save` actually performs ─────────────────
+//
+// The earlier mergeEntry tests passed an `existing` built by hand, which is not
+// where `existing` comes from: `save` reads the note, parses the body and
+// rebuilds the entry through `entryFromFrontmatter`. A field that survives
+// mergeEntry but is dropped there is deleted by the next write regardless.
+
+describe("round-tripping a note through save's own composition (ADR-208)", () => {
+	const reload = (entry: GlossaryEntry, fm: Record<string, unknown>) =>
+		entryFromFrontmatter(entry.term, fm, parseBody(stripFrontmatter(`---\ntype: term\n---\n\n${renderBody(entry)}`)));
+
+	it("a re-lookup keeps the discussion that is on disk", () => {
+		const onDisk = entry({ definition: "Alte Definition.", discussion: "Hart erarbeitet." });
+		const merged = mergeEntry(
+			reload(onDisk, { type: "term", source: "model" }),
+			entry({ definition: "Neue Definition." }),
+		);
+		expect(merged.definition).toBe("Neue Definition.");
+		expect(merged.discussion).toBe("Hart erarbeitet.");
+		expect(renderBody(merged)).toContain("Hart erarbeitet.");
+	});
+
+	it("carries the contexts through the same path", () => {
+		const onDisk = entry({ contexts: ["Ein belegter Satz."], discussion: "Text." });
+		const back = reload(onDisk, { type: "term", source: "model" });
+		expect(back.contexts).toEqual(["Ein belegter Satz."]);
+		expect(back.discussion).toBe("Text.");
 	});
 });

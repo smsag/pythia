@@ -4,7 +4,7 @@ import settingsEn from "./settings.en";
 const en = {
 	// On-device embeddings live in their own module (ADR-199, review #301).
 	...embeddingEn,
-	// The settings tab's strings likewise (ADR-206).
+	// The settings tab's strings likewise (ADR-209).
 	...settingsEn,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "No conversation",
@@ -50,6 +50,18 @@ const en = {
 	glossaryRegenerate:        "Define again",
 	glossaryRemove:            "Remove from glossary",
 	glossarySourceManual:      "by hand",
+	glossarySenseHint:        "Other sense",
+	glossarySenseHintPrompt:  "Which sense did you mean?",
+	glossarySenseHintPlaceholder:"e.g. not the legal sense, the one about…",
+	glossaryDiscuss:          "Discuss",
+	glossaryDiscussTooltip:   "Open a conversation about this term",
+	glossaryDiscussFailed:    "Could not open a conversation about \"{{term}}\": {{error}}",
+	termDiscussionSave:       "Save to \"{{term}}\"",
+	termDiscussionSaving:     "Distilling the discussion about \"{{term}}\"…",
+	termDiscussionSaved:      "Saved what this conversation established about \"{{term}}\"",
+	termDiscussionEmpty:      "This conversation settled nothing about \"{{term}}\" — the note is unchanged.",
+	termDiscussionNoEntry:    "\"{{term}}\" is no longer in the glossary — nothing was written.",
+	termDiscussionFailed:     "Could not summarize the discussion: {{error}}",
 	glossaryNoTerm:            "Select a single term to define.",
 	glossaryTranslating:       "Translating to {{code}}…",
 	glossaryTranslatedFrom:    "translated from {{code}}",
@@ -326,7 +338,7 @@ const en = {
 
 	// ── Settings ─────────────────────────────────────────────────────────────
 	// The settings tab's own strings live in settings.en.ts, spread in above
-	// (ADR-206) — the same per-feature split as the embedding strings.
+	// (ADR-209) — the same per-feature split as the embedding strings.
 
 	// ── Prompt optimizer ─────────────────────────────────────────────────────
 	cmdNewConversationFromPrompt:     "New conversation from prompt",

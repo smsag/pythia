@@ -2,7 +2,7 @@ import { Setting } from "obsidian";
 import { t } from "../../i18n";
 
 /**
- * The two pieces of grammar every settings section shares (ADR-206). They live
+ * The two pieces of grammar every settings section shares (ADR-209). They live
  * apart from `context.ts` because the embedding section uses them and must not
  * drag the plugin-bound helpers (and their modal imports) in with them.
  */
@@ -10,7 +10,7 @@ import { t } from "../../i18n";
 /**
  * A section heading and the one sentence that says what the section is for.
  *
- * The intro is not decoration: before ADR-206 the embedding block was the only
+ * The intro is not decoration: before ADR-209 the embedding block was the only
  * part of the tab that named its own remit, and the two sections that did not —
  * "Behaviour" and "Features" — had become the places rows went when nobody
  * decided where they belonged. A section with no sentence to write has no remit.

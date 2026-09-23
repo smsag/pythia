@@ -25,7 +25,7 @@ import { section } from "./settings/section";
  * model here; the two skip folders are picked in the tab's own folder section,
  * which are picked in other sections of the tab and reach this refresh through
  * `SettingsContext.refreshIndexStatus` — which is why the refresh is RETURNED
- * (ADR-206, closing review #367's remainder).
+ * (ADR-209, closing review #367's remainder).
  */
 export function renderEmbeddingSettings(
 	containerEl: HTMLElement,

@@ -42,9 +42,17 @@ class TestProvider extends BaseProvider {
 	get fastModel(): string { return "fast"; }
 	/** Every utility prompt sent, so prompt wording is assertable (ADR-166). */
 	prompts: string[] = [];
-	protected callUtility(_model: string, userMessage: string): Promise<string> {
+	/** What the next utility call replies, so a reply parser is assertable (ADR-206). */
+	reply = "";
+	/** The model each utility call ran on, so "which model" is assertable (ADR-208). */
+	models: string[] = [];
+	/** The max-output budget each utility call asked for (ADR-208 review). */
+	budgets: number[] = [];
+	protected callUtility(model: string, userMessage: string, maxTokens: number): Promise<string> {
+		this.models.push(model);
 		this.prompts.push(userMessage);
-		return Promise.resolve("");
+		this.budgets.push(maxTokens);
+		return Promise.resolve(this.reply);
 	}
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
 	protected runStreamRound(): Promise<RoundResult> {
@@ -189,9 +197,48 @@ describe("glossary prompts follow the passage under AUTO", () => {
 
 	it("translateDefinition names the target and carries the definition", async () => {
 		const p = makeProvider({ outputLanguage: "auto" });
-		await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
+		p.reply = "A device that records events.";
+		const out = await p.translateDefinition("Ein Gerät, das Ereignisse erfasst.", "English");
 		expect(p.prompts[0]).toContain("into English");
 		expect(p.prompts[0]).toContain("Ein Gerät, das Ereignisse erfasst.");
+		expect(out).toEqual({ definition: "A device that records events.", term: "" });
+	});
+});
+
+// ── ADR-206: the term's equivalent is asked for, not waited for ──────────────
+
+describe("cross-language surface forms (ADR-206)", () => {
+	it("defineTerm asks for English and for the conversation's language", async () => {
+		const p = makeProvider({ outputLanguage: "de" });
+		await p.defineTerm("Kartellrecht", "Cartel law prohibits price-fixing.", conv("en"));
+		expect(p.prompts[0]).toContain("established equivalent in English");
+		await p.defineTerm("Kartellrecht", "Kartellrecht verbietet Preisabsprachen.", conv("it"));
+		expect(p.prompts[1]).toContain("established equivalent in English and Italian");
+	});
+
+	it("under AUTO it still asks for English, and never waits for a bilingual passage", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Kartellrecht", "Kartellrecht verbietet Preisabsprachen.", conv("auto"));
+		expect(p.prompts[0]).toContain("established equivalent in English");
+		// ADR-149's scope rule is what left "cartel law" unmarked; it must not return.
+		expect(p.prompts[0]).not.toContain("Leave the line empty if the passage is monolingual");
+		expect(p.prompts[0]).toContain("even when the passage is monolingual");
+	});
+
+	it("translateDefinition asks for the term and reads it back", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		p.reply = "TERM: cartel law\nDEFINITION:\nThe body of rules against price-fixing.";
+		const out = await p.translateDefinition("Das Recht gegen Preisabsprachen.", "English", "Kartellrecht");
+		expect(p.prompts[0]).toContain('equivalent of "Kartellrecht"');
+		expect(out).toEqual({ definition: "The body of rules against price-fixing.", term: "cartel law" });
+	});
+
+	it("a person is translated without being asked for a name", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		p.reply = "A lawyer at the firm.";
+		const out = await p.translateDefinition("Eine Anwältin der Kanzlei.", "English");
+		expect(p.prompts[0]).not.toContain("TERM:");
+		expect(out.term).toBe("");
 	});
 });
 
@@ -257,5 +304,77 @@ describe("BaseProvider.resolveUserContent — the token warning is manual-only",
 	it("still warns when a large MANUAL note sits beside auto ones", async () => {
 		await provider(big).resolve(c, ["Manual/big.md", "Auto/big.md"], "hi", new Set(["Auto/big.md"]));
 		expect(warned()).toBe(true);
+	});
+});
+
+// ── ADR-208: the wrong sense, and the discussion that fixes it ──────────────
+
+describe("term discussion and the sense hint (ADR-208)", () => {
+	it("defineTerm carries the reader's correction, and says what to do when the passage disagrees", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"), "nicht die Eisenbahn, der Schachzug");
+		expect(p.prompts[0]).toContain("nicht die Eisenbahn, der Schachzug");
+		expect(p.prompts[0]).toContain("never silently define something else");
+	});
+
+	it("says nothing about a sense when none was given", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"));
+		expect(p.prompts[0]).not.toContain("which sense they mean");
+		await p.defineTerm("Zug", "Der Zug fuhr ein.", conv("de"), "   ");
+		expect(p.prompts[1]).not.toContain("which sense they mean");
+	});
+
+	it("summarizes the discussion on the conversation's own model, not the fast one", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		const c = {
+			model: "conversation-model",
+			messages: [
+				{ role: "user", content: "Gilt das auch für Einkaufsgemeinschaften?" },
+				{ role: "assistant", content: "Nur oberhalb einer Marktanteilsschwelle." },
+			],
+		} as unknown as Conversation;
+		await p.summarizeTermDiscussion("Kartellrecht", "Das Recht gegen Preisabsprachen.", c);
+		expect(p.models[0]).toBe("conversation-model");
+		expect(p.models[0]).not.toBe(p.fastModel);
+		expect(p.prompts[0]).toContain("Einkaufsgemeinschaften");
+		expect(p.prompts[0]).toContain("Das Recht gegen Preisabsprachen.");
+	});
+
+	it("tells the summarizer to keep the session and the tangents out of the note", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.summarizeTermDiscussion("Kartellrecht", "Eine Definition.", { model: "m", messages: [] } as unknown as Conversation);
+		expect(p.prompts[0]).toContain("Never narrate the session");
+		expect(p.prompts[0]).toContain("reply with nothing at all");
+		// It must not try to fix the definition — that field has its own repair.
+		expect(p.prompts[0]).toContain("do not correct it here");
+	});
+});
+
+// ── Review of ADR-208: the budget and which end of a long discussion is kept ──
+
+describe("term discussion — budget and truncation (ADR-208 review)", () => {
+	const longConv = (turns: number): Conversation => ({
+		model: "m",
+		messages: Array.from({ length: turns }, (_, i) => ({
+			role: i % 2 === 0 ? "user" : "assistant",
+			content: `turn ${i} ${"x".repeat(400)}`,
+		})),
+	} as unknown as Conversation);
+
+	it("keeps the END of a discussion that does not fit — understanding is where it lands", async () => {
+		const p = makeProvider({ outputLanguage: "auto" });
+		const c = longConv(120);
+		await p.summarizeTermDiscussion("Kartellrecht", "Eine Definition.", c);
+		expect(p.prompts[0]).toContain("turn 119");
+		expect(p.prompts[0]).not.toContain("turn 0 ");
+	});
+
+	it("is not given a smaller budget than the shorter summary it is modelled on", async () => {
+		// Lowering a cap truncates rather than shortens, and on a reasoning model
+		// the same budget pays for hidden reasoning (ADR-141).
+		const p = makeProvider({ outputLanguage: "auto" });
+		await p.summarizeTermDiscussion("X", "d", longConv(2));
+		expect(p.budgets[0]).toBeGreaterThanOrEqual(1024);
 	});
 });

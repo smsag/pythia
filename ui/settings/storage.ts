@@ -3,7 +3,7 @@ import { folderRow, numberRow, section, toggleRow, type SettingsContext } from "
 import { t } from "../../i18n";
 
 /**
- * History and storage (ADR-206): how many conversations Pythia keeps, where their
+ * History and storage (ADR-209): how many conversations Pythia keeps, where their
  * notes go, and what that costs.
  *
  * The order is the story the section tells — where conversations are kept, the two

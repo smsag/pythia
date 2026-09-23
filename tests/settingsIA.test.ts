@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The settings tab's information architecture (ADR-206), in the forbidden
+// The settings tab's information architecture (ADR-209), in the forbidden
 // direction: every rule the tab is organised by has a test that fails when a new
 // setting breaks it, because the previous arrangement drifted exactly by rows
 // being added where nobody had decided they belonged (principle 3).
@@ -185,7 +185,7 @@ function renderAll(over: Partial<typeof DEFAULT_SETTINGS> = {}): Section[] {
 
 beforeEach(() => { rows.length = 0; document.body.innerHTML = ""; });
 
-describe("every section names its own remit (ADR-206)", () => {
+describe("every section names its own remit (ADR-209)", () => {
 	it("opens with a heading and one non-empty intro sentence", () => {
 		// "Behaviour" and "Features" were the sections nobody could write a sentence
 		// for, and they are where ten unrelated rows accumulated. A section with no
@@ -205,7 +205,7 @@ describe("every section names its own remit (ADR-206)", () => {
 	});
 });
 
-describe("scope is the organising axis (ADR-206, principle 6)", () => {
+describe("scope is the organising axis (ADR-209, principle 6)", () => {
 	// claude-sonnet-4-6 accepts both temperature and effort, so every row of the
 	// section is in its overridable state and the rule can be asserted whole.
 	const both = { defaultAnthropicModel: "claude-sonnet-4-6" };
@@ -226,7 +226,7 @@ describe("scope is the organising axis (ADR-206, principle 6)", () => {
 
 	it("custom instructions sit with the global rules, not the defaults", () => {
 		// They apply to conversations already underway, so they are not something a
-		// new conversation "starts with"; before ADR-206 they rendered after the
+		// new conversation "starts with"; before ADR-209 they rendered after the
 		// embedding block and read as a vault-context setting.
 		const sections = renderAll();
 		const home = sections.find((s) => s.controls.some((r) => r.name === t("customInstructionsName")))!;
@@ -240,7 +240,7 @@ describe("scope is the organising axis (ADR-206, principle 6)", () => {
 	});
 });
 
-describe("the model row follows the chosen provider (ADR-206)", () => {
+describe("the model row follows the chosen provider (ADR-209)", () => {
 	it("is one row, naming the provider it belongs to", () => {
 		const s = renderAll({ defaultProvider: "openai" }).find((x) => x.heading === t("newConvSection"))!;
 		const model = s.controls.filter((r) => r.name === t("defaultModelName"));
@@ -262,10 +262,10 @@ describe("the model row follows the chosen provider (ADR-206)", () => {
 	});
 });
 
-describe("a folder lives with the feature that writes to it (ADR-206)", () => {
+describe("a folder lives with the feature that writes to it (ADR-209)", () => {
 	it("the two index skip folders repaint the index status row (#367)", () => {
 		// The conversations and default-notes folders are `scopeSignature`'s skip
-		// list, so moving one makes the index out of date. Before ADR-206 they had
+		// list, so moving one makes the index out of date. Before ADR-209 they had
 		// no way to reach the status row and it went on reading "Ready" with the one
 		// non-destructive action greyed out.
 		const skip = ["conversationsFolder", "scratchFolder"];
@@ -287,7 +287,7 @@ describe("a folder lives with the feature that writes to it (ADR-206)", () => {
 	});
 });
 
-describe("one way to make a heading (ADR-206, principle 3)", () => {
+describe("one way to make a heading (ADR-209, principle 3)", () => {
 	const SETTINGS_SOURCES = [
 		"settings.ts",
 		"ui/settings/context.ts",
@@ -324,7 +324,7 @@ describe("one way to make a heading (ADR-206, principle 3)", () => {
 	});
 });
 
-describe("the tab is a shell, and the order is the architecture (ADR-206)", () => {
+describe("the tab is a shell, and the order is the architecture (ADR-209)", () => {
 	it("renders the sections in the documented order", () => {
 		const src = read("settings.ts");
 		const order = [

@@ -5,7 +5,7 @@ import { t } from "../../i18n";
 
 /**
  * Notes Pythia writes — the places in the vault the user goes on to read and edit
- * themselves (ADR-206).
+ * themselves (ADR-209).
  *
  * This replaces the old "Vault folders" section, which grouped by value *type*:
  * every folder picker in one place, which is why the archive folder had to be
