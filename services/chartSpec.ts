@@ -327,3 +327,31 @@ export function spliceChartBlocks(text: string, blocks: readonly PendingChartBlo
 	}
 	return out + text.slice(cursor);
 }
+
+/** What the model is told when a chart was accepted and placed. Short, and it
+ *  carries the one instruction that matters: the numbers are drawn now, so do
+ *  not write them out again underneath. */
+export const CHART_TOOL_OK =
+	"Chart drawn inline in your answer at this point. Do not repeat these numbers as a table " +
+	"or a list — refer to the chart in your prose.";
+
+/** When the call was valid but nothing here can place it. Never reported as a
+ *  success: a model told "drawn" when nothing was drawn will write its answer
+ *  around a chart that does not exist. */
+export const CHART_TOOL_UNPLACED =
+	"Error: a chart cannot be placed automatically here. Write it into your answer yourself, " +
+	"as a ```" + CHART_BLOCK_LANG + " fenced block containing the same JSON.";
+
+/**
+ * Validate a `render_chart` call and record where its block belongs.
+ *
+ * The ONE place a tool call becomes a chart, shared by the send path and the
+ * model comparison so the two cannot answer differently. Returns the string the
+ * model receives — never throws, like every other tool result.
+ */
+export function acceptChartCall(input: unknown, offset: number, into: PendingChartBlock[]): string {
+	const parsed = parseChartSpec(input);
+	if (!parsed.ok) return `Error: ${parsed.error}`;
+	into.push({ offset, block: formatChartBlock(parsed.spec) });
+	return CHART_TOOL_OK;
+}

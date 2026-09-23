@@ -1,3 +1,5 @@
+import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
+import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import type { WebSearchService } from "./WebSearchService";
 import type { ToolCall, ToolDefinition } from "../models/types";
@@ -19,6 +21,38 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 			},
 		},
 		required: ["query"],
+	},
+};
+
+const RENDER_CHART_TOOL: ToolDefinition = {
+	name: "render_chart",
+	description:
+		"Draw a chart inline in your answer, at the point you call this. Use it when the answer " +
+		"turns on a handful of comparable numbers, INSTEAD OF writing them out as a table or a " +
+		"list. " + CHART_BLOCK_SCHEMA,
+	inputSchema: {
+		type: "object",
+		properties: {
+			type:       { type: "string", enum: ["bar", "line", "pie"] },
+			title:      { type: "string" },
+			categories: { type: "array", items: { type: "string" } },
+			series:     {
+				type:  "array",
+				items: {
+					type: "object",
+					properties: {
+						name:   { type: "string" },
+						values: { type: "array", items: { type: ["number", "null"] } },
+						source: { type: "string" },
+					},
+					required: ["name", "values"],
+				},
+			},
+			unit:    { type: "string" },
+			stacked: { type: "boolean" },
+			note:    { type: "string" },
+		},
+		required: ["type", "categories", "series"],
 	},
 };
 
@@ -110,10 +144,16 @@ export function getToolDefinitions(
 	// writeMode — it must be available even when writeMode is "none".
 	if (researchEnabled) tools.push(WEB_SEARCH_TOOL);
 
+	// render_chart writes nothing at all — not the vault, not the web — so it is
+	// gated on neither. It has to reach a comparison run (writeMode "none") and a
+	// conversation with research off, because numbers worth charting come out of
+	// a vault note as often as out of a search (ADR-210).
+	tools.push(RENDER_CHART_TOOL);
+
 	return tools;
 }
 
-const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search"]);
+const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search", "render_chart"]);
 
 export class ToolHandler {
 	constructor(
@@ -135,8 +175,20 @@ export class ToolHandler {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
 		}
 
-		// web_search is not a vault write — handle it before the path/content
-		// validation below, which is specific to the note-writing tools.
+		// Neither of the two read-only tools is a vault write, so both are handled
+		// before the path/content validation below.
+		//
+		// A chart reaching HERE means nobody intercepted the call, and so nobody
+		// can place the block — the send path and the comparison both do, through
+		// acceptChartCall. It is still validated, because the reason is worth
+		// giving; it is never reported as a success, because a model told "drawn"
+		// when nothing was drawn writes its answer around a chart that is not
+		// there (principle 2).
+		if (call.name === "render_chart") {
+			const parsed = parseChartSpec(call.input);
+			return parsed.ok ? CHART_TOOL_UNPLACED : `Error: ${parsed.error}`;
+		}
+
 		if (call.name === "web_search") {
 			if (!this.webSearch) return "Error: web search is not available.";
 			const query = call.input["query"];
@@ -210,6 +262,8 @@ export class ToolHandler {
 			names.add("prepend_note");
 		}
 		if (researchEnabled) names.add("web_search");
+		// Ungated, for the same reason getToolDefinitions offers it unconditionally.
+		names.add("render_chart");
 		return names;
 	}
 }

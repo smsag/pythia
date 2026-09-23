@@ -9,6 +9,7 @@ import { formatClockTime } from "../services/messageUtils";
 import { parseCitations } from "../services/citations";
 import { describeErrorForLog } from "../services/redact";
 import { ToolHandler } from "../services/ToolHandler";
+import { acceptChartCall, spliceChartBlocks, type PendingChartBlock } from "../services/chartSpec";
 import {
 	startComparison,
 	comparisonPrompt,
@@ -117,8 +118,14 @@ export class ComparisonController {
 		// already ends with the prompt (the original answer became candidate 0).
 		const armed: Conversation = { ...conv, provider: model.provider, model: model.id, writeMode: "none" };
 		const allowed = ToolHandler.allowedToolNames("none", conv.researchMode ?? false);
+		// A candidate may draw a chart — one model reaching for one and another not
+		// is part of what a comparison is for. Same accept path as the send, so the
+		// two cannot answer a tool call differently (ADR-210).
+		const charts: PendingChartBlock[] = [];
 		const onToolCall = (call: ToolCall): Promise<string> =>
-			call.name === "web_search"
+			call.name === "render_chart"
+				? Promise.resolve(acceptChartCall(call.input, textNode.data.length, charts))
+				: call.name === "web_search"
 				? this.d.plugin.toolHandler.execute(call, allowed)
 				: Promise.resolve("Error: note-writing tools are not available during a model comparison. Answer in the conversation instead.");
 
@@ -129,7 +136,7 @@ export class ComparisonController {
 				[...(prompt.attachedNotes ?? conv.contextNotes ?? [])],
 				(text) => { textNode.data += text; this.d.scrollToBottom(); },
 				(fullText, tokenUsage) => {
-					candidate.content = fullText;
+					candidate.content = spliceChartBlocks(fullText, charts);
 					if (tokenUsage) candidate.tokenUsage = tokenUsage;
 					const sources = parseCitations(fullText);
 					if (sources.length) candidate.sources = sources;

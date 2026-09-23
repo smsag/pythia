@@ -38,6 +38,7 @@ import { SendHintController } from "./ui/SendHintController";
 import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
+import { spliceChartBlocks } from "./services/chartSpec";
 import { ToolCallController } from "./ui/ToolCallController";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
@@ -1422,6 +1423,12 @@ export class PythiaSidebarView extends ItemView {
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
 		this.toolCalls.reset();
+		// BaseProvider's own `fullText` and this counter consume the same callback,
+		// so `streamedChars` is `fullText.length` at every instant — and a tool call
+		// fires between rounds, which makes it exactly the point in the answer where
+		// a chart belongs (ADR-210).
+		let streamedChars = 0;
+		const emit = (text: string): void => { streamedChars += text.length; appendToken(text); };
 
 		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
 		const autoArmedSearch = shouldAutoArmSearch({
@@ -1433,7 +1440,7 @@ export class PythiaSidebarView extends ItemView {
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
-		const onToolCall = this.toolCalls.handler(conv, researchActive);
+		const onToolCall = this.toolCalls.handler(conv, researchActive, () => streamedChars);
 
 		try {
 		await this.plugin.llmRouter.streamMessage(
@@ -1444,32 +1451,37 @@ export class PythiaSidebarView extends ItemView {
 			autoArmedSearch ? { ...turnConv, researchMode: true } : turnConv,
 			this.rewrite.decorate(text, conv),
 			attachedNotes,
-			appendToken,
+			emit,
 			async (fullText, tokenUsage, finish) => {
+				// Every use below is of `content`, not `fullText`: a chart rendered
+				// once and then dropped from the stored message would flash and vanish.
+				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks());
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
 				// callback is in flight — don't touch messagesEl/autoScroll in that case.
 				const stillActive = this.activeConversation?.id === conv.id;
 				if (stillActive) {
-					await finalize(fullText);
+					await finalize(content);
 				}
 				// Reset after render so the send guard stays active during MarkdownRenderer.render.
 				this.setStreamingState(false);
 
-				if (!fullText) {
+				// `content`, not `fullText`: an answer whose only output was a chart
+				// said nothing in words, and dropping it would throw the chart away.
+				if (!content) {
 					streamingRow.remove();
 					this.truncation.noticeEmptyReply(finish);
 					return;
 				}
 
-				const parsedSources = appendWebSources(parseCitations(fullText), this.toolCalls.takeWebSources());
+				const parsedSources = appendWebSources(parseCitations(content), this.toolCalls.takeWebSources());
 				// Priced now (ADR-163), on the model that answered: turnConv, which a
 				// template or model suggestion can move off conv.model (ADR-181).
 				const cost = costSnapshot(turnConv.model, tokenUsage);
 				const assistantMsg: Message = {
 					id: crypto.randomUUID(),
 					role: "assistant",
-					content: fullText,
+					content,
 					timestamp: new Date().toISOString(),
 					model: turnConv.model,
 					tokenUsage,
@@ -1508,6 +1520,9 @@ export class PythiaSidebarView extends ItemView {
 
 				if (shouldGenerateTitle(conv)) {
 					const convId = conv.id;
+					// Deliberately `fullText`: the title comes from what the answer SAID,
+					// and a chart's JSON in the digest is noise the model would have to
+					// see past.
 					this.plugin.llmRouter
 						.generateConversationTitle(userMsg.content, fullText, conv.provider, conv)
 						.then(async (title) => {

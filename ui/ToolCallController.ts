@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { ToolHandler } from "../services/ToolHandler";
 import { parseWebSourcesFromResult } from "../services/WebSearchService";
 import { noteBasename } from "../services/pathUtils";
+import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
 
 export interface ToolCallDeps {
 	app: App;
@@ -31,12 +32,14 @@ export interface ToolCallDeps {
  */
 export class ToolCallController {
 	private webSources: { title: string; url: string }[] = [];
+	private chartBlocks: PendingChartBlock[] = [];
 
 	constructor(private readonly d: ToolCallDeps) {}
 
 	/** Drained at the start of every send. */
 	reset(): void {
 		this.webSources = [];
+		this.chartBlocks = [];
 	}
 
 	/** The web results captured during this send. */
@@ -44,14 +47,34 @@ export class ToolCallController {
 		return this.webSources;
 	}
 
+	/** The charts accepted during this send, each with the point in the answer it
+	 *  belongs at. Spliced in at commit by `spliceChartBlocks`. */
+	takeChartBlocks(): PendingChartBlock[] {
+		return this.chartBlocks;
+	}
+
 	/**
 	 * The `onToolCall` handler for one send.
 	 *
 	 * `researchActive` is passed rather than read off the conversation because an
 	 * auto-armed search is a per-send override that is never persisted (ADR-099).
+	 *
+	 * `charsSoFar` is how a chart finds its place in the answer. The provider's
+	 * own `fullText` and the view's token callback consume the same stream, and
+	 * `handleToolCalls` runs BETWEEN rounds — so at the moment a tool call fires,
+	 * the characters emitted so far are exactly the text before it.
 	 */
-	handler(conv: Conversation, researchActive: boolean): (call: ToolCall) => Promise<string> {
+	handler(
+		conv: Conversation, researchActive: boolean, charsSoFar: () => number,
+	): (call: ToolCall) => Promise<string> {
 		return async (call: ToolCall): Promise<string> => {
+			// A chart writes nothing, so there is nothing to confirm and no chip to
+			// show — the chart itself is the feedback, and it appears the moment the
+			// answer commits. Validation is instantaneous, so a spinner would only
+			// ever flash (ADR-210).
+			if (call.name === "render_chart") {
+				return acceptChartCall(call.input, charsSoFar(), this.chartBlocks);
+			}
 			if (call.name === "web_search") return this.runSearch(call, conv, researchActive);
 			return this.runWrite(call, conv, researchActive);
 		};
