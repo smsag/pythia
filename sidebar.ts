@@ -1,10 +1,10 @@
 import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
-import { estimateTokensFromBytes, lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
+import { lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
 import { applyAccentContrast } from "./ui/accentContrast";
 import { PYTHIA_ICON_ID } from "./ui/pluginIcon";
-import { noteBasename, safeNoteName } from "./services/pathUtils";
+import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
@@ -15,7 +15,6 @@ import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
-import { referenceEntries } from "./ui/referenceEntries";
 import { OptimizationController } from "./ui/OptimizationController";
 import { NavigatorController } from "./ui/NavigatorController";
 import { HistoryController, type HistoryPick } from "./ui/HistoryController";
@@ -39,6 +38,7 @@ import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
 import { spliceChartBlocks } from "./services/chartSpec";
+import { ReferenceRowController } from "./ui/ReferenceRowController";
 import { ToolCallController } from "./ui/ToolCallController";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
@@ -48,9 +48,8 @@ import { NoteSuggestModal } from "./suggest/NoteSuggest";
 import { InputModal } from "./suggest/InputModal";
 import { buildStreamErrorMessage } from "./services/apiError";
 import { describeErrorForLog } from "./services/redact";
-import { DeleteFileModal } from "./suggest/DeleteFileModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { appendSourceIcon, SOURCE_ICONS } from "./ui/icons";
+import { SOURCE_ICONS } from "./ui/icons";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -93,9 +92,7 @@ export class PythiaSidebarView extends ItemView {
 	// Tool calls mid-answer: the chips, and what they leave for the commit
 	// (the real Tavily sources, whatever the model chose to cite) — ADR-210.
 	private toolCalls!: ToolCallController;
-	private referencePillsEl!: HTMLElement;
-	private referenceSectionEl!: HTMLElement;
-	private referenceRowHasEntries = false;
+	private referenceRow!: ReferenceRowController;
 
 	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
@@ -262,7 +259,7 @@ export class PythiaSidebarView extends ItemView {
 		this.headerController.renderHeader();
 		this.headerController.updateInstructions();
 		this.updateToolbarToggles();
-		this.renderReferencePills();
+		this.referenceRow.render();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
 		if (focus) this.inputEl?.focus();
@@ -281,7 +278,7 @@ export class PythiaSidebarView extends ItemView {
 		if (!conv.contextNotes.includes(path)) {
 			conv.contextNotes.push(path);
 			void this.plugin.conversationStore.save(conv);
-			this.renderReferencePills();
+			this.referenceRow.render();
 		}
 	}
 
@@ -373,9 +370,16 @@ export class PythiaSidebarView extends ItemView {
 
 		this.buildChatArea(container);
 
-		this.referenceSectionEl = container.createDiv({ cls: "p-ref-row" });
-		this.referencePillsEl = this.referenceSectionEl.createDiv({ cls: "p-pills" });
-		this.referenceSectionEl.style.display = "none";
+		this.referenceRow = new ReferenceRowController({
+			app: this.app,
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			isInputCollapsed: () => this.inputAreaCollapsed,
+			refreshToolbarToggles: () => this.updateToolbarToggles(),
+			refreshContextInspector: () => this.contextInspector.refresh(),
+			onContextNoteRemoved: () => { /* the composer hook lands here next (ADR-211) */ },
+		});
+		this.referenceRow.mount(container);
 
 		this.buildInputArea(container);
 
@@ -435,7 +439,7 @@ export class PythiaSidebarView extends ItemView {
 			getChipEl: () => this.headerController.getChipEl(),
 			getLastTokenUsageMsg: () => lastTokenUsageMessage(this.activeConversation?.messages ?? []),
 			scrollToTop: () => this.scrollToTop(),
-			refreshReferencePills: () => this.renderReferencePills(),
+			refreshReferencePills: () => this.referenceRow.render(),
 			onSummarize: () => void this.summaryController.generateConversationSummary(),
 		});
 
@@ -477,7 +481,7 @@ export class PythiaSidebarView extends ItemView {
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
 			focusInput: () => this.inputEl?.focus(),
-			refreshPills: () => this.renderReferencePills(),
+			refreshPills: () => this.referenceRow.render(),
 		});
 		this.toolCalls = new ToolCallController({
 			app: this.app,
@@ -579,7 +583,7 @@ export class PythiaSidebarView extends ItemView {
 				}
 				if (changed) {
 					void this.plugin.conversationStore.save(conv);
-					this.renderReferencePills();
+					this.referenceRow.render();
 				}
 			}
 		);
@@ -803,100 +807,12 @@ export class PythiaSidebarView extends ItemView {
 			"title",
 			this.inputAreaCollapsed ? t("expandInputTooltip") : t("minimizeInputTooltip")
 		);
-		this.updateReferenceRowVisibility();
+		this.referenceRow.updateVisibility();
 	}
 
 	private ensureInputExpanded(): void {
 		if (this.inputAreaCollapsed) this.toggleInputArea();
 	}
-
-	private updateReferenceRowVisibility(): void {
-		this.referenceSectionEl.style.display =
-			this.referenceRowHasEntries && !this.inputAreaCollapsed ? "" : "none";
-	}
-
-	private renderReferencePills(): void {
-		this.updateToolbarToggles(); // every template arm/clear repaints this row
-		this.referencePillsEl.empty();
-		const conv = this.activeConversation;
-
-		if (!conv) {
-			this.referenceRowHasEntries = false;
-			this.updateReferenceRowVisibility();
-			return;
-		}
-
-		const entries = referenceEntries(conv, this.plugin.getAutoContext(conv.id));
-
-		this.referenceRowHasEntries = entries.length > 0;
-		this.updateReferenceRowVisibility();
-		// Keep the context inspector in sync with note add/remove.
-		this.contextInspector.refresh();
-		if (entries.length === 0) return;
-
-		for (const entry of entries) {
-			const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
-			const displayName = "label" in entry ? entry.label : noteBasename(entry.path);
-			const file = this.app.vault.getAbstractFileByPath(entry.path);
-			const tokEst = file instanceof TFile ? estimateTokensFromBytes(file.stat.size) : null;
-
-			// Reference: <source icon> name ~tokens × (ADR-193)
-			const ref = this.referencePillsEl.createEl("span", { cls: "p-wikilink" });
-			// Auto-retrieved pills are read-only and visually distinct (no × — they
-			// are ephemeral per-turn context, not persistent conversation context).
-			if (entry.kind === "auto") ref.addClass("p-wikilink--auto");
-			if (entry.kind === "template" || entry.kind === "rewrite") ref.addClass("p-wikilink--template");
-			appendSourceIcon(ref, entry.kind === "context" ? "note" : entry.kind);
-			const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
-			const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
-			label.addEventListener("click", async () => {
-				const f = this.app.vault.getAbstractFileByPath(entry.path);
-				if (f instanceof TFile) {
-					await this.app.workspace.getLeaf(false).openFile(f);
-				} else {
-					new Notice(t("fileNotFound", { path: entry.path }));
-				}
-			});
-			if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
-			if (entry.kind === "auto") continue; // read-only: no remove/delete affordance
-			const x = ref.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
-			if (entry.kind !== "output") {
-				x.addEventListener("click", async () => {
-					if (entry.kind === "template") conv.pendingTemplate = undefined;
-					else if (entry.kind === "rewrite") conv.pendingRewrite = undefined;
-					else conv.contextNotes = conv.contextNotes.filter(n => n !== entry.path);
-					await this.plugin.conversationStore.save(conv);
-					this.renderReferencePills();
-				});
-			} else {
-				x.addEventListener("click", () => {
-					new DeleteFileModal(this.app, fileName, async () => {
-						const f = this.app.vault.getAbstractFileByPath(entry.path);
-						if (f instanceof TFile) await this.app.vault.trash(f, true);
-						conv[entry.field] = undefined;
-						await this.plugin.conversationStore.save(conv);
-						this.renderReferencePills();
-					}).open();
-				});
-			}
-		}
-
-		const addBtn = this.referencePillsEl.createEl("button", {
-			cls: "pb pb-link pythia-pill-add",
-			attr: { title: t("addContextNoteTooltip") },
-			text: t("addNoteInline"),
-		});
-		addBtn.addEventListener("click", () => {
-			new NoteSuggestModal(this.app, (file) => {
-				if (!conv.contextNotes.includes(file.path)) {
-					conv.contextNotes.push(file.path);
-					void this.plugin.conversationStore.save(conv);
-					this.renderReferencePills();
-				}
-			}).open();
-		});
-	}
-
 
 	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
 		this.exchangeActions.hidePreview();
@@ -1261,7 +1177,7 @@ export class PythiaSidebarView extends ItemView {
 			if (!conv.contextNotes.includes(file.path)) {
 				conv.contextNotes.push(file.path);
 				void this.plugin.conversationStore.save(conv);
-				this.renderReferencePills();
+				this.referenceRow.render();
 			}
 		}).open();
 	}
@@ -1281,7 +1197,7 @@ export class PythiaSidebarView extends ItemView {
 			conv.pendingTemplate = armPendingTemplate(tpl);
 			await this.plugin.conversationStore.save(conv);
 			this.headerController.updateInstructions();
-			this.renderReferencePills();
+			this.referenceRow.render();
 			new Notice(t("appliedTemplate", { name: tpl.name }));
 
 			if (tpl.autoPrompt) {
@@ -1349,7 +1265,7 @@ export class PythiaSidebarView extends ItemView {
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = boundary;
 					await this.plugin.conversationStore.save(conv);
-					this.renderReferencePills();
+					this.referenceRow.render();
 					new Notice(t("savedToPath", { path }));
 				} catch (e) {
 					new Notice(t("saveFailed", { error: e instanceof Error ? e.message : String(e) }));
@@ -1493,7 +1409,7 @@ export class PythiaSidebarView extends ItemView {
 				if (this.activeConversation?.id === conv.id) {
 					this.lastRenderedMsgId = assistantMsg.id;
 					// Surface any vault-RAG notes pulled in this turn as auto pills (ADR-116).
-					this.renderReferencePills();
+					this.referenceRow.render();
 				}
 				const rows = this.messagesEl.querySelectorAll(".p-msg-ai");
 				const lastRow = rows[rows.length - 1] as HTMLElement | null;
