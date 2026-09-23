@@ -84,6 +84,7 @@ export class Plugin extends Component {
 	addRibbonIcon(): Element { return document.createElement("div"); }
 	addSettingTab(): void {}
 	registerObsidianProtocolHandler(): void {}
+	registerMarkdownCodeBlockProcessor(): void {}
 	addStatusBarItem(): Element { return document.createElement("div"); }
 }
 

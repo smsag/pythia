@@ -16,6 +16,8 @@ import {
 	DEFAULT_SYSTEM_PROMPT,
 	GROUNDING_INSTRUCTION,
 	WEB_CITATION_INSTRUCTION,
+	CHART_WHEN_INSTRUCTION,
+	CHART_SOURCE_INSTRUCTION,
 	NO_SOLICITATION_INSTRUCTION,
 	CUSTOM_INSTRUCTIONS_TAG,
 	UNTRUSTED_CONTENT_INSTRUCTION,
@@ -104,6 +106,10 @@ export function buildSystemPrompt(
 	// driven by the KB framing + note tools, not the prompt text).
 	parts.push(NO_SOLICITATION_INSTRUCTION);
 
+	// A standing rule about how to present numbers, like the one above it —
+	// not gated on research mode, because vault numbers deserve the same (ADR-210).
+	parts.push(CHART_WHEN_INSTRUCTION);
+
 	// Prompt-injection guard — added whenever untrusted context (attached notes/
 	// PDFs, a prior summary, a forked excerpt, or web results in research mode)
 	// will accompany this request, so the model is told upfront to treat that
@@ -133,6 +139,7 @@ export function buildSystemPrompt(
 				`Your training data has a cutoff, so anything after it — recent events, current prices, latest versions, people's present roles — may be outdated or unknown to you. ` +
 				`Default to the web_search tool whenever a question is time-sensitive or you are not fully confident a fact is still current: search first, then answer from the results rather than from memory. ` +
 				`Base your answer on the results. ${WEB_CITATION_INSTRUCTION}\n` +
+				`${CHART_SOURCE_INSTRUCTION}\n` +
 				`</${RECENT_CONTEXT_TAG}>`
 		);
 	}

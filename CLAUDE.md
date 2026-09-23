@@ -36,6 +36,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take() drains) + registerVaultWatcher — the four vault listeners and the debounced flush (ADR-121/205)
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
+    chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
@@ -80,6 +81,13 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
     dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
+    clipboard.ts              ← the ONE copy control: copyTextWithFeedback + copyBlobWithFeedback (ClipboardItem gets an UNRESOLVED promise, or Safari loses the gesture) — ADR-210
+    ToolCallController.ts     ← what happens when the model calls a tool mid-answer: the chips, the web sources and the accepted charts, plus the stream counter that says where a chart belongs (ADR-210)
+    chart/palette.ts          ← the ONE module allowed to name a colour: series swatches derived per theme ground on a WCAG shifted-luminance ladder, floored at 3:1 (ADR-198's number)
+    chart/layout.ts           ← pure chart geometry, no DOM — a bar's axis ALWAYS includes zero, a line keeps its own range, a gap breaks the line (ADR-210)
+    chart/render.ts           ← geometry → SVG via createElementNS; never createEl("svg"), which renders nothing and reports nothing
+    chart/card.ts             ← renderChartCard: what a ```pythia-chart block becomes, in the panel AND in any vault note
+    chart/export.ts           ← SVG → resolved-colour clone → canvas → PNG; a CSS custom property does not cross the <img> boundary
     renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
     keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
@@ -128,6 +136,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
+    chart.{en,de}.ts          ← the chart card's strings; the PARSER's errors stay English on purpose (they go to the model and into bug reports)
     embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-199)
     settings.{en,de}.ts       ← the settings tab's strings, section names and intros first in render order (ADR-209)
   docs/
@@ -666,6 +675,21 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **No search field, tabs, folds or "Advanced" section** (D-44), no price table (ADR-163), and no `h2` title — Obsidian already titles the tab
 
 ---
+
+### Charts in an answer (ADR-210)
+
+- **The artifact is a fenced ` ```pythia-chart ` block inside `Message.content`** — never a field on `Message`. That is what makes a chart persist, re-render, copy, and travel verbatim into a saved or archived note. A marker plus a stored field was considered and rejected for exactly that last reason
+- **`parseChartSpec` is the ONE validator**, shared by the `render_chart` tool and by the card rendering a block the model wrote itself. Every rejection **names the offending field** — a series/categories mismatch names BOTH lengths — because the string goes to the model and has to be actionable. **Caps are named, never silently applied**, and the spec is **built fresh, never spread**: an unknown key, a hardcoded series `color` above all, must not reach `Message.content`, where it would survive into a vault note and defeat the theme for good
+- **The chart replaces a table by DEFAULT, never by decree.** `CHART_WHEN_INSTRUCTION` sits after the conversation's system prompt and after the user's custom instructions, so a flat "never" would be the later and louder voice — the rule carves the user out explicitly (*if they ask for the table as well, give them both*) and says it is about duplication, not about tables. A rule Pythia wrote must not outrank what the user asked for
+- **The tool is the validating door, not a second mechanism.** It earns its place by returning a reason the model can act on in the same turn. `render_chart` is gated on **neither `writeMode` nor research** — it writes nothing, and has to reach a comparison run and a conversation with research off
+- **A chart lands where the model paused to ask for it.** `BaseProvider`'s `fullText` and the view's token sink consume the same stream and `handleToolCalls` runs BETWEEN rounds, so the characters emitted so far are exactly the text before the call. `ToolCallController.begin()` owns that counter. **Never splice inside `BaseProvider`** — it changes the loop all three providers share, for a worse position
+- **The commit path uses `content`, never `fullText`**, and `if (!content)` is the empty check: a turn whose only output is a chart said nothing in words and would otherwise be dropped. The **title prompt keeps `fullText`** on purpose — a title comes from what the answer said
+- **The card sets `data-decorated` FIRST.** The code-block processor names its container `.block-language-pythia-chart`, which `decorateCodeBlocks`' diagram branch matches and `stampSvgSize` would pin to a fixed width
+- **Responsive, deliberately unlike ADR-004.** A diagram pans because Mermaid decided its size; we decide, so a chart is laid out to the width it is given and re-laid out on resize. Too many categories are thinned, never scrolled
+- **A bar chart's axis always includes zero.** A bar's length reads as magnitude, so an axis starting at 90 turns a 2% difference into a doubling. A line chart keeps its own range; a `null` breaks the line rather than being bridged
+- **Colour lives in `ui/chart/palette.ts` and nowhere else.** Swatches are derived against the live theme ground and published as `--p-chart-cN` on the `<svg>` root; `tests/chartRules.test.ts` fails on a colour literal anywhere else under `ui/chart/`. **Series 1 is not `var(--color-accent)`** — hard rule 6 is about accent-*coloured surfaces*, and a user-chosen accent would collide with whichever neighbour shares its hue
+- **The PNG exists because a CSS custom property does not cross the `<img>` boundary.** The export clone is painted by attribute, taking each swatch off the root's inline style rather than through the CSSOM. `ClipboardItem` gets an **unresolved promise** — awaiting the blob first spends the user gesture and the write fails on iOS alone. The text fallback ships and is never hidden on mobile
+- **One clipboard helper**: `ui/clipboard.ts`. Four legacy sites are grandfathered in `tests/chartRules.test.ts` and that list may only shrink
 
 ## What not to build
 

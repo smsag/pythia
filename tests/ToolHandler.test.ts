@@ -6,6 +6,10 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../services/NoteWriter", () => ({ NoteWriter: class {} }));
 
 import { getToolDefinitions, ToolHandler } from "../services/ToolHandler";
+import {
+	acceptChartCall, CHART_TOOL_OK, CHART_TOOL_UNPLACED, type PendingChartBlock,
+} from "../services/chartSpec";
+import { CHART_BLOCK_SCHEMA } from "../services/promptConstants";
 import type { NoteWriter } from "../services/NoteWriter";
 import type { WebSearchService } from "../services/WebSearchService";
 import type { ToolCall } from "../models/types";
@@ -30,44 +34,128 @@ const call = (name: string, input: Record<string, unknown>): ToolCall => ({
 
 // ── getToolDefinitions ────────────────────────────────────────────────────────
 
+/** The tools writeMode actually gates. The two read-only ones — web_search and
+ *  render_chart — are gated on other things, or on nothing, so a test about
+ *  write modes has to say which tools it means. */
+const noteTools = (...args: Parameters<typeof getToolDefinitions>): string[] =>
+	getToolDefinitions(...args).map((d) => d.name).filter((n) => n !== "web_search" && n !== "render_chart");
+
 describe("getToolDefinitions", () => {
-	it("returns empty array for write mode 'none'", () => {
-		expect(getToolDefinitions("Scratch", "none")).toHaveLength(0);
+	it("offers no note tool for write mode 'none'", () => {
+		expect(noteTools("Scratch", "none")).toEqual([]);
 	});
 
 	it("returns only create_note for write mode 'create'", () => {
-		const defs = getToolDefinitions("Scratch", "create");
-		expect(defs).toHaveLength(1);
-		expect(defs[0].name).toBe("create_note");
+		expect(noteTools("Scratch", "create")).toEqual(["create_note"]);
 	});
 
 	it("returns only prepend_note for write mode 'update'", () => {
-		const defs = getToolDefinitions("Scratch", "update");
-		expect(defs).toHaveLength(1);
-		expect(defs[0].name).toBe("prepend_note");
+		expect(noteTools("Scratch", "update")).toEqual(["prepend_note"]);
 	});
 
 	it("returns only rewrite_note for write mode 'rewrite'", () => {
-		const defs = getToolDefinitions("Scratch", "rewrite");
-		expect(defs).toHaveLength(1);
-		expect(defs[0].name).toBe("rewrite_note");
+		expect(noteTools("Scratch", "rewrite")).toEqual(["rewrite_note"]);
 	});
 
-	it("returns all three tools for write mode 'all' (default)", () => {
-		const defs = getToolDefinitions("Scratch");
-		expect(defs).toHaveLength(3);
-		expect(defs.map(d => d.name)).toEqual(["create_note", "prepend_note", "rewrite_note"]);
+	it("returns all three note tools for write mode 'all' (default)", () => {
+		expect(noteTools("Scratch")).toEqual(["create_note", "prepend_note", "rewrite_note"]);
 	});
 
 	it("embeds the default folder in the create_note description", () => {
-		const [def] = getToolDefinitions("My Notes", "create");
-		expect(def.description).toContain("My Notes");
+		const def = getToolDefinitions("My Notes", "create").find((d) => d.name === "create_note");
+		expect(def?.description).toContain("My Notes");
 	});
 
-	it("each definition has required path and content in its input schema", () => {
+	it("each note definition has required path and content in its input schema", () => {
 		for (const def of getToolDefinitions("Scratch")) {
+			if (def.name === "render_chart" || def.name === "web_search") continue;
 			expect((def.inputSchema as { required: string[] }).required).toContain("path");
 			expect((def.inputSchema as { required: string[] }).required).toContain("content");
+		}
+	});
+});
+
+// ── render_chart gating (ADR-210) ─────────────────────────────────────────────
+
+describe("getToolDefinitions — render_chart", () => {
+	// It writes nothing at all, so it is gated on neither writeMode nor research:
+	// it has to reach a comparison run and a conversation with research off.
+	it("is offered in every write mode, with or without research", () => {
+		for (const mode of ["none", "create", "update", "rewrite", "all"] as const) {
+			for (const research of [false, true]) {
+				expect(getToolDefinitions("Scratch", mode, research).map((d) => d.name))
+					.toContain("render_chart");
+			}
+		}
+	});
+
+	it("asks for the three fields a chart cannot be drawn without", () => {
+		const def = getToolDefinitions("Scratch").find((d) => d.name === "render_chart");
+		const required = (def?.inputSchema as { required: string[] }).required;
+		expect(required).toEqual(["type", "categories", "series"]);
+	});
+
+	// One statement of the format, shared with the standing prompt rule.
+	it("describes the format once, from promptConstants", () => {
+		const def = getToolDefinitions("Scratch").find((d) => d.name === "render_chart");
+		expect(def?.description).toContain(CHART_BLOCK_SCHEMA);
+	});
+});
+
+describe("ToolHandler — render_chart", () => {
+	// Reaching execute means nobody intercepted the call, so nobody can place the
+	// block. Never reported as a success: a model told "drawn" when nothing was
+	// drawn writes its answer around a chart that is not there.
+	it("does not claim a chart was drawn when it could not place one", async () => {
+		const result = await makeHandler().execute(call("render_chart", {
+			type: "bar", categories: ["a", "b"], series: [{ name: "s", values: [1, 2] }],
+		}));
+		expect(result).toBe(CHART_TOOL_UNPLACED);
+		expect(result.startsWith("Error")).toBe(true);
+	});
+
+	it("gives the validator's reason for a bad spec, and never throws", async () => {
+		const result = await makeHandler().execute(call("render_chart", {
+			type: "bar", categories: ["a", "b"], series: [{ name: "s", values: [1] }],
+		}));
+		expect(result).toContain("series[0].values");
+	});
+
+	it("is allowed in every write mode", () => {
+		for (const mode of ["none", "create", "update", "rewrite", "all"] as const) {
+			expect(ToolHandler.allowedToolNames(mode).has("render_chart")).toBe(true);
+		}
+	});
+});
+
+// ── acceptChartCall — the one place a tool call becomes a chart ───────────────
+
+describe("acceptChartCall", () => {
+	const good = { type: "bar", categories: ["a", "b"], series: [{ name: "s", values: [1, 2] }] };
+
+	it("records the block at the offset it was called at", () => {
+		const into: PendingChartBlock[] = [];
+		expect(acceptChartCall(good, 42, into)).toBe(CHART_TOOL_OK);
+		expect(into).toHaveLength(1);
+		expect(into[0].offset).toBe(42);
+		expect(into[0].block).toContain("```pythia-chart");
+	});
+
+	// The instruction that matters: the numbers are drawn now.
+	it("tells the model not to write the numbers out as well", () => {
+		expect(CHART_TOOL_OK).toContain("Do not repeat these numbers");
+	});
+
+	it("records nothing for a spec it rejects", () => {
+		const into: PendingChartBlock[] = [];
+		const result = acceptChartCall({ type: "donut" }, 0, into);
+		expect(result.startsWith("Error")).toBe(true);
+		expect(into).toEqual([]);
+	});
+
+	it("never throws, whatever it is handed", () => {
+		for (const input of [null, undefined, 7, "bar", []]) {
+			expect(() => acceptChartCall(input, 0, [])).not.toThrow();
 		}
 	});
 });
@@ -264,7 +352,8 @@ describe("getToolDefinitions — web_search research gating", () => {
 
 	it("exposes web_search even when writeMode is 'none'", () => {
 		const defs = getToolDefinitions("Scratch", "none", true);
-		expect(defs.map((d) => d.name)).toEqual(["web_search"]);
+		// Only the two read-only tools: no note tool is offered in this mode.
+		expect(defs.map((d) => d.name)).toEqual(["web_search", "render_chart"]);
 		expect((defs[0].inputSchema as { required: string[] }).required).toContain("query");
 	});
 });

@@ -20,7 +20,8 @@ vi.mock("obsidian", () => ({
 }));
 
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs, neutralizeControlTags } from "../services/ContextBuilder";
-import { PRIOR_SUMMARY_INSTRUCTION, NO_SOLICITATION_INSTRUCTION, UNTRUSTED_CONTENT_INSTRUCTION } from "../services/promptConstants";
+import { PRIOR_SUMMARY_INSTRUCTION, NO_SOLICITATION_INSTRUCTION, UNTRUSTED_CONTENT_INSTRUCTION, CHART_WHEN_INSTRUCTION, CHART_SOURCE_INSTRUCTION } from "../services/promptConstants";
+import { CHART_BLOCK_LANG, parseChartBlock } from "../services/chartSpec";
 import type { Conversation } from "../models/types";
 import type { App } from "obsidian";
 
@@ -208,6 +209,9 @@ describe("buildSystemPrompt", () => {
 		expect(result).toBe(
 			"<system_prompt>\nHi\n</system_prompt>\n\n" +
 			NO_SOLICITATION_INSTRUCTION +
+			"\n\n" +
+			// A standing rule about presenting numbers, beside the one above it.
+			CHART_WHEN_INSTRUCTION +
 			"\n\n" +
 			// A summary is untrusted context, so the injection guard is added.
 			UNTRUSTED_CONTENT_INSTRUCTION +
@@ -470,5 +474,66 @@ describe("buildAttachedNotesContent — auto-retrieved budget (ADR-183)", () => 
 		const app = { vault: { getAbstractFileByPath: () => null, read: async () => "" } } as unknown as App;
 		const out = await buildAttachedNotesContent(app, ["Notes/gone.md"], "q", new Set(["Notes/gone.md"]));
 		expect(out.missingNotes).toEqual(["Notes/gone.md"]);
+	});
+});
+
+// ── The chart rule (ADR-210) ──────────────────────────────────────────────────
+
+describe("chart instructions", () => {
+	// Numbers worth charting come out of a vault note or a pasted table as often
+	// as out of a web search, so the rule is standing rather than research-only.
+	it("states when to draw a chart in every conversation", async () => {
+		expect(buildSystemPrompt(baseConv())).toContain(CHART_WHEN_INSTRUCTION);
+	});
+
+	// Left to itself a model draws the chart AND writes the table, which doubles
+	// the answer and makes the reader check one against the other.
+	it("says instead of, not as well as", () => {
+		expect(CHART_WHEN_INSTRUCTION).toContain("INSTEAD OF");
+	});
+
+	// The block sits after the conversation's system prompt AND after the user's
+	// custom instructions, so without this it was the later, more emphatic voice:
+	// a standing "show the numbers too" had to argue with a flat "never".
+	it("lets an explicit request for both win", () => {
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/their request wins/i);
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/asks for the table as well/i);
+	});
+
+	// The rule is against duplicating the same numbers, not against tables.
+	it("says the rule is about duplication, not about tables", () => {
+		expect(CHART_WHEN_INSTRUCTION).toMatch(/DIFFERENT numbers is not a duplicate/);
+	});
+
+	// A user instruction reaching the model AFTER this rule is what makes the
+	// carve-out reachable at all; if custom instructions ever move below it, the
+	// carve-out is the only thing still holding.
+	it("still sits after the user's own standing instructions", () => {
+		const prompt = buildSystemPrompt(baseConv({ systemPrompt: "Mine" }), "Always show the numbers too.");
+		expect(prompt.indexOf("Always show the numbers too.")).toBeLessThan(
+			prompt.indexOf(CHART_WHEN_INSTRUCTION),
+		);
+	});
+
+	it("names the block language the processor actually registers", () => {
+		expect(CHART_WHEN_INSTRUCTION).toContain("```" + CHART_BLOCK_LANG);
+	});
+
+	// A chart the model wrote by hand has to parse, or door 1 is decorative.
+	it("carries an example the validator accepts", () => {
+		const fenced = CHART_WHEN_INSTRUCTION.match(/```pythia-chart\n([\s\S]*?)\n```/);
+		expect(fenced).not.toBeNull();
+		expect(parseChartBlock(fenced![1]).ok).toBe(true);
+	});
+
+	it("sets a floor so a single figure is not charted", () => {
+		expect(CHART_WHEN_INSTRUCTION).toContain("three data points");
+	});
+
+	// Only true when a search actually ran: a standing prompt should not describe
+	// a tool the model was not given.
+	it("asks for the source domain only when research mode is on", () => {
+		expect(buildSystemPrompt(baseConv())).not.toContain(CHART_SOURCE_INSTRUCTION);
+		expect(buildSystemPrompt(baseConv({ researchMode: true }))).toContain(CHART_SOURCE_INSTRUCTION);
 	});
 });
