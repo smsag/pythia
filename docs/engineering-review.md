@@ -1875,3 +1875,43 @@ Found along the way and fixed separately as #342: the data.json watcher threw `A
 **The trade-off, recorded.** Web search now spans three sections — the key is a connection, "research mode on" is a per-conversation default, auto-arm and results-per-query are global rules. One consistent axis costs a feature its contiguity; the alternative is the by-topic grouping this change removes. The descriptions cross-reference in both directions.
 
 **Not done.** No search field, no tabs, no folds, no "Advanced" section: Obsidian's settings pane is a single scroll and core plugins do none of these, so a plugin that does stops feeling native (D-44). The one-row "Troubleshooting" section is deliberate — it sits last and governs nothing above it, unlike "Defaults".
+
+### #379 — Four hand-rolled clipboard copies remain (partly closed, 2026-09-23)
+
+*Principle 4 — one implementation per interaction.*
+
+`copyWithFeedback` sat private inside `ui/CodeBlockDecorator.ts` while CLAUDE.md
+described it as "the one clipboard button", so five surfaces wrote their own. ADR-210
+needed a second flavour (an image), and a second flavour of an already-quintuplicated
+helper is how the sixth copy gets written — so the helper moved to `ui/clipboard.ts`
+(`copyTextWithFeedback`, `copyBlobWithFeedback`, one `flashCopied`) and the code blocks
+now use it.
+
+**Remaining:** `ui/SummaryController.ts:123`, `ui/SelectionController.ts:446`,
+`ui/HeaderController.ts:576` (the deep link) and `ui/RewriteController.ts:104` still call
+`navigator.clipboard` directly, as does `services/ConversationService.ts:212` (a clipboard
+*read*, a different operation). They differ in what they flash and what they say on
+failure, which is the drift the helper exists to stop.
+
+**Guarded meanwhile.** `tests/chartRules.test.ts` holds `navigator.clipboard` to
+`ui/clipboard.ts` plus an explicit grandfather list of exactly those five, and a second
+assertion fails if a listed site stops copying — so the list cannot rot, and it may only
+shrink. Moving each remaining site is mechanical; it was left out of ADR-210 because a
+clipboard rewrite in the same change as a new renderer is two changes.
+
+### #380 — `sidebar.ts` was at its ratchet ceiling, and the ceiling was set mid-change (closed, 2026-09-23)
+
+*Principle 3 — if it is a rule, the tooling enforces it.*
+
+`sidebar.ts` sat at exactly 1716 lines against a grandfathered ceiling of 1716, so
+ADR-210 could not add a line to it. The 125-line `onToolCall` closure became
+`ui/ToolCallController.ts` (which also took the stream counter that tells a chart where
+it belongs — "where we are in the answer" and "what the call left behind" are one
+responsibility), and the ceiling came down with it.
+
+**The mistake worth recording:** the ceiling was lowered to 1596 in the extraction
+commit, which was the count at that moment — and the chart wiring that followed took the
+file to 1611, so that commit did not pass `npm run check:filesize`. A ceiling lowered
+halfway through a change and breached by the rest of it guards nothing. The number is now
+set once against the finished state (1603, down from 1716), and the reasoning sits in
+`scripts/check-file-size.mjs` beside it.
