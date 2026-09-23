@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-23 — ADR-210 (a chart is a fenced block Pythia draws itself, placed where the model paused to ask for it; the tool is the validating door onto the same block, and the PNG on the clipboard is the point of the whole thing).*
+*Last updated: 2026-09-23 — ADR-211 (a note picked with `#` leaves its link in the composer where you put it; the link is matched by the literal text Pythia wrote, and the attachment follows it in both directions until the message is sent).*
+
+*Previously: 2026-09-23 — ADR-210 (a chart is a fenced block Pythia draws itself, placed where the model paused to ask for it; the tool is the validating door onto the same block, and the PNG on the clipboard is the point of the whole thing).*
 
 *Previously: 2026-09-23 — ADR-209 (the settings tab is organised by scope: one section holds what a conversation can override and says so on every row, a folder lives with the feature that writes to it, and `settings.ts` becomes a shell over one module per section).*
 
@@ -4295,3 +4297,32 @@ Two wrong derivations were tried first and are worth recording. **Aiming at a co
 
 **Not done.** No scatter or stacked-area (D-50). No setting to turn charts off (D-46). No chart during streaming — the block reads as raw JSON until the answer commits (D-48). No PNG written into the vault, which would be the codebase's first binary vault write; a refused clipboard falls back to the source block instead (D-49).
 
+---
+
+### ADR-211 — The note you attach stays visible where you attached it
+
+*2026-09-23*
+
+**Context.** Typing `#` and picking a note **deleted the `#query` you had typed** (`InlineSuggest.attach`) and put the note in the reference row instead. Text vanished from under the cursor and reappeared somewhere else, with nothing connecting the two. The ask was simply that the filename stay where you put it.
+
+**Decision — the picker leaves an Obsidian wikilink behind.** `[[Q3 revenue]]`, at the cursor, spaced off from the words either side.
+
+The form was not the obvious one. `#Q3 revenue` would mirror the gesture, but the user bubble renders through `MarkdownRenderer.render` and **Obsidian renders `#word` as a tag** — and tags cannot contain spaces, so `Compare #Q3 revenue with last year` would paint a tag chip `#Q3` and drop `revenue` out as bare text. A wikilink has no such collision, and it renders in the sent turn as a link that opens the note, which makes the message still useful to reread.
+
+**The objection to wikilinks dissolved once detection was settled.** The worry was that Pythia could not tell a link you typed from one it wrote. It does not have to: **a token is matched by the literal text Pythia inserted, never by a pattern.** That is not merely convenient — it is required. A basename may contain spaces and brackets, so no regex can say where `[[Q3 revenue]]` ends in a sentence that continues after it.
+
+**Presence is counted, not tested.** Two notes in different folders can share a basename and therefore a token. Deleting one occurrence must detach one note, not both, so occurrences are allocated to tracked notes in order (`tokensPresent`).
+
+**It is a sync, not a one-way detach.** Every input event makes `contextNotes` match the links actually present, in both directions — so an undo that brings a link back re-attaches its note rather than leaving the composer disagreeing with the row above it. The cost is one string scan per note *this composition* attached: proportional to what the user did, never to the vault (principle 5).
+
+**Tracking clears on send, and that is what resolves the scope tension.** A note attached from the composer is conversation-scoped — `contextNotes`, injected every turn, unchanged by this ADR — which sounds incompatible with "delete the link and it detaches": an edit three turns later could drop a note earlier answers were built on. It cannot. Sending clears the composer, so the link is gone and the tracking with it; deletion only ever detaches while you are still typing the message that attached it, which is exactly the correction case. Afterwards the pill is the only handle, as it was before.
+
+**Two removal surfaces, one hook.** The reference pill's × and the context inspector's × both detach a note, and both now clear its link out of the composer. The inspector was the one that mattered: without the hook its removal would silently undo itself, because the next keystroke would see the link still there and re-attach the note.
+
+**`InlineSuggest` is untouched.** It already removes its own `#query` and leaves the cursor there, which is precisely where the link goes. The trigger text belongs to the picker; the link belongs to `ComposerAttachments`.
+
+**Structure.** `sidebar.ts` sat at exactly its ceiling again (1603), so `renderReferencePills` — 83 lines — became `ui/ReferenceRowController.ts`, which is also the right home for the × hook. 1603 → 1525, the number set once against the finished state. The controller is constructed where its DOM goes rather than in the block below it: those controllers are built after `buildInputArea` because they need `this.inputEl` and `this.sendBtn`, this one needs neither, and mounting it before it existed is how 85 tests failed on the first attempt.
+
+**Guards.** `tests/composerTokens.test.ts` (22) on the pure rules — spaced insertion, an edited link, an undo, two notes sharing a basename, a link the user typed themselves. `tests/composerAttachments.test.ts` (14) drives the real view: the link lands at the cursor, deleting it detaches, an undo re-attaches, both × surfaces clear it, a note attached by other means is left alone, and a send ends the composer's claim on the note without detaching it.
+
+**Not done.** The link is plain text in a `<textarea>`, so it carries no tint, icon or single-press delete. A real pill would need either a mirrored overlay behind a transparent textarea or a `contenteditable`, and the latter puts `composerKeys.ts` (Enter vs Cmd+Enter, IME composition, ADR-187's Scope send), the placeholder, autoresize and the soft-keyboard inset all back in play. Recorded as D-52.
