@@ -289,3 +289,79 @@ describe("glossary anchor: other sense and discuss (ADR-208)", () => {
 		expect(document.querySelector(".p-term-anchor")).toBeNull();
 	});
 });
+
+// ── The discussion in the anchor (ADR-208 addendum) ─────────────────────────
+
+describe("glossary anchor: the discussion (ADR-208 addendum)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	const DISCUSSED: GlossaryEntry = {
+		...ENTRY,
+		discussion: "Ein Zähler zählt Ereignisse, kein Messgerät für Mengen.",
+	};
+
+	function open(entry: GlossaryEntry, outputLanguage = "auto"): Promise<void> {
+		const plugin = {
+			settings: { defaultAnthropicModel: "claude-sonnet-4-6", outputLanguage },
+			app: { workspace: { openLinkText: () => {} } },
+			glossaryService: {
+				all: async () => [entry],
+				find: () => entry,
+				hydrate: async (e: GlossaryEntry) => e,
+				pathFor: () => "Glossary/Terms/Zähler.md",
+				translate: async () => ({ text: "A device that counts events.", form: null }),
+			},
+		} as unknown as InstanceType<typeof PythiaPlugin>;
+		const c = new GlossaryController({
+			plugin,
+			getConversation: () => null,
+			getMessagesEl: () => document.body,
+			renderMarkdown: (md, el) => { el.textContent = md; },
+			openConversation: async () => {},
+			prefillInput: () => {},
+		});
+		return c.toggleAnchor("Zähler", paragraphWithMark());
+	}
+
+	const section = () => document.querySelector<HTMLElement>(".p-term-anchor-discussion");
+
+	it("shows it under the definition, in full", async () => {
+		await open(DISCUSSED);
+		expect(section()).not.toBeNull();
+		expect(section()!.textContent).toContain(DISCUSSED.discussion!);
+		// Below the definition: it answers the next question, not the first one.
+		const parts = Array.from(document.querySelectorAll(".p-term-anchor > *"));
+		const bodyAt = parts.findIndex((el) => el.classList.contains("p-term-anchor-body"));
+		const discAt = parts.findIndex((el) => el.classList.contains("p-term-anchor-discussion"));
+		expect(bodyAt).toBeGreaterThanOrEqual(0);
+		expect(discAt).toBeGreaterThan(bodyAt);
+	});
+
+	it("is absent, with no empty heading, when the term has none", async () => {
+		await open(ENTRY);
+		expect(section()).toBeNull();
+		expect(document.body.textContent).not.toContain(t("glossaryDiscussionLabel"));
+	});
+
+	it("says which language it is in when that is not the anchor's", async () => {
+		// Not translated (ADR-166 is about the definition, which arrives in
+		// whatever language the lookup produced; this is the reader's own prose).
+		await open(DISCUSSED, "en");
+		expect(section()!.textContent).toContain(DISCUSSED.discussion!);
+		expect(document.querySelector(".p-term-anchor-discussion-lang")?.textContent).toContain("DE");
+	});
+
+	it("says nothing about language when it matches the anchor's", async () => {
+		await open(DISCUSSED, "de");
+		expect(document.querySelector(".p-term-anchor-discussion-lang")).toBeNull();
+	});
+
+	it("survives the translation repaint of the definition", async () => {
+		// `show` rebuilds the anchor once the translation lands; the discussion
+		// must come back with it rather than only existing in the first paint.
+		await open(DISCUSSED, "en");
+		expect(document.querySelector(".p-term-anchor-body")!.textContent)
+			.toBe("A device that counts events.");
+		expect(section()).not.toBeNull();
+	});
+});

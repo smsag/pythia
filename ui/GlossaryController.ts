@@ -6,6 +6,7 @@ import { t, getObsidianLocale } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
 import { definitionLanguageOf, displayLanguage, needsTranslation } from "../services/glossaryNotes";
 import { resolveLanguageState } from "./instructionState";
+import { detectLanguage } from "../services/languageDetect";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintTerms } from "./HighlightPainter";
 import { termForkOpeningPrompt } from "../services/glossaryPrompts";
@@ -240,6 +241,30 @@ export class GlossaryController {
 			body.setText(t("glossaryTranslating", { code: shown.pending.toUpperCase() }));
 		} else {
 			this.d.renderMarkdown(shown ? shown.text : entry.definition, body);
+		}
+
+		// What a forked conversation established (ADR-208 addendum). Below the
+		// definition, because it answers the next question rather than the first one,
+		// and in full — the fork and merge anchors stopped folding their summaries in
+		// ADR-189, and the prompt contract is what keeps this short.
+		//
+		// **Not translated**, unlike the definition (ADR-166). A definition arrives in
+		// whatever language the first lookup produced, which is why it is translated
+		// for the reader; a discussion is prose from a conversation the reader drove,
+		// so it is already in a language they chose. When that is not the language
+		// this anchor is showing, the label says so rather than the text changing
+		// under them — the same courtesy as `translated from DE` in the meta row.
+		const discussion = entry.discussion?.trim();
+		if (discussion) {
+			const wrap = anchor.createDiv({ cls: "p-term-anchor-discussion" });
+			const label = wrap.createDiv({ cls: "p-term-anchor-label p-term-anchor-discussion-label" });
+			label.createSpan({ text: t("glossaryDiscussionLabel") });
+			const spoken = detectLanguage(discussion);
+			const target = anchor.getAttribute("data-lang");
+			if (spoken && target && spoken !== target) {
+				label.createSpan({ cls: "p-term-anchor-discussion-lang", text: ` · ${spoken.toUpperCase()}` });
+			}
+			this.d.renderMarkdown(discussion, wrap.createDiv({ cls: "p-term-anchor-body" }));
 		}
 
 		const meta = anchor.createDiv({ cls: "p-term-anchor-meta" });
