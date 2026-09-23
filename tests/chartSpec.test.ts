@@ -157,6 +157,16 @@ describe("parseChartSpec — pie", () => {
 		expect(error).toContain("negative");
 	});
 
+	it("refuses more slices than the palette can tell apart, naming the way out", () => {
+		const many = Array.from({ length: MAX_CHART_SERIES + 1 }, (_, i) => `s${i}`);
+		const error = errorOf(pie({
+			categories: many,
+			series:     [{ name: "share", values: many.map((_, i) => i + 1) }],
+		}));
+		expect(error).toContain(String(MAX_CHART_SERIES));
+		expect(error).toContain("bar");
+	});
+
 	it("refuses a zero total, which has no geometry", () => {
 		expect(errorOf(pie({ series: [{ name: "a", values: [0, 0, 0] }] }))).toContain("zero");
 	});

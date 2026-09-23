@@ -165,7 +165,13 @@ function parseSeries(raw: unknown, categories: string[]): ChartParse | ChartSeri
 
 /** A pie is the one type whose geometry can be impossible rather than merely
  *  ugly, so its extra rules live together and each says what to use instead. */
-function checkPie(series: ChartSeries[]): string | null {
+function checkPie(series: ChartSeries[], categories: string[]): string | null {
+	// A pie colours by SLICE, so its slice count is bounded by the palette rather
+	// than by the axis — eight is where two slices would have to share a colour.
+	if (categories.length > MAX_CHART_SERIES) {
+		return `A pie chart has ${categories.length} slices; at most ${MAX_CHART_SERIES} can be ` +
+			'told apart by colour. Use "bar", or group the smaller slices together.';
+	}
 	if (series.length !== 1) {
 		return `A pie chart needs exactly one series (got ${series.length}). ` +
 			'Use "bar" to compare several series.';
@@ -215,7 +221,7 @@ export function parseChartSpec(raw: unknown): ChartParse {
 	if (!Array.isArray(series)) return series;
 
 	if (type === "pie") {
-		const pieError = checkPie(series);
+		const pieError = checkPie(series, categories);
 		if (pieError) return fail(pieError);
 	}
 

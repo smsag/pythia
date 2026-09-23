@@ -1,3 +1,5 @@
+import { CHART_BLOCK_LANG } from "./services/chartSpec";
+import { renderChartCard } from "./ui/chart/card";
 import { Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
@@ -147,6 +149,16 @@ export default class PythiaPlugin extends Plugin {
 		this.registerView(
 			PYTHIA_VIEW_TYPE,
 			(leaf) => new PythiaSidebarView(leaf, this)
+		);
+
+		// A chart draws wherever markdown renders, not only inside the panel
+		// (ADR-210): the answer on both its render paths, a conversation saved or
+		// archived as a note, and Reading view of any note the block is pasted
+		// into — which is what makes "copy the source block" worth offering.
+		// Wiring only; what to draw lives in ui/chart/card.ts (ADR-205).
+		this.registerMarkdownCodeBlockProcessor(
+			CHART_BLOCK_LANG,
+			(src, el) => renderChartCard(src, el)
 		);
 
 		this.app.workspace.onLayoutReady(() => {

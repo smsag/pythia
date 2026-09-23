@@ -1,23 +1,10 @@
-import { Notice, setIcon } from "obsidian";
+import { setIcon } from "obsidian";
 import { t } from "../i18n";
+import { copyTextWithFeedback } from "./clipboard";
 import { attachDragToPan } from "./dragToPan";
 import { decorateTables } from "./tableDecorator";
 
 type DiagObserverEntry = { mo: MutationObserver; ro: ResizeObserver };
-
-/** Copy `text` and flash the button to a check mark; a denied clipboard says so
- *  instead of surfacing as an unhandled rejection. */
-async function copyWithFeedback(btn: HTMLElement, text: string): Promise<void> {
-	try {
-		await navigator.clipboard.writeText(text);
-	} catch {
-		new Notice(t("copyFailed"));
-		return;
-	}
-	setIcon(btn, "check");
-	btn.addClass("copied");
-	setTimeout(() => { setIcon(btn, "copy"); btn.removeClass("copied"); }, 1500);
-}
 
 function wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
 	const frame = createEl("div", { cls: "p-code-frame" });
@@ -157,7 +144,7 @@ export function decorateCodeBlocks(
 		setIcon(copyBtn, "copy");
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			void copyWithFeedback(copyBtn, makeFenced());
+			void copyTextWithFeedback(copyBtn, makeFenced());
 		});
 
 		attachDragToPan(pre);
@@ -182,7 +169,7 @@ export function decorateCodeBlocks(
 			setIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
-				void copyWithFeedback(copyBtn, makeFenced());
+				void copyTextWithFeedback(copyBtn, makeFenced());
 			});
 		}
 

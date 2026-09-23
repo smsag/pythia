@@ -1,3 +1,4 @@
+import chartDe from "./chart.de";
 import type { Strings } from "./en";
 import embeddingDe from "./embedding.de";
 import settingsDe from "./settings.de";
@@ -7,6 +8,8 @@ const de: Strings = {
 	...embeddingDe,
 	// The settings tab's strings likewise (ADR-209).
 	...settingsDe,
+	// Diagramme in einer Antwort in eigenem Modul (ADR-210).
+	...chartDe,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",
 	changeModelTooltip:     "Anbieter / Modell wechseln",

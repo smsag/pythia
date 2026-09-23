@@ -164,6 +164,13 @@ export function chartPalette(count: number, ground: Rgb): ChartPalette {
 	return { colors, rgb };
 }
 
+/** An `Rgb` as a CSS value. Here rather than at the call site because this is
+ *  the module colour syntax is allowed to live in — `tests/chartRules.test.ts`
+ *  fails on a colour literal anywhere else under `ui/chart/`. */
+export function rgbCss([r, g, b]: Rgb): string {
+	return `rgb(${r}, ${g}, ${b})`;
+}
+
 /** A value label drawn ON a bar, in whichever of black or white is readable on
  *  that swatch. `readableOnAccent` with no theme tokens is exactly that question
  *  already answered (ADR-154) — never a second copy of it. */

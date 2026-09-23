@@ -1717,6 +1717,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    covered so neither is invisible on mobile. */
 @media (hover: none) {
   .p-code-frame .p-code-actions,
+  .p-chart-card .p-chart-actions,
   .p-ai-body .block-language-mermaid .p-diag-copy,
   .p-ai-body .block-language-plantuml .p-diag-copy { opacity: 1; }
 }
@@ -3150,3 +3151,125 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   letter-spacing: -1px;
 }
 
+
+/* ── Charts in an answer (ADR-210) ─────────────────────────────────────────── */
+/* A chart is laid out to the width it is given, so unlike a diagram (ADR-004)
+   there is nothing here to pan and no scroll frame. The card is a plain block
+   that fills its column; ui/chart/card.ts re-lays the SVG out when that column
+   changes width.
+
+   Every colour below is an Obsidian token. The ONE exception is a series
+   swatch, which has no token to be — those arrive as --p-chart-cN custom
+   properties set on the <svg> root by ui/chart/palette.ts, derived against the
+   live theme ground and floored at 3:1. The .p-chart-cN rules at the foot of
+   this block are the only place they are read, so no colour ever appears in the
+   markup and a theme change repaints the chart. */
+.p-chart-card {
+  margin: var(--s2) 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: var(--s2);
+  background: var(--background-primary);
+}
+
+.p-chart-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s1);
+  min-width: 0;
+}
+.p-chart-head-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.p-chart-head-icon svg { width: 12px; height: 12px; }
+.p-chart-head-label {
+  font-family: var(--font-interface);
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hover-revealed on desktop, always visible on touch (the @media (hover: none)
+   rule above, shared with the code and diagram buttons rather than restated). */
+.p-chart-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.p-chart-card:hover .p-chart-actions,
+.p-chart-actions:focus-within { opacity: 1; }
+
+.p-chart-body { width: 100%; min-width: 0; }
+.p-chart-svg  { display: block; width: 100%; height: auto; }
+
+.p-chart-title  { fill: var(--text-normal); font-weight: 600; }
+.p-chart-legend { fill: var(--text-muted); }
+.p-chart-axis   { fill: var(--text-muted); }
+.p-chart-value  { fill: var(--text-muted); }
+.p-chart-grid   { stroke: var(--background-modifier-border); stroke-width: 1; }
+/* The line a bar is actually read against, so it is drawn over the grid rather
+   than being one of it. */
+.p-chart-zero   { stroke: var(--text-faint); stroke-width: 1; }
+.p-chart-line   { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.p-chart-svg text { font-family: var(--font-interface); }
+
+.p-chart-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s1);
+  font-family: var(--font-interface);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+.p-chart-foot-label { font-weight: 600; }
+.p-chart-note { flex-basis: 100%; }
+.p-chart-source { display: inline-flex; align-items: center; gap: 3px; }
+
+/* A chart Pythia could not draw still shows its data and still offers the copy
+   control: a broken chart must never be a dead end (principle 2). */
+.p-chart-card--error { border-color: var(--text-faint); }
+.p-chart-error-detail {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  margin-bottom: var(--s1);
+}
+.p-chart-error-source {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  background: var(--background-secondary);
+  border-radius: 4px;
+  padding: var(--s1);
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* The eight series swatches. Split fill from stroke so a bar and a line can
+   share one class. */
+.p-chart-bar, .p-chart-slice, .p-chart-swatch, .p-chart-dot { stroke: none; }
+.p-chart-c0 { fill: var(--p-chart-c0); }
+.p-chart-c1 { fill: var(--p-chart-c1); }
+.p-chart-c2 { fill: var(--p-chart-c2); }
+.p-chart-c3 { fill: var(--p-chart-c3); }
+.p-chart-c4 { fill: var(--p-chart-c4); }
+.p-chart-c5 { fill: var(--p-chart-c5); }
+.p-chart-c6 { fill: var(--p-chart-c6); }
+.p-chart-c7 { fill: var(--p-chart-c7); }
+.p-chart-line.p-chart-c0 { stroke: var(--p-chart-c0); }
+.p-chart-line.p-chart-c1 { stroke: var(--p-chart-c1); }
+.p-chart-line.p-chart-c2 { stroke: var(--p-chart-c2); }
+.p-chart-line.p-chart-c3 { stroke: var(--p-chart-c3); }
+.p-chart-line.p-chart-c4 { stroke: var(--p-chart-c4); }
+.p-chart-line.p-chart-c5 { stroke: var(--p-chart-c5); }
+.p-chart-line.p-chart-c6 { stroke: var(--p-chart-c6); }
+.p-chart-line.p-chart-c7 { stroke: var(--p-chart-c7); }
