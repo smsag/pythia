@@ -23,6 +23,7 @@ export const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export const MODEL_CATALOG: ModelInfo[] = [
 	// Anthropic — all current models: 1M tokens
+	{ id: "claude-opus-5-5",   provider: "anthropic", abbreviation: "Opus 5.5",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-opus-5",     provider: "anthropic", abbreviation: "Opus 5",     contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-fable-5-1",  provider: "anthropic", abbreviation: "Fable 5.1",  contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-fable-5",    provider: "anthropic", abbreviation: "Fable 5",    contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
@@ -35,7 +36,15 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "claude-haiku-4-5",  provider: "anthropic", abbreviation: "Haiku 4.5",  contextWindow: 200_000 },
 
 	// OpenAI — GPT-5 windows are the input-side limit (272K of 400K, 922K of 1.05M): ADR-179
-	{ id: "gpt-5.6",      provider: "openai", abbreviation: "GPT-5.6",      contextWindow: 922_000, isReasoning: true },
+	{ id: "gpt-6-astra",   provider: "openai", abbreviation: "GPT-6 Astra",   contextWindow: 922_000, isReasoning: true },
+	{ id: "gpt-6-sol",     provider: "openai", abbreviation: "GPT-6 Sol",     contextWindow: 922_000, isReasoning: true },
+	{ id: "gpt-6-luna",    provider: "openai", abbreviation: "GPT-6 Luna",    contextWindow: 922_000, isReasoning: true },
+	// `gpt-5.6-sol` is deliberately absent: upstream it is the same model as
+	// `gpt-5.6` below — same family, release date, description, limits and price —
+	// so carrying both would put one model in the picker twice (issue #194).
+	{ id: "gpt-5.6",       provider: "openai", abbreviation: "GPT-5.6",       contextWindow: 922_000, isReasoning: true },
+	{ id: "gpt-5.6-terra", provider: "openai", abbreviation: "GPT-5.6 Terra", contextWindow: 922_000, isReasoning: true },
+	{ id: "gpt-5.6-luna",  provider: "openai", abbreviation: "GPT-5.6 Luna",  contextWindow: 922_000, isReasoning: true },
 	{ id: "gpt-5.4-mini", provider: "openai", abbreviation: "GPT-5.4 mini", contextWindow: 272_000, isReasoning: true },
 	{ id: "gpt-5.4-nano", provider: "openai", abbreviation: "GPT-5.4 nano", contextWindow: 272_000, isReasoning: true },
 	{ id: "gpt-4.1",      provider: "openai", abbreviation: "GPT-4.1",      contextWindow: 1_047_576 },
@@ -55,6 +64,16 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
 	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 128_000, isMistralReasoning: true },
 	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",   contextWindow: 128_000, isMistralReasoning: true },
+	// GLM-5.3 reasons and takes an effort parameter, but NEITHER flag fits it, and
+	// both would be wrong on the wire (issue #194):
+	//   `supportsEffort` would send `reasoning_effort: "none"` for Pythia's "low"
+	//   (mistralReasoningEffort), and upstream this model accepts only
+	//   low · high · max — `none` is a 400.
+	//   `isMistralReasoning` would report temperature as unsupported, and upstream
+	//   it takes temperature.
+	// With neither, temperature works, no effort knob is offered, and nothing
+	// unsupported can reach the wire — which is what that function exists for.
+	{ id: "zai-glm-5-3",             provider: "mistral", abbreviation: "GLM-5.3",           contextWindow: 1_000_000 },
 ];
 
 // ── Derived exports ───────────────────────────────────────────────────────
