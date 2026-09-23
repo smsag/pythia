@@ -12,7 +12,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
 /
   main.ts                     ← plugin entry point: onload() wiring, view/ribbon/command/file-menu registration, thin facades. Holds NO rules — a branch, guard or cache rule goes behind a host seam in services/ (ADR-205)
   sidebar.ts                  ← PythiaSidebarView (ItemView), all UI construction
-  settings.ts                 ← PythiaSettings interface, defaults, settings tab UI
+  settings.ts                 ← the settings tab SHELL (ADR-209): the section order, the numeric flush on close, nothing else. A `new Setting(` here fails a test
   styles.css                  ← all plugin CSS
   models/
     types.ts                  ← shared TypeScript interfaces (Conversation, Message, …)
@@ -112,14 +112,24 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
     vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
+    settings/section.ts       ← the ONE place a settings heading is made: section(el, name, intro) + overridable(desc) (ADR-209)
+    settings/context.ts       ← SettingsContext (plugin · saveSoon · registerCommit · refreshIndexStatus) + toggleRow / folderRow / numberRow
+    settings/connections.ts   ← §1 the four API keys, each saying whether a key is selected
+    settings/conversationDefaults.ts ← §2 the ONLY overridable section: provider · one model row for it · effort · temperature · max tokens · language · resume mode · research default
+    settings/answering.ts     ← §3 the global rules: custom instructions · auto-search · results · note budget · inject active note · show cost
+    settings/optimizer.ts     ← §4 optimizer template · framework · model suggestion
+    settings/notes.ts         ← §6 templates · default notes folder · inbox note · the Glossary subsection
+    settings/storage.ts       ← §7 conversations folder · message cap · history limit · archive toggle + folder
+    settings/troubleshooting.ts ← §8 debug mode
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1753 tests across 118 files
+  tests/                      ← Vitest unit tests (npm test) — 1773 tests across 119 files
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
     embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-199)
+    settings.{en,de}.ts       ← the settings tab's strings, section names and intros first in render order (ADR-209)
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
@@ -644,6 +654,16 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188/190). `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` fail in the forbidden direction
 - **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
 
+### The settings tab (ADR-209)
+
+- **One axis: scope.** Eight sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **On-device semantic search** (+ **Vault context**) · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`
+- **Adding a setting means deciding which section's one-sentence remit covers it.** If none does, that is the finding — the old tab's answer was "Behaviour" or "Features", which is how ten unrelated rows landed under one heading and how `customInstructions` and Debug mode ended up rendered *inside* the embedding block by accident
+- **Only "New conversations" rows are overridable, and every one of them says so** via `overridable()` — the user-facing half of principle 6. A row there without the sentence, or a row elsewhere with it, fails `tests/settingsIA.test.ts`. A gated row shows `paramUnsupportedSuffix` instead, because a control the model ignores is the more urgent fact
+- **Every section opens with one sentence** through `section()`, which is also the ONE place `setHeading()` is called. **Never `createEl("h3")`** in settings code, and never a second heading mechanism — the tab had two and they do not render alike
+- **A folder lives with the feature that writes to it.** There is no "Vault folders" section: templates and the default notes folder sit with the notes, the archive folder directly under the toggle that writes to it, the indexed folders in the vault-context block. **The two skip folders (`conversationsFolder`, `scratchFolder`) pass `ctx.refreshIndexStatus`** — they are part of `scopeSignature`, so moving one makes the index out of date (#367)
+- **One model row, for the provider chosen above it**, rebuilt rather than mutated when the provider changes. Another provider's model is reached by switching the provider, and the row's description says so
+- **No search field, tabs, folds or "Advanced" section** (D-44), no price table (ADR-163), and no `h2` title — Obsidian already titles the tab
+
 ---
 
 ## What not to build
@@ -655,4 +675,5 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - No sparkle in the toolbar — sparkle is in the summary bar only
 - No card shadows on summary or reference rows
 - No framework mount (no React root, no Svelte component, no shadow DOM)
+- No search field, tabs, collapsible sections or "Advanced" fold in the settings tab — Obsidian's settings pane is a single scroll (D-44)
 

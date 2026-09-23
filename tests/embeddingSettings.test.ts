@@ -37,6 +37,7 @@ vi.mock("obsidian", () => {
 		setName(n: string): this { this.row.name = n; return this; }
 		setDesc(d: unknown): this { this.row.desc = d; return this; }
 		setHeading(): this { return this; }
+		setClass(): this { return this; }
 		addText(cb: (t: TextComponent) => void): this { cb(new TextComponent(this.el)); return this; }
 		addTextArea(cb: (t: { setPlaceholder(): unknown; setValue(v: string): unknown; onChange(fn: (v: string) => void): unknown }) => void): this {
 			const area = {
