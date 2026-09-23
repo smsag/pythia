@@ -1422,13 +1422,8 @@ export class PythiaSidebarView extends ItemView {
 		const attachedNotes = [...(turnConv.contextNotes ?? [])];
 
 		const { appendToken, finalize, row: streamingRow } = this.createStreamingBubble();
-		this.toolCalls.reset();
-		// BaseProvider's own `fullText` and this counter consume the same callback,
-		// so `streamedChars` is `fullText.length` at every instant — and a tool call
-		// fires between rounds, which makes it exactly the point in the answer where
-		// a chart belongs (ADR-210).
-		let streamedChars = 0;
-		const emit = (text: string): void => { streamedChars += text.length; appendToken(text); };
+		// Counts what it forwards, so a chart lands where the model paused (ADR-210).
+		const emit = this.toolCalls.begin(appendToken);
 
 		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
 		const autoArmedSearch = shouldAutoArmSearch({
@@ -1440,7 +1435,7 @@ export class PythiaSidebarView extends ItemView {
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
 
-		const onToolCall = this.toolCalls.handler(conv, researchActive, () => streamedChars);
+		const onToolCall = this.toolCalls.handler(conv, researchActive);
 
 		try {
 		await this.plugin.llmRouter.streamMessage(
@@ -1453,8 +1448,8 @@ export class PythiaSidebarView extends ItemView {
 			attachedNotes,
 			emit,
 			async (fullText, tokenUsage, finish) => {
-				// Every use below is of `content`, not `fullText`: a chart rendered
-				// once and then dropped from the stored message would flash and vanish.
+				// `content` below, never `fullText`: a chart dropped from the stored
+				// message would flash and vanish (ADR-210).
 				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks());
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
@@ -1466,8 +1461,7 @@ export class PythiaSidebarView extends ItemView {
 				// Reset after render so the send guard stays active during MarkdownRenderer.render.
 				this.setStreamingState(false);
 
-				// `content`, not `fullText`: an answer whose only output was a chart
-				// said nothing in words, and dropping it would throw the chart away.
+				// An answer whose only output was a chart said nothing in words.
 				if (!content) {
 					streamingRow.remove();
 					this.truncation.noticeEmptyReply(finish);
@@ -1520,9 +1514,7 @@ export class PythiaSidebarView extends ItemView {
 
 				if (shouldGenerateTitle(conv)) {
 					const convId = conv.id;
-					// Deliberately `fullText`: the title comes from what the answer SAID,
-					// and a chart's JSON in the digest is noise the model would have to
-					// see past.
+					// Deliberately `fullText`: a title comes from what the answer SAID.
 					this.plugin.llmRouter
 						.generateConversationTitle(userMsg.content, fullText, conv.provider, conv)
 						.then(async (title) => {

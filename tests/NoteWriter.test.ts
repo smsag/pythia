@@ -434,3 +434,29 @@ describe("saveSummaryNote — YAML safety", () => {
 		expect(content).toContain('  - "Tags/#x.md"');
 	});
 });
+
+// ── A saved conversation keeps its charts (ADR-210) ──────────────────────────
+
+describe("appendConversationSlice — a message that opens with a fenced block", () => {
+	const chart = "```pythia-chart\n{\"type\":\"bar\"}\n```";
+
+	it("puts the label on its own line so the fence still opens", async () => {
+		await writer.appendConversationSlice(
+			[{ id: "m1", role: "assistant", content: chart, timestamp: "" }],
+			"Notes/saved.md",
+		);
+		const written = vault.content("Notes/saved.md");
+		expect(written).toContain("**Pythia:**\n```pythia-chart");
+		for (const line of written.split("\n")) {
+			if (line.includes("```")) expect(line.startsWith("```")).toBe(true);
+		}
+	});
+
+	it("keeps the inline label for ordinary prose", async () => {
+		await writer.appendConversationSlice(
+			[{ id: "m1", role: "assistant", content: "Just words.", timestamp: "" }],
+			"Notes/saved.md",
+		);
+		expect(vault.content("Notes/saved.md")).toContain("**Pythia:** Just words.");
+	});
+});

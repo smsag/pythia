@@ -244,7 +244,14 @@ ${summary}
 		const lines: string[] = [heading, ""];
 		for (const msg of messages) {
 			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
-			lines.push(`${label} ${stripCitationMarkers(msg.content)}`, "");
+			const body = stripCitationMarkers(msg.content);
+			// The label goes on its own line whenever the message opens with a fenced
+			// block: `**Pythia:** ```pythia-chart` is not a fence at the start of a
+			// line, so it never opens, and the chart the note was saved for would be
+			// JSON in a paragraph (ADR-210). Everything else keeps the inline label
+			// it has always had.
+			if (body.startsWith("```")) lines.push(label, body, "");
+			else lines.push(`${label} ${body}`, "");
 		}
 		const block = lines.join("\n").trimEnd();
 

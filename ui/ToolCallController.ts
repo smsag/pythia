@@ -33,13 +33,29 @@ export interface ToolCallDeps {
 export class ToolCallController {
 	private webSources: { title: string; url: string }[] = [];
 	private chartBlocks: PendingChartBlock[] = [];
+	private streamedChars = 0;
 
 	constructor(private readonly d: ToolCallDeps) {}
 
-	/** Drained at the start of every send. */
-	reset(): void {
+	/**
+	 * Start a send, and wrap the view's token sink so this controller can see how
+	 * much of the answer has been emitted.
+	 *
+	 * That count is how a chart finds its place. BaseProvider's own `fullText` and
+	 * the sink returned here consume the same stream, and `handleToolCalls` runs
+	 * BETWEEN rounds — so at the moment a tool call fires, the characters emitted
+	 * so far are exactly the text before it (ADR-210). Owning the counter here
+	 * rather than in the view keeps "where we are in the answer" beside "what the
+	 * call left behind", which are the same responsibility.
+	 */
+	begin(appendToken: (text: string) => void): (text: string) => void {
 		this.webSources = [];
 		this.chartBlocks = [];
+		this.streamedChars = 0;
+		return (text: string): void => {
+			this.streamedChars += text.length;
+			appendToken(text);
+		};
 	}
 
 	/** The web results captured during this send. */
@@ -58,22 +74,15 @@ export class ToolCallController {
 	 *
 	 * `researchActive` is passed rather than read off the conversation because an
 	 * auto-armed search is a per-send override that is never persisted (ADR-099).
-	 *
-	 * `charsSoFar` is how a chart finds its place in the answer. The provider's
-	 * own `fullText` and the view's token callback consume the same stream, and
-	 * `handleToolCalls` runs BETWEEN rounds — so at the moment a tool call fires,
-	 * the characters emitted so far are exactly the text before it.
 	 */
-	handler(
-		conv: Conversation, researchActive: boolean, charsSoFar: () => number,
-	): (call: ToolCall) => Promise<string> {
+	handler(conv: Conversation, researchActive: boolean): (call: ToolCall) => Promise<string> {
 		return async (call: ToolCall): Promise<string> => {
 			// A chart writes nothing, so there is nothing to confirm and no chip to
 			// show — the chart itself is the feedback, and it appears the moment the
 			// answer commits. Validation is instantaneous, so a spinner would only
 			// ever flash (ADR-210).
 			if (call.name === "render_chart") {
-				return acceptChartCall(call.input, charsSoFar(), this.chartBlocks);
+				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
 			if (call.name === "web_search") return this.runSearch(call, conv, researchActive);
 			return this.runWrite(call, conv, researchActive);
