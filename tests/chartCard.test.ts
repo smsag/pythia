@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderChartCard } from "../ui/chart/card";
+import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
 import { formatChartBlock, parseChartSpec, CHART_BLOCK_LANG } from "../services/chartSpec";
 
 // Obsidian augments Element.prototype at runtime; happy-dom gives bare elements.
@@ -24,6 +25,12 @@ proto.createDiv  = function (this: Element, o?: Opts) { return (this as unknown 
 proto.createSpan = function (this: Element, o?: Opts) { return (this as unknown as { createEl(t: string, o?: Opts): Element }).createEl("span", o); };
 proto.empty      = function (this: Element) { while (this.firstChild) this.removeChild(this.firstChild); };
 proto.addClass   = function (this: Element, ...c: string[]) { this.classList.add(...c); };
+// decorateCodeBlocks builds its frame through the GLOBAL createEl.
+(globalThis as unknown as { createEl: unknown }).createEl = (tag: string, o?: Opts): Element => {
+	const e = document.createElement(tag);
+	applyOpts(e, o);
+	return e;
+};
 
 /** The block body as the code-block processor hands it over: the JSON between
  *  the fences, not the fenced text. */
@@ -160,5 +167,38 @@ describe("the block language", () => {
 		expect(formatChartBlock({
 			type: "bar", categories: ["a", "b"], series: [{ name: "s", values: [1, 2] }],
 		}).startsWith("```" + CHART_BLOCK_LANG)).toBe(true);
+	});
+});
+
+describe("a chart and the code-block decorator", () => {
+	const broken = '{"type":"bar","categories":["a","b"],"series":[{"name":"s","values":[1]}]}';
+
+	/** What the panel really does: the processor draws the card, then
+	 *  `decorateCodeBlocks` sweeps the same subtree. */
+	function decorateAround(source: string): HTMLElement {
+		const container = document.body.appendChild(document.createElement("div"));
+		const block = container.appendChild(document.createElement("div"));
+		block.className = "block-language-pythia-chart";
+		renderChartCard(source, block);
+		decorateCodeBlocks(container, new WeakMap());
+		return container;
+	}
+
+	it("leaves a drawn chart alone", () => {
+		const container = decorateAround(BAR);
+		expect(container.querySelector(".p-code-frame")).toBeNull();
+		expect(container.querySelector(".p-scroll-frame")).toBeNull();
+		expect(container.querySelectorAll("svg")).toHaveLength(1);
+	});
+
+	// The `pre` pass takes any undecorated <pre> in the subtree and only skips
+	// mermaid/plantuml ancestors — so the error card's source block was being
+	// framed as a code block, labelled "code", and given a second copy button
+	// next to the one the card already offers.
+	it("does not dress the error card's source as a code block", () => {
+		const container = decorateAround(broken);
+		expect(container.querySelector(".p-code-frame")).toBeNull();
+		expect(container.querySelector(".p-code-head")).toBeNull();
+		expect(container.querySelectorAll("button")).toHaveLength(1);
 	});
 });

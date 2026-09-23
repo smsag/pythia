@@ -116,7 +116,12 @@ function renderError(el: HTMLElement, source: string, detail: string): void {
 	// The detail is the parser's own English string — the same one the model
 	// receives and the same one a bug report can quote (see locales/chart.en.ts).
 	card.createDiv({ cls: "p-chart-error-detail", text: detail });
-	card.createEl("pre", { cls: "p-chart-error-source", text: source });
+	// `decorateCodeBlocks` sweeps every undecorated <pre> in the subtree and only
+	// skips mermaid/plantuml ancestors, so without its own opt-out this one gets
+	// framed as a code block, labelled "code" and given a second copy button
+	// beside the one above it. Same mechanism the card uses on its container.
+	const pre = card.createEl("pre", { cls: "p-chart-error-source", text: source });
+	pre.dataset.decorated = "1";
 }
 
 /**
