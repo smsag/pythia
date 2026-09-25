@@ -14,6 +14,7 @@ import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
 import { ComposerField } from "./ui/ComposerField";
+import { ChatScroll } from "./ui/chatScroll";
 import { vaultNoteDrop } from "./ui/noteDrop";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
@@ -64,7 +65,7 @@ export class PythiaSidebarView extends ItemView {
 	/** Exposes the active conversation ID for eviction protection in persistData(). */
 	get activeConversationId(): string | null { return this.activeConversation?.id ?? null; }
 	private isStreaming = false;
-	private autoScroll = true;
+	private readonly chatScroll = new ChatScroll(() => this.messagesEl); // following the answer (ADR-215)
 	/** Conversation IDs currently running a chapter-name backfill — prevents
 	 *  overlapping serial backfill runs on rapid re-open of the same conversation. */
 	private backfillInFlight = new Set<string>();
@@ -75,7 +76,6 @@ export class PythiaSidebarView extends ItemView {
 	// Long-press on the last bubble → delete / compare (ADR-160), and the comparison card.
 	private exchangeActions!: ExchangeActionsController;
 	private comparisonController!: ComparisonController;
-	private isScrolling = false;
 	// pendingAttachedNotes removed — all note attachments go to conv.contextNotes
 	private navigatorController!: NavigatorController;
 	/** Tracks active observers per diagram element so stale ones are
@@ -253,10 +253,10 @@ export class PythiaSidebarView extends ItemView {
 		this.optimizationController?.cancel();
 		this.modelSuggestion?.clear();
 		this.activeConversation = conversation;
-		// autoScroll is NOT reset here — renderMessages sets it based on scrollTo.
+		// chatScroll.following is NOT reset here — renderMessages sets it based on scrollTo.
 		// Resetting to true here was the root cause of conversations always scrolling
 		// to the bottom on open: anything calling scrollToBottom() during rendering
-		// would fire because autoScroll was still true.
+		// would fire because following was still true.
 		this.navigatorController?.close();            // #26 — detach stale outside-click listener
 		this.headerController.renderHeader();
 		this.headerController.updateInstructions();
@@ -487,6 +487,7 @@ export class PythiaSidebarView extends ItemView {
 			plugin: this.plugin,
 			messagesEl: () => this.messagesEl,
 			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+			reveal: (card, force) => this.chatScroll.reveal(card, force),
 		});
 		this.truncation = new TruncationController({
 			plugin: this.plugin,
@@ -526,12 +527,7 @@ export class PythiaSidebarView extends ItemView {
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
-		this.registerDomEvent(this.messagesEl, "scroll", () => {
-			if (this.isScrolling) return;
-			const el = this.messagesEl;
-			const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-			if (distFromBottom > 50) this.autoScroll = false;
-		});
+		this.registerDomEvent(this.messagesEl, "scroll", () => this.chatScroll.onScroll());
 		this.selectionController = new SelectionController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -1037,14 +1033,14 @@ export class PythiaSidebarView extends ItemView {
 				paintCitations(this.app, aiBody, sources);
 				renderSourcesRow(this.app, row, sources, streamTemplate);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
-				this.autoScroll = true;
+				this.chatScroll.following = true;
 				requestAnimationFrame(() => this.scrollToBottom(true));
 			},
 		};
 	}
 
 	private scrollToTop(): void {
-		this.autoScroll = false;
+		this.chatScroll.following = false;
 		this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
 		requestAnimationFrame(() => {
 			this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
@@ -1052,11 +1048,7 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	private scrollToBottom(force = false): void {
-		if (force || this.autoScroll) {
-			this.isScrolling = true;
-			this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-			requestAnimationFrame(() => { this.isScrolling = false; });
-		}
+		this.chatScroll.toBottom(force);
 	}
 
 	// Viewport-derived insets: lift content above an open soft keyboard (ADR-132),
@@ -1355,7 +1347,7 @@ export class PythiaSidebarView extends ItemView {
 				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks());
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
-				// callback is in flight — don't touch messagesEl/autoScroll in that case.
+				// callback is in flight — don't touch messagesEl/chatScroll in that case.
 				const stillActive = this.activeConversation?.id === conv.id;
 				if (stillActive) {
 					await finalize(content);
@@ -1408,6 +1400,8 @@ export class PythiaSidebarView extends ItemView {
 					}
 					this.truncation.paint(lastRow, assistantMsg);
 					this.rewrite.paint(lastRow, assistantMsg);
+					const cards = lastRow.querySelectorAll<HTMLElement>(".p-trunc, .p-rewrite"); // ADR-215
+					if (cards.length > 0) this.chatScroll.reveal(cards[cards.length - 1]);
 				}
 				await this.plugin.conversationStore.save(conv);
 				if (this.activeConversation?.id === conv.id) {
@@ -1493,7 +1487,7 @@ export class PythiaSidebarView extends ItemView {
 		this.inputAreaEl.toggleClass("streaming", streaming);
 		if (streaming) {
 			this.exchangeActions.detach();
-			this.autoScroll = true;
+			this.chatScroll.following = true;
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");
 		} else {

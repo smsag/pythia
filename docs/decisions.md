@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-214 (a note, several notes or a folder dragged from the vault onto the composer attaches exactly as a `#` pick does — a chip where it was dropped; the drag is read from Obsidian's draggable and, failing that, its text, both validated; Obsidian's open-in-this-tab modifier keeps its meaning).*
+*Last updated: 2026-09-25 — ADR-215 (a card that appears in the conversation is revealed whole once it is built; the write confirmation is revealed even to a user who has scrolled up, because the answer waits on it; the chat's scroll state is one `ChatScroll`).*
+
+*Previously: 2026-09-25 — ADR-214 (a note, several notes or a folder dragged from the vault onto the composer attaches exactly as a `#` pick does — a chip where it was dropped; the drag is read from Obsidian's draggable and, failing that, its text, both validated; Obsidian's open-in-this-tab modifier keeps its meaning).*
 
 *Previously: 2026-09-25 — ADR-213 (the composer is a contenteditable, so a note attached with `#` is a chip — the library icon and its name, deleted by one Backspace — while the field still reads as the text the textarea held: a chip is its `[[Name]]`; closes D-52).*
 
@@ -4409,3 +4411,19 @@ So the text alone cannot resolve a folder or the folders of a mixed selection; o
 **Verified.** In Chromium, through the harness around the real `ComposerField` + `ComposerAttachments` (ADR-213): dropping at the pixel between "Compare" and "with" in an unfocused field gives `Compare [[Q3 revenue]] with last year`, focus in the field, the caret after the chip, the note attached; one undo removes the chip and detaches the note; the hover outline computes to 1px dashed accent. **Not verified in Obsidian itself** — the draggable came from the test, not from a real drag out of the explorer — **and not on iPad**, where Obsidian's drag works differently.
 
 **Guards.** `tests/noteDrop.test.ts` (20): every draggable shape and every non-note one, including an object shaped like a file; URLs for this vault and another, `[[links]]` with heading/block/alias, malformed text; folders expanded to notes only; order and dedupe; no `dragManager` at all; the modifier per platform; and in the real view — hover claims and marks, a drop makes the chip and attaches, a folder makes one chip per note, the modifier leaves the drop to Obsidian, plain text drops as text, and nothing lands while streaming.
+
+### ADR-215 — A card is revealed whole, once it is built
+
+*2026-09-25*
+
+**Context.** When the model calls a note-writing tool (a template's `write_mode`: create, rewrite, prepend), a confirmation card with *Create* / *Cancel* goes into the conversation and the answer waits for the press. At rest the card sat partly below the fold — label cut, buttons hidden. `ToolCallController.runWrite` created the card **empty**, set `messagesEl.scrollTop = messagesEl.scrollHeight`, and only then added the label and buttons, so the scroll was measured against a card with no height. `runSearch` did the same. The cut-off card (ADR-162) and the rewrite proposal (ADR-178) were painted under a finished answer with no scroll at all. The direct `scrollTop` write also went around the view's `isScrolling` flag, the thing that tells Pythia's scrolls from the user's.
+
+**Decision — one rule: measure the card once it is built, and scroll only as far as it takes to show all of it** (`revealDelta`, with a `--s3` margin; a card taller than the view shows its top, where the label says what the buttons are for). Rects against the scroller, never `scrollIntoView`, which on iOS scrolls the wrong ancestor (as `scrollToMessage` already notes).
+
+**Forced or not is the card's to say.**
+- **The write confirmation is forced.** The answer is paused on it; a user who scrolled up to reread must still see that a decision is waiting, or the conversation looks hung. After a forced reveal, following resumes — the card is where the answer continues.
+- **A search status, the cut-off card and the rewrite card are not.** They follow a user who is following the answer, and leave one who scrolled up to read where they are. A status is not worth yanking the view for.
+
+**The scroll state is one object.** `autoScroll`, `isScrolling`, the scroll listener and `scrollToBottom`'s body lived as loose fields and branches in `sidebar.ts`; `ChatScroll` (`ui/chatScroll.ts`) now owns "following", both ways Pythia moves the view (to the bottom, to a card), and the flag that keeps Pythia's own moves from reading as the user's. `sidebar.ts` 1505 → 1499, which is what let the fix land under the ratchet.
+
+**Verified.** In Chromium with real layout: the old order leaves the card's bottom 44px below the view; reveal-after-build shows it whole, even with following off. `tests/chatScroll.test.ts` (10): the delta in every direction, following stopped by the user and not by Pythia, unforced reveals respecting a scrolled-up user, a forced one overriding it — and the regression itself: the write card is revealed exactly once, forced, with its label and both buttons already in it. That last test fails on the old controller, which never revealed a built card.
