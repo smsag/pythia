@@ -50,7 +50,7 @@ import { InputModal } from "./suggest/InputModal";
 import { buildStreamErrorMessage } from "./services/apiError";
 import { describeErrorForLog } from "./services/redact";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
-import { SOURCE_ICONS } from "./ui/icons";
+import { decorateNoteLinks, SOURCE_ICONS } from "./ui/icons";
 
 export const PYTHIA_VIEW_TYPE = "pythia";
 
@@ -934,10 +934,6 @@ export class PythiaSidebarView extends ItemView {
 		if (root) applyAccentContrast(root);
 	}
 
-	/** Replace ⟦cite:…⟧ markers left in the rendered markdown with numbered
-	 *  superscript chips. Mirrors the favorites re-paint: walk text nodes and
-	 *  swap each marker for a `.p-cite` chip that opens its source on click. */
-
 	private async appendMessageBubble(msg: Message): Promise<HTMLElement> {
 		// ── User message ────────────────────────────────────────────
 		if (msg.role === "user") {
@@ -954,6 +950,7 @@ export class PythiaSidebarView extends ItemView {
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
 			}
+			decorateNoteLinks(bubble);
 			this.selectionController.repaintFavorites(bubble, msg.id);
 			this.forkController.repaintForkOrigins(bubble, msg.id);
 			this.mergeController.repaintMergeLinks(bubble, msg.id);

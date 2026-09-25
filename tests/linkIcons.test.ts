@@ -11,7 +11,7 @@ import { resolve, join } from "node:path";
 import { makePlugin, mountView, seedConversation, userMsg } from "./helpers/viewHarness";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
-import { SOURCE_ICONS } from "../ui/icons";
+import { decorateNoteLinks, SOURCE_ICONS, VAULT_NOTE_ICON } from "../ui/icons";
 import { t } from "../i18n";
 
 const root = process.cwd();
@@ -35,11 +35,38 @@ describe("one source icon per type (ADR-193)", () => {
 			if (f === join("ui", "icons.ts")) continue;
 			const src = readFileSync(resolve(root, f), "utf8");
 			for (const id of Object.values(SOURCE_ICONS)) {
-				if (id === "save") continue; // too common a word to scan for; the save button is inline SVG
 				if (src.includes(`"${id}"`)) offenders.push(`${f}: "${id}"`);
 			}
 		}
 		expect(offenders).toEqual([]);
+	});
+});
+
+describe("a vault note looks like a vault note, however it arrived (ADR-212)", () => {
+	it("attached, auto-retrieved and saved notes share one icon — and it is the library", () => {
+		expect(VAULT_NOTE_ICON).toBe("library");
+		expect([SOURCE_ICONS.note, SOURCE_ICONS.auto, SOURCE_ICONS.output]).toEqual([VAULT_NOTE_ICON, VAULT_NOTE_ICON, VAULT_NOTE_ICON]);
+	});
+
+	it("what is not a vault note keeps its own icon", () => {
+		for (const k of ["template", "web", "rewrite"] as const) expect(SOURCE_ICONS[k]).not.toBe(VAULT_NOTE_ICON);
+	});
+
+	it("a note link in a sent message leads with the icon and keeps its text", () => {
+		const bubble = document.createElement("div");
+		bubble.innerHTML = 'Compare <a class="internal-link" data-href="Q3 revenue" href="Q3 revenue">Q3 revenue</a> with <a class="external-link" href="https://x.org">x</a>';
+		decorateNoteLinks(bubble);
+		const note = bubble.querySelector<HTMLElement>("a.internal-link")!;
+		expect(note.firstElementChild?.classList.contains("p-source-icon")).toBe(true);
+		expect(note.firstElementChild?.getAttribute("data-icon")).toBe(VAULT_NOTE_ICON);
+		expect(note.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+		// The painters match on text: the icon must add none.
+		expect(bubble.textContent).toBe("Compare Q3 revenue with x");
+		// A web link is not a vault note.
+		expect(bubble.querySelector("a.external-link .p-source-icon")).toBeNull();
+		// A re-render of the same bubble does not stack icons.
+		decorateNoteLinks(bubble);
+		expect(note.querySelectorAll(".p-source-icon")).toHaveLength(1);
 	});
 });
 

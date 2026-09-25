@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-23 — ADR-211 (a note picked with `#` leaves its link in the composer where you put it; the link is matched by the literal text Pythia wrote, and the attachment follows it in both directions until the message is sent).*
+*Last updated: 2026-09-25 — ADR-212 (a note from the vault carries the library icon however it arrived — attached, retrieved, cited, saved or linked in a sent message; the route is carried by style, not by a second glyph).*
+
+*Previously: 2026-09-23 — ADR-211 (a note picked with `#` leaves its link in the composer where you put it; the link is matched by the literal text Pythia wrote, and the attachment follows it in both directions until the message is sent).*
 
 *Previously: 2026-09-23 — ADR-210 (a chart is a fenced block Pythia draws itself, placed where the model paused to ask for it; the tool is the validating door onto the same block, and the PNG on the clipboard is the point of the whole thing).*
 
@@ -4326,3 +4328,21 @@ The form was not the obvious one. `#Q3 revenue` would mirror the gesture, but th
 **Guards.** `tests/composerTokens.test.ts` (22) on the pure rules — spaced insertion, an edited link, an undo, two notes sharing a basename, a link the user typed themselves. `tests/composerAttachments.test.ts` (14) drives the real view: the link lands at the cursor, deleting it detaches, an undo re-attaches, both × surfaces clear it, a note attached by other means is left alone, and a send ends the composer's claim on the note without detaching it.
 
 **Not done.** The link is plain text in a `<textarea>`, so it carries no tint, icon or single-press delete. A real pill would need either a mirrored overlay behind a transparent textarea or a `contenteditable`, and the latter puts `composerKeys.ts` (Enter vs Cmd+Enter, IME composition, ADR-187's Scope send), the placeholder, autoresize and the soft-keyboard inset all back in play. Recorded as D-52.
+
+### ADR-212 — A vault note looks like a vault note, however it arrived
+
+*2026-09-25*
+
+**Context.** ADR-193 gave every reference the icon of the control that brought it in: `file-text` for a note you attached, `library` for one vault context retrieved, `save` for one this conversation wrote. The rule was sound for the toolbar — the icon on a pill matched the button you pressed — but it made **the same file look like three different things** depending on its route. A note attached on Monday and retrieved on Tuesday changed its glyph in between, and a reader scanning the reference row saw three kinds of object where there was one: a Markdown note from their vault.
+
+**Decision — one icon, `VAULT_NOTE_ICON` = `library`, for every vault note.** Attached (`#` or the paperclip), auto-retrieved, cited under an answer, written by the conversation, listed in the context inspector, named as a chart source. `SOURCE_ICONS.note`, `.auto` and `.output` all resolve to it; the keys stay separate because callers still mean different things by them (removable or not; detach or delete the file).
+
+**The route is carried by style, not by the glyph.** The auto-retrieved pill was already `.p-wikilink--auto` with no × (ADR-183): read-only, visibly different. That stays, and it is the whole of the distinction now. A second glyph was a weaker signal than the missing control anyway — an icon says what a thing is, not what you may do with it.
+
+**What keeps its own icon.** The template (`layout-template`), the web (`globe`) and the rewrite target (`pencil-line`). A template is a vault file too, but it is not a *source* the answer draws on; it framed the answer, and ADR-140's sources row already sets it apart. The paperclip on the attach button and the floppy on the save button stay: they are verbs, drawn by the design system (`ui/toolbarIcons.ts`), not references.
+
+**A sent message shows its links the same way.** A `[[Name]]` the user sent — the link ADR-211's `#` picker leaves — is drawn with the library icon ahead of its name by `decorateNoteLinks`. **The stored text does not change**: `[[Name]]` is what the model reads (it ties the sentence to the attached note's block), what a saved or archived note keeps as a working link, and what ADR-211's literal matching depends on. The icon adds no text, so the favorite, fork and merge painters — which match on text — see the bubble exactly as before.
+
+**Prompt quality: unchanged.** Icons never reach the model, and nothing about which notes are included, or their budgets, depends on a glyph.
+
+**Guards.** `tests/linkIcons.test.ts` fails if `note`, `auto` or `output` stop sharing `VAULT_NOTE_ICON`, if it stops being `library`, if the template, web or rewrite icon collapses into it, or if `decorateNoteLinks` adds text, marks a web link, or stacks a second icon on a re-render.

@@ -12,12 +12,27 @@ import { setIcon } from "obsidian";
 export const REGENERATE_ICON = "refresh-cw";
 
 /**
- * Where a reference comes from, as one icon per source type (ADR-193).
+ * The ONE icon for a Markdown note from the vault, however it got into the
+ * conversation (ADR-212). Attached with `#` or the paperclip, pulled in by vault
+ * context, cited under an answer, written by this conversation, or linked in a
+ * sent message: it is a note from your vault, and it looks like one.
  *
- * A reference leads with the icon of the control that brings it in: the
- * template button, the vault-context toggle, the web-search toggle, the save
- * button — so the toolbar and every place a reference is listed (reference row,
- * sources under an answer, context box) speak the same language. Brackets
+ * ADR-193 gave each a different glyph — the icon of the control that brought it
+ * in — which made the same file look like three different things depending on
+ * the route it took. What a reference IS outranks how it arrived. Where the
+ * route still matters, it is carried by style, not by the glyph: an
+ * auto-retrieved pill is `.p-wikilink--auto` and has no ×.
+ */
+export const VAULT_NOTE_ICON = "library";
+
+/**
+ * Where a reference comes from, as one icon per source type (ADR-193, ADR-212).
+ *
+ * Every vault note — `note`, `auto`, `output` — is `VAULT_NOTE_ICON`. The kinds
+ * stay separate keys because the callers still mean different things by them
+ * (removable or not, delete the file or detach it); only the glyph is shared.
+ * The template, the web and the rewrite target are not vault notes in that
+ * sense and keep the icon of the control that brings them in. Brackets
  * (`[[ ]]`), bold-for-template and a trailing `↗` did this job three different
  * ways; tests/linkIcons.test.ts fails if one of them returns.
  *
@@ -25,15 +40,15 @@ export const REGENERATE_ICON = "refresh-cw";
  */
 export const SOURCE_ICONS = {
 	/** A note the user attached (and a cited vault note). */
-	note: "file-text",
+	note: VAULT_NOTE_ICON,
 	/** A note vault search pulled in — the vault-context toggle. */
-	auto: "library",
+	auto: VAULT_NOTE_ICON,
 	/** A template — the template button. */
 	template: "layout-template",
 	/** A web page — the web-search toggle. */
 	web: "globe",
-	/** A note this conversation wrote — the save button's floppy. */
-	output: "save",
+	/** A note this conversation wrote. */
+	output: VAULT_NOTE_ICON,
 	/** The passage a rewrite will replace. */
 	rewrite: "pencil-line",
 } as const;
@@ -45,4 +60,20 @@ export function appendSourceIcon(parent: HTMLElement, kind: SourceKind): HTMLEle
 	const el = parent.createSpan({ cls: "p-source-icon", attr: { "aria-hidden": "true" } });
 	setIcon(el, SOURCE_ICONS[kind]);
 	return el;
+}
+
+/**
+ * Lead every note link in a rendered user message with the vault-note icon
+ * (ADR-212). The stored text stays `[[Name]]` — that is what the model reads and
+ * what a saved or archived note keeps as a link — so this is drawing only. The
+ * icon adds no text, so the favorite and fork painters, which match on text,
+ * see the bubble exactly as before.
+ */
+export function decorateNoteLinks(root: HTMLElement): void {
+	for (const link of Array.from(root.querySelectorAll<HTMLElement>("a.internal-link"))) {
+		if (link.querySelector(".p-source-icon")) continue;
+		const icon = appendSourceIcon(link, "note");
+		link.prepend(icon);
+		link.addClass("p-note-link");
+	}
 }
