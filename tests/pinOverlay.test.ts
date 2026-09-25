@@ -4,13 +4,15 @@
 // shows, how it cycles and unpins, that it follows the conversation, that the
 // selection strip and a code block pin into it, and that ↗ says so when the
 // source is gone.
-import { describe, it, expect, beforeEach } from "vitest";
-import { Notice } from "obsidian";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { MarkdownRenderer, Notice } from "obsidian";
 import { makePlugin, mountView, seedConversation, userMsg, aiMsg } from "./helpers/viewHarness";
 import type PythiaPlugin from "../main";
 import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation, Pin } from "../models/types";
 import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
+import { codeBlockSource, diagramSource, tableMarkdown } from "../ui/pinSources";
+import { chartSourceOf, renderChartCard } from "../ui/chart/card";
 import type { PinController } from "../ui/PinController";
 import { t } from "../i18n";
 
@@ -192,5 +194,62 @@ describe("pins belong to their conversation", () => {
 		expect(fork?.forkedFromId).toBe(source.id);
 		expect(fork?.pins).toBeUndefined();
 		expect(source.pins).toHaveLength(1);
+	});
+});
+
+describe("↗ finds each kind of block again (review of ADR-216)", () => {
+	it("code, diagram, chart and table: the block itself is found and flashed", async () => {
+		const conv = await open({});
+		const body = pane().querySelector<HTMLElement>('[data-msg-id="a1"] .p-ai-body')!;
+		const code = body.createDiv();
+		code.innerHTML = '<pre><code class="language-py">print(1)\n</code></pre>';
+		const diagram = body.createDiv({ cls: "block-language-mermaid" });
+		diagram.innerHTML = "<pre><code>graph TD\n  A--&gt;B\n</code></pre><svg></svg>";
+		const chartHost = body.createDiv();
+		renderChartCard('{"type":"bar","title":"R","categories":["Q1","Q2"],"series":[{"name":"R","values":[1,2]}]}', chartHost);
+		const table = body.createDiv();
+		table.innerHTML = "<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>";
+
+		const pre = code.querySelector("pre")!;
+		const card = chartHost.querySelector<HTMLElement>(".p-chart-card")!;
+		const tableEl = table.querySelector("table")!;
+		const targets: Array<[Pin["kind"], string, HTMLElement]> = [
+			["code", codeBlockSource(pre), pre],
+			["diagram", diagramSource(diagram), diagram],
+			["chart", chartSourceOf(card)!, card],
+			["table", tableMarkdown(tableEl), tableEl],
+		];
+		conv.pins = targets.map(([kind, source], i) => pin(`b${i}`, source, { kind }));
+		pins(view).render();
+
+		for (const [kind, , el] of targets) {
+			action(t("pinJumpTooltip")).click();
+			expect(el.classList.contains("p-pin-flash-block"), kind).toBe(true);
+			action(t("pinNextTooltip")).click();
+		}
+		expect(shown()).not.toContain(t("pinGone"));
+	});
+
+	it("a block no longer in the answer: the jump falls back to the message, and nothing is flashed", async () => {
+		await open({ pins: [pin("b", "```py\ngone()\n```", { kind: "code" })] });
+		action(t("pinJumpTooltip")).click();
+		expect(pane().querySelector(".p-pin-flash-block")).toBeNull();
+		expect(shown()).not.toContain(t("pinGone")); // the MESSAGE is still there
+	});
+});
+
+describe("a pin that cannot be rendered still says what it holds (review of ADR-216)", () => {
+	it("logs the failure and shows the snapshot as text", async () => {
+		await open({ pins: [pin("t", "first"), pin("c", "```js\nlet x = 1;\n```", { kind: "code" })] });
+		const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const render = vi.spyOn(MarkdownRenderer, "render").mockRejectedValueOnce(new Error("renderer broke"));
+		action(t("pinNextTooltip")).click();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(error).toHaveBeenCalledWith("[Pythia] pin render failed:", expect.stringContaining("renderer broke"));
+		const body = overlay().querySelector<HTMLElement>(".p-pin-text")!;
+		expect(body.textContent).toBe("```js\nlet x = 1;\n```");
+		render.mockRestore();
+		error.mockRestore();
 	});
 });

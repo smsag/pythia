@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-216 (a passage, code block, diagram, chart or table from an answer can be pinned to the top of the chat: a floating strip that collapses to one line, several pins one at a time, saved with the conversation as snapshots; every jump in the chat now lands clear of it).*
+*Last updated: 2026-09-25 — ADR-216 addendum (review): a pinned code block's fence can no longer be closed by the code inside it; a table cell is written back escaped, so it renders as what it showed; a pin that cannot render logs why and shows its text; ↗ is tested for every block kind).*
+
+*Previously: 2026-09-25 — ADR-216 (a passage, code block, diagram, chart or table from an answer can be pinned to the top of the chat: a floating strip that collapses to one line, several pins one at a time, saved with the conversation as snapshots; every jump in the chat now lands clear of it).*
 
 *Previously: 2026-09-25 — ADR-215 (a card that appears in the conversation is revealed whole once it is built; the write confirmation is revealed even to a user who has scrolled up, because the answer waits on it; the chat's scroll state is one `ChatScroll`).*
 
@@ -4459,3 +4461,12 @@ So the text alone cannot resolve a folder or the folders of a mixed selection; o
 **Guards.** `tests/pins.test.ts` (18): limits refused with reasons and never truncated, a second press not a second pin, excerpts per kind, `normalizePins` dropping malformed and keeping over-limit, pins surviving `spliceExchange` and `keepCandidate`, eviction protection. `tests/pinSources.test.ts` (11): the builders, Copy = Pin for code, diagram, table and chart, and no pin without `onPin`, in a note's chart, on a failed chart or twice. `tests/pinOverlay.test.ts` (15) on the real view: absent / collapsed / cycling / the collapsed controls / unpin / following the conversation / view state not written / pinning from the selection strip and from a code block / the limit's Notice with its number / a streaming answer / ↗ to a gone message / ↗ collapsing and flashing / a fork not inheriting pins. `tests/chatScroll.test.ts` (+4): the jump clear of a collapsed, expanded and hidden pin.
 
 **Deferred:** D-53 (pins in an archived note), D-54 (a fork inheriting pins), D-55 (a pin as prompt context).
+
+**Addendum — review fixes (2026-09-25).** A four-ring review (correctness · clarity · performance · security & stability) of the merged feature found four things worth fixing before release:
+
+1. **A fence the code cannot close.** `codeBlockSource` and `diagramSource` wrapped every block in a fixed three-backtick fence, so code that itself contained a ``` line — a Markdown example — closed it early, and both the pin and its Copy came out broken. The pre-existing Copy bug became a *stored* one once pins snapshot it. `fenceFor` now makes the fence one backtick longer than the longest run inside, never fewer than three (CommonMark).
+2. **A table cell renders as what it showed.** `tableMarkdown` wrote each cell's visible text back as Markdown unescaped, so a cell showing `<div>` or `*x*` as text came back as an element or as emphasis — in the pin, and wherever the copy was pasted: the boundary principle 1 is about, in miniature. `cellText` now backslash-escapes every character Markdown, HTML or Obsidian (`==`, `~~`, `$`) would read as syntax. `pinExcerpt` reads such a header back as text and splits only on unescaped pipes.
+3. **A failed render is no longer silent** (principle 2). `renderBody` had no rejection handler, so a renderer failure was an unhandled rejection and an empty pin. It now logs `[Pythia] pin render failed:` through `describeErrorForLog` and shows the snapshot as plain text.
+4. **↗ is tested for every block kind** — code, diagram, chart, table — and for a block no longer in its answer (the jump falls back to the message, nothing flashes). It worked; it was unguarded.
+
+Deliberately not changed from the same review: the open/closed state shared across conversations, the chart title read by regex in `pinExcerpt`, the parallel-array lookup in `findSource`, and one `MarkdownRenderer` child per pin render left on the view until it closes — all low, recorded in engineering-review #382.

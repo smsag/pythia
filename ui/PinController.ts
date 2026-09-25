@@ -8,6 +8,7 @@ import { scrollChatTo } from "./chatScroll";
 import { chartSourceOf } from "./chart/card";
 import { copyTextWithFeedback } from "./clipboard";
 import { decorateCodeBlocks } from "./CodeBlockDecorator";
+import { describeErrorForLog } from "../services/redact";
 import { flashText } from "./HighlightPainter";
 import { PIN_ICON } from "./icons";
 import { codeBlockSource, diagramSource, tableMarkdown, type PinBlock } from "./pinSources";
@@ -159,11 +160,20 @@ export class PinController {
 			return;
 		}
 		const inner = body.createDiv({ cls: "p-pin-rendered p-ai-body" });
-		void MarkdownRenderer.render(this.d.app, pin.source, inner, "", this.d.component).then(() => {
+		MarkdownRenderer.render(this.d.app, pin.source, inner, "", this.d.component).then(
 			// The same decorations as in the answer — header, copy, pan, sizing — and
 			// deliberately NO pin: a pin's body is not a place to pin from.
-			decorateCodeBlocks(inner, this.diagObservers);
-		});
+			() => decorateCodeBlocks(inner, this.diagObservers),
+			(e: unknown) => {
+				// Never an empty pin and nothing said (principle 2): log what a report
+				// can quote, and show the snapshot as the text it is.
+				console.error("[Pythia] pin render failed:", describeErrorForLog(e));
+				inner.empty();
+				inner.removeClass("p-ai-body");
+				inner.addClass("p-pin-text");
+				inner.setText(pin.source);
+			},
+		);
 	}
 
 	private iconButton(parent: HTMLElement, icon: string, title: string, onClick: () => void, whenOpen = false): HTMLButtonElement {

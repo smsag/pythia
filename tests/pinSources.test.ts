@@ -5,7 +5,7 @@
 // makes sense: in an answer, never in a pin's own body or in a vault note.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./helpers/viewHarness"; // Obsidian's DOM helpers (createEl, createDiv, …)
-import { codeBlockSource, diagramSource, tableMarkdown, type PinBlock } from "../ui/pinSources";
+import { cellText, codeBlockSource, diagramSource, fenceFor, tableMarkdown, type PinBlock } from "../ui/pinSources";
 import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
 import { decorateTables } from "../ui/tableDecorator";
 import { chartSourceOf, renderChartCard } from "../ui/chart/card";
@@ -43,6 +43,54 @@ describe("the builders", () => {
 		expect(tableMarkdown(html(TABLE).querySelector("table")!)).toBe(
 			"| Quarter | Note |\n| --- | --- |\n| Q1 | a \\| b<br>c |\n| Q2 |  |",
 		);
+	});
+});
+
+describe("a fence the code inside cannot close (review of ADR-216)", () => {
+	it("is three backticks for ordinary code, and one longer than the longest run inside", () => {
+		expect(fenceFor("let x = 1;")).toBe("```");
+		expect(fenceFor("inline `code` here")).toBe("```");
+		expect(fenceFor("```js\nx\n```")).toBe("````");
+		expect(fenceFor("a ```` b")).toBe("`````");
+	});
+
+	it("a code block that shows a Markdown example keeps it whole", () => {
+		const pre = document.createElement("pre");
+		const code = pre.appendChild(document.createElement("code"));
+		code.className = "language-md";
+		code.textContent = "Use:\n```js\nlet x = 1;\n```\n";
+		const source = codeBlockSource(pre);
+		expect(source).toBe("````md\nUse:\n```js\nlet x = 1;\n```\n````");
+		// No line inside the body closes the outer fence.
+		const body = source.split("\n").slice(1, -1);
+		expect(body.some((l) => /^`{4,}\s*$/.test(l))).toBe(false);
+	});
+
+	it("so does a diagram whose source contains backticks", () => {
+		const el = html('<div class="block-language-mermaid"><pre><code>graph TD\n  A["```"]\n</code></pre><svg></svg></div>').firstElementChild as HTMLElement;
+		expect(diagramSource(el)).toBe('````mermaid\ngraph TD\n  A["```"]\n````');
+	});
+});
+
+describe("a table cell comes back as what it SHOWED (review of ADR-216)", () => {
+	const cell = (text: string): string => {
+		const td = document.createElement("td");
+		td.textContent = text;
+		return cellText(td);
+	};
+
+	it("text that looks like markup is escaped, never re-read as markup", () => {
+		expect(cell("<div>")).toBe("\\<div\\>");
+		expect(cell("*not emphasis*")).toBe("\\*not emphasis\\*");
+		expect(cell("[[Not a link]]")).toBe("\\[\\[Not a link\\]\\]");
+		expect(cell("`code`")).toBe("\\`code\\`");
+		expect(cell("==mark== ~~del~~ $x$")).toBe("\\=\\=mark\\=\\= \\~\\~del\\~\\~ \\$x\\$");
+		expect(cell("a\\b")).toBe("a\\\\b");
+	});
+
+	it("ordinary text is untouched, a pipe still escaped, a line break still <br>", () => {
+		expect(cell("Q1 2026: 10.5 (est.)")).toBe("Q1 2026: 10.5 (est.)");
+		expect(cell("a | b\nc")).toBe("a \\| b<br>c");
 	});
 });
 
