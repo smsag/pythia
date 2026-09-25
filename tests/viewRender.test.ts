@@ -18,6 +18,7 @@ import { makePlugin, mountView, seedConversation, userMsg, aiMsg, now } from "./
 import PythiaPlugin from "../main";
 import { PythiaSidebarView } from "../sidebar";
 import type { Conversation } from "../models/types";
+import type { ComposerField } from "../ui/ComposerField";
 
 describe("view render — surfaces present on open (#124/#125)", () => {
 	let plugin: InstanceType<typeof PythiaPlugin>;
@@ -153,7 +154,7 @@ function stubStream(plugin: InstanceType<typeof PythiaPlugin>, fake: StreamMessa
 }
 
 function setInput(view: PythiaSidebarView, text: string): void {
-	(view as unknown as { inputEl: HTMLTextAreaElement }).inputEl.value = text;
+	(view as unknown as { composer: ComposerField }).composer.value = text;
 }
 
 const isStreaming = (view: PythiaSidebarView): boolean =>
@@ -174,10 +175,10 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 	}
 
 	// ADR-175: Enter is a line break in the composer; Cmd/Ctrl+Enter sends.
-	it("does not send on a bare Enter, and leaves the key to the textarea", async () => {
+	it("does not send on a bare Enter, and leaves the key to the composer", async () => {
 		const { view, pane } = await openBlank();
 		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
-		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+		const input = pane().querySelector<HTMLElement>(".p-composer")!;
 
 		const plain = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
 		input.dispatchEvent(plain);
@@ -191,7 +192,7 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 	it("sends on Cmd+Enter and on Ctrl+Enter", async () => {
 		const { view, pane } = await openBlank();
 		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
-		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+		const input = pane().querySelector<HTMLElement>(".p-composer")!;
 
 		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true }));
 		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
@@ -200,18 +201,18 @@ describe("send / stream — sendMessage outcomes (#125 Tier 1)", () => {
 		send.mockRestore();
 	});
 
-	// Obsidian's keymap sees Cmd+Enter before the textarea, and a core hotkey on
+	// Obsidian's keymap sees Cmd+Enter before the composer, and a core hotkey on
 	// Mod+Enter can consume it — the view's own scope sends first.
 	it("sends Cmd+Enter through the view scope, once, when the composer has focus", async () => {
 		const { view, pane } = await openBlank();
 		const send = vi.spyOn(view, "sendMessage").mockResolvedValue(undefined);
-		const input = pane().querySelector<HTMLTextAreaElement>("textarea.p-textarea")!;
+		const input = pane().querySelector<HTMLElement>(".p-composer")!;
 		const scope = view.scope as unknown as { trigger(e: KeyboardEvent): unknown };
 		input.focus();
 
 		const e = new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true });
 		expect(scope.trigger(e)).toBe(false);        // false = handled, Obsidian stops here
-		input.dispatchEvent(e);                      // the same event then reaches the textarea
+		input.dispatchEvent(e);                      // the same event then reaches the composer
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(e.defaultPrevented).toBe(true);
 		send.mockRestore();
@@ -421,10 +422,10 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 			name: "Blocked",
 			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
 		} as Partial<Conversation>);
-		const { view, pane } = await mountView(plugin);
+		const { view } = await mountView(plugin);
 		comparisonOf(view).start("u1", "a1");
 
-		const input = pane().querySelector<HTMLTextAreaElement>(".p-textarea")!;
+		const input = (view as unknown as { composer: ComposerField }).composer;
 		input.value = "another question";
 		await view.sendMessage();
 

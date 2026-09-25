@@ -3,14 +3,14 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import type { Difficulty } from "../services/modelRecommendation";
 import { t } from "../i18n";
+import type { ComposerField } from "./ComposerField";
 
 export interface OptimizationDeps {
 	plugin: PythiaPlugin;
-	inputEl: HTMLTextAreaElement;
+	inputEl: ComposerField;
 	sendBtn: HTMLButtonElement;
 	getConversation(): Conversation | null;
 	isStreaming(): boolean;
-	autoResizeTextarea(): void;
 	/** Restores the Send button's normal label after the busy state clears. */
 	updateSendBtnLabel(): void;
 	/** The optimizer's difficulty rating, when the model-suggestion setting asked
@@ -94,24 +94,16 @@ export class OptimizationController {
 	}
 
 	/**
-	 * Replace the whole textarea with `text` via `execCommand("insertText")` (after
-	 * selecting all) rather than assigning `inputEl.value`. Only the former enters
-	 * the textarea's native undo stack, so ⌘Z (desktop) and iOS shake-to-undo revert
-	 * to the original. Falls back to a direct assignment (no native undo — e.g.
-	 * Android, or if execCommand is unavailable). Leaves focus in the textarea so the
+	 * Replace the whole composer with `text` as one edit, so ⌘Z (desktop) and iOS
+	 * shake-to-undo revert to the original — `ComposerField.replaceRange` goes
+	 * through `execCommand`, the only edit that enters the native undo stack, and
+	 * falls back to a direct assignment where that is unavailable (no undo). A note
+	 * link the rewrite kept comes back as its chip. Leaves focus in the field so the
 	 * undo is immediately available and the user can send right away.
 	 */
 	private replaceInput(text: string): void {
-		const el = this.d.inputEl;
-		el.focus();
-		el.setSelectionRange(0, el.value.length);
-		let inserted = false;
-		try {
-			inserted = document.execCommand("insertText", false, text);
-		} catch {
-			inserted = false;
-		}
-		if (!inserted) el.value = text; // fallback: works everywhere, but no native undo
-		this.d.autoResizeTextarea();
+		const field = this.d.inputEl;
+		field.focus();
+		field.replaceRange(0, field.value.length, text);
 	}
 }

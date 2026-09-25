@@ -1,10 +1,13 @@
 import type { Conversation } from "../models/types";
+import { noteBasename } from "../services/pathUtils";
+import type { ComposerField } from "./ComposerField";
+import type { ComposerPart } from "./composerText";
 import {
-	insertTokens, noteToken, removeToken, tokensPresent, type TrackedNote,
+	noteToken, removeToken, tokenSpacing, tokensPresent, type TrackedNote,
 } from "./composerTokens";
 
 export interface ComposerAttachmentsDeps {
-	inputEl(): HTMLTextAreaElement;
+	inputEl(): ComposerField;
 	getConversation(): Conversation | null;
 	saveConversation(conv: Conversation): void;
 	refreshPills(): void;
@@ -26,6 +29,10 @@ export interface ComposerAttachmentsDeps {
  *   actually present, in both directions — so an undo that brings a link back
  *   re-attaches its note instead of leaving the composer disagreeing with the
  *   row above it.
+ * - **A link is a chip, and a chip reads as its link** (D-52). The composer draws
+ *   each tracked token as one atom with the vault-note icon, but its text is
+ *   still `[[Name]]` — so the count below, the send and the model are unchanged.
+ *   `chips()` is how the field knows which tokens to draw that way.
  * - **Tracking is cleared on send, not on attach.** A note stays attached to the
  *   conversation afterwards (that is what `contextNotes` means), but its link has
  *   left the composer with the message, so there is nothing left to delete. This
@@ -45,10 +52,16 @@ export class ComposerAttachments {
 
 		const input = this.d.inputEl();
 		const tokens = paths.map(noteToken);
-		const at = input.selectionStart ?? input.value.length;
-		const { value, cursor } = insertTokens(input.value, at, tokens);
-		input.value = value;
-		input.setSelectionRange(cursor, cursor);
+		const at = input.selectionStart;
+		const { lead, trail } = tokenSpacing(input.value, at);
+		const parts: ComposerPart[] = [];
+		if (lead) parts.push(lead);
+		tokens.forEach((token, i) => {
+			if (i > 0) parts.push(" ");
+			parts.push({ token, label: noteBasename(paths[i]) });
+		});
+		if (trail) parts.push(trail);
+		input.insertAt(at, parts);
 
 		let changed = false;
 		for (let i = 0; i < paths.length; i++) {
@@ -101,10 +114,15 @@ export class ComposerAttachments {
 		const input = this.d.inputEl();
 		const next = removeToken(input.value, note.token);
 		if (next === input.value) return;
-		const cursor = Math.min(input.selectionStart ?? next.length, next.length);
+		const cursor = Math.min(input.selectionStart, next.length);
 		input.value = next;
 		input.setSelectionRange(cursor, cursor);
 		this.d.onComposerChanged();
+	}
+
+	/** The tokens the composer draws as chips, each with its note's name. */
+	chips(): ReadonlyMap<string, string> {
+		return new Map(this.tracked.map((n) => [n.token, noteBasename(n.path)]));
 	}
 
 	/** The message went; its links went with it. The notes stay attached. */

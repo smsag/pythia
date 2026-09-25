@@ -2497,14 +2497,20 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   gap: var(--s3);
 }
 
-.p-textarea {
+/* The composer (D-52): a contenteditable, so an attached note can sit in the
+   text as a chip. It keeps the textarea's metrics exactly — mono, 1.55 line
+   height, 2 lines tall at rest, 5 at most, then it scrolls. A div grows with
+   its content by itself, so the old JS resize (a height from scrollHeight) is
+   gone; min/max-height do the whole job. `pre-wrap` makes a typed or pasted
+   line break a line break, and keeps runs of spaces the user typed. */
+.p-composer {
+  position: relative;
   background: transparent;
   border: none;
   outline: none;
   font-family: var(--font-monospace);
   font-size: var(--font-small);
   color: var(--text-normal);
-  resize: none;
   line-height: 1.55;
   width: 100%;
   min-height: calc(var(--font-small) * 1.55 * 2);
@@ -2512,31 +2518,57 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   max-height: calc(var(--font-small) * 1.55 * 5);
   overflow-y: auto;
   box-sizing: border-box;
-  transition: height 0.1s ease;
-}
-/* Desktop: start at 2 lines, grow up to 5 lines */
-body.is-desktop .p-textarea {
-  min-height: calc(var(--font-small) * 1.55 * 2); /* 2 lines */
-  max-height: calc(var(--font-small) * 1.55 * 5); /* 5 lines */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
 }
 /* Mobile: smaller font so the placeholder fits without clipping */
-body.is-mobile .p-textarea {
+body.is-mobile .p-composer {
   font-size: var(--font-smaller);
-  min-height: calc(var(--font-smaller) * 1.55 * 2); /* 2 lines */
-  max-height: calc(var(--font-smaller) * 1.55 * 5); /* 5 lines */
+  min-height: calc(var(--font-smaller) * 1.55 * 2);
+  max-height: calc(var(--font-smaller) * 1.55 * 5);
 }
-.p-textarea:focus {
+.p-composer:focus,
+.p-composer:focus-visible {
   outline: none;
   border: none;
   box-shadow: none;
 }
-.p-textarea::placeholder {
+/* A contenteditable has no placeholder of its own. Drawn out of flow, so the
+   caret sits at the start of the field and not after the hint. `is-empty` is set
+   from the text the field reads as, because an emptied field may still hold a
+   placeholder <br> and would never match :empty. */
+.p-composer.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0 auto auto 0;
   color: var(--text-faint);
   font-style: italic;
+  pointer-events: none;
 }
-.p-textarea:disabled {
+.p-composer.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+/* A note in the composer: one atom — the vault-note icon and the name, deleted
+   by one Backspace (ADR-212's icon, D-52). It reads as its [[Name]] link, which
+   is what is sent. Same look as a reference pill's name: link colour, no fill,
+   no border — it sits in running text, and a boxed chip would change the line's
+   height. The name never wraps apart from its icon. */
+.p-composer-chip {
+  color: var(--link-color, var(--color-accent));
+  white-space: nowrap;
+  -webkit-user-select: all;
+  user-select: all;
+}
+.p-composer-chip .p-source-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  position: relative;
+  top: -0.09em;
+  margin-inline-end: 2px;
 }
 
 /* The composer's bottom clearance (ADR-165 addendum). 12px on a desktop,
@@ -2599,7 +2631,7 @@ body.is-phone .workspace-drawer .p-input-area {
 /* Minimized input: hide everything that belongs to composing a message — the
    textarea, Send, and the send-adjacent token estimate + max-tokens warning.
    Only the toolbar icons (incl. the expand arrow) stay. */
-.p-input-area.collapsed .p-textarea,
+.p-input-area.collapsed .p-composer,
 .p-input-area.collapsed .p-send-wrap,
 .p-input-area.collapsed .p-send,
 .p-input-area.collapsed .p-send-hint {

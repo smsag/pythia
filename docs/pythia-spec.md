@@ -144,7 +144,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 ├── .p-index-wrap > .p-index-trigger  (#)           → .p-navigator      ui/NavigatorController.ts
 │
 └── .p-input-area                                   sidebar.ts
-    ├── .p-textarea                                 Enter = line break (ADR-175)
+    ├── .p-composer                                 contenteditable; Enter = line break (ADR-175)   ui/ComposerField.ts
+    │   └── .p-composer-chip                        a note attached with #: library icon + name, reads as [[Name]] (ADR-213)
     ├── .p-ctx-bar > .p-ctx-bar-fill                attached-note token budget
     └── .p-toolbar
         ├── .p-toolbar-left > .p-tool-btn           attach · save · globe (web) · library (vault context)
@@ -169,7 +170,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Choice picker | `.p-choice-pop` → `.p-choice-row`, `-label`, `-detail` | `ui/choicePicker.ts` | effort / language segments |
 | Mobile sheet | `.p-sheet` → `.p-sheet-scrim`, `-list`, `-item-*` | `ui/ActionSheet.ts` | the same, on touch |
 | Send menu | `.p-send-menu` → `-icon`, `-label` | `sidebar.ts` | long-press on Send |
-| Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the textarea |
+| Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the composer |
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
 | Settings: section | a `Setting` heading plus `.pythia-section-intro`, the one sentence naming the section's remit | `ui/settings/section.ts` | every section of the plugin settings tab (ADR-209) |
 | Settings: sections | Connections · New conversations · While answering · Prompt optimizer · On-device semantic search (+ Vault context) · Notes Pythia writes (+ Glossary) · History and storage · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
@@ -245,7 +246,6 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-11 | **No retention policy for the archive folder**, and no size readout for it. | #294 | Pruning is Obsidian's job. A count beside the folder picker would answer the visibility half without Pythia owning retention. | Cheap; next docs/settings pass. |
 | D-28 | **The model suggestion runs only on an optimize**, not on every send. | ADR-181 | The optimizer is the moment the user asked for help; a suggestion on every send is a second, unrequested voice beside Send. `recommendModel` already takes nothing optimizer-specific. | Someone uses the optimizer only to get the suggestion. |
 | D-30 | **No *compare with* link on an answer from a suggested model.** | ADR-181 | Compare (ADR-160) already re-runs the last turn on another model via the long-press. A link would make the way back one tap. | A cheaper suggested answer is reported as worse and the user did not find Compare. |
-| D-52 | **The composer's note link is plain text**, not a pill: no tint, no icon, no single-press delete. | ADR-211 | A `<textarea>` cannot hold styled content. A pill needs a mirrored overlay behind a transparent textarea, or a `contenteditable` — which puts Enter vs Cmd+Enter, IME composition, ADR-187's Scope send, the placeholder, autoresize and the keyboard inset all back in play. Large blast radius for a visual gain. | The plain link proves hard to spot or to remove, or the composer is being rewritten for another reason anyway. |
 | D-46 | **No setting to turn charts off.** The standing prompt rule always names `render_chart`. | ADR-210 | Deliberate: a chart is a way of answering, like a table or a list, and nothing offers to switch those off either. ADR-209's discipline also applies — there is no section whose one-sentence remit covers it. | Someone reports charts appearing where they did not want them, often enough that "ask for prose" is not the answer. |
 | D-47 | **The exported PNG drops the theme's font** for a generic system stack. | ADR-210 | Forced: an SVG rasterised through an `<img>` is its own document and loads no webfont, and hard rule 2 forbids embedding one. The drift is mild; the alternative is a silent fallback to a serif face. | A user reports the PNG looking wrong beside the panel, or a way to inline a font arrives that does not mean shipping one. |
 | D-48 | **No chart while the answer streams.** The block reads as raw JSON until the answer commits. | ADR-210 | Deliberate: it would mean parsing partial JSON on every token and flickering a wrong chart on the way to the right one. The block is short and the wait is the rest of the answer. | Charts start arriving early in long answers, so the JSON is on screen for a noticeable time. |
@@ -302,6 +302,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 - **Token-limit handling** (old 2) — the stop reason is reported, a card offers Continue / Retry / Compare, and one `maxTokensAdvice` rule drives every warning (ADR-162).
 - **Conversation naming** (old 3) — AI-generated after the first exchange, renameable; the theme note follows the name unless pinned (ADR-150).
 - **Per-file storage** (old #3) — still the answer, now designed as D-1 rather than assumed.
+- **The composer's note link as a pill** (D-52) — the composer is a `contenteditable` and the link is a chip that reads as its `[[Name]]` (ADR-213).
 - **Real embedding retrieval** (old #50) — shipped (ADR-116/126/169); the entry in the review predates it.
 
 ---
@@ -315,6 +316,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
+| 2026-09-25 | ADR-213: `.p-composer` and `.p-composer-chip` replace `.p-textarea` in the UI map; D-52 closed. |
 | 2026-09-23 | ADR-211: the composer keeps the link for a note attached with `#`; D-52 records why it is text rather than a pill. |
 | 2026-09-23 | ADR-210: the chart card added to the UI map (the first surface that also renders outside the panel), and D-46…D-50 recorded — no off switch, the PNG's font, no chart while streaming, no PNG in the vault, and bar/line/pie only. |
 | 2026-09-18 | Rewritten from the 0.1 MVP draft: current product framing, the UI vocabulary map, and the deferred-decision register (D-1…D-27). |

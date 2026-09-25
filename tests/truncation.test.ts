@@ -9,6 +9,7 @@ import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation, StreamFinish } from "../models/types";
 import { DEFAULT_MAX_TOKENS, DEFAULT_MAX_TOKENS_REASONING } from "../services/promptConstants";
 import en from "../locales/en";
+import type { ComposerField } from "../ui/ComposerField";
 
 interface StreamCall { text: string }
 interface StreamFake {
@@ -31,7 +32,7 @@ function stubStream(plugin: InstanceType<typeof PythiaPlugin>, reply: string, fi
 	return calls;
 }
 
-const input = (view: PythiaSidebarView): HTMLTextAreaElement => (view as unknown as { inputEl: HTMLTextAreaElement }).inputEl;
+const input = (view: PythiaSidebarView): ComposerField => (view as unknown as { composer: ComposerField }).composer;
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("cut-off answer card (ADR-162)", () => {

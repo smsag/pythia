@@ -95,13 +95,25 @@ export function insertTokens(value: string, at: number, tokens: readonly string[
 	const before = value.slice(0, pos);
 	const after = value.slice(pos);
 
-	const lead = before.length > 0 && !/\s$/.test(before) ? " " : "";
+	const { lead, trail } = tokenSpacing(value, pos);
 	const body = tokens.join(" ");
-	const trail = /^\s/.test(after) ? "" : " ";
 
 	return {
 		value:  before + lead + body + trail + after,
 		cursor: before.length + lead.length + body.length + trail.length,
+	};
+}
+
+/** The spaces an insert at `at` needs on each side — one only where the text
+ *  there does not already have one. Shared by `insertTokens` and the chip
+ *  composer, which inserts the same spacing around chips (D-52). */
+export function tokenSpacing(value: string, at: number): { lead: string; trail: string } {
+	const pos = Math.min(Math.max(at, 0), value.length);
+	const before = value.slice(0, pos);
+	const after = value.slice(pos);
+	return {
+		lead:  before.length > 0 && !/\s$/.test(before) ? " " : "",
+		trail: /^\s/.test(after) ? "" : " ",
 	};
 }
 

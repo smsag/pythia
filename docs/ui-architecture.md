@@ -1,6 +1,6 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-25*
+*Last updated: 2026-09-25 (ADR-213: the composer field and its chips)*
 
 How the UI is put together and what its parts are called, so changes can be asked for (and found) by name. The words match `README.md` where the user sees them. The full class-by-class map lives in `docs/pythia-spec.md` → *UI architecture*; this file is the orientation that makes that map readable.
 
@@ -59,7 +59,8 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 ├─ .p-index-trigger  (#)                 → .p-navigator (NavigatorController)
 ├─ .pythia-sel-toolbar                   selection strip (SelectionController)
 └─ .p-input-area
-   ├─ .p-textarea                        composer; # opens the note picker (InlineSuggest)
+   ├─ .p-composer                        ComposerField — contenteditable; # opens the note picker (InlineSuggest)
+   │  └─ .p-composer-chip                an attached note: library icon + name, reads as [[Name]]
    ├─ .p-ctx-bar                         attached-note token budget
    └─ .p-toolbar
       ├─ attach · save · globe · library  toolbarIcons
@@ -104,7 +105,8 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 | **sources row** | `Template:` / `Vault:` / `Web:` under an answer |
 | **chip** | A small inline control: citation chip, tool-call chip, model hint, history chip |
 | **selection strip** | The action bar for selected chat text |
-| **composer** | The textarea plus its toolbar (`.p-input-area`) |
+| **composer** | The editable field plus its toolbar (`.p-input-area`); the field is `ComposerField` |
+| **composer chip** | A note attached with `#`, drawn in the field; its text is `[[Name]]`, which is what is sent |
 | **note picker** | The `#` popup in the composer (`InlineSuggest`) |
 | **navigator** | The `#` button's popover — not the note picker |
 | **sheet** | The mobile bottom sheet that replaces a popover (`ActionSheet`) |
