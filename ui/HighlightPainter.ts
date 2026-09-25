@@ -429,3 +429,22 @@ export function flashHighlight(favId: string, root: ParentNode): void {
 	mark.addClass(FLASH_CLASS);
 	setTimeout(() => mark.removeClass(FLASH_CLASS), 1200);
 }
+
+const PIN_FLASH_TAG = "pythia-pin-flash";
+const PIN_FLASH_CLASS = "p-pin-flash";
+
+/**
+ * Flash a passage that carries no mark of its own — a pinned text's source, when
+ * ↗ jumps back to it (ADR-216). `flashHighlight` needs an existing favorite
+ * mark; this paints a temporary one and unwraps it again, normalizing the body
+ * so a term or favorite that straddles the seam still matches afterwards. The
+ * mark it returns is where to scroll; null when the text is no longer there.
+ */
+export function flashText(body: HTMLElement, text: string, occurrenceIndex = 0): HTMLElement | null {
+	const range = findRange(body, text, occurrenceIndex);
+	if (!range) return null;
+	paintRange(range, "flash", PIN_FLASH_CLASS, "data-pin-flash", PIN_FLASH_TAG);
+	const marks = Array.from(body.querySelectorAll<HTMLElement>(`${PIN_FLASH_TAG}.${PIN_FLASH_CLASS}`));
+	setTimeout(() => { unwrapMarks(marks); body.normalize(); }, 1200);
+	return marks[0] ?? null;
+}

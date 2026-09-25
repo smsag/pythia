@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-215 (a card that appears in the conversation is revealed whole once it is built; the write confirmation is revealed even to a user who has scrolled up, because the answer waits on it; the chat's scroll state is one `ChatScroll`).*
+*Last updated: 2026-09-25 — ADR-216 (a passage, code block, diagram, chart or table from an answer can be pinned to the top of the chat: a floating strip that collapses to one line, several pins one at a time, saved with the conversation as snapshots; every jump in the chat now lands clear of it).*
+
+*Previously: 2026-09-25 — ADR-215 (a card that appears in the conversation is revealed whole once it is built; the write confirmation is revealed even to a user who has scrolled up, because the answer waits on it; the chat's scroll state is one `ChatScroll`).*
 
 *Previously: 2026-09-25 — ADR-214 (a note, several notes or a folder dragged from the vault onto the composer attaches exactly as a `#` pick does — a chip where it was dropped; the drag is read from Obsidian's draggable and, failing that, its text, both validated; Obsidian's open-in-this-tab modifier keeps its meaning).*
 
@@ -4427,3 +4429,33 @@ So the text alone cannot resolve a folder or the folders of a mixed selection; o
 **The scroll state is one object.** `autoScroll`, `isScrolling`, the scroll listener and `scrollToBottom`'s body lived as loose fields and branches in `sidebar.ts`; `ChatScroll` (`ui/chatScroll.ts`) now owns "following", both ways Pythia moves the view (to the bottom, to a card), and the flag that keeps Pythia's own moves from reading as the user's. `sidebar.ts` 1505 → 1499, which is what let the fix land under the ratchet.
 
 **Verified.** In Chromium with real layout: the old order leaves the card's bottom 44px below the view; reveal-after-build shows it whole, even with following off. `tests/chatScroll.test.ts` (10): the delta in every direction, following stopped by the user and not by Pythia, unforced reveals respecting a scrolled-up user, a forced one overriding it — and the regression itself: the write card is revealed exactly once, forced, with its label and both buttons already in it. That last test fails on the old controller, which never revealed a built card.
+
+### ADR-216 — Pin a piece of an answer to the top of the conversation
+
+*2026-09-25*
+
+**Context.** A conversation moves on and the thing you are working from — a passage, a code block, a chart, a table — scrolls away; the only ways back were scrolling and the `#` navigator. The ask: select text, or use an action on a rendered block, and pin it at the top as a floating overlay. User decisions: **floating** and collapsible; **several** pins, one shown at a time; **saved** with the conversation; sources **text, code, charts and diagrams, tables**.
+
+**Precedent.** ADR-057 removed a pinned summary band because a band that never scrolls away costs sidebar height permanently. A pin the user chose is legitimate where an automatic band was not — but it answers the same cost: **collapsed, it is one line**, and the chat is padded by exactly that line's measured height (`--p-pin-strip-h`), so nothing is hidden under it at scroll 0. An expanded pin floats over the chat on purpose, capped at 45% of it with its own scroll.
+
+**Decision — a pin is a SNAPSHOT.** `Conversation.pins?: Pin[]`, `Pin = { id, messageId, kind, source, occurrenceIndex?, createdAt }`. `source` is what that block's Copy copies at the moment of pinning. A reference to the live DOM or to an offset in `Message.content` would break on re-render, retry, deleting the exchange or keeping a comparison candidate; a snapshot survives all four, and `messageId` is only where ↗ jumps back to — a pin whose message is gone says so (`pinGone`), never silently. Pins never enter the prompt, like merge links and glossary definitions.
+
+**One builder per source, shared by Copy and Pin** (`ui/pinSources.ts`): `codeBlockSource`, `diagramSource`, `tableMarkdown`, and a chart card's `chartSourceOf` (its `formatChartBlock(spec)`). The code and diagram Copy buttons were switched to them, and a table in an answer gains Copy beside its Pin for the same reason — "what Copy copies" and "what a pin stores" are one answer. The builders read `textContent`, not `innerText`: the exact characters with no dependence on layout (happy-dom's `innerText` dropped a `<pre>`'s line breaks, which is how the difference surfaced).
+
+**Where pins come from.**
+- The **selection strip**'s *Pin*, for assistant content only, gated exactly like Fork and Merge. To fit it, `SelectionController` got one `addBtn` for its nine copy-pasted buttons and one `readAssistantSelection` (trimmed text · message · occurrence) now shared by Fork, Merge and Pin — 587 → 526 lines.
+- A **pin icon beside Copy** on code blocks, diagrams, chart cards and tables — added by `decorateCodeBlocks(…, onPin)`, which only the answer's render passes. A chart is drawn by the global code-block processor, which cannot be handed a pin; the card records its source instead, and the decorator adds the pin (a vault note never runs the decorator, so its charts get none). A pin's own body is decorated WITHOUT `onPin`: not a place to pin from.
+
+**The strip** (`ui/PinController.ts`, the shared accordion of ADR-192): kind + one-line excerpt as the title (`pinExcerpt`: a text's first line, code's first line of code, a chart's title, a table's header row). Collapsed it carries **‹ n/m ›** and **↗** only — measured in a 340px panel, all six controls squeezed the title to "Text · the …" — and **copy** and **✕** come with the open pin. Flat: the accordion's opaque ground and hairline, **no shadow** (hard rule 4); z-index 15, above the `#` trigger and below the navigator and the conversation panel. Which pin is shown and whether it is open are view state, never written. A text pin is shown as plain text: a selection is not Markdown, and a leading `#` must stay a `#`.
+
+**Limits are refused, never applied quietly** (principle 2, ADR-174): `PIN_LIMIT` 5 per conversation and `PIN_MAX_CHARS` 20 000 per pin, each with a Notice naming the number. `normalizePins` drops malformed entries at load but does NOT enforce the limits — another device or version may have written more, and a load never deletes what the user pinned. A pinned conversation is protected from the history limit, like a starred one.
+
+**Every jump clears the strip.** Five surfaces hand-rolled `offsetTop - 8` (message, favorite, fork origin, merge link, summary card), and each would have landed its target under the pin. `scrollChatTo` in `ui/chatScroll.ts` is now the one jump: 8px below whatever floats over the chat's top, MEASURED, so an expanded pin counts for its full height. ↗ collapses the pin before it jumps.
+
+**Caught while building.** Three new strings were written with `{n}`; `t()` replaces only `{{n}}`, so the user would have read "{n}/{m}". The pin tests caught one; `tests/i18n.test.ts` now fails on any single-brace placeholder in any locale.
+
+**Verified** in Chromium with the real `PinController` and `styles.css` in a 340px panel: collapsed, the first message sits below the strip (strip bottom 94px, message top 104px); expanded, the overlay is 45% of the chat and the code scrolls inside it with its normal header and no pin of its own; ↗ collapses the pin and flashes the passage below the strip. **Not verified in Obsidian** (a real Mermaid render, a real chart processor, the phone) — the user's pass.
+
+**Guards.** `tests/pins.test.ts` (18): limits refused with reasons and never truncated, a second press not a second pin, excerpts per kind, `normalizePins` dropping malformed and keeping over-limit, pins surviving `spliceExchange` and `keepCandidate`, eviction protection. `tests/pinSources.test.ts` (11): the builders, Copy = Pin for code, diagram, table and chart, and no pin without `onPin`, in a note's chart, on a failed chart or twice. `tests/pinOverlay.test.ts` (15) on the real view: absent / collapsed / cycling / the collapsed controls / unpin / following the conversation / view state not written / pinning from the selection strip and from a code block / the limit's Notice with its number / a streaming answer / ↗ to a gone message / ↗ collapsing and flashing / a fork not inheriting pins. `tests/chatScroll.test.ts` (+4): the jump clear of a collapsed, expanded and hidden pin.
+
+**Deferred:** D-53 (pins in an archived note), D-54 (a fork inheriting pins), D-55 (a pin as prompt context).

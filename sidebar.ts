@@ -14,7 +14,7 @@ import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
 import { ComposerField } from "./ui/ComposerField";
-import { ChatScroll } from "./ui/chatScroll";
+import { ChatScroll, scrollChatTo } from "./ui/chatScroll";
 import { vaultNoteDrop } from "./ui/noteDrop";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
@@ -30,6 +30,7 @@ import { paintCitations } from "./ui/citationPainter";
 import { attachLongPress } from "./ui/longPress";
 import { attachOutsideDismiss } from "./ui/outsideDismiss";
 import { SelectionController } from "./ui/SelectionController";
+import { PinController } from "./ui/PinController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
 import { renderRichMarkdown } from "./ui/renderMarkdown";
@@ -102,6 +103,7 @@ export class PythiaSidebarView extends ItemView {
 	private sendBtn!: HTMLButtonElement;
 	// Selection toolbar (Copy/Favorite/Branch/Insert/Inbox) + span-favorites (ADR-103).
 	private selectionController!: SelectionController;
+	private pins!: PinController; // answer content pinned to the top (ADR-216)
 	private lastMarkdownView: MarkdownView | null = null;
 
 	// Fork-origin banner, painted marks, and the inline anchor/menu (ADR-103).
@@ -528,6 +530,8 @@ export class PythiaSidebarView extends ItemView {
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
 		this.registerDomEvent(this.messagesEl, "scroll", () => this.chatScroll.onScroll());
+		this.pins ??= new PinController({ app: this.app, plugin: this.plugin, component: this, getConversation: () => this.activeConversation, getMessagesEl: () => this.messagesEl, expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row) });
+		this.pins.mount(messagesWrapper);
 		this.selectionController = new SelectionController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
@@ -539,6 +543,7 @@ export class PythiaSidebarView extends ItemView {
 			toggleTermAnchor: (term, markEl) => void this.glossaryController.toggleAnchor(term, markEl),
 			defineTerm: (term, passage) => void this.glossaryController.defineSelection(term, passage),
 			describePerson: (name, passage) => void this.glossaryController.describePerson(name, passage),
+			pinText: (text, messageId, occ) => this.pins.pinText(text, messageId, occ),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el as HTMLElement, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
@@ -812,6 +817,7 @@ export class PythiaSidebarView extends ItemView {
 
 	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
 		this.exchangeActions.hidePreview();
+		this.pins.render();
 
 		if (!this.activeConversation) {
 			this.messagesEl.empty();
@@ -976,7 +982,7 @@ export class PythiaSidebarView extends ItemView {
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
-		decorateCodeBlocks(aiBody, this.diagObservers);
+		decorateCodeBlocks(aiBody, this.diagObservers, this.pins.pinBlock);
 		this.selectionController.repaintFavorites(aiBody, msg.id);
 		this.forkController.repaintForkOrigins(aiBody, msg.id);
 		this.mergeController.repaintMergeLinks(aiBody, msg.id);
@@ -1028,7 +1034,7 @@ export class PythiaSidebarView extends ItemView {
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}
-				decorateCodeBlocks(aiBody, this.diagObservers);
+				decorateCodeBlocks(aiBody, this.diagObservers, this.pins.pinBlock);
 				const sources = appendWebSources(parseCitations(fullText), this.toolCalls.takeWebSources());
 				paintCitations(this.app, aiBody, sources);
 				renderSourcesRow(this.app, row, sources, streamTemplate);
@@ -1076,13 +1082,7 @@ export class PythiaSidebarView extends ItemView {
 		const row = this.messagesEl.querySelector(
 			`[data-msg-id="${messageId}"]`
 		) as HTMLElement | null;
-		if (!row) return;
-		// Scroll messagesEl directly so the row appears at the top of the
-		// visible area. scrollIntoView() targets the wrong scroll ancestor on
-		// iOS and uses block:"center" which hides the start of long messages.
-		const TOP_MARGIN = 8;
-		const rowTop = row.offsetTop - this.messagesEl.offsetTop;
-		this.messagesEl.scrollTo({ top: rowTop - TOP_MARGIN, behavior: "smooth" });
+		if (row) scrollChatTo(this.messagesEl, row);
 	}
 
 	/** Expand a collapsed long user bubble in `row`, syncing its toggle icon. */

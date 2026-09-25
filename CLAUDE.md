@@ -120,6 +120,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    PinController.ts          ← the pin strip at the top of the chat: one pin shown, collapsed to one line, ‹ n/m › · ↗ · copy · ✕ (ADR-216)
+    pinSources.ts             ← the ONE builder per pinnable source (code · diagram · table), shared by that block's Copy and its Pin; appendPinButton
     chatScroll.ts             ← ChatScroll: the chat's follow state + toBottom + reveal; revealDelta. A card is revealed WHOLE once built — never `scrollTop = scrollHeight` on an empty card; forced only when the answer waits on it (ADR-215)
     accordion.ts              ← buildAccordion / setAccordionOpen: the ONE collapsible box (context inspector, summary cards) — a <button> header with aria-expanded, actions beside it (ADR-192)
     icons.ts                  ← SOURCE_ICONS + appendSourceIcon: one icon per source type, shared by the toolbar and every reference (ADR-193); VAULT_NOTE_ICON (`library`) for every vault note, and decorateNoteLinks, which draws it on a sent message's `[[links]]` (ADR-212); REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
@@ -712,6 +714,15 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Colour lives in `ui/chart/palette.ts` and nowhere else.** Swatches are derived against the live theme ground and published as `--p-chart-cN` on the `<svg>` root; `tests/chartRules.test.ts` fails on a colour literal anywhere else under `ui/chart/`. **Series 1 is not `var(--color-accent)`** — hard rule 6 is about accent-*coloured surfaces*, and a user-chosen accent would collide with whichever neighbour shares its hue
 - **The PNG exists because a CSS custom property does not cross the `<img>` boundary.** The export clone is painted by attribute, taking each swatch off the root's inline style rather than through the CSSOM. `ClipboardItem` gets an **unresolved promise** — awaiting the blob first spends the user gesture and the write fails on iOS alone. The text fallback ships and is never hidden on mobile
 - **One clipboard helper**: `ui/clipboard.ts`. Four legacy sites are grandfathered in `tests/chartRules.test.ts` and that list may only shrink
+
+### Pins (ADR-216)
+
+- **A pin is a snapshot**, not a reference: `Pin.source` is what the block's Copy copies at the moment of pinning. It outlives its message (retry, delete, comparison); ↗ then says `pinGone`. **A pin never reaches the model** (D-55)
+- **Copy and Pin read one builder** (`ui/pinSources.ts`, `chartSourceOf`) — never a second way to turn a rendered block into text
+- **Pin buttons only in answers**: `decorateCodeBlocks(…, onPin)` is passed `onPin` by the answer render ONLY. A pin's body, a summary card and a vault note get none; a test fails if one appears
+- **Collapsed = one line, and the chat is padded by its measured height.** An expanded pin floats; every jump goes through `scrollChatTo`, which measures what floats over the top. **Never hand-roll `offsetTop - 8` again**
+- **Limits are refused with a Notice, never truncated or rotated** (5 pins, 20 000 chars); a load never enforces them
+- Collapsed shows ‹ n/m › and ↗ only; copy and ✕ come with the open pin (the title needs the room)
 
 ## What not to build
 

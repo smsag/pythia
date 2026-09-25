@@ -1,3 +1,4 @@
+import pinsDe from "./pins.de";
 import chartDe from "./chart.de";
 import type { Strings } from "./en";
 import embeddingDe from "./embedding.de";
@@ -10,6 +11,8 @@ const de: Strings = {
 	...settingsDe,
 	// Diagramme in einer Antwort in eigenem Modul (ADR-210).
 	...chartDe,
+	// Angeheftete Antwortinhalte in eigenem Modul (ADR-216).
+	...pinsDe,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "Kein Gespräch",
 	changeModelTooltip:     "Anbieter / Modell wechseln",

@@ -111,7 +111,7 @@ const settingsEn = {
 	messageCapName:          "Message cap per session",
 	messageCapDesc:          "Maximum messages per conversation before further sends are blocked. Leave empty for no limit.",
 	maxConversationsName:    "Conversation history limit",
-	maxConversationsDesc:    "Maximum conversations kept in storage. Leave empty for no limit. When the limit is reached the oldest are removed — kept are conversations with a starred passage, the one open in a Pythia panel, and any a merge link points at. With \"Archive before deleting\" on they are written to a note first; without it they are deleted permanently. Lowering this asks first.",
+	maxConversationsDesc:    "Maximum conversations kept in storage. Leave empty for no limit. When the limit is reached the oldest are removed — kept are conversations with a starred passage or a pin, the one open in a Pythia panel, and any a merge link points at. With \"Archive before deleting\" on they are written to a note first; without it they are deleted permanently. Lowering this asks first.",
 	noLimitPlaceholder:      "no limit",
 	archiveBeforeEvictionName: "Archive before deleting",
 	archiveBeforeEvictionDesc: "When the history limit removes a conversation, write it to a note in the vault first. A conversation whose note cannot be written is kept rather than deleted.",
@@ -133,7 +133,7 @@ const settingsEn = {
 	capConfirmBody:          "A limit of {{cap}} deletes {{count}} conversation(s) from storage. This cannot be undone.",
 	capConfirmBodyArchive:   "A limit of {{cap}} removes {{count}} conversation(s) from storage. Each is written to a note in {{folder}} first.",
 	capConfirmArchiveBtn:    "Archive {{count}}",
-	capConfirmKept:          "Kept: conversations with a starred passage, the one open in a Pythia panel, and any a merge link points at.",
+	capConfirmKept:          "Kept: conversations with a starred passage or a pin, the one open in a Pythia panel, and any a merge link points at.",
 	capConfirmRemove:        "Delete {{count}}",
 
 	// ── Troubleshooting ───────────────────────────────────────────────────────

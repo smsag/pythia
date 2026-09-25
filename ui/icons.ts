@@ -11,6 +11,9 @@ import { setIcon } from "obsidian";
  */
 export const REGENERATE_ICON = "refresh-cw";
 
+/** The ONE glyph for pinning answer content to the top of the chat (ADR-216). */
+export const PIN_ICON = "pin";
+
 /**
  * The ONE icon for a Markdown note from the vault, however it got into the
  * conversation (ADR-212). Attached with `#` or the paperclip, pulled in by vault
