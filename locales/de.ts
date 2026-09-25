@@ -176,6 +176,18 @@ const de: Strings = {
 	searchingLabel:  "Websuche läuft: „{{query}}“",
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",
+	searchFilteredLabel: "{{label}} · {{filters}}",
+	searchFilterNews:    "Nachrichten",
+	searchFilterFinance: "Finanzen",
+	searchFilterDay:     "letzter Tag",
+	searchFilterWeek:    "letzte Woche",
+	searchFilterMonth:   "letzter Monat",
+	searchFilterYear:    "letztes Jahr",
+	searchFilterSites:   "{{n}} Websites",
+	searchFilterExcluding: "ohne {{what}}",
+	readingUrlLabel:   "Lese {{site}}",
+	readUrlLabel:      "✓ Gelesen: {{site}}",
+	readUrlFailedLabel: "{{site}} nicht lesbar",
 
 	// ── Wikilink references ───────────────────────────────────────────────────
 	addNoteInline: "+ Notiz",

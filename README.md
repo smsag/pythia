@@ -39,7 +39,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Browse conversations** — open any past conversation directly from the Command Palette, no resume-mode step
 - **Search conversations** — the loupe in the header opens the conversation panel with its search box focused: an empty box browses by date, a query ranks every conversation by its title, summary and messages, with the matching line under each hit. Partial words work as you type, and so do German compounds — searching *Vertrag* finds a conversation about your *Mietvertrag*. When a search comes back almost empty, Pythia also looks at the notes each conversation attached or cited and tells you it did: the extra results sit under **ALSO IN NOTES**, each one saying which note put it there. Type `note:` to search only those notes, `all:` for everything, or `conv:` to stay in the conversations — the same syntax works in the Command Palette's *Browse conversations*
 - **Related conversations** — the ⇄ icon on any row in the conversation panel (or a long-press on touch) finds conversations that are semantically close to it, using the same on-device embedding model as vault context. Nothing is sent anywhere, and the similarity threshold is measured per model rather than guessed — *strict* / *balanced* / *loose* in the settings
-- **Web search** — toggle the globe in the input toolbar and the model can look up current information through [Tavily](https://tavily.com) (your own API key). Results are cited in the answer with the domain they came from
+- **Web search** — toggle the globe in the input toolbar and the model can look up current information through [Tavily](https://tavily.com) (your own API key). The model can narrow a search to news, a time range or named sites, and read a page you link. Results are cited in the answer with the domain they came from
 - **Prompt optimizer** — *New conversation from prompt* (in `Pythia: Commands…`) rewrites a rough prompt before you send it; the same is available inline from the Send menu for what you have already typed. Optionally framed as CO-STAR, RACE or RISEN. Inline, it can also **suggest a model**: it rates how demanding the task is and offers the cheapest model of your default provider that can handle it, as a chip beside Send (`→ GPT-5.4 mini ●○○`). Tap to use it for the next answer only; your conversation keeps its model
 - **Delete conversation** — remove any conversation via the sidebar trash button or the Command Palette. The dialog offers **Archive** (write it to a note, then remove it) beside **Delete**
 - **Browse favorites** — fuzzy-search all starred responses across every conversation and jump directly to one from the Command Palette
@@ -219,7 +219,7 @@ vault/
 | Setting | Default | Description |
 |---|---|---|
 | Anthropic / OpenAI / Mistral API key | — | Secret name in Obsidian's native SecretStorage |
-| Tavily API key | — | Enables the `web_search` tool |
+| Tavily API key | — | Enables the `web_search` and `read_url` tools |
 | Default provider | `anthropic` | `anthropic`, `openai` or `mistral` |
 | Default Anthropic model | `claude-sonnet-5` | Overridden per template and per conversation |
 | Default OpenAI model | `gpt-5.4-mini` | " |
@@ -290,7 +290,7 @@ Pythia sends data to third-party AI providers **only** when you actively use the
 |---|---|---|
 | Your chat messages and attached note content | Anthropic, OpenAI or Mistral (whichever provider you select) | On every message you send |
 | System prompt and context notes | Same provider | On every message you send |
-| Search queries the model chooses to run | [Tavily](https://tavily.com) | Only while web search is switched on for that conversation |
+| Search queries the model chooses to run, and the web addresses it reads — only links you gave or a search returned, never a local or private address or one carrying a password | [Tavily](https://tavily.com) | Only while web search is switched on for that conversation, or for a single message it auto-arms on |
 
 **What stays local:**
 

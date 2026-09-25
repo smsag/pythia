@@ -37,7 +37,7 @@ const settingsEn = {
 	openaiKeyName:           "OpenAI API key",
 	mistralKeyName:          "Mistral API key",
 	searchKeyName:           "Tavily API key",
-	searchKeyDesc:           "Select a secret from Obsidian's secret storage. Enables the web_search tool so models can look up current information. Keys are never written to data.json.",
+	searchKeyDesc:           "Select a secret from Obsidian's secret storage. Enables the web_search and read_url tools so models can look up current information and read a page you link. Keys are never written to data.json.",
 
 	// ── New conversations ─────────────────────────────────────────────────────
 	defaultProviderName:     "Provider",

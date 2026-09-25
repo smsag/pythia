@@ -1,6 +1,10 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-25 — ADR-216: pins. `models/types.ts` `Pin` + `Conversation.pins?`; `services/pins.ts` (pure: `addPin` with its refusals, `removePin`, `pinExcerpt`, `PIN_LIMIT`, `PIN_MAX_CHARS`); `services/persistence.ts` `normalizePins` (after `normalizeMerges`) and pinned conversations protected in `partitionEvictions`. `ui/pinSources.ts` — the one builder per source, shared by Copy and Pin, and `appendPinButton`; `decorateCodeBlocks` / `decorateTables` take an optional `onPin`; `ui/chart/card.ts` exports `chartSourceOf`. `ui/PinController.ts` owns the strip. `ui/chatScroll.ts` gains `scrollChatTo` / `coveredTop`, replacing five hand-rolled jumps. `SelectionController` gains `addBtn` and `readAssistantSelection` (587 → 526). `HighlightPainter.flashText` flashes an unmarked passage. `locales/pins.{en,de}.ts`.*
+*Last updated: 2026-09-25 — ADR-217 addendum: new `services/webReadScope.ts` (`WebReadScope` — the per-answer allow-list and read cap for `read_url`; `ToolHandler.execute` takes it as a fourth argument and fails closed without one; `ToolCallController.handler` and each comparison candidate build one and feed it every successful web result). `sendPolicy.wantsWeb` composes the auto-arm cues.*
+
+*Previously: 2026-09-25 — ADR-217: Tavily search filters and `read_url`. New `services/tavilyArgs.ts` (pure: `parseSearchArgs`, `parseReadUrlArgs` with `isPrivateHost`, `describeSearchFilters`); `WebSearchService` gains `extract()` on /extract and one private `post()` for both endpoints; `ToolHandler` offers `read_url` under the research gate; `containsWebUrl` feeds auto-arm (`shouldAutoArmSearch`'s `wantsWeb`); `ToolCallController` labels both tools' chips.*
+
+*Previously: 2026-09-25 — ADR-216: pins. `models/types.ts` `Pin` + `Conversation.pins?`; `services/pins.ts` (pure: `addPin` with its refusals, `removePin`, `pinExcerpt`, `PIN_LIMIT`, `PIN_MAX_CHARS`); `services/persistence.ts` `normalizePins` (after `normalizeMerges`) and pinned conversations protected in `partitionEvictions`. `ui/pinSources.ts` — the one builder per source, shared by Copy and Pin, and `appendPinButton`; `decorateCodeBlocks` / `decorateTables` take an optional `onPin`; `ui/chart/card.ts` exports `chartSourceOf`. `ui/PinController.ts` owns the strip. `ui/chatScroll.ts` gains `scrollChatTo` / `coveredTop`, replacing five hand-rolled jumps. `SelectionController` gains `addBtn` and `readAssistantSelection` (587 → 526). `HighlightPainter.flashText` flashes an unmarked passage. `locales/pins.{en,de}.ts`.*
 
 *Previously: 2026-09-25 — ADR-215: new `ui/chatScroll.ts` — `revealDelta` / `revealInScroller` (pure-ish) and `ChatScroll`, which owns the chat's follow state, `toBottom` and `reveal`; the view's `autoScroll` / `isScrolling` fields and its scroll listener body are gone (`sidebar.ts` 1505 → 1499, ceiling lowered). `ToolCallDeps` gains `reveal(card, force)`; the commit path reveals the last `.p-trunc` / `.p-rewrite` under the answer.*
 
@@ -311,7 +315,9 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/MistralService.ts` | 295 | Mistral streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; uses `MistralCore` + tree-shakeable standalone `chatComplete`/`chatStream` functions, temperature/`reasoningEffort`, resumeMode gating; PDFs unsupported (warns via Notice) |
 | `services/BaseProvider.ts` | 314 | Abstract base: shared fields, lifecycle, concrete `assistantLabel` (default "Assistant") + `resolveModel` (delegates to `resolveDefaultModelForProvider` via `providerType`), `resolveUserContent`/`finishOrError` helpers, `runStreamLoop` template method (abort, retry, tool-round loop with `MAX_TOOL_ROUNDS`, token accumulation, debug logging), exported `RoundResult` interface, all generate* utility methods |
 | `services/ToolHandler.ts` | 190 | Tool definitions (`create_note`/`rewrite_note`/`prepend_note` + read-only `web_search`) + `ToolHandler` class (injected NoteWriter + optional WebSearchService); `researchEnabled` gates `web_search` independently of `writeMode` |
-| `services/WebSearchService.ts` | 145 | Client-executed web search for research mode: queries Tavily via Obsidian `requestUrl`, formats results with source URLs, never throws (returns an "Error:" string on failure) |
+| `services/WebSearchService.ts` | 242 | Client-executed Tavily calls for research mode via Obsidian `requestUrl`: `search` (/search, optional filters) and `extract` (/extract, one page capped at 8 000 chars with the cut named). One `post()` holds the bearer header and status classification. Never throws; failures come back as an "Error:" string (ADR-217) |
+| `services/tavilyArgs.ts` | 155 | Pure: the ONE validator for the web tools' arguments — `parseSearchArgs` (topic · time_range · domains, each rejection naming its field), `parseReadUrlArgs` (http(s) + `isPrivateHost` refusal), `describeSearchFilters` for the chip and the no-results message (ADR-217) |
+| `services/webReadScope.ts` | 97 | Pure: `WebReadScope` — which pages `read_url` may read in one answer (links from user messages, plus links a web result of this answer returned, matched exactly) and how many (`MAX_READS_PER_TURN` = 5). The exfiltration guard (ADR-217 addendum) |
 | `services/redact.ts` | 75 | Pure secret redaction (`redactSecrets`, `describeErrorForLog`) — masks Bearer tokens / `sk-`/`sk-ant-`/`tvly-` key prefixes / auth key-value pairs before anything reaches a log, error dump, or model-surfaced string (defense-in-depth; ADR-112) |
 | `services/webSearchHeuristics.ts` | 64 | Pure `looksTimeSensitive(text, currentYear)` — whole-word recency cues + year ≥ now; auto-arms `web_search` for a send when the research globe is off (ADR-099) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
@@ -381,7 +387,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `ui/chart/card.ts` | 194 | `renderChartCard(source, el)` — what a ```pythia-chart block becomes, in the panel and in any vault note alike. Sets `data-decorated` FIRST, because the processor names its container `.block-language-pythia-chart`, which `decorateCodeBlocks`' diagram branch matches and `stampSvgSize` would pin to a fixed width. Lays out to the width it is given and re-lays out on resize — deliberately unlike ADR-004's pan-scrolled diagrams. A spec it cannot draw becomes an error card that still shows the data and still offers the copy |
 | `ui/chart/export.ts` | 165 | `chartPngBlob` and `inlineChartColors`. A CSS custom property does not cross the `<img>` boundary, so the clone is painted by attribute — swatches read straight off the root's inline style rather than through the CSSOM. Paints the ground in (transparency is unreadable on a dark slide) and rewrites the font to a system stack, since that isolated document loads no theme webfont |
 | `ui/clipboard.ts` | 86 | The one copy-to-clipboard control (principle 4), finally shared: `copyTextWithFeedback` (moved out of `CodeBlockDecorator`, where it sat private while CLAUDE.md called it the shared button) and `copyBlobWithFeedback`, which hands `ClipboardItem` an UNRESOLVED promise — Safari requires `clipboard.write` inside the user gesture, and awaiting the blob first spends it. Falls back to text and says so; never silently does nothing |
-| `ui/ToolCallController.ts` | 187 | Everything that happens when the model calls a tool mid-answer: the search status chip, the write-confirmation chip, and the chart branch. Owns what a call leaves for the commit — the real Tavily sources and the accepted chart blocks with the offset each belongs at. Extracted from `sidebar.ts` under the ADR-097 ratchet |
+| `ui/ToolCallController.ts` | 243 | Everything that happens when the model calls a tool mid-answer: the search status chip, the write-confirmation chip, and the chart branch. Owns what a call leaves for the commit — the real Tavily sources and the accepted chart blocks with the offset each belongs at. Extracted from `sidebar.ts` under the ADR-097 ratchet |
 | `ui/tableDecorator.ts` | 26 | `decorateTables(container)` — wraps every rendered markdown table in a `.p-scroll-frame` so a wide one scrolls sideways instead of squeezing into the sidebar (ADR-131). Idempotent via `data-decorated`, so re-rendering never nests frames. The behaviour depends on the matching cell rules in `styles.css` |
 | `ui/dragToPan.ts` | 57 | `attachDragToPan(el)` — pointer drag to scroll a horizontally overflowing element, mouse only (touch pans natively). Shared by code blocks, diagrams and tables; a press under the 5px threshold stays a click |
 | `ui/renderMarkdown.ts` | 28 | `renderRichMarkdown(app, md, el, component)` — `MarkdownRenderer.render` plus the decorations every surface should share (today: tables). Used by the summary cards and the fork/merge anchors, which previously rendered bare markdown and got no table treatment (ADR-131) |
@@ -436,7 +442,7 @@ PythiaPlugin (main.ts)
 ├── TemplateLoader             — discovers pythia_template notes in vault
 ├── NoteWriter                 — writes/updates vault notes
 ├── ToolHandler                — wraps NoteWriter + WebSearchService; executes tool calls from the LLM
-├── WebSearchService           — client-executed Tavily search for research mode (Obsidian requestUrl)
+├── WebSearchService           — client-executed Tavily search + page read for research mode (Obsidian requestUrl)
 └── PythiaSidebarView (sidebar.ts)
     ├── OptimizationController — inline prompt optimizer state + flow
     ├── NavigatorController    — # navigator popover
@@ -613,19 +619,21 @@ LLM requests tool_use / tool_calls during streamMessage
 
 ### Tool call (web search / research mode)
 
-Gated on `conversation.researchMode` (toolbar `globe` toggle, default from `webSearchDefault`). When on, each provider's `prepareStream` includes `web_search` in its tools via `getToolDefinitions(folder, writeMode, researchMode)`, and `ContextBuilder.buildSystemPrompt` prepends a `<recent_context>` block (current date + "prefer web_search for time-sensitive questions, cite URLs").
+Gated on `conversation.researchMode` (toolbar `globe` toggle, default from `webSearchDefault`). When on, each provider's `prepareStream` includes `web_search` and `read_url` in its tools via `getToolDefinitions(folder, writeMode, researchMode)`, and `ContextBuilder.buildSystemPrompt` prepends a `<recent_context>` block (current date + "prefer web_search for time-sensitive questions, cite URLs").
 
-**Auto-arm (ADR-099):** when the globe is *off*, `sendMessage` runs `looksTimeSensitive(text, currentYear)` (`services/webSearchHeuristics.ts` — whole-word recency cues + a year ≥ now) and, if it matches and a Tavily key is set (`webSearchAutoArm` on), passes an armed shallow clone `{ ...conv, researchMode: true }` to `streamMessage` for that single turn — so `web_search` is offered and the `<recent_context>` block injected without ever persisting `researchMode` (the original `conv` is what sidebar's callbacks save). The globe pulses (`.is-auto-armed`) to show it fired. The same effective flag feeds the two `allowedToolNames` gates.
+**Auto-arm (ADR-099, ADR-217):** when the globe is *off*, `sendMessage` asks whether the message wants the web: `looksTimeSensitive(text, currentYear)` (whole-word recency cues + a year ≥ now) or `containsWebUrl(text)` (a pasted http(s) link), both in `services/webSearchHeuristics.ts`. If either matches and a Tavily key is set (`webSearchAutoArm` on), `shouldAutoArmSearch` arms a shallow clone `{ ...conv, researchMode: true }` for that single turn. That offers `web_search` and `read_url` and injects the `<recent_context>` block without ever persisting `researchMode` (the original `conv` is what sidebar's callbacks save). The globe pulses (`.is-auto-armed`) to show it fired. The same effective flag feeds the two `allowedToolNames` gates.
 
 ```
-LLM requests web_search during streamMessage
-  → onToolCall(call) [sidebar.ts]
-      → read-only: NO confirm prompt; show live "Searching: <query>" chip
-      → plugin.toolHandler.execute(call, allowed incl. web_search)
-          → ToolHandler routes web_search (before path/content validation)
-            → WebSearchService.search(query) → Tavily via requestUrl
-            → formatted results string (answer + sources w/ URLs), or "Error:" string
-      → chip updated to done or error; result returned to LLM
+LLM requests web_search / read_url during streamMessage
+  → onToolCall(call) → ToolCallController.runSearch
+      → read-only: NO confirm prompt; live chip "Searching the web: <query> · <filters>" / "Reading <site>"
+      → plugin.toolHandler.execute(call, allowed incl. web_search + read_url)
+          → ToolHandler validates through services/tavilyArgs.ts (Error: naming the field on a rejection)
+            web_search → WebSearchService.search(args) → POST /search (filters only when set)
+            read_url   → WebReadScope.admit(url): a link the user gave or a result of this answer returned, ≤ 5 reads
+                       → WebSearchService.extract(url) → POST /extract (private hosts and credentials refused before this)
+            → formatted string (`### n. title / URL:` blocks, WEB_CITATION_INSTRUCTION), or "Error:" string
+      → chip done or error; parseWebSourcesFromResult → webSources → the WEB sources row; readScope.addText(result)
   → BaseProvider feeds the string back as a tool result → follow-up round → cited answer
 ```
 

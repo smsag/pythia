@@ -173,6 +173,18 @@ const en = {
 	searchingLabel:  "Searching the web: \"{{query}}\"",
 	searchedLabel:   "✓ Searched: \"{{query}}\"",
 	searchFailedLabel: "Web search failed",
+	searchFilteredLabel: "{{label}} · {{filters}}",
+	searchFilterNews:    "news",
+	searchFilterFinance: "finance",
+	searchFilterDay:     "past day",
+	searchFilterWeek:    "past week",
+	searchFilterMonth:   "past month",
+	searchFilterYear:    "past year",
+	searchFilterSites:   "{{n}} sites",
+	searchFilterExcluding: "excluding {{what}}",
+	readingUrlLabel:   "Reading {{site}}",
+	readUrlLabel:      "✓ Read {{site}}",
+	readUrlFailedLabel: "Could not read {{site}}",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	addNoteInline: "+ Note",

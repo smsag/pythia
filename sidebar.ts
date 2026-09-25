@@ -8,8 +8,7 @@ import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
-import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "./services/sendPolicy";
-import { looksTimeSensitive } from "./services/webSearchHeuristics";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch, wantsWeb } from "./services/sendPolicy";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
@@ -1324,7 +1323,7 @@ export class PythiaSidebarView extends ItemView {
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
-			timeSensitive: looksTimeSensitive(text, new Date().getFullYear()),
+			wantsWeb: wantsWeb(text, new Date().getFullYear()),
 		});
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();

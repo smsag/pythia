@@ -4,6 +4,9 @@ import type { Conversation, ToolCall } from "../models/types";
 import { t } from "../i18n";
 import { ToolHandler } from "../services/ToolHandler";
 import { parseWebSourcesFromResult } from "../services/WebSearchService";
+import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
+import { webDomain } from "../services/citations";
+import { WebReadScope } from "../services/webReadScope";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
 
@@ -79,6 +82,9 @@ export class ToolCallController {
 	 * auto-armed search is a per-send override that is never persisted (ADR-099).
 	 */
 	handler(conv: Conversation, researchActive: boolean): (call: ToolCall) => Promise<string> {
+		// Built here, once per send, after the outgoing message joined `messages`:
+		// the links read_url may read in this answer (ADR-217 addendum).
+		const readScope = WebReadScope.forConversation(conv);
 		return async (call: ToolCall): Promise<string> => {
 			// A chart writes nothing, so there is nothing to confirm and no chip to
 			// show — the chart itself is the feedback, and it appears the moment the
@@ -87,32 +93,34 @@ export class ToolCallController {
 			if (call.name === "render_chart") {
 				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
-			if (call.name === "web_search") return this.runSearch(call, conv, researchActive);
+			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope);
 			return this.runWrite(call, conv, researchActive);
 		};
 	}
 
-	/** web_search is read-only — run it directly with a live status chip, no
-	 *  write-confirmation prompt (that would make research unusable). */
-	private async runSearch(call: ToolCall, conv: Conversation, researchActive: boolean): Promise<string> {
+	/** web_search and read_url are read-only — run directly with a live status
+	 *  chip, no write-confirmation prompt (that would make research unusable). */
+	private async runSearch(call: ToolCall, conv: Conversation, researchActive: boolean, readScope: WebReadScope): Promise<string> {
 		const messagesEl = this.d.messagesEl();
-		const query = typeof call.input["query"] === "string" ? call.input["query"] : "";
+		const labels = chipLabels(call);
 		const searchChip = messagesEl.createDiv({ cls: "pythia-tool-call" });
-		searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchingLabel", { query }) });
+		searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.running });
 		this.d.reveal(searchChip, false); // a status: follow it only if following the answer
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
-		const result = await this.d.plugin.toolHandler.execute(call, allowed);
+		const result = await this.d.plugin.toolHandler.execute(call, allowed, undefined, readScope);
 
 		searchChip.empty();
 		if (result.startsWith("Error")) {
 			searchChip.addClass("pythia-tool-call--error");
-			searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchFailedLabel") });
+			searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.failed });
 		} else {
 			searchChip.addClass("pythia-tool-call--done");
-			searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchedLabel", { query }) });
-			// Capture the real Tavily sources for the message's sources row.
+			searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.done });
+			// Capture the real Tavily sources — a read page too — for the sources row.
 			this.webSources.push(...parseWebSourcesFromResult(result));
+			// A link a result returned may be read later in this answer.
+			readScope.addText(result);
 		}
 		return result;
 	}
@@ -200,4 +208,42 @@ export class ToolCallController {
 		});
 		return result;
 	}
+}
+
+/** The chip's three states for a web tool call. The filters are described by
+ *  the same builder the no-results message uses (ADR-217); an argument the
+ *  handler will reject still gets a readable label, never a crash. */
+function chipLabels(call: ToolCall): { running: string; done: string; failed: string } {
+	if (call.name === "read_url") {
+		const raw = typeof call.input["url"] === "string" ? call.input["url"] : "";
+		const site = webDomain(raw) || raw;
+		return {
+			running: t("readingUrlLabel", { site }),
+			done: t("readUrlLabel", { site }),
+			failed: t("readUrlFailedLabel", { site }),
+		};
+	}
+	const query = typeof call.input["query"] === "string" ? call.input["query"] : "";
+	const parsed = parseSearchArgs(call.input);
+	const filters = parsed.ok ? describeSearchFilters(parsed.value, localFilterWords()) : "";
+	const withFilters = (label: string) => (filters ? t("searchFilteredLabel", { label, filters }) : label);
+	return {
+		running: withFilters(t("searchingLabel", { query })),
+		done: withFilters(t("searchedLabel", { query })),
+		failed: t("searchFailedLabel"),
+	};
+}
+
+function localFilterWords(): FilterWords {
+	return {
+		topic: { news: t("searchFilterNews"), finance: t("searchFilterFinance") },
+		timeRange: {
+			day: t("searchFilterDay"),
+			week: t("searchFilterWeek"),
+			month: t("searchFilterMonth"),
+			year: t("searchFilterYear"),
+		},
+		sites: (n) => t("searchFilterSites", { n }),
+		excluding: (what) => t("searchFilterExcluding", { what }),
+	};
 }

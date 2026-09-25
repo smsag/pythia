@@ -69,6 +69,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     embedding/host/postMessageBackend.ts ← PostMessageEmbeddingProvider: the protocol both backends speak (ready ping · requests · timeouts · teardown). A backend supplies mount() → BackendChannel, its label and isOffThread() — never a second copy of the protocol (ADR-204)
     embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
     embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
+    WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws (ADR-062/217)
+    tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
+    webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer

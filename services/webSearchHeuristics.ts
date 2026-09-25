@@ -98,3 +98,12 @@ export function looksTimeSensitive(text: string, currentYear: number): boolean {
 
 	return false;
 }
+
+// An http(s) address with a dotted host. A pasted link is the clearest possible
+// sign the user wants the web read, so it auto-arms like a time cue (ADR-217).
+const WEB_URL_RE = /\bhttps?:\/\/[^\s/?#]+\.[^\s/?#]+/i;
+
+/** True when `text` contains an http(s) URL — the read_url tool's cue. */
+export function containsWebUrl(text: string): boolean {
+	return !!text && WEB_URL_RE.test(text);
+}

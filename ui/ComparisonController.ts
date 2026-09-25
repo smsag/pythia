@@ -9,6 +9,7 @@ import { formatClockTime } from "../services/messageUtils";
 import { parseCitations } from "../services/citations";
 import { describeErrorForLog } from "../services/redact";
 import { ToolHandler } from "../services/ToolHandler";
+import { WebReadScope } from "../services/webReadScope";
 import { acceptChartCall, spliceChartBlocks, type PendingChartBlock } from "../services/chartSpec";
 import {
 	startComparison,
@@ -122,11 +123,19 @@ export class ComparisonController {
 		// is part of what a comparison is for. Same accept path as the send, so the
 		// two cannot answer a tool call differently (ADR-210).
 		const charts: PendingChartBlock[] = [];
+		// Each candidate is its own answer: its own read budget, and only the links
+		// its own results returned (ADR-217 addendum).
+		const readScope = WebReadScope.forConversation(conv);
+		const runWebTool = async (call: ToolCall): Promise<string> => {
+			const result = await this.d.plugin.toolHandler.execute(call, allowed, undefined, readScope);
+			if (!result.startsWith("Error")) readScope.addText(result);
+			return result;
+		};
 		const onToolCall = (call: ToolCall): Promise<string> =>
 			call.name === "render_chart"
 				? Promise.resolve(acceptChartCall(call.input, textNode.data.length, charts))
-				: call.name === "web_search"
-				? this.d.plugin.toolHandler.execute(call, allowed)
+				: call.name === "web_search" || call.name === "read_url"
+				? runWebTool(call)
 				: Promise.resolve("Error: note-writing tools are not available during a model comparison. Answer in the conversation instead.");
 
 		try {
