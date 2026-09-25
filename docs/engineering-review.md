@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **ADR-217 review: six findings fixed.** `read_url` could exfiltrate data through a URL the model built. It now reads only links the user gave or a result returned (exact match, ≤ 5 per answer, fails closed). URL credentials are refused; the trailing-dot and IPv4-mapped bypasses of the private-host guard are closed; `wantsWeb` is tested; one excluded site is named.*
+*Updated: 2026-09-25 — **A written note could not be opened from the answer, and a rename lost it (ADR-218).** Four causes: the model was never asked for a link; `[[links]]` in the chat had no click handler; the ✓ chip was DOM-only; the chip opened by name and could create an empty note. And no stored path followed a rename. All five are fixed; links inside message text stay as written (D-58).*
+
+*Previously updated: 2026-09-25 — **ADR-217 review: six findings fixed.** `read_url` could exfiltrate data through a URL the model built. It now reads only links the user gave or a result returned (exact match, ≤ 5 per answer, fails closed). URL credentials are refused; the trailing-dot and IPv4-mapped bypasses of the private-host guard are closed; `wantsWeb` is tested; one excluded site is named.*
 
 *Previously updated: 2026-09-25 — **Tavily gaps closed (ADR-217).** The model can filter a search by topic, time range and site, and a new `read_url` tool reads one page through /extract. Private addresses are refused before any request, and the 8 000-char cut is named. Crawl, map, research and advanced depth are deferred (D-56, D-57). The Tavily contract is tested against a mocked `requestUrl` only.*
 
@@ -1950,4 +1952,15 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **No cap on page reads per answer** (25 rounds × 8 000 chars). | Performance | Low | Closed: 5 per answer |
 | **`excluding 2`** had no noun; the model's and the chip's wordings differed. | Clarity | Low | Closed: one site named, several counted |
 | `search(string \| SearchArgs)` keeps a string form only the older tests use. | Clarity | Low | Won't fix (cosmetic) |
+
+## Bug — a written note could not be opened, and a rename lost it (ADR-218), 2026-09-25
+
+| Item | Severity | Status |
+|---|---|---|
+| **The model named the note it wrote in plain text** — the tool result never asked for a link. | Medium | Closed: the result hands it `[[path\|name]]` |
+| **`[[links]]` in the conversation had no click handler.** | Medium | Closed: `onNoteLinkClick` on the chat container (verify in Obsidian that one tap opens one tab) |
+| **The ✓ chip vanished on the next render, switch or restart.** | Medium | Closed: `Message.noteWrites`, redrawn on every render |
+| **The chip opened by name** — the wrong note when two share it, a new empty note when none does. | Medium | Closed: opens by exact path, or says it is gone |
+| **No stored vault path followed a rename or move**: context notes silently left the context, sources said "not found", Save wrote a duplicate at the old path. | High | Closed: `renameVaultPath` over every path field, called on the vault's rename event |
+| **A `[[link]]` in message text stays stale after a rename.** | Low | Deferred by decision: D-58 |
 

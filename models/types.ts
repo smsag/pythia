@@ -187,6 +187,16 @@ export interface Message {
 	 *  Later table updates never rewrite it; legacy messages without it are
 	 *  priced live from the current table. */
 	cost?: MessageCost;
+	/** The notes this answer wrote through a tool, confirmed by the user. What
+	 *  the "✓ Created" chip under the answer is drawn from, so it survives a
+	 *  reload; the path follows a rename (`renameVaultPath`). */
+	noteWrites?: NoteWrite[];
+}
+
+/** One note an answer wrote. `path` is the path the vault reported. */
+export interface NoteWrite {
+	path: string;
+	action: "created" | "rewritten" | "prepended";
 }
 
 /** A cost snapshot: USD and the as-of date of the table that priced it. */

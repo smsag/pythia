@@ -173,6 +173,7 @@ const de: Strings = {
 	createdNote:   "✓ [[{{name}}]] erstellt",
 	rewrittenNote:  "✓ [[{{name}}]] überschrieben",
 	prependedNote:  "✓ [[{{name}}]] ergänzt",
+	noteGone:      "{{name}} wurde umbenannt oder gelöscht",
 	searchingLabel:  "Websuche läuft: „{{query}}“",
 	searchedLabel:   "✓ Gesucht: „{{query}}“",
 	searchFailedLabel: "Websuche fehlgeschlagen",

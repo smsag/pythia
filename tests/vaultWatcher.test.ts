@@ -13,7 +13,7 @@ vi.mock("obsidian", async (importOriginal) => ({
 	}),
 }));
 
-import { TFile } from "obsidian";
+import { TFile, TFolder } from "obsidian";
 import { VaultChangeBatch, registerVaultWatcher, VAULT_FLUSH_DELAY_MS } from "../services/vaultWatcher";
 
 const md = (path: string): { path: string; extension: string } => ({ path, extension: "md" });
@@ -90,6 +90,7 @@ function watcher() {
 	const handlers: Record<string, Handler> = {};
 	const applied: { changed: string[]; deleted: string[] }[] = [];
 	const invalidated: string[] = [];
+	const renamed: [string, string][] = [];
 	const cleanups: (() => void)[] = [];
 	const host = {
 		app: { vault: { on: (name: string, cb: Handler) => { handlers[name] = cb; return { name }; } } },
@@ -99,12 +100,13 @@ function watcher() {
 	registerVaultWatcher(host as never, {
 		applyChanges: (changed, deleted) => applied.push({ changed: changed.map((f) => f.path), deleted }),
 		invalidateGlossary: (path) => invalidated.push(path),
+		followRename: (oldPath, newPath) => renamed.push([oldPath, newPath]),
 	});
 	const file = (path: string, extension = "md"): TFile =>
 		Object.assign(new TFile(), { path, extension }) as TFile;
 	/** Let the debounce fire, as it would after the quiet window. */
 	const flush = (): void => { scheduled.fn?.(); };
-	return { handlers, applied, invalidated, cleanups, file, flush };
+	return { handlers, applied, invalidated, renamed, cleanups, file, flush };
 }
 
 describe("registerVaultWatcher — which vault events reach the index", () => {
@@ -141,6 +143,19 @@ describe("registerVaultWatcher — which vault events reach the index", () => {
 		// An empty `applyChanges` is not harmless: it is a no-op the index has to be
 		// woken up to perform, and a second one per quiet window adds up.
 		expect(w.applied).toHaveLength(1);
+	});
+
+	it("a rename reaches the conversations at once, not with the debounced flush (ADR-218)", () => {
+		const w = watcher();
+		w.handlers.rename(w.file("Notes/New.md"), "Out/Old.md");
+		expect(w.renamed).toEqual([["Out/Old.md", "Notes/New.md"]]);
+		expect(w.applied).toEqual([]); // the index still waits for its flush
+	});
+
+	it("a folder rename is followed too", () => {
+		const w = watcher();
+		w.handlers.rename(Object.assign(new TFolder(), { path: "Projects/2026" }), "Projects/Q3");
+		expect(w.renamed).toEqual([["Projects/Q3", "Projects/2026"]]);
 	});
 
 	it("a rename is a delete of the old path plus a change of the new one", () => {

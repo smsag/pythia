@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-25 — the research globe's tooltip names what it now does, so ADR-217's features can be found: `Web search: look up current facts and read links you paste` (DE: `Websuche: aktuelle Fakten nachschlagen und eingefügte Links lesen`). Copy only; no new tokens or classes.*
+*Last updated: 2026-09-25 — ADR-218: a note an answer wrote keeps its ✓ chip after the turn — `.pythia-tool-call.pythia-tool-call--done.p-note-write`, drawn inside `.p-msg-ai` after the sources row from `Message.noteWrites`. Same look as the live chip; no new tokens. `[[links]]` in the conversation now open on tap.*
+
+*Previously: 2026-09-25 — the research globe's tooltip names what it now does, so ADR-217's features can be found: `Web search: look up current facts and read links you paste` (DE: `Websuche: aktuelle Fakten nachschlagen und eingefügte Links lesen`). Copy only; no new tokens or classes.*
 
 *Previously: 2026-09-25 — ADR-216: the pin strip. `.p-pins` floats at the top of `.pythia-messages-wrapper` (`top: --s2`, `left/right: --s3`, z-index 15, `max-height: 45%`) and holds one `.p-pin` — the shared accordion (`.p-acc`: opaque `--background-secondary`, 1px `--background-modifier-border`, radius 6, **no shadow**). Collapsed it shows ‹ n/m › and ↗; copy and ✕ (`.p-pin-action--open`) appear only when open. `.has-pins > .p-chat` gets `padding-top: calc(var(--p-pin-strip-h) + var(--s2) + var(--s3))`, the strip's measured height. `.p-pin-text` is `pre-wrap`; `.p-pin-flash-block` reuses the jump flash. Tables in answers: `.p-table-block` > `.p-table-actions` (Copy · Pin), hover-revealed at the top right on `--background-primary`, always shown under `@media (hover: none)`. A diagram's pin sits one button left of its copy (`.p-diag-pin`).*
 

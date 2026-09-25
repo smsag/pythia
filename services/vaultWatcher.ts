@@ -81,6 +81,10 @@ export interface VaultWatcherDeps {
 	 *  by hand takes effect without a reload, and a deleted term stops marking
 	 *  itself now rather than at the next edit (ADR-136). */
 	invalidateGlossary(path: string): void;
+	/** A note or folder moved: stored paths follow it (ADR-218). Runs at once,
+	 *  not with the debounced flush — a tap on a chip must not open the old path
+	 *  in the two seconds after a rename. */
+	followRename(oldPath: string, newPath: string): void;
 	delayMs?: number;
 }
 
@@ -120,6 +124,7 @@ export function registerVaultWatcher(host: VaultWatcherHost, deps: VaultWatcherD
 		flush();
 	}));
 	host.registerEvent(vault.on("rename", (f, oldPath) => {
+		deps.followRename(oldPath, f.path);
 		deps.invalidateGlossary(oldPath);
 		batch.markDeleted(oldPath);
 		if (f instanceof TFile) markChanged(f);

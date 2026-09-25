@@ -1,12 +1,14 @@
 import type { App } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, ToolCall } from "../models/types";
+import type { Conversation, NoteWrite, ToolCall } from "../models/types";
 import { t } from "../i18n";
 import { ToolHandler } from "../services/ToolHandler";
 import { parseWebSourcesFromResult } from "../services/WebSearchService";
 import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
 import { webDomain } from "../services/citations";
 import { WebReadScope } from "../services/webReadScope";
+import { parseNoteWrite } from "../services/noteWrites";
+import { fillNoteWriteChip } from "./noteLinks";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
 
@@ -39,6 +41,7 @@ export interface ToolCallDeps {
 export class ToolCallController {
 	private webSources: { title: string; url: string }[] = [];
 	private chartBlocks: PendingChartBlock[] = [];
+	private noteWrites: NoteWrite[] = [];
 	private streamedChars = 0;
 
 	constructor(private readonly d: ToolCallDeps) {}
@@ -57,6 +60,7 @@ export class ToolCallController {
 	begin(appendToken: (text: string) => void): (text: string) => void {
 		this.webSources = [];
 		this.chartBlocks = [];
+		this.noteWrites = [];
 		this.streamedChars = 0;
 		return (text: string): void => {
 			this.streamedChars += text.length;
@@ -67,6 +71,12 @@ export class ToolCallController {
 	/** The web results captured during this send. */
 	takeWebSources(): { title: string; url: string }[] {
 		return this.webSources;
+	}
+
+	/** The notes written during this send, as the message field — spread into
+	 *  the committed answer so its chips outlive the turn (ADR-218). */
+	takeNoteWrites(): { noteWrites?: NoteWrite[] } {
+		return this.noteWrites.length > 0 ? { noteWrites: this.noteWrites } : {};
 	}
 
 	/** The charts accepted during this send, each with the point in the answer it
@@ -195,17 +205,12 @@ export class ToolCallController {
 			return result;
 		}
 
-		chipEl.addClass("pythia-tool-call--done");
-		const link = chipEl.createEl("a", {
-			cls:  "pythia-tool-call-link",
-			text: isRewrite ? t("rewrittenNote", { name: noteName })
-				: isPrepend  ? t("prependedNote", { name: noteName })
-				:              t("createdNote",   { name: noteName }),
-		});
-		link.addEventListener("click", (e) => {
-			e.preventDefault();
-			void this.d.app.workspace.openLinkText(noteName, "");
-		});
+		// The path the vault used, read from the result; the call's own argument
+		// is only the fallback for a result in an unexpected shape.
+		const write = parseNoteWrite(call.name, result)
+			?? { path: rawPath, action: isRewrite ? "rewritten" : isPrepend ? "prepended" : "created" };
+		this.noteWrites.push(write);
+		fillNoteWriteChip(this.d.app, chipEl, write);
 		return result;
 	}
 }

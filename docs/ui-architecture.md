@@ -55,6 +55,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │     │  └─ pin icon                     beside Copy on code · diagram · chart · table (pinSources)
 │     ├─ .p-sources                      Template: · Vault: · Web: (sourcesRow)
 │     ├─ .pythia-tool-call               write-confirmation chip (ToolCallController)
+│     ├─ .p-note-write                   the ✓ chip of a written note, kept on the message (ui/noteLinks.ts)
 │     ├─ .p-trunc                        cut-off card (TruncationController)
 │     ├─ .p-compare                      comparison card (ComparisonController)
 │     └─ .p-del-bar                      delete · ⇄ compare · cancel (ExchangeActionsController)

@@ -133,6 +133,9 @@ export const WorkspaceLeaf = cls();
 export const ButtonComponent = cls();
 export const Setting = cls();
 
+/** ⌘/Ctrl-click opens in a new tab, as in Obsidian. */
+export const Keymap = { isModEvent: (e?: { metaKey?: boolean; ctrlKey?: boolean }): boolean => !!(e?.metaKey || e?.ctrlKey) };
+
 export const Platform = { isMobile: false, isDesktop: true, isIosApp: false, isAndroidApp: false };
 
 /** Records the icon id as `data-icon`, so a test can assert which glyph was drawn. */

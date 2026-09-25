@@ -170,6 +170,7 @@ const en = {
 	createdNote:   "✓ Created [[{{name}}]]",
 	rewrittenNote:  "✓ Overwrote [[{{name}}]]",
 	prependedNote:  "✓ Prepended to [[{{name}}]]",
+	noteGone:      "{{name}} was renamed or deleted",
 	searchingLabel:  "Searching the web: \"{{query}}\"",
 	searchedLabel:   "✓ Searched: \"{{query}}\"",
 	searchFailedLabel: "Web search failed",

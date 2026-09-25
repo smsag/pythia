@@ -269,6 +269,7 @@ export default class PythiaPlugin extends Plugin {
 			invalidateGlossary: (path) => {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
+			followRename: (oldPath, newPath) => this.conversationStore.followRename(oldPath, newPath),
 		});
 
 		registerEditorSelectionEntries(this);
