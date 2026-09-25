@@ -871,6 +871,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-muted);
 }
 .p-source-icon svg { width: 12px; height: 12px; stroke-width: 1.75; }
+/* A note link inside a sent message (ADR-212): the same icon as the pill, set in
+   running text rather than a flex row, so it sits on the text's middle instead
+   of relying on align-self. */
+.p-bubble .p-note-link .p-source-icon {
+  vertical-align: middle;
+  position: relative;
+  top: -0.09em;
+  margin-inline-end: var(--s1);
+}
 /* Link colours are Obsidian's own tokens, so a theme that styles links styles
    these too, like the links in the answer above them (ADR-193). */
 .p-wikilink-name {

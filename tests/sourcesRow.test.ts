@@ -138,13 +138,13 @@ describe("renderSourcesRow — run-in labels (ADR-153)", () => {
 
 	// ADR-193 replaces ADR-153's trailing ↗: every entry leads with the icon of its
 	// source type, the same icon as the toolbar control that brings it in.
-	it("leads each entry with its source icon: globe for web, file-text for a note, layout-template for the template", () => {
+	it("leads each entry with its source icon: globe for web, the library for a note (ADR-212), layout-template for the template", () => {
 		const row = render([web(1, "example.com"), vault(2, "Notes/A.md", "A")], "Templates/Podcast.md");
 		const iconsIn = (label: string) => Array.from(row.querySelectorAll(".p-sources-row"))
 			.find((r) => r.querySelector(".p-sources-label")?.textContent === `${label}:`)!
 			.querySelectorAll(".p-source-icon");
 		expect(Array.from(iconsIn("Web")).map((i) => i.getAttribute("data-icon"))).toEqual(["globe"]);
-		expect(Array.from(iconsIn("Vault")).map((i) => i.getAttribute("data-icon"))).toEqual(["file-text"]);
+		expect(Array.from(iconsIn("Vault")).map((i) => i.getAttribute("data-icon"))).toEqual(["library"]);
 		expect(Array.from(iconsIn("Template")).map((i) => i.getAttribute("data-icon"))).toEqual(["layout-template"]);
 		expect(row.querySelector(".p-source-web")?.textContent).toBe("example.com");
 		expect(row.textContent).not.toContain("↗");
