@@ -23,6 +23,7 @@ export class Component {
 	register(): void {}
 	registerInterval(): void {}
 	addChild<T>(c: T): T { return c; }
+	removeChild<T>(c: T): T { (c as unknown as { unload?: () => void }).unload?.(); return c; }
 	load(): void {}
 	onload(): void {}
 	unload(): void {}

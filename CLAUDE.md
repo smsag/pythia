@@ -723,6 +723,9 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Collapsed = one line, and the chat is padded by its measured height.** An expanded pin floats; every jump goes through `scrollChatTo`, which measures what floats over the top. **Never hand-roll `offsetTop - 8` again**
 - **Limits are refused with a Notice, never truncated or rotated** (5 pins, 20 000 chars); a load never enforces them
 - Collapsed shows ‹ n/m › and ↗ only; copy and ✕ come with the open pin (the title needs the room)
+- **Open/closed is per conversation, for the session — never written**; a new pin does not open the strip (user decisions, ADR-216 addendum 2)
+- **A chart is named by `chartLabel`** (`services/chartSpec.ts`) — the card and the strip; never read a chart field with a regex beside the parser
+- **A pin body renders into its own child `Component`**, released on the next render — never straight into the view
 
 ## What not to build
 

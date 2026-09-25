@@ -21,7 +21,7 @@
 
 import { setIcon } from "obsidian";
 import { t } from "../../i18n";
-import { parseChartBlock, formatChartBlock, type ChartSpec } from "../../services/chartSpec";
+import { chartLabel, parseChartBlock, formatChartBlock, type ChartSpec } from "../../services/chartSpec";
 import { parseRgb, type Rgb } from "../../services/color";
 import { appendSourceIcon } from "../icons";
 import { copyBlobWithFeedback, copyTextWithFeedback } from "../clipboard";
@@ -56,15 +56,6 @@ function chartGround(): Ground {
 	const parsed = TRANSPARENT.test(computed) ? null : parseRgb(computed);
 	const rgb = parsed ?? (document.body.classList.contains("theme-dark") ? GROUND_DARK : GROUND_LIGHT);
 	return { rgb, css: rgbCss(rgb) };
-}
-
-/** The label on the card's head row: the chart's own title when it has one, the
- *  kind of chart when it does not. Never empty — the row carries the controls. */
-function headLabel(spec: ChartSpec): string {
-	if (spec.title) return spec.title;
-	return spec.type === "pie" ? t("chartTypePie")
-		: spec.type === "line" ? t("chartTypeLine")
-		: t("chartTypeBar");
 }
 
 /** Anything with a dot and no slash reads as a domain; everything else is a
@@ -150,7 +141,7 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 	chartSources.set(card, formatChartBlock(spec));
 	const head = card.createDiv({ cls: "p-chart-head" });
 	setIcon(head.createSpan({ cls: "p-chart-head-icon" }), "bar-chart-3");
-	head.createSpan({ cls: "p-chart-head-label", text: headLabel(spec) });
+	head.createSpan({ cls: "p-chart-head-label", text: chartLabel(spec) });
 
 	const actions = head.createDiv({ cls: "p-chart-actions" });
 	const body = card.createDiv({ cls: "p-chart-body" });

@@ -1,4 +1,4 @@
-import { MarkdownRenderer, Notice, setIcon, type App, type Component } from "obsidian";
+import { Component, MarkdownRenderer, Notice, setIcon, type App } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Pin, PinKind } from "../models/types";
 import { t } from "../i18n";
@@ -22,6 +22,18 @@ export interface PinDeps {
 	getMessagesEl(): HTMLElement;
 	expandBubbleIfCollapsed(row: HTMLElement): void;
 }
+
+/**
+ * How ↗ finds each kind of block again: where to look, and the same builder
+ * that made the snapshot. A Record over every non-text kind, so a new `PinKind`
+ * is a compile error here — not the runtime `undefined` two parallel lists gave.
+ */
+const BLOCK_FINDERS: Record<Exclude<PinKind, "text">, { selector: string; sourceOf: (el: HTMLElement) => string | undefined }> = {
+	code:    { selector: "pre", sourceOf: (el) => codeBlockSource(el) },
+	diagram: { selector: "[class*='block-language-']", sourceOf: (el) => diagramSource(el) },
+	chart:   { selector: ".p-chart-card", sourceOf: (el) => chartSourceOf(el) },
+	table:   { selector: "table", sourceOf: (el) => tableMarkdown(el as HTMLTableElement) },
+};
 
 /** What the strip calls each kind. Literal `t()` calls, so the dead-key test
  *  can see every key used. */
@@ -52,8 +64,12 @@ export class PinController {
 	private overlay: HTMLElement | null = null;
 	private wrapper: HTMLElement | null = null;
 	private signature = "";
-	private open = false;
+	/** Conversations whose pin is open. Per conversation, like the pin shown, and
+	 *  for the session only: view state, never written (ADR-216 addendum). */
+	private readonly opened = new Set<string>();
 	private readonly shown = new Map<string, string>(); // conversation id → pin id shown
+	/** Owns what the open pin's body rendered; replaced — and unloaded — with it. */
+	private bodyComponent: Component | null = null;
 	private readonly diagObservers = new WeakMap<HTMLElement, { mo: MutationObserver; ro: ResizeObserver }>();
 	private stripObserver: ResizeObserver | null = null;
 
@@ -128,8 +144,8 @@ export class PinController {
 			cls: "p-pin",
 			icon: PIN_ICON,
 			title: `${kindLabel(pin.kind)} · ${pinExcerpt(pin.kind, pin.source)}`,
-			open: this.open,
-			onToggle: (open) => { this.open = open; },
+			open: this.opened.has(conv.id),
+			onToggle: (open) => { if (open) this.opened.add(conv.id); else this.opened.delete(conv.id); },
 		});
 
 		if (pins.length > 1) {
@@ -146,7 +162,7 @@ export class PinController {
 		// it to "Text · the …"). Copy and ✕ act on what you can see, so they come
 		// with the open pin (`.p-pin-action--open`, hidden by CSS while collapsed).
 		const copy = this.iconButton(acc.actions, "copy", t("pinCopyTooltip"), () => void copyTextWithFeedback(copy, pin.source), true);
-		this.iconButton(acc.actions, "arrow-up-right", t("pinJumpTooltip"), () => this.jump(pin, acc.root));
+		this.iconButton(acc.actions, "arrow-up-right", t("pinJumpTooltip"), () => this.jump(conv, pin, acc.root));
 		this.iconButton(acc.actions, "x", t("pinRemoveTooltip"), () => this.unpin(conv, pin), true);
 
 		this.renderBody(acc.body, pin);
@@ -160,7 +176,7 @@ export class PinController {
 			return;
 		}
 		const inner = body.createDiv({ cls: "p-pin-rendered p-ai-body" });
-		MarkdownRenderer.render(this.d.app, pin.source, inner, "", this.d.component).then(
+		MarkdownRenderer.render(this.d.app, pin.source, inner, "", this.freshBodyComponent()).then(
 			// The same decorations as in the answer — header, copy, pan, sizing — and
 			// deliberately NO pin: a pin's body is not a place to pin from.
 			() => decorateCodeBlocks(inner, this.diagObservers),
@@ -174,6 +190,23 @@ export class PinController {
 				inner.setText(pin.source);
 			},
 		);
+	}
+
+	/**
+	 * A child of the view that owns ONE pin body's render. Rendering straight into
+	 * the view left a child per render — cycling five pins ten times kept fifty —
+	 * until the view closed. Replacing the child unloads what the last body
+	 * registered (ADR-216 addendum).
+	 */
+	private freshBodyComponent(): Component {
+		this.releaseBody();
+		this.bodyComponent = this.d.component.addChild(new Component());
+		return this.bodyComponent;
+	}
+
+	private releaseBody(): void {
+		if (this.bodyComponent) this.d.component.removeChild(this.bodyComponent);
+		this.bodyComponent = null;
 	}
 
 	private iconButton(parent: HTMLElement, icon: string, title: string, onClick: () => void, whenOpen = false): HTMLButtonElement {
@@ -194,11 +227,11 @@ export class PinController {
 	 * jumps to is not under it. A snapshot outlives its message — deleted, retried,
 	 * moved to a fork by a comparison — and then this says so.
 	 */
-	private jump(pin: Pin, root: HTMLElement): void {
+	private jump(conv: Conversation, pin: Pin, root: HTMLElement): void {
 		const messagesEl = this.d.getMessagesEl();
 		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(pin.messageId)}"]`);
 		if (!row) { new Notice(t("pinGone")); return; }
-		this.open = false;
+		this.opened.delete(conv.id);
 		setAccordionOpen(root, false);
 		this.d.expandBubbleIfCollapsed(row);
 		const target = this.findSource(row, pin);
@@ -210,13 +243,7 @@ export class PinController {
 	private findSource(row: HTMLElement, pin: Pin): HTMLElement | null {
 		const body = row.querySelector<HTMLElement>(".p-ai-body") ?? row;
 		if (pin.kind === "text") return flashText(body, pin.source, pin.occurrenceIndex ?? 0);
-		const candidates: Array<[string, (el: HTMLElement) => string | undefined]> = [
-			["pre", (el) => codeBlockSource(el)],
-			["[class*='block-language-']", (el) => diagramSource(el)],
-			[".p-chart-card", (el) => chartSourceOf(el)],
-			["table", (el) => tableMarkdown(el as HTMLTableElement)],
-		];
-		const [selector, sourceOf] = candidates[["code", "diagram", "chart", "table"].indexOf(pin.kind)];
+		const { selector, sourceOf } = BLOCK_FINDERS[pin.kind];
 		const hit = Array.from(body.querySelectorAll<HTMLElement>(selector)).find((el) => sourceOf(el) === pin.source) ?? null;
 		if (hit) {
 			hit.addClass("p-pin-flash-block");
@@ -243,6 +270,7 @@ export class PinController {
 		this.stripObserver?.disconnect();
 		this.stripObserver = null;
 		this.signature = "";
+		this.releaseBody();
 		if (this.overlay) { this.overlay.empty(); this.overlay.hidden = true; }
 		this.wrapper?.removeClass("has-pins");
 		this.wrapper?.style.removeProperty("--p-pin-strip-h");

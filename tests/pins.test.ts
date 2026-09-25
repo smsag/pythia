@@ -7,6 +7,8 @@ import { addPin, isRefusal, pinExcerpt, PIN_LIMIT, PIN_MAX_CHARS, removePin, typ
 import { normalizePins, partitionEvictions } from "../services/persistence";
 import { spliceExchange } from "../services/conversationEdits";
 import { keepCandidate, startComparison } from "../services/comparison";
+import { formatChartBlock, type ChartSpec } from "../services/chartSpec";
+import { t } from "../i18n";
 
 function conv(over: Partial<Conversation> = {}): Conversation {
 	return {
@@ -79,8 +81,17 @@ describe("pinExcerpt — the one line the collapsed strip shows", () => {
 		expect(pinExcerpt("code", "```python\ndef revenue(q):\n    return 1\n```")).toBe("def revenue(q):");
 		expect(pinExcerpt("diagram", "```mermaid\ngraph TD\n  A-->B\n```")).toBe("graph TD");
 	});
-	it("a chart: its title", () => {
-		expect(pinExcerpt("chart", '```pythia-chart\n{"type":"bar","title":"Revenue by quarter"}\n```')).toBe("Revenue by quarter");
+	const chart = (spec: Record<string, unknown>): string =>
+		formatChartBlock({ categories: ["Q1", "Q2"], series: [{ name: "R", values: [1, 2] }], ...spec } as ChartSpec);
+	it("a chart: what its card is headed — the title…", () => {
+		expect(pinExcerpt("chart", chart({ type: "bar", title: "Revenue by quarter" }))).toBe("Revenue by quarter");
+	});
+	it("…whole, even with a quote in it (a regex beside the parser cut it there)", () => {
+		expect(pinExcerpt("chart", chart({ type: "bar", title: 'The "core" segment' }))).toBe('The "core" segment');
+	});
+	it("…or, untitled, the kind of chart — never an empty strip", () => {
+		expect(pinExcerpt("chart", chart({ type: "line" }))).toBe(t("chartTypeLine"));
+		expect(pinExcerpt("chart", chart({ type: "pie" }))).toBe(t("chartTypePie"));
 	});
 	it("a table: its header row", () => {
 		expect(pinExcerpt("table", "| Quarter | Revenue |\n| --- | --- |\n| Q1 | 10 |")).toBe("Quarter · Revenue");

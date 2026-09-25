@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-216 addendum (review): a pinned code block's fence can no longer be closed by the code inside it; a table cell is written back escaped, so it renders as what it showed; a pin that cannot render logs why and shows its text; ↗ is tested for every block kind).*
+*Last updated: 2026-09-25 — ADR-216 second addendum (the four low review findings: a pin's open/closed state is per conversation; a chart pin is named by the card's own rule; ↗'s finders are a Record the compiler checks; each pin body is owned by one child component, released on re-render).*
+
+*Previously: 2026-09-25 — ADR-216 addendum (review): a pinned code block's fence can no longer be closed by the code inside it; a table cell is written back escaped, so it renders as what it showed; a pin that cannot render logs why and shows its text; ↗ is tested for every block kind).*
 
 *Previously: 2026-09-25 — ADR-216 (a passage, code block, diagram, chart or table from an answer can be pinned to the top of the chat: a floating strip that collapses to one line, several pins one at a time, saved with the conversation as snapshots; every jump in the chat now lands clear of it).*
 
@@ -4470,3 +4472,13 @@ So the text alone cannot resolve a folder or the folders of a mixed selection; o
 4. **↗ is tested for every block kind** — code, diagram, chart, table — and for a block no longer in its answer (the jump falls back to the message, nothing flashes). It worked; it was unguarded.
 
 Deliberately not changed from the same review: the open/closed state shared across conversations, the chart title read by regex in `pinExcerpt`, the parallel-array lookup in `findSource`, and one `MarkdownRenderer` child per pin render left on the view until it closes — all low, recorded in engineering-review #382.
+
+**Second addendum — the four low findings (2026-09-25).** Fixed after all, with two product decisions from the user:
+
+1. **Open/closed is per conversation, for the session** (user's decision). One flag served every conversation, so opening A's pin opened B's. It is now a set of conversation ids beside the shown-pin map: returning to A finds it as left; a new conversation starts collapsed; nothing is written, so a reload starts collapsed.
+2. **Pinning something new leaves the strip as it was** (user's decision — today's behaviour, now guarded by a test). The new pin becomes the one shown; the strip does not open over the answer being read.
+3. **A chart pin is named by the card's own rule.** `pinExcerpt` read the title with a regex and cut it at an escaped quote. The card's `headLabel` moved to `services/chartSpec.ts` as `chartLabel` — title, else the kind of chart — and both the card and the strip read it through `parseChartBlock`. One rule for one fact; an untitled chart's strip is no longer empty.
+4. **↗'s finders are a `Record<Exclude<PinKind, "text">, …>`**, not two parallel lists matched by `indexOf`: a new kind is now a compile error instead of a runtime `undefined`.
+5. **Each pin body is owned by one child `Component`**, added to the view and removed — which unloads it — on the next render and when the strip hides. Rendering straight into the view had left one child per render until the view closed.
+
+Four of the new tests fail on the previous code (per-conversation state, the quoted title, the untitled chart, the released components); the Record is enforced by the compiler.

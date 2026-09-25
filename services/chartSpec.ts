@@ -18,6 +18,8 @@
  * Nothing here throws and nothing here touches the DOM.
  */
 
+import { t } from "../i18n";
+
 export type ChartType = "bar" | "line" | "pie";
 
 export const CHART_TYPES: readonly ChartType[] = ["bar", "line", "pie"];
@@ -262,6 +264,16 @@ export function formatChartBlock(spec: ChartSpec): string {
 	if (spec.stacked !== undefined) ordered.stacked = spec.stacked;
 	if (spec.note !== undefined)    ordered.note = spec.note;
 	return "```" + CHART_BLOCK_LANG + "\n" + JSON.stringify(ordered, null, 2) + "\n```";
+}
+
+/** What a chart is called wherever it is named: its own title when it has one,
+ *  the kind of chart when it does not. Never empty. The card's head row and a
+ *  pinned chart's strip both read this — one rule, not a regex beside it. */
+export function chartLabel(spec: ChartSpec): string {
+	if (spec.title) return spec.title;
+	return spec.type === "pie" ? t("chartTypePie")
+		: spec.type === "line" ? t("chartTypeLine")
+		: t("chartTypeBar");
 }
 
 /** A block's body, as the code block processor hands it over: JSON, then the
