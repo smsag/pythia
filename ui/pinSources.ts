@@ -9,6 +9,17 @@ import { PIN_ICON } from "./icons";
  * pin stores" can never be two answers.
  */
 
+/**
+ * A fence that cannot be closed by the code inside it: one backtick longer than
+ * the longest backtick run in `body`, and never fewer than three (CommonMark).
+ * A fixed ``` was closed early by any code that itself contained one — a
+ * Markdown example — and the pin and its Copy both came out broken.
+ */
+export function fenceFor(body: string): string {
+	const longest = Math.max(0, ...Array.from(body.matchAll(/`+/g), (m) => m[0].length));
+	return "`".repeat(Math.max(3, longest + 1));
+}
+
 /** A code block, as the fenced block it was written as. `textContent`, not
  *  `innerText`: the code's exact characters, with no dependence on layout — and
  *  Obsidian's own copy button sits beside the `<code>`, not in it. */
@@ -16,7 +27,8 @@ export function codeBlockSource(pre: HTMLElement): string {
 	const codeEl = pre.querySelector("code");
 	const lang = codeEl?.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
 	const raw = ((codeEl ?? pre).textContent ?? "").replace(/\n$/, "");
-	return `\`\`\`${lang}\n${raw}\n\`\`\``;
+	const fence = fenceFor(raw);
+	return `${fence}${lang}\n${raw}\n${fence}`;
 }
 
 /** A rendered diagram (Mermaid, …), as its fenced source; "" when the renderer
@@ -25,13 +37,26 @@ export function diagramSource(el: HTMLElement): string {
 	const source = (el.querySelector("code")?.textContent ?? "").replace(/\n$/, "");
 	if (!source) return "";
 	const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
-	return `\`\`\`${lang}\n${source}\n\`\`\``;
+	const fence = fenceFor(source);
+	return `${fence}${lang}\n${source}\n${fence}`;
 }
 
-/** One cell as Markdown table text: a `|` would end the cell, a line break
- *  would end the row. */
-function cellText(cell: Element): string {
-	return (cell.textContent ?? "").trim().replace(/\|/g, "\\|").replace(/\r?\n+/g, "<br>");
+/**
+ * One cell as Markdown table text that renders as what the cell SHOWED.
+ *
+ * The cell's visible text is written back into Markdown, so every character
+ * Markdown or HTML would read as syntax is backslash-escaped (CommonMark lets
+ * any ASCII punctuation be escaped): a cell showing `<div>` or `*` as text must
+ * not come back as an element or as emphasis — in the pin, or wherever the copy
+ * is pasted. `=`, `~` and `$` because Obsidian reads `==`, `~~` and `$…$`. A
+ * `|` would end the cell; a line break would end the row, so it becomes `<br>` —
+ * the one piece of markup this writes on purpose.
+ */
+export function cellText(cell: Element): string {
+	return (cell.textContent ?? "")
+		.trim()
+		.replace(/[\\`*_[\]<>|~=$]/g, (c) => `\\${c}`)
+		.replace(/\r?\n+/g, "<br>");
 }
 
 /**

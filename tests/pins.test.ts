@@ -85,6 +85,9 @@ describe("pinExcerpt — the one line the collapsed strip shows", () => {
 	it("a table: its header row", () => {
 		expect(pinExcerpt("table", "| Quarter | Revenue |\n| --- | --- |\n| Q1 | 10 |")).toBe("Quarter · Revenue");
 	});
+	it("a table: escaped cells read as text, and an escaped pipe does not split a cell", () => {
+		expect(pinExcerpt("table", "| a \\| b | \\*note\\* |\n| --- | --- |")).toBe("a | b · *note*");
+	});
 	it("is cut to one line with an ellipsis", () => {
 		const long = pinExcerpt("text", "word ".repeat(40), 20);
 		expect(long.length).toBeLessThanOrEqual(20);

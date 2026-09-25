@@ -60,7 +60,15 @@ export function pinExcerpt(kind: PinKind, source: string, max = 80): string {
 		const title = /"title"\s*:\s*"([^"]*)"/.exec(source)?.[1];
 		line = title ?? "";
 	} else if (kind === "table") {
-		line = (lines.find((l) => l.startsWith("|")) ?? "").replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" · ");
+		// Cells are split on UNESCAPED pipes and shown unescaped: `tableMarkdown`
+		// backslash-escapes what Markdown would read as syntax, and the strip shows
+		// text, not source.
+		line = (lines.find((l) => l.startsWith("|")) ?? "")
+			.replace(/^\||(?<!\\)\|$/g, "")
+			.split(/(?<!\\)\|/)
+			.map((c) => c.trim().replace(/\\(.)/g, "$1"))
+			.filter(Boolean)
+			.join(" · ");
 	} else {
 		line = lines.find((l) => l) ?? "";
 	}
