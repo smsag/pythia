@@ -4,6 +4,7 @@ import { makePlugin, mountView, seedConversation } from "./helpers/viewHarness";
 import type PythiaPlugin from "../main";
 import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation } from "../models/types";
+import type { ComposerField } from "../ui/ComposerField";
 
 /** The controller the `#` picker hands its paths to. Reached through the view so
  *  the test exercises the real wiring — the picker's own dropdown needs a vault
@@ -13,8 +14,8 @@ function attachments(view: PythiaSidebarView): { attach(p: string[]): void; sync
 		.composerAttachments;
 }
 
-function input(view: PythiaSidebarView): HTMLTextAreaElement {
-	return (view as unknown as { inputEl: HTMLTextAreaElement }).inputEl;
+function input(view: PythiaSidebarView): ComposerField {
+	return (view as unknown as { composer: ComposerField }).composer;
 }
 
 /** What the browser does on a keystroke: change the value, then fire `input`. */
@@ -22,7 +23,7 @@ function type(view: PythiaSidebarView, value: string): void {
 	const el = input(view);
 	el.value = value;
 	el.setSelectionRange(value.length, value.length);
-	el.dispatchEvent(new Event("input", { bubbles: true }));
+	el.el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 let plugin: InstanceType<typeof PythiaPlugin>;
@@ -165,5 +166,109 @@ describe("typing on your own", () => {
 	it("costs nothing when nothing was attached", () => {
 		type(view, "just words");
 		expect(conv.contextNotes).toEqual([]);
+	});
+});
+
+describe("the link is drawn as a chip (D-52)", () => {
+	const chips = (): HTMLElement[] => Array.from(input(view).el.querySelectorAll<HTMLElement>(".p-composer-chip"));
+
+	it("draws a picked note as one chip — the vault-note icon and the name — while its text stays the link", () => {
+		type(view, "Compare with last year");
+		input(view).setSelectionRange(8, 8);
+		attachments(view).attach(["Notes/Q3 revenue.md"]);
+
+		const [chip] = chips();
+		expect(chips()).toHaveLength(1);
+		expect(chip.dataset.token).toBe("[[Q3 revenue]]");
+		expect(chip.getAttribute("contenteditable")).toBe("false");
+		expect(chip.querySelector(".p-source-icon")?.getAttribute("data-icon")).toBe("library");
+		expect(chip.textContent).toBe("Q3 revenue");
+		// What is sent is exactly what the textarea held.
+		expect(input(view).value).toBe("Compare [[Q3 revenue]] with last year");
+	});
+
+	it("sends the link text, never the chip's label or icon", async () => {
+		attachments(view).attach(["Notes/Plan.md"]);
+		type(view, `${input(view).value}summarize this`);
+		await view.sendMessage();
+		expect(conv.messages[0]?.content).toBe("[[Plan]] summarize this");
+	});
+
+	it("deleting the chip detaches the note — one atom, one press", () => {
+		attachments(view).attach(["Notes/Plan.md"]);
+		chips()[0].remove();                                   // what Backspace does to a non-editable island
+		input(view).el.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(conv.contextNotes).toEqual([]);
+	});
+
+	it("a restored draft brings the chip back, not the bare link", () => {
+		attachments(view).attach(["Notes/Plan.md"]);
+		const draft = input(view).value;
+		input(view).value = "";
+		input(view).value = draft;
+		expect(chips().map((c) => c.dataset.token)).toEqual(["[[Plan]]"]);
+	});
+
+	it("a link the user typed stays text — only what Pythia inserted is a chip", () => {
+		type(view, "see [[Plan]]");
+		expect(chips()).toHaveLength(0);
+		expect(conv.contextNotes).toEqual([]);
+	});
+
+	it("shows the placeholder only while the field reads as empty", () => {
+		const el = input(view).el;
+		expect(el.classList.contains("is-empty")).toBe(true);
+		attachments(view).attach(["Notes/Plan.md"]);
+		expect(el.classList.contains("is-empty")).toBe(false);
+		input(view).value = "";
+		expect(el.classList.contains("is-empty")).toBe(true);
+	});
+
+	it("is not editable while an answer streams", () => {
+		input(view).disabled = true;
+		expect(input(view).el.getAttribute("contenteditable")).toBe("false");
+		input(view).disabled = false;
+		expect(input(view).el.getAttribute("contenteditable")).toBe("true");
+	});
+});
+
+describe("the clipboard (D-52)", () => {
+	function selectAll(): void {
+		const el = input(view).el;
+		el.focus();
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		const sel = document.getSelection()!;
+		sel.removeAllRanges();
+		sel.addRange(range);
+	}
+
+	function clipboardEvent(type: string, text = ""): { e: Event; data: Map<string, string> } {
+		const data = new Map<string, string>([["text/plain", text]]);
+		const e = new Event(type, { bubbles: true, cancelable: true });
+		Object.defineProperty(e, "clipboardData", {
+			value: { getData: (k: string) => data.get(k) ?? "", setData: (k: string, v: string) => data.set(k, v) },
+		});
+		return { e, data };
+	}
+
+	it("copies a chip as its link, so it pastes into a note as one", () => {
+		type(view, "Compare ");
+		attachments(view).attach(["Notes/Q3 revenue.md"]);
+		selectAll();
+		const { e, data } = clipboardEvent("copy");
+		input(view).el.dispatchEvent(e);
+		expect(e.defaultPrevented).toBe(true);
+		expect(data.get("text/plain")).toBe("Compare [[Q3 revenue]] ");
+	});
+
+	it("pastes text only — markup never reaches the field", () => {
+		const el = input(view).el;
+		el.focus();
+		const { e } = clipboardEvent("paste", "plain words");
+		el.dispatchEvent(e);
+		expect(e.defaultPrevented).toBe(true);
+		expect(input(view).value).toBe("plain words");
+		expect(el.querySelector("b, i, a, img")).toBeNull();
 	});
 });

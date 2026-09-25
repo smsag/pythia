@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-25 — ADR-212: one icon for a vault note. `library` (`VAULT_NOTE_ICON`) on every attached, auto-retrieved, cited and saved note, and on the context inspector's header; the auto-retrieved pill keeps `.p-wikilink--auto` and loses nothing but its separate glyph. New `.p-bubble .p-note-link .p-source-icon`: a `[[Name]]` in a sent message is drawn with the same 12px muted icon ahead of its name, set in running text (`vertical-align: middle; top: -0.09em`, the micro-label rule) with `--s1` after it.*
+*Last updated: 2026-09-25 — ADR-213: the composer. `.p-textarea` is replaced by `.p-composer`, a `contenteditable` with the same metrics (mono, 1.55 line height, 2 lines at rest, 5 at most, then it scrolls — by `min-height`/`max-height` alone; the JS resize is gone) plus `white-space: pre-wrap`. The placeholder is `.p-composer.is-empty::before` (out of flow, `--text-faint` italic, as before). New `.p-composer-chip`: an attached note in running text — `--link-color` name, the 12px vault-note icon at `vertical-align: middle; top: -0.09em`, `nowrap`, no fill and no border, so a chip never changes the line's height. `.is-disabled` replaces `:disabled` (0.5 opacity while streaming).*
+
+*Previously: 2026-09-25 — ADR-212: one icon for a vault note. `library` (`VAULT_NOTE_ICON`) on every attached, auto-retrieved, cited and saved note, and on the context inspector's header; the auto-retrieved pill keeps `.p-wikilink--auto` and loses nothing but its separate glyph. New `.p-bubble .p-note-link .p-source-icon`: a `[[Name]]` in a sent message is drawn with the same 12px muted icon ahead of its name, set in running text (`vertical-align: middle; top: -0.09em`, the micro-label rule) with `--s1` after it.*
 
 *Previously: 2026-09-23 — ADR-210: the chart card (`.p-chart-*`). A chart is laid out to the width it is given and re-laid out on resize — deliberately NOT a pan-scrolled frame like a diagram (ADR-004), because we decide how big it is. New: `.p-chart-card` (a bordered block on `--background-primary`), `.p-chart-head` (icon + title, actions hover-revealed through the existing `@media (hover: none)` rule rather than a second one), `.p-chart-body`, `.p-chart-foot` (a run-in `Sources:` prefix, never a label column — ADR-153), the error card `.p-chart-card--error`, and the eight `.p-chart-cN` swatch rules. Colour never appears in the markup: axes, grid and labels are classes over `--text-faint` / `--background-modifier-border` / `--text-muted`, and series swatches arrive as `--p-chart-cN` custom properties set on the `<svg>` root, derived per theme ground and floored at 3:1 (§1.4.11, ADR-198's number). Series 1 is deliberately not the accent.*
 
@@ -235,10 +237,10 @@ For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a
 
 ```css
 --font-smaller: 11px   /* labels, token counts, nav items */
---font-small:   12px   /* body text, pills, toolbar, textarea */
+--font-small:   12px   /* body text, pills, toolbar, composer */
 ```
 
-Font families: `var(--font-interface)` for UI text; `var(--font-monospace)` for labels, badges, token counts, textarea.
+Font families: `var(--font-interface)` for UI text; `var(--font-monospace)` for labels, badges, token counts, the composer.
 
 ---
 

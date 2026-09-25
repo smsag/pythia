@@ -71,7 +71,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
     apiError.ts               ← HTTP error classification
   ui/
-    InlineSuggest.ts          ← autocomplete widget for textarea
+    InlineSuggest.ts          ← the `#` note picker in the composer
+    ComposerField.ts          ← the composer: a contenteditable with a textarea's surface (value · selectionStart · setSelectionRange · disabled · focus); note chips; edits through execCommand so undo works (ADR-213)
+    composerText.ts           ← pure: composerText (the DOM read as text, a chip = its `[[Name]]`) · textOffset · domPosition · partsFor (ADR-213)
     turnLabel.ts              ← turn micro-labels: model · template · time · tokens (pure, unit-tested)
     OptimizationController.ts ← inline prompt optimizer state + flow
     NavigatorController.ts    ← # navigator popover logic
@@ -134,7 +136,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     settings/troubleshooting.ts ← §8 debug mode
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
-  tests/                      ← Vitest unit tests (npm test) — 1778 tests across 119 files
+  tests/                      ← Vitest unit tests (npm test)
     helpers/viewHarness.ts    ← shared mount fixture for the view-render tests
   locales/
     en.ts                     ← English i18n strings
@@ -659,15 +661,16 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Input area
 ```
-[ textarea auto-expand 1→72px max ]
+[ composer (contenteditable) 2→5 lines, then scrolls ]
 [ attach ][ save ] ______________ [ Senden ]
 ```
 - **Enter writes a line break; Cmd/Ctrl+Enter sends** (ADR-175). The rule lives once, in `ui/composerKeys.ts` — never re-derive it in a keydown handler, and never let a send fire while `isComposing` is true. The placeholder names the shortcut on desktop only
-- Textarea: transparent, no border, `--font-monospace`, 12px
+- **The composer is a `contenteditable`** (`ComposerField`, ADR-213): transparent, no border, `--font-monospace`, 12px, `pre-wrap`. **It reads as the text a textarea held** — `composerText`, where a chip is exactly its `[[Name]]`. Never read `el.textContent` or `innerText` for what is sent: both give the chip's label and lose the link
+- **Edit it through `ComposerField`, never the DOM directly** — `replaceRange` / `insertAt` go through `execCommand`, the only edits that enter the native undo stack, and undo is how a deleted chip's note comes back. No JS resize: `min-height`/`max-height` do it
 - Toolbar icons: inline SVG, `pb pb-icon` (24×24px)
 - Send: `pb pb-primary`; while streaming `.stop` renders destructive
 - **Every button's fill and label are set at (0,3,0)+ by its role** (ADR-187/188/190). `tests/buttonRoles.test.ts` and `tests/obsidianCascade.test.ts` fail in the forbidden direction
-- **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the textarea. Never move it back to a bare keydown handler alone
+- **The send shortcut goes through the view's `Scope`** (`ComposerSend`, ADR-187), because Obsidian's keymap sees Cmd+Enter before the composer. Never move it back to a bare keydown handler alone
 
 ### The settings tab (ADR-209)
 
@@ -683,6 +686,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### The `#` note link in the composer (ADR-211)
 
+- **The link is drawn as a chip** (ADR-213): `.p-composer-chip`, the vault-note icon and the name, one atom to Backspace and undo. **It reads as its `[[Basename]]`**, so everything below — the count, the send, the model — is unchanged. Only a token Pythia tracks is a chip; a link the user types stays text. Copy yields the link; paste is text only
 - **Picking a note leaves `[[Basename]]` at the cursor.** Not `#Name`: the user bubble renders markdown and **Obsidian paints `#word` as a tag**, which cannot contain spaces — `#Q3 revenue` would render as a tag chip plus a stray word. A wikilink also renders in the sent turn as a link that opens the note
 - **A token is matched by the LITERAL text Pythia inserted, never by a pattern.** A basename may contain spaces and brackets, so no regex can say where `[[Q3 revenue]]` ends in a sentence that continues after it. This is also why the wikilink form is safe — Pythia never has to tell a link you typed from one it wrote
 - **Presence is counted, not tested.** Two notes in different folders share a basename and therefore a token; deleting one occurrence detaches one note

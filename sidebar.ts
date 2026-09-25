@@ -13,6 +13,7 @@ import { looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
+import { ComposerField } from "./ui/ComposerField";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -66,8 +67,6 @@ export class PythiaSidebarView extends ItemView {
 	/** Conversation IDs currently running a chapter-name backfill — prevents
 	 *  overlapping serial backfill runs on rapid re-open of the same conversation. */
 	private backfillInFlight = new Set<string>();
-	/** Cached getComputedStyle(inputEl).lineHeight — invalidated when inputEl is recreated. */
-	private cachedLineHeight: number | null = null;
 	// Incremental DOM rendering — track what is already in the DOM so renderMessages
 	// can skip a full rebuild when the same conversation gains only new messages.
 	private renderedConvId: string | null = null;
@@ -98,7 +97,7 @@ export class PythiaSidebarView extends ItemView {
 
 	// attachedPillsEl removed — notes shown in reference row only
 	private messagesEl!: HTMLElement;
-	private inputEl!: HTMLTextAreaElement;
+	private composer!: ComposerField;
 	private sendBtn!: HTMLButtonElement;
 	// Selection toolbar (Copy/Favorite/Branch/Insert/Inbox) + span-favorites (ADR-103).
 	private selectionController!: SelectionController;
@@ -143,7 +142,7 @@ export class PythiaSidebarView extends ItemView {
 	private researchBtnEl!: HTMLButtonElement;
 	private templateBtnEl!: HTMLButtonElement;
 	private readonly composerSend = new ComposerSend({
-		input: () => this.inputEl,
+		input: () => this.composer?.el,
 		suggest: (e) => this.inlineSuggest.handleKeydown(e),
 		send: () => void this.sendMessage(),
 	});
@@ -264,7 +263,7 @@ export class PythiaSidebarView extends ItemView {
 		this.referenceRow.render();
 		this.updateSendBtnLabel();
 		await this.renderMessages(scrollTo);
-		if (focus) this.inputEl?.focus();
+		if (focus) this.composer?.focus();
 		this.backfillChapterNames(conversation);
 	}
 
@@ -324,16 +323,14 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 	prefillInput(text: string): void {
-		if (!this.inputEl) return;
-		this.inputEl.value = text;
-		this.autoResizeTextarea();
-		this.inputEl.focus();
+		if (!this.composer) return;
+		this.composer.value = text;
+		this.composer.focus();
 	}
 
 	triggerAutoPrompt(text: string): void {
-		if (!this.inputEl) return;
-		this.inputEl.value = text;
-		this.autoResizeTextarea();
+		if (!this.composer) return;
+		this.composer.value = text;
 		void this.sendMessage();
 	}
 
@@ -342,7 +339,6 @@ export class PythiaSidebarView extends ItemView {
 		this.historyController?.close();
 		this.renderedConvId = null;
 		this.lastRenderedMsgId = null;
-		this.cachedLineHeight = null; // inputEl is about to be recreated below
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass("pythia-view");
@@ -387,11 +383,10 @@ export class PythiaSidebarView extends ItemView {
 
 		this.optimizationController = new OptimizationController({
 			plugin: this.plugin,
-			inputEl: this.inputEl,
+			inputEl: this.composer,
 			sendBtn: this.sendBtn,
 			getConversation: () => this.activeConversation,
 			isStreaming: () => this.isStreaming,
-			autoResizeTextarea: () => this.autoResizeTextarea(),
 			updateSendBtnLabel: () => this.updateSendBtnLabel(),
 			onRated: (difficulty) => this.modelSuggestion.consider(difficulty),
 		});
@@ -483,7 +478,7 @@ export class PythiaSidebarView extends ItemView {
 		this.rewrite = new RewriteController({
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
-			focusInput: () => this.inputEl?.focus(),
+			focusInput: () => this.composer?.focus(),
 			refreshPills: () => this.referenceRow.render(),
 		});
 		this.toolCalls = new ToolCallController({
@@ -569,30 +564,32 @@ export class PythiaSidebarView extends ItemView {
 		const inputArea = container.createDiv({ cls: "p-input-area" });
 		this.inputAreaEl = inputArea;
 
-		this.inputEl = inputArea.createEl("textarea", {
-			cls: "p-textarea",
-			attr: { placeholder: composerPlaceholder(Platform.isMobile), rows: "2" },
+		// A contenteditable, so an attached note can be a chip (D-52); it reads as
+		// the text a textarea held, `[[Name]]` for a chip — see ui/composerText.ts.
+		this.composer = new ComposerField(inputArea, {
+			placeholder: composerPlaceholder(Platform.isMobile),
+			register: (el, type, handler) => this.registerDomEvent(el, type, handler),
+			chips: () => this.composerAttachments.chips(),
 		});
 		this.composerAttachments = new ComposerAttachments({
-			inputEl: () => this.inputEl,
+			inputEl: () => this.composer,
 			getConversation: () => this.activeConversation,
 			saveConversation: (conv) => void this.plugin.conversationStore.save(conv),
 			refreshPills: () => this.referenceRow.render(),
-			onComposerChanged: () => { this.autoResizeTextarea(); this.updateSendBtnLabel(); },
+			onComposerChanged: () => this.updateSendBtnLabel(),
 		});
 		// The picker removes its own `#query` and leaves the cursor there; the link
 		// goes in at that cursor (ADR-211).
 		this.inlineSuggest = new InlineSuggest(
 			this.app,
-			this.inputEl,
+			this.composer,
 			inputArea,
 			(paths) => this.composerAttachments.attach(paths)
 		);
-		this.registerDomEvent(this.inputEl, "keydown", this.composerSend.onKeydown);
+		this.registerDomEvent(this.composer.el, "keydown", this.composerSend.onKeydown);
 		{
 			let tokenDebounce: ReturnType<typeof setTimeout> | null = null;
-			this.registerDomEvent(this.inputEl, "input", () => {
-				this.autoResizeTextarea();
+			this.registerDomEvent(this.composer.el, "input", () => {
 				this.inlineSuggest.handleInput();
 				// Deleting a note's link detaches it, and an undo re-attaches it.
 				this.composerAttachments.sync();
@@ -604,11 +601,11 @@ export class PythiaSidebarView extends ItemView {
 			});
 		}
 
-		this.registerDomEvent(this.inputEl, "focus", () => {
+		this.registerDomEvent(this.composer.el, "focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 			this.plugin.prewarmEmbedding(); // typing hides a released model's reload (ADR-202)
 		});
-		this.registerDomEvent(this.inputEl, "blur", () => {
+		this.registerDomEvent(this.composer.el, "blur", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
 		});
 
@@ -725,7 +722,7 @@ export class PythiaSidebarView extends ItemView {
 		// Prompt optimization (moved here from the input toolbar). Disabled when there
 		// is nothing typed to optimize or no optimizer template is configured.
 		const optimizeDisabled =
-			this.inputEl.value.trim().length === 0 || !this.plugin.settings.promptOptimizerTemplateId;
+			this.composer.value.trim().length === 0 || !this.plugin.settings.promptOptimizerTemplateId;
 		return [
 			{
 				label: t("menuSummarizeConversation"), icon: "align-left",
@@ -1046,19 +1043,6 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	private autoResizeTextarea(): void {
-		requestAnimationFrame(() => {
-			if (this.cachedLineHeight === null) {
-				this.cachedLineHeight = parseFloat(getComputedStyle(this.inputEl).lineHeight) || 18.6;
-			}
-			const lineHeight = this.cachedLineHeight;
-			const minH = Math.ceil(lineHeight * 2);
-			const maxH = Math.ceil(lineHeight * 5);
-			this.inputEl.style.height = "auto";
-			this.inputEl.style.height = `${Math.min(Math.max(this.inputEl.scrollHeight, minH), maxH)}px`;
-		});
-	}
-
 	private scrollToTop(): void {
 		this.autoScroll = false;
 		this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
@@ -1279,10 +1263,10 @@ export class PythiaSidebarView extends ItemView {
 	/** Send `text` as the next user turn, keeping whatever the user had typed
 	 *  as their draft (the Continue / Retry actions under a cut-off answer). */
 	sendText(text: string): Promise<void> {
-		const draft = this.inputEl.value;
-		this.inputEl.value = text;
+		const draft = this.composer.value;
+		this.composer.value = text;
 		const sent = this.sendMessage(); // reads and clears the field synchronously
-		this.inputEl.value = draft;
+		this.composer.value = draft;
 		return sent;
 	}
 
@@ -1309,14 +1293,13 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 
-		const text = this.inputEl.value.trim();
+		const text = this.composer.value.trim();
 		if (!text) return;
 
-		this.inputEl.value = "";
+		this.composer.value = "";
 		// The links went out with the message. The notes stay attached to the
 		// conversation, and the pill is their handle from here (ADR-211).
 		this.composerAttachments.clear();
-		this.autoResizeTextarea();
 		this.setStreamingState(true);
 
 		// This turn: accepted model suggestion, armed template over it (ADR-177/181).
@@ -1517,6 +1500,6 @@ export class PythiaSidebarView extends ItemView {
 			this.updateSendBtnLabel();
 			this.sendBtn.removeClass("stop");
 		}
-		this.inputEl.disabled = streaming;
+		this.composer.disabled = streaming;
 	}
 }

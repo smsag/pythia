@@ -2,6 +2,7 @@ import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
 import { scoreRelevanceTokenSets, tokenize } from "../services/noteRelevance";
 import { t } from "../i18n";
+import type { ComposerField } from "./ComposerField";
 
 // One row in the picker. Folders can be *drilled into* (ArrowRight / swipe-left /
 // the trailing ›) to browse their contents in place, while still supporting
@@ -17,7 +18,7 @@ const SWIPE_THRESHOLD = 40; // px of horizontal travel to count as a drill/back 
 
 export class InlineSuggest {
 	private app: App;
-	private inputEl: HTMLTextAreaElement;
+	private inputEl: ComposerField;
 	private containerEl: HTMLElement;
 	private onAttach: (paths: string[]) => void;
 
@@ -40,7 +41,7 @@ export class InlineSuggest {
 
 	constructor(
 		app: App,
-		inputEl: HTMLTextAreaElement,
+		inputEl: ComposerField,
 		containerEl: HTMLElement,
 		onAttach: (paths: string[]) => void
 	) {
@@ -75,7 +76,7 @@ export class InlineSuggest {
 
 	handleInput(): void {
 		const val = this.inputEl.value;
-		const cursor = this.inputEl.selectionStart ?? val.length;
+		const cursor = this.inputEl.selectionStart;
 
 		let triggerPos: number | null = null;
 		for (let i = cursor - 1; i >= 0; i--) {
@@ -200,7 +201,7 @@ export class InlineSuggest {
 		if (!this.dropdown) {
 			this.dropdown = this.containerEl.createDiv({ cls: "pythia-inline-suggest" });
 			this.outsideHandler = (e: MouseEvent) => {
-				if (!this.dropdown?.contains(e.target as Node) && e.target !== this.inputEl) {
+				if (!this.dropdown?.contains(e.target as Node) && !this.inputEl.el.contains(e.target as Node)) {
 					this.dismiss();
 				}
 			};
@@ -335,13 +336,9 @@ export class InlineSuggest {
 	 */
 	private clearFragment(): void {
 		if (this.hashPos === null) return;
-		const val = this.inputEl.value;
-		const cursor = this.inputEl.selectionStart ?? val.length;
+		const cursor = this.inputEl.selectionStart;
 		const keepFrom = this.hashPos + 1;
-		if (cursor > keepFrom) {
-			this.inputEl.value = val.slice(0, keepFrom) + val.slice(cursor);
-			this.inputEl.setSelectionRange(keepFrom, keepFrom);
-		}
+		if (cursor > keepFrom) this.inputEl.replaceRange(keepFrom, cursor, "");
 	}
 
 	private onTouchEnd(e: TouchEvent): void {
@@ -364,10 +361,7 @@ export class InlineSuggest {
 	private attach(paths: string[]): void {
 		if (this.hashPos === null || paths.length === 0) { this.dismiss(); return; }
 
-		const val = this.inputEl.value;
-		const cursor = this.inputEl.selectionStart ?? val.length;
-		this.inputEl.value = val.slice(0, this.hashPos) + val.slice(cursor);
-		this.inputEl.setSelectionRange(this.hashPos, this.hashPos);
+		this.inputEl.replaceRange(this.hashPos, this.inputEl.selectionStart, "");
 
 		this.onAttach(paths);
 		this.dismiss();

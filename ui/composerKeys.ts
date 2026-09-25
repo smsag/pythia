@@ -34,8 +34,8 @@ export function composerPlaceholder(isMobile: boolean): string {
 }
 
 interface ComposerSendDeps {
-	/** The composer textarea — undefined until the view has built its UI. */
-	input: () => HTMLTextAreaElement | undefined;
+	/** The composer's editable element — undefined until the view has built its UI. */
+	input: () => HTMLElement | undefined;
 	/** The `#` picker's keys, which win while its dropdown is open. */
 	suggest: (e: KeyboardEvent) => boolean;
 	send: () => void;

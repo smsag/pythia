@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-212 (a note from the vault carries the library icon however it arrived — attached, retrieved, cited, saved or linked in a sent message; the route is carried by style, not by a second glyph).*
+*Last updated: 2026-09-25 — ADR-213 (the composer is a contenteditable, so a note attached with `#` is a chip — the library icon and its name, deleted by one Backspace — while the field still reads as the text the textarea held: a chip is its `[[Name]]`; closes D-52).*
+
+*Previously: 2026-09-25 — ADR-212 (a note from the vault carries the library icon however it arrived — attached, retrieved, cited, saved or linked in a sent message; the route is carried by style, not by a second glyph).*
 
 *Previously: 2026-09-23 — ADR-211 (a note picked with `#` leaves its link in the composer where you put it; the link is matched by the literal text Pythia wrote, and the attachment follows it in both directions until the message is sent).*
 
@@ -4346,3 +4348,31 @@ The form was not the obvious one. `#Q3 revenue` would mirror the gesture, but th
 **Prompt quality: unchanged.** Icons never reach the model, and nothing about which notes are included, or their budgets, depends on a glyph.
 
 **Guards.** `tests/linkIcons.test.ts` fails if `note`, `auto` or `output` stop sharing `VAULT_NOTE_ICON`, if it stops being `library`, if the template, web or rewrite icon collapses into it, or if `decorateNoteLinks` adds text, marks a web link, or stacks a second icon on a re-render.
+
+### ADR-213 — A note in the composer is a chip, and a chip reads as its link
+
+*2026-09-25*
+
+**Context.** ADR-211 left the note you attach with `#` in the composer as `[[Q3 revenue]]` — plain text in a `<textarea>`, with no icon, no tint and no single-press delete. D-52 recorded why: a textarea cannot hold styled content, and a `contenteditable` puts the send shortcut, IME composition, the placeholder, autoresize and the keyboard inset back in play. The ask now is that the note appear as its name with the library icon (ADR-212) while you write.
+
+**Decision — the composer is a `contenteditable` (`ui/ComposerField.ts`) that holds text and chips.** A chip is `<span class="p-composer-chip" contenteditable="false" data-token="[[Name]]">` with the vault-note icon and the name. A non-editable island is one atom to the browser: one Backspace removes it, the caret cannot enter it, and undo restores it whole.
+
+**The contract: the field reads as the text the textarea held.** `composerText` (`ui/composerText.ts`) walks the DOM and returns a string in which **a chip is exactly its token**. Everything downstream reads that string — the send path, ADR-211's literal count (`tokensPresent`, unchanged), and the model. **Prompt quality therefore cannot change with the composer**: the message stored and sent for "Compare [chip] with last year" is `Compare [[Q3 revenue]] with last year`, byte for byte what the textarea produced. The ADR-211 tests pass against the new field without a changed assertion, which is the evidence.
+
+**Browsers disagree about what a line is, so all their shapes read the same.** Chrome wraps a new line in a `<div>`, WebKit may use `<br>`, and under `white-space: pre-wrap` a Shift+Enter or a set value is a literal `\n`. All three read as one `\n`; a block's trailing `<br>` — the placeholder a browser leaves to keep an empty line open — reads as nothing; `&nbsp;` reads as a space. An empty block still starts a line, so an empty line the user made survives. Offsets are in the text, never the DOM (`textOffset` / `domPosition`), and a caret inside a chip snaps to its end.
+
+**It keeps a textarea's surface** — `value`, `selectionStart`, `setSelectionRange`, `disabled`, `focus` — so `InlineSuggest`, `ComposerSend` and the optimizer needed a type change and two call sites each, not a rewrite. `composerKeyAction` is unchanged: `isComposing` and Enter behave the same on an editing host. `ComposerSend`'s focus check reads the editing host, which is what `activeElement` is.
+
+**Edits go through `execCommand` because only those are undoable.** Deprecated, and still the only way into an editable element's native undo stack — and undo is what ADR-211's sync turns into a re-attach. Chips go in by `insertHTML` (every string escaped: `<` is legal in a note name), text by `insertText`, deletions by `delete`. The icon cannot be hand-written into markup, so it is drawn onto any chip that arrives without one. Where `execCommand` is missing (a test DOM) the same edit is made on the DOM, without undo.
+
+**A whole value re-draws tracked links as chips.** Setting `value` (a restored draft, a prefill, an optimizer rewrite) turns each occurrence of a token the composition is tracking back into its chip (`partsFor`, over `ComposerAttachments.chips()`). A `[[link]]` the user typed stays text: only what Pythia inserted is a chip, the same line ADR-211 drew for counting.
+
+**The clipboard speaks text.** Copy and cut write the selected TEXT, so a chip pastes into a note as its `[[link]]`. Paste and drop insert `text/plain` only — no markup, colour or image reaches the field.
+
+**No JS resize any more.** The textarea needed a height computed from `scrollHeight`; a div grows with its content, so `min-height` (2 lines) and `max-height` (5 lines, then it scrolls) do the whole job and `autoResizeTextarea` with its line-height cache is gone. The placeholder is a `::before` drawn out of flow, keyed on `is-empty` — set from the text, because an emptied field still holds a placeholder `<br>` and would never match `:empty`.
+
+**Verified in a real browser, not only in happy-dom.** The real `ComposerField` + `ComposerAttachments`, bundled into a harness page and driven in Chromium: `insertHTML` keeps `contenteditable="false"`; the text reads `Compare [[Q3 revenue]] with last year` with the caret after the chip; one Backspace removes the chip and detaches the note; the browser's undo restores it — icon included — and re-attaches the note; Enter (a `<div>`) and Shift+Enter (a literal `\n`) read as lines; an emptied field reads `""` and shows the placeholder. **Not verified on iOS.** WebKit's caret next to a non-editable island, autocorrect and the soft keyboard's return key need a pass on the phone before this ships.
+
+**Guards.** `tests/composerText.test.ts` (15): each browser's line shape, the placeholder `<br>`, `&nbsp;`, a chip reading as its token, every offset round-tripping, a caret never inside a chip, `partsFor`. `tests/composerAttachments.test.ts` gains 9: the chip's icon, name and token; the sent message is the link text; deleting the chip detaches; a restored draft re-chips; a typed link stays text; the placeholder; disabled; copy yields the link; paste is text only. The ADR-211 suite passes unchanged.
+
+**Closes D-52.**

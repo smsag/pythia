@@ -5,6 +5,7 @@ import type PythiaPlugin from "../main";
 import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation, ToolCall } from "../models/types";
 import { CHART_BLOCK_LANG, CHART_TOOL_OK } from "../services/chartSpec";
+import type { ComposerField } from "../ui/ComposerField";
 
 /** The provider seam, stubbed the way tests/viewRender.test.ts stubs it. The
  *  extra `onToolCall` argument is the point of this file: a chart reaches the
@@ -22,7 +23,7 @@ function stubStream(plugin: InstanceType<typeof PythiaPlugin>, fake: StreamFake)
 }
 
 function setInput(view: PythiaSidebarView, text: string): void {
-	(view as unknown as { inputEl: HTMLTextAreaElement }).inputEl.value = text;
+	(view as unknown as { composer: ComposerField }).composer.value = text;
 }
 
 const chartCall = (over: Record<string, unknown> = {}): ToolCall => ({
