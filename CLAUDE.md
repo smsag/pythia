@@ -72,6 +72,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws (ADR-062/217)
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
+    noteWrites.ts             ← pure: the write tools' result (naming the note as a [[path|name]] link), parseNoteWrite, normalizeNoteWrites — what the ✓ chip is drawn from (ADR-218)
+    renameVaultPath.ts        ← pure: THE list of stored vault-path fields, followed through a note/folder rename; a new path field joins it or goes stale (ADR-218)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer
@@ -85,6 +87,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     MergeController.ts        ← merge-link marks, inline merge anchor, merged-from banner (ADR-130)
     composerTokens.ts         ← pure: the note link a `#` attachment leaves in the composer — matched by the LITERAL text Pythia wrote, never a pattern, and counted not tested (ADR-211)
     ComposerAttachments.ts    ← the tracked links and their two-way sync with contextNotes; cleared on send
+    noteLinks.ts              ← openNotePath (by exact path, never creates) · onNoteLinkClick (the chat's [[link]] handler) · fillNoteWriteChip / paintNoteWrites — the ✓ chip, live and persisted (ADR-218)
+    bubbleToggle.ts           ← the show-more toggle under a long user message
     ReferenceRowController.ts ← the pill strip above the composer, and the × that also clears a note's link from the composer
     accentContrast.ts         ← readable --p-on-accent for the current theme accent
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
@@ -729,6 +733,13 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Open/closed is per conversation, for the session — never written**; a new pin does not open the strip (user decisions, ADR-216 addendum 2)
 - **A chart is named by `chartLabel`** (`services/chartSpec.ts`) — the card and the strip; never read a chart field with a regex beside the parser
 - **A pin body renders into its own child `Component`**, released on the next render — never straight into the view
+
+### Notes an answer wrote (ADR-218)
+
+- **A note is opened by what resolves, never by a name that might not.** `openLinkText` on an unresolved name CREATES that note. Use `openNotePath` (exact path, or a "renamed or deleted" notice) or `onNoteLinkClick` — never a bare `openLinkText(name)`
+- **The ✓ chip is drawn from `Message.noteWrites`**, not left in the DOM: the live chip and the redrawn one are both `fillNoteWriteChip`. The path comes from the tool RESULT (`parseNoteWrite`), which is the path the vault used, never from the call's arguments
+- **Every stored vault path is listed in `renameVaultPath`.** A new field that holds a path joins that function and its test, or it goes stale on the first rename. It mutates in place, is idempotent, and `followRename` never bumps `updatedAt`
+- **Message text is never rewritten on a rename** (D-58): a `[[link]]` in what was said is history
 
 ## What not to build
 

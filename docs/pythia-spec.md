@@ -137,6 +137,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │       │   └── marks: pythia-favorite · pythia-fork · pythia-merge · pythia-term · pythia-person
 │       ├── .p-sources > .p-sources-row             Template: / Vault: / Web: (.p-sources-label)
 │       ├── .pythia-tool-call                       write confirmation chip
+│       ├── .p-note-write                           the ✓ chip of a note an answer wrote, redrawn from Message.noteWrites (ADR-218)
 │       ├── .p-trunc                                cut-off card       ui/TruncationController.ts
 │       ├── .p-compare                              comparison card    ui/ComparisonController.ts
 │       └── .p-del-bar                              delete · ⇄ compare · cancel  ui/ExchangeActionsController.ts
@@ -267,6 +268,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-55 | **A pin never reaches the model.** Pinning is a reading aid, like a merge link or a glossary definition. | ADR-216 | Making a pin context would silently change every later answer, and cost tokens per turn for something the user pinned to LOOK at. | Users pin a spec to keep the model to it — then an explicit "use as context" toggle on the pin, never the default. |
 | D-56 | **No Tavily `/crawl`, `/map` or `/research`.** Pythia reads one page (`read_url`) and runs searches; it does not walk a site or hand a question to an asynchronous research agent. | ADR-217 | Crawl and map are batch jobs, not chat actions, and scale credit use with a site's size. `/research` needs polling and returns its own citation formats, which clash with the `⟦cite:web⟧` contract (ADR-077). | A user asks for a multi-page task ("compare every pricing page on this site") often enough that repeated `read_url` calls are the workaround. |
 | D-57 | **No `search_depth: "advanced"`, `auto_parameters` or raw page content on search.** Every search is `basic`, with 500-character snippets. | ADR-217 | Each can double a search's credit cost, or fill the context window, without anyone choosing it. `read_url` covers the "I need the whole page" case, one page at a time. | Credit cost per research answer is measured (Tavily's `include_usage`) and the better snippets are shown to change answers. |
+| D-58 | **A `[[link]]` inside a message is not rewritten when its note is renamed.** Every stored path follows the rename (ADR-218), but the text of what was said stays as it was; tapping an old link says the note was renamed or deleted. | ADR-218 | The text is history, and the model reads it on the next turn. Rewriting it changes that history, and two notes sharing a name could make the new link point at the wrong one. | Users regularly rename notes that answers linked, and the "renamed or deleted" notice becomes a common tap rather than a rare one. |
 
 ### Measurements not yet made
 
@@ -331,6 +333,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
+| 2026-09-25 | ADR-218: D-58 (links inside message text are not rewritten on rename); the permanent write chip (`.p-note-write`) added to the UI map. |
 | 2026-09-25 | ADR-217: D-56 (crawl · map · research) and D-57 (advanced depth · auto-parameters · raw content) — the Tavily capabilities left out. |
 | 2026-09-25 | ADR-216: the pin strip, pin buttons and table actions added to the UI map; D-53…D-55 (archive, fork inheritance, pins as context). |
 | 2026-09-25 | ADR-214: dropping vault notes on the composer added to the map (`.is-drop-target`, `ui/noteDrop.ts`). |

@@ -1,6 +1,7 @@
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { debugLog } from "./messageUtils";
+import { renameVaultPath } from "./renameVaultPath";
 
 const DEBOUNCE_MS = 300;
 
@@ -57,6 +58,20 @@ export class ConversationStore {
 		conversation.updatedAt = new Date().toISOString();
 		this._conversations[idx] = conversation;
 		this.dirtyIds.add(conversation.id);
+		this.schedulePersist();
+	}
+
+	/**
+	 * A note or folder moved in the vault: follow it in every conversation
+	 * (ADR-218). Only the conversations that held the path are marked dirty, and
+	 * `updatedAt` is left alone — a rename is not activity, and bumping it would
+	 * reorder the conversation list behind the user's back.
+	 */
+	followRename(oldPath: string, newPath: string): void {
+		const changed = renameVaultPath(this._conversations, oldPath, newPath);
+		if (changed.length === 0) return;
+		for (const id of changed) this.dirtyIds.add(id);
+		debugLog(this.plugin.settings, `followed rename ${oldPath} → ${newPath} in ${changed.length} conversation(s)`);
 		this.schedulePersist();
 	}
 

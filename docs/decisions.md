@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-217 addendum (review): `read_url` reads only a link the user gave or a result of this answer returned, verbatim, at most 5 per answer (`services/webReadScope.ts`); a URL with a user name or password is refused; the private-host guard no longer misses a trailing dot or an IPv4-mapped IPv6 address; the auto-arm rule is `wantsWeb` in `sendPolicy.ts`.*
+*Last updated: 2026-09-25 — ADR-218 (a note an answer wrote stays one tap away: the tool result hands the model a `[[path|name]]` link, links in the conversation open by what resolves and never create a note, the ✓ chip is recorded on the message as `noteWrites` and redrawn on every render, and a rename or move is followed in every stored vault path by `renameVaultPath`).*
+
+*Previously: 2026-09-25 — ADR-217 addendum (review): `read_url` reads only a link the user gave or a result of this answer returned, verbatim, at most 5 per answer (`services/webReadScope.ts`); a URL with a user name or password is refused; the private-host guard no longer misses a trailing dot or an IPv4-mapped IPv6 address; the auto-arm rule is `wantsWeb` in `sendPolicy.ts`.*
 
 *Previously: 2026-09-25 — ADR-217 (Tavily: optional `topic` / `time_range` / domain filters on `web_search`, validated by `services/tavilyArgs.ts`; a new research-gated `read_url` tool on Tavily /extract that refuses private hosts and names its 8 000-char cut; a pasted link auto-arms like a time cue).*
 
@@ -4533,4 +4535,43 @@ Four of the new tests fail on the previous code (per-conversation state, the quo
 Left as it is: `search(string | SearchArgs)`, whose string form only the older tests use.
 
 **Guards.** `tests/webReadScope.test.ts`: the exfiltration URL refused; a user link admitted under any spelling; assistant text not a source; a result's link admitted only after it is returned; the cap, and refusals not spending it. `tests/ToolHandler.test.ts`: fail closed without a scope; a data-carrying URL refused before any request. `tests/tavilyArgs.test.ts`: a credential refused and not echoed; trailing dot and mapped IPv6 addresses refused, a mapped public address allowed. `tests/sendPolicy.test.ts`: `wantsWeb`. The three validator bypasses were each confirmed against the previous code with a probe before the fix.
+
+### ADR-218 — A note an answer wrote stays one tap away, wherever it moves
+
+**Status:** Active · 2026-09-25
+
+**Context.** A user asked Pythia to write a note, and it did, but the name in the answer could not be clicked. Tracing it found four separate causes and one shared root:
+1. The model got back `Note written: Out/X.md` and wrote the name as plain text. Nothing asked it for a link.
+2. A `[[link]]` in the conversation had no click handler: Pythia renders the markdown itself, and only drew an icon on such links (ADR-212).
+3. The one clickable surface, the "✓ Created [[X]]" chip, lived only in the DOM. It disappeared with the next render, a conversation switch or a restart.
+4. That chip opened the note by **name** through `openLinkText`. That opens the wrong note when two share a name, and creates an empty note when none does.
+
+The user then asked what happens when the note is renamed. The answer was that nothing follows it. Obsidian rewrites `[[links]]` inside vault notes, but conversations live in `data.json`. An attached note silently left the context, a cited source said "not found", and the next Save wrote a duplicate at the old path. **The shared root:** Pythia stored vault paths and never updated or re-resolved them.
+
+**Decision.**
+- **The tool result hands the model the link** (`noteWriteResult`, `services/noteWrites.ts`): `Note written: <path>`, then "write it as the link `[[Out/X|X]]`". The full path makes the link resolve to this note when two share a name; the alias makes it read like one. The existing "Note written" line is kept, so the model's contract is unchanged.
+- **One click handler for `[[links]]` in the conversation** (`onNoteLinkClick`, registered once on the chat container). A link that resolves opens, in a new tab on ⌘/Ctrl-click. A link that does not is stopped and announced ("X was renamed or deleted"). **Never `openLinkText` on a name that may not resolve**, because that creates the note.
+- **The chip is permanent** (the user's choice over a new `Saved:` row). A confirmed write is recorded on the answer as `Message.noteWrites: { path, action }[]`, validated on load (`normalizeNoteWrites`), and redrawn from the message on every render (`paintNoteWrites`). The path is **read from the tool result**, not from the call's arguments, because only the result knows the path the vault actually used. The live chip and the persisted one are the same function (`fillNoteWriteChip`) and open by exact path (`openNotePath`).
+- **A rename or move is followed** (`renameVaultPath`, `services/renameVaultPath.ts`). Every stored vault path is listed there and nowhere else: `contextNotes`, `templateId`, `summaryNote`, `savedNotePath`, `outputFolder`, `pendingRewrite`, `pendingTemplate`, and on each message `attachedNotes`, `templateId`, `rewriteTarget`, `noteWrites`, vault `sources` (with their title when it was the old name), plus comparison candidates.
+  - A folder rename moves everything under it and nothing beside it: `Q3` does not match `Q3 archive`.
+  - It **mutates in place**, so a chip already on screen opens the new path without a re-render.
+  - It is **idempotent**, which makes it safe when a folder rename also reports each file inside it.
+  - It returns only the ids it changed. `ConversationStore.followRename` marks those dirty and schedules the usual debounced write, **without touching `updatedAt`**: a rename is not activity, and bumping it would reorder the list.
+  - The vault watcher calls it at once, not with the index's two-second flush, so a tap right after a rename does not hit the old path.
+- **The text of a message is never rewritten** (the user's choice). A `[[link]]` in what was said is history, and the model sees it on the next turn. Rewriting it would change that history, and could point at the wrong note when two share a name. An old link that no longer resolves says so when tapped. Recorded as D-58.
+
+**Rejected.** A `Saved:` row under the answer (the user preferred the chip, which is already what a write looks like). Resolving by basename at tap time instead of following renames (ambiguous with two notes of one name, and wrong for context notes, which are read without a tap). Rewriting links in message text (D-58).
+
+**Side change.** `sidebar.ts` sat one line under its ceiling. The long-message toggle moved out unchanged to `ui/bubbleToggle.ts`, and the ceiling drops from 1499 to 1489 (ADR-097's ratchet).
+
+**Not verified in Obsidian.** Whether Obsidian also handles a click on an `a.internal-link` inside a plugin view was not measured. The handler stops propagation, so a delegated handler above it cannot open the note a second time, but a listener bound directly to the link would. Check with one tap in the app: one tab should open.
+
+**Guards.**
+- `tests/noteWrites.test.ts`: the result round-trips for every action; errors and other tools record nothing; load validation.
+- `tests/renameVaultPath.test.ts`: every field; the folder prefix; text and web sources untouched; titles; idempotent; no field created; in place.
+- `tests/ConversationStore.test.ts`: only the changed conversations become dirty, and `updatedAt` stays.
+- `tests/vaultWatcher.test.ts`: a rename reaches the store at once, including a folder.
+- `tests/noteLinks.test.ts`: opens by path; never creates; ⌘-click opens a new tab; external links are left alone; the chip opens the note where it is now.
+- `tests/toolCallNoteWrites.test.ts`: a confirmed write is recorded with the vault's path; a declined one is not.
+- `tests/persistenceSanitize.test.ts`: `noteWrites` is validated on load.
 

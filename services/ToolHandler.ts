@@ -1,6 +1,7 @@
 import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
+import { noteWriteResult } from "./noteWrites";
 import type { WebSearchService } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
@@ -283,7 +284,7 @@ export class ToolHandler {
 				const file = call.name === "create_note"
 					? await this.writer.createNote(content, path)
 					: await this.writer.writeNote(content, path);
-				return `Note written: ${file.path}`;
+				return noteWriteResult(call.name === "create_note" ? "created" : "rewritten", file.path);
 			} catch (err) {
 				return `Error writing note: ${err instanceof Error ? err.message : String(err)}`;
 			}
@@ -292,7 +293,7 @@ export class ToolHandler {
 		if (call.name === "prepend_note") {
 			try {
 				const file = await this.writer.prependWithSeparator(content, path);
-				return `Note updated: ${file.path}`;
+				return noteWriteResult("prepended", file.path);
 			} catch (err) {
 				return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;
 			}

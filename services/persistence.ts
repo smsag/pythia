@@ -1,3 +1,4 @@
+import { normalizeNoteWrites } from "./noteWrites";
 import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Message, type Pin, type Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
@@ -248,6 +249,12 @@ export function sanitizeMessages(conv: Conversation): void {
 			const c = m.cost as { usd?: unknown; asOf?: unknown } | null;
 			const ok = !!c && typeof c === "object" && typeof c.usd === "number" && Number.isFinite(c.usd) && c.usd >= 0 && typeof c.asOf === "string";
 			if (!ok) delete (m as { cost?: unknown }).cost;
+		}
+		// Every entry is a path the chip opens and a rename rewrites (ADR-218).
+		if (m.noteWrites !== undefined) {
+			const writes = normalizeNoteWrites(m.noteWrites);
+			if (writes) m.noteWrites = writes;
+			else delete m.noteWrites;
 		}
 	}
 }

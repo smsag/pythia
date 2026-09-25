@@ -3055,6 +3055,14 @@ body.is-phone .workspace-drawer .p-input-area {
   user-select: none;
 }
 
+/* The ✓ chip of a note an answer wrote, redrawn from the message inside the
+   answer row (ADR-218). The live chip sits between rows, where the row gap
+   spaces it; inside the row it follows the sources rule, so it takes the room
+   the gap gave it. */
+.pythia-view .p-msg-ai > .p-note-write {
+  margin-top: var(--s2);
+}
+
 .pythia-tool-call-label {
   font-size: var(--font-small);
   color: var(--text-normal);

@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../services/NoteWriter", () => ({ NoteWriter: class {} }));
 
 import { getToolDefinitions, ToolHandler } from "../services/ToolHandler";
+import { parseNoteWrite } from "../services/noteWrites";
 import {
 	acceptChartCall, CHART_TOOL_OK, CHART_TOOL_UNPLACED, type PendingChartBlock,
 } from "../services/chartSpec";
@@ -225,6 +226,13 @@ describe("ToolHandler — rewrite_note", () => {
 	it("returns a success message", async () => {
 		const result = await makeHandler().execute(call("rewrite_note", { path: "Notes/x.md", content: "body" }));
 		expect(result).toMatch(/Note written/);
+	});
+
+	it("tells the model to name the note as a link it can open (ADR-218)", async () => {
+		const result = await makeHandler().execute(call("rewrite_note", { path: "Notes/x.md", content: "body" }));
+		// The path the vault reported, not the one the model asked for.
+		expect(parseNoteWrite("rewrite_note", result)).toEqual({ path: "Notes/out.md", action: "rewritten" });
+		expect(result).toContain("[[Notes/out|out]]");
 	});
 });
 

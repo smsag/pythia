@@ -44,6 +44,8 @@ import { spliceChartBlocks } from "./services/chartSpec";
 import { ComposerAttachments } from "./ui/ComposerAttachments";
 import { ReferenceRowController } from "./ui/ReferenceRowController";
 import { ToolCallController } from "./ui/ToolCallController";
+import { onNoteLinkClick, paintNoteWrites } from "./ui/noteLinks";
+import { appendBubbleToggle, LONG_BUBBLE_CHARS } from "./ui/bubbleToggle";
 import { TruncationController } from "./ui/TruncationController";
 import { updateViewportInsets, watchViewport } from "./ui/keyboardInset";
 import type { Conversation, Message } from "./models/types";
@@ -528,6 +530,7 @@ export class PythiaSidebarView extends ItemView {
 		const messagesWrapper = container.createDiv({ cls: "pythia-messages-wrapper" });
 
 		this.messagesEl = messagesWrapper.createDiv({ cls: "p-chat" });
+		this.registerDomEvent(this.messagesEl, "click", (e) => onNoteLinkClick(this.app, e)); // ADR-218
 		this.registerDomEvent(this.messagesEl, "scroll", () => this.chatScroll.onScroll());
 		this.pins ??= new PinController({ app: this.app, plugin: this.plugin, component: this, getConversation: () => this.activeConversation, getMessagesEl: () => this.messagesEl, expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row) });
 		this.pins.mount(messagesWrapper);
@@ -941,7 +944,7 @@ export class PythiaSidebarView extends ItemView {
 			});
 			renderTurnLabel(row, msg, this.activeConversation);
 			const bubble = row.createDiv({ cls: "p-bubble" });
-			const isLong = msg.content.length > 280;
+			const isLong = msg.content.length > LONG_BUBBLE_CHARS;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
 			try {
 				await MarkdownRenderer.render(this.app, unwrapCodeFence(msg.content), bubble, "", this);
@@ -952,20 +955,7 @@ export class PythiaSidebarView extends ItemView {
 			this.selectionController.repaintFavorites(bubble, msg.id);
 			this.forkController.repaintForkOrigins(bubble, msg.id);
 			this.mergeController.repaintMergeLinks(bubble, msg.id);
-			if (isLong) {
-				const toggle = row.createEl("button", {
-					cls: "pb pb-icon p-bubble-toggle",
-					attr: { title: t("showMore") },
-				});
-				setIcon(toggle, "chevron-down");
-				toggle.addEventListener("click", () => {
-					const collapsed = bubble.hasClass("p-bubble-collapsed");
-					bubble.toggleClass("p-bubble-collapsed", !collapsed);
-					bubble.toggleClass("p-bubble-expanded", collapsed);
-					setIcon(toggle, collapsed ? "chevron-up" : "chevron-down");
-					toggle.title = collapsed ? t("showLess") : t("showMore");
-				});
-			}
+			if (isLong) appendBubbleToggle(row, bubble);
 			return bubble;
 		}
 
@@ -994,6 +984,7 @@ export class PythiaSidebarView extends ItemView {
 		// the same turns the label used to caption: where a template starts
 		// applying, never repeated down the transcript.
 		renderSourcesRow(this.app, row, sources, turnTemplateCaption(msg, this.activeConversation));
+		paintNoteWrites(this.app, row, msg); // the ✓ chips outlive the turn (ADR-218)
 		this.truncation.paint(row, msg);
 		this.rewrite.paint(row, msg);
 
@@ -1376,6 +1367,7 @@ export class PythiaSidebarView extends ItemView {
 					...(parsedSources.length ? { sources: parsedSources } : {}),
 					...(finish?.truncated ? { truncated: true as const } : {}),
 					...(cost ? { cost } : {}),
+					...this.toolCalls.takeNoteWrites(),
 				};
 				this.rewrite.attach(conv, assistantMsg);
 				conv.messages.push(assistantMsg);
@@ -1394,8 +1386,7 @@ export class PythiaSidebarView extends ItemView {
 					lastRow.setAttribute("data-msg-id", assistantMsg.id);
 					if (tokenUsage) {
 						const label = streamingRow.querySelector<HTMLElement>(".p-turn-label");
-						if (label && this.plugin.settings.showCost) appendTokensToTurnLabel(label, tokenUsage, { msg: assistantMsg });
-						else if (label) appendTokensToTurnLabel(label, tokenUsage);
+						if (label) appendTokensToTurnLabel(label, tokenUsage, this.plugin.settings.showCost ? { msg: assistantMsg } : undefined);
 					}
 					this.truncation.paint(lastRow, assistantMsg);
 					this.rewrite.paint(lastRow, assistantMsg);

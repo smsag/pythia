@@ -108,6 +108,21 @@ describe("sanitizeMessages — cost snapshot (ADR-163)", () => {
 	});
 });
 
+describe("sanitizeMessages — note writes (ADR-218)", () => {
+	it("keeps well-formed writes and drops the field when none survive", () => {
+		const { conversations: [conv] } = parseConversations([{
+			id: "c", messages: [
+				{ id: "a", role: "assistant", content: "x", timestamp: "", noteWrites: [{ path: "Out/A.md", action: "created" }, { path: 3 }] },
+				{ id: "b", role: "assistant", content: "y", timestamp: "", noteWrites: [{ path: "B.md", action: "exploded" }] },
+				{ id: "c", role: "assistant", content: "z", timestamp: "", noteWrites: "Out/A.md" },
+			],
+		}]);
+		expect(conv.messages[0].noteWrites).toEqual([{ path: "Out/A.md", action: "created" }]);
+		expect("noteWrites" in conv.messages[1]).toBe(false);
+		expect("noteWrites" in conv.messages[2]).toBe(false);
+	});
+});
+
 // ── the one-shot template on the read path (ADR-177) ──────────────────────────
 //
 // It reaches the send path directly: its systemPrompt becomes the prompt and
