@@ -37,7 +37,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
-    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize, and the tabs a keep leaves: canSwitchAlternative · switchAlternative · normalizeAlternatives (ADR-160/219)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
@@ -118,7 +118,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     RelatedMode.ts            ← the ADR-109 related-conversations mode: source, in-flight query + abort, chip, loading/empty/results
     historyChip.ts            ← renderHistoryChip — the ONE dismissible chip, shared by related (ADR-109) and widened (ADR-168)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
-    ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
+    ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs; keep → the rest stay as tabs on the answer (ADR-160/219)
     AnswerTabsController.ts   ← the tabs a kept comparison leaves on its answer: the kept tab first, another shown in place, "Use this answer" on the last answer only (ADR-219)
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
