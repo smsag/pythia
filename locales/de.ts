@@ -238,7 +238,7 @@ const de: Strings = {
 	showChaptersTooltip: "Kapitel anzeigen",
 	applyTemplateTooltip: "Vorlage anwenden",
 	appliedTemplate:      "Vorlage „{{name}}“ angewendet",
-	researchToggleTooltip: "Websuche (Recherchemodus)",
+	researchToggleTooltip: "Websuche: aktuelle Fakten nachschlagen und eingefügte Links lesen",
 	researchEnabledNotice:  "Websuche für dieses Gespräch aktiviert",
 	researchDisabledNotice: "Websuche für dieses Gespräch deaktiviert",
 	researchNoKeyNotice:    "Hinterlege einen Tavily-API-Schlüssel in den Pythia-Einstellungen, um die Websuche zu nutzen.",

@@ -228,7 +228,7 @@ const en = {
 	showChaptersTooltip: "Show chapters",
 	applyTemplateTooltip: "Apply template",
 	appliedTemplate:      "Applied template \"{{name}}\"",
-	researchToggleTooltip: "Web search (research mode)",
+	researchToggleTooltip: "Web search: look up current facts and read links you paste",
 	researchEnabledNotice:  "Web search on for this conversation",
 	researchDisabledNotice: "Web search off for this conversation",
 	researchNoKeyNotice:    "Set a Tavily API key in Pythia settings to use web search.",
