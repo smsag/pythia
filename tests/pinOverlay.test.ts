@@ -104,6 +104,25 @@ describe("the strip", () => {
 		expect(overlay().hidden).toBe(true);
 	});
 
+	it("remembers open-or-closed per conversation, not one flag for all", async () => {
+		await open({ pins: [pin("p1", "one")] });
+		overlay().querySelector<HTMLButtonElement>(".p-acc-toggle")!.click();       // open A's pin
+		const b = await seedConversation(plugin, { name: "B", messages: [aiMsg("b1", "x")], pins: [pin("q1", "other", { messageId: "b1" })] } as Partial<Conversation>);
+		await view.setActiveConversation(b);
+		expect(overlay().querySelector(".p-acc")?.classList.contains("open")).toBe(false); // B starts collapsed
+		const a = plugin.conversationStore.getAll().find((c) => c.name === "Pinned")!;
+		await view.setActiveConversation(a);
+		expect(overlay().querySelector(".p-acc")?.classList.contains("open")).toBe(true);  // A as it was left
+	});
+
+	it("pinning something new leaves the strip as it was", async () => {
+		const conv = await open({ pins: [pin("p1", "one")] });
+		pins(view).pinText("two", "a1", 0);
+		expect(conv.pins).toHaveLength(2);
+		expect(title()).toContain("two");                                        // the new one is shown…
+		expect(overlay().querySelector(".p-acc")?.classList.contains("open")).toBe(false); // …not opened
+	});
+
 	it("keeps open-or-closed as view state — nothing about it is written", async () => {
 		const conv = await open({ pins: [pin("p1", "one")] });
 		overlay().querySelector<HTMLButtonElement>(".p-acc-toggle")!.click();
@@ -251,5 +270,30 @@ describe("a pin that cannot be rendered still says what it holds (review of ADR-
 		expect(body.textContent).toBe("```js\nlet x = 1;\n```");
 		render.mockRestore();
 		error.mockRestore();
+	});
+});
+
+describe("a pin's body is owned by one child component (ADR-216 addendum)", () => {
+	it("each render replaces — and unloads — the last body's component, and hiding releases it", async () => {
+		await open({ pins: [pin("c1", "```js\na\n```", { kind: "code" }), pin("c2", "```js\nb\n```", { kind: "code" })] });
+		const viewComponent = view as unknown as { addChild(c: unknown): unknown; removeChild(c: unknown): unknown };
+		const added: unknown[] = [];
+		const removed: unknown[] = [];
+		const add = vi.spyOn(viewComponent, "addChild").mockImplementation((c) => { added.push(c); return c; });
+		const remove = vi.spyOn(viewComponent, "removeChild").mockImplementation((c) => { removed.push(c); return c; });
+
+		for (let i = 0; i < 4; i++) action(t("pinNextTooltip")).click();
+		expect(added).toHaveLength(4);
+		// Each render released the body before it: the one drawn when the view
+		// opened (before this spy), then every one drawn here but the last.
+		expect(removed).toHaveLength(4);
+		expect(removed.slice(1)).toEqual(added.slice(0, 3));
+
+		action(t("pinRemoveTooltip")).click();           // ✕ c1 or c2 — one body left
+		action(t("pinRemoveTooltip")).click();           // the last: the strip hides
+		expect(removed).toContain(added[added.length - 1]);
+		expect(new Set(removed).size).toBe(removed.length);
+		add.mockRestore();
+		remove.mockRestore();
 	});
 });
