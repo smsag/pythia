@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **A written note could not be opened from the answer, and a rename lost it (ADR-218).** Four causes: the model was never asked for a link; `[[links]]` in the chat had no click handler; the ✓ chip was DOM-only; the chip opened by name and could create an empty note. And no stored path followed a rename. All five are fixed; links inside message text stay as written (D-58).*
+*Updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
+
+*Previously updated: 2026-09-25 — **A written note could not be opened from the answer, and a rename lost it (ADR-218).** Four causes: the model was never asked for a link; `[[links]]` in the chat had no click handler; the ✓ chip was DOM-only; the chip opened by name and could create an empty note. And no stored path followed a rename. All five are fixed; links inside message text stay as written (D-58).*
 
 *Previously updated: 2026-09-25 — **ADR-217 review: six findings fixed.** `read_url` could exfiltrate data through a URL the model built. It now reads only links the user gave or a result returned (exact match, ≤ 5 per answer, fails closed). URL credentials are refused; the trailing-dot and IPv4-mapped bypasses of the private-host guard are closed; `wantsWeb` is tested; one excluded site is named.*
 
@@ -1963,4 +1965,16 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The chip opened by name** — the wrong note when two share it, a new empty note when none does. | Medium | Closed: opens by exact path, or says it is gone |
 | **No stored vault path followed a rename or move**: context notes silently left the context, sources said "not found", Save wrote a duplicate at the old path. | High | Closed: `renameVaultPath` over every path field, called on the vault's rename event |
 | **A `[[link]]` in message text stays stale after a rename.** | Low | Deferred by decision: D-58 |
+
+### Review of ADR-218 (four rings), 2026-09-25
+
+| Item | Ring | Severity | Status |
+|---|---|---|---|
+| **A rename burst scanned every conversation once per event.** 500-file folder: 12.0 s at 5 000 conversations. | Performance | Medium-high | Closed: `RenameFollower` batches → 39 ms (`scripts/bench-rename.mjs`) |
+| **Nine settings hold vault paths and did not follow a rename**, while the docs claimed "every stored path". | Correctness | Medium | Closed: `renameSettingsPaths`; `promptOptimizerTemplateId` found by the guard |
+| **A stale copy from another device could undo a rename.** | Stability | Medium | Closed: `renameLog` in data.json, merged on load, replayed with a per-entry guard |
+| **A note-only turn (no text, Stop, or an error after the write) lost its record.** | Correctness | Low | Closed: `writesOnlyContent` / `writesOnlyMessage` |
+| **The rules were prose only.** | Tooling | Low | Closed: `tests/pathFields.test.ts` (compile-time), `tests/noteOpenRule.test.ts` |
+| **The chip kept `[[ ]]`.** | Consistency | Low | Closed |
+| **`[[a\|b]]` broke a table cell.** | Correctness | Low | Closed: the tool result says to escape the bar |
 

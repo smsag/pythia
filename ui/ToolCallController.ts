@@ -1,13 +1,13 @@
 import type { App } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, NoteWrite, ToolCall } from "../models/types";
+import type { Conversation, Message, NoteWrite, ToolCall } from "../models/types";
 import { t } from "../i18n";
 import { ToolHandler } from "../services/ToolHandler";
 import { parseWebSourcesFromResult } from "../services/WebSearchService";
 import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
 import { webDomain } from "../services/citations";
 import { WebReadScope } from "../services/webReadScope";
-import { parseNoteWrite } from "../services/noteWrites";
+import { parseNoteWrite, writesOnlyContent } from "../services/noteWrites";
 import { fillNoteWriteChip } from "./noteLinks";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
@@ -73,10 +73,36 @@ export class ToolCallController {
 		return this.webSources;
 	}
 
+	/** The answer text for a turn that only wrote notes — "" when it wrote none
+	 *  (ADR-218 addendum). Does not drain: `takeNoteWrites` still records them. */
+	writesOnlyContent(): string {
+		return writesOnlyContent(this.noteWrites);
+	}
+
+	/**
+	 * The assistant turn to keep when the stream failed after a note was written:
+	 * the note exists, so its record must too. Drains the writes. null when this
+	 * send wrote nothing.
+	 */
+	writesOnlyMessage(model: string | undefined): Message | null {
+		const content = writesOnlyContent(this.noteWrites);
+		if (!content) return null;
+		return {
+			id: crypto.randomUUID(),
+			role: "assistant",
+			content,
+			timestamp: new Date().toISOString(),
+			...(model ? { model } : {}),
+			...this.takeNoteWrites(),
+		};
+	}
+
 	/** The notes written during this send, as the message field — spread into
 	 *  the committed answer so its chips outlive the turn (ADR-218). */
 	takeNoteWrites(): { noteWrites?: NoteWrite[] } {
-		return this.noteWrites.length > 0 ? { noteWrites: this.noteWrites } : {};
+		const writes = this.noteWrites;
+		this.noteWrites = [];
+		return writes.length > 0 ? { noteWrites: writes } : {};
 	}
 
 	/** The charts accepted during this send, each with the point in the answer it

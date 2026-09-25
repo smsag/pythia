@@ -73,7 +73,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
     noteWrites.ts             ← pure: the write tools' result (naming the note as a [[path|name]] link), parseNoteWrite, normalizeNoteWrites — what the ✓ chip is drawn from (ADR-218)
-    renameVaultPath.ts        ← pure: THE list of stored vault-path fields, followed through a note/folder rename; a new path field joins it or goes stale (ADR-218)
+    renameVaultPath.ts        ← pure: THE list of stored vault-path fields — conversations AND the nine path settings — and compileRenames, one mover per rename burst (ADR-218 + addendum)
+    renameFollower.ts         ← RenameFollower: rename events → one scan per burst, settings followed, the rename log kept in data.json and replayed after every load with its guard (ADR-218 addendum)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer
@@ -89,6 +90,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ComposerAttachments.ts    ← the tracked links and their two-way sync with contextNotes; cleared on send
     noteLinks.ts              ← openNotePath (by exact path, never creates) · onNoteLinkClick (the chat's [[link]] handler) · fillNoteWriteChip / paintNoteWrites — the ✓ chip, live and persisted (ADR-218)
     bubbleToggle.ts           ← the show-more toggle under a long user message
+    postCommitNaming.ts       ← after an answer commits: the conversation title and the chapter name, in the background
     ReferenceRowController.ts ← the pill strip above the composer, and the × that also clears a note's link from the composer
     accentContrast.ts         ← readable --p-on-accent for the current theme accent
     longPress.ts              ← shared 450 ms press-and-hold gesture (pure, unit-tested)
@@ -164,6 +166,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     engineering-review.md     ← improvement suggestions and priority matrix
     briefs/                   ← design briefs handed to Claude Design (standalone HTML); conversation-controls.html → #259/#260, built as ADR-165
   scripts/bench-search.mjs    ← per-keystroke cost of the search panel at three vault sizes (ADR-170)
+  scripts/bench-rename.mjs    ← what a vault rename costs the stored paths: one scan per event vs one per burst, and one note renamed (ADR-218 addendum)
   scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
   scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
@@ -736,9 +739,12 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Notes an answer wrote (ADR-218)
 
-- **A note is opened by what resolves, never by a name that might not.** `openLinkText` on an unresolved name CREATES that note. Use `openNotePath` (exact path, or a "renamed or deleted" notice) or `onNoteLinkClick` — never a bare `openLinkText(name)`
+- **A note is opened by what resolves, never by a name that might not.** `openLinkText` on an unresolved name CREATES that note. Use `openNotePath` (exact path, or a "renamed or deleted" notice) or `onNoteLinkClick` — never a bare `openLinkText(name)`; `tests/noteOpenRule.test.ts` fails on a new call site
 - **The ✓ chip is drawn from `Message.noteWrites`**, not left in the DOM: the live chip and the redrawn one are both `fillNoteWriteChip`. The path comes from the tool RESULT (`parseNoteWrite`), which is the path the vault used, never from the call's arguments
-- **Every stored vault path is listed in `renameVaultPath`.** A new field that holds a path joins that function and its test, or it goes stale on the first rename. It mutates in place, is idempotent, and `followRename` never bumps `updatedAt`
+- **Every stored vault path is listed in `services/renameVaultPath.ts`**: the conversation fields in `renameVaultPaths`, the settings in `SETTINGS_PATH_KEYS`. **`tests/pathFields.test.ts` classifies every field of every stored record** — a new field does not compile until it is classified, and a field classified as a path must follow a rename. It mutates in place, is idempotent, and `markChanged` never bumps `updatedAt`
+- **A rename burst is one scan** (`RenameFollower`, 12.0 s → 39 ms for a 500-note folder). Never call the renamer per event
+- **The rename log is replayed after every load, with its guard**: an entry only when nothing is at its old path, and a path moves only to a place that exists. Never replay without the guard — it would move a note the user made later at the old path
+- **A turn that only wrote a note is kept** (`Wrote [[…]].`) — on no text, on Stop and on an error after the write — because the note exists
 - **Message text is never rewritten on a rename** (D-58): a `[[link]]` in what was said is history
 
 ## What not to build

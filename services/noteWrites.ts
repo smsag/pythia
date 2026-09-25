@@ -29,7 +29,17 @@ export function noteWikilink(path: string): string {
  *  `parseNoteWrite` reads; the second tells the model how to name the note,
  *  because a name in plain text is not a link the user can open. */
 export function noteWriteResult(action: NoteWrite["action"], path: string): string {
-	return `Note ${VERB[action]}: ${path}\nWhen you mention it in your answer, write it as the link ${noteWikilink(path)} so the user can open it.`;
+	return `Note ${VERB[action]}: ${path}\nWhen you mention it in your answer, write it as the link ${noteWikilink(path)} so the user can open it. Inside a table, escape the bar as \\|.`;
+}
+
+/**
+ * The text of an answer whose only output was a note write — no words, or the
+ * user pressed Stop, or the stream failed after the write (ADR-218 addendum).
+ * The note exists either way, so the turn is kept, and a provider rejects an
+ * empty assistant message, so it says what happened. "" for no writes.
+ */
+export function writesOnlyContent(writes: NoteWrite[]): string {
+	return writes.length > 0 ? `Wrote ${writes.map((w) => noteWikilink(w.path)).join(", ")}.` : "";
 }
 
 const RESULT_RE = /^Note (?:written|updated): (.+)$/m;

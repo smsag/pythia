@@ -68,7 +68,16 @@ describe("PluginDataStore.persist", () => {
 		expect(plugin.saveData).toHaveBeenCalledWith({
 			settings: plugin.settings,
 			conversations: plugin.conversations,
+			renameLog: [],
 		});
+	});
+
+	it("writes the rename log with every save, so another device can replay it (ADR-218 addendum)", async () => {
+		store.renameLog.push({ from: "Out/Old.md", to: "Out/New.md", at: "2026-09-25T10:00:00Z" });
+		await store.saveConversations();
+		expect(plugin.saveData).toHaveBeenCalledWith(expect.objectContaining({
+			renameLog: [{ from: "Out/Old.md", to: "Out/New.md", at: "2026-09-25T10:00:00Z" }],
+		}));
 	});
 });
 

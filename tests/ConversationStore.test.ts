@@ -249,22 +249,19 @@ describe("cancelPendingPersist", () => {
 	});
 });
 
-describe("ConversationStore.followRename (ADR-218)", () => {
-	it("marks only the conversations holding the path, and does not reorder them", async () => {
-		const hit = { ...makeConv("hit"), contextNotes: ["Out/Old.md"] };
-		const miss = makeConv("miss");
-		store.setAll([hit, miss]);
-		store.followRename("Out/Old.md", "Out/New.md");
-		expect(hit.contextNotes).toEqual(["Out/New.md"]);
-		expect(hit.updatedAt).toBe("2026-01-01T00:00:00.000Z");
-		expect([...store.snapshotDirty()]).toEqual(["hit"]);
+describe("ConversationStore.markChanged (ADR-218)", () => {
+	it("marks only the given conversations dirty, persists soon, and never touches updatedAt", async () => {
+		const a = makeConv("a");
+		store.setAll([a, makeConv("b")]);
+		store.markChanged(["a"]);
+		expect([...store.snapshotDirty()]).toEqual(["a"]);
+		expect(a.updatedAt).toBe("2026-01-01T00:00:00.000Z");
 		await vi.runAllTimersAsync();
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
-	it("writes nothing when no conversation held the path", async () => {
-		store.setAll([makeConv("a")]);
-		store.followRename("x.md", "y.md");
+	it("writes nothing for an empty list", async () => {
+		store.markChanged([]);
 		await vi.runAllTimersAsync();
 		expect(plugin.saveConversations).not.toHaveBeenCalled();
 	});

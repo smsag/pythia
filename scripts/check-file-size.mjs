@@ -20,11 +20,12 @@ const DEFAULT_MAX = 600;
 // DEFAULT_MAX on its own.
 const CEILINGS = {
 	// 1498 → 1489 in ADR-218: ui/bubbleToggle.ts moved out to pay for the note-link
-	// wiring. 1716 before ADR-210, which extracted ui/ToolCallController.ts (-120) and
+	// wiring; → 1465 in its addendum: ui/postCommitNaming.ts moved out to pay for
+	// keeping a note-only turn. 1716 before ADR-210, which extracted ui/ToolCallController.ts (-120) and
 	// then spent 7 lines back wiring the chart splice into the commit path. The
 	// number is set once, against the finished state: a ceiling lowered halfway
 	// through a change and breached by the rest of it guards nothing.
-	"sidebar.ts": 1489,
+	"sidebar.ts": 1465,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
 	// ui/settings/ (ADR-209) — the split this comment used to ask for. No ceiling

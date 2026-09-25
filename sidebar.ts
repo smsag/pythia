@@ -8,7 +8,8 @@ import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
-import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch, wantsWeb } from "./services/sendPolicy";
+import { shouldAutoArmSearch, wantsWeb } from "./services/sendPolicy";
+import { nameAfterCommit } from "./ui/postCommitNaming";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
@@ -1334,7 +1335,8 @@ export class PythiaSidebarView extends ItemView {
 			async (fullText, tokenUsage, finish) => {
 				// `content` below, never `fullText`: a chart dropped from the stored
 				// message would flash and vanish (ADR-210).
-				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks());
+				// A turn that only wrote a note still says so, or its record is lost (ADR-218).
+				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks()) || this.toolCalls.writesOnlyContent();
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
 				// callback is in flight — don't touch messagesEl/chatScroll in that case.
@@ -1398,38 +1400,8 @@ export class PythiaSidebarView extends ItemView {
 					this.exchangeActions.attach();
 				}
 
-				if (shouldGenerateTitle(conv)) {
-					const convId = conv.id;
-					// Deliberately `fullText`: a title comes from what the answer SAID.
-					this.plugin.llmRouter
-						.generateConversationTitle(userMsg.content, fullText, conv.provider, conv)
-						.then(async (title) => {
-							const c = this.plugin.conversationStore.getById(convId);
-							if (!c) return;
-							await this.plugin.renameConversation(c, title);
-							if (this.activeConversation?.id === convId) {
-								this.headerController.setConvName(c.name);
-							}
-						})
-						.catch((e) => console.warn("[Pythia] conversation title generation failed:", e));
-				}
-
-				if (shouldGenerateChapterName(userMsg)) {
-					const convId = conv.id;
-					const msgId  = userMsg.id;
-					this.plugin.llmRouter
-						.generateChapterName(userMsg.content, conv.provider, conv)
-						.then(async (name) => {
-							if (!name) return;
-							const c = this.plugin.conversationStore.getById(convId);
-							if (!c) return;
-							const m = c.messages.find(msg => msg.id === msgId);
-							if (!m) return;
-							m.chapterName = name;
-							await this.plugin.conversationStore.save(c);
-						})
-						.catch((e) => console.warn("[Pythia] chapter name generation failed:", e));
-				}
+				nameAfterCommit({ plugin: this.plugin, activeId: () => this.activeConversation?.id,
+					setConvName: (name) => this.headerController.setConvName(name) }, conv, userMsg, fullText);
 			},
 			(error) => {
 				// Log a compact, secret-scrubbed description rather than the raw SDK
@@ -1444,6 +1416,10 @@ export class PythiaSidebarView extends ItemView {
 				// desync the visible transcript from the saved history on the next
 				// re-render.
 				streamingRow.remove();
+				// Except a note it already wrote: that happened, and keeps its record (ADR-218).
+				// Marked rendered — the live chip on screen stands for it until the next render.
+				const writesOnly = this.toolCalls.writesOnlyMessage(turnConv.model);
+				if (writesOnly) { conv.messages.push(writesOnly); this.lastRenderedMsgId = writesOnly.id; void this.plugin.conversationStore.save(conv); }
 
 				this.setStreamingState(false);
 			},

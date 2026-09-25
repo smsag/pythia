@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { noteWikilink, noteWriteResult, parseNoteWrite, normalizeNoteWrites } from "../services/noteWrites";
+import { noteWikilink, noteWriteResult, parseNoteWrite, normalizeNoteWrites, writesOnlyContent } from "../services/noteWrites";
 
 describe("noteWikilink", () => {
 	it("links by full path and reads as the name", () => {
@@ -42,5 +42,21 @@ describe("normalizeNoteWrites", () => {
 	it("is undefined when nothing survives or it is not a list", () => {
 		expect(normalizeNoteWrites([{ path: 1 }])).toBeUndefined();
 		expect(normalizeNoteWrites("a.md")).toBeUndefined();
+	});
+});
+
+describe("writesOnlyContent (ADR-218 addendum)", () => {
+	it("names every note written, as links", () => {
+		expect(writesOnlyContent([{ path: "Out/A.md", action: "created" }, { path: "B.md", action: "prepended" }]))
+			.toBe("Wrote [[Out/A|A]], [[B]].");
+	});
+	it("is empty when nothing was written", () => {
+		expect(writesOnlyContent([])).toBe("");
+	});
+});
+
+describe("noteWriteResult — tables", () => {
+	it("tells the model to escape the bar inside a table", () => {
+		expect(noteWriteResult("created", "Out/X.md")).toContain("escape the bar as \\|");
 	});
 });

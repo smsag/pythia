@@ -35,6 +35,7 @@ import { vaultBuildGuard } from "./services/embedding/buildGuard";
 import { installEmbeddingResidency } from "./services/embedding/residency";
 import type { VaultIndexStatus } from "./services/embedding/indexStatus";
 import { registerVaultWatcher } from "./services/vaultWatcher";
+import { RenameFollower } from "./services/renameFollower";
 import { handleDeepLink } from "./services/deepLink";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
 
@@ -52,6 +53,8 @@ export default class PythiaPlugin extends Plugin {
 	// ConversationStore is a direct field: it OWNS the conversation list and must
 	// exist before AppContainer.create() runs loadPluginData (which writes to it).
 	conversationStore!: ConversationStore;
+	/** Vault renames into stored paths, batched and logged (ADR-218 addendum). */
+	renameFollower!: RenameFollower;
 
 	/** The ConversationStore owns the list; this is a read/write accessor (ADR-103 / #122). */
 	get conversations(): Conversation[] { return this.conversationStore.getAll(); }
@@ -161,8 +164,28 @@ export default class PythiaPlugin extends Plugin {
 			(src, el) => renderChartCard(src, el)
 		);
 
+		// One pending flush at a time (the follower batches), cleared on unload.
+		let renameTimer: number | null = null;
+		this.register(() => { if (renameTimer !== null) window.clearTimeout(renameTimer); });
+		this.renameFollower = new RenameFollower({
+			conversations: () => this.conversations,
+			conversationsChanged: (ids) => this.conversationStore.markChanged(ids),
+			settings: () => this.settings,
+			settingsChanged: () => {
+				void this.saveSettings();
+				this.glossaryService?.invalidate();
+			},
+			exists: (path) => this.app.vault.getAbstractFileByPath(path) !== null,
+			renameLog: () => this.pluginDataStore.renameLog,
+			defer: (fn) => { renameTimer = window.setTimeout(fn, 0); },
+			now: () => new Date().toISOString(),
+			debug: (message) => debugLog(this.settings, message),
+		});
+
 		this.app.workspace.onLayoutReady(() => {
 			this.viewManager.initLeaf();
+			// The vault's files are known now, which the replay's guard reads.
+			this.renameFollower.replay();
 			// After the workspace is up, not during it (ADR-169/170).
 			scheduleWarm({ run: () => void this.embedding.warm(), register: (c) => this.register(c) });
 		});
@@ -269,7 +292,7 @@ export default class PythiaPlugin extends Plugin {
 			invalidateGlossary: (path) => {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
-			followRename: (oldPath, newPath) => this.conversationStore.followRename(oldPath, newPath),
+			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
 		});
 
 		registerEditorSelectionEntries(this);

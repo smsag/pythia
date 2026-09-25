@@ -96,7 +96,9 @@ describe("paintNoteWrites — the chip outlives the turn (ADR-218)", () => {
 		const row = document.createElement("div");
 		paintNoteWrites(app as never, row, msg());
 		const links = [...row.querySelectorAll(".pythia-tool-call--done .pythia-tool-call-link")].map((a) => a.textContent);
-		expect(links).toEqual(["✓ Created [[Plan]]", "✓ Prepended to [[Log]]"]);
+		expect(links).toEqual(["✓ Created Plan", "✓ Prepended to Log"]);
+		// The name leads with the vault-note icon, and no [[ ]] (ADR-193/212).
+		expect(row.querySelectorAll(".pythia-tool-call-link .p-source-icon")).toHaveLength(2);
 	});
 
 	it("opens the note where it is NOW — the path is read at tap time", async () => {
