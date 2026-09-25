@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-218 (a note an answer wrote stays one tap away: the tool result hands the model a `[[path|name]]` link, links in the conversation open by what resolves and never create a note, the ✓ chip is recorded on the message as `noteWrites` and redrawn on every render, and a rename or move is followed in every stored vault path by `renameVaultPath`).*
+*Last updated: 2026-09-25 — ADR-218 addendum (review): a rename burst is one scan (`RenameFollower`, 12.0 s → 39 ms for a 500-file folder, measured); nine path settings follow a rename too; a rename log in data.json is replayed after every load, so a stale copy from another device is put right; a turn that only wrote a note keeps its record (no text, Stop, or an error after the write); guards: the compiler refuses an unclassified field, and a test refuses a new `openLinkText` call; the chip loses its `[[ ]]`.*
+
+*Previously: 2026-09-25 — ADR-218 (a note an answer wrote stays one tap away: the tool result hands the model a `[[path|name]]` link, links in the conversation open by what resolves and never create a note, the ✓ chip is recorded on the message as `noteWrites` and redrawn on every render, and a rename or move is followed in every stored vault path by `renameVaultPath`).*
 
 *Previously: 2026-09-25 — ADR-217 addendum (review): `read_url` reads only a link the user gave or a result of this answer returned, verbatim, at most 5 per answer (`services/webReadScope.ts`); a URL with a user name or password is refused; the private-host guard no longer misses a trailing dot or an IPv4-mapped IPv6 address; the auto-arm rule is `wantsWeb` in `sendPolicy.ts`.*
 
@@ -4574,4 +4576,56 @@ The user then asked what happens when the note is renamed. The answer was that n
 - `tests/noteLinks.test.ts`: opens by path; never creates; ⌘-click opens a new tab; external links are left alone; the chip opens the note where it is now.
 - `tests/toolCallNoteWrites.test.ts`: a confirmed write is recorded with the vault's path; a declined one is not.
 - `tests/persistenceSanitize.test.ts`: `noteWrites` is validated on load.
+
+**Addendum — review fixes (2026-09-25).** A four-ring review of the merged change found seven things. All are fixed:
+
+1. **A rename burst was one scan per event (performance).** A folder rename is reported for the folder and, as far as we know, for every file inside it; each event scanned every conversation. **`RenameFollower`** (`services/renameFollower.ts`, behind a host seam like ADR-205) queues the events and applies the burst on the next tick. `compileRenames` (`services/renameVaultPath.ts`) turns the burst into one mover:
+   - it drops the file pairs a folder pair already implies (`essentialRenames`);
+   - independent pairs are found by one map lookup per folder level, after an allocation-free reject on the top-level folder;
+   - a chain or a swap through a temporary name is applied in the order reported, which is correct by construction.
+
+   **Measured** (`scripts/bench-rename.mjs`, Node, 5 000 conversations × 30 messages, a folder of 500 notes):
+
+   | Case | Before | After |
+   |---|---|---|
+   | The whole folder burst | 12.0 s (one scan per event) | **39 ms** (one scan) |
+   | One note renamed | — | ~23 ms |
+
+   A phone is several times slower; the ratio holds.
+2. **Settings paths did not follow (correctness).** Nine settings hold vault paths: the templates, conversations, scratch, archive and glossary folders, the inbox and glossary notes, the vault-context folders, and **`promptOptimizerTemplateId`**, which the review itself missed and the new guard found (item 5). `renameSettingsPaths` follows them. A typed value is compared without space or trailing slashes, and an empty value (default or none) is never touched. A change saves the settings, which also updates the services that read them (`saveSettings`), and invalidates the glossary cache. **Trade-off:** `conversationsFolder`, `scratchFolder` and `vaultContextFolders` are part of the index scope, so following a rename there rebuilds the vault index. Not following it silently dropped the folder from the index, which was worse.
+3. **A sync could undo a rename (stability).** Another device's copy, written before it knew of the rename, could win the merge with the old paths, and no second rename event would come to fix it.
+   - **A rename log in data.json** (`renameLog`, the last 100 entries). It is written with every save, validated on load (`normalizeRenameLog`), and **merged as a union** on a reload from disk (`mergeRenameLogs`), so neither device's entries are lost to the other's write.
+   - **It is replayed after every load:** at startup once the layout is ready, and after every reload from disk.
+   - **The guard is per entry:** an entry is replayed only when nothing exists at its old path, and a path moves only to a place that exists. That is exactly a stale copy. It never fires when the user has since made a new note at the old path, which a plain replay would have moved.
+   - Replay is idempotent. The other device replays the same log and puts itself right.
+   - Its cost is one scan per load, about 40 ms at the corpus above.
+4. **A note-only turn lost its record (correctness).** An answer whose only output was the write, one the user stopped, and one whose stream failed after the write all dropped the message, and with it `noteWrites`. The note existed and its chip vanished on the next render. Such a turn is now kept, with the text `Wrote [[Out/X|X]].` (`writesOnlyContent`): a provider rejects an empty assistant message, and the model should know on the next turn that the note exists. The failure path commits it through `ToolCallController.writesOnlyMessage`.
+5. **The rules had no guard (principle 3).**
+   - `tests/pathFields.test.ts` classifies **every field** of `Conversation`, `Message`, `PendingTemplate`, `RewriteTarget`, `NoteWrite`, `Comparison`, `ComparisonCandidate` and `PythiaSettings` in a `Record<keyof T, Kind>`. **A new field fails to compile until it is classified.** The test then fills every field classified as a path with an old path, renames, and requires that nothing still names the old folder except what was said. It also requires the renamer's settings key lists to equal the classified ones.
+   - `tests/noteOpenRule.test.ts` fails on a new `openLinkText(` call outside `ui/noteLinks.ts` and `ui/GlossaryController.ts`.
+6. **The chip carried `[[ ]]` (consistency).** It is permanent now, and ADR-193/212 bans brackets on vault references. It reads `✓ Created Plan`, with the vault-note icon before the name.
+7. **A `[[path|name]]` link broke a table cell.** The tool result now tells the model to escape the bar inside a table.
+
+**Side change.** `sidebar.ts` had no room for fix 4. The post-commit title and chapter-name generation moved out unchanged into `ui/postCommitNaming.ts`, and the ceiling drops from 1489 to 1465.
+
+**Still assumed, not measured:** that Obsidian reports a folder rename once per file inside it. The batch is correct either way; the benchmark says what it saves if so.
+
+**Guards added.** `tests/renameVaultPath.test.ts`:
+- essential pairs;
+- a swap and a chain in order;
+- the fast path agrees with the sequential one on 50 random independent batches;
+- `accept`;
+- the settings.
+
+`tests/renameFollower.test.ts`:
+- a burst is one flush;
+- the settings;
+- nothing logged when nothing changed;
+- the cap;
+- the replay guard (old path taken, target missing, a chain in time order, idempotent);
+- log validation and merge.
+
+`tests/pathFields.test.ts` and `tests/noteOpenRule.test.ts` as above.
+
+`tests/toolCallNoteWrites.test.ts`: the writes-only text, and the message kept on failure. `tests/pluginDataStore.test.ts`: the log is written. `tests/ConversationStore.test.ts`: `markChanged` does not touch `updatedAt`.
 

@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-25 — ADR-218: a note an answer wrote keeps its ✓ chip after the turn — `.pythia-tool-call.pythia-tool-call--done.p-note-write`, drawn inside `.p-msg-ai` after the sources row from `Message.noteWrites`. Same look as the live chip; no new tokens. `[[links]]` in the conversation now open on tap.*
+*Last updated: 2026-09-25 — ADR-218 addendum: the ✓ chip of a written note loses its `[[ ]]` and leads the name with the vault-note icon (`.p-source-icon`, `library`), like every other vault reference (ADR-193/212). No new tokens.*
+
+*Previously: 2026-09-25 — ADR-218: a note an answer wrote keeps its ✓ chip after the turn — `.pythia-tool-call.pythia-tool-call--done.p-note-write`, drawn inside `.p-msg-ai` after the sources row from `Message.noteWrites`. Same look as the live chip; no new tokens. `[[links]]` in the conversation now open on tap.*
 
 *Previously: 2026-09-25 — the research globe's tooltip names what it now does, so ADR-217's features can be found: `Web search: look up current facts and read links you paste` (DE: `Websuche: aktuelle Fakten nachschlagen und eingefügte Links lesen`). Copy only; no new tokens or classes.*
 

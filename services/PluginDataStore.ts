@@ -8,6 +8,7 @@ import { debugLog } from "./messageUtils";
 import { describeErrorForLog } from "./redact";
 import { archiveFolderOf } from "./conversationArchive";
 import { formatBytes, storageLevel } from "./storageSize";
+import { mergeRenameLogs, normalizeRenameLog, type RenameLogEntry } from "./renameFollower";
 import {
 	applySettingsMigrations,
 	mergeSettings,
@@ -39,6 +40,10 @@ export class PluginDataStore {
 	 *  and its sub-panels all go through it, so no surface writes per keystroke. */
 	private readonly settingsSaveSoon = debounce(() => void this.saveSettings(), SETTINGS_SAVE_DEBOUNCE_MS, true);
 
+	/** The renames followed recently, kept in data.json so a stale copy from
+	 *  another device can be put right after a sync (ADR-218 addendum). */
+	renameLog: RenameLogEntry[] = [];
+
 	constructor(private readonly plugin: PythiaPlugin) {}
 
 	async loadPluginData(): Promise<void> {
@@ -67,6 +72,8 @@ export class PluginDataStore {
 		}
 
 		p.settings = mergeSettings(saved);
+		// Union, not replace: a sync must not drop the renames this device logged.
+		this.renameLog = mergeRenameLogs(this.renameLog, normalizeRenameLog(data.renameLog));
 
 		const rawConversations = (data.conversations ?? []) as unknown[];
 		const { conversations: loaded, dropped } = parseConversations(rawConversations);
@@ -130,7 +137,7 @@ export class PluginDataStore {
 			]);
 
 		if (needsSave) {
-			await p.saveData({ settings: p.settings, conversations: p.conversations });
+			await p.saveData({ settings: p.settings, conversations: p.conversations, renameLog: this.renameLog });
 		}
 
 		void this.warnIfStoreIsLarge();
@@ -254,6 +261,7 @@ export class PluginDataStore {
 			await p.saveData({
 				settings: p.settings,
 				conversations: p.conversations,
+				renameLog: this.renameLog,
 			});
 			// Stamp again on completion: saveData can take seconds on mobile, and the
 			// watcher's own-write window is measured from the stamp. Without this a
@@ -294,6 +302,9 @@ export class PluginDataStore {
 		p.webSearchService?.updateSettings(p.settings);
 		p.webSearchService?.updateApiKey(p.plaintextSearchKey);
 		p.promptOptimizerService?.updateSettings(p.settings);
+		// A copy written before a rename was known may have won the merge with the
+		// old paths; the log puts it right (ADR-218 addendum).
+		p.renameFollower?.replay();
 		// Anything memory won during the merge is newer than disk; write it back now
 		// rather than leaving the file stale until the next edit (ADR-133).
 		await p.conversationStore?.flush();

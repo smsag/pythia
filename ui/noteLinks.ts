@@ -2,6 +2,7 @@ import { Keymap, Notice, TFile, type App, type PaneType } from "obsidian";
 import type { Message, NoteWrite } from "../models/types";
 import { t } from "../i18n";
 import { noteBasename } from "../services/pathUtils";
+import { appendSourceIcon } from "./icons";
 
 /**
  * Opening a vault note from the conversation, and the chip that records a note
@@ -52,10 +53,14 @@ export function onNoteLinkClick(app: App, evt: MouseEvent): void {
 	new Notice(t("noteGone", { name: noteBasename(linkpath) }));
 }
 
+/** Stands in for the name so the label can be split around it — the name is
+ *  drawn after the vault-note icon, wherever the locale puts it. */
+const NAME_SLOT = "\u0000";
+
 /** Literal `t("…")` calls, so the dead-key check in tests/i18n.test.ts sees them. */
-function writeLabel(write: NoteWrite): string {
-	const name = noteBasename(write.path);
-	switch (write.action) {
+function writeLabel(action: NoteWrite["action"]): string {
+	const name = NAME_SLOT;
+	switch (action) {
 		case "rewritten": return t("rewrittenNote", { name });
 		case "prepended": return t("prependedNote", { name });
 		case "created": return t("createdNote", { name });
@@ -69,11 +74,13 @@ function writeLabel(write: NoteWrite): string {
  */
 export function fillNoteWriteChip(app: App, chipEl: HTMLElement, write: NoteWrite): void {
 	chipEl.addClass("pythia-tool-call--done");
-	const link = chipEl.createEl("a", {
-		cls: "pythia-tool-call-link",
-		text: writeLabel(write),
-		attr: { href: "#" },
-	});
+	// The name leads with the vault-note icon and carries no [[ ]], like every
+	// other vault reference (ADR-193/212).
+	const link = chipEl.createEl("a", { cls: "pythia-tool-call-link", attr: { href: "#" } });
+	const [before, after = ""] = writeLabel(write.action).split(NAME_SLOT);
+	if (before) link.appendText(before);
+	appendSourceIcon(link, "note");
+	link.appendText(noteBasename(write.path) + after);
 	link.addEventListener("click", (e) => {
 		e.preventDefault();
 		void openNotePath(app, write.path, Keymap.isModEvent(e));

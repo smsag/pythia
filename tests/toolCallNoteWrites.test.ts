@@ -29,7 +29,7 @@ describe("ToolCallController — a confirmed write is recorded for the message (
 		messages.querySelector<HTMLButtonElement>(".pythia-tool-call-btn--action")!.click();
 		await pending;
 		expect(calls.takeNoteWrites()).toEqual({ noteWrites: [{ path: "Out/Plan 2.md", action: "created" }] });
-		expect(messages.querySelector(".pythia-tool-call--done .pythia-tool-call-link")?.textContent).toBe("✓ Created [[Plan 2]]");
+		expect(messages.querySelector(".pythia-tool-call--done .pythia-tool-call-link")?.textContent).toBe("✓ Created Plan 2");
 	});
 
 	it("records nothing for a declined write, and a new send starts empty", async () => {
@@ -40,5 +40,37 @@ describe("ToolCallController — a confirmed write is recorded for the message (
 		messages.querySelectorAll<HTMLButtonElement>("button")[1].click(); // cancel
 		await pending;
 		expect(calls.takeNoteWrites()).toEqual({});
+	});
+});
+
+describe("ToolCallController — a turn that only wrote a note keeps its record (ADR-218 addendum)", () => {
+	async function wrote(calls: ToolCallController, messages: HTMLElement): Promise<void> {
+		calls.begin(() => {});
+		const pending = calls.handler(conv, false)(create);
+		await Promise.resolve();
+		messages.querySelector<HTMLButtonElement>(".pythia-tool-call-btn--action")!.click();
+		await pending;
+	}
+
+	it("gives an empty answer text that names the note, without draining the record", async () => {
+		const { calls, messages } = controller(noteWriteResult("created", "Out/Plan.md"));
+		await wrote(calls, messages);
+		expect(calls.writesOnlyContent()).toBe("Wrote [[Out/Plan|Plan]].");
+		expect(calls.takeNoteWrites()).toEqual({ noteWrites: [{ path: "Out/Plan.md", action: "created" }] });
+	});
+
+	it("builds the turn to keep when the stream fails after the write, and drains", async () => {
+		const { calls, messages } = controller(noteWriteResult("created", "Out/Plan.md"));
+		await wrote(calls, messages);
+		const msg = calls.writesOnlyMessage("m1");
+		expect(msg).toMatchObject({ role: "assistant", content: "Wrote [[Out/Plan|Plan]].", model: "m1", noteWrites: [{ path: "Out/Plan.md" }] });
+		expect(calls.writesOnlyMessage("m1")).toBeNull();
+	});
+
+	it("keeps nothing when nothing was written", () => {
+		const { calls } = controller("");
+		calls.begin(() => {});
+		expect(calls.writesOnlyContent()).toBe("");
+		expect(calls.writesOnlyMessage("m1")).toBeNull();
 	});
 });
