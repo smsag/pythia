@@ -145,6 +145,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
+    ui-architecture.md        ← UI orientation: naming conventions, the panel top to bottom, the other surfaces, vocabulary, how to ask for a UI change
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
