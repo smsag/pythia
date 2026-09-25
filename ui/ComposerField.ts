@@ -14,6 +14,18 @@ export interface ComposerFieldOptions {
 	/** The tokens that draw as chips, and each one's label — the notes this
 	 *  composition attached. Read whenever a whole value is set. */
 	chips(): ReadonlyMap<string, string>;
+	/** Notes dragged in from the vault (ADR-214). Absent = only text drops. */
+	notes?: NoteDropTarget;
+}
+
+/** What the field needs to take a drag of notes: whether one is in flight (the
+ *  drag's text is unreadable until the drop), the paths it names, and where to
+ *  hand them — the same `attach` the `#` picker uses, so a dropped note is the
+ *  same chip, undo and count as a picked one. */
+export interface NoteDropTarget {
+	isNoteDrag(e: DragEvent): boolean;
+	paths(e: DragEvent): string[];
+	attach(paths: string[]): void;
 }
 
 /**
@@ -57,6 +69,11 @@ export class ComposerField {
 		o.register(this.el, "copy", (e) => this.onCopy(e, false));
 		o.register(this.el, "cut", (e) => this.onCopy(e, true));
 		o.register(this.el, "paste", (e) => this.onPaste(e));
+		o.register(this.el, "dragenter", (e) => this.onDragOver(e));
+		o.register(this.el, "dragover", (e) => this.onDragOver(e));
+		o.register(this.el, "dragleave", (e) => {
+			if (!this.el.contains(e.relatedTarget as Node | null)) this.el.removeClass("is-drop-target");
+		});
 		o.register(this.el, "drop", (e) => this.onDrop(e));
 	}
 
@@ -232,12 +249,46 @@ export class ComposerField {
 		this.replaceRange(start, end, e.clipboardData.getData("text/plain"));
 	}
 
+	/** Claim a drag of notes, so Obsidian's own handler above us (which would
+	 *  open a file in this tab) sees it taken, and show that it will land. */
+	private onDragOver(e: DragEvent): void {
+		if (this.disabled || !this.o.notes?.isNoteDrag(e)) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
+		this.el.addClass("is-drop-target");
+	}
+
 	private onDrop(e: DragEvent): void {
+		this.el.removeClass("is-drop-target");
+		if (this.disabled) { e.preventDefault(); return; } // streaming: nothing lands, text or note
+		const at = this.offsetAtPoint(e.clientX, e.clientY) ?? this.selectionStart;
+		const paths = this.o.notes?.paths(e) ?? [];
+		if (paths.length > 0) {
+			e.preventDefault();
+			// Where it was dropped, not where the caret last was: focus first, or the
+			// caret is only remembered, and the chip goes in as an undoable edit.
+			this.el.focus();
+			this.setSelectionRange(at, at);
+			this.o.notes?.attach(paths);
+			return;
+		}
 		const text = e.dataTransfer?.getData("text/plain");
 		if (!text) return;
 		e.preventDefault();
-		const at = this.selectionStart;
 		this.replaceRange(at, at, text);
+	}
+
+	/** The text offset under a pointer, or null when it is not over the text. */
+	private offsetAtPoint(x: number, y: number): number | null {
+		const doc = this.el.ownerDocument as Document & {
+			caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
+			caretRangeFromPoint?(x: number, y: number): Range | null;
+		};
+		const pos = doc.caretPositionFromPoint?.(x, y);
+		const point = pos ? { node: pos.offsetNode, offset: pos.offset }
+			: (() => { const r = doc.caretRangeFromPoint?.(x, y); return r ? { node: r.startContainer, offset: r.startOffset } : null; })();
+		if (!point || !this.el.contains(point.node)) return null;
+		return textOffset(this.el, point);
 	}
 }
 

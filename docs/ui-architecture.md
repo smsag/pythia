@@ -1,6 +1,6 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-25 (ADR-213: the composer field and its chips)*
+*Last updated: 2026-09-25 (ADR-213/214: the composer field, its chips, and dropping notes on it)*
 
 How the UI is put together and what its parts are called, so changes can be asked for (and found) by name. The words match `README.md` where the user sees them. The full class-by-class map lives in `docs/pythia-spec.md` → *UI architecture*; this file is the orientation that makes that map readable.
 
@@ -60,7 +60,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 ├─ .pythia-sel-toolbar                   selection strip (SelectionController)
 └─ .p-input-area
    ├─ .p-composer                        ComposerField — contenteditable; # opens the note picker (InlineSuggest)
-   │  └─ .p-composer-chip                an attached note: library icon + name, reads as [[Name]]
+   │  └─ .p-composer-chip                an attached note (# pick or dropped from the vault — noteDrop): library icon + name, reads as [[Name]]
    ├─ .p-ctx-bar                         attached-note token budget
    └─ .p-toolbar
       ├─ attach · save · globe · library  toolbarIcons
