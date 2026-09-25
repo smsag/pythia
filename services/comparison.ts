@@ -3,11 +3,10 @@ import type {
 	Message,
 	Comparison,
 	ComparisonCandidate,
-	Favorite,
-	MergeLink,
 	Provider,
 } from "../models/types";
-import { abbreviateModel } from "../models/knownModels";
+import { MODEL_CATALOG } from "../models/knownModels";
+import { normalizeNoteWrites } from "./noteWrites";
 
 /**
  * Model comparison on the last exchange (ADR-160) — the pure half.
@@ -20,10 +19,11 @@ import { abbreviateModel } from "../models/knownModels";
  * path (which slices off the trailing user message) works unchanged for every
  * candidate run, and "cancel" is just putting candidate 0 back.
  *
- * Keeping a candidate appends it as the assistant turn and turns each other
- * candidate into a fork spec: the same prompt, that answer, branched from the
- * kept message so the navigator lists it under Forks. The vault I/O for the
- * fork lives in ConversationService; this module only decides what it holds.
+ * Keeping a candidate appends it as the assistant turn and keeps every other
+ * candidate ON it, as `alternatives` — the tabs stay (ADR-219, revising
+ * ADR-160's forks, which took the other answers out of sight). While that
+ * answer is still the last one, `switchAlternative` can make another tab the
+ * one the conversation holds.
  */
 
 const iso = (): string => new Date().toISOString();
@@ -39,10 +39,12 @@ export function candidateFromMessage(msg: Message, provider: Provider, fallbackM
 		...(msg.tokenUsage ? { tokenUsage: msg.tokenUsage } : {}),
 		...(msg.sources ? { sources: msg.sources } : {}),
 		...(msg.templateId ? { templateId: msg.templateId } : {}),
+		...(msg.cost ? { cost: msg.cost } : {}),
+		...(msg.noteWrites ? { noteWrites: msg.noteWrites } : {}),
 	};
 }
 
-/** The assistant message a candidate becomes when it is kept or forked. */
+/** The assistant message a candidate becomes when it is kept. */
 export function candidateToMessage(c: ComparisonCandidate): Message {
 	return {
 		id: c.id,
@@ -53,6 +55,8 @@ export function candidateToMessage(c: ComparisonCandidate): Message {
 		...(c.tokenUsage ? { tokenUsage: c.tokenUsage } : {}),
 		...(c.sources ? { sources: c.sources } : {}),
 		...(c.templateId ? { templateId: c.templateId } : {}),
+		...(c.cost ? { cost: c.cost } : {}),
+		...(c.noteWrites ? { noteWrites: c.noteWrites } : {}),
 	};
 }
 
@@ -76,11 +80,15 @@ export function startComparison(
 	if (user.id !== userMessageId || user.role !== "user") return null;
 	if (answer.id !== assistantMessageId || answer.role !== "assistant") return null;
 	conv.messages = conv.messages.slice(0, n - 1);
+	// An answer kept from an earlier comparison brings its tabs back as
+	// candidates, or a second comparison would silently drop them (ADR-219).
+	const prior = answer.alternatives ?? [];
 	const comparison: Comparison = {
 		id: makeId(),
 		userMessageId,
-		candidates: [candidateFromMessage(answer, conv.provider, conv.model)],
+		candidates: [candidateFromMessage(answer, conv.provider, conv.model), ...prior],
 		createdAt: iso(),
+		...(prior.length > 0 ? { priorAlternativeIds: prior.map((c) => c.id) } : {}),
 	};
 	conv.comparison = comparison;
 	return comparison;
@@ -106,35 +114,14 @@ export function removeCandidate(conv: Conversation, candidateId: string): void {
 	if (idx > 0) cmp.candidates.splice(idx, 1);
 }
 
-/** What a fork made from a non-kept candidate holds. */
-export interface ForkSpec {
-	name: string;
-	provider: Provider;
-	model: string;
-	messages: Message[];
-	forkedFromMessageId: string;
-	favorites?: Favorite[];
-	merges?: MergeLink[];
-}
-
-/** `<conversation> · <Model>` — the fork is the same conversation seen through
- *  another model, and the model is the only thing that distinguishes it. */
-export function forkNameFor(conversationName: string, model: string): string {
-	return `${conversationName} · ${abbreviateModel(model)}`;
-}
-
 /**
- * Keep one candidate as the assistant turn; every other candidate becomes a
- * fork spec. Favorites and merge links that point at a candidate's message id
- * travel with it — to the conversation if it is kept, to its fork otherwise —
- * so a highlight made on the original answer survives choosing a different
- * one. Mutates `conv` (appends the kept message, clears the comparison,
- * moves favorites/merges); returns null if nothing matches.
+ * Keep one candidate as the assistant turn; every other candidate stays on it
+ * as an alternative tab (ADR-219). Nothing is forked: favorites and merge links
+ * made on a non-kept answer stay on the conversation under that answer's id and
+ * are painted when its tab is shown. Mutates `conv` (appends the kept message,
+ * clears the comparison); returns null if nothing matches.
  */
-export function keepCandidate(
-	conv: Conversation,
-	candidateId: string,
-): { kept: Message; forks: ForkSpec[] } | null {
+export function keepCandidate(conv: Conversation, candidateId: string): { kept: Message } | null {
 	const cmp = conv.comparison;
 	const prompt = comparisonPrompt(conv);
 	if (!cmp || !prompt) return null;
@@ -142,34 +129,47 @@ export function keepCandidate(
 	if (!chosen) return null;
 
 	const kept = candidateToMessage(chosen);
-	const forks: ForkSpec[] = [];
-	for (const c of cmp.candidates) {
-		if (c.id === chosen.id) continue;
-		const favorites = (conv.favorites ?? []).filter((f) => f.messageId === c.id);
-		const merges = (conv.merges ?? []).filter((m) => m.messageId === c.id);
-		forks.push({
-			name: forkNameFor(conv.name, c.model),
-			provider: c.provider,
-			model: c.model,
-			// The prompt keeps its id so a favorite on it stays findable in both places.
-			messages: [{ ...prompt }, candidateToMessage(c)],
-			forkedFromMessageId: kept.id,
-			...(favorites.length ? { favorites } : {}),
-			...(merges.length ? { merges } : {}),
-		});
-	}
-	const movedIds = new Set(cmp.candidates.filter((c) => c.id !== chosen.id).map((c) => c.id));
-	if (conv.favorites) {
-		conv.favorites = conv.favorites.filter((f) => !movedIds.has(f.messageId));
-		if (conv.favorites.length === 0) delete conv.favorites;
-	}
-	if (conv.merges) {
-		conv.merges = conv.merges.filter((m) => !movedIds.has(m.messageId));
-		if (conv.merges.length === 0) delete conv.merges;
-	}
+	const alternatives = cmp.candidates.filter((c) => c.id !== chosen.id);
+	if (alternatives.length > 0) kept.alternatives = alternatives;
 	conv.messages.push(kept);
 	delete conv.comparison;
-	return { kept, forks };
+	return { kept };
+}
+
+/**
+ * Whether the answer `messageId` may change which of its tabs the conversation
+ * holds: only while it is the LAST message and no comparison is pending. A
+ * later turn was built on the kept answer — the same rule as Retry (ADR-162).
+ */
+export function canSwitchAlternative(conv: Conversation, messageId: string): boolean {
+	const last = conv.messages[conv.messages.length - 1];
+	return !conv.comparison && !!last && last.id === messageId && last.role === "assistant" && !!last.alternatives?.length;
+}
+
+/**
+ * Make alternative `candidateId` the answer the conversation holds, and the
+ * answer it held an alternative (ADR-219). Each keeps its own id, so a
+ * favorite, merge link or pin stays with its text. Returns false and changes
+ * nothing when `canSwitchAlternative` says no or the id is unknown. Mutates.
+ */
+export function switchAlternative(conv: Conversation, messageId: string, candidateId: string): boolean {
+	if (!canSwitchAlternative(conv, messageId)) return false;
+	const current = conv.messages[conv.messages.length - 1];
+	const alternatives = current.alternatives ?? [];
+	const idx = alternatives.findIndex((c) => c.id === candidateId);
+	if (idx < 0) return false;
+	const chosen = alternatives[idx];
+	// A message does not record its provider; the catalog knows it for a known
+	// model, and the conversation's provider is the fallback for any other.
+	const provider = MODEL_CATALOG.find((m) => m.id === current.model)?.provider ?? conv.provider;
+	const demoted = candidateFromMessage(current, provider, conv.model);
+	const next = candidateToMessage(chosen);
+	// The tab order stays stable: the demoted answer takes the chosen one's place.
+	const rest = alternatives.slice();
+	rest[idx] = demoted;
+	next.alternatives = rest;
+	conv.messages[conv.messages.length - 1] = next;
+	return true;
 }
 
 /** Put the original answer back and drop the comparison. Returns false if
@@ -178,7 +178,14 @@ export function cancelComparison(conv: Conversation): boolean {
 	const cmp = conv.comparison;
 	if (!cmp) return false;
 	const original = cmp.candidates[0];
-	if (original) conv.messages.push(candidateToMessage(original));
+	if (original) {
+		const restored = candidateToMessage(original);
+		// Back as it was: its earlier tabs, not the runs this comparison added.
+		const prior = new Set(cmp.priorAlternativeIds ?? []);
+		const tabs = cmp.candidates.slice(1).filter((c) => prior.has(c.id));
+		if (tabs.length > 0) restored.alternatives = tabs;
+		conv.messages.push(restored);
+	}
 	delete conv.comparison;
 	return true;
 }
@@ -204,13 +211,47 @@ export function normalizeComparison(conv: Conversation): void {
 			typeof c.id === "string" && typeof c.model === "string" &&
 			typeof c.content === "string" && c.content.length > 0
 	);
+	if (cmp.priorAlternativeIds !== undefined && !(Array.isArray(cmp.priorAlternativeIds) && cmp.priorAlternativeIds.every((x) => typeof x === "string"))) {
+		delete cmp.priorAlternativeIds;
+	}
 	if (typeof cmp.id !== "string") cmp.id = crypto.randomUUID();
 	if (typeof cmp.createdAt !== "string") cmp.createdAt = iso();
 	const last = conv.messages[conv.messages.length - 1];
 	const promptIsLast = !!last && last.role === "user" && last.id === cmp.userMessageId;
 	if (cmp.candidates.length === 0 || !promptIsLast) {
 		// Cannot be resumed. Keep the original answer if the prompt is still last.
-		if (promptIsLast && cmp.candidates[0]) conv.messages.push(candidateToMessage(cmp.candidates[0]));
+		if (promptIsLast && cmp.candidates[0]) {
+			conv.comparison = cmp as Comparison;
+			cancelComparison(conv); // the same restore Discard does, prior tabs included
+		}
 		delete conv.comparison;
 	}
+}
+
+/**
+ * Load-time guard for the tabs kept on an answer (ADR-219, principle 1). A tab
+ * needs an id, a model and some text to be shown at all; a malformed cost or
+ * note-write list is dropped rather than drawn wrong. Returns the tabs that
+ * survive, or undefined when none do.
+ */
+export function normalizeAlternatives(value: unknown): ComparisonCandidate[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const out: ComparisonCandidate[] = [];
+	for (const raw of value) {
+		if (!raw || typeof raw !== "object") continue;
+		const c = raw as ComparisonCandidate;
+		if (typeof c.id !== "string" || !c.id || typeof c.model !== "string" || typeof c.content !== "string" || !c.content) continue;
+		if (typeof c.timestamp !== "string") c.timestamp = "";
+		if (c.cost !== undefined) {
+			const cost = c.cost as { usd?: unknown; asOf?: unknown } | null;
+			const ok = !!cost && typeof cost.usd === "number" && Number.isFinite(cost.usd) && cost.usd >= 0 && typeof cost.asOf === "string";
+			if (!ok) delete c.cost;
+		}
+		if (c.noteWrites !== undefined) {
+			const writes = normalizeNoteWrites(c.noteWrites);
+			if (writes) c.noteWrites = writes; else delete c.noteWrites;
+		}
+		out.push(c);
+	}
+	return out.length > 0 ? out : undefined;
 }

@@ -3,7 +3,7 @@ import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Messa
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
 import { SELECTABLE_EMBEDDING_MODEL_IDS, SIMILARITY_PRESETS } from "../models/embeddingModels";
-import { normalizeComparison } from "./comparison";
+import { normalizeAlternatives, normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
@@ -249,6 +249,12 @@ export function sanitizeMessages(conv: Conversation): void {
 			const c = m.cost as { usd?: unknown; asOf?: unknown } | null;
 			const ok = !!c && typeof c === "object" && typeof c.usd === "number" && Number.isFinite(c.usd) && c.usd >= 0 && typeof c.asOf === "string";
 			if (!ok) delete (m as { cost?: unknown }).cost;
+		}
+		// The other answers kept as tabs are drawn and switched to (ADR-219).
+		if (m.alternatives !== undefined) {
+			const tabs = normalizeAlternatives(m.alternatives);
+			if (tabs && m.role === "assistant") m.alternatives = tabs;
+			else delete m.alternatives;
 		}
 		// Every entry is a path the chip opens and a rename rewrites (ADR-218).
 		if (m.noteWrites !== undefined) {

@@ -1,6 +1,6 @@
 import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, ComparisonCandidate, ToolCall } from "../models/types";
+import type { Conversation, ComparisonCandidate, Message, ToolCall } from "../models/types";
 import type { ModelInfo } from "../models/knownModels";
 import { abbreviateModel } from "../models/knownModels";
 import { t } from "../i18n";
@@ -20,6 +20,7 @@ import {
 	cancelComparison,
 } from "../services/comparison";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
+import { AnswerTabsController } from "./AnswerTabsController";
 
 export interface ComparisonDeps {
 	plugin: PythiaPlugin;
@@ -37,13 +38,16 @@ export interface ComparisonDeps {
 	/** Full rebuild of the message list (after keep / discard). */
 	rerender(): void;
 	scrollToBottom(): void;
+	/** For the tabs a kept comparison leaves on its answer (ADR-219). */
+	renderAnswer(md: string, el: HTMLElement): Promise<void>;
+	paintMarks(body: HTMLElement, id: string): void;
 }
 
 /**
  * The comparison card (ADR-160): one prompt, one answer per model, one tab
  * each, and a Keep button that turns the chosen tab into the assistant turn and
- * every other tab into a fork. Candidate runs are sequential — one stream at a
- * time, through the same router and streaming state as a normal send — so
+ * keeps every other tab on it (ADR-219) — `AnswerTabsController` draws them
+ * there. Candidate runs are sequential — one stream at a time, through the same router and streaming state as a normal send — so
  * nothing about the providers had to change: the conversation ends with the
  * user turn while the comparison is pending, which is exactly the shape the
  * send path expects.
@@ -58,7 +62,18 @@ export class ComparisonController {
 	private activeId: string | null = null;
 	private running: { id: string; textNode: Text } | null = null;
 
-	constructor(private readonly d: ComparisonDeps) {}
+	/** The tabs a kept comparison leaves on its answer — drawn from the message
+	 *  on every render, so they outlive the card (ADR-219). */
+	private readonly tabs: AnswerTabsController;
+
+	constructor(private readonly d: ComparisonDeps) {
+		this.tabs = new AnswerTabsController(d);
+	}
+
+	/** Draw the kept answer's tabs, when it has any. */
+	paintTabs(row: HTMLElement, aiBody: HTMLElement, msg: Message): void {
+		this.tabs.paint(row, aiBody, msg);
+	}
 
 	/** Open a comparison on the last exchange and offer a model to run. */
 	start(userMessageId: string, assistantMessageId: string): void {
@@ -231,20 +246,17 @@ export class ComparisonController {
 		discardBtn.addEventListener("click", () => void this.discard());
 	}
 
-	/** Keep `candidateId` as the assistant turn; fork the rest. */
+	/** Keep `candidateId` as the assistant turn; the rest stay on it as tabs (ADR-219). */
 	async keep(candidateId: string): Promise<void> {
 		const conv = this.d.getConversation();
 		if (!conv || this.running) return;
 		const result = keepCandidate(conv, candidateId);
 		if (!result) return;
-		for (const spec of result.forks) {
-			await this.d.plugin.conversationService.createComparisonFork(conv, spec);
-		}
 		await this.d.plugin.conversationStore.save(conv);
 		this.cardEl = null;
 		this.activeId = null;
 		this.d.rerender();
-		new Notice(t("compareKept", { model: abbreviateModel(result.kept.model ?? ""), n: String(result.forks.length) }));
+		new Notice(t("compareKept", { model: abbreviateModel(result.kept.model ?? "") }));
 	}
 
 	/** Put the original answer back. */

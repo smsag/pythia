@@ -123,6 +123,23 @@ describe("sanitizeMessages — note writes (ADR-218)", () => {
 	});
 });
 
+describe("sanitizeMessages — answer tabs (ADR-219)", () => {
+	it("keeps well-formed tabs, drops malformed ones, and never puts tabs on a user turn", () => {
+		const good = { id: "b1", provider: "openai", model: "gpt-4o", content: "B", timestamp: "t", cost: { usd: "cheap" } };
+		const { conversations: [conv] } = parseConversations([{
+			id: "c", messages: [
+				{ id: "u", role: "user", content: "q", timestamp: "", alternatives: [good] },
+				{ id: "a", role: "assistant", content: "A", timestamp: "", alternatives: [good, { id: "", model: "m", content: "x" }, { id: "e", model: "m", content: "" }, null] },
+				{ id: "z", role: "assistant", content: "Z", timestamp: "", alternatives: "nope" },
+			],
+		}]);
+		expect("alternatives" in conv.messages[0]).toBe(false);
+		expect(conv.messages[1].alternatives?.map((c) => c.id)).toEqual(["b1"]);
+		expect("cost" in conv.messages[1].alternatives![0]).toBe(false);
+		expect("alternatives" in conv.messages[2]).toBe(false);
+	});
+});
+
 // ── the one-shot template on the read path (ADR-177) ──────────────────────────
 //
 // It reaches the send path directly: its systemPrompt becomes the prompt and

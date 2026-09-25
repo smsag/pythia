@@ -1,4 +1,4 @@
-import type { Conversation, MessageSource } from "../models/types";
+import type { ComparisonCandidate, Conversation, MessageSource } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
 import { noteBasename } from "./pathUtils";
 
@@ -162,6 +162,13 @@ export function renameVaultPaths(
 			if (typeof value === "string") (obj as Record<K, unknown>)[key] = path(value);
 		};
 
+		/** A comparison answer — pending, or kept as an alternative tab (ADR-219). */
+		const candidate = (c: ComparisonCandidate): void => {
+			field(c, "templateId");
+			sources(c.sources);
+			for (const w of c.noteWrites ?? []) field(w, "path");
+		};
+
 		paths(conv.contextNotes);
 		field(conv, "templateId");
 		field(conv, "summaryNote");
@@ -177,11 +184,9 @@ export function renameVaultPaths(
 			field(m.rewriteTarget, "path");
 			for (const w of m.noteWrites ?? []) field(w, "path");
 			sources(m.sources);
+			for (const c of m.alternatives ?? []) candidate(c);
 		}
-		for (const c of conv.comparison?.candidates ?? []) {
-			field(c, "templateId");
-			sources(c.sources);
-		}
+		for (const c of conv.comparison?.candidates ?? []) candidate(c);
 		if (dirty) changed.push(conv.id);
 	}
 	return changed;
