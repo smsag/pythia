@@ -12,7 +12,7 @@ The UI is one Obsidian `ItemView`, `PythiaSidebarView` in `sidebar.ts`, built im
 |---|---|---|
 | `…Controller` (`ui/`) | Owns one surface of the view: builds it, repaints it, handles its events. Created once by the view | `HeaderController`, `HistoryController`, `SummaryController`, `ForkController`, `TruncationController`, `ComparisonController` |
 | `…Deps` / `…Host` | The interface a controller or module receives instead of the view: callbacks and getters, never `this` | `HeaderDeps`, `SelectionDeps`, `TermDiscussionHost`, `EmbeddingHubHost` |
-| `…Modal` / `…Suggest` (`suggest/`) | Obsidian `Modal` or `SuggestModal` subclass. Every dialog lives here, never in `sidebar.ts` | `DeleteConversationModal`, `ConversationSettingsModal`, `ConversationCapModal`, `CommandHubModal`, `NoteSuggestModal`, `ModelSuggest` |
+| `…Modal` / `…Suggest` (`suggest/`) | Obsidian `Modal` or `SuggestModal` subclass. Every dialog lives here, never in `sidebar.ts` | `DeleteConversationModal`, `ConversationSettingsModal`, `ConversationCapModal`, `CommandHubModal`, `NoteSuggestModal`, `ModelSuggestModal` |
 | `…Setting` / `…Settings` (`ui/`) | A settings control too involved for one `Setting` row | `conversationCapSetting`, `vaultIndexStatusSetting`, `glossarySettings`, `pricingSettings` |
 | `ui/settings/*.ts` | One section of the settings tab; `settings.ts` only orders them | `connections`, `conversationDefaults`, `answering`, `optimizer`, `notes`, `storage`, `troubleshooting` |
 | `…Painter` / `…Decorator` | Walks rendered markdown and marks or wraps parts of it | `HighlightPainter`, `citationPainter`, `CodeBlockDecorator`, `tableDecorator` |
@@ -45,8 +45,9 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │     ├─ .p-turn-label                   turnLabel — model · time · tokens · ≈ cost
 │     ├─ .p-msg-user > .p-bubble         accent bubble, right-aligned
 │     ├─ .p-msg-ai > .p-ai-body          rendered markdown, no container
-│     │  ├─ marks                        favorite · fork · merge · term · person
-│     │  ├─ inline anchors               the card a tapped mark opens, right after it
+│     │  ├─ marks                        favorite · fork · merge · term · person (HighlightPainter, markTap)
+│     │  ├─ inline anchors               the card a tapped mark opens, right after it:
+│     │  │                               fork (ForkController) · merge (MergeController) · term/person (GlossaryController)
 │     │  ├─ .p-cite                      citation chips (citationPainter)
 │     │  ├─ .p-scroll-frame              wide tables and code, panned sideways
 │     │  └─ .p-chart-card                ui/chart/card.ts
@@ -76,7 +77,9 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Star · Fork · Merge · Define · Person.
 - **Send menu:** `.p-send-menu`, built in `sidebar.ts` (an `ActionSheet` on mobile). Summarize conversation · Summarize favorites · Optimize prompt (`OptimizationController`).
 - **Rewrite:** `RewriteController` + `editorSelectionEntries`. A passage selected in the **editor** is armed as a target; the answer becomes a proposal card with *Replace in note*.
-- **Modals:** `suggest/`. Delete (Archive · Delete · Cancel), conversation settings, history-limit confirm, resume mode, the `Pythia: Commands…` hub, and the note / template / folder / model pickers used from the command palette.
+- **Modals:** `suggest/`.
+  - Dialogs: `DeleteConversationModal` (Archive · Delete · Cancel), `DeleteFileModal`, `ConversationSettingsModal`, `ConversationCapModal` (history-limit confirm), `ResumeModeModal`, `CommandHubModal` (`Pythia: Commands…`), `InputModal`, `PromptInputModal`.
+  - Pickers, mostly for command-palette entry points that can run with no view open: `ConversationSuggestModal`, `FavoritesSuggestModal`, `NoteSuggestModal`, `TemplateSuggestModal`, `FileSuggestModal`, `FolderSuggestModal`, `ModelSuggestModal` (the comparison's model choice).
 - **Settings tab:** `settings.ts` orders eight sections in `ui/settings/`, each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
 - **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note.
 
