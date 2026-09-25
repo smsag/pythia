@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "../services/sendPolicy";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch, wantsWeb } from "../services/sendPolicy";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -111,5 +111,15 @@ describe("shouldAutoArmSearch", () => {
 
 	it("treats an unset researchMode as off", () => {
 		expect(shouldAutoArmSearch({ ...base, researchMode: undefined })).toBe(true);
+	});
+});
+
+describe("wantsWeb (ADR-217)", () => {
+	it("wants the web for a pasted link with no time cue", () => {
+		expect(wantsWeb("what does https://example.com/essay argue?", 2026)).toBe(true);
+	});
+	it("still wants it for a time cue, and not for neither", () => {
+		expect(wantsWeb("latest ECB decision", 2026)).toBe(true);
+		expect(wantsWeb("explain recursion", 2026)).toBe(false);
 	});
 });

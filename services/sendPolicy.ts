@@ -1,3 +1,4 @@
+import { containsWebUrl, looksTimeSensitive } from "./webSearchHeuristics";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -48,4 +49,14 @@ export function shouldAutoArmSearch(opts: {
 	wantsWeb: boolean;
 }): boolean {
 	return !opts.researchMode && opts.autoArmEnabled && opts.hasApiKey && opts.wantsWeb;
+}
+
+/**
+ * Whether an outgoing message wants the web: it reads as time-sensitive
+ * (ADR-099) or it carries a link for read_url (ADR-217). The `wantsWeb` input
+ * of `shouldAutoArmSearch` — here, not in the view, so the composition is
+ * tested.
+ */
+export function wantsWeb(text: string, currentYear: number): boolean {
+	return looksTimeSensitive(text, currentYear) || containsWebUrl(text);
 }

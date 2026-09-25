@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-25 — ADR-217: Tavily search filters and `read_url`. New `services/tavilyArgs.ts` (pure: `parseSearchArgs`, `parseReadUrlArgs` with `isPrivateHost`, `describeSearchFilters`); `WebSearchService` gains `extract()` on /extract and one private `post()` for both endpoints; `ToolHandler` offers `read_url` under the research gate; `containsWebUrl` feeds auto-arm (`shouldAutoArmSearch`'s `wantsWeb`); `ToolCallController` labels both tools' chips.*
+*Last updated: 2026-09-25 — ADR-217 addendum: new `services/webReadScope.ts` (`WebReadScope` — the per-answer allow-list and read cap for `read_url`; `ToolHandler.execute` takes it as a fourth argument and fails closed without one; `ToolCallController.handler` and each comparison candidate build one and feed it every successful web result). `sendPolicy.wantsWeb` composes the auto-arm cues.*
+
+*Previously: 2026-09-25 — ADR-217: Tavily search filters and `read_url`. New `services/tavilyArgs.ts` (pure: `parseSearchArgs`, `parseReadUrlArgs` with `isPrivateHost`, `describeSearchFilters`); `WebSearchService` gains `extract()` on /extract and one private `post()` for both endpoints; `ToolHandler` offers `read_url` under the research gate; `containsWebUrl` feeds auto-arm (`shouldAutoArmSearch`'s `wantsWeb`); `ToolCallController` labels both tools' chips.*
 
 *Previously: 2026-09-25 — ADR-216: pins. `models/types.ts` `Pin` + `Conversation.pins?`; `services/pins.ts` (pure: `addPin` with its refusals, `removePin`, `pinExcerpt`, `PIN_LIMIT`, `PIN_MAX_CHARS`); `services/persistence.ts` `normalizePins` (after `normalizeMerges`) and pinned conversations protected in `partitionEvictions`. `ui/pinSources.ts` — the one builder per source, shared by Copy and Pin, and `appendPinButton`; `decorateCodeBlocks` / `decorateTables` take an optional `onPin`; `ui/chart/card.ts` exports `chartSourceOf`. `ui/PinController.ts` owns the strip. `ui/chatScroll.ts` gains `scrollChatTo` / `coveredTop`, replacing five hand-rolled jumps. `SelectionController` gains `addBtn` and `readAssistantSelection` (587 → 526). `HighlightPainter.flashText` flashes an unmarked passage. `locales/pins.{en,de}.ts`.*
 
@@ -315,6 +317,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/ToolHandler.ts` | 190 | Tool definitions (`create_note`/`rewrite_note`/`prepend_note` + read-only `web_search`) + `ToolHandler` class (injected NoteWriter + optional WebSearchService); `researchEnabled` gates `web_search` independently of `writeMode` |
 | `services/WebSearchService.ts` | 242 | Client-executed Tavily calls for research mode via Obsidian `requestUrl`: `search` (/search, optional filters) and `extract` (/extract, one page capped at 8 000 chars with the cut named). One `post()` holds the bearer header and status classification. Never throws; failures come back as an "Error:" string (ADR-217) |
 | `services/tavilyArgs.ts` | 155 | Pure: the ONE validator for the web tools' arguments — `parseSearchArgs` (topic · time_range · domains, each rejection naming its field), `parseReadUrlArgs` (http(s) + `isPrivateHost` refusal), `describeSearchFilters` for the chip and the no-results message (ADR-217) |
+| `services/webReadScope.ts` | 97 | Pure: `WebReadScope` — which pages `read_url` may read in one answer (links from user messages, plus links a web result of this answer returned, matched exactly) and how many (`MAX_READS_PER_TURN` = 5). The exfiltration guard (ADR-217 addendum) |
 | `services/redact.ts` | 75 | Pure secret redaction (`redactSecrets`, `describeErrorForLog`) — masks Bearer tokens / `sk-`/`sk-ant-`/`tvly-` key prefixes / auth key-value pairs before anything reaches a log, error dump, or model-surfaced string (defense-in-depth; ADR-112) |
 | `services/webSearchHeuristics.ts` | 64 | Pure `looksTimeSensitive(text, currentYear)` — whole-word recency cues + year ≥ now; auto-arms `web_search` for a send when the research globe is off (ADR-099) |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
@@ -627,9 +630,10 @@ LLM requests web_search / read_url during streamMessage
       → plugin.toolHandler.execute(call, allowed incl. web_search + read_url)
           → ToolHandler validates through services/tavilyArgs.ts (Error: naming the field on a rejection)
             web_search → WebSearchService.search(args) → POST /search (filters only when set)
-            read_url   → WebSearchService.extract(url) → POST /extract (private hosts refused before this)
+            read_url   → WebReadScope.admit(url): a link the user gave or a result of this answer returned, ≤ 5 reads
+                       → WebSearchService.extract(url) → POST /extract (private hosts and credentials refused before this)
             → formatted string (`### n. title / URL:` blocks, WEB_CITATION_INSTRUCTION), or "Error:" string
-      → chip done or error; parseWebSourcesFromResult → webSources → the WEB sources row
+      → chip done or error; parseWebSourcesFromResult → webSources → the WEB sources row; readScope.addText(result)
   → BaseProvider feeds the string back as a tool result → follow-up round → cited answer
 ```
 

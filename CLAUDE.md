@@ -71,6 +71,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
     WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws (ADR-062/217)
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
+    webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
     apiError.ts               ← HTTP error classification
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer

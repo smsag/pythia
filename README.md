@@ -290,7 +290,7 @@ Pythia sends data to third-party AI providers **only** when you actively use the
 |---|---|---|
 | Your chat messages and attached note content | Anthropic, OpenAI or Mistral (whichever provider you select) | On every message you send |
 | System prompt and context notes | Same provider | On every message you send |
-| Search queries the model chooses to run, and the web addresses it reads (never a local or private address) | [Tavily](https://tavily.com) | Only while web search is switched on for that conversation, or for a single message it auto-arms on |
+| Search queries the model chooses to run, and the web addresses it reads — only links you gave or a search returned, never a local or private address or one carrying a password | [Tavily](https://tavily.com) | Only while web search is switched on for that conversation, or for a single message it auto-arms on |
 
 **What stays local:**
 

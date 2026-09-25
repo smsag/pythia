@@ -94,14 +94,15 @@ export interface FilterWords {
 	topic: Record<Exclude<SearchTopic, "general">, string>;
 	timeRange: Record<SearchTimeRange, string>;
 	sites: (n: number) => string;
-	excluding: (n: number) => string;
+	/** `what` is one site's name, or `sites(n)` for several. */
+	excluding: (what: string) => string;
 }
 
 export const ENGLISH_FILTER_WORDS: FilterWords = {
 	topic: { news: "news", finance: "finance" },
 	timeRange: { day: "past day", week: "past week", month: "past month", year: "past year" },
-	sites: (n) => (n === 1 ? "1 site" : `${n} sites`),
-	excluding: (n) => (n === 1 ? "excluding 1 site" : `excluding ${n} sites`),
+	sites: (n) => `${n} sites`, // only ever called for two or more
+	excluding: (what) => `excluding ${what}`,
 };
 
 /** `news · past week · 2 sites` — the ONE description of a search's filters,
@@ -110,10 +111,11 @@ export function describeSearchFilters(args: SearchArgs, words: FilterWords = ENG
 	const parts: string[] = [];
 	if (args.topic && args.topic !== "general") parts.push(words.topic[args.topic]);
 	if (args.timeRange) parts.push(words.timeRange[args.timeRange]);
-	if (args.includeDomains) {
-		parts.push(args.includeDomains.length === 1 ? args.includeDomains[0] : words.sites(args.includeDomains.length));
-	}
-	if (args.excludeDomains) parts.push(words.excluding(args.excludeDomains.length));
+	// One site is named; several are counted, so the sentence never needs a
+	// singular form in any locale.
+	const sites = (domains: string[]) => (domains.length === 1 ? domains[0] : words.sites(domains.length));
+	if (args.includeDomains) parts.push(sites(args.includeDomains));
+	if (args.excludeDomains) parts.push(words.excluding(sites(args.excludeDomains)));
 	return parts.join(" · ");
 }
 
@@ -121,17 +123,33 @@ export function describeSearchFilters(args: SearchArgs, words: FilterWords = ENG
  *  from its own servers, so such a URL could never be read — but sending it
  *  would still hand an intranet address to a third party. */
 export function isPrivateHost(hostname: string): boolean {
-	const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+	// A trailing dot is the fully-qualified spelling of the same name
+	// (`localhost.`, `nas.local.`) and must not change the verdict.
+	const h = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
 	if (h === "localhost" || h.endsWith(".localhost")) return true;
 	if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return true;
 	if (!h.includes(".") && !h.includes(":")) return true; // a single-label intranet name
 	if (h.includes(":")) {
+		// IPv4-mapped (::ffff:a.b.c.d, which the URL parser writes as two hex
+		// groups) is the IPv4 address it maps, and is judged as one.
+		const mapped = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(h);
+		if (mapped) {
+			const hi = parseInt(mapped[1], 16);
+			return isPrivateIPv4(hi >> 8, hi & 255);
+		}
+		const dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+		if (dotted) return isPrivateHost(dotted[1]);
 		// IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10).
 		return h === "::1" || h === "::" || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h);
 	}
 	const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
 	if (!m) return false;
-	const [a, b] = [Number(m[1]), Number(m[2])];
+	return isPrivateIPv4(Number(m[1]), Number(m[2]));
+}
+
+/** The private, loopback, link-local and carrier-grade-NAT IPv4 ranges, by
+ *  their first two octets — every range here is decided by those. */
+function isPrivateIPv4(a: number, b: number): boolean {
 	return (
 		a === 10 || a === 127 || a === 0 ||
 		(a === 169 && b === 254) ||
@@ -148,7 +166,14 @@ export function parseReadUrlArgs(input: Record<string, unknown>): Parsed<string>
 	}
 	const url = safeHttpUrl(raw);
 	if (!url) return { ok: false, error: `'url' must be an http(s) address (got ${JSON.stringify(raw)}).` };
-	if (isPrivateHost(new URL(url).hostname)) {
+	const parsed = new URL(url);
+	// A user:password in the address is a credential, and it would travel to
+	// Tavily with the rest of the URL. Refused, never stripped: the page behind
+	// it is one the user reaches as themselves.
+	if (parsed.username || parsed.password) {
+		return { ok: false, error: "'url' contains a user name or password; it was not sent to the web reader. Ask the user to paste the page's text instead." };
+	}
+	if (isPrivateHost(parsed.hostname)) {
 		return { ok: false, error: `${url} is a private or local address; it was not sent to the web reader. Ask the user to paste the page's text instead.` };
 	}
 	return { ok: true, value: url };

@@ -66,7 +66,7 @@ describe("describeSearchFilters", () => {
 		expect(describeSearchFilters({ query: "q", topic: "news", timeRange: "week", includeDomains: ["x.com"] }))
 			.toBe("news · past week · x.com");
 		expect(describeSearchFilters({ query: "q", includeDomains: ["a.com", "b.com"], excludeDomains: ["c.com"] }))
-			.toBe("2 sites · excluding 1 site");
+			.toBe("2 sites · excluding c.com");
 	});
 });
 
@@ -74,6 +74,14 @@ describe("parseReadUrlArgs", () => {
 	it("accepts a public http(s) URL", () => {
 		expect(parseReadUrlArgs({ url: "https://example.com/a?b=1" })).toEqual({ ok: true, value: "https://example.com/a?b=1" });
 		expect(parseReadUrlArgs({ url: "example.com/page" })).toEqual({ ok: true, value: "https://example.com/page" });
+	});
+
+	it("refuses a URL carrying a user name or password, without echoing it", () => {
+		const r = parseReadUrlArgs({ url: "https://user:hunter2@example.com/" });
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.error).toMatch(/user name or password/);
+		expect(!r.ok && r.error).not.toContain("hunter2");
+		expect(parseReadUrlArgs({ url: "https://token@example.com/" }).ok).toBe(false);
 	});
 
 	it("rejects a missing url and a non-http scheme", () => {
@@ -94,6 +102,10 @@ describe("parseReadUrlArgs", () => {
 		"http://nas.local/",
 		"http://wiki.internal/page",
 		"http://intranet/page",
+		"http://localhost./x",
+		"http://nas.local./",
+		"http://[::ffff:127.0.0.1]/",
+		"http://[::ffff:192.168.0.1]/",
 	])("refuses the private address %s and says why", (url) => {
 		const r = parseReadUrlArgs({ url });
 		expect(r.ok).toBe(false);
@@ -107,6 +119,7 @@ describe("isPrivateHost", () => {
 		expect(isPrivateHost("11.0.0.1")).toBe(false);
 		expect(isPrivateHost("example.com")).toBe(false);
 		expect(isPrivateHost("2001:db8::1")).toBe(false);
+		expect(isPrivateHost("[::ffff:808:808]")).toBe(false); // 8.8.8.8, mapped
 	});
 	it("flags IPv6 unique-local and link-local", () => {
 		expect(isPrivateHost("[fd00::1]")).toBe(true);

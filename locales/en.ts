@@ -181,7 +181,7 @@ const en = {
 	searchFilterMonth:   "past month",
 	searchFilterYear:    "past year",
 	searchFilterSites:   "{{n}} sites",
-	searchFilterExcluding: "excluding {{n}}",
+	searchFilterExcluding: "excluding {{what}}",
 	readingUrlLabel:   "Reading {{site}}",
 	readUrlLabel:      "✓ Read {{site}}",
 	readUrlFailedLabel: "Could not read {{site}}",

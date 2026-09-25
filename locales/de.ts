@@ -184,7 +184,7 @@ const de: Strings = {
 	searchFilterMonth:   "letzter Monat",
 	searchFilterYear:    "letztes Jahr",
 	searchFilterSites:   "{{n}} Websites",
-	searchFilterExcluding: "ohne {{n}}",
+	searchFilterExcluding: "ohne {{what}}",
 	readingUrlLabel:   "Lese {{site}}",
 	readUrlLabel:      "✓ Gelesen: {{site}}",
 	readUrlFailedLabel: "{{site}} nicht lesbar",

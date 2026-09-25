@@ -2,6 +2,7 @@ import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import type { WebSearchService } from "./WebSearchService";
+import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
 import type { ToolCall, ToolDefinition } from "../models/types";
 import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR } from "./promptConstants";
@@ -209,8 +210,11 @@ export class ToolHandler {
 	 *   authoritative allow-list check, mirrored in the sidebar for UX. Without it a
 	 *   prompt-injected model could rewrite any note it names; with it, writes are
 	 *   confined to notes the user chose to share as context.
+	 * @param readScope  Which pages read_url may read in this send, and how many
+	 *   (ADR-217 addendum). Without one, read_url refuses — the guard fails
+	 *   closed, so a new caller cannot forget it into an open door.
 	 */
-	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[]): Promise<string> {
+	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[], readScope?: WebReadScope): Promise<string> {
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		if (allowedTools && !allowedTools.has(call.name)) {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
@@ -239,7 +243,9 @@ export class ToolHandler {
 		if (call.name === "read_url") {
 			if (!this.webSearch) return "Error: web search is not available.";
 			const url = parseReadUrlArgs(call.input);
-			return url.ok ? this.webSearch.extract(url.value) : `Error: ${url.error}`;
+			if (!url.ok) return `Error: ${url.error}`;
+			const refused = readScope ? readScope.admit(url.value) : "read_url is not available here.";
+			return refused ? `Error: ${refused}` : this.webSearch.extract(url.value);
 		}
 
 		const path = call.input["path"];
