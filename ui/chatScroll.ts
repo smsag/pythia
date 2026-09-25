@@ -81,3 +81,30 @@ export class ChatScroll {
 		requestAnimationFrame(() => { this.programmatic = false; });
 	}
 }
+
+/** The gap kept above a jump target — the 8px every jump used before (ADR-216). */
+export const JUMP_GAP = 8;
+/** What floats over the top of the chat. Only the pinned strip does (ADR-216). */
+const COVER_SELECTOR = ".p-pins";
+
+/** How much of the scroller's top edge an overlay covers right now — measured,
+ *  so an expanded pin counts for its full height and a hidden one for nothing. */
+export function coveredTop(scroller: HTMLElement): number {
+	const cover = scroller.parentElement?.querySelector<HTMLElement>(COVER_SELECTOR);
+	if (!cover || cover.hidden) return 0;
+	return Math.max(0, cover.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top);
+}
+
+/**
+ * The ONE "jump to" scroll: put `target` (an element in the chat, or a content
+ * offset) at the top of what is visible — `JUMP_GAP` below whatever floats over
+ * the chat's top edge (ADR-216). Five surfaces hand-rolled `offsetTop - 8`, and
+ * each would have landed its target under the pinned strip.
+ *
+ * Rects and offsets against the scroller, never `scrollIntoView`, which on iOS
+ * scrolls the wrong ancestor and centres a long message's start out of view.
+ */
+export function scrollChatTo(scroller: HTMLElement, target: HTMLElement | number, smooth = true): void {
+	const top = typeof target === "number" ? target : target.offsetTop - scroller.offsetTop;
+	scroller.scrollTo({ top: Math.max(0, top - JUMP_GAP - coveredTop(scroller)), behavior: smooth ? "smooth" : "instant" });
+}

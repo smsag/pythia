@@ -1,4 +1,4 @@
-import type { Conversation, Favorite, MergeLink, Message, Provider } from "../models/types";
+import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Message, type Pin, type Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
 import { SELECTABLE_EMBEDDING_MODEL_IDS, SIMILARITY_PRESETS } from "../models/embeddingModels";
@@ -158,6 +158,34 @@ export function normalizeFavorites(
  * fields the mark needs (`conversationId`, `messageId`, `text`) can never paint
  * or resolve a target, so they are dropped rather than repaired. Mutates in place.
  */
+/**
+ * Validate `conv.pins` at load (ADR-216, principle 1). A malformed entry is
+ * dropped — unknown kind, empty source, no message to jump back to. The pin
+ * LIMITS are deliberately not enforced here: another device or a newer version
+ * may have written more, and a load must never delete what the user pinned.
+ */
+export function normalizePins(conv: Conversation, makeId: () => string = () => crypto.randomUUID()): void {
+	if (!Array.isArray(conv.pins)) {
+		if (conv.pins !== undefined) delete conv.pins;
+		return;
+	}
+	conv.pins = conv.pins.filter(
+		(p): p is Pin =>
+			p !== null &&
+			typeof p === "object" &&
+			typeof (p as Pin).messageId === "string" &&
+			(PIN_KINDS as readonly string[]).includes((p as Pin).kind) &&
+			typeof (p as Pin).source === "string" &&
+			(p as Pin).source.trim().length > 0
+	);
+	for (const pin of conv.pins) {
+		if (typeof pin.id !== "string" || pin.id.length === 0) pin.id = makeId();
+		if (typeof pin.createdAt !== "string") pin.createdAt = "";
+		if (pin.occurrenceIndex !== undefined && (typeof pin.occurrenceIndex !== "number" || pin.occurrenceIndex < 0)) delete pin.occurrenceIndex;
+	}
+	if (conv.pins.length === 0) delete conv.pins;
+}
+
 export function normalizeMerges(
 	conv: Conversation,
 	makeId: () => string = () => crypto.randomUUID(),
@@ -304,6 +332,7 @@ export function parseConversations(raw: unknown[]): {
 		sanitizeMessages(conv);
 		normalizeFavorites(conv);
 		normalizeMerges(conv);
+		normalizePins(conv);
 		normalizeComparison(conv);
 	}
 	return { conversations, dropped: raw.length - conversations.length };
@@ -444,7 +473,7 @@ export function partitionEvictions(
 		conversations.flatMap((c) => (c.merges ?? []).map((m) => m.conversationId))
 	);
 	const isProtected = (c: Conversation) =>
-		(c.favorites?.length ?? 0) > 0 || activeIdSet.has(c.id) || mergeTargetIds.has(c.id);
+		(c.favorites?.length ?? 0) > 0 || (c.pins?.length ?? 0) > 0 || activeIdSet.has(c.id) || mergeTargetIds.has(c.id);
 
 	// Choose which plain (unprotected) conversations survive: the newest `slots`
 	// by updatedAt. Selection is by date; the result order is not.

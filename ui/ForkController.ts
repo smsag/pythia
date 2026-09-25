@@ -8,6 +8,7 @@ import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { REGENERATE_ICON } from "./icons";
+import { scrollChatTo } from "./chatScroll";
 
 export interface ForkDeps {
 	plugin: PythiaPlugin;
@@ -337,7 +338,6 @@ export class ForkController {
 		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
 		if (row) this.d.expandBubbleIfCollapsed(row);
 		this.toggleForkAnchor(forkId, mark);
-		const top = mark.offsetTop - messagesEl.offsetTop;
-		messagesEl.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
+		scrollChatTo(messagesEl, mark);
 	}
 }

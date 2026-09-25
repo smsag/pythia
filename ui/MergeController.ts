@@ -6,6 +6,7 @@ import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintMergeLinks as paintMergeLinks } from "./HighlightPainter";
 import { REGENERATE_ICON } from "./icons";
+import { scrollChatTo } from "./chatScroll";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -205,8 +206,7 @@ export class MergeController {
 		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
 		if (row) this.d.expandBubbleIfCollapsed(row);
 		this.toggleMergeAnchor(mergeId, mark);
-		const top = mark.offsetTop - messagesEl.offsetTop;
-		messagesEl.scrollTo({ top: Math.max(0, top - 8), behavior: "smooth" });
+		scrollChatTo(messagesEl, mark);
 	}
 
 	/** Remove a merge link, unpaint its marks, and close its anchor. */

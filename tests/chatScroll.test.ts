@@ -5,7 +5,7 @@
 // scrolled to while still empty, so at rest its buttons sat below the fold.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./helpers/viewHarness"; // Obsidian's DOM helpers (createDiv, empty, …)
-import { ChatScroll, REVEAL_MARGIN, revealDelta } from "../ui/chatScroll";
+import { ChatScroll, JUMP_GAP, REVEAL_MARGIN, coveredTop, revealDelta, scrollChatTo } from "../ui/chatScroll";
 import { ToolCallController, type ToolCallDeps } from "../ui/ToolCallController";
 import type { Conversation, ToolCall } from "../models/types";
 
@@ -136,5 +136,48 @@ describe("the write confirmation is revealed once it has its buttons (the regres
 		});
 		await calls.handler({ contextNotes: [] } as unknown as Conversation, true)({ id: "s", name: "web_search", input: { query: "q" } } as ToolCall);
 		expect(forces).toEqual([false]);
+	});
+});
+
+describe("scrollChatTo — the one jump, clear of what floats over the chat (ADR-216)", () => {
+	function chat(coverBottom: number | null): { scroller: HTMLElement; calls: ScrollToOptions[] } {
+		const wrap = document.createElement("div");
+		const scroller = wrap.appendChild(document.createElement("div"));
+		scroller.getBoundingClientRect = () => ({ top: 100, bottom: 500 } as DOMRect);
+		const calls: ScrollToOptions[] = [];
+		scroller.scrollTo = ((o: ScrollToOptions) => { calls.push(o); }) as HTMLElement["scrollTo"];
+		if (coverBottom !== null) {
+			const pins = wrap.appendChild(document.createElement("div"));
+			pins.className = "p-pins";
+			pins.getBoundingClientRect = () => ({ top: 108, bottom: coverBottom } as DOMRect);
+		}
+		return { scroller, calls };
+	}
+
+	it("with nothing pinned, it is the jump every surface used: 8px above the target", () => {
+		const { scroller, calls } = chat(null);
+		scrollChatTo(scroller, 400);
+		expect(calls).toEqual([{ top: 400 - JUMP_GAP, behavior: "smooth" }]);
+	});
+
+	it("with a pin, the target lands below it — its measured height, collapsed or expanded", () => {
+		const collapsed = chat(140);
+		scrollChatTo(collapsed.scroller, 400);
+		expect(collapsed.calls[0].top).toBe(400 - JUMP_GAP - 40);
+		const expanded = chat(300);
+		scrollChatTo(expanded.scroller, 400);
+		expect(expanded.calls[0].top).toBe(400 - JUMP_GAP - 200);
+	});
+
+	it("a hidden pin covers nothing", () => {
+		const { scroller } = chat(140);
+		(scroller.parentElement!.querySelector(".p-pins") as HTMLElement).hidden = true;
+		expect(coveredTop(scroller)).toBe(0);
+	});
+
+	it("never scrolls above the top, and can jump instantly", () => {
+		const { scroller, calls } = chat(300);
+		scrollChatTo(scroller, 10, false);
+		expect(calls[0]).toEqual({ top: 0, behavior: "instant" });
 	});
 });

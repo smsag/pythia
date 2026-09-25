@@ -14,6 +14,7 @@ import {
 	removeHighlightById,
 	rangeForHighlight,
 } from "./HighlightPainter";
+import { scrollChatTo } from "./chatScroll";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -39,6 +40,8 @@ export interface SelectionDeps {
 	/** Define the selected term and mark it everywhere (ADR-136). */
 	defineTerm(term: string, passage: string): void;
 	describePerson(name: string, passage: string): void;
+	/** Pin the selected passage to the top of the conversation (ADR-216). */
+	pinText(text: string, messageId: string, occurrenceIndex: number | undefined): void;
 	/** The view's `registerDomEvent`, so toolbar/selection listeners auto-clean on unload. */
 	registerDomEvent: DomEventRegistrar;
 }
@@ -57,6 +60,7 @@ export class SelectionController {
 	private favBtn!: HTMLButtonElement;
 	private forkBtn!: HTMLButtonElement;
 	private mergeBtn!: HTMLButtonElement;
+	private pinBtn!: HTMLButtonElement;
 	private defineBtn!: HTMLButtonElement;
 	private personBtn!: HTMLButtonElement;
 	private tappedFavId: string | null = null;
@@ -92,72 +96,27 @@ export class SelectionController {
 			action();
 		};
 
+		// One button, one action — mousedown keeps the selection alive on desktop,
+		// touchend restores the range saved on touchstart on a phone.
+		const addBtn = (label: string, action: () => void): HTMLButtonElement => {
+			const btn = this.selectionToolbar.createEl("button", { cls: "pb pb-quiet pythia-sel-btn", text: label, attr: { title: label } });
+			this.d.registerDomEvent(btn, "mousedown", (e) => { e.preventDefault(); action(); });
+			this.d.registerDomEvent(btn, "touchend", makeSelTouch(action));
+			return btn;
+		};
+
 		// Toolbar order (left → right): Copy, Favorite/Unfavorite, Branch (Fork),
-		// Merge, Insert into note, Save to inbox. Merge sits next to Branch because
-		// the two are inverses of each other (ADR-130).
-		const copyBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("copyBtn"),
-			attr: { title: t("copyBtn") },
-		});
-		this.d.registerDomEvent(copyBtn, "mousedown", (e) => { e.preventDefault(); this.onCopySelection(); });
-		this.d.registerDomEvent(copyBtn, "touchend", makeSelTouch(() => this.onCopySelection()));
-
-		this.favBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("favoriteBtn"),
-			attr: { title: t("favoriteBtn") },
-		});
-		this.d.registerDomEvent(this.favBtn, "mousedown", (e) => { e.preventDefault(); void this.onFavoriteSelection(); });
-		this.d.registerDomEvent(this.favBtn, "touchend", makeSelTouch(() => void this.onFavoriteSelection()));
-
-		this.forkBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("forkBtn"),
-			attr: { title: t("forkBtn") },
-		});
-		this.d.registerDomEvent(this.forkBtn, "mousedown", (e) => { e.preventDefault(); this.onForkConversation(); });
-		this.d.registerDomEvent(this.forkBtn, "touchend", makeSelTouch(() => this.onForkConversation()));
-
-		this.mergeBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("mergeBtn"),
-			attr: { title: t("mergeBtn") },
-		});
-		this.d.registerDomEvent(this.mergeBtn, "mousedown", (e) => { e.preventDefault(); this.onMergeConversation(); });
-		this.d.registerDomEvent(this.mergeBtn, "touchend", makeSelTouch(() => this.onMergeConversation()));
-
-		this.defineBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("defineBtn"),
-			attr: { title: t("defineBtn") },
-		});
-		this.d.registerDomEvent(this.defineBtn, "mousedown", (e) => { e.preventDefault(); this.onEntityAction("term"); });
-		this.d.registerDomEvent(this.defineBtn, "touchend", makeSelTouch(() => this.onEntityAction("term")));
-
-		this.personBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("personBtn"),
-			attr: { title: t("personBtn") },
-		});
-		this.d.registerDomEvent(this.personBtn, "mousedown", (e) => { e.preventDefault(); this.onEntityAction("person"); });
-		this.d.registerDomEvent(this.personBtn, "touchend", makeSelTouch(() => this.onEntityAction("person")));
-
-		const insertBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("insertBtn"),
-			attr: { title: t("insertBtn") },
-		});
-		this.d.registerDomEvent(insertBtn, "mousedown", (e) => { e.preventDefault(); this.onInsertIntoNote(); });
-		this.d.registerDomEvent(insertBtn, "touchend", makeSelTouch(() => this.onInsertIntoNote()));
-
-		const inboxBtn = this.selectionToolbar.createEl("button", {
-			cls: "pb pb-quiet pythia-sel-btn",
-			text: t("inboxBtn"),
-			attr: { title: t("inboxBtn") },
-		});
-		this.d.registerDomEvent(inboxBtn, "mousedown", (e) => { e.preventDefault(); void this.onSaveToInbox(); });
-		this.d.registerDomEvent(inboxBtn, "touchend", makeSelTouch(() => this.onSaveToInbox()));
+		// Merge, Pin, Define, Person, Insert into note, Save to inbox. Merge sits next
+		// to Branch because the two are inverses of each other (ADR-130).
+		addBtn(t("copyBtn"), () => this.onCopySelection());
+		this.favBtn = addBtn(t("favoriteBtn"), () => void this.onFavoriteSelection());
+		this.forkBtn = addBtn(t("forkBtn"), () => this.onForkConversation());
+		this.mergeBtn = addBtn(t("mergeBtn"), () => this.onMergeConversation());
+		this.pinBtn = addBtn(t("pinBtn"), () => this.onPinSelection());
+		this.defineBtn = addBtn(t("defineBtn"), () => this.onEntityAction("term"));
+		this.personBtn = addBtn(t("personBtn"), () => this.onEntityAction("person"));
+		addBtn(t("insertBtn"), () => this.onInsertIntoNote());
+		addBtn(t("inboxBtn"), () => void this.onSaveToInbox());
 
 		let selDebounce: ReturnType<typeof setTimeout> | null = null;
 		const onSelectionChange = () => {
@@ -353,9 +312,7 @@ export class SelectionController {
 		// which navigates correctly on the first tap.
 		this.d.expandBubbleIfCollapsed(row);
 
-		const TOP_MARGIN = 8;
-		const scrollToOffsetTop = (top: number) =>
-			messagesEl.scrollTo({ top: top - TOP_MARGIN, behavior: "smooth" });
+		const scrollToOffsetTop = (top: number) => scrollChatTo(messagesEl, top);
 
 		// 1) Painted mark — the common case.
 		const mark = row.querySelector<HTMLElement>(
@@ -422,6 +379,7 @@ export class SelectionController {
 		this.favBtn.style.display = inSingleAssistant ? "" : "none";
 		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
 		this.mergeBtn.style.display = inSingleAssistant ? "" : "none";
+		this.pinBtn.style.display = inSingleAssistant ? "" : "none";
 		this.defineBtn.style.display = inSingleAssistant ? "" : "none";
 		// Person follows the same rule as Define; it was the one button that stayed
 		// visible over a user bubble, where its handler then silently declined.
@@ -472,42 +430,48 @@ export class SelectionController {
 	}
 
 	private onForkConversation(): void {
-		const sel  = window.getSelection();
-		// Trim like onFavoriteSelection: `sel.toString()` can carry leading/trailing
-		// whitespace or a block-boundary newline that the concatenated text-node data
-		// (what findRange searches) never contains, so an untrimmed selection makes the
-		// source-side fork-origin mark impossible to re-find and paint (ADR-096).
-		const text = (sel?.toString() ?? "").trim();
 		const conv = this.d.getConversation();
 		if (!conv) return;
+		const picked = this.readAssistantSelection();
+		if (!picked) return;
+		this.dismiss();
+		void this.d.plugin.cmdForkConversation(conv.id, picked.text, picked.messageId, picked.occurrenceIndex);
+	}
 
-		// Walk from the selection anchor up to the nearest message row so we
-		// can record which message was forked from.
+	/**
+	 * The selection as Fork, Merge and Pin need it: the text TRIMMED — `toString()`
+	 * can carry whitespace or a block-boundary newline the body's text nodes never
+	 * contain, and an untrimmed span can never be re-found (ADR-096) — the message
+	 * it sits in, and which occurrence of the text it is there. Null, with the
+	 * toolbar dismissed, for a selection in a user bubble: these act on answers.
+	 */
+	private readAssistantSelection(): { text: string; messageId?: string; occurrenceIndex?: number } | null {
+		const sel = window.getSelection();
+		const text = (sel?.toString() ?? "").trim();
 		const anchor = sel?.anchorNode;
-		const msgEl  = (anchor instanceof Element ? anchor : anchor?.parentElement)
-			?.closest("[data-msg-id]");
-
-		// Forking branches from assistant content only. The toolbar hides the fork
-		// button over a user bubble; guard here too so it's never possible.
-		if (msgEl?.classList.contains("p-msg-user")) {
-			this.selectionToolbar.style.display = "none";
-			window.getSelection()?.removeAllRanges();
-			return;
-		}
-
-		const sourceMessageId = msgEl?.getAttribute("data-msg-id") ?? undefined;
-
-		// Record which occurrence of the snippet this is, so the source can re-find
-		// and highlight the exact span later (mirrors favorite creation).
+		const msgEl = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest("[data-msg-id]");
+		if (msgEl?.classList.contains("p-msg-user")) { this.dismiss(); return null; }
 		let occurrenceIndex: number | undefined;
 		if (msgEl && sel && sel.rangeCount > 0) {
 			const body = msgEl.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? (msgEl as HTMLElement);
 			occurrenceIndex = computeOccurrenceIndex(body, sel.getRangeAt(0));
 		}
+		return { text, messageId: msgEl?.getAttribute("data-msg-id") ?? undefined, occurrenceIndex };
+	}
 
+	private dismiss(): void {
 		this.selectionToolbar.style.display = "none";
 		window.getSelection()?.removeAllRanges();
-		void this.d.plugin.cmdForkConversation(conv.id, text, sourceMessageId, occurrenceIndex);
+	}
+
+	/** Pin the passage (ADR-216). A streaming answer has no message id until it
+	 *  commits — say so rather than pin something that cannot be jumped back to. */
+	private onPinSelection(): void {
+		const picked = this.readAssistantSelection();
+		if (!picked?.text) return;
+		if (!picked.messageId) { new Notice(t("pinNotYet")); return; }
+		this.dismiss();
+		this.d.pinText(picked.text, picked.messageId, picked.occurrenceIndex);
 	}
 
 	/**
@@ -517,37 +481,12 @@ export class SelectionController {
 	 * itself are handled by `cmdMergeConversation`.
 	 */
 	private onMergeConversation(): void {
-		const sel = window.getSelection();
-		// Trim for the same reason forks do (ADR-096): an untrimmed selection can
-		// never be re-found among the body's text nodes, so the mark would not paint.
-		const text = (sel?.toString() ?? "").trim();
 		const conv = this.d.getConversation();
-		if (!conv || !text) return;
-
-		const anchor = sel?.anchorNode;
-		const msgEl = (anchor instanceof Element ? anchor : anchor?.parentElement)
-			?.closest("[data-msg-id]");
-
-		// Assistant content only — the toolbar hides the button over a user bubble;
-		// guard here too so it is never possible.
-		if (!msgEl || msgEl.classList.contains("p-msg-user")) {
-			this.selectionToolbar.style.display = "none";
-			window.getSelection()?.removeAllRanges();
-			return;
-		}
-
-		const messageId = msgEl.getAttribute("data-msg-id");
-		if (!messageId) return;
-
-		let occurrenceIndex: number | undefined;
-		if (sel && sel.rangeCount > 0) {
-			const body = msgEl.querySelector<HTMLElement>(".p-ai-body, .p-bubble") ?? (msgEl as HTMLElement);
-			occurrenceIndex = computeOccurrenceIndex(body, sel.getRangeAt(0));
-		}
-
-		this.selectionToolbar.style.display = "none";
-		window.getSelection()?.removeAllRanges();
-		void this.d.plugin.cmdMergeConversation(conv.id, text, messageId, occurrenceIndex);
+		const picked = conv ? this.readAssistantSelection() : null;
+		if (!conv || !picked?.text) return;
+		if (!picked.messageId) { this.dismiss(); return; }
+		this.dismiss();
+		void this.d.plugin.cmdMergeConversation(conv.id, picked.text, picked.messageId, picked.occurrenceIndex);
 	}
 
 	/**

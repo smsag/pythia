@@ -178,6 +178,14 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Chart card | `.p-chart-card` → `-head`/`-actions`/`-body`/`-svg`/`-foot`, and `--error` for a spec it cannot draw | `ui/chart/card.ts` | a ```pythia-chart block, in an answer **or in any vault note** — the plugin's only markdown code-block processor (ADR-210) |
 | Settings: index status | a `Setting` row whose description is `.p-index-status-headline` + `.p-index-status-detail`; buttons *Build now* · *Rebuild index* | `ui/vaultIndexStatusSetting.ts` | the plugin settings tab, Vault context section (ADR-199) |
 
+### Pinned content (ADR-216)
+
+| Surface | Class | Owner | Opened by |
+|---|---|---|---|
+| Pin strip | `.p-pins` > `.p-pin` (a `.p-acc`) → `.p-pin-count`, `.p-pin-action` (`--open`: only while open), `.p-pin-text` / `.p-pin-rendered` | `ui/PinController.ts` | any pin; absolute at the top of `.pythia-messages-wrapper`, which carries `.has-pins` and `--p-pin-strip-h` |
+| Pin button | `.p-pin-btn` beside Copy on `.p-code-actions`, `.p-diag-copy`, `.p-chart-actions`, `.p-table-actions` | `ui/pinSources.ts` (`appendPinButton`) | `decorateCodeBlocks(…, onPin)` — answers only |
+| Table actions | `.p-table-block` > `.p-table-actions` (Copy · Pin) | `ui/tableDecorator.ts` | a table in an answer |
+
 ### Inline anchors (the three cards that open at a mark)
 
 One component, three strokes on the left rule — solid fork, dashed merge, dotted term (ADR-138/142). Never restate a rule for one of them alone.
@@ -254,6 +262,10 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-50 | **No scatter or stacked-area charts.** v1 draws bar, line and pie. | ADR-210 | Those three cover category comparison, change over time and share of a whole, which is what a research answer wants. Scatter needs two value axes and is rare in this material. | Asked for, with a real example the three cannot show. |
 | D-12 | **No flashcard reviewer, scheduler or export for the glossary.** | ADR-149/150 | Deliberate and load-bearing: Pythia captures terms, Bases browses them. The note format is the integration surface. | Not planned. Re-opening this means re-reading ADR-150 first. |
 
+| D-53 | **Pins are not in an archived conversation's note.** The archive writes the transcript; the pins, which are snapshots of parts of it, are left out. | ADR-216 | A pin is a reading aid for the live conversation; in a note, the passage is already there in the transcript. | An archived note is reopened as a conversation, or users ask for "what I pinned" in the archive. |
+| D-54 | **A fork does not inherit pins.** Forks are built field by field; `pins` is not one of them. | ADR-216 | A fork starts a new line of thought from a passage; the source's pins belong to the source's line. | Users pin, fork, and expect the pin to follow — then copy them, never share them. |
+| D-55 | **A pin never reaches the model.** Pinning is a reading aid, like a merge link or a glossary definition. | ADR-216 | Making a pin context would silently change every later answer, and cost tokens per turn for something the user pinned to LOOK at. | Users pin a spec to keep the model to it — then an explicit "use as context" toggle on the pin, never the default. |
+
 ### Measurements not yet made
 
 | # | Decision | Review | Position today | Revisit when |
@@ -317,6 +329,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
+| 2026-09-25 | ADR-216: the pin strip, pin buttons and table actions added to the UI map; D-53…D-55 (archive, fork inheritance, pins as context). |
 | 2026-09-25 | ADR-214: dropping vault notes on the composer added to the map (`.is-drop-target`, `ui/noteDrop.ts`). |
 | 2026-09-25 | ADR-213: `.p-composer` and `.p-composer-chip` replace `.p-textarea` in the UI map; D-52 closed. |
 | 2026-09-23 | ADR-211: the composer keeps the link for a note attached with `#`; D-52 records why it is text rather than a pill. |

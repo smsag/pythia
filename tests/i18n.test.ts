@@ -75,3 +75,14 @@ describe("missing i18n keys", () => {
 		).toHaveLength(0);
 	});
 });
+
+// ADR-216's review found three strings written with "{n}": t() replaces only
+// "{{n}}", so a single-brace placeholder reaches the user verbatim. Silent — no
+// test of the string's own caller notices unless it checks the number.
+describe("placeholders", () => {
+	it("every placeholder is {{name}} — a single-brace {name} is never replaced", () => {
+		const bad = [en, de].flatMap((table) =>
+			Object.entries(table).filter(([, v]) => typeof v === "string" && /(^|[^{])\{\w+\}(?!\})/.test(v)).map(([k]) => k));
+		expect(bad).toEqual([]);
+	});
+});

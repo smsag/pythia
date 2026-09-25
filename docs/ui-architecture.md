@@ -1,6 +1,6 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-25 (ADR-213/214: the composer field, its chips, and dropping notes on it)*
+*Last updated: 2026-09-25 (ADR-216: the pin strip)*
 
 How the UI is put together and what its parts are called, so changes can be asked for (and found) by name. The words match `README.md` where the user sees them. The full class-by-class map lives in `docs/pythia-spec.md` → *UI architecture*; this file is the orientation that makes that map readable.
 
@@ -37,6 +37,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │  ├─ trash                              → DeleteConversationModal
 │  └─ plus                               new conversation — always the last child
 ├─ .p-ref-row > .p-pills > .p-wikilink   ReferenceRowController — hidden when empty
+├─ .p-pins                              PinController — pinned answer content, floating over the chat's top
 ├─ .p-chat                               the scroll area
 │  ├─ context inspector                  ContextInspectorController (an accordion)
 │  ├─ fork / merge banners               ForkController / MergeController
@@ -50,7 +51,8 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │     │  │                               fork (ForkController) · merge (MergeController) · term/person (GlossaryController)
 │     │  ├─ .p-cite                      citation chips (citationPainter)
 │     │  ├─ .p-scroll-frame              wide tables and code, panned sideways
-│     │  └─ .p-chart-card                ui/chart/card.ts
+│     │  ├─ .p-chart-card                ui/chart/card.ts
+│     │  └─ pin icon                     beside Copy on code · diagram · chart · table (pinSources)
 │     ├─ .p-sources                      Template: · Vault: · Web: (sourcesRow)
 │     ├─ .pythia-tool-call               write-confirmation chip (ToolCallController)
 │     ├─ .p-trunc                        cut-off card (TruncationController)
@@ -74,6 +76,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 ## 3. The other surfaces
 
 - **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (`services/conversationSearch.ts`), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
+- **Pin strip:** `.p-pins`, `PinController`. One pin shown at a time — collapsed to one line (‹ n/m › · ↗), open for the content, copy and ✕. Pinned from the selection strip's *Pin* or a block's pin icon. Every jump in the chat lands below it (`scrollChatTo`).
 - **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts.
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Star · Fork · Merge · Define · Person.
 - **Send menu:** `.p-send-menu`, built in `sidebar.ts` (an `ActionSheet` on mobile). Summarize conversation · Summarize favorites · Optimize prompt (`OptimizationController`).
@@ -90,6 +93,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 |---|---|
 | **panel** / **view** | The whole Pythia leaf (`.pythia-view`) |
 | **conversation panel** | The list-and-search overlay (`.p-history`); not the view |
+| **pin** / **pin strip** | A snapshot of part of an answer, shown at the top of the chat (`.p-pins`); never sent to the model |
 | **header** | The top row (`.p-header`) |
 | **instructions** / **segments** | The model · effort · language group in the header (`.p-inst`) |
 | **pinned** vs **inherited** | A segment set for this conversation (accent tint) vs following the settings (plain). *Standard* stores `undefined` |

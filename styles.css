@@ -1727,8 +1727,81 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 @media (hover: none) {
   .p-code-frame .p-code-actions,
   .p-chart-card .p-chart-actions,
+  .p-table-block .p-table-actions,
   .p-ai-body .block-language-mermaid .p-diag-copy,
   .p-ai-body .block-language-plantuml .p-diag-copy { opacity: 1; }
+}
+
+/* A diagram's pin sits one button left of its copy (ADR-216): 24px button + --s1. */
+.p-diag-copy.p-diag-pin { right: calc(6px + 24px + var(--s1)); }
+
+/* A table in an answer: Copy and Pin, hover-revealed like a code block's, OUTSIDE
+   the scroll frame so they do not scroll away with a wide table (ADR-216). Over
+   the header row's right end, on the panel's own ground so they read over cells. */
+.p-table-block { position: relative; }
+.p-table-actions {
+  position: absolute;
+  top: var(--s1);
+  right: var(--s1);
+  z-index: 2;
+  display: flex;
+  background: var(--background-primary);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.p-table-block:hover .p-table-actions,
+.p-table-block:focus-within .p-table-actions { opacity: 1; }
+
+/* ── Pinned answer content (ADR-216) ─────────────────────────────────────────
+   A floating accordion at the top of the chat, inside the messages wrapper
+   (position: relative). Flat: the accordion's own opaque --background-secondary
+   and hairline — no shadow (hard rule 4). z 15: above the # trigger (10), below
+   the navigator (20) and the conversation panel (30). At most 45% of the chat's
+   height; the body scrolls inside. */
+.pythia-messages-wrapper > .p-pins {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s3);
+  right: var(--s3);
+  z-index: 15;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+}
+.p-pins > .p-pin {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+}
+.p-pin > .p-acc-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+/* The collapsed line never hides the top of the conversation: the chat is padded
+   by exactly its measured height. An expanded pin floats over the chat. */
+.pythia-messages-wrapper.has-pins > .p-chat {
+  padding-top: calc(var(--p-pin-strip-h, 0px) + var(--s2) + var(--s3));
+}
+/* Copy and ✕ come with the open pin; collapsed, the strip keeps ‹ n/m › and ↗
+   so the title is readable in a narrow sidebar. */
+.p-pin:not(.open) .p-pin-action--open { display: none; }
+.p-pin-count {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  padding: 0 var(--s1);
+}
+.p-pin-text {
+  font-size: var(--font-small);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* ↗ back to a pinned block: the block itself flashes, as a jumped-to mark does. */
+.p-pin-flash-block {
+  animation: pythia-hl-flash 1.2s ease-out;
 }
 
 .p-ai-body code,
@@ -1843,7 +1916,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    the ink itself: a custom property does not interpolate without @property, so
    animating --hl-ink would step rather than fade. */
 .pythia-view pythia-favorite.p-highlight-flash,
-.pythia-view pythia-fork.p-highlight-flash {
+.pythia-view pythia-fork.p-highlight-flash,
+.pythia-view pythia-pin-flash.p-pin-flash {
   animation: pythia-hl-flash 1.2s ease-out;
 }
 @keyframes pythia-hl-flash {

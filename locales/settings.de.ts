@@ -105,7 +105,7 @@ const settingsDe = {
 	messageCapName:          "Nachrichtenlimit pro Sitzung",
 	messageCapDesc:          "Maximale Nachrichtenanzahl pro Gespräch. Leer lassen für unbegrenzt.",
 	maxConversationsName:    "Gesprächsverlauf-Limit",
-	maxConversationsDesc:    "Maximale Anzahl gespeicherter Gespräche. Leer lassen für unbegrenzt. Beim Erreichen des Limits werden die ältesten entfernt — erhalten bleiben Gespräche mit Favoriten, das in einem Pythia-Panel geöffnete und jedes, auf das eine Verknüpfung zeigt. Mit „Vor dem Löschen archivieren“ werden sie zuvor als Notiz gespeichert, ohne die Option endgültig gelöscht. Ein niedrigeres Limit fragt vorher nach.",
+	maxConversationsDesc:    "Maximale Anzahl gespeicherter Gespräche. Leer lassen für unbegrenzt. Beim Erreichen des Limits werden die ältesten entfernt — erhalten bleiben Gespräche mit Favoriten oder Angeheftetem, das in einem Pythia-Panel geöffnete und jedes, auf das eine Verknüpfung zeigt. Mit „Vor dem Löschen archivieren“ werden sie zuvor als Notiz gespeichert, ohne die Option endgültig gelöscht. Ein niedrigeres Limit fragt vorher nach.",
 	noLimitPlaceholder:      "unbegrenzt",
 	archiveBeforeEvictionName: "Vor dem Löschen archivieren",
 	archiveBeforeEvictionDesc: "Wenn das Limit ein Gespräch entfernt, wird es zuvor als Notiz im Vault gespeichert. Ein Gespräch, dessen Notiz nicht geschrieben werden kann, bleibt erhalten statt gelöscht zu werden.",
@@ -127,7 +127,7 @@ const settingsDe = {
 	capConfirmBody:          "Ein Limit von {{cap}} löscht {{count}} Gespräch(e) aus dem Speicher. Das lässt sich nicht rückgängig machen.",
 	capConfirmBodyArchive:   "Ein Limit von {{cap}} entfernt {{count}} Gespräch(e) aus dem Speicher. Jedes wird zuvor als Notiz in {{folder}} gespeichert.",
 	capConfirmArchiveBtn:    "{{count}} archivieren",
-	capConfirmKept:          "Erhalten bleiben: Gespräche mit Favoriten, das in einem Pythia-Panel geöffnete und jedes, auf das eine Verknüpfung zeigt.",
+	capConfirmKept:          "Erhalten bleiben: Gespräche mit Favoriten oder Angeheftetem, das in einem Pythia-Panel geöffnete und jedes, auf das eine Verknüpfung zeigt.",
 	capConfirmRemove:        "{{count}} löschen",
 
 	// ── Fehlersuche ───────────────────────────────────────────────────────────

@@ -3,6 +3,8 @@ import { t } from "../i18n";
 import { copyTextWithFeedback } from "./clipboard";
 import { attachDragToPan } from "./dragToPan";
 import { decorateTables } from "./tableDecorator";
+import { appendPinButton, codeBlockSource, diagramSource, type PinBlock } from "./pinSources";
+import { chartSourceOf } from "./chart/card";
 
 type DiagObserverEntry = { mo: MutationObserver; ro: ResizeObserver };
 
@@ -116,21 +118,22 @@ function fixDiagramSvgSize(
 }
 
 
+/**
+ * Decorate the code blocks, diagrams, charts and tables in rendered markdown.
+ * `onPin` adds a pin beside each one's Copy (ADR-216) — passed only for an
+ * ANSWER; a pin's own body, a summary card or a vault note gets none.
+ */
 export function decorateCodeBlocks(
 	container: HTMLElement,
 	diagObservers: WeakMap<HTMLElement, DiagObserverEntry>,
+	onPin?: PinBlock,
 ): void {
 	container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
 		if (pre.closest(".block-language-mermaid, .block-language-plantuml")) return;
 		pre.dataset.decorated = "1";
 		const frame = wrapInScrollFrame(pre);
 
-		const codeEl = pre.querySelector("code");
-		const lang = codeEl?.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
-		const makeFenced = (): string => {
-			const raw = (codeEl ?? pre).innerText.replace(/\n$/, "");
-			return `\`\`\`${lang}\n${raw}\n\`\`\``;
-		};
+		const lang = pre.querySelector("code")?.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
 
 		// Frameless header row: code-2 icon + language name (left), copy (right).
 		// The header sits above the <pre>, which carries only top/bottom hairlines.
@@ -144,8 +147,9 @@ export function decorateCodeBlocks(
 		setIcon(copyBtn, "copy");
 		copyBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			void copyTextWithFeedback(copyBtn, makeFenced());
+			void copyTextWithFeedback(copyBtn, codeBlockSource(pre));
 		});
+		if (onPin) appendPinButton(actions, "p-code-btn", "code", () => codeBlockSource(pre), onPin);
 
 		attachDragToPan(pre);
 	});
@@ -155,13 +159,9 @@ export function decorateCodeBlocks(
 		if (el.querySelector("pre") && !el.querySelector("svg")) return;
 		el.dataset.decorated = "1";
 
-		const codeEl = el.querySelector("code");
-		const lang = el.className.match(/\bblock-language-(\S+)\b/)?.[1] ?? "mermaid";
-		const source = codeEl?.innerText.replace(/\n$/, "") ?? "";
+		const source = diagramSource(el);
 
 		if (source) {
-			const makeFenced = (): string => `\`\`\`${lang}\n${source}\n\`\`\``;
-
 			const copyBtn = el.createEl("button", {
 				cls:  "pb pb-icon p-code-btn p-code-copy p-diag-copy",
 				attr: { title: t("copyDiagramTooltip") },
@@ -169,14 +169,26 @@ export function decorateCodeBlocks(
 			setIcon(copyBtn, "copy");
 			copyBtn.addEventListener("click", (e) => {
 				e.stopPropagation();
-				void copyTextWithFeedback(copyBtn, makeFenced());
+				void copyTextWithFeedback(copyBtn, source);
 			});
+			if (onPin) appendPinButton(el, "p-code-btn p-diag-copy p-diag-pin", "diagram", () => source, onPin);
 		}
 
 		fixDiagramSvgSize(el, diagObservers);
 		attachDragToPan(el);
 	});
 
+	// A chart card is drawn by the global code-block processor, which cannot be
+	// handed a pin; it records its source instead, and the pin goes on here.
+	if (onPin) {
+		container.querySelectorAll<HTMLElement>(".p-chart-card:not(.p-chart-card--error)").forEach((card) => {
+			const actions = card.querySelector<HTMLElement>(".p-chart-actions");
+			const source = chartSourceOf(card);
+			if (!actions || !source || actions.querySelector(".p-pin-btn")) return;
+			appendPinButton(actions, "p-chart-btn", "chart", () => source, onPin);
+		});
+	}
+
 	// Wide tables get the same scroll-frame treatment (ADR-131).
-	decorateTables(container);
+	decorateTables(container, onPin);
 }

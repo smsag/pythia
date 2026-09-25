@@ -1,3 +1,4 @@
+import pinsEn from "./pins.en";
 import chartEn from "./chart.en";
 import embeddingEn from "./embedding.en";
 import settingsEn from "./settings.en";
@@ -9,6 +10,8 @@ const en = {
 	...settingsEn,
 	// Charts in an answer live in their own module (ADR-210).
 	...chartEn,
+	// Pinned answer content in its own module (ADR-216).
+	...pinsEn,
 	// ── Sidebar header ────────────────────────────────────────────────────────
 	noConversation:         "No conversation",
 	changeModelTooltip:     "Change provider / model",

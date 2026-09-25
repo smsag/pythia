@@ -128,6 +128,16 @@ function renderError(el: HTMLElement, source: string, detail: string): void {
  * Draw the block at `el`. Idempotent: every call empties and rebuilds, which is
  * also what a width change does.
  */
+/** Each drawn card's canonical source, so a pin can take it (ADR-216). The card
+ *  is drawn by a processor that knows nothing of pins; this is how it answers. */
+const chartSources = new WeakMap<HTMLElement, string>();
+
+/** The canonical ```pythia-chart block a drawn card shows — what its Copy source
+ *  button copies. Undefined for anything that is not a drawn chart card. */
+export function chartSourceOf(card: HTMLElement): string | undefined {
+	return chartSources.get(card);
+}
+
 export function renderChartCard(source: string, el: HTMLElement): void {
 	el.dataset.decorated = "1";
 	el.empty();
@@ -137,6 +147,7 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 	const spec = parsed.spec;
 
 	const card = el.createDiv({ cls: "p-chart-card" });
+	chartSources.set(card, formatChartBlock(spec));
 	const head = card.createDiv({ cls: "p-chart-head" });
 	setIcon(head.createSpan({ cls: "p-chart-head-icon" }), "bar-chart-3");
 	head.createSpan({ cls: "p-chart-head-label", text: headLabel(spec) });

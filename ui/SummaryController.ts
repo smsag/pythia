@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
 import { REGENERATE_ICON } from "./icons";
 import { buildAccordion, setAccordionOpen } from "./accordion";
+import { scrollChatTo } from "./chatScroll";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -160,9 +161,7 @@ export class SummaryController {
 		this.setSummaryCardOpen(card, true);
 		// Instant scroll so the card is in view before the observer evaluates it
 		// (a smooth scroll would let the observer collapse it mid-flight).
-		const messagesEl = this.d.getMessagesEl();
-		const top = card.offsetTop - messagesEl.offsetTop;
-		messagesEl.scrollTo({ top: Math.max(0, top - 8) });
+		scrollChatTo(this.d.getMessagesEl(), card, false);
 	}
 
 	/** Nav: jump to and expand the favorites summary card. */

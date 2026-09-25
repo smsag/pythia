@@ -40,6 +40,7 @@ export interface Conversation {
 	savedNotePath?: string;           // vault path last saved to via save button
 	lastSavedMessageCount?: number;   // messages.length at the time of last save
 	merges?: MergeLink[];             // passages linked to another conversation (ADR-130)
+	pins?: Pin[];                     // answer content pinned to the top of the chat (ADR-216)
 	forkedFromId?: string;            // ID of the conversation this was forked from
 	forkedFromMessageId?: string;     // ID of the source message within that conversation
 	forkedFromSelection?: string;     // The text selected when the fork was created
@@ -228,6 +229,28 @@ export interface MergeLink {
 	messageId: string;        // refers to Message.id — the assistant message the passage lives in
 	text: string;             // exact selected text (trimmed); drives re-highlight and re-find
 	occurrenceIndex?: number; // which occurrence of `text` within the message
+	createdAt: string;        // ISO 8601
+}
+
+/** What was pinned — the kind decides how the pin draws its `source` (ADR-216). */
+export type PinKind = "text" | "code" | "diagram" | "chart" | "table";
+export const PIN_KINDS: readonly PinKind[] = ["text", "code", "diagram", "chart", "table"];
+
+/**
+ * A piece of an answer pinned to the top of the conversation (ADR-216).
+ *
+ * A SNAPSHOT, not a reference: `source` is what Copy would have copied at the
+ * moment of pinning — the selected text, a fenced code or diagram block, a
+ * ```pythia-chart block, a Markdown table. So a pin survives a re-render, a
+ * retry, the deletion of its exchange; `messageId` is only where ↗ jumps back
+ * to, and a pin whose message is gone says so. A pin never reaches the model.
+ */
+export interface Pin {
+	id: string;               // unique per pin (crypto.randomUUID)
+	messageId: string;        // the assistant message it came from — the jump target
+	kind: PinKind;
+	source: string;           // the snapshot
+	occurrenceIndex?: number; // text pins: which occurrence of `source` in the message
 	createdAt: string;        // ISO 8601
 }
 
