@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **#382 closed: the four low findings fixed too** (ADR-216 second addendum). Open/closed per conversation for the session (user's decision), and a new pin leaves the strip as it was (user's decision, now tested); `chartLabel` in `services/chartSpec.ts` is the one naming rule for the card and the strip; `BLOCK_FINDERS` is a Record the compiler checks; each pin body is one child component, released on re-render and hide.*
+*Updated: 2026-09-25 — **Tavily gaps closed (ADR-217).** The model can filter a search by topic, time range and site, and a new `read_url` tool reads one page through /extract. Private addresses are refused before any request, and the 8 000-char cut is named. Crawl, map, research and advanced depth are deferred (D-56, D-57). The Tavily contract is tested against a mocked `requestUrl` only.*
+
+*Previously updated: 2026-09-25 — **#382 closed: the four low findings fixed too** (ADR-216 second addendum). Open/closed per conversation for the session (user's decision), and a new pin leaves the strip as it was (user's decision, now tested); `chartLabel` in `services/chartSpec.ts` is the one naming rule for the card and the strip; `BLOCK_FINDERS` is a Record the compiler checks; each pin body is one child component, released on re-render and hide.*
 
 *Previously updated: 2026-09-25 — **#382: review of the pin feature (ADR-216), four fixed, four left low.** Fixed: a pinned code block whose code contains ``` had its fence closed early (`fenceFor`); a table cell showing markup-like text came back as markup (`cellText` escapes); a failed pin render was an unhandled rejection and an empty pin (now logged and shown as text); ↗ had no test for code, diagram, chart or table. Left, low: open/closed shared across conversations (should be per conversation, like the shown pin); `pinExcerpt` reads a chart title by regex instead of `parseChartBlock` (one builder per fact); `findSource` picks its selector from two parallel lists by `indexOf(kind)` — a new `PinKind` would crash at runtime instead of failing to compile (a `Record<Exclude<PinKind, "text">, …>` would make it a type error); each pin render leaves a `MarkdownRenderer` child on the view until it closes, like answers do. Six of the new tests fail on the merged code and pass with the fixes.*
 
@@ -1921,3 +1923,17 @@ file to 1611, so that commit did not pass `npm run check:filesize`. A ceiling lo
 halfway through a change and breached by the rest of it guards nothing. The number is now
 set once against the finished state (1603, down from 1716), and the reasoning sits in
 `scripts/check-file-size.mjs` beside it.
+
+## Tavily capability gaps (ADR-217), 2026-09-25
+
+A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia using one endpoint with fixed parameters. The model could pass nothing but a query.
+
+| Item | Severity | Status |
+|---|---|---|
+| **A search could not be narrowed.** No `topic`, `time_range` or domain filter reached Tavily, so "this week's news on ecb.europa.eu" depended on the query's wording. | Medium | Closed: optional filters on `web_search`, validated by `services/tavilyArgs.ts` |
+| **A pasted link could not be read.** The model searched for the page and answered from a 500-char snippet. | Medium | Closed: `read_url` on /extract, research-gated, auto-armed by a link |
+| **`webSearchMaxResults` had no upper bound**; Tavily's ceiling is 20. | Low | Closed: clamped in the service |
+| **Crawl, map, research, advanced depth, auto-parameters.** | — | Deferred: D-56, D-57 |
+
+**Not verified live.** docs.tavily.com was unreachable from the session. Parameter names come from Tavily's `langchain-tavily` wrapper. Make one real call per endpoint before release.
+

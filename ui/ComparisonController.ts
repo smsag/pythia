@@ -125,7 +125,7 @@ export class ComparisonController {
 		const onToolCall = (call: ToolCall): Promise<string> =>
 			call.name === "render_chart"
 				? Promise.resolve(acceptChartCall(call.input, textNode.data.length, charts))
-				: call.name === "web_search"
+				: call.name === "web_search" || call.name === "read_url"
 				? this.d.plugin.toolHandler.execute(call, allowed)
 				: Promise.resolve("Error: note-writing tools are not available during a model comparison. Answer in the conversation instead.");
 

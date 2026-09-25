@@ -93,7 +93,7 @@ describe("shouldGenerateChapterName", () => {
 });
 
 describe("shouldAutoArmSearch", () => {
-	const base = { researchMode: false, autoArmEnabled: true, hasApiKey: true, timeSensitive: true };
+	const base = { researchMode: false, autoArmEnabled: true, hasApiKey: true, wantsWeb: true };
 
 	it("arms only when all four conditions hold", () => {
 		expect(shouldAutoArmSearch(base)).toBe(true);
@@ -106,7 +106,7 @@ describe("shouldAutoArmSearch", () => {
 	it("respects the setting, the key and the heuristic independently", () => {
 		expect(shouldAutoArmSearch({ ...base, autoArmEnabled: false })).toBe(false);
 		expect(shouldAutoArmSearch({ ...base, hasApiKey: false })).toBe(false);
-		expect(shouldAutoArmSearch({ ...base, timeSensitive: false })).toBe(false);
+		expect(shouldAutoArmSearch({ ...base, wantsWeb: false })).toBe(false);
 	});
 
 	it("treats an unset researchMode as off", () => {

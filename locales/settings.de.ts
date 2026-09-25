@@ -31,7 +31,7 @@ const settingsDe = {
 	openaiKeyName:           "OpenAI-API-Schlüssel",
 	mistralKeyName:          "Mistral-API-Schlüssel",
 	searchKeyName:           "Tavily-API-Schlüssel",
-	searchKeyDesc:           "Wähle ein Secret aus Obsidians Secret-Storage. Aktiviert das web_search-Tool, damit Modelle aktuelle Informationen nachschlagen können. Schlüssel werden nie in data.json gespeichert.",
+	searchKeyDesc:           "Wähle ein Secret aus Obsidians Secret-Storage. Aktiviert die Tools web_search und read_url, damit Modelle aktuelle Informationen nachschlagen und verlinkte Seiten lesen können. Schlüssel werden nie in data.json gespeichert.",
 
 	// ── Neue Gespräche ────────────────────────────────────────────────────────
 	defaultProviderName:     "Anbieter",

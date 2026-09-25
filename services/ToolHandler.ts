@@ -2,6 +2,7 @@ import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import type { WebSearchService } from "./WebSearchService";
+import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
 import type { ToolCall, ToolDefinition } from "../models/types";
 import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR } from "./promptConstants";
 
@@ -11,6 +12,7 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 		`Search the live web for current information. ` +
 		`Call this BEFORE answering whenever the question touches anything that can change over time, or that you cannot verify from your training data or the provided context — recent events, news, prices, releases, versions, standings, statistics, dates, or a person's current role or status. ` +
 		`When you are not fully confident your knowledge is current, search rather than answering from memory: a needless search is far cheaper than a confidently outdated answer. You may search more than once to refine the query. ` +
+		`The filters are optional and off by default: use topic "news" for events and announcements, "finance" for markets and companies; time_range when only recent pages will do; include_domains when the user names a site, exclude_domains to leave sites out. If a filtered search finds nothing, search again without the filters. ` +
 		`Results come back with source URLs; cite them inline with the ⟦cite:web:<domain>⟧ marker where you use them, and do not add a separate sources list — the app lists the sources automatically.`,
 	inputSchema: {
 		type: "object",
@@ -19,8 +21,47 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 				type: "string",
 				description: "The search query. Use natural language keywords, as you would type into a search engine.",
 			},
+			topic: {
+				type: "string",
+				enum: [...SEARCH_TOPICS],
+				description: "Optional. The kind of source to search. Omit for a general search.",
+			},
+			time_range: {
+				type: "string",
+				enum: [...SEARCH_TIME_RANGES],
+				description: "Optional. Only pages from the past day, week, month or year.",
+			},
+			include_domains: {
+				type: "array",
+				items: { type: "string" },
+				description: `Optional. Search only these sites, as bare domains like example.com (at most ${MAX_FILTER_DOMAINS}).`,
+			},
+			exclude_domains: {
+				type: "array",
+				items: { type: "string" },
+				description: `Optional. Leave these sites out, as bare domains (at most ${MAX_FILTER_DOMAINS}).`,
+			},
 		},
 		required: ["query"],
+	},
+};
+
+/** Reads one page through Tavily /extract (ADR-217). Same research gate as
+ *  web_search: it is an outbound call to the same third party. */
+const READ_URL_TOOL: ToolDefinition = {
+	name: "read_url",
+	description:
+		`Read the full text of one public web page. Use it when the user gives you a link, or when a search result looks right but its snippet is not enough — instead of searching for a page whose address you already have. ` +
+		`Long pages are cut off, and the result says so. Cite what you use with the ⟦cite:web:<domain>⟧ marker; the app lists the page as a source automatically.`,
+	inputSchema: {
+		type: "object",
+		properties: {
+			url: {
+				type: "string",
+				description: "The full http(s) address of the page.",
+			},
+		},
+		required: ["url"],
 	},
 };
 
@@ -140,9 +181,9 @@ export function getToolDefinitions(
 		tools.push(CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL);
 	}
 
-	// web_search is read-only, so it's gated on the research flag rather than
-	// writeMode — it must be available even when writeMode is "none".
-	if (researchEnabled) tools.push(WEB_SEARCH_TOOL);
+	// web_search and read_url are read-only, so they are gated on the research
+	// flag rather than writeMode — available even when writeMode is "none".
+	if (researchEnabled) tools.push(WEB_SEARCH_TOOL, READ_URL_TOOL);
 
 	// render_chart writes nothing at all — not the vault, not the web — so it is
 	// gated on neither. It has to reach a comparison run (writeMode "none") and a
@@ -153,7 +194,7 @@ export function getToolDefinitions(
 	return tools;
 }
 
-const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search", "render_chart"]);
+const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search", "read_url", "render_chart"]);
 
 export class ToolHandler {
 	constructor(
@@ -175,7 +216,7 @@ export class ToolHandler {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
 		}
 
-		// Neither of the two read-only tools is a vault write, so both are handled
+		// None of the three read-only tools is a vault write, so all are handled
 		// before the path/content validation below.
 		//
 		// A chart reaching HERE means nobody intercepted the call, and so nobody
@@ -191,11 +232,14 @@ export class ToolHandler {
 
 		if (call.name === "web_search") {
 			if (!this.webSearch) return "Error: web search is not available.";
-			const query = call.input["query"];
-			if (typeof query !== "string" || !query.trim()) {
-				return "Error: 'query' must be a non-empty string.";
-			}
-			return this.webSearch.search(query);
+			const args = parseSearchArgs(call.input);
+			return args.ok ? this.webSearch.search(args.value) : `Error: ${args.error}`;
+		}
+
+		if (call.name === "read_url") {
+			if (!this.webSearch) return "Error: web search is not available.";
+			const url = parseReadUrlArgs(call.input);
+			return url.ok ? this.webSearch.extract(url.value) : `Error: ${url.error}`;
 		}
 
 		const path = call.input["path"];
@@ -261,7 +305,10 @@ export class ToolHandler {
 			names.add("rewrite_note");
 			names.add("prepend_note");
 		}
-		if (researchEnabled) names.add("web_search");
+		if (researchEnabled) {
+			names.add("web_search");
+			names.add("read_url");
+		}
 		// Ungated, for the same reason getToolDefinitions offers it unconditionally.
 		names.add("render_chart");
 		return names;

@@ -9,7 +9,7 @@ import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from ".
 import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch } from "./services/sendPolicy";
-import { looksTimeSensitive } from "./services/webSearchHeuristics";
+import { containsWebUrl, looksTimeSensitive } from "./services/webSearchHeuristics";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
@@ -1324,7 +1324,7 @@ export class PythiaSidebarView extends ItemView {
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
-			timeSensitive: looksTimeSensitive(text, new Date().getFullYear()),
+			wantsWeb: looksTimeSensitive(text, new Date().getFullYear()) || containsWebUrl(text),
 		});
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();

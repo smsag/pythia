@@ -33,7 +33,8 @@ export function shouldGenerateChapterName(userMsg: Message): boolean {
 /**
  * True when web search should be offered for THIS send although the
  * conversation's globe is off (ADR-099): the setting allows it, a key exists,
- * and the message reads as time-sensitive.
+ * and the message wants the web — it reads as time-sensitive, or it carries a
+ * link for read_url (ADR-217).
  *
  * Lifted out of `sendMessage` under ADR-178's line budget, and it belongs here
  * anyway: it is a four-term rule with no DOM in it, and the only place it was
@@ -44,7 +45,7 @@ export function shouldAutoArmSearch(opts: {
 	researchMode: boolean | undefined;
 	autoArmEnabled: boolean;
 	hasApiKey: boolean;
-	timeSensitive: boolean;
+	wantsWeb: boolean;
 }): boolean {
-	return !opts.researchMode && opts.autoArmEnabled && opts.hasApiKey && opts.timeSensitive;
+	return !opts.researchMode && opts.autoArmEnabled && opts.hasApiKey && opts.wantsWeb;
 }
