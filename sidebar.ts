@@ -14,6 +14,7 @@ import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
 import { ComposerSend, composerPlaceholder } from "./ui/composerKeys";
 import { ComposerField } from "./ui/ComposerField";
+import { vaultNoteDrop } from "./ui/noteDrop";
 import { applyPendingTemplate, armPendingTemplate } from "./services/pendingTemplate";
 import { RewriteController } from "./ui/RewriteController";
 import { OptimizationController } from "./ui/OptimizationController";
@@ -564,12 +565,11 @@ export class PythiaSidebarView extends ItemView {
 		const inputArea = container.createDiv({ cls: "p-input-area" });
 		this.inputAreaEl = inputArea;
 
-		// A contenteditable, so an attached note can be a chip (D-52); it reads as
-		// the text a textarea held, `[[Name]]` for a chip — see ui/composerText.ts.
-		this.composer = new ComposerField(inputArea, {
+		this.composer = new ComposerField(inputArea, { // chips read as [[Name]] (ADR-213)
 			placeholder: composerPlaceholder(Platform.isMobile),
 			register: (el, type, handler) => this.registerDomEvent(el, type, handler),
 			chips: () => this.composerAttachments.chips(),
+			notes: vaultNoteDrop(this.app, (paths) => this.composerAttachments.attach(paths)), // ADR-214
 		});
 		this.composerAttachments = new ComposerAttachments({
 			inputEl: () => this.composer,

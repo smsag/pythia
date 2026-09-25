@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-213 (the composer is a contenteditable, so a note attached with `#` is a chip — the library icon and its name, deleted by one Backspace — while the field still reads as the text the textarea held: a chip is its `[[Name]]`; closes D-52).*
+*Last updated: 2026-09-25 — ADR-214 (a note, several notes or a folder dragged from the vault onto the composer attaches exactly as a `#` pick does — a chip where it was dropped; the drag is read from Obsidian's draggable and, failing that, its text, both validated; Obsidian's open-in-this-tab modifier keeps its meaning).*
+
+*Previously: 2026-09-25 — ADR-213 (the composer is a contenteditable, so a note attached with `#` is a chip — the library icon and its name, deleted by one Backspace — while the field still reads as the text the textarea held: a chip is its `[[Name]]`; closes D-52).*
 
 *Previously: 2026-09-25 — ADR-212 (a note from the vault carries the library icon however it arrived — attached, retrieved, cited, saved or linked in a sent message; the route is carried by style, not by a second glyph).*
 
@@ -4376,3 +4378,34 @@ The form was not the obvious one. `#Q3 revenue` would mirror the gesture, but th
 **Guards.** `tests/composerText.test.ts` (15): each browser's line shape, the placeholder `<br>`, `&nbsp;`, a chip reading as its token, every offset round-tripping, a caret never inside a chip, `partsFor`. `tests/composerAttachments.test.ts` gains 9: the chip's icon, name and token; the sent message is the link text; deleting the chip detaches; a restored draft re-chips; a typed link stays text; the placeholder; disabled; copy yields the link; paste is text only. The ADR-211 suite passes unchanged.
 
 **Closes D-52.**
+
+### ADR-214 — Notes dragged from the vault attach where they are dropped
+
+*2026-09-25*
+
+**Context.** ADR-213 made the composer a `contenteditable` with chips. The ask now is that a note can be dragged from the vault — the file explorer, search, a tab, a link — onto the composer to attach it, rather than only picked with `#` or the paperclip.
+
+**What a drag carries was read, not guessed.** From Obsidian 1.13.7's own `DragManager` (`app.js` in the installed `.asar`):
+
+| dragged from | `dragManager.draggable` | `text/plain` |
+|---|---|---|
+| a file | `{ type: "file", file }` | `obsidian://open?vault=…&file=…` (also `text/uri-list`) |
+| several selected items | `{ type: "files", files }` | one URL per **file** — folders are left out |
+| a folder | `{ type: "folder", file }` | the folder's **name** only |
+| a link | `{ type: "link", file }` (`file` null when unresolved) | its URL, or the bare linktext |
+
+So the text alone cannot resolve a folder or the folders of a mixed selection; only the draggable can. **But `dragManager` is not public API.**
+
+**Decision — read both, trust neither** (principle 1). `ui/noteDrop.ts` takes the draggable only through `instanceof TFile` / `TFolder` checks — an object shaped like a file is not one — and falls back to the drag's text, accepting only `obsidian://open` URLs **for this vault** (a path from another vault means nothing here) and `[[links]]`, each resolved against the vault (path, path + `.md`, then `getFirstLinkpathDest`). A folder expands to its Markdown and PDF notes through `getFilesInFolder`, exactly what the `#` picker's "attach all" does; order is kept and a note is named once. If `dragManager` disappears in a later Obsidian, a single file or a link still attaches through the text, and nothing throws.
+
+**A drop is a `#` pick.** The field takes the drop, focuses, puts the caret at the point under the pointer (`caretPositionFromPoint` / `caretRangeFromPoint` → `textOffset`), and hands the paths to `ComposerAttachments.attach` — the same call the picker makes. So a dropped note is the same chip, the same spacing, the same undoable `insertHTML`, the same ADR-211 tracking and detach-on-delete. There is no second attach path to drift.
+
+**Obsidian's modifier keeps its meaning.** Every view's container is an Obsidian drop target; `View.handleDrop` opens a dropped file in that tab when the drop lands on the header, or when **⇧ (macOS) / Alt (elsewhere)** is held. A plain drop on our content is therefore ours to claim — the composer calls `preventDefault` on `dragover` and `drop`, and Obsidian's handler, which runs after ours in the bubble and checks `defaultPrevented`, stands down. With the modifier held the composer does not claim it, so "open in this tab" still works over Pythia (`wantsOpenInTab`).
+
+**While hovering, the field says it will take the drop**: `.is-drop-target`, a 1px dashed accent outline inside its own box — no fill, no shadow (hard rules 3 and 4), nothing moves. During `dragover` the drag's text is unreadable by design, so hover is decided from the draggable alone; a drop decided only by its text (the fallback) lands without the hover hint.
+
+**Two things that were wrong before, fixed with it.** The composer's text drop ignored `disabled`, so text could land in the field while an answer streamed; now nothing lands. And a text drop went in at the last caret rather than where it was dropped; now both land at the pointer.
+
+**Verified.** In Chromium, through the harness around the real `ComposerField` + `ComposerAttachments` (ADR-213): dropping at the pixel between "Compare" and "with" in an unfocused field gives `Compare [[Q3 revenue]] with last year`, focus in the field, the caret after the chip, the note attached; one undo removes the chip and detaches the note; the hover outline computes to 1px dashed accent. **Not verified in Obsidian itself** — the draggable came from the test, not from a real drag out of the explorer — **and not on iPad**, where Obsidian's drag works differently.
+
+**Guards.** `tests/noteDrop.test.ts` (20): every draggable shape and every non-note one, including an object shaped like a file; URLs for this vault and another, `[[links]]` with heading/block/alias, malformed text; folders expanded to notes only; order and dedupe; no `dragManager` at all; the modifier per platform; and in the real view — hover claims and marks, a drop makes the chip and attaches, a folder makes one chip per note, the modifier leaves the drop to Obsidian, plain text drops as text, and nothing lands while streaming.

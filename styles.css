@@ -2548,6 +2548,14 @@ body.is-mobile .p-composer {
   font-style: italic;
   pointer-events: none;
 }
+/* A drag of vault notes is over the field (ADR-214). A dashed accent outline
+   drawn inside the field's own box — no fill (hard rule 3), no shadow (hard
+   rule 4) — so the drop target is unmistakable and nothing around it moves. */
+.p-composer.is-drop-target {
+  outline: 1px dashed var(--color-accent);
+  outline-offset: -1px;
+  border-radius: var(--s1);
+}
 .p-composer.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;

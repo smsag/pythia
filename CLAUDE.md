@@ -73,6 +73,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer
     ComposerField.ts          ← the composer: a contenteditable with a textarea's surface (value · selectionStart · setSelectionRange · disabled · focus); note chips; edits through execCommand so undo works (ADR-213)
+    noteDrop.ts               ← notes dragged from the vault: Obsidian's draggable read through instanceof, else the drag's obsidian:// URLs for THIS vault and [[links]]; folders expand like the # picker's attach-all (ADR-214)
     composerText.ts           ← pure: composerText (the DOM read as text, a chip = its `[[Name]]`) · textOffset · domPosition · partsFor (ADR-213)
     turnLabel.ts              ← turn micro-labels: model · template · time · tokens (pure, unit-tested)
     OptimizationController.ts ← inline prompt optimizer state + flow
@@ -687,6 +688,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 ### The `#` note link in the composer (ADR-211)
 
 - **The link is drawn as a chip** (ADR-213): `.p-composer-chip`, the vault-note icon and the name, one atom to Backspace and undo. **It reads as its `[[Basename]]`**, so everything below — the count, the send, the model — is unchanged. Only a token Pythia tracks is a chip; a link the user types stays text. Copy yields the link; paste is text only
+- **Dragging notes from the vault onto the composer is a `#` pick** (ADR-214): same `ComposerAttachments.attach`, same chip, placed where it was dropped. `dragManager` is private API — read it only through `itemsFromDraggable`'s `instanceof` checks, with the drag text as the fallback, never trusted raw. **⇧ (macOS) / Alt keeps meaning "open in this tab"** — the composer does not claim that drop
 - **Picking a note leaves `[[Basename]]` at the cursor.** Not `#Name`: the user bubble renders markdown and **Obsidian paints `#word` as a tag**, which cannot contain spaces — `#Q3 revenue` would render as a tag chip plus a stray word. A wikilink also renders in the sent turn as a link that opens the note
 - **A token is matched by the LITERAL text Pythia inserted, never by a pattern.** A basename may contain spaces and brackets, so no regex can say where `[[Q3 revenue]]` ends in a sentence that continues after it. This is also why the wikilink form is safe — Pythia never has to tell a link you typed from one it wrote
 - **Presence is counted, not tested.** Two notes in different folders share a basename and therefore a token; deleting one occurrence detaches one note

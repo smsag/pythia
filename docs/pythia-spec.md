@@ -145,7 +145,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │
 └── .p-input-area                                   sidebar.ts
     ├── .p-composer                                 contenteditable; Enter = line break (ADR-175)   ui/ComposerField.ts
-    │   └── .p-composer-chip                        a note attached with #: library icon + name, reads as [[Name]] (ADR-213)
+    │   ├── .p-composer-chip                        a note attached with # or dropped from the vault: library icon + name, reads as [[Name]] (ADR-213/214)
+    │   └── .is-drop-target                         notes are being dragged over it (ADR-214)   ui/noteDrop.ts
     ├── .p-ctx-bar > .p-ctx-bar-fill                attached-note token budget
     └── .p-toolbar
         ├── .p-toolbar-left > .p-tool-btn           attach · save · globe (web) · library (vault context)
@@ -316,6 +317,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
+| 2026-09-25 | ADR-214: dropping vault notes on the composer added to the map (`.is-drop-target`, `ui/noteDrop.ts`). |
 | 2026-09-25 | ADR-213: `.p-composer` and `.p-composer-chip` replace `.p-textarea` in the UI map; D-52 closed. |
 | 2026-09-23 | ADR-211: the composer keeps the link for a note attached with `#`; D-52 records why it is text rather than a pill. |
 | 2026-09-23 | ADR-210: the chart card added to the UI map (the first surface that also renders outside the panel), and D-46…D-50 recorded — no off switch, the PNG's font, no chart while streaming, no PNG in the vault, and bar/line/pie only. |
