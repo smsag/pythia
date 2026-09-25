@@ -145,6 +145,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
     architecture.md           ← system architecture, data flows, component relationships
+    ui-architecture.md        ← UI orientation: naming conventions, the panel top to bottom, the other surfaces, vocabulary, how to ask for a UI change — held to the code by tests/uiArchitectureDoc.test.ts
     design.md                 ← design system, CSS tokens, component specs
     decisions.md              ← architectural decision records (ADRs)
     engineering-review.md     ← improvement suggestions and priority matrix
@@ -199,6 +200,7 @@ The canonical list lives here, because this file is what every session reads fir
 | Bug found / suggestion resolved / new suggestion | `docs/engineering-review.md` |
 | **A decision postponed, parked or deliberately not done** | `docs/pythia-spec.md` → Deferred & postponed decisions (a `D-n` row, with what would make it worth revisiting) |
 | A new surface, or a renamed class | `docs/pythia-spec.md` → UI architecture (the map is the shared vocabulary; a surface missing from it cannot be asked for by name) |
+| A controller, modal or settings section added, renamed or removed; a named class or path changed | `docs/ui-architecture.md` — `tests/uiArchitectureDoc.test.ts` fails until it matches the code, in both directions |
 
 Keep the "Last updated" line at the top of each doc current. Commit docs changes in the same commit as the code change where possible.
 
