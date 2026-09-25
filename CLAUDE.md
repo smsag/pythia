@@ -120,6 +120,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     numberSetting.ts          ← pure parseNumberSetting + bindNumberSetting: every numeric settings field, committed on blur/Enter (ADR-171)
     conversationCapSetting.ts ← the history-limit field: empty box = no limit, and the confirm dialog before a value that evicts (ADR-172)
     ModelSuggestionController.ts ← the `.p-model-hint` chip beside Send: offer · accept · one-send layer (ADR-181)
+    chatScroll.ts             ← ChatScroll: the chat's follow state + toBottom + reveal; revealDelta. A card is revealed WHOLE once built — never `scrollTop = scrollHeight` on an empty card; forced only when the answer waits on it (ADR-215)
     accordion.ts              ← buildAccordion / setAccordionOpen: the ONE collapsible box (context inspector, summary cards) — a <button> header with aria-expanded, actions beside it (ADR-192)
     icons.ts                  ← SOURCE_ICONS + appendSourceIcon: one icon per source type, shared by the toolbar and every reference (ADR-193); VAULT_NOTE_ICON (`library`) for every vault note, and decorateNoteLinks, which draws it on a sent message's `[[links]]` (ADR-212); REGENERATE_ICON: the ONE glyph (`refresh-cw`) for every regenerate / rebuild control; tests/icons.test.ts fails on a literal reload glyph anywhere else (ADR-191)
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)

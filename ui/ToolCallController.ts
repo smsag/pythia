@@ -15,6 +15,9 @@ export interface ToolCallDeps {
 	/** The view's own listener registration, so a chip's buttons are torn down
 	 *  with the view rather than leaking (hard rule 10). */
 	registerDomEvent(el: HTMLElement, type: "click", cb: () => void): void;
+	/** Bring a finished card fully into view (ADR-215). `force` = even when the
+	 *  user has scrolled away: a card that blocks the answer must be seen. */
+	reveal(card: HTMLElement, force: boolean): void;
 }
 
 /**
@@ -96,7 +99,7 @@ export class ToolCallController {
 		const query = typeof call.input["query"] === "string" ? call.input["query"] : "";
 		const searchChip = messagesEl.createDiv({ cls: "pythia-tool-call" });
 		searchChip.createSpan({ cls: "pythia-tool-call-label", text: t("searchingLabel", { query }) });
-		messagesEl.scrollTop = messagesEl.scrollHeight;
+		this.d.reveal(searchChip, false); // a status: follow it only if following the answer
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
 		const result = await this.d.plugin.toolHandler.execute(call, allowed);
@@ -122,7 +125,6 @@ export class ToolCallController {
 		const isPrepend = call.name === "prepend_note";
 
 		const chipEl = messagesEl.createDiv({ cls: "pythia-tool-call" });
-		messagesEl.scrollTop = messagesEl.scrollHeight;
 
 		// Path guard: rewrite/prepend may only target context notes. Mirrored from
 		// ToolHandler, which holds the authoritative check.
@@ -134,6 +136,7 @@ export class ToolCallController {
 					cls: "pythia-tool-call-label",
 					text: t("toolPathNotInContext", { path: targetPath }),
 				});
+				this.d.reveal(chipEl, false);
 				return `Error: path "${targetPath}" is not in context notes. You may only modify notes that were explicitly provided as context.`;
 			}
 		}
@@ -161,6 +164,10 @@ export class ToolCallController {
 			});
 			this.d.registerDomEvent(actionBtn, "click", () => resolve(true));
 			this.d.registerDomEvent(cancelBtn, "click", () => resolve(false));
+			// Only now, with the label and both buttons in it, does the card have its
+			// height. The answer waits on it, so it is shown even to a user who has
+			// scrolled up (ADR-215).
+			this.d.reveal(chipEl, true);
 		});
 
 		chipEl.empty();
