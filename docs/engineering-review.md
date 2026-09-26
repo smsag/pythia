@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **#257 done (ADR-230):** the web-search globe shows four states and names what armed an automatic search.*
+*Updated: 2026-09-26 — **#256 done (ADR-231):** a resumed conversation no longer forgets its own new turns, and a reduced history is shown with a way back.*
+
+*Previously: 2026-09-26 — **#257 done (ADR-230):** the web-search globe shows four states and names what armed an automatic search.*
 
 *Previously: 2026-09-26 — **Auto-search stopped firing on "show me the current ECB rate" (ADR-229).** ADR-226 had misread the user's decision as link-only; the time cues are back, minus note links.*
 
@@ -1475,7 +1477,7 @@ An audit of every per-conversation setting against what the panel actually shows
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 255 | **The model can change the vault and nothing says so.** `Conversation.writeMode` defaults to `all` (`create_note`, `prepend_note`, `rewrite_note`) in `ToolHandler.getToolDefinitions`; only template frontmatter sets it, no surface shows it, and there is no way to make a conversation read-only. Also decide whether a conversation without a template should default to something narrower than `all` (product decision, needs an ADR). | High | Open |
-| 256 | **Resume mode silently drops history.** `cmdResumeConversation` stores `resumeMode` on the conversation; from then on `summary` sends no prior messages and `hybrid` only the last 6 (`HYBRID_TAIL_COUNT`) on every send. Nothing in the panel says so, and nothing switches it back to `full`. | High | Open |
+| 256 | **Resume mode silently drops history.** `cmdResumeConversation` stores `resumeMode` on the conversation; from then on `summary` sends no prior messages and `hybrid` only the last 6 (`HYBRID_TAIL_COUNT`) on every send. Nothing in the panel says so, and nothing switches it back to `full`. **Fixed by ADR-231:** the mode reduces only the messages before the resume point (`resumedAfterId`), a Notice names what is left out, and the context box shows it with *Send full history*. | High | Done |
 | 257 | **Web search state is ambiguous.** The globe's tint says on/off, but `webSearchAutoArm` searches on an "off" conversation for a time-sensitive message, signalled only by a 1.6 s pulse (`flashResearchAutoArm`); "on" without a Tavily key does nothing after the first notice. Needs off · on · auto · no-key as visible states. **Fixed by ADR-230:** four states with their own tooltip, the auto-armed state held for the whole answer, and the cue named on the globe and every search chip. | High | Done |
 | 258 | **The system prompt is a black box.** Applying a template replaces `systemPrompt` and can reset model, temperature, effort, max tokens, resume mode and write mode (`onApplyTemplate`); afterwards the template name appears only in the sources row under answers, and neither the prompt text nor the global `customInstructions` can be viewed from the conversation. | Medium | Open |
 | 259 | **Generation parameters are two taps deep.** Effort, temperature, max tokens and language live only in `ConversationSettingsModal`, reached via the model popover's footer; the badge shows the model alone, so a Low and a High effort conversation look identical. | Medium | Done (ADR-165): effort and language sit beside the model in the header, each opens its own picker; temperature and token limit deliberately stay in the dialog |

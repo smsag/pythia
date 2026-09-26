@@ -2,7 +2,7 @@ import { Notice, setIcon, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message } from "../models/types";
 import { t, getObsidianLocale } from "../i18n";
-import { estimateTokensFromText, resolveLanguageLabel } from "../services/messageUtils";
+import { estimateTokensFromText, omittedByResume, resolveLanguageLabel } from "../services/messageUtils";
 import { buildSystemPrompt } from "../services/ContextBuilder";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
@@ -104,8 +104,11 @@ export class ContextInspectorController {
 		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
 		const budgetTight = frac >= 0.8;
 
-		// Nothing worth a card: no context notes and plenty of budget.
-		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
+		// Messages the resume mode leaves out — never silent (ADR-231, #256).
+		const omitted = omittedByResume(conv);
+
+		// Nothing worth a card: no context notes, full history, plenty of budget.
+		if (notes.length === 0 && !budgetTight && omitted === 0) { wrap.style.display = "none"; return; }
 		wrap.style.display = "";
 
 		// ── The shared accordion (ADR-192): same box as the summary cards ──
@@ -129,6 +132,10 @@ export class ContextInspectorController {
 		// ── Body ─────────────────────────────────────────────────────
 		const body = acc.body;
 		body.addClass("p-inspector-body");
+		if (omitted > 0) {
+			acc.meta.createSpan({ cls: "p-inspector-resume-chip", text: t("ctxResumeChip") });
+			this.resumeRow(body, conv, omitted);
+		}
 
 		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
 			const bar = row.createDiv({ cls: "p-ins-bar" });
@@ -206,6 +213,25 @@ export class ContextInspectorController {
 		}
 	}
 
+	/** What the resume mode leaves out, and the one way back (ADR-231). */
+	private resumeRow(body: HTMLElement, conv: Conversation, omitted: number): void {
+		const row = body.createDiv({ cls: "p-inspector-resume" });
+		setIcon(row.createSpan({ cls: "p-inspector-warn-icon" }), "history");
+		row.createSpan({
+			cls: "p-inspector-warn-text",
+			text: conv.resumeMode === "summary"
+				? t("ctxResumeSummary", { count: String(omitted) })
+				: t("ctxResumeHybrid", { count: String(omitted) }),
+		});
+		const btn = row.createEl("button", { cls: "pb pb-secondary p-inspector-summarize", text: t("ctxSendFullHistory") });
+		btn.addEventListener("click", async (e) => {
+			e.stopPropagation();
+			await sendFullHistory(conv, this.d.plugin);
+			new Notice(t("ctxFullHistoryOn"));
+			this.refresh();
+		});
+	}
+
 	/** Context-budget bar under the header: fill = (last-known context size) /
 	 *  (model context window). Turns warning-colored and surfaces a header
 	 *  percent chip at ≥80%. Hidden until a turn has produced token usage. */
@@ -240,4 +266,12 @@ export class ContextInspectorController {
 			chipEl.style.display = "none";
 		}
 	}
+}
+
+/** Back to the whole history: the resume mode and its boundary both go, so no
+ *  later resume point is half-remembered (ADR-231). */
+export async function sendFullHistory(conv: Conversation, plugin: Pick<PythiaPlugin, "conversationStore">): Promise<void> {
+	conv.resumeMode = "full";
+	delete conv.resumedAfterId;
+	await plugin.conversationStore.save(conv);
 }

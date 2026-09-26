@@ -278,6 +278,7 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	if (!PROVIDERS.includes(c.provider as Provider)) c.provider = DEFAULT_SETTINGS.defaultProvider;
 	if (typeof c.model !== "string" || !c.model) delete c.model;
 	if (!(RESUME_MODES as readonly unknown[]).includes(c.resumeMode)) c.resumeMode = "full";
+	if (c.resumedAfterId !== undefined && (typeof c.resumedAfterId !== "string" || !c.resumedAfterId)) delete c.resumedAfterId;
 	if (c.writeMode !== undefined && !(WRITE_MODES as readonly unknown[]).includes(c.writeMode)) delete c.writeMode;
 	if (c.outputLanguage !== undefined && !(OUTPUT_LANGUAGES as readonly unknown[]).includes(c.outputLanguage)) delete c.outputLanguage;
 	if (c.favorites !== undefined && !Array.isArray(c.favorites)) delete c.favorites;

@@ -4,6 +4,7 @@ import type { Conversation, EffortLevel, Provider, PythiaTemplate } from "../mod
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { todayISO } from "../utils";
 import { safeNoteName } from "./pathUtils";
+import { omittedByResume } from "./messageUtils";
 import { t } from "../i18n";
 import { effectiveTheme } from "./glossaryNotes";
 import type { GlossaryEntry } from "./glossary";
@@ -515,6 +516,10 @@ export class ConversationService {
 			(conv) => {
 				new ResumeModeModal(p.app, conv, async (mode) => {
 					conv.resumeMode = mode;
+					// The mode reduces only what is here now; every later turn is
+					// sent in full (ADR-231).
+					if (mode === "full") delete conv.resumedAfterId;
+					else conv.resumedAfterId = conv.messages[conv.messages.length - 1]?.id;
 
 					if (mode === "summary") {
 						if (!conv.summaryText) {
@@ -558,6 +563,10 @@ export class ConversationService {
 					await p.conversationStore.save(conv);
 					const view = await p.activateView();
 					await view.setActiveConversation(conv);
+					// Never a silent reduction (#256): say how much is left out and where
+					// to undo it.
+					const omitted = omittedByResume(conv);
+					if (omitted > 0) new Notice(t("resumedReducedNotice", { count: String(omitted) }), 10000);
 				}).open();
 			},
 			undefined,

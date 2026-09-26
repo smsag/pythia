@@ -26,6 +26,9 @@ export interface Conversation {
 	systemPrompt: string;     // resolved at creation time
 	contextNotes: string[];   // vault paths of attached notes
 	resumeMode: "full" | "summary" | "hybrid";
+	/** The last message when the conversation was resumed in summary or hybrid
+	 *  mode: the mode reduces only it and what came before (ADR-231). */
+	resumedAfterId?: string;
 	provider: Provider;       // which LLM provider to use
 	model: string;            // model ID for the selected provider
 	maxTokens?: number;       // override the default 4096 max-token limit

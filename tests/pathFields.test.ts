@@ -17,7 +17,7 @@ type Kind = "path" | "paths" | "nested" | "other";
 
 const CONVERSATION: Record<keyof Conversation, Kind> = {
 	id: "other", name: "other", createdAt: "other", updatedAt: "other",
-	templateId: "path", systemPrompt: "other", contextNotes: "paths", resumeMode: "other",
+	templateId: "path", systemPrompt: "other", contextNotes: "paths", resumeMode: "other", resumedAfterId: "other",
 	provider: "other", model: "other", maxTokens: "other", temperature: "other", effort: "other",
 	summaryText: "other", summaryUpdatedAt: "other", summaryNote: "path", favoritesSummary: "other",
 	messages: "nested", favorites: "other", savedNotePath: "path", lastSavedMessageCount: "other",

@@ -115,6 +115,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │
 ├── .p-chat                                         sidebar.ts — the scroll area, flex: 1
 │   ├── .p-inspector-wrap                           context inspector (what is in the prompt)  — a .p-acc like the summary cards (ADR-192)
+│   │   └── .p-inspector-resume                     history a resume mode leaves out + Send full history (ADR-231)
 │   ├── .pythia-fork-banner                         on a fork: "branched from …"   ui/ForkController.ts
 │   ├── .pythia-merge-banner                        inbound merge links             ui/MergeController.ts
 │   ├── .p-summary-cards                            ui/SummaryController.ts
@@ -213,7 +214,7 @@ Name the surface and the class: *"`.p-history-sub` should show the archive state
 
 `models/types.ts` is the source of truth. The shape, briefly:
 
-- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode`, optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
+- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode` (+ `resumedAfterId`, the point it reduces up to — ADR-231), optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
 - **`Message`** — `id`, `role`, `content`, `timestamp`, plus what that turn used and cost: `model`, `tokenUsage`, `cost` (snapshotted, ADR-163), `attachedNotes`, `sources`, `truncated`.
 - **An optional field that is `undefined` means *inherit*** — never a copy of the resolved default (engineering principle 6). A control may show the default; it must not store it.
 
@@ -274,6 +275,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-60 | **No fork from a tab.** The other answers stay as tabs only; there is no "Continue in a fork" (user decision). The selection toolbar's Branch is hidden and refused on a tab (ADR-225). | ADR-219/225 | Automatic forks hid the answers (the reason for ADR-219); a manual one was declined as a second place for the same answer. | Users copy a tab's text into a new conversation by hand to follow it. |
 | D-61 | **A phone that embeds no vault notes ("read-mostly").** **Closed by ADR-221 (2026-09-26), in a different shape:** a phone still embeds its own edits, in memory, so its answers see them; it no longer writes an index a desktop keeps, and a desktop catches up once per launch on what changed while it was closed. Embedding nothing would have left a phone blind to what was just written on it. | ADR-220, ADR-221 | The residue: a phone's in-memory edits are gone at its next launch until the desktop has caught up. Moot since ADR-224: Pythia keeps no index on any device. | A phone answering from stale vectors where the desktop rarely runs. |
 | D-62 | **Web tool calls in one round run one after another.** Every other finding of the Tavily review was closed by ADR-226/227/228. When a model asks for two searches in one round, the second waits for the first. | ADR-228 | Running them together would race the answer's result numbering (`firstN`), and the same loop runs the write tools, whose confirmation cards must come one at a time. A search takes 1–3 s, and models seldom ask for two at once. | Measured answers where parallel searches are common and the wait is noticed; the numbering would then be reserved per call before any request starts. |
+| D-63 | **The settings' *Resume mode* default does nothing on its own.** It is still written onto every new conversation, but a mode reduces history only past a resume point, which only the resume command sets. | ADR-231 | Removing the setting or making it preselect the resume dialog is a separate UX decision; leaving it inert costs nothing and loses no context. | Someone sets it to *Summary* expecting cheaper conversations, or the resume dialog gets a remembered choice. |
 
 ### Measurements not yet made
 
@@ -348,6 +350,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-26 | ADR-225: D-60 now enforced in the selection toolbar (no Branch from a tab). |
+| 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. |
 | 2026-09-25 | ADR-219: the answer tabs (`.p-answer-tabs`) added to the UI map; D-59 (tabs are never searched, archived or sent) and D-60 (no fork from a tab). |
 | 2026-09-25 | ADR-218: D-58 (links inside message text are not rewritten on rename); the permanent write chip (`.p-note-write`) added to the UI map. |
 | 2026-09-25 | ADR-217: D-56 (crawl · map · research) and D-57 (advanced depth · auto-parameters · raw content) — the Tavily capabilities left out. |

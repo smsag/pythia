@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-230: new `ui/ResearchToggleController.ts` (the globe: `researchState`, mount · paint · arm · disarm · toggle; `flashResearchAutoArm`/`toggleResearchMode` leave `sidebar.ts`); `webSearchHeuristics.timeSensitiveCue` and `sendPolicy.webCue` name the cue; `ToolCallController.handler(conv, active, autoCue)` and the exported `chipLabels`.*
+*Last updated: 2026-09-26 — ADR-231: `Conversation.resumedAfterId`; `messageUtils.selectHistoryForSend(messages, mode, resumedAt)` + `resumeBoundary` + `omittedByResume`, used by all three providers; `cmdResumeConversation` records the boundary and says what is left out; `ContextInspectorController` shows the resume row and exports `sendFullHistory`.*
+
+*Previously: 2026-09-26 — ADR-230: new `ui/ResearchToggleController.ts` (the globe: `researchState`, mount · paint · arm · disarm · toggle; `flashResearchAutoArm`/`toggleResearchMode` leave `sidebar.ts`); `webSearchHeuristics.timeSensitiveCue` and `sendPolicy.webCue` name the cue; `ToolCallController.handler(conv, active, autoCue)` and the exported `chipLabels`.*
 
 *Previously: 2026-09-26 — ADR-229: `webSearchHeuristics.looksTimeSensitive` restored (ignores `[[note links]]`); `sendPolicy.wantsWeb(text, year)` = time-sensitive OR link again.*
 
@@ -357,7 +359,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/webSearchHeuristics.ts` | 124 | Pure `timeSensitiveCue(text, currentYear)` — the cue that fired, or null (ADR-230) — and `looksTimeSensitive`, the same rule as a boolean — whole-word recency cues (English + German stems) and a year ≥ now, with `[[note links]]` ignored (ADR-099/229) — and `containsWebUrl`, a link with or without its scheme (ADR-217/228). Either one auto-arms web search for one message |
 | `services/NoteWriter.ts` | 200 | Vault write operations; frontmatter merge preserves multi-line field values |
 | `services/TemplateLoader.ts` | 110 | Template discovery + frontmatter parsing (incl. `temperature`, `effort`); parallelized reads, empty-folder guard; prefix-match uses `folder + "/"` to prevent false matches on similarly-named folders |
-| `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode), `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), output-language resolution + the three prompt shapes (ADR-148), `arrayBufferToBase64` (Buffer-free, mobile-safe) |
+| `services/messageUtils.ts` | 185 | Shared: `parseTitleAndSummary`, `normalizeMessages`, `selectHistoryForSend` (incl. hybrid mode; only before the resume point — ADR-231), `resumeBoundary`, `omittedByResume`, `trimHistoryToBudget`, `debugLog`, token estimation (CJK-weighted), output-language resolution + the three prompt shapes (ADR-148), `arrayBufferToBase64` (Buffer-free, mobile-safe) |
 | `services/LLMRouter.ts` | 77 | Dispatches calls to the active provider |
 | `services/ContextBuilder.ts` | 147 | Builds system prompt (always-on no-solicitation guard + the output-language directive when one is pinned + optional global `<custom_instructions>` from settings + grounding instruction + `<recent_context>` date block when `researchMode` is on), attaches + chunks vault notes (parallelized reads), estimates tokens; `buildAttachedPdfs` reads PDFs as base64 for native document/file blocks |
 | `services/promptConstants.ts` | 66 | Shared literal constants: XML-ish prompt tags (incl. `RECENT_CONTEXT_TAG`), `TITLE`/`SUMMARY` markers, `DEFAULT_MAX_TOKENS`/`DEFAULT_MAX_TOKENS_REASONING` + `resolveDefaultMaxTokens()`, `MAX_PDF_FILE_SIZE_BYTES`, `DEFAULT_SYSTEM_PROMPT`, `GROUNDING_INSTRUCTION` |

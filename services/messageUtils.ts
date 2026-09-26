@@ -146,20 +146,56 @@ const HYBRID_TAIL_COUNT = 6;
 /**
  * Selects which prior messages to send to the API for a given resume mode.
  *
- * `"summary"` relies entirely on `summaryText` already injected into the
- * system prompt (see `ContextBuilder.buildSystemPrompt`) — sending the full
- * transcript on top of it would double-bill the same context and dilute the
- * model's attention. `"hybrid"` sends the summary (in the system prompt) plus
- * the last few messages so the model can still reference recent specifics.
- * `"full"` (the default) sends everything, unchanged.
+ * A resume mode reduces only what came BEFORE the resume (ADR-231): the
+ * first `resumedAt` messages. `"summary"` drops them — `summaryText` in the
+ * system prompt stands in for them (see `ContextBuilder.buildSystemPrompt`);
+ * `"hybrid"` keeps their last few. Every message after the resume is sent,
+ * so the conversation remembers its own new turns. `"full"` (the default)
+ * and `resumedAt === 0` send everything, unchanged.
  */
 export function selectHistoryForSend<T>(
 	messages: T[],
-	resumeMode: "full" | "summary" | "hybrid" | undefined
+	resumeMode: "full" | "summary" | "hybrid" | undefined,
+	resumedAt: number
 ): T[] {
-	if (resumeMode === "summary") return [];
-	if (resumeMode === "hybrid") return messages.slice(-HYBRID_TAIL_COUNT);
-	return messages;
+	if (resumeMode !== "summary" && resumeMode !== "hybrid") return messages;
+	const cut = Math.max(0, Math.min(resumedAt, messages.length));
+	if (cut === 0) return messages;
+	const before = messages.slice(0, cut);
+	const after = messages.slice(cut);
+	const kept = resumeMode === "summary" ? [] : before.slice(-HYBRID_TAIL_COUNT);
+	return [...kept, ...after];
+}
+
+/**
+ * How many messages the conversation's resume mode covers (ADR-231): those up
+ * to and including `resumedAfterId`, the last message when it was resumed.
+ * 0 — nothing reduced — for `"full"`, for a conversation never resumed
+ * through the command (a template's or the settings' mode alone reduces
+ * nothing), and when that message is gone. A missing boundary errs towards
+ * sending more, never towards silently forgetting.
+ */
+export function resumeBoundary(conv: {
+	resumeMode?: "full" | "summary" | "hybrid";
+	resumedAfterId?: string;
+	messages: { id: string }[];
+}): number {
+	if (conv.resumeMode !== "summary" && conv.resumeMode !== "hybrid") return 0;
+	if (!conv.resumedAfterId) return 0;
+	const i = conv.messages.findIndex((m) => m.id === conv.resumedAfterId);
+	return i < 0 ? 0 : i + 1;
+}
+
+/** How many messages the next send leaves out because of the resume mode —
+ *  what the context box states (ADR-231). */
+export function omittedByResume(conv: {
+	resumeMode?: "full" | "summary" | "hybrid";
+	resumedAfterId?: string;
+	messages: { id: string }[];
+}): number {
+	const cut = resumeBoundary(conv);
+	if (cut === 0) return 0;
+	return conv.resumeMode === "summary" ? cut : Math.max(0, cut - HYBRID_TAIL_COUNT);
 }
 
 // ── Context window budget trimming ──────────────────────────────────────────

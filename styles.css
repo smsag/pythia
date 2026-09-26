@@ -1279,6 +1279,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-inspector-summarize {
   flex-shrink: 0;
 }
+/* History a resume mode leaves out (ADR-231): the warn row's grammar, at the
+   top of the body, without the divider — it is the first thing in the box. */
+.p-inspector-resume { display: flex; align-items: center; gap: 8px; }
+.p-inspector-resume-chip {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--text-warning, var(--color-orange));
+}
 
 .p-inspector-footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .p-inspector-add {

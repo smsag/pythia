@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { historyContent, normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
+import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
@@ -103,15 +103,16 @@ export class AnthropicService extends BaseProvider {
 		onToolCall?: (call: ToolCall) => Promise<string>
 	): Promise<void> {
 		// Exclude the last message — already pushed by the caller; sending it
-		// again in history would duplicate it. In "summary" resume mode, skip
-		// prior history entirely — summaryText in the system prompt is the
-		// only context sent (see selectHistoryForSend).
+		// again in history would duplicate it. A summary or hybrid resume leaves
+		// out what came before the resume point only (ADR-231, see
+		// selectHistoryForSend).
 		this.streamModel = this.resolveModel(conversation.model);
 		this.streamMaxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(this.streamModel);
 
 		const selected = selectHistoryForSend(
 			conversation.messages.slice(0, -1),
-			conversation.resumeMode
+			conversation.resumeMode,
+			resumeBoundary(conversation)
 		);
 		const historyMessages: ApiMessage[] = trimHistoryToBudget(
 			selected.map((m) => ({ role: m.role, content: historyContent(m) })),
@@ -173,7 +174,7 @@ export class AnthropicService extends BaseProvider {
 				systemPromptChars: systemPrompt.length,
 				tools: !!onToolCall,
 				resumeMode: conversation.resumeMode ?? "full",
-				historySkipped: conversation.resumeMode === "summary",
+				historySkipped: omittedByResume(conversation) > 0,
 				systemPromptCached: !!systemPrompt,
 				toolsCached: !!(onToolCall && this.anthropicTools?.length),
 			});

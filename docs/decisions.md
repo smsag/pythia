@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-230 (the web-search globe shows on · no key · auto · off, an auto-armed send keeps it lit for the whole answer, and its tooltip and search chips name the word that armed it).*
+*Last updated: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
+
+*Previously: 2026-09-26 — ADR-230 (the web-search globe shows on · no key · auto · off, an auto-armed send keeps it lit for the whole answer, and its tooltip and search chips name the word that armed it).*
 
 *Previously: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
 
@@ -4948,3 +4950,19 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** The first cue found is named by kind (word, phrase, stem, year), not by position in the text. It names a real reason, which is the point.
 
 **Guards.** `tests/researchState.test.ts` (four states; the cue for a word, a stem, a year and a link; none for a `[[link]]`; the chip names the cue only when auto-armed).
+
+## ADR-231 — A resume mode reduces only what came before the resume, and says so
+
+**Status:** Active · 2026-09-26 · closes engineering-review #256
+
+**Context.** `Pythia: Resume conversation` stored `resumeMode` on the conversation, and every later send applied it to the **whole** history: `summary` sent no prior message at all, `hybrid` only the last six. So a resumed conversation forgot its own new turns — ask "shorter, please" and the model no longer had the answer it was meant to shorten. The same applied, from the first message, to any conversation created by a template with `resume_mode: summary` or while the settings' *Resume mode* default was `summary`, and a fork copied its source's mode onto an empty conversation. Nothing in the panel showed any of it, and nothing switched it back.
+
+**Decision.**
+- **The mode covers a boundary, not the conversation.** `Conversation.resumedAfterId` is the last message when the conversation was resumed in summary or hybrid mode. `selectHistoryForSend(messages, mode, resumedAt)` reduces only the first `resumedAt` messages and sends every message after them. `resumeBoundary(conv)` computes that count, one builder for all three providers.
+- **No boundary, no reduction.** A mode that reached the conversation any other way (template, settings default, fork, a conversation resumed before this ADR) reduces nothing. So does a boundary message that no longer exists. The missing case errs towards sending more; `trimHistoryToBudget` still guards the context window. A conversation resumed before this change therefore sends its full history again, which can cost more tokens; it no longer loses context silently.
+- **Never silent.** Resuming in summary or hybrid mode shows a Notice naming how many messages are left out. As long as any are, the context box shows a `SUMMARY` chip and a row saying how many are not sent, with **Send full history**, which sets `resumeMode = "full"` and drops the boundary. `omittedByResume(conv)` is the one count for both.
+- **Validated on load:** `sanitizeConversationFields` drops a `resumedAfterId` that is not a non-empty string.
+
+**Not done.** The settings' *Resume mode* default is still written onto new conversations, where it is now inert until the resume command. It is kept for templates that name a mode and for a later decision on preselecting the resume dialog, recorded as D-63.
+
+**Guards.** `tests/messageUtils.test.ts` (only the part before the boundary is reduced; no boundary → nothing; `resumeBoundary`/`omittedByResume`) · `tests/resumeVisible.test.ts` (the row names the count; the button restores full history and the row goes) · `tests/pathFields.test.ts` (the new field is classified).

@@ -198,6 +198,12 @@ const de: Strings = {
 	ctxSystemPrompt:   "Systemprompt",
 	ctxAddNote:        "+ Notiz hinzufügen",
 	ctxSystemPromptEst:"+ Systemprompt {{est}}",
+	ctxResumeSummary:  "Nur Zusammenfassung: Die {{count}} Nachrichten vor dem Fortsetzen werden nicht gesendet",
+	ctxResumeHybrid:   "Zusammenfassung + letzte: {{count}} ältere Nachrichten werden nicht gesendet",
+	ctxResumeChip:     "Zusammenfassung",
+	ctxSendFullHistory:"Ganzen Verlauf senden",
+	ctxFullHistoryOn:  "Ganzer Verlauf: Ab der nächsten Antwort wird jede Nachricht wieder gesendet.",
+	resumedReducedNotice: "Fortgesetzt. {{count}} frühere Nachrichten bleiben weg, die Zusammenfassung steht für sie. Über Kontext oberhalb des Chats lässt sich der ganze Verlauf senden.",
 	ctxNearFull:       "Fast voll — Verlauf verdichten spart {{n}}.",
 	ctxSummarize:      "Zusammenfassen",
 
