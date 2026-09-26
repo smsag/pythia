@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **#258 done (ADR-232):** *What Pythia sends* shows a conversation's instructions, template, custom instructions, history and whole system prompt. Six rows about the embedding index (#269, #273, #274, #275, #282 and the phone-embedding row) closed as obsolete by ADR-224.*
+*Updated: 2026-09-26 — **Glossary save fixed:** a re-lookup no longer deletes frontmatter keys Pythia did not write (`replaceBody`), so a term note can carry another plugin's or the user's properties.*
+
+*Previously: 2026-09-26 — **#258 done (ADR-232):** *What Pythia sends* shows a conversation's instructions, template, custom instructions, history and whole system prompt. Six rows about the embedding index (#269, #273, #274, #275, #282 and the phone-embedding row) closed as obsolete by ADR-224.*
 
 *Previously: 2026-09-26 — **#256 done (ADR-231):** a resumed conversation no longer forgets its own new turns, and a reduced history is shown with a way back.*
 
@@ -2070,3 +2072,9 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **"Show me the current ECB rate" did not search without the globe.** ADR-226 removed the time cues on a misreading of the user's decision ("keep the behaviour and also trigger on URLs"). | High | Closed: time cues restored, links still count |
 | **A date or cue word inside a [[note link]] armed a search.** | Low | Closed: note links are ignored by the cues |
 
+
+## Bug — a term note lost every property Pythia did not write, 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **A re-lookup deleted every frontmatter key that was not Pythia's.** `GlossaryService.save` wrote `renderBody(merged)` over the whole file with `vault.modify`, so the frontmatter block was gone before `processFrontMatter` re-added Pythia's own keys. Lost on every re-lookup: `tags`, `cssclasses`, any property set by hand, another plugin's keys, and the `definition_<lang>` / `translated_from` cache of a `manual` definition the lookup kept. The method's own comment promised the opposite. Surfaced while planning Schreibstube reading the glossary folder as its term source, which needs a `schreibstubeAvoid` property on the same note to survive. | High | **Fixed.** `replaceBody` (pure, `services/glossaryNotes.ts`) swaps the body and keeps the block byte for byte, applied through `vault.process`. `tests/glossarySave.test.ts` runs `save` over an in-memory vault; its two property tests fail on the old write. |

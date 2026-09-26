@@ -20,6 +20,7 @@ import {
 	parseBody,
 	renderBody,
 	stripFrontmatter,
+	replaceBody,
 	termPath,
 	themePath,
 	THEME_TYPE,
@@ -348,7 +349,10 @@ export class GlossaryService {
 	 * and a context instead of losing the first one's.
 	 *
 	 * Frontmatter is written through `processFrontMatter`, which merges into the
-	 * existing block: a property the user added by hand survives our write.
+	 * existing block, and the body is swapped under it with `replaceBody`: a
+	 * property the user or another plugin added survives our write. Another
+	 * plugin reads these notes as its source (Schreibstube's glossary), so the
+	 * block is shared, not ours.
 	 */
 	async save(entry: GlossaryEntry, force = false): Promise<GlossaryEntry> {
 		const app = this.plugin.app;
@@ -362,7 +366,8 @@ export class GlossaryService {
 			const body = parseBody(stripFrontmatter(raw));
 			const current = entryFromFrontmatter(existingFile.basename, app.metadataCache.getFileCache(existingFile)?.frontmatter, body);
 			merged = mergeEntry(current, entry, force);
-			await app.vault.modify(existingFile, renderBody(merged));
+			// The body only: the frontmatter block holds keys that are not ours.
+			await app.vault.process(existingFile, (text) => replaceBody(text, renderBody(merged)));
 		} else {
 			await app.vault.create(path, renderBody(merged));
 		}

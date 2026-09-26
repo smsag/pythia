@@ -344,9 +344,26 @@ export function parseBody(body: string): { definition: string; contexts: string[
 	};
 }
 
+const FRONTMATTER_BLOCK = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+
 /** Strip a leading YAML frontmatter block, returning the body alone. */
 export function stripFrontmatter(markdown: string): string {
-	return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+	return markdown.replace(FRONTMATTER_BLOCK, "");
+}
+
+/**
+ * Swap a note's body and keep its frontmatter block byte for byte.
+ *
+ * `save` used to write the rendered body over the whole file, which dropped the
+ * block before `processFrontMatter` re-added Pythia's own keys — so every
+ * property the user or another plugin had put there (`tags`, `cssclasses`,
+ * `schreibstubeAvoid`, the `definition_<lang>` cache) vanished on the next
+ * re-lookup. The block is not ours alone to rewrite.
+ */
+export function replaceBody(markdown: string, body: string): string {
+	const block = FRONTMATTER_BLOCK.exec(markdown)?.[0] ?? "";
+	if (!block) return body;
+	return `${block.endsWith("\n") ? block : `${block}\n`}${body}`;
 }
 
 /**
