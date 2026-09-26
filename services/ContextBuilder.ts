@@ -1,5 +1,6 @@
 import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
+import { todayISO } from "../utils";
 import { estimateTokensFromText, arrayBufferToBase64, langDirective } from "./messageUtils";
 import { selectRelevantChunks } from "./noteChunking";
 import {
@@ -132,7 +133,9 @@ export function buildSystemPrompt(
 	// build time. Gating on researchMode also keeps the block out of the
 	// default prompt so plain conversations are unchanged.
 	if (conversation.researchMode) {
-		const today = new Date().toISOString().slice(0, 10);
+		// The user's own calendar day, never UTC: in Berlin between midnight and
+		// 02:00 the UTC date is still yesterday, and "today" answers go wrong (ADR-228).
+		const today = todayISO();
 		parts.push(
 			`<${RECENT_CONTEXT_TAG}>\n` +
 				`Current date: ${today}.\n` +

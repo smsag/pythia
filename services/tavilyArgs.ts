@@ -21,6 +21,11 @@ export type SearchTimeRange = (typeof SEARCH_TIME_RANGES)[number];
  *  in the request, so the cap is named in the error rather than applied. */
 export const MAX_FILTER_DOMAINS = 10;
 
+/** Tavily refuses a longer query with an HTTP 400 (its error names 400
+ *  characters). Named here so the model is told before a credit is spent,
+ *  and can shorten it in the same turn (ADR-228). */
+export const MAX_QUERY_CHARS = 400;
+
 export interface SearchArgs {
 	query: string;
 	topic?: SearchTopic;
@@ -32,8 +37,9 @@ export interface SearchArgs {
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // A bare hostname: labels of letters, digits and hyphens, at least one dot,
-// an alphabetic TLD. Deliberately strict — anything else is not a site filter.
-const HOST_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+// an alphabetic TLD or an internationalised one in its xn-- form (`.рф` is
+// `xn--p1ai`, ADR-228). Deliberately strict — anything else is not a site filter.
+const HOST_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
 
 function oneOf<T extends string>(field: string, value: unknown, allowed: readonly T[]): Parsed<T | undefined> {
 	if (value === undefined || value === null || value === "") return { ok: true, value: undefined };
@@ -64,6 +70,9 @@ export function parseSearchArgs(input: Record<string, unknown>): Parsed<SearchAr
 	const query = input["query"];
 	if (typeof query !== "string" || !query.trim()) {
 		return { ok: false, error: "'query' must be a non-empty string." };
+	}
+	if (query.trim().length > MAX_QUERY_CHARS) {
+		return { ok: false, error: `'query' may be at most ${MAX_QUERY_CHARS} characters (got ${query.trim().length}). Search with the key words only.` };
 	}
 	const topic = oneOf("topic", input["topic"], SEARCH_TOPICS);
 	if (!topic.ok) return topic;
@@ -127,35 +136,50 @@ export function isPrivateHost(hostname: string): boolean {
 	// (`localhost.`, `nas.local.`) and must not change the verdict.
 	const h = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
 	if (h === "localhost" || h.endsWith(".localhost")) return true;
-	if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return true;
+	if (PRIVATE_SUFFIXES.some((suffix) => h.endsWith(suffix))) return true;
 	if (!h.includes(".") && !h.includes(":")) return true; // a single-label intranet name
 	if (h.includes(":")) {
-		// IPv4-mapped (::ffff:a.b.c.d, which the URL parser writes as two hex
-		// groups) is the IPv4 address it maps, and is judged as one.
-		const mapped = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(h);
+		// IPv4-mapped (::ffff:a.b.c.d) and NAT64 (64:ff9b::a.b.c.d), which the
+		// URL parser writes as two hex groups, are the IPv4 address they carry.
+		const mapped = /^(?:::ffff|64:ff9b:):([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
 		if (mapped) {
 			const hi = parseInt(mapped[1], 16);
-			return isPrivateIPv4(hi >> 8, hi & 255);
+			const lo = parseInt(mapped[2], 16);
+			return isPrivateIPv4(hi >> 8, hi & 255, lo >> 8);
 		}
-		const dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+		const dotted = /^(?:::ffff|64:ff9b:):(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
 		if (dotted) return isPrivateHost(dotted[1]);
-		// IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10).
-		return h === "::1" || h === "::" || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h);
+		// IPv6: loopback, unspecified, unique-local (fc00::/7), link-local
+		// (fe80::/10), multicast (ff00::/8).
+		return h === "::1" || h === "::" || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h) || /^ff[0-9a-f]{0,2}:/.test(h);
 	}
 	const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-	if (!m) return false;
-	return isPrivateIPv4(Number(m[1]), Number(m[2]));
+	if (m) return isPrivateIPv4(Number(m[1]), Number(m[2]), Number(m[3]));
+	// A public name that spells a private address — 127.0.0.1.nip.io,
+	// 10-0-0-1.sslip.io — resolves to it; judged by the address it names (ADR-228).
+	const spelled = /^(\d{1,3})[.-](\d{1,3})[.-](\d{1,3})[.-](\d{1,3})\./.exec(h);
+	return !!spelled && isPrivateIPv4(Number(spelled[1]), Number(spelled[2]), Number(spelled[3]));
 }
 
-/** The private, loopback, link-local and carrier-grade-NAT IPv4 ranges, by
- *  their first two octets — every range here is decided by those. */
-function isPrivateIPv4(a: number, b: number): boolean {
+/** Names that only resolve inside a network: mDNS, the reserved home and
+ *  internal suffixes, and the private ones organisations commonly use. */
+const PRIVATE_SUFFIXES = [".local", ".internal", ".lan", ".home.arpa", ".home", ".corp", ".intranet", ".private"];
+
+/** The IPv4 ranges that are not a public web server: private, loopback,
+ *  link-local, carrier-grade NAT, the documentation and benchmarking nets,
+ *  multicast and reserved (ADR-228 added the last four). */
+function isPrivateIPv4(a: number, b: number, c: number): boolean {
 	return (
 		a === 10 || a === 127 || a === 0 ||
 		(a === 169 && b === 254) ||
 		(a === 172 && b >= 16 && b <= 31) ||
 		(a === 192 && b === 168) ||
-		(a === 100 && b >= 64 && b <= 127) // carrier-grade NAT
+		(a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
+		(a === 192 && b === 0 && (c === 0 || c === 2)) || // IETF protocol assignments · TEST-NET-1
+		(a === 198 && (b === 18 || b === 19)) || // benchmarking
+		(a === 198 && b === 51 && c === 100) || // TEST-NET-2
+		(a === 203 && b === 0 && c === 113) || // TEST-NET-3
+		a >= 224 // multicast, reserved, broadcast
 	);
 }
 

@@ -288,3 +288,26 @@ describe("WebSearchService — a hung request (ADR-227)", () => {
 		}
 	});
 });
+
+describe("WebSearchService — the smaller Tavily gaps (ADR-228)", () => {
+	it("shows a news result's published date under its header", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [{ title: "ECB", url: "https://ecb.europa.eu/x", content: "cut", published_date: "Thu, 25 Sep 2026 10:00:00 GMT" }] }));
+		const r = await new WebSearchService(settings(), "k").search("q");
+		expect(r.text).toContain("### 1. ECB\nURL: https://ecb.europa.eu/x\nPublished: Thu, 25 Sep 2026 10:00:00 GMT\ncut");
+	});
+
+	it("trims the key, and a key of only spaces is no key", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [] }));
+		const svc = new WebSearchService(settings(), "  tvly-abc\n");
+		await svc.search("q");
+		expect(requestUrlMock.mock.calls[0][0].headers.Authorization).toBe("Bearer tvly-abc");
+		svc.updateApiKey("   ");
+		expect(svc.hasApiKey()).toBe(false);
+	});
+
+	it("sends a whole number of results even when the stored setting is not one", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [] }));
+		await new WebSearchService(settings({ webSearchMaxResults: 3.7 }), "k").search("q");
+		expect(JSON.parse(requestUrlMock.mock.calls[0][0].body).max_results).toBe(3);
+	});
+});

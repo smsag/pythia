@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **Three Tavily findings closed (ADR-227):** a follow-up can read an earlier answer's source, a Wikipedia link with parentheses is admitted, and a hung request times out after 30 s.*
+*Updated: 2026-09-26 — **The Tavily review is done (ADR-228):** the last eleven findings closed; parallel tool calls in one round stay deferred (D-62) with the reason.*
+
+*Previously: 2026-09-26 — **Three Tavily findings closed (ADR-227):** a follow-up can read an earlier answer's source, a Wikipedia link with parentheses is admitted, and a hung request times out after 30 s.*
 
 *Previously: 2026-09-26 — **Tavily review (ADR-226).** 26 findings; the worst — a cited web source opened the site's homepage — fixed with numbered citations, alongside nine others. Auto-search now arms only on a pasted link. The rest are deferred as D-62.*
 
@@ -2041,5 +2043,15 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **`read_url` refused a Wikipedia link with `)`.** | Medium | Closed (ADR-227): balanced parentheses kept |
 | **A follow-up could not read an earlier answer's source**: the model never saw the address, and the allow-list did not admit it. | Medium | Closed (ADR-227): addresses ride in history and are admitted |
 | **A hung Tavily request held the answer forever.** | Medium | Closed (ADR-227): 30 s timeout |
-| The other 13 (research without a key, `published_date`, UTC date, and smaller ones). | Low–Medium | Deferred: D-62 |
+| **Research on without a key offered tools that could only fail.** | Medium | Closed (ADR-228): `researchForSend`, and the send says so |
+| **News results dropped `published_date`.** | Medium | Closed (ADR-228) |
+| **The recency line used the UTC date.** | Low | Closed (ADR-228): local date |
+| **`max_results` could be a fraction, and a value over 20 was clamped silently.** | Low | Closed (ADR-228) |
+| **A link typed without `https://` was not recognised.** | Low | Closed (ADR-228): `BARE_URL_RE` |
+| **Private-host gaps** (`.corp`, multicast, NAT64, `*.nip.io`). | Low | Closed (ADR-228) |
+| **IDN top-level domains were refused as filters.** | Low | Closed (ADR-228) |
+| **No `is_error` on Anthropic tool results.** | Low | Closed (ADR-228) |
+| **The key was not trimmed.** | Low | Closed (ADR-228) |
+| **Query length was uncapped.** | Low | Closed (ADR-228): 400 characters |
+| **Web calls in one round run in sequence.** | Low | Deferred by decision: D-62 (it would race the result numbering and the write confirmations) |
 

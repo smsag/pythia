@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-227 (a follow-up can read an earlier answer's source: its page addresses ride in that answer's history and the read allow-list admits them; a `)` inside a link is kept when balanced; a Tavily call gives up after 30 s).*
+*Last updated: 2026-09-26 — ADR-228 (the rest of the Tavily review: research needs a key, news results carry their date, the recency line uses the local date, the result count is a whole number capped at 20, a link typed without `https://` counts, more private hosts are refused, internationalised top-level domains are accepted as filters, Anthropic tool errors carry `is_error`, the key is trimmed, a query is capped at 400 characters; parallel tool calls stay deferred as D-62).*
+
+*Previously: 2026-09-26 — ADR-227 (a follow-up can read an earlier answer's source: its page addresses ride in that answer's history and the read allow-list admits them; a `)` inside a link is kept when balanced; a Tavily call gives up after 30 s).*
 
 *Previously: 2026-09-26 — ADR-226 (web citations are numbered: `⟦cite:web:<n>⟧` opens that exact article; results come back as data, never re-read from text; a citation nothing fetched is dropped; auto-search arms only on a pasted link; five searches per answer; a rejected key or used-up plan says so; comparison runs get the same research rule and sources).*
 
@@ -4883,3 +4885,31 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - `tests/OpenAIProvider.test.ts`: an earlier answer's web sources reach the request, numbered as the row; vault and bare-domain sources do not.
 - `tests/webReadScope.test.ts`: balanced parentheses are kept and unmatched ones dropped; a pasted Wikipedia link is admitted; an earlier answer's source is admitted, and the same address with data added is not.
 - `tests/webSearch.test.ts`: a request that never answers gives up at the timeout.
+
+---
+
+## ADR-228 — The rest of the Tavily review
+
+**Status:** Active · 2026-09-26 · closes D-62 except one item
+
+**Context.** ADR-226 fixed the source-integrity findings and ADR-227 three more. Eleven remained. Each was Low or Medium, and none made a source wrong.
+
+**Decision.**
+- **Research needs a key.** `researchForSend` (`services/sendPolicy.ts`) is the ONE rule for the send and every comparison run. With the globe on and no key, the tools are not offered, the "search first" block is not added, and the send says so (`researchNoKeyNotice`). Before, the tools were offered and could only fail, costing tool rounds.
+- **News results carry their date.** Tavily's `published_date` is shown as a `Published:` line under the result. Validated as a string, one line, 40 characters at most.
+- **The recency line uses the local date** (`todayISO`), not UTC. In Berlin, between midnight and 02:00 UTC is still yesterday.
+- **The result count is a whole number from 1 to 20.** The service floors a stored value, and the settings field refuses a value above 20 and says so in its description, instead of clamping silently.
+- **A link typed without its scheme counts.** `BARE_URL_RE` accepts `www.example.com` and `example.com/path` for both the auto-search trigger and the read allow-list, where it is read as https. A bare `example.com` in prose does not count, because that is a name, not a request to read a page.
+- **More private hosts are refused:**
+  - the `.home`, `.corp`, `.intranet` and `.private` suffixes;
+  - IPv4 multicast, reserved and broadcast addresses, and the documentation and benchmarking ranges;
+  - IPv6 multicast, and NAT64 addresses carrying a private IPv4;
+  - names that spell a private address (`127.0.0.1.nip.io`, `10-0-0-1.sslip.io`).
+- **Internationalised top-level domains** (`xn--…`) are accepted as site filters.
+- **An Anthropic tool result starting "Error" carries `is_error: true`.**
+- **The Tavily key is trimmed.** A key of only spaces counts as no key.
+- **A query is capped at 400 characters**, Tavily's own limit as named in its error. The cap is named to the model before a credit is spent.
+
+**Not done (D-62).** Web calls in one round still run one after another. Running them in parallel would race the answer's result numbering, and the same loop runs the write tools, whose confirmation cards must come one at a time. The gain is a second or two on the rare round with two searches.
+
+**Guards.** `tests/sendPolicy.test.ts` (`researchForSend`) · `tests/webSearch.test.ts` (published date, key trim, whole-number count) · `tests/ContextBuilder.test.ts` (local date at 00:30) · `tests/webSearchHeuristics.test.ts` and `tests/webReadScope.test.ts` (scheme-less links, and what does not count) · `tests/tavilyArgs.test.ts` (400-character cap, IDN filter, private and public hosts) · `tests/AnthropicService.test.ts` (`is_error`).

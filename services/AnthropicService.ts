@@ -257,6 +257,9 @@ export class AnthropicService extends BaseProvider {
 					type: "tool_result",
 					tool_use_id: block.id,
 					content: result,
+					// Every tool reports failure as "Error: …"; Anthropic reads the flag
+					// as a failed call to recover from, not a result (ADR-228).
+					...(result.startsWith("Error") ? { is_error: true } : {}),
 				});
 			}
 		}

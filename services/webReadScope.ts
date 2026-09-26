@@ -1,4 +1,5 @@
 import type { Conversation } from "../models/types";
+import { BARE_URL_RE } from "./webSearchHeuristics";
 
 /**
  * Which pages `read_url` may read during one send, and how many (ADR-217
@@ -61,9 +62,15 @@ export function normalizeReadableUrl(raw: string): string | null {
 	}
 }
 
-/** Every http(s) URL in `text`, normalized. */
+/** Every http(s) URL in `text`, normalized — a link typed without its scheme
+ *  (`www.example.com/…`, `example.com/…`) is read as https (ADR-228). */
 export function urlsInText(text: string): string[] {
 	const out: string[] = [];
+	const withoutSchemes = text.replace(URL_IN_TEXT_RE, " ");
+	for (const m of withoutSchemes.matchAll(BARE_URL_RE)) {
+		const url = normalizeReadableUrl(`https://${balanceParens(m[0].replace(/[.,;:!?]+$/, ""))}`);
+		if (url) out.push(url);
+	}
 	for (const m of text.matchAll(URL_IN_TEXT_RE)) {
 		const url = normalizeReadableUrl(balanceParens(m[0].replace(/[.,;:!?]+$/, "")));
 		if (url) out.push(url);

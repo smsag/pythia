@@ -84,3 +84,14 @@ describe("WebReadScope — Wikipedia links and earlier answers' sources (ADR-227
 		expect(scope.admit("https://news.example/rain?d=secret")).toMatch(/only reads a link/);
 	});
 });
+
+describe("WebReadScope — a link typed without its scheme (ADR-228)", () => {
+	it("reads www. and host/path links as https, alongside full links", () => {
+		expect(urlsInText("see www.example.com/a and example.org/b and https://c.net/d"))
+			.toEqual(["https://www.example.com/a", "https://example.org/b", "https://c.net/d"]);
+	});
+	it("admits the https form of a link the user typed without a scheme", () => {
+		const scope = WebReadScope.forConversation(conv({ role: "user", content: "summarize example.com/article" }));
+		expect(scope.admit("https://example.com/article")).toBeNull();
+	});
+});

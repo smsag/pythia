@@ -40,6 +40,9 @@ interface TavilyResult {
 	title?: string;
 	url?: string;
 	content?: string;
+	/** Present on news results; the only way the model can tell how recent a
+	 *  result is when it searched with a time filter (ADR-228). */
+	published_date?: string;
 }
 
 interface TavilyResponse {
@@ -98,15 +101,17 @@ export class WebSearchService {
 
 	constructor(settings: PythiaSettings, apiKey: string) {
 		this.settings = settings;
-		this.apiKey = apiKey;
+		this.apiKey = apiKey.trim();
 	}
 
 	updateSettings(settings: PythiaSettings): void {
 		this.settings = settings;
 	}
 
+	/** Trimmed: a key pasted with a space or a line break would travel in the
+	 *  header and be rejected, and one of only spaces is no key (ADR-228). */
 	updateApiKey(apiKey: string): void {
-		this.apiKey = apiKey;
+		this.apiKey = apiKey.trim();
 	}
 
 	hasApiKey(): boolean {
@@ -128,10 +133,10 @@ export class WebSearchService {
 		if (!this.apiKey) return fail(NOT_CONFIGURED, "auth");
 		if (!q) return fail("Error: 'query' must be a non-empty string.");
 
-		const maxResults = Math.min(
-			this.settings.webSearchMaxResults > 0 ? this.settings.webSearchMaxResults : DEFAULT_MAX_RESULTS,
-			TAVILY_MAX_RESULTS,
-		);
+		// A whole number between 1 and Tavily's ceiling: a hand-edited 3.5 would
+		// be sent as-is and refused (ADR-228).
+		const setting = Math.floor(this.settings.webSearchMaxResults);
+		const maxResults = Math.min(setting > 0 ? setting : DEFAULT_MAX_RESULTS, TAVILY_MAX_RESULTS);
 
 		const body: Record<string, unknown> = {
 			query: q,
@@ -221,16 +226,21 @@ function truncate(s: string, max: number): string {
 /** A result Pythia can show and link to: an object with an http(s) URL. Title
  *  and snippet are strings or nothing, and a title is one line — a newline in
  *  it would put text where the numbered header ends (principle 1, ADR-226). */
-function cleanResults(value: unknown): { title: string; url: string; content: string }[] {
+function cleanResults(value: unknown): { title: string; url: string; content: string; published: string }[] {
 	if (!Array.isArray(value)) return [];
-	const out: { title: string; url: string; content: string }[] = [];
+	const out: { title: string; url: string; content: string; published: string }[] = [];
 	for (const r of value) {
 		if (!r || typeof r !== "object") continue;
-		const { title, url, content } = r as TavilyResult;
+		const { title, url, content, published_date } = r as TavilyResult;
 		const href = typeof url === "string" ? safeHttpUrl(url) : null;
 		if (!href) continue;
 		const oneLine = typeof title === "string" ? title.replace(/\s+/g, " ").trim() : "";
-		out.push({ title: oneLine || webDomain(href), url: href, content: typeof content === "string" ? content.trim() : "" });
+		out.push({
+			title: oneLine || webDomain(href),
+			url: href,
+			content: typeof content === "string" ? content.trim() : "",
+			published: typeof published_date === "string" ? published_date.replace(/\s+/g, " ").trim().slice(0, 40) : "",
+		});
 	}
 	return out;
 }
@@ -263,7 +273,8 @@ function formatResults(args: SearchArgs, raw: unknown, maxResults: number, first
 
 	const sources: WebSource[] = results.map((r, i) => ({ n: firstN + i, title: r.title, url: r.url }));
 	results.forEach((r, i) => {
-		parts.push(`### ${firstN + i}. ${r.title}\nURL: ${r.url}\n${truncate(r.content, MAX_SNIPPET_CHARS)}`.trimEnd());
+		const published = r.published ? `\nPublished: ${r.published}` : "";
+		parts.push(`### ${firstN + i}. ${r.title}\nURL: ${r.url}${published}\n${truncate(r.content, MAX_SNIPPET_CHARS)}`.trimEnd());
 	});
 
 	return { text: parts.join("\n\n"), sources };
