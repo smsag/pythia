@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-232: new `suggest/InstructionsModal.ts` (*What Pythia sends*, with the pure `instructionFacts`) and `services/sendPreview.ts` (`previewSystemPrompt` — the ONE preview behind the context box's estimate and the dialog — and `sendFullHistory`); `HeaderController`'s menu gains the row; the context box's system-prompt line opens the dialog. Engineering-review rows about the removed embedding index closed as obsolete.*
+*Last updated: 2026-09-26 — ADR-233: `suggest/ResumeModeModal.ts` gains `preselectedResumeMode` and `resumeChoiceOrder` and takes the preselected mode; `ConversationService.createConversation` no longer copies `defaultResumeMode` onto a new conversation.*
+
+*Previously: 2026-09-26 — ADR-232: new `suggest/InstructionsModal.ts` (*What Pythia sends*, with the pure `instructionFacts`) and `services/sendPreview.ts` (`previewSystemPrompt` — the ONE preview behind the context box's estimate and the dialog — and `sendFullHistory`); `HeaderController`'s menu gains the row; the context box's system-prompt line opens the dialog. Engineering-review rows about the removed embedding index closed as obsolete.*
 
 *Previously: 2026-09-26 — ADR-231: `Conversation.resumedAfterId`; `messageUtils.selectHistoryForSend(messages, mode, resumedAt)` + `resumeBoundary` + `omittedByResume`, used by all three providers; `cmdResumeConversation` records the boundary and says what is left out; `ContextInspectorController` shows the resume row and exports `sendFullHistory`.*
 
