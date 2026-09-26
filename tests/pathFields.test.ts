@@ -37,6 +37,7 @@ const MESSAGE: Record<keyof Message, Kind> = {
 	timestamp: "other", model: "other", attachedNotes: "paths", tokenUsage: "other",
 	sources: "nested", chapterName: "other", templateId: "path", rewriteTarget: "nested",
 	truncated: "other", cost: "other", noteWrites: "nested",
+	alternatives: "nested", // other answers kept as tabs (ADR-219)
 };
 
 const PENDING_TEMPLATE: Record<keyof PendingTemplate, Kind> = {
@@ -47,10 +48,11 @@ const PENDING_TEMPLATE: Record<keyof PendingTemplate, Kind> = {
 
 const REWRITE_TARGET: Record<keyof RewriteTarget, Kind> = { path: "path", from: "other", to: "other", text: "other" };
 const NOTE_WRITE: Record<keyof NoteWrite, Kind> = { path: "path", action: "other" };
-const COMPARISON: Record<keyof Comparison, Kind> = { id: "other", userMessageId: "other", candidates: "nested", createdAt: "other" };
+const COMPARISON: Record<keyof Comparison, Kind> = { id: "other", userMessageId: "other", candidates: "nested", createdAt: "other", priorAlternativeIds: "other" };
 const CANDIDATE: Record<keyof ComparisonCandidate, Kind> = {
 	id: "other", provider: "other", model: "other", content: "other", timestamp: "other",
 	tokenUsage: "other", sources: "nested", templateId: "path",
+	cost: "other", noteWrites: "nested",
 };
 
 const SETTINGS: Record<keyof PythiaSettings, Kind> = {
@@ -85,16 +87,19 @@ function fixture(): Conversation {
 		}
 		return obj;
 	};
+	const makeCandidate = (tag: string): ComparisonCandidate => put({
+		id: tag, provider: "anthropic", model: "m", content: "", timestamp: "t",
+		sources: [{ n: 1, kind: "vault", ref: at(`${tag}.source.md`), title: `${tag}.source` }],
+		noteWrites: [put({ action: "created" } as unknown as NoteWrite, NOTE_WRITE, `${tag}.write`)],
+	} as unknown as ComparisonCandidate, CANDIDATE, tag);
+	const candidate = makeCandidate("cand");
 	const message = put({
 		id: "m", role: "assistant", content: `[[${at("said.md")}]]`, timestamp: "t",
 		sources: [{ n: 1, kind: "vault", ref: at("msg.source.md"), title: "msg.source" }],
 		rewriteTarget: put({ from: { line: 0, ch: 0 }, to: { line: 0, ch: 1 }, text: "x" } as unknown as RewriteTarget, REWRITE_TARGET, "msg.rewrite"),
 		noteWrites: [put({ action: "created" } as unknown as NoteWrite, NOTE_WRITE, "msg.write")],
+		alternatives: [makeCandidate("alt")],
 	} as unknown as Message, MESSAGE, "msg");
-	const candidate = put({
-		id: "k", provider: "anthropic", model: "m", content: "", timestamp: "t",
-		sources: [{ n: 1, kind: "vault", ref: at("cand.source.md"), title: "cand.source" }],
-	} as unknown as ComparisonCandidate, CANDIDATE, "cand");
 	return put({
 		id: "c", name: "C", messages: [message],
 		comparison: put({ id: "q", userMessageId: "m", createdAt: "t", candidates: [candidate] } as Comparison, COMPARISON, "cmp"),

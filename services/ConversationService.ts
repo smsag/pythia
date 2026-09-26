@@ -9,7 +9,6 @@ import { effectiveTheme } from "./glossaryNotes";
 import type { GlossaryEntry } from "./glossary";
 import { archiveFolderOf } from "./conversationArchive";
 import { describeErrorForLog } from "./redact";
-import type { ForkSpec } from "./comparison";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
 import { ResumeModeModal } from "../suggest/ResumeModeModal";
@@ -332,42 +331,6 @@ export class ConversationService {
 		const excerpt = passage.trim();
 		if (excerpt) conv.forkedFromSelection = excerpt;
 		await p.saveConversations();
-		return conv;
-	}
-
-	/**
-	 * Create the fork that holds a non-kept comparison answer (ADR-160): the
-	 * source's settings with the candidate's provider/model, the prompt and that
-	 * answer as its only two messages, branched from the kept message so the
-	 * navigator lists it under Forks. No selection excerpt — the whole exchange
-	 * is the branch point.
-	 */
-	async createComparisonFork(source: Conversation, spec: ForkSpec): Promise<Conversation> {
-		const p = this.plugin;
-		const conv = await this.createConversation({
-			name: spec.name,
-			systemPrompt: source.systemPrompt,
-			templateId: source.templateId,
-			provider: spec.provider,
-			model: spec.model,
-			maxTokens: source.maxTokens,
-			contextNotes: [...(source.contextNotes ?? [])],
-			resumeMode: source.resumeMode,
-			outputFolder: source.outputFolder,
-			writeMode: source.writeMode,
-			temperature: source.temperature,
-			effort: source.effort,
-			researchMode: source.researchMode,
-		});
-		conv.forkedFromId = source.id;
-		conv.forkedFromMessageId = spec.forkedFromMessageId;
-		if (source.summaryText) conv.forkedFromSummary = source.summaryText;
-		if (source.outputLanguage) conv.outputLanguage = source.outputLanguage;
-		conv.theme = effectiveTheme(source);
-		conv.messages = spec.messages;
-		if (spec.favorites) conv.favorites = spec.favorites;
-		if (spec.merges) conv.merges = spec.merges;
-		await p.conversationStore.save(conv);
 		return conv;
 	}
 

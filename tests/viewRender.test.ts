@@ -433,7 +433,7 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 		expect(input.value).toBe("another question");           // draft untouched
 	});
 
-	it("keeping a candidate makes it the answer and forks the rest; the fork is a new conversation", async () => {
+	it("keeping a candidate makes it the answer and keeps the others as tabs on it — no fork (ADR-219)", async () => {
 		const conv = await seedConversation(plugin, {
 			name: "Keep B",
 			messages: [userMsg("u1", "q1"), aiMsg("a1", "r1")],
@@ -447,14 +447,13 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 
 		expect(conv.comparison).toBeUndefined();
 		expect(conv.messages.map((m) => m.id)).toEqual(["u1", "b1"]);
-		const fork = plugin.conversations.find((c) => c.forkedFromId === conv.id);
-		expect(fork).toBeDefined();
-		expect(fork!.name).toBe("Keep B · Sonnet 4.6");
-		expect(fork!.model).toBe("claude-sonnet-4-6");
-		expect(fork!.forkedFromMessageId).toBe("b1");
-		expect(fork!.messages.map((m) => m.id)).toEqual(["u1", "a1"]);
+		expect(conv.messages[1].alternatives?.map((c) => c.id)).toEqual(["a1"]);
+		expect(plugin.conversations.filter((c) => c.forkedFromId === conv.id)).toHaveLength(0);
 		expect(pane().querySelector(".p-compare")).toBeNull();
-		expect(pane().querySelector('[data-msg-id="b1"]')).not.toBeNull();
+		const row = pane().querySelector('[data-msg-id="b1"]');
+		expect(row).not.toBeNull();
+		const tabs = [...row!.querySelectorAll(".p-answer-tab")].map((t) => t.textContent);
+		expect(tabs).toEqual(["GPT-4o", "Sonnet 4.6"]);
 	});
 
 	it("discarding restores the original answer", async () => {

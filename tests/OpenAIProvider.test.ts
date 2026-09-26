@@ -522,3 +522,31 @@ describe("OpenAIProvider — finish reason (ADR-162)", () => {
 		expect(finish?.truncated).toBe(true);
 	});
 });
+
+describe("OpenAIProvider — answer tabs never reach the model (ADR-219)", () => {
+	it("sends the kept answer's content only, never an alternative tab", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		const conv = makeConv({
+			model: "gpt-4o",
+			messages: [
+				{ id: "u1", role: "user", content: "first question", timestamp: "" },
+				{
+					id: "a1", role: "assistant", content: "KEPT ANSWER", timestamp: "",
+					alternatives: [{ id: "b1", provider: "anthropic", model: "claude-sonnet-5", content: "SENTINEL TAB", timestamp: "" }],
+				},
+				// The send path finds the outgoing message already appended.
+				{ id: "u2", role: "user", content: "next", timestamp: "" },
+			],
+		});
+		await provider.streamMessage(conv, "next", [], () => {}, () => {}, () => {});
+		const sent = JSON.stringify((createMock.mock.calls.at(-1)![0] as Record<string, unknown>).messages);
+		expect(sent).toContain("KEPT ANSWER");
+		expect(sent).not.toContain("SENTINEL TAB");
+	});
+});

@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-25 — ADR-218 addendum: the ✓ chip of a written note loses its `[[ ]]` and leads the name with the vault-note icon (`.p-source-icon`, `library`), like every other vault reference (ADR-193/212). No new tokens.*
+*Last updated: 2026-09-25 — ADR-219: a kept comparison leaves its tabs on the answer — `.p-answer-tabs` is the card's own `.p-compare-tabs` strip above `.p-ai-body`; the kept tab `.is-kept` leads with a 12px `check`; another tab shows `.p-answer-alt` (body, sources, meta, `pb-secondary` "Use this answer"). No new tokens; no transition on the tab fill (ADR-155).*
+
+*Previously: 2026-09-25 — ADR-218 addendum: the ✓ chip of a written note loses its `[[ ]]` and leads the name with the vault-note icon (`.p-source-icon`, `library`), like every other vault reference (ADR-193/212). No new tokens.*
 
 *Previously: 2026-09-25 — ADR-218: a note an answer wrote keeps its ✓ chip after the turn — `.pythia-tool-call.pythia-tool-call--done.p-note-write`, drawn inside `.p-msg-ai` after the sources row from `Message.noteWrites`. Same look as the live chip; no new tokens. `[[links]]` in the conversation now open on tap.*
 

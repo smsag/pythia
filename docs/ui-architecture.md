@@ -58,6 +58,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │     ├─ .p-note-write                   the ✓ chip of a written note, kept on the message (ui/noteLinks.ts)
 │     ├─ .p-trunc                        cut-off card (TruncationController)
 │     ├─ .p-compare                      comparison card (ComparisonController)
+│     ├─ .p-answer-tabs                  the tabs a kept comparison leaves on its answer (AnswerTabsController, ADR-219)
 │     └─ .p-del-bar                      delete · ⇄ compare · cancel (ExchangeActionsController)
 ├─ .p-index-trigger  (#)                 → .p-navigator (NavigatorController)
 ├─ .pythia-sel-toolbar                   selection strip (SelectionController)

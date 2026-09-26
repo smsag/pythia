@@ -66,6 +66,15 @@ export class ChatScroll {
 		this.move((el) => { el.scrollTop = el.scrollHeight; });
 	}
 
+	/** Jump to the top and stop following — twice, the second after layout, so
+	 *  content that renders in late cannot push the view off the top. */
+	toTop(): void {
+		this.following = false;
+		const el = this.scroller();
+		el.scrollTo({ top: 0, behavior: "instant" });
+		requestAnimationFrame(() => { this.scroller().scrollTo({ top: 0, behavior: "instant" }); });
+	}
+
 	/** Show a finished card whole. Unforced it only follows a user who is following;
 	 *  forced — a card the answer waits on — it is shown regardless, and following
 	 *  resumes, since the card is where the answer continues. */

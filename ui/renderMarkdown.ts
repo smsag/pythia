@@ -26,3 +26,14 @@ export function renderRichMarkdown(
 		.then(() => decorateTables(el))
 		.catch((e) => console.error("[Pythia] markdown render:", e));
 }
+
+/** `renderRichMarkdown`, awaited — for a caller that decorates what it rendered
+ *  (the answer tabs paint citations and marks onto the result, ADR-219). */
+export async function renderRichMarkdownAsync(app: App, md: string, el: HTMLElement, component: Component): Promise<void> {
+	try {
+		await MarkdownRenderer.render(app, md, el, "", component);
+		decorateTables(el);
+	} catch (e) {
+		console.error("[Pythia] markdown render:", e);
+	}
+}
