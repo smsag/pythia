@@ -75,7 +75,7 @@ const settingsEn = {
 	convLanguageDesc:        "Language of the answers and of everything generated for this conversation — title, summary and term definitions included. \"Language of the conversation\" answers in whatever language you write in. Default follows the plugin setting. Answers already written are not translated.",
 	convLanguageDefault:     "Default ({{v}})",
 	resumeModeName:          "Resume mode",
-	resumeModeDesc:          "How much of a conversation is sent back to the model when you continue it.",
+	resumeModeDesc:          "The choice the Resume conversation dialog offers first. It applies from the moment you resume, to the messages before that point.",
 	resumeModeSummaryOpt:    "Summary — lower token cost",
 	resumeModeHybridOpt:     "Hybrid — summary + recent messages",
 	resumeModeFullOpt:       "Full history — higher fidelity",

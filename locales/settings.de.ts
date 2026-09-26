@@ -69,7 +69,7 @@ const settingsDe = {
 	convLanguageDesc:        "Sprache der Antworten und aller erzeugten Texte in diesem Gespräch — auch Titel, Zusammenfassung und Begriffsdefinitionen. „Sprache des Gesprächsverlaufs“ antwortet in der Sprache, in der du schreibst. Standard folgt der Plugin-Einstellung. Bereits geschriebene Antworten werden nicht übersetzt.",
 	convLanguageDefault:     "Standard ({{v}})",
 	resumeModeName:          "Fortsetzungsmodus",
-	resumeModeDesc:          "Wie viel eines Gesprächs beim Fortsetzen erneut an das Modell geht.",
+	resumeModeDesc:          "Die Wahl, die der Dialog Gespräch fortsetzen zuerst anbietet. Sie gilt ab dem Fortsetzen, für die Nachrichten davor.",
 	resumeModeSummaryOpt:    "Zusammenfassung — geringere Token-Kosten",
 	resumeModeHybridOpt:     "Hybrid — Zusammenfassung + letzte Nachrichten",
 	resumeModeFullOpt:       "Vollständiger Verlauf — höhere Genauigkeit",
