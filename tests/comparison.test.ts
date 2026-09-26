@@ -262,7 +262,7 @@ describe("a second comparison on an answer that already has tabs (ADR-219)", () 
 	});
 });
 
-describe("a tab keeps what makes its cards (ADR-223)", () => {
+describe("a tab keeps what makes its cards (ADR-225)", () => {
 	const target = { path: "Notes/X.md", from: { line: 1, ch: 0 }, to: { line: 1, ch: 4 }, text: "old" };
 
 	it("a switch keeps the Continue card of a cut-off answer and a rewrite proposal's target, both ways", () => {

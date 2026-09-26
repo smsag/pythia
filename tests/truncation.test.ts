@@ -112,7 +112,7 @@ describe("cut-off answer card (ADR-162)", () => {
 		expect(labels).toEqual([en.truncContinueBtn, en.compareBtn]);
 	});
 
-	it("withholds Retry on an answer with comparison tabs — they would go with it (ADR-223)", async () => {
+	it("withholds Retry on an answer with comparison tabs — they would go with it (ADR-225)", async () => {
 		await seedConversation(plugin, {
 			name: "Chat", contextNotes: [],
 			messages: [userMsg("u1", "q"), { ...aiMsg("a1", "half"), truncated: true as const,

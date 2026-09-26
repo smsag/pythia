@@ -126,7 +126,7 @@ export interface ComparisonCandidate {
 	cost?: MessageCost;
 	noteWrites?: NoteWrite[];
 	/** Carried like the two above, so a switch between tabs keeps a cut-off
-	 *  answer's Continue card and a rewrite proposal's target (ADR-223). */
+	 *  answer's Continue card and a rewrite proposal's target (ADR-225). */
 	truncated?: true;
 	rewriteTarget?: RewriteTarget;
 }

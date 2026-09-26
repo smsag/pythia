@@ -1,6 +1,6 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-223: `ui/AnswerTabsController.ts` exports `findAnswerEl` (the one way to reach an answer's element by id, bringing a comparison tab up first), used by the favorite jump, the pin ↗, `scrollToMessage` and the merge reveal; the tab view carries `data-msg-id`; `services/comparison.ts` gains `answerIds`, read by `spliceExchange`; `ComparisonCandidate` carries `truncated` + `rewriteTarget`.*
+*Last updated: 2026-09-26 — ADR-225: `ui/AnswerTabsController.ts` exports `findAnswerEl` (the one way to reach an answer's element by id, bringing a comparison tab up first), used by the favorite jump, the pin ↗, `scrollToMessage` and the merge reveal; the tab view carries `data-msg-id`; `services/comparison.ts` gains `answerIds`, read by `spliceExchange`; `ComparisonCandidate` carries `truncated` + `rewriteTarget`.*
 
 *Previously: 2026-09-26 — ADR-222: new `services/embedding/indexJournal.ts` (`IndexJournal`, `serializeJournal`/`deserializeJournal`, `applyJournal`, `shouldCompact`); `IndexStore.journal?()` and `VaultIndexStore.journal()` (`.journal.bin` beside the index); `serializeIndex` takes `extra` header fields and `deserializeIndex` returns the raw `header`; `VaultIndexService` writes edits to the journal and the base through `writeBase`, and merges the journal on load.*
 

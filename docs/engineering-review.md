@@ -1,6 +1,6 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **A comparison tab was not an answer by its own id (ADR-223).** A star, pin, link or Branch made in a non-kept tab went to the kept answer; Delete/Retry left the tabs' marks behind; Retry dropped the tabs; a switch lost the Continue card and a rewrite target. All closed.*
+*Updated: 2026-09-26 — **A comparison tab was not an answer by its own id (ADR-225).** A star, pin, link or Branch made in a non-kept tab went to the kept answer; Delete/Retry left the tabs' marks behind; Retry dropped the tabs; a switch lost the Continue card and a rewrite target. All closed.*
 
 *Previously: 2026-09-26 — **Every write of the vault index was the whole ~19 MB file (D-35, ADR-222).** An edit now writes a journal of the changed rows (kilobytes); the index is rewritten by a build, a takeover, or when the journal reaches 5 % of it. D-35 closed.*
 
@@ -1995,11 +1995,11 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The answers not kept were forked into separate conversations and did not surface at the answer.** | Medium | Closed: they stay as tabs on the kept answer (`Message.alternatives`, `AnswerTabsController`) |
 | **Starting a comparison dropped the original answer's cost snapshot and ✓ chip**, so keeping or cancelling lost them. | Low | Closed: `ComparisonCandidate` carries `cost` and `noteWrites` |
 
-| **A selection in a tab was saved against the kept answer** — invisible star, misplaced merge link or pin, Branch from the wrong answer. Found in the review after merge. | High | Closed (ADR-223): the tab view carries its own `data-msg-id`; Branch hidden and refused on a tab |
-| **Delete / Retry left favorites and merge links on the tab ids behind**; a tap on one in "Starred" did nothing and said nothing. | High | Closed (ADR-223): `answerIds` in `spliceExchange`; a favorite found nowhere shows a Notice |
-| **Retry dropped the tabs** — its guard counted only marks on the kept answer. | Medium | Closed (ADR-223): withheld on an answer with tabs |
-| **"Use this answer" lost `truncated` and `rewriteTarget`.** | Medium | Closed (ADR-223): `ComparisonCandidate` carries both, validated on load |
-| **A jump to a mark on a tab not on screen found nothing.** | Medium | Closed (ADR-223): `findAnswerEl` brings the tab up first |
+| **A selection in a tab was saved against the kept answer** — invisible star, misplaced merge link or pin, Branch from the wrong answer. Found in the review after merge. | High | Closed (ADR-225): the tab view carries its own `data-msg-id`; Branch hidden and refused on a tab |
+| **Delete / Retry left favorites and merge links on the tab ids behind**; a tap on one in "Starred" did nothing and said nothing. | High | Closed (ADR-225): `answerIds` in `spliceExchange`; a favorite found nowhere shows a Notice |
+| **Retry dropped the tabs** — its guard counted only marks on the kept answer. | Medium | Closed (ADR-225): withheld on an answer with tabs |
+| **"Use this answer" lost `truncated` and `rewriteTarget`.** | Medium | Closed (ADR-225): `ComparisonCandidate` carries both, validated on load |
+| **A jump to a mark on a tab not on screen found nothing.** | Medium | Closed (ADR-225): `findAnswerEl` brings the tab up first |
 
 ## Bug — Obsidian reloads on the iPhone while a note is being edited (ADR-220), 2026-09-26
 

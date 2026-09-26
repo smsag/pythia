@@ -1069,7 +1069,7 @@ export class PythiaSidebarView extends ItemView {
 	revealMergeLink(mergeId: string): void { this.mergeController.revealMergeLink(mergeId); }
 
 	scrollToMessage(messageId: string): void {
-		// An answer's row, or a comparison tab brought on screen (ADR-223).
+		// An answer's row, or a comparison tab brought on screen (ADR-225).
 		void findAnswerEl(this.messagesEl, messageId).then((row) => { if (row) scrollChatTo(this.messagesEl, row); });
 	}
 

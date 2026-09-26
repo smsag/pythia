@@ -28,7 +28,7 @@ export function spliceExchange(
 		conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
 	}
 	if (assistant) {
-		// The answer's tabs go with it, and so does whatever was marked on them (ADR-223).
+		// The answer's tabs go with it, and so does whatever was marked on them (ADR-225).
 		const gone = new Set(answerIds(assistant));
 		if (conv.favorites?.length) conv.favorites = conv.favorites.filter((f) => !gone.has(f.messageId));
 		if (conv.merges?.length) conv.merges = conv.merges.filter((l) => !gone.has(l.messageId));

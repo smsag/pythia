@@ -233,7 +233,7 @@ export class PinController {
 	private async jumpTo(conv: Conversation, pin: Pin, root: HTMLElement): Promise<void> {
 		const messagesEl = this.d.getMessagesEl();
 		// An answer's row — found at once, so the jump stays in the tap — or the
-		// comparison tab it was pinned from, brought up first (ADR-223).
+		// comparison tab it was pinned from, brought up first (ADR-225).
 		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(pin.messageId)}"]`)
 			?? await findAnswerEl(messagesEl, pin.messageId);
 		if (!row) { new Notice(t("pinGone")); return; }

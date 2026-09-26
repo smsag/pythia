@@ -305,7 +305,7 @@ export class SelectionController {
 	private async jumpToFavorite(fav: Favorite): Promise<void> {
 		const messagesEl = this.d.getMessagesEl();
 		// An answer's row — found at once, so the jump stays in the tap — or the
-		// comparison tab the favorite was made on, brought up first (ADR-223).
+		// comparison tab the favorite was made on, brought up first (ADR-225).
 		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(fav.messageId)}"]`)
 			?? await findAnswerEl(messagesEl, fav.messageId);
 		if (!row) { new Notice(t("favoriteGone")); return; }
@@ -531,7 +531,7 @@ export class SelectionController {
 	}
 }
 
-/** Whether `node` sits in a comparison tab rather than the kept answer (ADR-223). */
+/** Whether `node` sits in a comparison tab rather than the kept answer (ADR-225). */
 function inAnswerTab(node: Node | null | undefined): boolean {
 	const el = node instanceof Element ? node : node?.parentElement;
 	return !!el?.closest(".p-answer-alt");

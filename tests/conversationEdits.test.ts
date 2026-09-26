@@ -50,7 +50,7 @@ describe("spliceExchange", () => {
 	});
 });
 
-describe("spliceExchange — an answer with comparison tabs (ADR-223)", () => {
+describe("spliceExchange — an answer with comparison tabs (ADR-225)", () => {
 	it("removes the favorites and merge links made on its tabs as well", () => {
 		const c = conv();
 		c.messages[3].alternatives = [{ id: "b2", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" }];

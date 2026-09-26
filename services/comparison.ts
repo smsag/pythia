@@ -284,7 +284,7 @@ function isTokenUsage(v: unknown): boolean {
 }
 
 /**
- * Every id an answer is known by: its own and each of its tabs' (ADR-223). A
+ * Every id an answer is known by: its own and each of its tabs' (ADR-225). A
  * favorite, merge link or pin made on a tab points at the tab's id, so anything
  * that removes the answer, or asks whether something points at it, asks about
  * all of them — the splice of an exchange and Retry's guard read this.

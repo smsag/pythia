@@ -205,7 +205,7 @@ export class MergeController {
 		const markSel = `.p-merge-link[data-merge-id="${mergeId}"]`;
 		let mark = messagesEl.querySelector<HTMLElement>(markSel);
 		if (!mark) {
-			// On a comparison tab not on screen: bring it up, then look again (ADR-223).
+			// On a comparison tab not on screen: bring it up, then look again (ADR-225).
 			const link = this.d.getConversation()?.merges?.find((l) => l.id === mergeId);
 			if (link && await findAnswerEl(messagesEl, link.messageId)) mark = messagesEl.querySelector<HTMLElement>(markSel);
 		}

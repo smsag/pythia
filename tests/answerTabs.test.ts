@@ -117,7 +117,7 @@ describe("AnswerTabsController — a kept comparison keeps its tabs (ADR-219)", 
 	});
 });
 
-describe("AnswerTabsController — a tab is found by its own id (ADR-223)", () => {
+describe("AnswerTabsController — a tab is found by its own id (ADR-225)", () => {
 	it("gives the tab on screen its answer's id, and takes it away on the kept tab", () => {
 		const msg = kept();
 		const { draw } = harness([msg]);

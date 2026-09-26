@@ -33,7 +33,7 @@ const rendered = new WeakMap<HTMLElement, Promise<void>>();
 /**
  * The element an answer is drawn in, by id — a kept answer's row, or one of its
  * tabs, which is brought on screen first and awaited until its marks are
- * painted (ADR-223). Every jump to an answer (a favorite, a pin, a merge link,
+ * painted (ADR-225). Every jump to an answer (a favorite, a pin, a merge link,
  * a message) goes through this, or a jump to a tab not on screen finds nothing.
  * Null when no answer on screen has that id.
  */
@@ -112,7 +112,7 @@ export class AnswerTabsController {
 			altView.hidden = !alt;
 			altView.empty();
 			// The tab on screen is found by its own id, like any answer: a selection
-			// in it stars, links or pins THAT answer, and a jump can reach it (ADR-223).
+			// in it stars, links or pins THAT answer, and a jump can reach it (ADR-225).
 			if (alt) altView.setAttribute("data-msg-id", alt.id); else altView.removeAttribute("data-msg-id");
 			rendered.delete(altView);
 			if (alt) this.renderAlternative(altView, msg, alt);

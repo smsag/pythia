@@ -456,7 +456,7 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 		expect(tabs).toEqual(["GPT-4o", "Sonnet 4.6"]);
 	});
 
-	it("a jump to a favorite made on a tab brings that tab up; one with nothing left says so (ADR-223)", async () => {
+	it("a jump to a favorite made on a tab brings that tab up; one with nothing left says so (ADR-225)", async () => {
 		const conv = await seedConversation(plugin, {
 			name: "Tabs",
 			messages: [userMsg("u1", "q1"), { ...aiMsg("a1", "r1"),

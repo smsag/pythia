@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-223 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
+*Last updated: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
 
 *Previously: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
 
@@ -4738,7 +4738,7 @@ The user then asked what happens when the note is renamed. The answer was that n
 
 **Tests.** `tests/indexJournal.test.ts`: `shouldCompact` at the floor and at 5 %; the journal round-trips; a base, another dimension or a torn file is not a journal; only string ids survive in `removed`; `applyJournal`'s replace/add/drop; last change wins in memory; no base means no journal; a journal naming another base is ignored. Through `VaultIndexService` with a journaled store: an edit writes the journal and leaves the index file alone (and the journal is a small fraction of it); the next session reads the two as one, complete; entries carry forward across sessions; 50 edits fold into one base rewrite that loses nothing; a full sync's new base leaves the old journal ignored; a pre-ADR-221 base is rewritten once and journaled after. `tests/vaultIndexStore.test.ts`: the journal's path. Making the journal refuse every write fails three of these (checked by hand).
 
-### ADR-223 — A comparison tab is an answer by its own id
+### ADR-225 — A comparison tab is an answer by its own id
 
 **Status:** Active · 2026-09-26 · **completes ADR-219**
 
