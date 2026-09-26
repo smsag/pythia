@@ -31,11 +31,14 @@ const conversation = {
 	messages: [{ content: "Schreib" }, { content: 3 }, null],
 } as unknown as Conversation;
 
+const openConversation = vi.fn();
+
 function link(api: unknown, registry = true) {
 	return new SchreibstubeLink({
 		app: appWith(api, registry),
 		conversations: () => [conversation],
 		onConversationsChanged: () => () => undefined,
+		openConversation,
 		log: () => undefined,
 	});
 }
@@ -109,5 +112,13 @@ describe("SchreibstubeLink", () => {
 		});
 		expect(await link(api).searchNotes("küche", 5, ["x.md"])).toEqual(["a.md"]);
 		expect(api.search).toHaveBeenCalledWith("küche", { kinds: ["note"], limit: 5, exclude: ["x.md"] });
+	});
+
+	it("lets Schreibstube open a conversation it recommends", () => {
+		const api = fakeApi();
+		link(api).available();
+		const source = (api.registerSource.mock.calls[0] as unknown[])[1] as { open(id: string): void };
+		source.open("c7");
+		expect(openConversation).toHaveBeenCalledWith("c7");
 	});
 });

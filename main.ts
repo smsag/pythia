@@ -102,6 +102,11 @@ export default class PythiaPlugin extends Plugin {
 			app: this.app,
 			conversations: () => this.conversations,
 			onConversationsChanged: (cb) => this.conversationStore.onChange(cb),
+			openConversation: (id) => {
+				const conv = this.conversationStore.getById(id);
+				if (!conv) return;
+				void this.activateView().then((view) => view.setActiveConversation(conv));
+			},
 			log: (message, data) => debugLog(this.settings, message, data),
 		});
 

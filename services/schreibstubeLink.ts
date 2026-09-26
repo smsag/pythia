@@ -33,7 +33,10 @@ export interface SchreibstubeApi {
 	ready(): boolean;
 	search(text: string, opts: { kinds: SchreibstubeHit["kind"][]; limit: number; exclude?: string[] }): Promise<SchreibstubeHit[]>;
 	related(ref: { source: string; id: string }, opts: { kinds: SchreibstubeHit["kind"][]; limit: number }): Promise<SchreibstubeHit[]>;
-	registerSource(pluginId: string, source: { list(): unknown[]; onChanged(cb: () => void): () => void }): () => void;
+	registerSource(
+		pluginId: string,
+		source: { list(): unknown[]; onChanged(cb: () => void): () => void; open?(id: string): void }
+	): () => void;
 }
 
 /** Schreibstube's API when it is installed, enabled and speaks version 1. */
@@ -75,6 +78,8 @@ export interface SchreibstubeLinkHost {
 	conversations(): Conversation[];
 	/** Subscribe to changes of the conversation list; returns the unsubscribe. */
 	onConversationsChanged(cb: () => void): () => void;
+	/** Show a conversation, when Schreibstube's Recommended panel is pressed on one. */
+	openConversation(id: string): void;
 	log(message: string, data?: unknown): void;
 }
 
@@ -116,6 +121,7 @@ export class SchreibstubeLink {
 			this.release = api.registerSource("pythia", {
 				list: () => this.host.conversations().map(toSourceItem),
 				onChanged: (cb) => this.host.onConversationsChanged(cb),
+				open: (id) => this.host.openConversation(id),
 			});
 			this.registeredWith = api;
 		} catch (e) {
