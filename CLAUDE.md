@@ -57,9 +57,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
     titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
-    WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws (ADR-062/217)
+    WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws; returns WebToolResult — numbered results as DATA, never re-read from the text (ADR-062/217/226)
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
-    webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
+    webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ≤ 5 searches per answer (admitSearch); ToolHandler fails closed without one (ADR-217 addendum/226)
     noteWrites.ts             ← pure: the write tools' result (naming the note as a [[path|name]] link), parseNoteWrite, normalizeNoteWrites — what the ✓ chip is drawn from (ADR-218)
     renameVaultPath.ts        ← pure: THE list of stored vault-path fields — conversations AND the nine path settings — and compileRenames, one mover per rename burst (ADR-218 + addendum)
     renameFollower.ts         ← RenameFollower: rename events → one scan per burst, settings followed, the rename log kept in data.json and replayed after every load with its guard (ADR-218 addendum)
@@ -696,6 +696,14 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Open/closed is per conversation, for the session — never written**; a new pin does not open the strip (user decisions, ADR-216 addendum 2)
 - **A chart is named by `chartLabel`** (`services/chartSpec.ts`) — the card and the strip; never read a chart field with a regex beside the parser
 - **A pin body renders into its own child `Component`**, released on the next render — never straight into the view
+
+### Web citations (ADR-226)
+
+- **The model cites a result by its number**: `⟦cite:web:<n>⟧`, n printed before each result or page and running on across the whole answer (`firstN`). The chip opens that result's **full URL**, never a homepage
+- **Results travel as data** (`WebToolResult.sources`). Never parse sources back out of the tool text — a page's content could plant one. `ToolHandler.executeWeb` is the web tools' one door
+- **`resolveWebCitations` is the ONE resolver** (send, both commit sites, and every comparison run): number → that result; a domain marker → the first result on that domain; nothing fetched → dropped, no chip. Deduplicate by URL, never domain. `MessageSource.cite` keeps what the marker said so the chip finds its source
+- **Auto-search arms only on a pasted link** (`wantsWeb` = `containsWebUrl`, user decision). Do not bring back word or year cues: they armed nearly every message and sent note-derived text to a third party unasked
+- **Five searches and five page reads per answer** (`WebReadScope`). A rejected key (`auth`) or used-up plan (`quota`) is a Notice once per send — the model's paraphrase is not a report
 
 ### Notes an answer wrote (ADR-218)
 

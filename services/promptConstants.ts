@@ -144,12 +144,13 @@ export const GROUNDING_INSTRUCTION =
  *  note-citation rule. Referenced by both ContextBuilder's `<recent_context>`
  *  block and WebSearchService's tool-result formatting so the two can't drift
  *  apart (and neither contradicts the web_search tool description). Inline
- *  citing is allowed via the ⟦cite:web:<domain>⟧ marker; a separate model-authored
- *  sources list is not, because Pythia renders the markers and lists the sources
- *  itself. */
+ *  citing is allowed via the ⟦cite:web:<n>⟧ marker, n being the number printed
+ *  before each result or page, which is what lets a chip open that exact
+ *  article (ADR-226); a separate model-authored sources list is not, because
+ *  Pythia renders the markers and lists the sources itself. */
 export const WEB_CITATION_INSTRUCTION =
-	"When a statement draws on a web-search result, append a citation marker immediately after it, in this exact format: ⟦cite:web:<domain>⟧ (bare domain, no scheme, e.g. ⟦cite:web:example.com⟧). " +
-	"Do not number the markers yourself and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
+	"When a statement draws on a web result or page, append a citation marker immediately after it: ⟦cite:web:<n>⟧, where n is the number shown before that result (e.g. ⟦cite:web:3⟧ for \"### 3.\"). " +
+	"Cite only numbers that were shown to you, one marker per source, and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
 
 /**
  * What a chart block contains — the shape both doors onto it are told.

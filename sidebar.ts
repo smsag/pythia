@@ -6,7 +6,7 @@ import { applyAccentContrast } from "./ui/accentContrast";
 import { PYTHIA_ICON_ID } from "./ui/pluginIcon";
 import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
-import { parseCitations, stripForeignCitations, appendWebSources } from "./services/citations";
+import { parseCitations, stripForeignCitations } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { shouldAutoArmSearch, wantsWeb } from "./services/sendPolicy";
 import { nameAfterCommit } from "./ui/postCommitNaming";
@@ -1030,7 +1030,7 @@ export class PythiaSidebarView extends ItemView {
 					console.error("[Pythia] render error:", e);
 				}
 				decorateCodeBlocks(aiBody, this.diagObservers, this.pins.pinBlock);
-				const sources = appendWebSources(parseCitations(fullText), this.toolCalls.takeWebSources());
+				const sources = this.toolCalls.resolveSources(fullText);
 				paintCitations(this.app, aiBody, sources);
 				renderSourcesRow(this.app, row, sources, streamTemplate);
 				// rAF ensures scrollToBottom runs after the markdown DOM is laid out.
@@ -1311,7 +1311,7 @@ export class PythiaSidebarView extends ItemView {
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
-			wantsWeb: wantsWeb(text, new Date().getFullYear()),
+			wantsWeb: wantsWeb(text),
 		});
 		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
 		if (autoArmedSearch) this.flashResearchAutoArm();
@@ -1350,7 +1350,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 
-				const parsedSources = appendWebSources(parseCitations(content), this.toolCalls.takeWebSources());
+				const parsedSources = this.toolCalls.resolveSources(content);
 				// Priced now (ADR-163), on the model that answered: turnConv, which a
 				// template or model suggestion can move off conv.model (ADR-181).
 				const cost = costSnapshot(turnConv.model, tokenUsage);

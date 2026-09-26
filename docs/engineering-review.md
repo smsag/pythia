@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **A comparison tab was not an answer by its own id (ADR-225).** A star, pin, link or Branch made in a non-kept tab went to the kept answer; Delete/Retry left the tabs' marks behind; Retry dropped the tabs; a switch lost the Continue card and a rewrite target. All closed.*
+*Updated: 2026-09-26 — **Tavily review (ADR-226).** 26 findings; the worst — a cited web source opened the site's homepage — fixed with numbered citations, alongside nine others. Auto-search now arms only on a pasted link. The rest are deferred as D-62.*
+
+*Previously: 2026-09-26 — **A comparison tab was not an answer by its own id (ADR-225).** A star, pin, link or Branch made in a non-kept tab went to the kept answer; Delete/Retry left the tabs' marks behind; Retry dropped the tabs; a switch lost the Continue card and a rewrite target. All closed.*
 
 *Previously: 2026-09-26 — **Every write of the vault index was the whole ~19 MB file (D-35, ADR-222).** An edit now writes a journal of the changed rows (kilobytes); the index is rewritten by a build, a takeover, or when the journal reaches 5 % of it. D-35 closed.*
 
@@ -2019,3 +2021,20 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **Two devices rewrote one synced index file**, each from its own in-memory copy; the last writer won and each write was the whole ~19 MB file. | Medium | Closed: a phone applies edits to a desktop-kept index in memory only; the file records its `keeper` |
 | **A phone's in-memory edits are lost at its next launch** until the desktop has caught up. | Low | Accepted (ADR-221); the desktop redoes them |
 | **A phone on a desktop-kept index could neither see that nor end it**: nothing said so, Build now was greyed out when ready, and on a UI-thread backend it returned without syncing. | Medium | Closed (ADR-221 addendum): the status row says so with the date; Build now takes the index over |
+
+## Review — the Tavily integration (ADR-226), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **A cited web source opened the site's homepage**: the domain marker won the dedup against the article URL, and a test asserted it. | High | Closed: numbered citations resolve to the result's full URL |
+| **Two articles from one site became one source.** | Medium | Closed: deduplicated by URL |
+| **A citation of a domain nothing fetched appeared as a source.** | Medium | Closed: dropped, no chip, debug-log line |
+| **Sources were parsed out of the tool text**, so a page could plant one; an empty URL captured the snippet's first word. | Medium | Closed: results travel as data (`WebToolResult`) |
+| **Comparison runs lost the Tavily sources and ignored auto-search.** | Medium | Closed: same resolver, same arming rule |
+| **No limit on searches per answer** (25 tool rounds). | Medium | Closed: five per answer |
+| **A rejected key or used-up plan was told only to the model.** | Medium | Closed: one Notice per send for `auth` / `quota` |
+| **Auto-search armed on everyday words and dated note names**, sending note-derived text to Tavily unasked. | Medium | Closed: arms only on a pasted link (user decision) |
+| **An unvalidated reply could throw and leave the chip on "Searching…".** | Low-Medium | Closed: validated; chip settles in `finally` |
+| **Web tools refused with "not allowed in the current write mode".** | Low | Closed: "web research is off" |
+| The other 16 (parentheses in URLs, follow-up reads, timeouts, research without a key, `published_date`, UTC date, and smaller ones). | Low–Medium | Deferred: D-62 |
+

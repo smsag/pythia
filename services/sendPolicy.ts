@@ -1,4 +1,4 @@
-import { containsWebUrl, looksTimeSensitive } from "./webSearchHeuristics";
+import { containsWebUrl } from "./webSearchHeuristics";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -34,13 +34,14 @@ export function shouldGenerateChapterName(userMsg: Message): boolean {
 /**
  * True when web search should be offered for THIS send although the
  * conversation's globe is off (ADR-099): the setting allows it, a key exists,
- * and the message wants the web — it reads as time-sensitive, or it carries a
- * link for read_url (ADR-217).
+ * and the message carries a link (ADR-226 — a time-sensitive word no longer
+ * counts).
  *
  * Lifted out of `sendMessage` under ADR-178's line budget, and it belongs here
  * anyway: it is a four-term rule with no DOM in it, and the only place it was
  * written could not be tested. Never persists `researchMode` — the caller arms
- * a clone for one turn.
+ * a clone for one turn. The comparison asks it too, so a compared model gets
+ * the same tools the original answer had.
  */
 export function shouldAutoArmSearch(opts: {
 	researchMode: boolean | undefined;
@@ -52,11 +53,13 @@ export function shouldAutoArmSearch(opts: {
 }
 
 /**
- * Whether an outgoing message wants the web: it reads as time-sensitive
- * (ADR-099) or it carries a link for read_url (ADR-217). The `wantsWeb` input
- * of `shouldAutoArmSearch` — here, not in the view, so the composition is
- * tested.
+ * Whether an outgoing message wants the web: it carries a link for read_url
+ * (ADR-217). ADR-099 also armed on time-sensitive words and on any year from
+ * this one on; ADR-226 dropped that — "now", "update", "cost" or a daily note
+ * named by its date armed nearly every message, and each armed send told the
+ * model to search first, sending text drawn from the user's notes to a third
+ * party the user had not switched on.
  */
-export function wantsWeb(text: string, currentYear: number): boolean {
-	return looksTimeSensitive(text, currentYear) || containsWebUrl(text);
+export function wantsWeb(text: string): boolean {
+	return containsWebUrl(text);
 }

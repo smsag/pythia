@@ -3,6 +3,7 @@ import type { PythiaSettings } from "../settings";
 import { WEB_CITATION_INSTRUCTION } from "./promptConstants";
 import { redactSecrets } from "./redact";
 import { webDomain } from "./citations";
+import { safeHttpUrl } from "./urlSafety";
 import { describeSearchFilters, hasSearchFilters, type SearchArgs } from "./tavilyArgs";
 
 /** Tavily is a search API built for LLM/RAG use: one POST returns ranked,
@@ -45,9 +46,34 @@ interface TavilyExtractResponse {
 	failed_results?: { url?: string; error?: string }[];
 }
 
+/** Why a web call failed, for the user as well as the model (ADR-226): a
+ *  rejected key and a used-up plan are fixed in settings or at Tavily, and
+ *  only a Notice reaches the person who can fix them. */
+export type WebErrorKind = "auth" | "quota" | "rate" | "other";
+
+/** One numbered web result or page, as the sources row and the chips use it. */
+export interface WebSource {
+	n: number;
+	title: string;
+	url: string;
+}
+
+/**
+ * What a web tool call returns (ADR-226): the text the model reads and, as
+ * data, the numbered results it may cite. The sources are never read back out
+ * of the text — a page's own content could otherwise plant a source.
+ */
+export interface WebToolResult {
+	text: string;
+	sources: WebSource[];
+	error?: WebErrorKind;
+}
+
 /** What a POST came back as: the parsed body, or an "Error: …" string for the
- *  model. One classification of HTTP statuses for both endpoints. */
-type PostResult = { ok: true; json: unknown } | { ok: false; error: string };
+ *  model and its kind. One classification of HTTP statuses for both endpoints. */
+type PostResult = { ok: true; json: unknown } | { ok: false; error: string; kind: WebErrorKind };
+
+const fail = (text: string, kind: WebErrorKind = "other"): WebToolResult => ({ text, sources: [], error: kind });
 
 /**
  * Client-executed web search for Pythia's "research mode". The model requests a
@@ -90,11 +116,11 @@ export class WebSearchService {
 	 * A plain string is a query with no filters. Filters arrive already
 	 * validated by `parseSearchArgs` and are sent only when set (ADR-217).
 	 */
-	async search(queryOrArgs: string | SearchArgs): Promise<string> {
+	async search(queryOrArgs: string | SearchArgs, firstN = 1): Promise<WebToolResult> {
 		const args: SearchArgs = typeof queryOrArgs === "string" ? { query: queryOrArgs } : queryOrArgs;
 		const q = args.query.trim();
-		if (!this.apiKey) return NOT_CONFIGURED;
-		if (!q) return "Error: 'query' must be a non-empty string.";
+		if (!this.apiKey) return fail(NOT_CONFIGURED, "auth");
+		if (!q) return fail("Error: 'query' must be a non-empty string.");
 
 		const maxResults = Math.min(
 			this.settings.webSearchMaxResults > 0 ? this.settings.webSearchMaxResults : DEFAULT_MAX_RESULTS,
@@ -113,25 +139,25 @@ export class WebSearchService {
 		if (args.excludeDomains) body["exclude_domains"] = args.excludeDomains;
 
 		const res = await this.post(TAVILY_SEARCH_ENDPOINT, body, "web search");
-		if (!res.ok) return res.error;
-		return formatResults({ ...args, query: q }, res.json as TavilyResponse, maxResults);
+		if (!res.ok) return fail(res.error, res.kind);
+		return formatResults({ ...args, query: q }, res.json, maxResults, firstN);
 	}
 
 	/**
 	 * Reads one page through Tavily /extract (the read_url tool, ADR-217). The
 	 * URL arrives validated by `parseReadUrlArgs` — http(s), public host. The
-	 * result carries the same `### 1. … / URL: …` header as a search result, so
-	 * the page lands in the WEB sources row through `parseWebSourcesFromResult`.
+	 * page is numbered like a search result (`### n. …`), continuing the
+	 * answer's numbering, so the model cites it the same way (ADR-226).
 	 */
-	async extract(url: string): Promise<string> {
-		if (!this.apiKey) return NOT_CONFIGURED;
+	async extract(url: string, firstN = 1): Promise<WebToolResult> {
+		if (!this.apiKey) return fail(NOT_CONFIGURED, "auth");
 		const res = await this.post(
 			TAVILY_EXTRACT_ENDPOINT,
 			{ urls: [url], extract_depth: "basic", format: "markdown" },
 			"page read",
 		);
-		if (!res.ok) return res.error;
-		return formatExtract(url, res.json as TavilyExtractResponse);
+		if (!res.ok) return fail(res.error, res.kind);
+		return formatExtract(url, res.json, firstN);
 	}
 
 	private async post(endpoint: string, body: Record<string, unknown>, what: string): Promise<PostResult> {
@@ -152,18 +178,23 @@ export class WebSearchService {
 			});
 			if (res.status === 401 || res.status === 403) {
 				// Say what it is: a rejected key is fixed in settings, not by retrying.
-				return { ok: false, error: `Error: web search key was rejected (HTTP ${res.status}). Ask the user to check the Tavily API key in Pythia settings.` };
+				return { ok: false, kind: "auth", error: `Error: web search key was rejected (HTTP ${res.status}). Ask the user to check the Tavily API key in Pythia settings.` };
+			}
+			if (res.status === 432 || res.status === 433) {
+				// Tavily's plan and pay-as-you-go limits: no retry helps until the
+				// user raises the limit or the month turns.
+				return { ok: false, kind: "quota", error: `Error: the Tavily account has used up its ${what} credits (HTTP ${res.status}). Answer from what you already have and tell the user.` };
 			}
 			if (res.status === 429) {
-				return { ok: false, error: `Error: ${what} rate limit reached (HTTP 429). Answer from what you already have, or try again later.` };
+				return { ok: false, kind: "rate", error: `Error: ${what} rate limit reached (HTTP 429). Answer from what you already have, or try again later.` };
 			}
 			if (res.status < 200 || res.status >= 300) {
 				const detail = typeof res.text === "string" ? redactSecrets(res.text.slice(0, 200)) : "";
-				return { ok: false, error: `Error: ${what} failed (HTTP ${res.status}). ${detail}`.trim() };
+				return { ok: false, kind: "other", error: `Error: ${what} failed (HTTP ${res.status}). ${detail}`.trim() };
 			}
 			return { ok: true, json: res.json };
 		} catch (err) {
-			return { ok: false, error: `Error: ${what} request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}` };
+			return { ok: false, kind: "other", error: `Error: ${what} request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}` };
 		}
 	}
 }
@@ -174,69 +205,79 @@ function truncate(s: string, max: number): string {
 	return s.length > max ? s.slice(0, max).trimEnd() + "…" : s;
 }
 
-/** Extract the `{title, url}` sources from a formatted web-search tool result
- *  (the string `formatResults` produces). Lets the UI surface the real Tavily
- *  sources deterministically instead of depending on the model to cite them.
- *  Pure — safe to unit-test without any network. */
-export function parseWebSourcesFromResult(text: string): { title: string; url: string }[] {
-	const out: { title: string; url: string }[] = [];
-	const re = /^###\s+\d+\.\s*(.+)\r?\nURL:\s*(\S+)/gm;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(text)) !== null) {
-		out.push({ title: m[1].trim(), url: m[2].trim() });
+/** A result Pythia can show and link to: an object with an http(s) URL. Title
+ *  and snippet are strings or nothing, and a title is one line — a newline in
+ *  it would put text where the numbered header ends (principle 1, ADR-226). */
+function cleanResults(value: unknown): { title: string; url: string; content: string }[] {
+	if (!Array.isArray(value)) return [];
+	const out: { title: string; url: string; content: string }[] = [];
+	for (const r of value) {
+		if (!r || typeof r !== "object") continue;
+		const { title, url, content } = r as TavilyResult;
+		const href = typeof url === "string" ? safeHttpUrl(url) : null;
+		if (!href) continue;
+		const oneLine = typeof title === "string" ? title.replace(/\s+/g, " ").trim() : "";
+		out.push({ title: oneLine || webDomain(href), url: href, content: typeof content === "string" ? content.trim() : "" });
 	}
 	return out;
 }
 
 /** Shapes Tavily's response into a plain-text block the model reads as tool
- *  output: the synthesized answer first (when present), then each source with
- *  its URL so the model can cite it. Kept a pure function for straightforward
- *  unit testing without any network. */
-function formatResults(args: SearchArgs, json: TavilyResponse, maxResults: number): string {
+ *  output — the synthesized answer first (when present), then each result
+ *  under its number, which is what the model cites — and returns the numbered
+ *  results as data. Numbering starts at `firstN` so it runs on across every
+ *  search and page read in one answer (ADR-226). Pure. */
+function formatResults(args: SearchArgs, raw: unknown, maxResults: number, firstN: number): WebToolResult {
+	const json = (raw && typeof raw === "object" ? raw : {}) as TavilyResponse;
 	const query = args.query;
-	const results = Array.isArray(json.results) ? json.results.slice(0, maxResults) : [];
+	const results = cleanResults(json.results).slice(0, maxResults);
 	const answer = typeof json.answer === "string" ? json.answer.trim() : "";
 
 	if (results.length === 0 && !answer) {
 		// A filtered search that finds nothing says which filters, so the model
 		// can widen it itself. Never retried behind its back: that would spend a
 		// second credit nobody sees (ADR-217).
-		return hasSearchFilters(args)
+		const text = hasSearchFilters(args)
 			? `No web results found for "${query}" with filters (${describeSearchFilters(args)}). Search again without them if they may be too narrow.`
 			: `No web results found for "${query}".`;
+		return { text, sources: [] };
 	}
 
 	const parts: string[] = [
 		`Web search results for "${query}". Use these to answer. ${WEB_CITATION_INSTRUCTION}`,
 	];
-	if (answer) parts.push(`Summary: ${answer}`);
+	if (answer) parts.push(`Summary (not a source, do not cite it): ${answer}`);
 
+	const sources: WebSource[] = results.map((r, i) => ({ n: firstN + i, title: r.title, url: r.url }));
 	results.forEach((r, i) => {
-		const title = (r.title ?? "Untitled").trim() || "Untitled";
-		const url = (r.url ?? "").trim();
-		const snippet = truncate((r.content ?? "").trim(), MAX_SNIPPET_CHARS);
-		parts.push(`### ${i + 1}. ${title}\nURL: ${url}\n${snippet}`.trimEnd());
+		parts.push(`### ${firstN + i}. ${r.title}\nURL: ${r.url}\n${truncate(r.content, MAX_SNIPPET_CHARS)}`.trimEnd());
 	});
 
-	return parts.join("\n\n");
+	return { text: parts.join("\n\n"), sources };
 }
 
 /** One extracted page as tool output. Empty text and a listed failure are both
  *  errors — "" from the reader is never "the page said nothing" (principle 2). */
-function formatExtract(url: string, json: TavilyExtractResponse): string {
-	const page = Array.isArray(json.results) ? json.results.find((r) => typeof r.raw_content === "string" && r.raw_content.trim()) : undefined;
+function formatExtract(url: string, raw: unknown, firstN: number): WebToolResult {
+	const json = (raw && typeof raw === "object" ? raw : {}) as TavilyExtractResponse;
+	const results = Array.isArray(json.results) ? json.results : [];
+	const page = results.find((r) => !!r && typeof r === "object" && typeof r.raw_content === "string" && r.raw_content.trim());
 	if (!page) {
 		const failed = Array.isArray(json.failed_results) ? json.failed_results[0] : undefined;
-		const reason = typeof failed?.error === "string" && failed.error.trim() ? failed.error.trim() : "no readable text was returned";
-		return `Error: could not read ${url}: ${redactSecrets(reason.slice(0, 200))}. Tell the user, and search for the topic instead if that helps.`;
+		const reason = failed && typeof failed.error === "string" && failed.error.trim() ? failed.error.trim() : "no readable text was returned";
+		return fail(`Error: could not read ${url}: ${redactSecrets(reason.slice(0, 200))}. Tell the user, and search for the topic instead if that helps.`);
 	}
 	const text = (page.raw_content ?? "").trim();
-	const pageUrl = (page.url ?? "").trim() || url;
+	const pageUrl = (typeof page.url === "string" ? safeHttpUrl(page.url) : null) ?? url;
 	const cut = text.length > MAX_EXTRACT_CHARS;
 	const body = cut ? text.slice(0, MAX_EXTRACT_CHARS).trimEnd() : text;
-	return [
-		`Content of the web page ${pageUrl}. Use it to answer. ${WEB_CITATION_INSTRUCTION}`,
-		`### 1. ${webDomain(pageUrl)}\nURL: ${pageUrl}\n${body}`,
-		...(cut ? [`(truncated: the first ${MAX_EXTRACT_CHARS} of ${text.length} characters are shown)`] : []),
-	].join("\n\n");
+	const title = webDomain(pageUrl);
+	return {
+		text: [
+			`Content of the web page ${pageUrl}. Use it to answer. ${WEB_CITATION_INSTRUCTION}`,
+			`### ${firstN}. ${title}\nURL: ${pageUrl}\n${body}`,
+			...(cut ? [`(truncated: the first ${MAX_EXTRACT_CHARS} of ${text.length} characters are shown)`] : []),
+		].join("\n\n"),
+		sources: [{ n: firstN, title, url: pageUrl }],
+	};
 }

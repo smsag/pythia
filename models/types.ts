@@ -172,8 +172,11 @@ export interface RewriteTarget {
 export interface MessageSource {
 	n: number;                // 1-based, in order of first appearance
 	kind: "vault" | "web";
-	ref: string;              // vault path or web domain
+	ref: string;              // vault path, or a web page's full URL (a bare domain in messages before ADR-226)
 	title: string;            // display label
+	/** What the ⟦cite:web:…⟧ marker in the text said — a result number or a
+	 *  domain — when it differs from `ref`. The chip is found by it (ADR-226). */
+	cite?: string;
 }
 
 export interface Message {

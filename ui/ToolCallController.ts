@@ -1,11 +1,12 @@
-import type { App } from "obsidian";
+import { Notice, type App } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message, NoteWrite, ToolCall } from "../models/types";
 import { t } from "../i18n";
 import { ToolHandler } from "../services/ToolHandler";
-import { parseWebSourcesFromResult } from "../services/WebSearchService";
+import type { WebErrorKind, WebSource } from "../services/WebSearchService";
 import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
-import { webDomain } from "../services/citations";
+import { parseCitations, resolveWebCitations, webDomain, type CitationSource } from "../services/citations";
+import { debugLog } from "../services/messageUtils";
 import { WebReadScope } from "../services/webReadScope";
 import { parseNoteWrite, writesOnlyContent } from "../services/noteWrites";
 import { fillNoteWriteChip } from "./noteLinks";
@@ -39,7 +40,9 @@ export interface ToolCallDeps {
  * of how the model chose to cite) and, since ADR-210, `chartBlocks`.
  */
 export class ToolCallController {
-	private webSources: { title: string; url: string }[] = [];
+	private webSources: WebSource[] = [];
+	/** The account problems already announced in this send — once each (ADR-226). */
+	private announced = new Set<WebErrorKind>();
 	private chartBlocks: PendingChartBlock[] = [];
 	private noteWrites: NoteWrite[] = [];
 	private streamedChars = 0;
@@ -59,6 +62,7 @@ export class ToolCallController {
 	 */
 	begin(appendToken: (text: string) => void): (text: string) => void {
 		this.webSources = [];
+		this.announced.clear();
 		this.chartBlocks = [];
 		this.noteWrites = [];
 		this.streamedChars = 0;
@@ -68,10 +72,15 @@ export class ToolCallController {
 		};
 	}
 
-	/** The web results captured during this send. */
-	takeWebSources(): { title: string; url: string }[] {
-		return this.webSources;
+	/** The answer's sources: its markers resolved against the numbered results
+	 *  this send fetched (ADR-226). A marker nothing fetched answers for is
+	 *  dropped, and said in the debug log so a report can quote it. */
+	resolveSources(text: string): CitationSource[] {
+		const { sources, dropped } = resolveWebCitations(parseCitations(text), this.webSources);
+		if (dropped.length > 0) debugLog(this.d.plugin.settings, "dropped web citations with no fetched result:", dropped);
+		return sources;
 	}
+
 
 	/** The answer text for a turn that only wrote notes — "" when it wrote none
 	 *  (ADR-218 addendum). Does not drain: `takeNoteWrites` still records them. */
@@ -144,21 +153,35 @@ export class ToolCallController {
 		this.d.reveal(searchChip, false); // a status: follow it only if following the answer
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
-		const result = await this.d.plugin.toolHandler.execute(call, allowed, undefined, readScope);
-
-		searchChip.empty();
-		if (result.startsWith("Error")) {
-			searchChip.addClass("pythia-tool-call--error");
-			searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.failed });
-		} else {
-			searchChip.addClass("pythia-tool-call--done");
-			searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.done });
-			// Capture the real Tavily sources — a read page too — for the sources row.
-			this.webSources.push(...parseWebSourcesFromResult(result));
+		let failed = true;
+		try {
+			// Numbered on from the results already in this answer, so every number
+			// the model may cite names one page (ADR-226).
+			const result = await this.d.plugin.toolHandler.executeWeb(call, allowed, readScope, this.webSources.length + 1);
+			failed = !!result.error;
+			if (result.error) this.announce(result.error);
+			// The real results — a read page too — as data, for the sources row.
+			this.webSources.push(...result.sources);
 			// A link a result returned may be read later in this answer.
-			readScope.addText(result);
+			if (!failed) readScope.addText(result.text);
+			return result.text;
+		} finally {
+			// Always settles, even if the call threw: a chip left on "Searching…"
+			// says something is still happening when nothing is.
+			searchChip.empty();
+			searchChip.addClass(failed ? "pythia-tool-call--error" : "pythia-tool-call--done");
+			searchChip.createSpan({ cls: "pythia-tool-call-label", text: failed ? labels.failed : labels.done });
 		}
-		return result;
+	}
+
+	/** A rejected key or a used-up plan is fixed by the user, in settings or at
+	 *  Tavily — the model's paraphrase is not a report. Said once per send. */
+	private announce(kind: WebErrorKind): void {
+		if (kind !== "auth" && kind !== "quota") return;
+		if (this.announced.has(kind)) return;
+		this.announced.add(kind);
+		// Literal t() calls, so the dead-key check in tests/i18n.test.ts sees them.
+		new Notice(kind === "auth" ? t("webSearchKeyRejected") : t("webSearchQuotaReached"), 10000);
 	}
 
 	private async runWrite(call: ToolCall, conv: Conversation, researchActive: boolean): Promise<string> {

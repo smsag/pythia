@@ -129,7 +129,7 @@ describe("the write confirmation is revealed once it has its buttons (the regres
 		const forces: boolean[] = [];
 		const calls = new ToolCallController({
 			app: {} as ToolCallDeps["app"],
-			plugin: { toolHandler: { execute: async () => "[]" } } as unknown as ToolCallDeps["plugin"],
+			plugin: { toolHandler: { executeWeb: async () => ({ text: "[]", sources: [] }) } } as unknown as ToolCallDeps["plugin"],
 			messagesEl: () => messages,
 			registerDomEvent: (el, type, cb) => el.addEventListener(type, cb),
 			reveal: (_card, force) => forces.push(force),

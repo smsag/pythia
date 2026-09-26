@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
+*Last updated: 2026-09-26 — ADR-226 (web citations are numbered: `⟦cite:web:<n>⟧` opens that exact article; results come back as data, never re-read from text; a citation nothing fetched is dropped; auto-search arms only on a pasted link; five searches per answer; a rejected key or used-up plan says so; comparison runs get the same research rule and sources).*
+
+*Previously: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
 
 *Previously: 2026-09-26 — ADR-224 (Pythia drops its own embedding engine: vault context asks Schreibstube's search by meaning for the notes that answer a turn and filters them by Pythia's folders and `pythia: false`; related conversations come from Schreibstube alone; without Schreibstube there is no vault context and no related list, and the search box finds titles; the embedding model, the vault and conversation indexes, the index-status row and the "Rebuild vault context index" command are removed; closes D-13, D-14, D-16, D-20, D-31…D-34, D-36, D-38, D-39, D-41…D-43).*
 
@@ -4815,3 +4817,45 @@ The user then asked what happens when the note is renamed. The answer was that n
 - `tests/truncation.test.ts`: Retry is withheld on an answer with tabs.
 - `tests/comparison.test.ts`: `answerIds`; a switch keeps `truncated` and `rewriteTarget` both ways; load drops a malformed flag, target or token count.
 - `tests/pinOverlay.test.ts`: the "gone" case waits for the tab lookup.
+
+---
+
+## ADR-226 — Web citations by number; auto-search only on a link
+
+**Status:** Active · 2026-09-26 · **revises ADR-089** (dedup by domain), **ADR-099** (time-sensitive auto-arm) and **ADR-217** (sources parsed from the tool text)
+
+**Context.** A review of the Tavily integration found 26 defects. The worst: the model cited `⟦cite:web:example.com⟧`, `appendWebSources` kept that bare domain and dropped Tavily's article URL for the same domain as a duplicate, so **every properly cited web source opened the site's homepage**, and a test asserted it. Next to it:
+- a second article from one site vanished from the sources row;
+- a citation of a domain nothing fetched appeared as a source;
+- sources were read back out of the tool's text with a pattern, so a page containing `### 2. …\nURL: …` planted one;
+- comparison runs dropped the Tavily sources and ignored auto-search;
+- nothing limited searches per answer;
+- a rejected key or a used-up plan was told only to the model;
+- a malformed reply threw and left the chip on "Searching…".
+
+Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on any year from this one on, including a daily note named by its date; each armed send tells the model to search first, so text drawn from the user's notes went to Tavily without the globe being on.
+
+**Decision (the user chose the two behaviours).**
+- **Cite each result by number.**
+  - Results and pages are numbered across the whole answer: `firstN` runs on from the results already fetched.
+  - The model writes `⟦cite:web:<n>⟧`, and the chip opens that result's **full URL**.
+  - A domain marker (older messages, or a model that ignores the instruction) resolves to the first result from that domain.
+  - `resolveWebCitations` is the ONE resolver. It drops a marker nothing fetched answers for (no chip, a debug-log line), deduplicates by **URL**, and appends every uncited result.
+  - `MessageSource.cite` records what the marker said, so the chip is found by it while `ref` holds the URL.
+- **Results are data.** `WebSearchService.search/extract` return `WebToolResult { text, sources, error? }`; `ToolHandler.executeWeb` passes it through; `parseWebSourcesFromResult` is deleted. A page can no longer plant a source.
+- **Auto-search keeps working, but arms only on a pasted link** (`wantsWeb` = `containsWebUrl`). `looksTimeSensitive` and its cue lists are removed. The setting is now named "Read links in a message".
+- **Five searches per answer** (`WebReadScope.admitSearch`), beside the existing five page reads. The tool description says so, and the sixth is refused with a sentence the model can act on.
+- **Failures have a kind:** 401/403 `auth`, 432/433 `quota`, 429 `rate`. `auth` and `quota` raise one Notice per send, naming the fix.
+- **Tavily's reply is validated:** only objects with an http(s) URL count, and a title is one line. The chip settles in `finally`.
+- **Comparison runs** use the same auto-search rule as the send (`shouldAutoArmSearch` on the prompt) and the same resolver for their sources.
+- The Tavily "answer" is labelled "Summary (not a source, do not cite it)", since it has no number to cite.
+
+**Deferred** (D-62): the remaining 16 findings, with what would make each worth doing.
+
+**Guards.**
+- `tests/citations.test.ts`: a number opens that article, two articles from one site stay two, uncited results are appended, a domain marker falls back, an unmatched marker is dropped and draws no chip.
+- `tests/webSearch.test.ts`: numbering from `firstN`, a planted header in a snippet or page adds no source, malformed replies are skipped without throwing, failure kinds.
+- `tests/ToolHandler.test.ts`: `executeWeb`, the five-search cap, fail-closed without a scope, "research is off" wording.
+- `tests/toolCallWeb.test.ts`: numbering across calls, one Notice per send, the chip settles on a throw.
+- `tests/viewRender.test.ts`: a compared model gets research on a linked prompt and keeps its page as a source.
+- `tests/sendPolicy.test.ts` / `tests/webSearchHeuristics.test.ts`: only a link arms the web.

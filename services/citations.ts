@@ -24,8 +24,9 @@ export type CitationKind = "vault" | "web";
 export interface CitationSource {
 	n: number;            // 1-based, in order of first appearance
 	kind: CitationKind;
-	ref: string;          // vault path (kind "vault") or domain (kind "web")
+	ref: string;          // vault path (kind "vault") or web URL/domain (kind "web")
 	title: string;        // display label (basename without .md, or bare domain)
+	cite?: string;        // the marker's own text when it differs from ref (ADR-226)
 }
 
 /** Global, kind-prefixed marker pattern. `[^⟧]+` never crosses a closing
@@ -100,32 +101,42 @@ export function webDomain(ref: string): string {
 	}
 }
 
-/** Append web sources discovered deterministically from the web_search tool
- *  result (independent of the model's citation habits) to an existing source
- *  list, deduped by DOMAIN and numbered continuously after the existing entries.
- *  Each appended web source keeps its full URL in `ref` (for opening) and shows
- *  its bare domain as `title`.
+/**
+ * The web half of an answer's sources (ADR-226), from the model's markers and
+ * the numbered results its tool calls returned — the ONE resolver.
  *
- *  Dedup is by domain, not full URL, so a model-emitted `⟦cite:web:example.com⟧`
- *  (ref = bare domain) and a Tavily result for `https://example.com/article`
- *  (ref = full URL) collapse to a single source instead of listing the same site
- *  twice. The FIRST occurrence wins, which keeps any inline `⟦cite:web:…⟧` chip
- *  mapping intact (see `eachCitationSegment`). */
-export function appendWebSources(
-	sources: CitationSource[],
-	web: { title?: string; url: string }[],
-): CitationSource[] {
-	const out = sources.slice();
-	const seen = new Set(out.filter((s) => s.kind === "web").map((s) => webDomain(s.ref)));
-	for (const w of web) {
-		const url = (w.url ?? "").trim();
-		if (!url) continue;
-		const domain = webDomain(url);
-		if (seen.has(domain)) continue;
-		seen.add(domain);
-		out.push({ n: out.length + 1, kind: "web", ref: url, title: domain });
+ * - `⟦cite:web:7⟧` is result 7: the source opens that page's full URL.
+ * - `⟦cite:web:example.com⟧` (a message before ADR-226, or a model that
+ *   ignored the instruction) is the first result from that domain.
+ * - A marker no result answers for is dropped, and its chip is not drawn: a
+ *   citation Pythia cannot tie to something it fetched is not a source.
+ *   Vault sources pass through untouched.
+ * - Every result not cited is appended after them, deduplicated by URL, so
+ *   two articles from one site are two sources.
+ *
+ * Returns the sources renumbered in order, and the web markers it dropped.
+ */
+export function resolveWebCitations(
+	cited: CitationSource[],
+	results: { n: number; title?: string; url: string }[],
+): { sources: CitationSource[]; dropped: string[] } {
+	const byNumber = new Map(results.map((r) => [String(r.n), r]));
+	const out: CitationSource[] = [];
+	const dropped: string[] = [];
+	const used = new Set<string>();
+	for (const s of cited) {
+		if (s.kind !== "web") { out.push({ ...s, n: out.length + 1 }); continue; }
+		const hit = byNumber.get(s.ref) ?? results.find((r) => webDomain(r.url) === webDomain(s.ref));
+		if (!hit) { dropped.push(s.ref); continue; }
+		used.add(hit.url);
+		out.push({ n: out.length + 1, kind: "web", ref: hit.url, title: webDomain(hit.url), cite: s.ref });
 	}
-	return out;
+	for (const r of results) {
+		if (used.has(r.url)) continue;
+		used.add(r.url);
+		out.push({ n: out.length + 1, kind: "web", ref: r.url, title: webDomain(r.url) });
+	}
+	return { sources: out, dropped };
 }
 
 /** A callback that walks each citation marker in `content` in document order,
@@ -138,7 +149,9 @@ export function eachCitationSegment(
 	onText: (text: string) => void,
 	onMarker: (source: CitationSource | null) => void,
 ): void {
-	const byKey = new Map(sources.map((s) => [`${s.kind}:${s.ref}`, s]));
+	// A resolved web source is found by what its marker said (ADR-226); an
+	// older one, and every vault source, by its ref.
+	const byKey = new Map(sources.map((s) => [`${s.kind}:${typeof s.cite === "string" ? s.cite : s.ref}`, s]));
 	const re = markerRegExp();
 	let last = 0;
 	let m: RegExpExecArray | null;

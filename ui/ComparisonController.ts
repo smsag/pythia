@@ -6,7 +6,9 @@ import { abbreviateModel } from "../models/knownModels";
 import { t } from "../i18n";
 import { estimateCost, formatCost } from "../models/modelPricing";
 import { formatClockTime } from "../services/messageUtils";
-import { parseCitations } from "../services/citations";
+import { parseCitations, resolveWebCitations } from "../services/citations";
+import { shouldAutoArmSearch, wantsWeb } from "../services/sendPolicy";
+import type { WebSource } from "../services/WebSearchService";
 import { describeErrorForLog } from "../services/redact";
 import { ToolHandler } from "../services/ToolHandler";
 import { WebReadScope } from "../services/webReadScope";
@@ -132,8 +134,17 @@ export class ComparisonController {
 
 		// Same conversation, another model, no note-writing tools. `messages`
 		// already ends with the prompt (the original answer became candidate 0).
-		const armed: Conversation = { ...conv, provider: model.provider, model: model.id, writeMode: "none" };
-		const allowed = ToolHandler.allowedToolNames("none", conv.researchMode ?? false);
+		// Research as the send would have it: the globe, or the link rule that
+		// auto-arms one message (ADR-226) — else a compared model could not read
+		// the page the original answer read.
+		const research = (conv.researchMode ?? false) || shouldAutoArmSearch({
+			researchMode: conv.researchMode,
+			autoArmEnabled: this.d.plugin.settings.webSearchAutoArm,
+			hasApiKey: this.d.plugin.webSearchService.hasApiKey(),
+			wantsWeb: wantsWeb(prompt.content),
+		});
+		const armed: Conversation = { ...conv, provider: model.provider, model: model.id, writeMode: "none", researchMode: research };
+		const allowed = ToolHandler.allowedToolNames("none", research);
 		// A candidate may draw a chart — one model reaching for one and another not
 		// is part of what a comparison is for. Same accept path as the send, so the
 		// two cannot answer a tool call differently (ADR-210).
@@ -141,10 +152,13 @@ export class ComparisonController {
 		// Each candidate is its own answer: its own read budget, and only the links
 		// its own results returned (ADR-217 addendum).
 		const readScope = WebReadScope.forConversation(conv);
+		// Its own numbered results, so its chips open its own pages (ADR-226).
+		const webSources: WebSource[] = [];
 		const runWebTool = async (call: ToolCall): Promise<string> => {
-			const result = await this.d.plugin.toolHandler.execute(call, allowed, undefined, readScope);
-			if (!result.startsWith("Error")) readScope.addText(result);
-			return result;
+			const result = await this.d.plugin.toolHandler.executeWeb(call, allowed, readScope, webSources.length + 1);
+			webSources.push(...result.sources);
+			if (!result.error) readScope.addText(result.text);
+			return result.text;
 		};
 		const onToolCall = (call: ToolCall): Promise<string> =>
 			call.name === "render_chart"
@@ -162,7 +176,9 @@ export class ComparisonController {
 				(fullText, tokenUsage) => {
 					candidate.content = spliceChartBlocks(fullText, charts);
 					if (tokenUsage) candidate.tokenUsage = tokenUsage;
-					const sources = parseCitations(fullText);
+					// The same resolver as the send, so a kept candidate keeps the
+					// pages it read, not only what it cited (ADR-226).
+					const { sources } = resolveWebCitations(parseCitations(fullText), webSources);
 					if (sources.length) candidate.sources = sources;
 				},
 				(error) => {
