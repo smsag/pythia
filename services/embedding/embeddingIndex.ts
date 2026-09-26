@@ -70,10 +70,10 @@ export function diffIndex(
 // rebuilds. That migration is free this release: ADR-182's chunk-size change
 // invalidates every content hash anyway.
 //
-// `keeper` (ADR-220) is optional and needs no version: which kind of device last
+// `keeper` (ADR-221) is optional and needs no version: which kind of device last
 // wrote the file. A phone does not rewrite an index a desktop keeps. A file
 // without it — or one written by a release that drops unknown fields — reads as
-// "no keeper", which is the behaviour before ADR-220: every device writes.
+// "no keeper", which is the behaviour before ADR-221: every device writes.
 // `writtenAt` (epoch ms) comes with it, so a phone can say how old the desktop's
 // copy is.
 
@@ -87,13 +87,13 @@ export interface IndexMeta {
 	complete: boolean;
 	/** The scope the rows were selected under — see `scopeSignature`. */
 	scope: string;
-	/** Which kind of device last wrote the file (ADR-220). Absent: unknown. */
+	/** Which kind of device last wrote the file (ADR-221). Absent: unknown. */
 	keeper?: IndexKeeper;
-	/** When it did, in epoch milliseconds (ADR-220). Absent: unknown. */
+	/** When it did, in epoch milliseconds (ADR-221). Absent: unknown. */
 	writtenAt?: number;
 }
 
-/** The two kinds of device that can keep a shared index (ADR-220). */
+/** The two kinds of device that can keep a shared index (ADR-221). */
 export type IndexKeeper = "desktop" | "mobile";
 
 /** A keeper read from a header, validated: anything else is "unknown". */
@@ -106,7 +106,7 @@ export function readWrittenAt(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-/** The optional ADR-220 fields, validated, present only when valid. */
+/** The optional ADR-221 fields, validated, present only when valid. */
 function signature(head: { keeper?: unknown; writtenAt?: unknown } | null | undefined): Pick<IndexMeta, "keeper" | "writtenAt"> {
 	const keeper = readKeeper(head?.keeper);
 	const writtenAt = readWrittenAt(head?.writtenAt);
@@ -119,7 +119,7 @@ export function serializeIndex(
 	items: IndexedConversation[],
 	dim: number,
 	info: IndexMeta = EMPTY_INDEX_META,
-	/** Header fields of a file built on this format — the journal's (ADR-221).
+	/** Header fields of a file built on this format — the journal's (ADR-222).
 	 *  Spread first, so it can never replace a field the index itself owns. */
 	extra: Record<string, unknown> = {},
 ): ArrayBuffer {

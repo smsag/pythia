@@ -51,7 +51,7 @@ function host(store: IndexStore, notes: IndexableNote[], over: Partial<CatchUpHo
 	return { h, provider, guardCalls };
 }
 
-describe("catchUpIndex — a complete index catches up with the vault (ADR-220)", () => {
+describe("catchUpIndex — a complete index catches up with the vault (ADR-221)", () => {
 	it("embeds only the note that changed while this device was not watching", async () => {
 		const store = await builtIndex([note("a.md", "alpha"), note("b.md", "beta")]);
 		const { h, provider } = host(store, [note("a.md", "alpha"), note("b.md", "beta, edited on the phone")]);
@@ -113,7 +113,7 @@ describe("catchUpIndex — a complete index catches up with the vault (ADR-220)"
 	});
 });
 
-describe("VaultRagService.catchUp — once per session, desktop only (ADR-220)", () => {
+describe("VaultRagService.catchUp — once per session, desktop only (ADR-221)", () => {
 	/** A vault whose note text can change between sessions. */
 	const vault = (text: { value: string }) => ({
 		vault: {
@@ -168,7 +168,7 @@ describe("VaultRagService.catchUp — once per session, desktop only (ADR-220)",
 	});
 });
 
-describe("a phone takes a desktop's index over with Build now (ADR-220)", () => {
+describe("a phone takes a desktop's index over with Build now (ADR-221)", () => {
 	const vault = (text: { value: string }) => ({
 		vault: {
 			getMarkdownFiles: () => [{ path: "Notes/a.md", stat: { mtime: 1 } }],

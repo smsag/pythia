@@ -17,7 +17,7 @@ import { rankRelated, type RelatedResult } from "./relatedConversations";
 export interface IndexStore {
 	read(): Promise<ArrayBuffer | null>;
 	write(buf: ArrayBuffer): Promise<void>;
-	/** The journal file beside this index, where a store has one (ADR-221). */
+	/** The journal file beside this index, where a store has one (ADR-222). */
 	journal?(): IndexStore;
 }
 

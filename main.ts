@@ -189,7 +189,7 @@ export default class PythiaPlugin extends Plugin {
 			this.renameFollower.replay();
 			// After the workspace is up, not during it (ADR-169/170).
 			scheduleWarm({ run: () => void this.embedding.warm(), register: (c) => this.register(c) });
-			// The vault index catches up with what changed while Pythia was closed (ADR-220).
+			// The vault index catches up with what changed while Pythia was closed (ADR-221).
 			scheduleWarm({ run: () => void this.embedding.catchUpVaultIndex(), register: (c) => this.register(c), delayMs: CATCH_UP_DELAY_MS });
 		});
 
@@ -296,7 +296,7 @@ export default class PythiaPlugin extends Plugin {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
 			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
-			// The note being written waits until it is left or quiet (ADR-219).
+			// The note being written waits until it is left or quiet (ADR-220).
 			activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
 		});
 

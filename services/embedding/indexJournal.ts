@@ -1,9 +1,9 @@
-// The vault index's journal (ADR-221, closes D-35).
+// The vault index's journal (ADR-222, closes D-35).
 //
 // The index was one serialized array, so every write rewrote all of it — about
 // 19 MB at the 5 000-note cap — whether one note had changed or a thousand. That
 // is why crash-safe flushing had to be rate-limited (ADR-182), why a phone typing
-// next to a loaded model reloaded (ADR-219), and why each edit was a 19 MB sync
+// next to a loaded model reloaded (ADR-220), and why each edit was a 19 MB sync
 // event on every device.
 //
 // The journal is the rows that changed since the index file (the "base") was
@@ -118,7 +118,7 @@ export class IndexJournal {
 	}
 
 	/** Whether the next write may go here rather than rewrite the base: there is a
-	 *  base to attach to (a file from before ADR-220 has no `writtenAt`), and the
+	 *  base to attach to (a file from before ADR-221 has no `writtenAt`), and the
 	 *  journal has not outgrown it. */
 	canTake(baseRows: number): boolean {
 		return this.base !== undefined && !shouldCompact(this.rows, baseRows);

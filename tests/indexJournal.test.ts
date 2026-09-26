@@ -37,7 +37,7 @@ class FakeProvider implements EmbeddingProvider {
 const note = (path: string, text: string): IndexableNote => ({ path, load: async () => text });
 const vault = (n: number): IndexableNote[] => Array.from({ length: n }, (_, i) => note(`Notes/${i}.md`, `note ${i} beta`));
 
-describe("shouldCompact — when the journal is folded back into the base (ADR-221)", () => {
+describe("shouldCompact — when the journal is folded back into the base (ADR-222)", () => {
 	it("never below the floor, however small the base", () => {
 		expect(shouldCompact(COMPACT_MIN_ROWS - 1, 10)).toBe(false);
 		expect(shouldCompact(COMPACT_MIN_ROWS, 10)).toBe(true);
@@ -82,7 +82,7 @@ describe("IndexJournal — in memory", () => {
 		expect(j.rows).toBe(2);
 	});
 
-	it("takes nothing without a base to attach to — a file from before ADR-220", () => {
+	it("takes nothing without a base to attach to — a file from before ADR-221", () => {
 		const j = new IndexJournal(new MemStore());
 		j.reset(undefined);
 		expect(j.canTake(1000)).toBe(false);
@@ -98,7 +98,7 @@ describe("IndexJournal — in memory", () => {
 	});
 });
 
-describe("VaultIndexService with a journal — an edit writes kilobytes, not the index (ADR-221)", () => {
+describe("VaultIndexService with a journal — an edit writes kilobytes, not the index (ADR-222)", () => {
 	async function built(n = 200): Promise<{ store: JournaledStore; svc: VaultIndexService }> {
 		const store = new JournaledStore();
 		const svc = new VaultIndexService(new FakeProvider(), store, { persistIntervalMs: 0 });
@@ -160,7 +160,7 @@ describe("VaultIndexService with a journal — an edit writes kilobytes, not the
 		expect((await next.query("alpha", { minScore: 0.9 })).map((r) => r.id)).toEqual([]);
 	});
 
-	it("an index from before ADR-220, with no write time, is rewritten once and journaled after", async () => {
+	it("an index from before ADR-221, with no write time, is rewritten once and journaled after", async () => {
 		const store = new JournaledStore();
 		store.buf = serializeIndex(vault(10).map((n, i) => row(n.path, i)), 4, { complete: true, scope: "S" });
 		const svc = new VaultIndexService(new FakeProvider(), store, { persistIntervalMs: 0 });

@@ -42,10 +42,10 @@ const PERSIST_EVERY_EMBEDS = 25;
  * whichever is scarcer: on a slow build that is the embed count, on a fast one
  * the clock. Either way the loss window stays ~30s of work, and the write rate
  * stays under 2/min. A BUILD still writes the whole index this way; edits go to
- * the journal instead (ADR-221, `indexJournal.ts`).
+ * the journal instead (ADR-222, `indexJournal.ts`).
  */
 const MIN_PERSIST_INTERVAL_MS = 30_000;
-// The same floor holds for the watcher's edit batches (ADR-219). ADR-122 made a
+// The same floor holds for the watcher's edit batches (ADR-220). ADR-122 made a
 // batch cost one write instead of one per note, but a batch arrived every couple
 // of seconds while someone typed, and each one serialized the whole index again —
 // ~19 MB allocated and written per flush, on a phone next to a loaded model, is
@@ -53,7 +53,7 @@ const MIN_PERSIST_INTERVAL_MS = 30_000;
 // writes at once; batches inside the window stay in memory and one trailing write
 // carries them all. What an app killed inside the window loses is those notes'
 // new vectors: their old rows stay, their content hash no longer matches, and the
-// next edit of each re-embeds it. Since ADR-221 an edit writes the journal —
+// next edit of each re-embeds it. Since ADR-222 an edit writes the journal —
 // kilobytes — so the window now mostly saves sync events, not memory.
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
@@ -101,7 +101,7 @@ export class VaultIndexService {
 	private chain: Promise<unknown> = Promise.resolve();
 	private synced = false;
 	/** When an edit batch last wrote the index, and the trailing write that is
-	 *  holding the batches since (ADR-219). */
+	 *  holding the batches since (ADR-220). */
 	private lastEditWriteAt = Number.NEGATIVE_INFINITY;
 	private pendingEditWrite: ReturnType<typeof setTimeout> | null = null;
 
@@ -115,14 +115,14 @@ export class VaultIndexService {
 			maxChars?: number;
 			persistIntervalMs?: number;
 			hashPolicy?: HashPolicy;
-			/** The kind of device this runs on, stamped on every write (ADR-220). */
+			/** The kind of device this runs on, stamped on every write (ADR-221). */
 			device?: IndexKeeper;
 		} = {}
 	) {
 		this.journal = store.journal ? new IndexJournal(store.journal()) : null;
 	}
 
-	/** Where edits go instead of a base rewrite, when the store has one (ADR-221). */
+	/** Where edits go instead of a base rewrite, when the store has one (ADR-222). */
 	private readonly journal: IndexJournal | null;
 
 	/** Write the whole index — the base — and start the journal over against it. */
@@ -135,19 +135,19 @@ export class VaultIndexService {
 		return this.opts.device ?? "desktop";
 	}
 
-	/** What a write records about itself: the meta, signed by this device (ADR-220). */
+	/** What a write records about itself: the meta, signed by this device (ADR-221). */
 	private stamp(meta: IndexMeta): IndexMeta {
 		return { ...meta, keeper: this.device, writtenAt: Date.now() };
 	}
 
 	/** Which kind of device last wrote the index, and when, as far as this
-	 *  instance knows — for the settings status line (ADR-220). */
+	 *  instance knows — for the settings status line (ADR-221). */
 	signature(): { keeper?: IndexKeeper; writtenAt?: number } {
 		return { keeper: this.meta.keeper, writtenAt: this.meta.writtenAt };
 	}
 
 	/**
-	 * Whether this device writes its edits to the shared file (ADR-220).
+	 * Whether this device writes its edits to the shared file (ADR-221).
 	 *
 	 * A phone does not rewrite an index a desktop keeps. It still applies its own
 	 * edits in memory, so its answers see them this session, and the desktop
@@ -278,7 +278,7 @@ export class VaultIndexService {
 		});
 	}
 
-	/** Read the persisted index WITHOUT making it queryable (ADR-220), so the
+	/** Read the persisted index WITHOUT making it queryable (ADR-221), so the
 	 *  catch-up can ask `isComplete` of an index it may then leave alone. Marking
 	 *  an unfinished index ready would stop the next send from resuming its build. */
 	loadPersisted(): Promise<void> {
@@ -317,7 +317,7 @@ export class VaultIndexService {
 		await this.load();
 		if (!this.synced) return; // patch only a built index; a full build handles the rest
 		let dirty = false;
-		// Each row that moves is recorded for the journal (ADR-221): its new state, or
+		// Each row that moves is recorded for the journal (ADR-222): its new state, or
 		// its removal when an update dropped it.
 		const note = (path: string): void => this.journal?.record(path, this.items.find((i) => i.id === path));
 		for (const path of changes.removes) if (this.removeInMemory(path)) { dirty = true; note(path); }
@@ -329,12 +329,12 @@ export class VaultIndexService {
 		// Targeted edits keep whatever the index already claims about itself: a
 		// watcher flush neither completes an unfinished build nor invalidates a
 		// finished one.
-		// A phone holding a desktop's index keeps the edit in memory only (ADR-220);
+		// A phone holding a desktop's index keeps the edit in memory only (ADR-221);
 		// nothing is lost that the desktop does not redo, so no word is owed.
 		if (dirty && this.writesEdits()) await this.persistEdits();
 	}
 
-	/** Write an edit batch now, or leave it to the window's trailing write (ADR-219).
+	/** Write an edit batch now, or leave it to the window's trailing write (ADR-220).
 	 *  Runs inside the op chain, so the trailing write is enqueued rather than run
 	 *  from the timer — it must not interleave with a build. */
 	private async persistEdits(): Promise<void> {
@@ -368,7 +368,7 @@ export class VaultIndexService {
 	}
 
 	/** Write edits still held by the window now — the plugin is unloading, and a
-	 *  timer does not outlive it (ADR-219). */
+	 *  timer does not outlive it (ADR-220). */
 	flushPendingWrites(): Promise<void> {
 		return this.enqueue(async () => {
 			if (this.cancelPendingEditWrite()) await this.writeEdits();
@@ -549,7 +549,7 @@ export class VaultIndexService {
 		const changed = embedded > persistedEmbeds || dropped;
 		// …and when another kind of device signed it: a full sync is how a device
 		// takes the index over (a phone's Build now, a desktop's catch-up), and an
-		// unchanged index it does not sign stays the other device's (ADR-220).
+		// unchanged index it does not sign stays the other device's (ADR-221).
 		if (changed || !this.meta.complete || this.meta.scope !== scope || this.meta.keeper !== this.device) {
 			await persist(this.items, true);
 		}

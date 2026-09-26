@@ -42,7 +42,7 @@ export interface VaultIndexStatus {
 	modelSubstituted: boolean;
 	/** The global default; a conversation can still switch vault context on. */
 	enabledByDefault: boolean;
-	/** Which kind of device last wrote the index file, and when (ADR-220). */
+	/** Which kind of device last wrote the index file, and when (ADR-221). */
 	keeper: IndexKeeper | null;
 	writtenAt: number | null;
 	/** This device is a phone. */
@@ -65,7 +65,7 @@ export function canBuildNow(state: VaultIndexState): boolean {
 }
 
 /**
- * Whether this phone is holding an index a desktop keeps (ADR-220): the phone
+ * Whether this phone is holding an index a desktop keeps (ADR-221): the phone
  * applies its edits in memory and never writes the file, so if that desktop is
  * no longer used, the index stays at its last state. "Build now" is then how the
  * phone takes it over — only notes that changed are embedded.

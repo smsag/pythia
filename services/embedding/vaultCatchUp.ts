@@ -1,4 +1,4 @@
-// The once-per-session catch-up of a complete vault index (ADR-220).
+// The once-per-session catch-up of a complete vault index (ADR-221).
 //
 // The watcher only sees what changes while Pythia runs, and `decideBuild` never
 // rescans a complete index. So a note edited on a phone that no longer writes the

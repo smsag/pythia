@@ -322,7 +322,7 @@ describe("adding a folder embeds only the new notes (#357)", () => {
 	});
 });
 
-describe("VaultIndexService — edit batches share one write window (ADR-219)", () => {
+describe("VaultIndexService — edit batches share one write window (ADR-220)", () => {
 	afterEach(() => { vi.useRealTimers(); });
 
 	/** A built index whose next write is the edit window's to decide. The build
@@ -403,7 +403,7 @@ describe("VaultIndexService — edit batches share one write window (ADR-219)", 
 	});
 });
 
-describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-220)", () => {
+describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-221)", () => {
 	const keeperOf = (store: MemStore) => deserializeIndex(store.buf!).meta.keeper;
 
 	/** An index the desktop built, as a phone then opens it from the synced file. */
@@ -445,7 +445,7 @@ describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-
 		for (const signer of ["mobile", undefined] as const) {
 			const store = new MemStore();
 			await new VaultIndexService(new FakeProvider(), store, signer ? { device: signer } : {}).sync([alpha]);
-			// A file from before ADR-220 carries no keeper at all.
+			// A file from before ADR-221 carries no keeper at all.
 			if (!signer) store.buf = serializeIndex(deserializeIndex(store.buf!).items, 4, { complete: true, scope: "" });
 			const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
 			await phone.hydrateForQuery();

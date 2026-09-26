@@ -283,7 +283,7 @@ describe("the background warm's guards (ADR-169)", () => {
 	});
 });
 
-describe("the vault index's launch catch-up (ADR-220)", () => {
+describe("the vault index's launch catch-up (ADR-221)", () => {
 	it("never runs on a phone: it holds a desktop's index, it does not keep it", async () => {
 		const h = harness({ isMobile: true });
 		h.indexExists = true;

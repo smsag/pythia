@@ -66,7 +66,7 @@ export interface VaultRagLike {
 	getRelevantNotes(conversation: Conversation, query: string, exclude?: string[]): Promise<string[]>;
 	applyChanges(changed: TFile[], deleted: string[]): Promise<void>;
 	isBuilding(): boolean;
-	/** Once per session: a complete index catches up with the vault (ADR-220). */
+	/** Once per session: a complete index catches up with the vault (ADR-221). */
 	catchUp(): void;
 	onBackground(hidden: boolean): void;
 	dispose(): void;
@@ -249,7 +249,7 @@ export class EmbeddingHub {
 		});
 	}
 
-	/** Once per session on a desktop, after launch (ADR-220): a complete vault index
+	/** Once per session on a desktop, after launch (ADR-221): a complete vault index
 	 *  catches up with what changed while Pythia was not running. Only where an
 	 *  index exists — starting one nobody asked for is not a catch-up — and with
 	 *  the provider made silently, so a launch shows no "preparing the model". */

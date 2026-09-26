@@ -73,7 +73,7 @@ export class VaultRagService {
 	 *  dropped for the rest of the session — `applyChanges` no-ops until the index
 	 *  is ready, and the first build is exactly when it is not. */
 	private deferredChanges: { changed: Map<string, TFile>; deleted: Set<string> } | null = null;
-	/** The session's catch-up has been started (ADR-220). */
+	/** The session's catch-up has been started (ADR-221). */
 	private caughtUp = false;
 	/** The index file's header, remembered between status reads (#361).
 	 *  `undefined` = not read yet, `null` = read and there is no usable file.
@@ -96,7 +96,7 @@ export class VaultRagService {
 			modelId: () => EmbeddingModelId;
 			/** The crash-loop breaker; absent in tests that do not exercise it. */
 			guard?: BuildGuard | null;
-			/** A phone: it holds a desktop's index rather than keeping it (ADR-220). */
+			/** A phone: it holds a desktop's index rather than keeping it (ADR-221). */
 			mobile?: boolean;
 		},
 	) {}
@@ -140,7 +140,7 @@ export class VaultRagService {
 	dispose(): void {
 		if (this.syncing) this.deps.guard?.end();
 		this.listeners.clear();
-		// Edits held by the write window (ADR-219) are written, not left to a dying
+		// Edits held by the write window (ADR-220) are written, not left to a dying
 		// timer. Not awaited: unload is synchronous, and the store needs nothing else.
 		void this.service?.flushPendingWrites().catch((e: unknown) => {
 			console.warn("[Pythia] vault RAG: held edits could not be written at unload", e);
@@ -381,7 +381,7 @@ export class VaultRagService {
 				// out-of-scope index now falls through and resumes, throttled.
 				if (!offThread) {
 					await svc.hydrateForQuery();
-					if (svc.isComplete(scope) && !opts.force) { // Build now: a phone taking a desktop's index over (ADR-220)
+					if (svc.isComplete(scope) && !opts.force) { // Build now: a phone taking a desktop's index over (ADR-221)
 						guard?.end();
 						this.setPhase({ kind: "idle" });
 						// The edits buffered while the index was not yet hydrated land
@@ -516,7 +516,7 @@ export class VaultRagService {
 	}
 
 	/** Once per session, in the background: a complete index catches up with notes
-	 *  that changed while this device was not watching (ADR-220, `vaultCatchUp.ts`). */
+	 *  that changed while this device was not watching (ADR-221, `vaultCatchUp.ts`). */
 	catchUp(): void {
 		const loadFailed = this.phase.kind === "failed" && this.phase.loadFailed;
 		const mayAutoBuild = this.deps.guard?.mayAutoBuild() ?? true;

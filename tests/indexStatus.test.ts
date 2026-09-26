@@ -105,7 +105,7 @@ describe("peekIndexMeta — the header, without the vectors (ADR-199)", () => {
 	});
 });
 
-describe("a phone holding a desktop's index says so, and how to take it over (ADR-220)", () => {
+describe("a phone holding a desktop's index says so, and how to take it over (ADR-221)", () => {
 	const held: VaultIndexStatus = { ...base, state: "ready", count: 40, onPhone: true, keeper: "desktop", writtenAt: Date.UTC(2026, 8, 20, 12) };
 
 	it("names the desktop and when it last wrote the index, and offers Build now", () => {

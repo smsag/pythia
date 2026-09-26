@@ -50,7 +50,7 @@ describe("decideBuild — when the provider is reloaded (#357/#359)", () => {
 	});
 });
 
-describe("shouldCatchUp — the launch catch-up obeys an automatic build's brakes (ADR-220)", () => {
+describe("shouldCatchUp — the launch catch-up obeys an automatic build's brakes (ADR-221)", () => {
 	const ok = { mobile: false, ran: false, syncing: false, mayAutoBuild: true, loadFailed: false };
 
 	it("runs on a desktop that has not caught up this session", () => {

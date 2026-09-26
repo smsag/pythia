@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 // both things the wiring is for: that a burst coalesces into ONE `applyChanges`,
 // and that a flush arriving after the batch was drained stays silent. These are
 // driven by hand instead — one record per debouncer, so the flush window and the
-// held note's quiet clock (ADR-219) can be told apart by their timeouts.
+// held note's quiet clock (ADR-220) can be told apart by their timeouts.
 interface FakeDebouncer {
 	timeout?: number;
 	resetTimer?: boolean;
@@ -231,7 +231,7 @@ describe("registerVaultWatcher — which vault events reach the index", () => {
 	});
 });
 
-describe("VaultChangeBatch.take(hold) — the note being written stays behind (ADR-219)", () => {
+describe("VaultChangeBatch.take(hold) — the note being written stays behind (ADR-220)", () => {
 	it("keeps the held note's edit for a later drain and hands over the rest", () => {
 		const b = new VaultChangeBatch();
 		b.markChanged(md("a.md"));
@@ -256,7 +256,7 @@ describe("VaultChangeBatch.take(hold) — the note being written stays behind (A
 	});
 });
 
-describe("registerVaultWatcher — the note being written (ADR-219)", () => {
+describe("registerVaultWatcher — the note being written (ADR-220)", () => {
 	it("both windows are real quiet windows: every event restarts them", () => {
 		// Without `resetTimer`, Obsidian's debounce fires this long after the FIRST
 		// call — a note typed in for a minute was flushed thirty times.

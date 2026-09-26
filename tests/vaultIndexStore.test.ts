@@ -35,7 +35,7 @@ describe("VaultIndexStore — one index file per vector family (ADR-200)", () =>
 	});
 });
 
-describe("VaultIndexStore — the journal sits beside its index (ADR-221)", () => {
+describe("VaultIndexStore — the journal sits beside its index (ADR-222)", () => {
 	it("in the same folder, same family, suffixed .journal.bin", async () => {
 		const written: string[] = [];
 		const plugin = {

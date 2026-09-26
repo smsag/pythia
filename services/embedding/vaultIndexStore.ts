@@ -22,7 +22,7 @@ export class VaultIndexStore implements IndexStore {
 		private readonly plugin: Plugin,
 		private readonly modelId: EmbeddingModelId,
 		private readonly prefix = "related-embeddings",
-		/** `.bin` for the index, `.journal.bin` for its journal (ADR-221). */
+		/** `.bin` for the index, `.journal.bin` for its journal (ADR-222). */
 		suffix = ".bin",
 	) {
 		this.dir = normalizePath(
@@ -31,7 +31,7 @@ export class VaultIndexStore implements IndexStore {
 		this.path = normalizePath(`${this.dir}/${prefix}-${vectorFamily(modelId)}${suffix}`);
 	}
 
-	/** The journal beside this index: the rows changed since it was written (ADR-221). */
+	/** The journal beside this index: the rows changed since it was written (ADR-222). */
 	journal(): IndexStore {
 		return new VaultIndexStore(this.plugin, this.modelId, this.prefix, ".journal.bin");
 	}

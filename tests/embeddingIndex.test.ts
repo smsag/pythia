@@ -141,7 +141,7 @@ describe("index self-description (ADR-184)", () => {
 	});
 });
 
-describe("the index's keeper (ADR-220)", () => {
+describe("the index's keeper (ADR-221)", () => {
 	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
 
 	it("round-trips which kind of device wrote the file", () => {
@@ -152,7 +152,7 @@ describe("the index's keeper (ADR-220)", () => {
 		}
 	});
 
-	it("reads a file without one as unknown — the behaviour before ADR-220", () => {
+	it("reads a file without one as unknown — the behaviour before ADR-221", () => {
 		const buf = serializeIndex(rows, 4, { complete: true, scope: "S" });
 		expect(deserializeIndex(buf).meta).toEqual({ complete: true, scope: "S" });
 		expect(peekIndexMeta(buf)?.keeper).toBeUndefined();
@@ -167,7 +167,7 @@ describe("the index's keeper (ADR-220)", () => {
 	});
 });
 
-describe("when the index was written (ADR-220)", () => {
+describe("when the index was written (ADR-221)", () => {
 	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
 
 	it("round-trips through both readers", () => {

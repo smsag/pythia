@@ -16,7 +16,7 @@ import { debounce, TFile, type EventRef, type TAbstractFile, type Vault, type Wo
  * no longer exists, or forgets one that does — which is exactly the shape of bug
  * `main.ts`'s exclusion from coverage was hiding.
  *
- * The note being written is held back (ADR-219). Every autosave is a `modify`,
+ * The note being written is held back (ADR-220). Every autosave is a `modify`,
  * so a note someone is typing in used to be re-embedded — and the whole index
  * rewritten — every couple of seconds, on a phone right next to the editor, and
  * that is what reloaded Obsidian mid-sentence. It now reaches the index when the
@@ -62,7 +62,7 @@ export class VaultChangeBatch<F extends WatchedFile = WatchedFile> {
 	 *  never hand the same edit to `applyChanges` twice.
 	 *
 	 *  `hold` names the note being written: its edit stays in the batch for a
-	 *  later drain (ADR-219). Only an edit is held — a deleted note has nobody
+	 *  later drain (ADR-220). Only an edit is held — a deleted note has nobody
 	 *  writing in it, and keeping it in the index would serve a file that is gone. */
 	take(hold: string | null = null): { changed: F[]; deleted: string[] } {
 		const kept = hold === null ? undefined : this.changed.get(hold);
@@ -78,13 +78,13 @@ export class VaultChangeBatch<F extends WatchedFile = WatchedFile> {
 }
 
 /** How long the vault must be quiet before a burst of edits reaches the index.
- *  A real quiet window since ADR-219: every event restarts it. Obsidian's
+ *  A real quiet window since ADR-220: every event restarts it. Obsidian's
  *  `debounce` without `resetTimer` fires this long after the FIRST call, so a
  *  burst that kept going was flushed every two seconds for as long as it lasted. */
 export const VAULT_FLUSH_DELAY_MS = 2000;
 
 /** How long the note being written may sit unembedded once its writer has
- *  stopped (ADR-219). Long enough that a pause to think is not a flush, short
+ *  stopped (ADR-220). Long enough that a pause to think is not a flush, short
  *  enough that a note left open on screen is found by the next question. */
 export const VAULT_HOLD_IDLE_MS = 30_000;
 
@@ -108,7 +108,7 @@ export interface VaultWatcherDeps {
 	 *  not with the debounced flush — a tap on a chip must not open the old path
 	 *  in the two seconds after a rename. */
 	followRename(oldPath: string, newPath: string): void;
-	/** The note being written, whose edits are held back (ADR-219). Absent: no
+	/** The note being written, whose edits are held back (ADR-220). Absent: no
 	 *  note is held, as before. */
 	activePath?(): string | null;
 	delayMs?: number;

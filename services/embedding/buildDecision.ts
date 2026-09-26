@@ -63,7 +63,7 @@ export function decideBuild(req: BuildRequest, facts: BuildFacts): BuildDecision
 	return { run: true, reloadProvider: Boolean(req.manual) && facts.loadFailed };
 }
 
-/** What the catch-up needs to know before it touches the disk (ADR-220). */
+/** What the catch-up needs to know before it touches the disk (ADR-221). */
 export interface CatchUpFacts {
 	/** A phone never runs it: it holds a desktop's index, it does not keep it. */
 	mobile: boolean;
@@ -78,7 +78,7 @@ export interface CatchUpFacts {
 }
 
 /**
- * Whether the once-per-session catch-up may run (ADR-220).
+ * Whether the once-per-session catch-up may run (ADR-221).
  *
  * The catch-up brings a COMPLETE index up to date with notes that changed while
  * this device was not watching. It is automatic, so it obeys the same brakes as
