@@ -40,7 +40,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
-    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize, and the tabs a keep leaves: canSwitchAlternative · switchAlternative · normalizeAlternatives · answerIds (ADR-160/219/223)
+    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize, and the tabs a keep leaves: canSwitchAlternative · switchAlternative · normalizeAlternatives · answerIds (ADR-160/219/225)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
