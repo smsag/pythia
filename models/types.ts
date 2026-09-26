@@ -113,7 +113,7 @@ export interface PendingTemplate {
  * model. Candidate 0 is always the answer the conversation already had.
  */
 export interface ComparisonCandidate {
-	id: string;               // becomes the Message id when kept (or the fork's assistant message id)
+	id: string;               // becomes the Message id when kept; stays its id as an alternative tab (ADR-219)
 	provider: Provider;
 	model: string;
 	content: string;
@@ -121,6 +121,10 @@ export interface ComparisonCandidate {
 	tokenUsage?: TokenUsage;
 	sources?: MessageSource[];
 	templateId?: string;
+	/** Carried through a comparison so the original answer's price snapshot and
+	 *  its note-write chip survive start → keep/cancel (ADR-219). */
+	cost?: MessageCost;
+	noteWrites?: NoteWrite[];
 }
 
 /** The pending comparison on a conversation's last exchange (ADR-160). */
@@ -129,6 +133,9 @@ export interface Comparison {
 	userMessageId: string;    // the prompt every candidate answered
 	candidates: ComparisonCandidate[];
 	createdAt: string;        // ISO 8601
+	/** The tabs the answer already had when this comparison opened (ADR-219) —
+	 *  what Discard puts back, so a new run discarded is not kept by accident. */
+	priorAlternativeIds?: string[];
 }
 
 export interface TokenUsage {
@@ -191,6 +198,10 @@ export interface Message {
 	 *  the "✓ Created" chip under the answer is drawn from, so it survives a
 	 *  reload; the path follows a rename (`renameVaultPath`). */
 	noteWrites?: NoteWrite[];
+	/** The other answers to the same prompt, kept from a model comparison as
+	 *  tabs on this answer (ADR-219). Viewable, switchable while this is the last
+	 *  answer — and NEVER sent to a model: history is `content` alone. */
+	alternatives?: ComparisonCandidate[];
 }
 
 /** One note an answer wrote. `path` is the path the vault reported. */

@@ -33,7 +33,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { PinController } from "./ui/PinController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
-import { renderRichMarkdown } from "./ui/renderMarkdown";
+import { renderRichMarkdown, renderRichMarkdownAsync } from "./ui/renderMarkdown";
 import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
@@ -512,6 +512,8 @@ export class PythiaSidebarView extends ItemView {
 			onStarted: (userId) => { this.lastRenderedMsgId = userId; },
 			rerender: () => { this.renderedConvId = null; void this.renderMessages(); },
 			scrollToBottom: () => this.scrollToBottom(),
+			renderAnswer: (md, el) => renderRichMarkdownAsync(this.app, md, el, this),
+			paintMarks: (body, id) => { decorateCodeBlocks(body, this.diagObservers); this.selectionController.repaintFavorites(body, id); this.mergeController.repaintMergeLinks(body, id); },
 		});
 
 		this.mergeController = new MergeController({
@@ -988,6 +990,8 @@ export class PythiaSidebarView extends ItemView {
 		paintNoteWrites(this.app, row, msg); // the ✓ chips outlive the turn (ADR-218)
 		this.truncation.paint(row, msg);
 		this.rewrite.paint(row, msg);
+		// Last, so a tab on screen can hide the cards that belong to the kept answer.
+		this.comparisonController.paintTabs(row, aiBody, msg); // a kept comparison's other answers (ADR-219)
 
 		return aiBody;
 	}
@@ -1036,13 +1040,7 @@ export class PythiaSidebarView extends ItemView {
 		};
 	}
 
-	private scrollToTop(): void {
-		this.chatScroll.following = false;
-		this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-		requestAnimationFrame(() => {
-			this.messagesEl.scrollTo({ top: 0, behavior: "instant" });
-		});
-	}
+	private scrollToTop(): void { this.chatScroll.toTop(); }
 
 	private scrollToBottom(force = false): void {
 		this.chatScroll.toBottom(force);

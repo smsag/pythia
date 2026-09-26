@@ -7,7 +7,8 @@ import {
 	removeCandidate,
 	keepCandidate,
 	cancelComparison,
-	forkNameFor,
+	canSwitchAlternative,
+	switchAlternative,
 	normalizeComparison,
 } from "../services/comparison";
 import { parseConversations } from "../services/persistence";
@@ -63,28 +64,29 @@ describe("keepCandidate", () => {
 		return c;
 	}
 
-	it("keeps the chosen answer as the assistant turn and forks the other", () => {
+	it("keeps the chosen answer as the assistant turn, with the others as tabs (ADR-219)", () => {
 		const c = pending();
 		const result = keepCandidate(c, "b1");
 		expect(result?.kept).toMatchObject({ id: "b1", role: "assistant", content: "answer B", model: "gpt-4o" });
 		expect(c.messages.map((m) => m.id)).toEqual(["u1", "b1"]);
 		expect(c.comparison).toBeUndefined();
-		expect(result?.forks).toHaveLength(1);
-		const fork = result!.forks[0];
-		expect(fork.name).toBe("Energy · Sonnet 5");
-		expect(fork.model).toBe("claude-sonnet-5");
-		expect(fork.provider).toBe("anthropic");
-		expect(fork.forkedFromMessageId).toBe("b1");
-		expect(fork.messages.map((m) => m.id)).toEqual(["u1", "a1"]);
+		expect(c.messages[1].alternatives?.map((x) => x.id)).toEqual(["a1"]);
+		expect(c.messages[1].alternatives?.[0]).toMatchObject({ content: "answer A", model: "claude-sonnet-5" });
+		expect(result).toEqual({ kept: c.messages[1] }); // no forks any more
 	});
 
-	it("moves favorites and merge links on a forked answer to its fork", () => {
+	it("leaves favorites and merge links on a non-kept answer on the conversation", () => {
 		const c = pending();
-		const result = keepCandidate(c, "b1");
-		expect(c.favorites).toBeUndefined();
-		expect(c.merges).toBeUndefined();
-		expect(result!.forks[0].favorites?.map((f) => f.id)).toEqual(["f1"]);
-		expect(result!.forks[0].merges?.map((m) => m.id)).toEqual(["m1"]);
+		keepCandidate(c, "b1");
+		expect(c.favorites?.map((f) => f.id)).toEqual(["f1"]);
+		expect(c.merges?.map((m) => m.id)).toEqual(["m1"]);
+	});
+
+	it("adds no alternatives when there was only one answer", () => {
+		const c = conv([u("u1"), a("a1")]);
+		startComparison(c, "u1", "a1");
+		keepCandidate(c, "a1");
+		expect("alternatives" in c.messages[1]).toBe(false);
 	});
 
 	it("keeps favorites on the kept answer where they are", () => {
@@ -123,9 +125,55 @@ describe("removeCandidate / cancelComparison", () => {
 	});
 });
 
-describe("forkNameFor", () => {
-	it("names the fork after the conversation and the model", () => {
-		expect(forkNameFor("Energy", "gpt-4o")).toBe("Energy · GPT-4o");
+describe("switchAlternative — which tab the conversation holds (ADR-219)", () => {
+	function kept(): Conversation {
+		const c = conv([u("u1")]);
+		c.comparison = { id: "cmp", userMessageId: "u1", createdAt: "", candidates: [
+			{ id: "a1", provider: "anthropic", model: "claude-sonnet-5", content: "answer A", timestamp: "" },
+			{ id: "b1", provider: "openai", model: "gpt-4o", content: "answer B", timestamp: "" },
+			{ id: "c1x", provider: "mistral", model: "mistral-large-latest", content: "answer C", timestamp: "" },
+		] };
+		keepCandidate(c, "a1");
+		return c;
+	}
+
+	it("swaps the kept answer with a tab, each keeping its own id, and keeps the tab order", () => {
+		const c = kept();
+		expect(switchAlternative(c, "a1", "c1x")).toBe(true);
+		const last = c.messages[1];
+		expect(last).toMatchObject({ id: "c1x", content: "answer C", model: "mistral-large-latest" });
+		expect(last.alternatives?.map((x) => x.id)).toEqual(["b1", "a1"]);
+		expect(last.alternatives?.[1]).toMatchObject({ content: "answer A", provider: "anthropic" });
+	});
+
+	it("is refused once the answer is no longer the last message", () => {
+		const c = kept();
+		c.messages.push(u("u2"), a("a2"));
+		expect(canSwitchAlternative(c, "a1")).toBe(false);
+		expect(switchAlternative(c, "a1", "b1")).toBe(false);
+		expect(c.messages[1].id).toBe("a1");
+	});
+
+	it("is refused for an unknown tab, a pending comparison, or an answer without tabs", () => {
+		const c = kept();
+		expect(switchAlternative(c, "a1", "nope")).toBe(false);
+		const plain = conv([u("u1"), a("a1")]);
+		expect(canSwitchAlternative(plain, "a1")).toBe(false);
+		const pendingNow = kept();
+		pendingNow.comparison = { id: "x", userMessageId: "u1", createdAt: "", candidates: [] };
+		expect(canSwitchAlternative(pendingNow, "a1")).toBe(false);
+	});
+});
+
+describe("a comparison keeps what the original answer carried", () => {
+	it("round-trips its cost snapshot and note-write chip through start → keep and start → cancel", () => {
+		const original: Message = { ...a("a1"), cost: { usd: 0.01, asOf: "2026-09-16" }, noteWrites: [{ path: "Out/X.md", action: "created" }] };
+		for (const finish of ["keep", "cancel"] as const) {
+			const c = conv([u("u1"), { ...original }]);
+			startComparison(c, "u1", "a1");
+			if (finish === "keep") keepCandidate(c, "a1"); else cancelComparison(c);
+			expect(c.messages[1]).toMatchObject({ cost: original.cost, noteWrites: original.noteWrites });
+		}
 	});
 });
 
@@ -173,5 +221,41 @@ describe("normalizeComparison (load-time guard)", () => {
 		]);
 		expect(conversations[0].comparison?.candidates[0].id).toBe("a1");
 		expect(typeof conversations[0].comparison?.id).toBe("string");
+	});
+});
+
+
+describe("a second comparison on an answer that already has tabs (ADR-219)", () => {
+	function withTabs(): Conversation {
+		const c = conv([u("u1")]);
+		c.comparison = { id: "cmp", userMessageId: "u1", createdAt: "", candidates: [
+			{ id: "a1", provider: "anthropic", model: "claude-sonnet-5", content: "A", timestamp: "" },
+			{ id: "b1", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" },
+		] };
+		keepCandidate(c, "a1");
+		return c;
+	}
+
+	it("brings the earlier tabs back as candidates", () => {
+		const c = withTabs();
+		startComparison(c, "u1", "a1");
+		expect(c.comparison?.candidates.map((x) => x.id)).toEqual(["a1", "b1"]);
+	});
+
+	it("keeping afterwards keeps every answer as a tab", () => {
+		const c = withTabs();
+		startComparison(c, "u1", "a1");
+		addCandidate(c, { id: "c1", provider: "mistral", model: "mistral-large-latest", content: "C", timestamp: "" });
+		keepCandidate(c, "c1");
+		expect(c.messages[1].alternatives?.map((x) => x.id)).toEqual(["a1", "b1"]);
+	});
+
+	it("discard puts the answer back with its earlier tabs, not the runs it added", () => {
+		const c = withTabs();
+		startComparison(c, "u1", "a1");
+		addCandidate(c, { id: "c1", provider: "mistral", model: "mistral-large-latest", content: "C", timestamp: "" });
+		cancelComparison(c);
+		expect(c.messages[1].id).toBe("a1");
+		expect(c.messages[1].alternatives?.map((x) => x.id)).toEqual(["b1"]);
 	});
 });

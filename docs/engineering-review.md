@@ -6,6 +6,8 @@
 
 *Previously updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-220).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-61.*
 
+*Previously updated: 2026-09-25 — **Compared answers vanished after Keep (ADR-219).** The non-kept answers were forked into separate conversations nobody saw from the answer; they now stay as tabs on it, switchable while it is the last answer. Also fixed: starting a comparison dropped the original answer's cost snapshot and ✓ chip.*
+
 *Previously updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
 
 *Previously updated: 2026-09-25 — **A written note could not be opened from the answer, and a rename lost it (ADR-218).** Four causes: the model was never asked for a link; `[[links]]` in the chat had no click handler; the ✓ chip was DOM-only; the chip opened by name and could create an empty note. And no stored path followed a rename. All five are fixed; links inside message text stay as written (D-58).*
@@ -1983,6 +1985,13 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The rules were prose only.** | Tooling | Low | Closed: `tests/pathFields.test.ts` (compile-time), `tests/noteOpenRule.test.ts` |
 | **The chip kept `[[ ]]`.** | Consistency | Low | Closed |
 | **`[[a\|b]]` broke a table cell.** | Correctness | Low | Closed: the tool result says to escape the bar |
+
+## Bug — compared answers vanished after Keep (ADR-219), 2026-09-25
+
+| Item | Severity | Status |
+|---|---|---|
+| **The answers not kept were forked into separate conversations and did not surface at the answer.** | Medium | Closed: they stay as tabs on the kept answer (`Message.alternatives`, `AnswerTabsController`) |
+| **Starting a comparison dropped the original answer's cost snapshot and ✓ chip**, so keeping or cancelling lost them. | Low | Closed: `ComparisonCandidate` carries `cost` and `noteWrites` |
 
 ## Bug — Obsidian reloads on the iPhone while a note is being edited (ADR-220), 2026-09-26
 

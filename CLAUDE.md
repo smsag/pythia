@@ -37,7 +37,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
-    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize (ADR-160)
+    comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize, and the tabs a keep leaves: canSwitchAlternative · switchAlternative · normalizeAlternatives (ADR-160/219)
     modelRecommendation.ts    ← pure: parseDifficulty + recommendModel — the optimizer rates the task, Pythia picks the cheapest adequate model of the preferred provider (ADR-181)
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
@@ -120,7 +120,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     RelatedMode.ts            ← the ADR-109 related-conversations mode: source, in-flight query + abort, chip, loading/empty/results
     historyChip.ts            ← renderHistoryChip — the ONE dismissible chip, shared by related (ADR-109) and widened (ADR-168)
     ExchangeActionsController.ts ← long-press on the last user bubble → delete · ⇄ compare · cancel bar (ADR-160)
-    ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs, keep → forks (ADR-160)
+    ComparisonController.ts   ← the comparison card: tab per model, sequential candidate runs; keep → the rest stay as tabs on the answer (ADR-160/219)
+    AnswerTabsController.ts   ← the tabs a kept comparison leaves on its answer: the kept tab first, another shown in place, "Use this answer" on the last answer only (ADR-219)
     pluginIcon.ts             ← the plugin's own icon (`pythia-logo`): registered once in onload(), used by the ribbon, entry commands and the view (ADR-164)
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
@@ -614,7 +615,9 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - Entry point is the **long-press on the last user bubble**: the bar reads `✕ Delete · ⇄ Compare · Cancel`. There is no other entry point and it only ever re-runs the **last** user turn — never the input draft
 - **The invariant: while a comparison is pending, the conversation ends with the user turn.** `startComparison` moves the existing answer out of `messages` into candidate 0. Never add a "pending" flag to `Message` or filter history at send time — the send path works unchanged *because* the answer is not in `messages`
 - Candidates run **sequentially** through `llmRouter.streamMessage` on a `{ ...conv, provider, model, writeMode: "none" }` clone, using the view's normal streaming state (Stop works). Do not add parallel runs without giving `BaseProvider` a per-request abort controller first
-- **Keep** appends the chosen candidate (its id becomes the message id) and forks the rest via `keepCandidate` → `ConversationService.createComparisonFork`. Fork name is `forkNameFor(conv.name, model)`; branch point is the kept message; no `forkedFromSelection`. Favorites and merge links on a non-kept answer move into its fork — never delete them
+- **Keep appends the chosen candidate and keeps the others ON it as tabs** (`Message.alternatives`, ADR-219, revising ADR-160's forks, which hid them). No fork is created; old comparison forks stay forks. `AnswerTabsController` (owned by `ComparisonController`) draws the card's own tab strip above the answer — never a second tab strip. Favorites and merge links on a non-kept answer stay on the conversation under its id and are painted on its tab
+- **Only the kept answer is history.** `alternatives` never reach a model, search, the archive or a saved note (D-59); a provider maps history to `{ role, content }` and a test fails if a tab reaches the request
+- **"Use this answer" switches only while it is the LAST answer** (`canSwitchAlternative`, the Retry rule of ADR-162) — each answer keeps its id, the tab order stays. No fork from a tab (D-60)
 - **Send is blocked** while `conv.comparison` is set (`comparePending`). Discard restores candidate 0 verbatim
 - The card reuses the fork anchor's grammar (accent rule, mono caps label); the active tab's fill is state — no transition (ADR-155). Model picking uses `suggest/ModelSuggest.ts`, never the header popover, which would change the conversation's model
 

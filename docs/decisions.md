@@ -8,6 +8,8 @@
 
 *Previously: 2026-09-26 — ADR-220 (the note being written is held back from the vault index until it is left or quiet for 30 s; the watcher's flush is a real quiet window; edit batches share one write window, so typing no longer rewrites the ~19 MB index every two seconds — the cause of Obsidian reloading on the iPhone while editing, confirmed by switching vault context off).*
 
+*Previously: 2026-09-25 — ADR-219 (a kept comparison keeps its tabs: Keep appends the chosen answer and stores the others on it as `Message.alternatives`, drawn as the card's own tab strip above the answer; "Use this answer" switches while it is still the last answer; no forks, old forks untouched; candidates now carry cost and note writes through a comparison).*
+
 *Previously: 2026-09-25 — ADR-218 addendum (review): a rename burst is one scan (`RenameFollower`, 12.0 s → 39 ms for a 500-file folder, measured); nine path settings follow a rename too; a rename log in data.json is replayed after every load, so a stale copy from another device is put right; a turn that only wrote a note keeps its record (no text, Stop, or an error after the write); guards: the compiler refuses an unclassified field, and a test refuses a new `openLinkText` call; the chip loses its `[[ ]]`.*
 
 *Previously: 2026-09-25 — ADR-218 (a note an answer wrote stays one tap away: the tool result hands the model a `[[path|name]]` link, links in the conversation open by what resolves and never create a note, the ✓ chip is recorded on the message as `noteWrites` and redrawn on every render, and a rename or move is followed in every stored vault path by `renameVaultPath`).*
@@ -4636,6 +4638,33 @@ The user then asked what happens when the note is renamed. The answer was that n
 `tests/pathFields.test.ts` and `tests/noteOpenRule.test.ts` as above.
 
 `tests/toolCallNoteWrites.test.ts`: the writes-only text, and the message kept on failure. `tests/pluginDataStore.test.ts`: the log is written. `tests/ConversationStore.test.ts`: `markChanged` does not touch `updatedAt`.
+
+### ADR-219 — A kept comparison keeps its tabs
+
+**Status:** Active · 2026-09-25 · **revises ADR-160** (Keep → forks)
+
+**Context.** Model comparison (ADR-160) runs the last prompt on several models, one tab per answer. **Keep** appended the chosen answer and turned every other answer into a **fork**, a separate conversation branched from the kept message. The user found that those answers did not surface: a fork is listed under the navigator's Forks and in the conversation panel, but nothing at the answer itself says the others exist, so after Keep the comparison had effectively vanished. What they want: **the tabs stay, and one tab is the one that belongs to the conversation.**
+
+**Decision.**
+- **Keep stores the other answers on the kept one:** `Message.alternatives: ComparisonCandidate[]`, in the card's order. `keepCandidate` no longer produces forks; `ForkSpec`, `forkNameFor` and `ConversationService.createComparisonFork` are removed.
+- **The tabs are drawn where the answer is:** `AnswerTabsController`, owned by `ComparisonController`, paints the card's own strip (`.p-compare-tabs`, `pb-tab`) above the answer. The kept tab comes first, marked with a check and `aria-current`. Another tab shows that answer in place, with its text, code controls, citations, sources, favorites and merge links (painted by the candidate's id). It hides what belongs to the kept answer (its sources row, ✓ chips and the truncation and rewrite cards). Which tab is on screen is session state per answer, never written.
+- **Only the kept answer is history.** `alternatives` never reach a model: every provider maps history to `{ role, content }`, and a test sends a conversation with a sentinel tab and requires it absent from the request. Search, the archive note and a saved note read `content` too (D-59).
+- **"Use this answer"** switches which tab the conversation holds, **only while it is the last answer** and no comparison is pending (`canSwitchAlternative` / `switchAlternative`): the same rule as Retry (ADR-162), because a later turn was built on the kept answer. Each answer keeps its own id through a switch, so a favorite, merge link or pin stays with its text; the tab order stays stable (the demoted answer takes the chosen one's place). A message records no provider, so the demoted answer's provider comes from the catalog by model, and the conversation's otherwise.
+- **Tabs only, no fork from a tab** (user decision, D-60). **Old comparison forks stay forks** (user decision): they are ordinary conversations, and no migration touches them.
+- **A candidate carries `cost` and `noteWrites`.** Starting a comparison turned the original answer into candidate 0 and silently dropped both, so keeping or cancelling lost the price snapshot and the ✓ chip. Both now round-trip.
+- **A second comparison on an answer that already has tabs** brings them back as candidates (`startComparison`), so keeping afterwards keeps every answer as a tab. Discard puts the answer back with its **earlier** tabs only (`Comparison.priorAlternativeIds`), never with the runs the discarded comparison added.
+- **Validated on load** (`normalizeAlternatives`, principle 1): a tab needs an id, a model and text; a malformed cost or note-write list is dropped; a user turn never keeps tabs.
+- **Rename-safe** (ADR-218): `renameVaultPaths` walks every alternative's `templateId`, vault sources and note writes. `tests/pathFields.test.ts` refused to compile until the new fields were classified, which is how this was not forgotten.
+
+**Side change.** `sidebar.ts` had no room: `scrollToTop` moved into `ChatScroll.toTop()`, and the ceiling drops from 1465 to 1463.
+
+**Guards.**
+- `tests/comparison.test.ts`: keep stores alternatives and forks nothing; favorites and merges stay; switch swaps and keeps ids and order; switch is refused off the last answer, on an unknown tab, while a comparison is pending, and without tabs; cost and note writes survive start → keep and start → cancel.
+- `tests/answerTabs.test.ts`: no strip without tabs; the kept tab is first and marked; another tab shows its answer and hides the kept answer's cards; "Use this answer" only on the last answer and not while streaming; switching saves and re-renders; the tab on screen survives a re-render.
+- `tests/OpenAIProvider.test.ts`: a tab never reaches the request.
+- `tests/viewRender.test.ts`: the real view keeps the tabs and creates no fork.
+- `tests/persistenceSanitize.test.ts`: `normalizeAlternatives`.
+- `tests/pathFields.test.ts`: tabs follow a rename.
 
 ### ADR-220 — The note being written stays out of the index until it is left
 
