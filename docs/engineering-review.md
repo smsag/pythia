@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-219).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-59.*
+*Updated: 2026-09-26 — **The vault index never caught up with what changed while Pythia was closed, and two devices overwrote each other's copy of it (ADR-220).** A desktop now catches up once per launch, embedding only what moved. A phone applies its edits to a desktop-kept index in memory and no longer writes the shared file. The index records its keeper. D-59 is closed in that shape.*
+
+*Previously updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-219).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-59.*
 
 *Previously updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
 
@@ -1989,3 +1991,11 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **Every edit batch rewrote the whole index** (~19 MB at the cap), allocated fresh on the phone next to the resident model. | High | Closed: edit batches share one 30 s write window with a trailing write; flushed at unload |
 | **A phone still embeds other notes' edits and writes the synced index.** | Low | Deferred by decision: D-59 |
 | **Each write is still the whole file.** | Medium | Open, unchanged: D-35 (append-only index) |
+
+## Bug — a complete vault index went stale across devices (ADR-220), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **Nothing caught up on notes changed while Pythia was closed** (phone edits, a sync delivered before launch, deletes elsewhere); a desktop on the UI-thread fallback served the file as it was. | Medium | Closed: a desktop catches up once per launch, embedding only what moved |
+| **Two devices rewrote one synced index file**, each from its own in-memory copy; the last writer won and each write was the whole ~19 MB file. | Medium | Closed: a phone applies edits to a desktop-kept index in memory only; the file records its `keeper` |
+| **A phone's in-memory edits are lost at its next launch** until the desktop has caught up. | Low | Accepted (ADR-220); the desktop redoes them |

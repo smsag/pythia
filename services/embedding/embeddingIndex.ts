@@ -69,6 +69,11 @@ export function diffIndex(
 // A v1 file is refused, which the caller already treats as "no index" and
 // rebuilds. That migration is free this release: ADR-182's chunk-size change
 // invalidates every content hash anyway.
+//
+// `keeper` (ADR-220) is optional and needs no version: which kind of device last
+// wrote the file. A phone does not rewrite an index a desktop keeps. A file
+// without it — or one written by a release that drops unknown fields — reads as
+// "no keeper", which is the behaviour before ADR-220: every device writes.
 
 const MAGIC = 0x50594549; // "PYEI"
 const VERSION = 2;
@@ -80,6 +85,16 @@ export interface IndexMeta {
 	complete: boolean;
 	/** The scope the rows were selected under — see `scopeSignature`. */
 	scope: string;
+	/** Which kind of device last wrote the file (ADR-220). Absent: unknown. */
+	keeper?: IndexKeeper;
+}
+
+/** The two kinds of device that can keep a shared index (ADR-220). */
+export type IndexKeeper = "desktop" | "mobile";
+
+/** A keeper read from a header, validated: anything else is "unknown". */
+export function readKeeper(value: unknown): IndexKeeper | undefined {
+	return value === "desktop" || value === "mobile" ? value : undefined;
 }
 
 export const EMPTY_INDEX_META: IndexMeta = { complete: false, scope: "" };
@@ -89,9 +104,11 @@ export function serializeIndex(
 	dim: number,
 	info: IndexMeta = EMPTY_INDEX_META,
 ): ArrayBuffer {
+	const keeper = readKeeper(info.keeper);
 	const meta = {
 		complete: info.complete === true,
 		scope: typeof info.scope === "string" ? info.scope : "",
+		...(keeper ? { keeper } : {}),
 		rows: items.map((it) => ({ id: it.id, h: it.contentHash, c: it.chunks.length })),
 	};
 	const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
@@ -135,12 +152,14 @@ export function peekIndexMeta(buf: ArrayBuffer): (IndexMeta & { count: number })
 		const metaLen = dv.getUint32(11);
 		if (HEADER_LEN + metaLen > buf.byteLength) return null;
 		const head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, HEADER_LEN, metaLen))) as {
-			complete?: unknown; scope?: unknown;
+			complete?: unknown; scope?: unknown; keeper?: unknown;
 		};
+		const keeper = readKeeper(head?.keeper);
 		return {
 			count,
 			complete: head?.complete === true,
 			scope: typeof head?.scope === "string" ? head.scope : "",
+			...(keeper ? { keeper } : {}),
 		};
 	} catch {
 		// Malformed JSON in a header is the same fact as a bad magic: this file
@@ -162,7 +181,7 @@ export function deserializeIndex(
 	const metaLen = dv.getUint32(o); o += 4;
 	if (o + metaLen > buf.byteLength) throw new Error("deserializeIndex: truncated meta");
 	const head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o, metaLen))) as {
-		complete?: unknown; scope?: unknown; rows?: unknown;
+		complete?: unknown; scope?: unknown; keeper?: unknown; rows?: unknown;
 	};
 	o += metaLen;
 	const meta = head?.rows as { id: string; h: string; c: number }[];
@@ -170,9 +189,11 @@ export function deserializeIndex(
 	// Validated at the boundary, not trusted: a hand-edited or truncated header
 	// must read as "not complete, no scope", which makes the next build redo the
 	// work rather than serve a file nobody can vouch for (principle 1).
+	const keeper = readKeeper(head?.keeper);
 	const info: IndexMeta = {
 		complete: head?.complete === true,
 		scope: typeof head?.scope === "string" ? head.scope : "",
+		...(keeper ? { keeper } : {}),
 	};
 
 	const blobStart = o;

@@ -40,3 +40,25 @@ export function selectIndexPaths(allPaths: string[], opts: IndexScopeOptions): I
 		capped,
 	};
 }
+
+/**
+ * What this index is an index OF (ADR-184): the folders, the skip folders, the
+ * note cap and the model. Persisted with the rows, so a session that starts
+ * with different settings can tell the file no longer matches them.
+ *
+ * Narrowing `vaultContextFolders` is the case that matters: until the index is
+ * rebuilt it still holds notes that are now out of scope, and retrieval would
+ * keep inlining them into prompts. That is a privacy decision the user made
+ * and the index has to honour.
+ */
+export function scopeSignature(
+	s: { vaultContextFolders: string[]; conversationsFolder: string; scratchFolder: string; vaultContextMaxIndexedNotes: number },
+	/** The model's vector FAMILY, not the variant (ADR-200): the desktop's index
+	 *  must read as complete on a phone running the vector-identical variant. */
+	family: string,
+): string {
+	const norm = (f: string) => (f ?? "").replace(/\/+$/, "");
+	const folders = [...s.vaultContextFolders].map(norm).filter(Boolean).sort();
+	const skip = [s.conversationsFolder, s.scratchFolder].map(norm).filter(Boolean).sort();
+	return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, family]);
+}

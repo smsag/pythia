@@ -4,6 +4,8 @@ import {
 	diffIndex,
 	serializeIndex,
 	deserializeIndex,
+	peekIndexMeta,
+	readKeeper,
 	type IndexedConversation,
 } from "../services/embedding/embeddingIndex";
 
@@ -135,5 +137,31 @@ describe("index self-description (ADR-184)", () => {
 		dv.setUint32(11, metaBytes.length);
 		new Uint8Array(buf, 15, metaBytes.length).set(metaBytes);
 		expect(deserializeIndex(buf).meta).toEqual({ complete: false, scope: "" });
+	});
+});
+
+describe("the index's keeper (ADR-220)", () => {
+	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
+
+	it("round-trips which kind of device wrote the file", () => {
+		for (const keeper of ["desktop", "mobile"] as const) {
+			const buf = serializeIndex(rows, 4, { complete: true, scope: "S", keeper });
+			expect(deserializeIndex(buf).meta.keeper).toBe(keeper);
+			expect(peekIndexMeta(buf)?.keeper).toBe(keeper);
+		}
+	});
+
+	it("reads a file without one as unknown — the behaviour before ADR-220", () => {
+		const buf = serializeIndex(rows, 4, { complete: true, scope: "S" });
+		expect(deserializeIndex(buf).meta).toEqual({ complete: true, scope: "S" });
+		expect(peekIndexMeta(buf)?.keeper).toBeUndefined();
+	});
+
+	it("validates it at the boundary: anything else is unknown, never trusted", () => {
+		expect(readKeeper("desktop")).toBe("desktop");
+		expect(readKeeper("mobile")).toBe("mobile");
+		for (const bad of ["tablet", "", 1, null, undefined, {}]) expect(readKeeper(bad)).toBeUndefined();
+		const forged = serializeIndex(rows, 4, { complete: true, scope: "S", keeper: "tablet" as never });
+		expect(deserializeIndex(forged).meta.keeper).toBeUndefined();
 	});
 });

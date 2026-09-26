@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { VaultIndexService, type IndexableNote } from "../services/embedding/VaultIndexService";
+import { deserializeIndex, serializeIndex } from "../services/embedding/embeddingIndex";
 import type { IndexStore } from "../services/embedding/ConversationIndexService";
 import type { EmbeddingProvider } from "../services/embedding/EmbeddingProvider";
 
@@ -399,5 +400,70 @@ describe("VaultIndexService — edit batches share one write window (ADR-219)", 
 		await vi.advanceTimersByTimeAsync(30_000);
 		await svc.flushPendingWrites();
 		expect(store.writes).toBe(afterClear);
+	});
+});
+
+describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-220)", () => {
+	const keeperOf = (store: MemStore) => deserializeIndex(store.buf!).meta.keeper;
+
+	/** An index the desktop built, as a phone then opens it from the synced file. */
+	async function phoneOnDesktopIndex(): Promise<{ phone: VaultIndexService; store: MemStore }> {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha, beta]);
+		const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+		await phone.hydrateForQuery();
+		return { phone, store };
+	}
+
+	it("every write is signed by the kind of device that made it", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha]);
+		expect(keeperOf(store)).toBe("desktop");
+		await new VaultIndexService(new FakeProvider(), store, { device: "mobile" }).sync([alpha, beta]);
+		expect(keeperOf(store)).toBe("mobile");
+	});
+
+	it("a phone applies its own edit in memory, so its answers see it, and writes nothing", async () => {
+		const { phone, store } = await phoneOnDesktopIndex();
+		const writes = store.writes;
+		await phone.applyBatch({ updates: [note("Notes/delta.md", "a fresh alpha note")], removes: ["Notes/beta.md"] });
+		expect(store.writes).toBe(writes); // no ~19 MB rewrite, no clobbering the desktop's copy
+		expect(phone.size()).toBe(2); // alpha + delta; beta gone — in memory
+		expect((await phone.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toContain("Notes/delta.md");
+		expect(keeperOf(store)).toBe("desktop");
+	});
+
+	it("…and has nothing to flush at unload either", async () => {
+		const { phone, store } = await phoneOnDesktopIndex();
+		await phone.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+		const writes = store.writes;
+		await phone.flushPendingWrites();
+		expect(store.writes).toBe(writes);
+	});
+
+	it("a phone keeps an index it built itself, or one nobody signed", async () => {
+		for (const signer of ["mobile", undefined] as const) {
+			const store = new MemStore();
+			await new VaultIndexService(new FakeProvider(), store, signer ? { device: signer } : {}).sync([alpha]);
+			// A file from before ADR-220 carries no keeper at all.
+			if (!signer) store.buf = serializeIndex(deserializeIndex(store.buf!).items, 4, { complete: true, scope: "" });
+			const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+			await phone.hydrateForQuery();
+			const writes = store.writes;
+			await phone.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+			expect(store.writes).toBe(writes + 1);
+			expect(keeperOf(store)).toBe("mobile");
+		}
+	});
+
+	it("a desktop always writes its edits, whoever signed the file", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "mobile" }).sync([alpha]);
+		const desk = new VaultIndexService(new FakeProvider(), store, { device: "desktop" });
+		await desk.hydrateForQuery();
+		const writes = store.writes;
+		await desk.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+		expect(store.writes).toBe(writes + 1);
+		expect(keeperOf(store)).toBe("desktop");
 	});
 });

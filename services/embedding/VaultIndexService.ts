@@ -5,6 +5,7 @@ import {
 	deserializeIndex,
 	EMPTY_INDEX_META,
 	type IndexedConversation,
+	type IndexKeeper,
 	type IndexMeta,
 } from "./embeddingIndex";
 import { hashPolicyFor, resolveRowHash, type HashPolicy } from "./rowProvenance";
@@ -108,8 +109,42 @@ export class VaultIndexService {
 		/** `persistIntervalMs` overrides MIN_PERSIST_INTERVAL_MS — a test seam, so the
 		 *  mid-build flush can be exercised without a fake clock (a real build's
 		 *  embeds take seconds; a fake provider's take microseconds). */
-		private readonly opts: { maxChars?: number; persistIntervalMs?: number; hashPolicy?: HashPolicy } = {}
+		private readonly opts: {
+			maxChars?: number;
+			persistIntervalMs?: number;
+			hashPolicy?: HashPolicy;
+			/** The kind of device this runs on, stamped on every write (ADR-220). */
+			device?: IndexKeeper;
+		} = {}
 	) {}
+
+	private get device(): IndexKeeper {
+		return this.opts.device ?? "desktop";
+	}
+
+	/** What a write records about itself: the meta, signed by this device (ADR-220). */
+	private stamp(meta: IndexMeta): IndexMeta {
+		return { ...meta, keeper: this.device };
+	}
+
+	/** Which kind of device last wrote the index, as far as this instance knows. */
+	keeper(): IndexKeeper | undefined {
+		return this.meta.keeper;
+	}
+
+	/**
+	 * Whether this device writes its edits to the shared file (ADR-220).
+	 *
+	 * A phone does not rewrite an index a desktop keeps. It still applies its own
+	 * edits in memory, so its answers see them this session, and the desktop
+	 * re-embeds those notes when their change reaches it — through the watcher
+	 * while it runs, or its catch-up at the next launch. What the phone saves is
+	 * the whole-file write (~19 MB at the cap) and the two devices overwriting
+	 * each other's copy of one synced file.
+	 */
+	private writesEdits(): boolean {
+		return !(this.device === "mobile" && this.meta.keeper === "desktop");
+	}
 
 	/** Which stored rows this device may reuse (ADR-201). */
 	private get policy(): HashPolicy {
@@ -134,9 +169,9 @@ export class VaultIndexService {
 			this.cancelPendingEditWrite(); // the edits it held are being wiped with everything else
 			this.items = [];
 			this.synced = false;
-			this.meta = EMPTY_INDEX_META;
+			this.meta = this.stamp(EMPTY_INDEX_META);
 			this.loaded = true; // don't let a later load() repopulate from the old store
-			await this.store.write(serializeIndex([], this.provider.dim, EMPTY_INDEX_META));
+			await this.store.write(serializeIndex([], this.provider.dim, this.meta));
 		});
 	}
 
@@ -225,6 +260,13 @@ export class VaultIndexService {
 		});
 	}
 
+	/** Read the persisted index WITHOUT making it queryable (ADR-220), so the
+	 *  catch-up can ask `isComplete` of an index it may then leave alone. Marking
+	 *  an unfinished index ready would stop the next send from resuming its build. */
+	loadPersisted(): Promise<void> {
+		return this.enqueue(() => this.load());
+	}
+
 	/**
 	 * Targeted incremental update of a SINGLE note (ADR-121) — re-embed it if its
 	 * content changed, add it if new, drop it if now empty/unreadable. No-ops unless
@@ -266,7 +308,9 @@ export class VaultIndexService {
 		// Targeted edits keep whatever the index already claims about itself: a
 		// watcher flush neither completes an unfinished build nor invalidates a
 		// finished one.
-		if (dirty) await this.persistEdits();
+		// A phone holding a desktop's index keeps the edit in memory only (ADR-220);
+		// nothing is lost that the desktop does not redo, so no word is owed.
+		if (dirty && this.writesEdits()) await this.persistEdits();
 	}
 
 	/** Write an edit batch now, or leave it to the window's trailing write (ADR-219).
@@ -289,6 +333,7 @@ export class VaultIndexService {
 
 	private async writeEdits(): Promise<void> {
 		this.lastEditWriteAt = Date.now();
+		this.meta = this.stamp(this.meta);
 		await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta));
 	}
 
@@ -391,9 +436,10 @@ export class VaultIndexService {
 		// rows are worth keeping, and the next session must still know the build
 		// never finished, or it serves a fraction of the vault and calls it done.
 		const persist = async (items: IndexedConversation[], complete: boolean): Promise<void> => {
-			await this.store.write(serializeIndex(items, this.provider.dim, { complete, scope }));
+			const meta = this.stamp({ complete, scope });
+			await this.store.write(serializeIndex(items, this.provider.dim, meta));
 			this.items = items;
-			this.meta = { complete, scope };
+			this.meta = meta;
 			persistedEmbeds = embedded;
 			lastPersistAt = Date.now();
 		};

@@ -55,6 +55,7 @@ function makeVaultRag(): VaultRagLike & {
 	disposed: number;
 	reindexed: number;
 	builds: number;
+	caughtUp: number;
 	snapshot: VaultIndexSnapshot;
 	listeners: Set<() => void>;
 } {
@@ -63,6 +64,7 @@ function makeVaultRag(): VaultRagLike & {
 		disposed: 0,
 		reindexed: 0,
 		builds: 0,
+		caughtUp: 0,
 		snapshot: { state: "ready", count: 7, done: 7, total: 7 } as unknown as VaultIndexSnapshot,
 		listeners: new Set<() => void>(),
 		reset(): void { rag.resets++; },
@@ -74,6 +76,7 @@ function makeVaultRag(): VaultRagLike & {
 		async getRelevantNotes(): Promise<string[]> { return []; },
 		async applyChanges(): Promise<void> {},
 		isBuilding: () => false,
+		catchUp(): void { rag.caughtUp++; },
 		onBackground(): void {},
 		dispose(): void { rag.disposed++; },
 	};
@@ -277,6 +280,36 @@ describe("the background warm's guards (ADR-169)", () => {
 		// The fixture's store reports no index, so the warm stops there.
 		expect(h.stores.map((s) => s.prefix)).toEqual([undefined]);
 		expect(built).toEqual([]);
+	});
+});
+
+describe("the vault index's launch catch-up (ADR-220)", () => {
+	it("never runs on a phone: it holds a desktop's index, it does not keep it", async () => {
+		const h = harness({ isMobile: true });
+		h.indexExists = true;
+		await h.hub.catchUpVaultIndex();
+		expect(h.rag.caughtUp).toBe(0);
+		expect(h.stores).toEqual([]); // not even the "does an index exist" read
+	});
+
+	it("never starts an index nobody has built — that is not a catch-up", async () => {
+		const h = harness();
+		await h.hub.catchUpVaultIndex();
+		expect(h.stores.map((s) => s.prefix)).toEqual(["vault-embeddings"]);
+		expect(h.rag.caughtUp).toBe(0);
+		expect(built).toEqual([]);
+	});
+
+	it("catches up an existing index without a first-run notice", async () => {
+		const h = harness();
+		h.indexExists = true;
+		await h.hub.catchUpVaultIndex();
+		expect(h.rag.caughtUp).toBe(1);
+		// The provider exists (silently) before the service asks for it, so the
+		// service's own non-silent `getProvider` finds it and says nothing either.
+		expect(built).toHaveLength(1);
+		h.wiring?.getProvider();
+		expect(h.notices).toEqual([]);
 	});
 });
 
