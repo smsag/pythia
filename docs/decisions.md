@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
+*Last updated: 2026-09-26 — ADR-232 (*What Pythia sends*: a read-only dialog with the conversation's template, instructions, custom instructions, history and whole system prompt, opened from the header menu and the context box).*
+
+*Previously: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
 
 *Previously: 2026-09-26 — ADR-230 (the web-search globe shows on · no key · auto · off, an auto-armed send keeps it lit for the whole answer, and its tooltip and search chips name the word that armed it).*
 
@@ -4966,3 +4968,17 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** The settings' *Resume mode* default is still written onto new conversations, where it is now inert until the resume command. It is kept for templates that name a mode and for a later decision on preselecting the resume dialog, recorded as D-63.
 
 **Guards.** `tests/messageUtils.test.ts` (only the part before the boundary is reduced; no boundary → nothing; `resumeBoundary`/`omittedByResume`) · `tests/resumeVisible.test.ts` (the row names the count; the button restores full history and the row goes) · `tests/pathFields.test.ts` (the new field is classified).
+
+## ADR-232 — "What Pythia sends": the system prompt is readable from the conversation
+
+**Status:** Active · 2026-09-26 · closes engineering-review #258
+
+**Context.** A conversation's instructions were fixed when it was created, usually from a template, and were invisible afterwards: the template's name showed only in the sources row under answers, the prompt text nowhere, and the global custom instructions only in the settings. The context box said "+ System prompt ~1.2k" and nothing more. A user asking *why does it answer like that* had no way to look.
+
+**Decision.**
+- **One read-only dialog, `InstructionsModal`** (*What Pythia sends*), in five sections: the template the conversation came from (and a template armed for the next answer, ADR-177), **this conversation's instructions** (`systemPrompt`), **your custom instructions** (with where to change them), **history** (the ADR-231 fact, with *Send full history* when it is reduced), and **the whole system prompt** as the next answer builds it, with a copy button.
+- **Two doors:** a header-menu row (*What Pythia sends*, after conversation settings) and the context box's system-prompt line, which was already the number and is now the link to the text.
+- **One preview builder.** `previewSystemPrompt(conv, settings)` in `services/sendPreview.ts` is what the context box's token estimate and the dialog both read, so the text shown is the text counted. It is the prompt *before* notes and web results join it; the dialog says so. `sendFullHistory` moved there too, shared by the context box and the dialog.
+- **Read-only.** Editing a running conversation's instructions is not offered: it would be a second way to do what a template armed for one answer does (ADR-177), and a write that replaces the user's instructions in place has no undo. Recorded as D-64.
+
+**Guards.** `tests/instructionsModal.test.ts` (the facts; the three texts shown verbatim, the whole prompt equal to `previewSystemPrompt`; *None* for an empty prompt; *Send full history* works from the dialog) · `tests/headerInstructions.test.ts` (the menu row) · `tests/uiArchitectureDoc.test.ts` (the modal is named).

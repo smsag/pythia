@@ -1,14 +1,15 @@
 import { Notice, setIcon, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message } from "../models/types";
-import { t, getObsidianLocale } from "../i18n";
-import { estimateTokensFromText, omittedByResume, resolveLanguageLabel } from "../services/messageUtils";
-import { buildSystemPrompt } from "../services/ContextBuilder";
+import { t } from "../i18n";
+import { estimateTokensFromText, omittedByResume } from "../services/messageUtils";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
 import { buildAccordion } from "./accordion";
 import { appendSourceIcon, SOURCE_ICONS } from "./icons";
+import { InstructionsModal } from "../suggest/InstructionsModal";
+import { previewSystemPrompt, sendFullHistory } from "../services/sendPreview";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -86,16 +87,7 @@ export class ContextInspectorController {
 			return { path: p, tokens };
 		});
 		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(
-			buildSystemPrompt(conv, this.d.plugin.settings.customInstructions, {
-				// The language directive is part of what is really sent, so the
-				// inspector's token count has to include it (ADR-148).
-				languageLabel: resolveLanguageLabel(
-					conv.outputLanguage ?? this.d.plugin.settings.outputLanguage,
-					getObsidianLocale()
-				),
-			})
-		);
+		const sysTokens = estimateTokensFromText(previewSystemPrompt(conv, this.d.plugin.settings));
 		const last = this.d.getLastTokenUsageMsg();
 		const windowSize = getContextWindow(conv.model);
 		const used = last?.tokenUsage
@@ -175,7 +167,9 @@ export class ContextInspectorController {
 			}
 
 			const sysRow = body.createDiv({ cls: "p-inspector-row" });
-			sysRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxSystemPrompt") });
+			const sysLabel = sysRow.createSpan({ cls: "p-inspector-rowlabel p-inspector-open", text: t("ctxSystemPrompt") });
+			sysLabel.setAttr("title", t("instrShow"));
+			sysLabel.addEventListener("click", () => this.openInstructions(conv));
 			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
 			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
 
@@ -209,8 +203,15 @@ export class ContextInspectorController {
 					}
 				}).open();
 			});
-			footer.createSpan({ cls: "p-inspector-sys", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+			const sys = footer.createSpan({ cls: "p-inspector-sys p-inspector-open", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+			sys.setAttr("title", t("instrShow"));
+			sys.addEventListener("click", () => this.openInstructions(conv));
 		}
+	}
+
+	/** "What Pythia sends" (ADR-232). */
+	private openInstructions(conv: Conversation): void {
+		new InstructionsModal(this.d.plugin.app, this.d.plugin, conv, () => this.refresh()).open();
 	}
 
 	/** What the resume mode leaves out, and the one way back (ADR-231). */
@@ -266,12 +267,4 @@ export class ContextInspectorController {
 			chipEl.style.display = "none";
 		}
 	}
-}
-
-/** Back to the whole history: the resume mode and its boundary both go, so no
- *  later resume point is half-remembered (ADR-231). */
-export async function sendFullHistory(conv: Conversation, plugin: Pick<PythiaPlugin, "conversationStore">): Promise<void> {
-	conv.resumeMode = "full";
-	delete conv.resumedAfterId;
-	await plugin.conversationStore.save(conv);
 }

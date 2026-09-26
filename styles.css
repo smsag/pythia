@@ -1299,6 +1299,37 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .p-inspector-add:hover { color: var(--color-accent); }
 .p-inspector-sys { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+/* The system-prompt line opens "What Pythia sends" (ADR-232): a control, so
+   never --text-faint (ADR-188). */
+.p-inspector-open { cursor: pointer; }
+.p-inspector-sys.p-inspector-open { color: var(--text-muted); }
+@media (hover: hover) {
+  .p-inspector-open:hover { color: var(--text-normal); text-decoration: underline; }
+}
+
+/* "What Pythia sends" (ADR-232): read-only sections, each text verbatim. */
+.pythia-instructions-section { margin-top: var(--s3); }
+.pythia-instructions-section h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s1);
+  font-size: var(--font-ui-small, 13px);
+}
+.pythia-instructions-section p { margin: 0 0 var(--s1); }
+.pythia-instructions-text {
+  margin: 0 0 var(--s1);
+  padding: var(--s2);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 11px);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+}
 
 /* ── Welcome / empty-conversation state (F6) ────────────────────── */
 .p-welcome {

@@ -12,6 +12,7 @@ import type { ModelInfo } from "../models/knownModels";
 import { goodForModel, profileLine } from "../models/modelGuidance";
 import { DEFAULT_MAX_TOKENS_REASONING } from "../services/promptConstants";
 import { ConversationSettingsModal } from "../suggest/ConversationSettingsModal";
+import { InstructionsModal } from "../suggest/InstructionsModal";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { ActionSheet } from "./ActionSheet";
 import { openChoicePicker, placeBelow, type ChoiceItem } from "./choicePicker";
@@ -329,6 +330,10 @@ export class HeaderController {
 			},
 			{ label: t("copyConvLinkTooltip"), icon: "link", onSelect: () => void this.onCopyConversationLink() },
 			{ label: t("openConvSettings"), icon: "sliders", onSelect: () => this.openConversationSettings() },
+			{
+				label: t("instrMenu"), icon: "scroll-text",
+				onSelect: () => new InstructionsModal(this.d.plugin.app, this.d.plugin, conv, () => this.d.refreshContextInspector()).open(),
+			},
 		// Only on a conversation opened from a term, and only once it has said
 		// something: there is nothing to distil out of an empty discussion (ADR-208).
 		...(conv.glossaryTerm && canRetitle
