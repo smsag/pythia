@@ -18,11 +18,22 @@ export class VaultIndexStore implements IndexStore {
 	private readonly dir: string;
 	private readonly path: string;
 
-	constructor(private readonly plugin: Plugin, modelId: EmbeddingModelId, prefix = "related-embeddings") {
+	constructor(
+		private readonly plugin: Plugin,
+		private readonly modelId: EmbeddingModelId,
+		private readonly prefix = "related-embeddings",
+		/** `.bin` for the index, `.journal.bin` for its journal (ADR-222). */
+		suffix = ".bin",
+	) {
 		this.dir = normalizePath(
 			plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`
 		);
-		this.path = normalizePath(`${this.dir}/${prefix}-${vectorFamily(modelId)}.bin`);
+		this.path = normalizePath(`${this.dir}/${prefix}-${vectorFamily(modelId)}${suffix}`);
+	}
+
+	/** The journal beside this index: the rows changed since it was written (ADR-222). */
+	journal(): IndexStore {
+		return new VaultIndexStore(this.plugin, this.modelId, this.prefix, ".journal.bin");
 	}
 
 	/** Whether an index has been built, WITHOUT reading it.

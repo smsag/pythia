@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideBuild, type BuildFacts } from "../services/embedding/buildDecision";
+import { shouldCatchUp, decideBuild, type BuildFacts } from "../services/embedding/buildDecision";
 
 // The head of a vault-index build, as a table (ADR-203). Every row is a state the
 // phone actually reached during the iOS reload work.
@@ -47,5 +47,23 @@ describe("decideBuild — when the provider is reloaded (#357/#359)", () => {
 
 	it("an automatic build never reloads the provider", () => {
 		expect(decideBuild({ force: true }, idle)).toEqual({ run: true, reloadProvider: false });
+	});
+});
+
+describe("shouldCatchUp — the launch catch-up obeys an automatic build's brakes (ADR-221)", () => {
+	const ok = { mobile: false, ran: false, syncing: false, mayAutoBuild: true, loadFailed: false };
+
+	it("runs on a desktop that has not caught up this session", () => {
+		expect(shouldCatchUp(ok)).toBe(true);
+	});
+
+	it.each([
+		["a phone, which holds a desktop's index rather than keeping it", { mobile: true }],
+		["a second time in one session", { ran: true }],
+		["while a build is running", { syncing: true }],
+		["past the crash-loop pause (ADR-199)", { mayAutoBuild: false }],
+		["after the model failed to load this session (ADR-203)", { loadFailed: true }],
+	])("never runs on %s", (_why, over) => {
+		expect(shouldCatchUp({ ...ok, ...over })).toBe(false);
 	});
 });

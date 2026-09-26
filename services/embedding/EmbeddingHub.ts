@@ -66,6 +66,8 @@ export interface VaultRagLike {
 	getRelevantNotes(conversation: Conversation, query: string, exclude?: string[]): Promise<string[]>;
 	applyChanges(changed: TFile[], deleted: string[]): Promise<void>;
 	isBuilding(): boolean;
+	/** Once per session: a complete index catches up with the vault (ADR-221). */
+	catchUp(): void;
 	onBackground(hidden: boolean): void;
 	dispose(): void;
 }
@@ -247,6 +249,17 @@ export class EmbeddingHub {
 		});
 	}
 
+	/** Once per session on a desktop, after launch (ADR-221): a complete vault index
+	 *  catches up with what changed while Pythia was not running. Only where an
+	 *  index exists — starting one nobody asked for is not a catch-up — and with
+	 *  the provider made silently, so a launch shows no "preparing the model". */
+	async catchUpVaultIndex(): Promise<void> {
+		if (this.host.isMobile) return;
+		if (!(await this.host.makeStore(this.activeModelId(), "vault-embeddings").exists())) return;
+		this.ensureProvider({ silent: true });
+		this.vaultRag.catchUp();
+	}
+
 	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background.
 	 *  Exposed for the settings "Rebuild index" button and the command. */
 	reindexVault(): Promise<void> {
@@ -273,6 +286,7 @@ export class EmbeddingHub {
 			modelId,
 			modelSubstituted: substituted,
 			enabledByDefault: settings.vaultContextEnabled,
+			onPhone: this.host.isMobile,
 		};
 	}
 

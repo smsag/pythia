@@ -5,12 +5,14 @@ import {
 	deserializeIndex,
 	EMPTY_INDEX_META,
 	type IndexedConversation,
+	type IndexKeeper,
 	type IndexMeta,
 } from "./embeddingIndex";
 import { hashPolicyFor, resolveRowHash, type HashPolicy } from "./rowProvenance";
 import { DEFAULT_EMBEDDING_MODEL_ID } from "../../models/embeddingModels";
 import { quantize, cosine } from "./vectorMath";
 import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
+import { IndexJournal } from "./indexJournal";
 
 /** Notes processed between cooperative yields during a build (keeps the UI alive). */
 const YIELD_EVERY_NOTES = 8;
@@ -39,10 +41,20 @@ const PERSIST_EVERY_EMBEDS = 25;
  * one of them is a sync event. Both conditions must hold, so the binding one is
  * whichever is scarcer: on a slow build that is the embed count, on a fast one
  * the clock. Either way the loss window stays ~30s of work, and the write rate
- * stays under 2/min. The real answer is an append-only index that does not
- * rewrite what has not changed — see D-35.
+ * stays under 2/min. A BUILD still writes the whole index this way; edits go to
+ * the journal instead (ADR-222, `indexJournal.ts`).
  */
 const MIN_PERSIST_INTERVAL_MS = 30_000;
+// The same floor holds for the watcher's edit batches (ADR-220). ADR-122 made a
+// batch cost one write instead of one per note, but a batch arrived every couple
+// of seconds while someone typed, and each one serialized the whole index again —
+// ~19 MB allocated and written per flush, on a phone next to a loaded model, is
+// what reloaded Obsidian mid-sentence. The first batch after a quiet spell still
+// writes at once; batches inside the window stay in memory and one trailing write
+// carries them all. What an app killed inside the window loses is those notes'
+// new vectors: their old rows stay, their content hash no longer matches, and the
+// next edit of each re-embeds it. Since ADR-222 an edit writes the journal —
+// kilobytes — so the window now mostly saves sync events, not memory.
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
  * bad (ADR-182).
@@ -88,6 +100,10 @@ export class VaultIndexService {
 	 *  never interleave — a targeted edit can't race a full build (ADR-121). */
 	private chain: Promise<unknown> = Promise.resolve();
 	private synced = false;
+	/** When an edit batch last wrote the index, and the trailing write that is
+	 *  holding the batches since (ADR-220). */
+	private lastEditWriteAt = Number.NEGATIVE_INFINITY;
+	private pendingEditWrite: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(
 		private readonly provider: EmbeddingProvider,
@@ -95,8 +111,54 @@ export class VaultIndexService {
 		/** `persistIntervalMs` overrides MIN_PERSIST_INTERVAL_MS — a test seam, so the
 		 *  mid-build flush can be exercised without a fake clock (a real build's
 		 *  embeds take seconds; a fake provider's take microseconds). */
-		private readonly opts: { maxChars?: number; persistIntervalMs?: number; hashPolicy?: HashPolicy } = {}
-	) {}
+		private readonly opts: {
+			maxChars?: number;
+			persistIntervalMs?: number;
+			hashPolicy?: HashPolicy;
+			/** The kind of device this runs on, stamped on every write (ADR-221). */
+			device?: IndexKeeper;
+		} = {}
+	) {
+		this.journal = store.journal ? new IndexJournal(store.journal()) : null;
+	}
+
+	/** Where edits go instead of a base rewrite, when the store has one (ADR-222). */
+	private readonly journal: IndexJournal | null;
+
+	/** Write the whole index — the base — and start the journal over against it. */
+	private async writeBase(items: IndexedConversation[], meta: IndexMeta): Promise<void> {
+		await this.store.write(serializeIndex(items, this.provider.dim, meta));
+		this.journal?.reset(meta.writtenAt);
+	}
+
+	private get device(): IndexKeeper {
+		return this.opts.device ?? "desktop";
+	}
+
+	/** What a write records about itself: the meta, signed by this device (ADR-221). */
+	private stamp(meta: IndexMeta): IndexMeta {
+		return { ...meta, keeper: this.device, writtenAt: Date.now() };
+	}
+
+	/** Which kind of device last wrote the index, and when, as far as this
+	 *  instance knows — for the settings status line (ADR-221). */
+	signature(): { keeper?: IndexKeeper; writtenAt?: number } {
+		return { keeper: this.meta.keeper, writtenAt: this.meta.writtenAt };
+	}
+
+	/**
+	 * Whether this device writes its edits to the shared file (ADR-221).
+	 *
+	 * A phone does not rewrite an index a desktop keeps. It still applies its own
+	 * edits in memory, so its answers see them this session, and the desktop
+	 * re-embeds those notes when their change reaches it — through the watcher
+	 * while it runs, or its catch-up at the next launch. What the phone saves is
+	 * the whole-file write (~19 MB at the cap) and the two devices overwriting
+	 * each other's copy of one synced file.
+	 */
+	private writesEdits(): boolean {
+		return !(this.device === "mobile" && this.meta.keeper === "desktop");
+	}
 
 	/** Which stored rows this device may reuse (ADR-201). */
 	private get policy(): HashPolicy {
@@ -118,11 +180,12 @@ export class VaultIndexService {
 	 *  sync re-embeds every note from scratch. Backs the "reindex" action (ADR-119). */
 	clear(): Promise<void> {
 		return this.enqueue(async () => {
+			this.cancelPendingEditWrite(); // the edits it held are being wiped with everything else
 			this.items = [];
 			this.synced = false;
-			this.meta = EMPTY_INDEX_META;
+			this.meta = this.stamp(EMPTY_INDEX_META);
 			this.loaded = true; // don't let a later load() repopulate from the old store
-			await this.store.write(serializeIndex([], this.provider.dim, EMPTY_INDEX_META));
+			await this.writeBase([], this.meta);
 		});
 	}
 
@@ -163,7 +226,11 @@ export class VaultIndexService {
 				const { items, dim, meta } = deserializeIndex(buf);
 				// A dim mismatch means a different model built the index — drop it and
 				// let the next sync rebuild from scratch.
-				if (dim === this.provider.dim) { this.items = items; this.meta = meta; }
+				if (dim === this.provider.dim) {
+					const merged = this.journal ? await this.journal.load(meta.writtenAt, items, dim) : { items };
+					this.items = merged.items;
+					this.meta = { ...meta, ...(merged.keeper ? { keeper: merged.keeper } : {}), ...(merged.writtenAt ? { writtenAt: merged.writtenAt } : {}) };
+				}
 			} catch (e) {
 				// A corrupt or truncated file (an interrupted write, a half-synced
 				// iCloud copy) is not fatal: an empty index rebuilds on the next sync.
@@ -211,6 +278,13 @@ export class VaultIndexService {
 		});
 	}
 
+	/** Read the persisted index WITHOUT making it queryable (ADR-221), so the
+	 *  catch-up can ask `isComplete` of an index it may then leave alone. Marking
+	 *  an unfinished index ready would stop the next send from resuming its build. */
+	loadPersisted(): Promise<void> {
+		return this.enqueue(() => this.load());
+	}
+
 	/**
 	 * Targeted incremental update of a SINGLE note (ADR-121) — re-embed it if its
 	 * content changed, add it if new, drop it if now empty/unreadable. No-ops unless
@@ -243,16 +317,62 @@ export class VaultIndexService {
 		await this.load();
 		if (!this.synced) return; // patch only a built index; a full build handles the rest
 		let dirty = false;
-		for (const path of changes.removes) dirty = this.removeInMemory(path) || dirty;
+		// Each row that moves is recorded for the journal (ADR-222): its new state, or
+		// its removal when an update dropped it.
+		const note = (path: string): void => this.journal?.record(path, this.items.find((i) => i.id === path));
+		for (const path of changes.removes) if (this.removeInMemory(path)) { dirty = true; note(path); }
 		let n = 0;
-		for (const note of changes.updates) {
-			dirty = (await this.updateInMemory(note, opts.cap)) || dirty;
+		for (const update of changes.updates) {
+			if (await this.updateInMemory(update, opts.cap)) { dirty = true; note(update.path); }
 			if (++n % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
 		}
 		// Targeted edits keep whatever the index already claims about itself: a
 		// watcher flush neither completes an unfinished build nor invalidates a
 		// finished one.
-		if (dirty) await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta)); // one write for the batch
+		// A phone holding a desktop's index keeps the edit in memory only (ADR-221);
+		// nothing is lost that the desktop does not redo, so no word is owed.
+		if (dirty && this.writesEdits()) await this.persistEdits();
+	}
+
+	/** Write an edit batch now, or leave it to the window's trailing write (ADR-220).
+	 *  Runs inside the op chain, so the trailing write is enqueued rather than run
+	 *  from the timer — it must not interleave with a build. */
+	private async persistEdits(): Promise<void> {
+		const interval = this.opts.persistIntervalMs ?? MIN_PERSIST_INTERVAL_MS;
+		const wait = this.lastEditWriteAt + interval - Date.now();
+		if (wait <= 0) {
+			this.cancelPendingEditWrite();
+			await this.writeEdits();
+			return;
+		}
+		if (this.pendingEditWrite) return; // one trailing write carries every batch in the window
+		this.pendingEditWrite = setTimeout(() => {
+			this.pendingEditWrite = null;
+			void this.enqueue(() => this.writeEdits());
+		}, wait);
+	}
+
+	private async writeEdits(): Promise<void> {
+		this.lastEditWriteAt = Date.now();
+		this.meta = this.stamp(this.meta);
+		// Kilobytes to the journal while it is small; the base only to fold it in.
+		if (this.journal?.canTake(this.items.length)) return this.journal.write(this.provider.dim, this.meta);
+		await this.writeBase(this.items, this.meta);
+	}
+
+	private cancelPendingEditWrite(): boolean {
+		if (!this.pendingEditWrite) return false;
+		clearTimeout(this.pendingEditWrite);
+		this.pendingEditWrite = null;
+		return true;
+	}
+
+	/** Write edits still held by the window now — the plugin is unloading, and a
+	 *  timer does not outlive it (ADR-220). */
+	flushPendingWrites(): Promise<void> {
+		return this.enqueue(async () => {
+			if (this.cancelPendingEditWrite()) await this.writeEdits();
+		});
 	}
 
 	/** Re-embed / add / drop a single note IN MEMORY (no persist). Returns whether
@@ -339,9 +459,10 @@ export class VaultIndexService {
 		// rows are worth keeping, and the next session must still know the build
 		// never finished, or it serves a fraction of the vault and calls it done.
 		const persist = async (items: IndexedConversation[], complete: boolean): Promise<void> => {
-			await this.store.write(serializeIndex(items, this.provider.dim, { complete, scope }));
+			const meta = this.stamp({ complete, scope });
+			await this.writeBase(items, meta);
 			this.items = items;
-			this.meta = { complete, scope };
+			this.meta = meta;
 			persistedEmbeds = embedded;
 			lastPersistAt = Date.now();
 		};
@@ -426,7 +547,10 @@ export class VaultIndexService {
 		const dropped = [...existing.keys()].some((id) => !seen.has(id));
 		this.items = kept;
 		const changed = embedded > persistedEmbeds || dropped;
-		if (changed || !this.meta.complete || this.meta.scope !== scope) {
+		// …and when another kind of device signed it: a full sync is how a device
+		// takes the index over (a phone's Build now, a desktop's catch-up), and an
+		// unchanged index it does not sign stays the other device's (ADR-221).
+		if (changed || !this.meta.complete || this.meta.scope !== scope || this.meta.keeper !== this.device) {
 			await persist(this.items, true);
 		}
 		this.synced = true;

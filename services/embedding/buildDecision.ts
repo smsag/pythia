@@ -62,3 +62,30 @@ export function decideBuild(req: BuildRequest, facts: BuildFacts): BuildDecision
 	if (!req.manual && facts.loadFailed) return { run: false, blocked: "loadFailed" };
 	return { run: true, reloadProvider: Boolean(req.manual) && facts.loadFailed };
 }
+
+/** What the catch-up needs to know before it touches the disk (ADR-221). */
+export interface CatchUpFacts {
+	/** A phone never runs it: it holds a desktop's index, it does not keep it. */
+	mobile: boolean;
+	/** It already ran this session — once is what it is for. */
+	ran: boolean;
+	/** A build or another catch-up is running. */
+	syncing: boolean;
+	/** The crash-loop guard allows an automatic build (ADR-199). */
+	mayAutoBuild: boolean;
+	/** The model failed to load in this session (ADR-203). */
+	loadFailed: boolean;
+}
+
+/**
+ * Whether the once-per-session catch-up may run (ADR-221).
+ *
+ * The catch-up brings a COMPLETE index up to date with notes that changed while
+ * this device was not watching. It is automatic, so it obeys the same brakes as
+ * an automatic build: never while one runs, never past the crash-loop pause, and
+ * never re-trying a load that already failed this session. Whether the index is
+ * complete is asked afterwards, from the file — that needs the disk.
+ */
+export function shouldCatchUp(f: CatchUpFacts): boolean {
+	return !f.mobile && !f.ran && !f.syncing && f.mayAutoBuild && !f.loadFailed;
+}

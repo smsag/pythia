@@ -2,19 +2,30 @@ import { describe, it, expect, vi } from "vitest";
 
 // The shared `obsidian` stub debounces to "run immediately", which would hide
 // both things the wiring is for: that a burst coalesces into ONE `applyChanges`,
-// and that a flush arriving after the batch was drained stays silent. This one is
-// driven by hand instead.
-const scheduled: { fn: (() => void) | null } = { fn: null };
+// and that a flush arriving after the batch was drained stays silent. These are
+// driven by hand instead — one record per debouncer, so the flush window and the
+// held note's quiet clock (ADR-220) can be told apart by their timeouts.
+interface FakeDebouncer {
+	timeout?: number;
+	resetTimer?: boolean;
+	calls: number;
+	pending: (() => void) | null;
+}
+const debouncers: FakeDebouncer[] = [];
 vi.mock("obsidian", async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
-	debounce: (fn: () => void) => Object.assign(() => { scheduled.fn = fn; }, {
-		run: () => { scheduled.fn?.(); },
-		cancel: () => { scheduled.fn = null; },
-	}),
+	debounce: (fn: () => void, timeout?: number, resetTimer?: boolean) => {
+		const d: FakeDebouncer = { timeout, resetTimer, calls: 0, pending: null };
+		debouncers.push(d);
+		return Object.assign(() => { d.calls++; d.pending = fn; }, {
+			run: () => { d.pending?.(); },
+			cancel: () => { d.pending = null; },
+		});
+	},
 }));
 
 import { TFile, TFolder } from "obsidian";
-import { VaultChangeBatch, registerVaultWatcher, VAULT_FLUSH_DELAY_MS } from "../services/vaultWatcher";
+import { VaultChangeBatch, registerVaultWatcher, VAULT_FLUSH_DELAY_MS, VAULT_HOLD_IDLE_MS } from "../services/vaultWatcher";
 
 const md = (path: string): { path: string; extension: string } => ({ path, extension: "md" });
 
@@ -85,28 +96,38 @@ describe("VaultChangeBatch — a path is on exactly one side (ADR-121)", () => {
 
 type Handler = (f: unknown, oldPath?: string) => void;
 
-function watcher() {
-	scheduled.fn = null;
+function watcher(opts: { active?: { path: string | null } } = {}) {
+	debouncers.length = 0;
 	const handlers: Record<string, Handler> = {};
+	const workspaceHandlers: Record<string, Handler> = {};
 	const applied: { changed: string[]; deleted: string[] }[] = [];
 	const invalidated: string[] = [];
 	const renamed: [string, string][] = [];
 	const cleanups: (() => void)[] = [];
 	const host = {
-		app: { vault: { on: (name: string, cb: Handler) => { handlers[name] = cb; return { name }; } } },
+		app: {
+			vault: { on: (name: string, cb: Handler) => { handlers[name] = cb; return { name }; } },
+			workspace: { on: (name: string, cb: Handler) => { workspaceHandlers[name] = cb; return { name }; } },
+		},
 		registerEvent: () => {},
 		register: (c: () => void) => cleanups.push(c),
 	};
+	const active = opts.active;
 	registerVaultWatcher(host as never, {
 		applyChanges: (changed, deleted) => applied.push({ changed: changed.map((f) => f.path), deleted }),
 		invalidateGlossary: (path) => invalidated.push(path),
 		followRename: (oldPath, newPath) => renamed.push([oldPath, newPath]),
+		...(active ? { activePath: () => active.path } : {}),
 	});
 	const file = (path: string, extension = "md"): TFile =>
 		Object.assign(new TFile(), { path, extension }) as TFile;
+	const flushTimer = debouncers.find((d) => d.timeout === VAULT_FLUSH_DELAY_MS)!;
+	const holdTimer = debouncers.find((d) => d.timeout === VAULT_HOLD_IDLE_MS)!;
 	/** Let the debounce fire, as it would after the quiet window. */
-	const flush = (): void => { scheduled.fn?.(); };
-	return { handlers, applied, invalidated, renamed, cleanups, file, flush };
+	const flush = (): void => { flushTimer.pending?.(); };
+	/** Let the held note's quiet clock run out. */
+	const idle = (): void => { holdTimer.pending?.(); };
+	return { handlers, workspaceHandlers, applied, invalidated, renamed, cleanups, file, flush, idle, flushTimer, holdTimer };
 }
 
 describe("registerVaultWatcher — which vault events reach the index", () => {
@@ -207,5 +228,118 @@ describe("registerVaultWatcher — which vault events reach the index", () => {
 
 	it("coalesces a burst rather than paying per keystroke", () => {
 		expect(VAULT_FLUSH_DELAY_MS).toBe(2000);
+	});
+});
+
+describe("VaultChangeBatch.take(hold) — the note being written stays behind (ADR-220)", () => {
+	it("keeps the held note's edit for a later drain and hands over the rest", () => {
+		const b = new VaultChangeBatch();
+		b.markChanged(md("a.md"));
+		b.markChanged(md("b.md"));
+		expect(b.take("a.md")).toEqual({ changed: [md("b.md")], deleted: [] });
+		expect(b.empty).toBe(false);
+		expect(b.take()).toEqual({ changed: [md("a.md")], deleted: [] });
+	});
+
+	it("never holds a delete: a note that is gone must leave the index now", () => {
+		const b = new VaultChangeBatch();
+		b.markDeleted("a.md");
+		expect(b.take("a.md")).toEqual({ changed: [], deleted: ["a.md"] });
+		expect(b.empty).toBe(true);
+	});
+
+	it("holding a note that has no edit takes everything", () => {
+		const b = new VaultChangeBatch();
+		b.markChanged(md("b.md"));
+		expect(b.take("a.md")).toEqual({ changed: [md("b.md")], deleted: [] });
+		expect(b.empty).toBe(true);
+	});
+});
+
+describe("registerVaultWatcher — the note being written (ADR-220)", () => {
+	it("both windows are real quiet windows: every event restarts them", () => {
+		// Without `resetTimer`, Obsidian's debounce fires this long after the FIRST
+		// call — a note typed in for a minute was flushed thirty times.
+		const w = watcher({ active: { path: "a.md" } });
+		expect(w.flushTimer.resetTimer).toBe(true);
+		expect(w.holdTimer.resetTimer).toBe(true);
+	});
+
+	it("a pause in typing flushes every other note but not the one being written", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.handlers.modify(w.file("a.md"));
+		w.handlers.modify(w.file("b.md"));
+		w.flush();
+		expect(w.applied).toEqual([{ changed: ["b.md"], deleted: [] }]);
+	});
+
+	it("nothing reaches the index while only the note being written changes", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		for (let i = 0; i < 5; i++) {
+			w.handlers.modify(w.file("a.md"));
+			w.flush();
+		}
+		expect(w.applied).toEqual([]);
+	});
+
+	it("every save of the note being written restarts its quiet clock, so it cannot run out mid-sentence", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.handlers.modify(w.file("a.md"));
+		w.handlers.modify(w.file("a.md"));
+		w.handlers.modify(w.file("b.md")); // another note does not touch the clock
+		expect(w.holdTimer.calls).toBe(2);
+	});
+
+	it("once the writer has been quiet long enough, the held note reaches the index", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.handlers.modify(w.file("a.md"));
+		w.flush();
+		w.idle();
+		expect(w.applied).toEqual([{ changed: ["a.md"], deleted: [] }]);
+	});
+
+	it("leaving the note sends it at once, and the note now open is the one held", () => {
+		const active = { path: "a.md" as string | null };
+		const w = watcher({ active });
+		w.handlers.modify(w.file("a.md"));
+		w.handlers.modify(w.file("c.md"));
+		w.flush(); // c.md goes, a.md is held
+		w.handlers.modify(w.file("c.md")); // c.md changes again, e.g. by a sync
+		active.path = "c.md";
+		w.workspaceHandlers["file-open"](w.file("c.md"));
+		expect(w.applied).toEqual([
+			{ changed: ["c.md"], deleted: [] },
+			{ changed: ["a.md"], deleted: [] },
+		]);
+		// c.md is now the note on screen: held on the same quiet clock.
+		expect(w.holdTimer.pending).not.toBeNull();
+		w.idle();
+		expect(w.applied.at(-1)).toEqual({ changed: ["c.md"], deleted: [] });
+	});
+
+	it("opening a note with nothing pending does nothing", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.workspaceHandlers["file-open"](w.file("a.md"));
+		expect(w.applied).toEqual([]);
+	});
+
+	it("deleting the note being written leaves the index at the next flush", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.handlers.modify(w.file("a.md"));
+		w.handlers.delete(w.file("a.md"));
+		w.flush();
+		expect(w.applied).toEqual([{ changed: [], deleted: ["a.md"] }]);
+	});
+
+	it("teardown cancels the quiet clock too", () => {
+		const w = watcher({ active: { path: "a.md" } });
+		w.handlers.modify(w.file("a.md"));
+		w.cleanups[0]();
+		w.idle();
+		expect(w.applied).toEqual([]);
+	});
+
+	it("waits thirty seconds of quiet before a note left open is embedded", () => {
+		expect(VAULT_HOLD_IDLE_MS).toBe(30_000);
 	});
 });

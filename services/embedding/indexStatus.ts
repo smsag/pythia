@@ -9,6 +9,8 @@
 import { t } from "../../i18n";
 import { embeddingModelConfig, type EmbeddingModelId } from "../../models/embeddingModels";
 import { foregroundDeaths, type BuildMarker } from "./buildGuard";
+import type { IndexKeeper } from "./embeddingIndex";
+import { formatDate } from "../messageUtils";
 
 export type VaultIndexState =
 	| "notBuilt"   // no usable file for this model
@@ -40,6 +42,11 @@ export interface VaultIndexStatus {
 	modelSubstituted: boolean;
 	/** The global default; a conversation can still switch vault context on. */
 	enabledByDefault: boolean;
+	/** Which kind of device last wrote the index file, and when (ADR-221). */
+	keeper: IndexKeeper | null;
+	writtenAt: number | null;
+	/** This device is a phone. */
+	onPhone: boolean;
 }
 
 /** What a persisted file means under today's scope. */
@@ -57,9 +64,25 @@ export function canBuildNow(state: VaultIndexState): boolean {
 	return state !== "loading" && state !== "building" && state !== "ready";
 }
 
+/**
+ * Whether this phone is holding an index a desktop keeps (ADR-221): the phone
+ * applies its edits in memory and never writes the file, so if that desktop is
+ * no longer used, the index stays at its last state. "Build now" is then how the
+ * phone takes it over — only notes that changed are embedded.
+ */
+export function isKeptByDesktop(s: Pick<VaultIndexStatus, "onPhone" | "keeper" | "state">): boolean {
+	return s.onPhone && s.keeper === "desktop" && (s.state === "ready" || s.state === "partial" || s.state === "outdated");
+}
+
+/** Whether the Build now button is live: something to build, or an index to take over. */
+export function buildNowEnabled(s: VaultIndexStatus): boolean {
+	return canBuildNow(s.state) || isKeptByDesktop(s);
+}
+
 export function describeVaultIndexStatus(s: VaultIndexStatus): { headline: string; detail: string } {
 	const model = embeddingModelConfig(s.modelId).label;
 	const detail = [
+		isKeptByDesktop(s) ? keptByDesktop(s.writtenAt) : null,
 		s.modelSubstituted ? t("vaultIndexDetailModelMobile", { model }) : t("vaultIndexDetailModel", { model }),
 		s.backend ? t("vaultIndexBackend", { backend: s.backend }) : null,
 		s.enabledByDefault ? null : t("vaultIndexDetailOff"),
@@ -88,4 +111,9 @@ function headline(s: VaultIndexStatus): string {
 		case "notBuilt":
 			return t("vaultIndexStateNotBuilt");
 	}
+}
+
+function keptByDesktop(writtenAt: number | null): string {
+	const date = writtenAt === null ? "" : formatDate(new Date(writtenAt).toISOString());
+	return date ? t("vaultIndexDetailKeptByDesktop", { date }) : t("vaultIndexDetailKeptByDesktopUndated");
 }

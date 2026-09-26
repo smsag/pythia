@@ -33,7 +33,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
-    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take() drains) + registerVaultWatcher — the four vault listeners and the debounced flush (ADR-121/205)
+    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take(hold) drains all but the note being written) + registerVaultWatcher — the four vault listeners, the quiet-window flush, and the held note released on file-open or after 30 s quiet (ADR-121/205/219)
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
@@ -56,7 +56,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
     embedding/buildGuard.ts   ← pure: BuildGuard + vaultBuildGuard — the per-device marker that pauses automatic index builds after two the OS killed (ADR-199)
-    embedding/buildDecision.ts ← pure: decideBuild — whether a vault-index build runs, and what it resets first; the ONE place those six flags meet (ADR-205)
+    embedding/buildDecision.ts ← pure: decideBuild — whether a vault-index build runs, and what it resets first; shouldCatchUp — the launch catch-up's brakes (ADR-221); the ONE place those six flags meet (ADR-205)
+    embedding/vaultCatchUp.ts ← catchUpIndex: a desktop's once-per-launch catch-up of a COMPLETE vault index — embeds only notes whose content moved, loads the model only if one did; gated by shouldCatchUp (ADR-221)
+    embedding/indexJournal.ts ← IndexJournal: an edit writes the rows changed since the index file was written (kilobytes) instead of the whole index; tied to its base by writtenAt, folded back in by shouldCompact (5 %, ≥ 50 rows) (ADR-222)
     embedding/memoryError.ts  ← isOutOfMemoryError + EmbeddingOutOfMemoryError — out of memory ends the backend fallback chain (ADR-199)
     embedding/indexStatus.ts  ← pure: the vault index's seven states + describeVaultIndexStatus, the words the settings tab shows (ADR-199)
     embedding/vaultIndexStore.ts ← the .bin per index, named by vectorFamily(modelId) — a variant shares its family's file (ADR-200)

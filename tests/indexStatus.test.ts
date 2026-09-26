@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-	canBuildNow, describeVaultIndexStatus, stateFromFile, type VaultIndexState, type VaultIndexStatus,
+	buildNowEnabled, canBuildNow, describeVaultIndexStatus, isKeptByDesktop, stateFromFile, type VaultIndexState, type VaultIndexStatus,
 } from "../services/embedding/indexStatus";
 import { EmbeddingOutOfMemoryError, isOutOfMemoryError } from "../services/embedding/memoryError";
 import { peekIndexMeta, serializeIndex } from "../services/embedding/embeddingIndex";
@@ -9,6 +9,7 @@ import { t } from "../i18n";
 const base: VaultIndexStatus = {
 	state: "notBuilt", count: 0, done: 0, total: 0, error: null, outOfMemory: false, marker: null,
 	backend: null, modelId: "xenova-paraphrase-multilingual-MiniLM-L12-v2", modelSubstituted: false, enabledByDefault: true,
+	keeper: null, writtenAt: null, onPhone: false,
 };
 
 describe("stateFromFile — what a persisted index means today (ADR-199)", () => {
@@ -101,5 +102,34 @@ describe("peekIndexMeta — the header, without the vectors (ADR-199)", () => {
 		const buf = serializeIndex([], 2, { complete: true, scope: "s" });
 		new DataView(buf).setUint8(4, 1); // a v1 file
 		expect(peekIndexMeta(buf)).toBeNull();
+	});
+});
+
+describe("a phone holding a desktop's index says so, and how to take it over (ADR-221)", () => {
+	const held: VaultIndexStatus = { ...base, state: "ready", count: 40, onPhone: true, keeper: "desktop", writtenAt: Date.UTC(2026, 8, 20, 12) };
+
+	it("names the desktop and when it last wrote the index, and offers Build now", () => {
+		const { detail } = describeVaultIndexStatus(held);
+		expect(detail).toContain(t("vaultIndexDetailKeptByDesktop", { date: "20 Sep 2026" }));
+		expect(buildNowEnabled(held)).toBe(true); // "ready" alone would grey it out
+	});
+
+	it("still says it without a date, for a file that carries none", () => {
+		expect(describeVaultIndexStatus({ ...held, writtenAt: null }).detail).toContain(t("vaultIndexDetailKeptByDesktopUndated"));
+	});
+
+	it("says nothing on a desktop, on a phone that keeps the index itself, or on an unsigned one", () => {
+		for (const s of [{ ...held, onPhone: false }, { ...held, keeper: "mobile" as const }, { ...held, keeper: null }]) {
+			expect(isKeptByDesktop(s)).toBe(false);
+			expect(buildNowEnabled(s)).toBe(false);
+			expect(describeVaultIndexStatus(s).detail).not.toContain(t("vaultIndexDetailKeptByDesktopUndated").slice(0, 12));
+		}
+	});
+
+	it("only for an index there is: not while one loads, builds or failed", () => {
+		for (const state of ["notBuilt", "loading", "building", "failed", "paused"] as const) {
+			expect(isKeptByDesktop({ ...held, state })).toBe(false);
+		}
+		for (const state of ["ready", "partial", "outdated"] as const) expect(isKeptByDesktop({ ...held, state })).toBe(true);
 	});
 });

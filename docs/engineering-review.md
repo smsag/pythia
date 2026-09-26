@@ -1,6 +1,12 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **Compared answers vanished after Keep (ADR-219).** The non-kept answers were forked into separate conversations nobody saw from the answer; they now stay as tabs on it, switchable while it is the last answer. Also fixed: starting a comparison dropped the original answer's cost snapshot and ✓ chip.*
+*Updated: 2026-09-26 — **Every write of the vault index was the whole ~19 MB file (D-35, ADR-222).** An edit now writes a journal of the changed rows (kilobytes); the index is rewritten by a build, a takeover, or when the journal reaches 5 % of it. D-35 closed.*
+
+*Previously updated: 2026-09-26 — **The vault index never caught up with what changed while Pythia was closed, and two devices overwrote each other's copy of it (ADR-221).** A desktop now catches up once per launch, embedding only what moved. A phone applies its edits to a desktop-kept index in memory and no longer writes the shared file. The index records its keeper. D-61 is closed in that shape.*
+
+*Previously updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-220).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-61.*
+
+*Previously updated: 2026-09-25 — **Compared answers vanished after Keep (ADR-219).** The non-kept answers were forked into separate conversations nobody saw from the answer; they now stay as tabs on it, switchable while it is the last answer. Also fixed: starting a comparison dropped the original answer's cost snapshot and ✓ chip.*
 
 *Previously updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
 
@@ -1987,3 +1993,21 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The answers not kept were forked into separate conversations and did not surface at the answer.** | Medium | Closed: they stay as tabs on the kept answer (`Message.alternatives`, `AnswerTabsController`) |
 | **Starting a comparison dropped the original answer's cost snapshot and ✓ chip**, so keeping or cancelling lost them. | Low | Closed: `ComparisonCandidate` carries `cost` and `noteWrites` |
 
+## Bug — Obsidian reloads on the iPhone while a note is being edited (ADR-220), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **The note being typed in was re-embedded on every autosave.** Each save is a `modify`, and the watcher treated the open note like any other. | High | Closed: held until it is left (`file-open`) or quiet for 30 s |
+| **The flush fired every 2 s during a burst**, not once after it: Obsidian's `debounce` without `resetTimer` times from the first call. | High | Closed: `resetTimer: true` on both debouncers |
+| **Every edit batch rewrote the whole index** (~19 MB at the cap), allocated fresh on the phone next to the resident model. | High | Closed: edit batches share one 30 s write window with a trailing write; flushed at unload |
+| **A phone still embeds other notes' edits and writes the synced index.** | Low | Deferred by decision: D-61 |
+| **Each write is still the whole file.** | Medium | Closed (ADR-222): edits write a journal; the index is rewritten only by a build, a takeover or a compaction |
+
+## Bug — a complete vault index went stale across devices (ADR-221), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **Nothing caught up on notes changed while Pythia was closed** (phone edits, a sync delivered before launch, deletes elsewhere); a desktop on the UI-thread fallback served the file as it was. | Medium | Closed: a desktop catches up once per launch, embedding only what moved |
+| **Two devices rewrote one synced index file**, each from its own in-memory copy; the last writer won and each write was the whole ~19 MB file. | Medium | Closed: a phone applies edits to a desktop-kept index in memory only; the file records its `keeper` |
+| **A phone's in-memory edits are lost at its next launch** until the desktop has caught up. | Low | Accepted (ADR-221); the desktop redoes them |
+| **A phone on a desktop-kept index could neither see that nor end it**: nothing said so, Build now was greyed out when ready, and on a UI-thread backend it returned without syncing. | Medium | Closed (ADR-221 addendum): the status row says so with the date; Build now takes the index over |

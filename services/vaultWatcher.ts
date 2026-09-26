@@ -1,4 +1,4 @@
-import { debounce, TFile, type EventRef, type TAbstractFile, type Vault } from "obsidian";
+import { debounce, TFile, type EventRef, type TAbstractFile, type Vault, type Workspace } from "obsidian";
 
 /**
  * Keeping the vault index fresh (ADR-121), lifted out of `main.ts`
@@ -15,6 +15,12 @@ import { debounce, TFile, type EventRef, type TAbstractFile, type Vault } from "
  * the new one. Getting that wrong is silent — the index keeps serving a note that
  * no longer exists, or forgets one that does — which is exactly the shape of bug
  * `main.ts`'s exclusion from coverage was hiding.
+ *
+ * The note being written is held back (ADR-220). Every autosave is a `modify`,
+ * so a note someone is typing in used to be re-embedded — and the whole index
+ * rewritten — every couple of seconds, on a phone right next to the editor, and
+ * that is what reloaded Obsidian mid-sentence. It now reaches the index when the
+ * writer leaves it, or once they have stopped for `VAULT_HOLD_IDLE_MS`.
  */
 
 /** The part of `TFile` the batch needs. Keeps the rules testable without a vault. */
@@ -53,20 +59,37 @@ export class VaultChangeBatch<F extends WatchedFile = WatchedFile> {
 	}
 
 	/** Drain the batch. Emptied here rather than by the caller, so a flush can
-	 *  never hand the same edit to `applyChanges` twice. */
-	take(): { changed: F[]; deleted: string[] } {
-		const out = { changed: [...this.changed.values()], deleted: [...this.deleted] };
+	 *  never hand the same edit to `applyChanges` twice.
+	 *
+	 *  `hold` names the note being written: its edit stays in the batch for a
+	 *  later drain (ADR-220). Only an edit is held — a deleted note has nobody
+	 *  writing in it, and keeping it in the index would serve a file that is gone. */
+	take(hold: string | null = null): { changed: F[]; deleted: string[] } {
+		const kept = hold === null ? undefined : this.changed.get(hold);
+		const out = {
+			changed: [...this.changed.values()].filter((f) => f !== kept),
+			deleted: [...this.deleted],
+		};
 		this.changed.clear();
 		this.deleted.clear();
+		if (kept) this.changed.set(kept.path, kept);
 		return out;
 	}
 }
 
-/** How long a burst of edits is allowed to coalesce before the index sees it. */
+/** How long the vault must be quiet before a burst of edits reaches the index.
+ *  A real quiet window since ADR-220: every event restarts it. Obsidian's
+ *  `debounce` without `resetTimer` fires this long after the FIRST call, so a
+ *  burst that kept going was flushed every two seconds for as long as it lasted. */
 export const VAULT_FLUSH_DELAY_MS = 2000;
 
+/** How long the note being written may sit unembedded once its writer has
+ *  stopped (ADR-220). Long enough that a pause to think is not a flush, short
+ *  enough that a note left open on screen is found by the next question. */
+export const VAULT_HOLD_IDLE_MS = 30_000;
+
 export interface VaultWatcherHost {
-	app: { vault: Vault };
+	app: { vault: Vault; workspace?: Pick<Workspace, "on"> };
 	/** Obsidian's own registration, so every listener dies with the plugin. */
 	registerEvent(ref: EventRef): void;
 	/** Teardown for the pending debounce. */
@@ -85,7 +108,11 @@ export interface VaultWatcherDeps {
 	 *  not with the debounced flush — a tap on a chip must not open the old path
 	 *  in the two seconds after a rename. */
 	followRename(oldPath: string, newPath: string): void;
+	/** The note being written, whose edits are held back (ADR-220). Absent: no
+	 *  note is held, as before. */
+	activePath?(): string | null;
 	delayMs?: number;
+	holdIdleMs?: number;
 }
 
 /**
@@ -99,12 +126,28 @@ export interface VaultWatcherDeps {
 export function registerVaultWatcher(host: VaultWatcherHost, deps: VaultWatcherDeps): VaultChangeBatch<TFile> {
 	const vault = host.app.vault;
 	const batch = new VaultChangeBatch<TFile>();
-	const flush = debounce(() => {
+	const drain = (hold: string | null): void => {
 		if (batch.empty) return;
-		const { changed, deleted } = batch.take();
-		deps.applyChanges(changed, deleted);
-	}, deps.delayMs ?? VAULT_FLUSH_DELAY_MS);
-	host.register(() => flush.cancel());
+		const { changed, deleted } = batch.take(hold);
+		if (changed.length > 0 || deleted.length > 0) deps.applyChanges(changed, deleted);
+	};
+	// Nothing is held back any more: the writer has gone quiet for long enough.
+	const release = debounce(() => drain(null), deps.holdIdleMs ?? VAULT_HOLD_IDLE_MS, true);
+	const flush = debounce(() => drain(deps.activePath?.() ?? null), deps.delayMs ?? VAULT_FLUSH_DELAY_MS, true);
+	host.register(() => { flush.cancel(); release.cancel(); });
+
+	// Leaving a note is the moment it is finished for now: it goes to the index at
+	// once, and the note now open is the one held.
+	const workspace = host.app.workspace;
+	if (workspace) host.registerEvent(workspace.on("file-open", () => {
+		if (batch.empty) return;
+		flush.cancel();
+		drain(deps.activePath?.() ?? null);
+		// A note that arrived edited (a sync) and is now the one open is held from
+		// here, on the same quiet clock as one being typed in.
+		if (batch.empty) release.cancel();
+		else release();
+	}));
 
 	// Non-markdown is dropped before the glossary is consulted, as it was inline:
 	// a glossary note is always a note, so nothing else can invalidate the cache.
@@ -112,6 +155,9 @@ export function registerVaultWatcher(host: VaultWatcherHost, deps: VaultWatcherD
 		if (!batch.markChanged(file)) return;
 		deps.invalidateGlossary(file.path);
 		flush();
+		// The quiet clock for the held note restarts with every keystroke's save, so
+		// it can never run out while the writer is still going.
+		if (deps.activePath && file.path === deps.activePath()) release();
 	};
 	const onEdit = (f: TAbstractFile): void => { if (f instanceof TFile) markChanged(f); };
 

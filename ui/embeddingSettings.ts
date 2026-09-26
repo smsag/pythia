@@ -21,7 +21,7 @@ import { section } from "./settings/section";
  * repaints only on index events, so a setting that moves the scope without
  * repainting leaves the user looking at "Ready" with the one non-destructive
  * action greyed out — which is what adding a second folder did. The scope is
- * `VaultRagService.scopeSignature`: the indexed folders, the note cap and the
+ * `scopeSignature` (`services/embedding/indexScope.ts`): the indexed folders, the note cap and the
  * model here; the two skip folders are picked in the tab's own folder section,
  * which are picked in other sections of the tab and reach this refresh through
  * `SettingsContext.refreshIndexStatus` — which is why the refresh is RETURNED

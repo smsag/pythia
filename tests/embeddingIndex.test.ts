@@ -4,6 +4,9 @@ import {
 	diffIndex,
 	serializeIndex,
 	deserializeIndex,
+	peekIndexMeta,
+	readKeeper,
+	readWrittenAt,
 	type IndexedConversation,
 } from "../services/embedding/embeddingIndex";
 
@@ -135,5 +138,48 @@ describe("index self-description (ADR-184)", () => {
 		dv.setUint32(11, metaBytes.length);
 		new Uint8Array(buf, 15, metaBytes.length).set(metaBytes);
 		expect(deserializeIndex(buf).meta).toEqual({ complete: false, scope: "" });
+	});
+});
+
+describe("the index's keeper (ADR-221)", () => {
+	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
+
+	it("round-trips which kind of device wrote the file", () => {
+		for (const keeper of ["desktop", "mobile"] as const) {
+			const buf = serializeIndex(rows, 4, { complete: true, scope: "S", keeper });
+			expect(deserializeIndex(buf).meta.keeper).toBe(keeper);
+			expect(peekIndexMeta(buf)?.keeper).toBe(keeper);
+		}
+	});
+
+	it("reads a file without one as unknown — the behaviour before ADR-221", () => {
+		const buf = serializeIndex(rows, 4, { complete: true, scope: "S" });
+		expect(deserializeIndex(buf).meta).toEqual({ complete: true, scope: "S" });
+		expect(peekIndexMeta(buf)?.keeper).toBeUndefined();
+	});
+
+	it("validates it at the boundary: anything else is unknown, never trusted", () => {
+		expect(readKeeper("desktop")).toBe("desktop");
+		expect(readKeeper("mobile")).toBe("mobile");
+		for (const bad of ["tablet", "", 1, null, undefined, {}]) expect(readKeeper(bad)).toBeUndefined();
+		const forged = serializeIndex(rows, 4, { complete: true, scope: "S", keeper: "tablet" as never });
+		expect(deserializeIndex(forged).meta.keeper).toBeUndefined();
+	});
+});
+
+describe("when the index was written (ADR-221)", () => {
+	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
+
+	it("round-trips through both readers", () => {
+		const buf = serializeIndex(rows, 4, { complete: true, scope: "S", keeper: "desktop", writtenAt: 1_790_000_000_000 });
+		expect(deserializeIndex(buf).meta.writtenAt).toBe(1_790_000_000_000);
+		expect(peekIndexMeta(buf)?.writtenAt).toBe(1_790_000_000_000);
+	});
+
+	it("keeps only a positive finite number", () => {
+		expect(readWrittenAt(1)).toBe(1);
+		for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, "1790000000000", null, undefined]) {
+			expect(readWrittenAt(bad)).toBeUndefined();
+		}
 	});
 });

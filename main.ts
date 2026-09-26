@@ -35,6 +35,7 @@ import { vaultBuildGuard } from "./services/embedding/buildGuard";
 import { installEmbeddingResidency } from "./services/embedding/residency";
 import type { VaultIndexStatus } from "./services/embedding/indexStatus";
 import { registerVaultWatcher } from "./services/vaultWatcher";
+import { CATCH_UP_DELAY_MS } from "./services/embedding/vaultCatchUp";
 import { RenameFollower } from "./services/renameFollower";
 import { handleDeepLink } from "./services/deepLink";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
@@ -132,7 +133,7 @@ export default class PythiaPlugin extends Plugin {
 				() => this.settings,
 				w.getProvider,
 				w.makeStore,
-				{ modelId: w.modelId, guard: vaultBuildGuard(this.app) },
+				{ modelId: w.modelId, guard: vaultBuildGuard(this.app), mobile: Platform.isMobile },
 			),
 			installResidency: (deps) => installEmbeddingResidency(this, deps),
 			notice: (message) => new Notice(message),
@@ -188,6 +189,8 @@ export default class PythiaPlugin extends Plugin {
 			this.renameFollower.replay();
 			// After the workspace is up, not during it (ADR-169/170).
 			scheduleWarm({ run: () => void this.embedding.warm(), register: (c) => this.register(c) });
+			// The vault index catches up with what changed while Pythia was closed (ADR-221).
+			scheduleWarm({ run: () => void this.embedding.catchUpVaultIndex(), register: (c) => this.register(c), delayMs: CATCH_UP_DELAY_MS });
 		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
@@ -293,6 +296,8 @@ export default class PythiaPlugin extends Plugin {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
 			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
+			// The note being written waits until it is left or quiet (ADR-220).
+			activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
 		});
 
 		registerEditorSelectionEntries(this);

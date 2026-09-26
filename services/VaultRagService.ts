@@ -5,14 +5,15 @@ import type { EmbeddingProvider } from "./embedding/EmbeddingProvider";
 import type { IndexStore } from "./embedding/ConversationIndexService";
 import { VaultIndexService, type IndexableNote } from "./embedding/VaultIndexService";
 import { retrievalQuery, isIndexingOptedOut } from "./embedding/vaultRetrieval";
-import { selectIndexPaths, isPathInScope } from "./embedding/indexScope";
+import { selectIndexPaths, isPathInScope, scopeSignature as scopeSignatureOf } from "./embedding/indexScope";
 import { vaultRetrievalMinScore } from "./embedding/relatedConversations";
 import { embedChunkChars, vectorFamily, type EmbeddingModelId } from "../models/embeddingModels";
 import type { BuildGuard } from "./embedding/buildGuard";
 import { isOutOfMemoryError } from "./embedding/memoryError";
 import { peekIndexMeta } from "./embedding/embeddingIndex";
 import { stateFromFile, type VaultIndexStatus } from "./embedding/indexStatus";
-import { decideBuild } from "./embedding/buildDecision";
+import { decideBuild, shouldCatchUp } from "./embedding/buildDecision";
+import { catchUpIndex } from "./embedding/vaultCatchUp";
 import { hashPolicyFor } from "./embedding/rowProvenance";
 import { debugLog } from "./messageUtils";
 import { t } from "../i18n";
@@ -42,7 +43,7 @@ import { t } from "../i18n";
 /** The index half of the settings status; the plugin adds the model half. */
 export type VaultIndexSnapshot = Pick<
 	VaultIndexStatus,
-	"state" | "count" | "done" | "total" | "error" | "outOfMemory" | "marker" | "backend"
+	"state" | "count" | "done" | "total" | "error" | "outOfMemory" | "marker" | "backend" | "keeper" | "writtenAt"
 >;
 
 type Phase =
@@ -72,6 +73,8 @@ export class VaultRagService {
 	 *  dropped for the rest of the session — `applyChanges` no-ops until the index
 	 *  is ready, and the first build is exactly when it is not. */
 	private deferredChanges: { changed: Map<string, TFile>; deleted: Set<string> } | null = null;
+	/** The session's catch-up has been started (ADR-221). */
+	private caughtUp = false;
 	/** The index file's header, remembered between status reads (#361).
 	 *  `undefined` = not read yet, `null` = read and there is no usable file.
 	 *  `IndexStore.read()` returns the WHOLE binary — ~19 MB at the 5 000-note cap —
@@ -93,6 +96,8 @@ export class VaultRagService {
 			modelId: () => EmbeddingModelId;
 			/** The crash-loop breaker; absent in tests that do not exercise it. */
 			guard?: BuildGuard | null;
+			/** A phone: it holds a desktop's index rather than keeping it (ADR-221). */
+			mobile?: boolean;
 		},
 	) {}
 
@@ -135,25 +140,16 @@ export class VaultRagService {
 	dispose(): void {
 		if (this.syncing) this.deps.guard?.end();
 		this.listeners.clear();
+		// Edits held by the write window (ADR-220) are written, not left to a dying
+		// timer. Not awaited: unload is synchronous, and the store needs nothing else.
+		void this.service?.flushPendingWrites().catch((e: unknown) => {
+			console.warn("[Pythia] vault RAG: held edits could not be written at unload", e);
+		});
 	}
 
-	/**
-	 * What this index is an index OF (ADR-184): the folders, the skip folders, the
-	 * note cap and the model. Persisted with the rows, so a session that starts
-	 * with different settings can tell the file no longer matches them.
-	 *
-	 * Narrowing `vaultContextFolders` is the case that matters: until the index is
-	 * rebuilt it still holds notes that are now out of scope, and retrieval would
-	 * keep inlining them into prompts. That is a privacy decision the user made
-	 * and the index has to honour.
-	 */
+	/** What this index is an index OF (ADR-184) — the rule is `scopeSignature` in `indexScope.ts`. */
 	private scopeSignature(): string {
-		const s = this.getSettings();
-		const folders = [...s.vaultContextFolders].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
-		const skip = [s.conversationsFolder, s.scratchFolder].map((f) => (f ?? "").replace(/\/+$/, "")).filter(Boolean).sort();
-		// The family, not the variant (ADR-200): the desktop's index must read as
-		// complete on a phone running the vector-identical variant.
-		return JSON.stringify([folders, skip, s.vaultContextMaxIndexedNotes, vectorFamily(this.deps.modelId())]);
+		return scopeSignatureOf(this.getSettings(), vectorFamily(this.deps.modelId()));
 	}
 
 	private ensure(): VaultIndexService {
@@ -168,6 +164,7 @@ export class VaultRagService {
 				// Rows shared with the other device are reused only when this model
 				// would have produced them (ADR-201).
 				hashPolicy: hashPolicyFor(this.deps.modelId()),
+				device: this.deps.mobile ? "mobile" : "desktop",
 			});
 		}
 		return this.service;
@@ -188,14 +185,17 @@ export class VaultRagService {
 	async status(): Promise<VaultIndexSnapshot> {
 		const base: VaultIndexSnapshot = {
 			state: "notBuilt", count: 0, done: 0, total: 0, error: null, outOfMemory: false,
-			marker: this.deps.guard?.marker() ?? null, backend: this.backend,
+			marker: this.deps.guard?.marker() ?? null, backend: this.backend, keeper: null, writtenAt: null,
 		};
 		const phase = this.phase;
 		if (phase.kind === "loading") return { ...base, state: "loading" };
 		if (phase.kind === "building") return { ...base, state: "building", done: phase.done, total: phase.total };
 		if (phase.kind === "failed") return { ...base, state: "failed", error: phase.error, outOfMemory: phase.outOfMemory };
 		const scope = this.scopeSignature();
-		if (this.service?.isComplete(scope)) return { ...base, state: "ready", count: this.service.size() };
+		if (this.service?.isComplete(scope)) {
+			const { keeper, writtenAt } = this.service.signature();
+			return { ...base, state: "ready", count: this.service.size(), keeper: keeper ?? null, writtenAt: writtenAt ?? null };
+		}
 		let file = this.fileMeta ?? null;
 		if (this.fileMeta === undefined) {
 			try {
@@ -215,7 +215,10 @@ export class VaultRagService {
 		// calling that "ready" left vault context dead behind a green status with
 		// Build now disabled. The count still says what is kept.
 		const paused = !(this.deps.guard?.mayAutoBuild() ?? true);
-		return { ...base, state: paused ? "paused" : state, count: file?.count ?? 0 };
+		return {
+			...base, state: paused ? "paused" : state, count: file?.count ?? 0,
+			keeper: file?.keeper ?? null, writtenAt: file?.writtenAt ?? null,
+		};
 	}
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
@@ -378,7 +381,7 @@ export class VaultRagService {
 				// out-of-scope index now falls through and resumes, throttled.
 				if (!offThread) {
 					await svc.hydrateForQuery();
-					if (svc.isComplete(scope)) {
+					if (svc.isComplete(scope) && !opts.force) { // Build now: a phone taking a desktop's index over (ADR-221)
 						guard?.end();
 						this.setPhase({ kind: "idle" });
 						// The edits buffered while the index was not yet hydrated land
@@ -510,6 +513,27 @@ export class VaultRagService {
 	buildNow(): void {
 		if (this.syncing) { new Notice(t("vaultIndexBusy")); return; }
 		this.refresh({ force: true, manual: true });
+	}
+
+	/** Once per session, in the background: a complete index catches up with notes
+	 *  that changed while this device was not watching (ADR-221, `vaultCatchUp.ts`). */
+	catchUp(): void {
+		const loadFailed = this.phase.kind === "failed" && this.phase.loadFailed;
+		const mayAutoBuild = this.deps.guard?.mayAutoBuild() ?? true;
+		if (!shouldCatchUp({ mobile: this.deps.mobile === true, ran: this.caughtUp, syncing: this.syncing, mayAutoBuild, loadFailed })) return;
+		this.caughtUp = this.syncing = true;
+		void catchUpIndex({
+			service: () => this.ensure(), scope: () => this.scopeSignature(), notes: () => this.collectIndexableNotes().notes,
+			modelId: () => this.deps.modelId(), guard: this.deps.guard,
+			onProgress: (done, total) => this.setPhase({ kind: "building", done, total }),
+		}).then(async (r) => {
+			this.setPhase({ kind: "idle" });
+			await this.flushDeferredChanges();
+			debugLog(this.getSettings(), "vault RAG: catch-up", r);
+		}, (e: unknown) => {
+			this.setPhase({ kind: "failed", error: e instanceof Error ? e.message : String(e), outOfMemory: isOutOfMemoryError(e), loadFailed: false });
+			console.warn("[Pythia] vault RAG: catch-up failed", e);
+		}).finally(() => { this.syncing = false; this.fileMeta = undefined; this.emit(); });
 	}
 
 	/** Whether this note opts out of the index with `pythia: false` in its

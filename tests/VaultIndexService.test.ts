@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { VaultIndexService, type IndexableNote } from "../services/embedding/VaultIndexService";
+import { deserializeIndex, serializeIndex } from "../services/embedding/embeddingIndex";
 import type { IndexStore } from "../services/embedding/ConversationIndexService";
 import type { EmbeddingProvider } from "../services/embedding/EmbeddingProvider";
 
@@ -321,3 +322,167 @@ describe("adding a folder embeds only the new notes (#357)", () => {
 	});
 });
 
+describe("VaultIndexService — edit batches share one write window (ADR-220)", () => {
+	afterEach(() => { vi.useRealTimers(); });
+
+	/** A built index whose next write is the edit window's to decide. The build
+	 *  runs on real timers — it yields through `setTimeout` — and the clock is
+	 *  faked only for the edits. */
+	async function built(): Promise<{ svc: VaultIndexService; store: MemStore }> {
+		const store = new MemStore();
+		const svc = new VaultIndexService(new FakeProvider(), store);
+		await svc.sync([alpha, beta, gamma]);
+		vi.useFakeTimers();
+		return { svc, store };
+	}
+	const edit = (path: string, text: string) => ({ updates: [note(path, text)], removes: [] });
+
+	it("the first batch after a quiet spell writes at once", async () => {
+		const { svc, store } = await built();
+		const before = store.writes;
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha one"));
+		expect(store.writes).toBe(before + 1);
+	});
+
+	it("batches inside the window are carried by ONE trailing write, with the latest state", async () => {
+		const { svc, store } = await built();
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha one"));
+		const afterFirst = store.writes;
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha two"));
+		await svc.applyBatch(edit("Notes/delta.md", "a new beta note"));
+		// Typing on: each batch used to rewrite the whole index — ~19 MB at the cap.
+		expect(store.writes).toBe(afterFirst);
+
+		await vi.advanceTimersByTimeAsync(30_000);
+		await svc.flushPendingWrites(); // queued behind the trailing write, so it has landed
+		expect(store.writes).toBe(afterFirst + 1);
+
+		vi.useRealTimers();
+		const reread = new VaultIndexService(new FakeProvider(), store);
+		await reread.hydrateForQuery();
+		expect(reread.size()).toBe(4); // delta, written by the trailing write
+	});
+
+	it("flushPendingWrites writes held edits now, and the timer then has nothing left to do", async () => {
+		const { svc, store } = await built();
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha one"));
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha two"));
+		const held = store.writes;
+		await svc.flushPendingWrites();
+		expect(store.writes).toBe(held + 1);
+		await vi.advanceTimersByTimeAsync(30_000);
+		await svc.flushPendingWrites();
+		expect(store.writes).toBe(held + 1);
+	});
+
+	it("flushPendingWrites with nothing held writes nothing", async () => {
+		const { svc, store } = await built();
+		const before = store.writes;
+		await svc.flushPendingWrites();
+		expect(store.writes).toBe(before);
+	});
+
+	it("a batch after the window has closed writes at once again", async () => {
+		const { svc, store } = await built();
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha one"));
+		await vi.advanceTimersByTimeAsync(31_000);
+		const before = store.writes;
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha two"));
+		expect(store.writes).toBe(before + 1);
+	});
+
+	it("clear drops a held write rather than writing the rows it just wiped back", async () => {
+		const { svc, store } = await built();
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha one"));
+		await svc.applyBatch(edit("Notes/alpha.md", "alpha two"));
+		await svc.clear();
+		const afterClear = store.writes;
+		await vi.advanceTimersByTimeAsync(30_000);
+		await svc.flushPendingWrites();
+		expect(store.writes).toBe(afterClear);
+	});
+});
+
+describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-221)", () => {
+	const keeperOf = (store: MemStore) => deserializeIndex(store.buf!).meta.keeper;
+
+	/** An index the desktop built, as a phone then opens it from the synced file. */
+	async function phoneOnDesktopIndex(): Promise<{ phone: VaultIndexService; store: MemStore }> {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha, beta]);
+		const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+		await phone.hydrateForQuery();
+		return { phone, store };
+	}
+
+	it("every write is signed by the kind of device that made it", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha]);
+		expect(keeperOf(store)).toBe("desktop");
+		await new VaultIndexService(new FakeProvider(), store, { device: "mobile" }).sync([alpha, beta]);
+		expect(keeperOf(store)).toBe("mobile");
+	});
+
+	it("a phone applies its own edit in memory, so its answers see it, and writes nothing", async () => {
+		const { phone, store } = await phoneOnDesktopIndex();
+		const writes = store.writes;
+		await phone.applyBatch({ updates: [note("Notes/delta.md", "a fresh alpha note")], removes: ["Notes/beta.md"] });
+		expect(store.writes).toBe(writes); // no ~19 MB rewrite, no clobbering the desktop's copy
+		expect(phone.size()).toBe(2); // alpha + delta; beta gone — in memory
+		expect((await phone.query("alpha", { minScore: 0.5 })).map((r) => r.id)).toContain("Notes/delta.md");
+		expect(keeperOf(store)).toBe("desktop");
+	});
+
+	it("…and has nothing to flush at unload either", async () => {
+		const { phone, store } = await phoneOnDesktopIndex();
+		await phone.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+		const writes = store.writes;
+		await phone.flushPendingWrites();
+		expect(store.writes).toBe(writes);
+	});
+
+	it("a phone keeps an index it built itself, or one nobody signed", async () => {
+		for (const signer of ["mobile", undefined] as const) {
+			const store = new MemStore();
+			await new VaultIndexService(new FakeProvider(), store, signer ? { device: signer } : {}).sync([alpha]);
+			// A file from before ADR-221 carries no keeper at all.
+			if (!signer) store.buf = serializeIndex(deserializeIndex(store.buf!).items, 4, { complete: true, scope: "" });
+			const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+			await phone.hydrateForQuery();
+			const writes = store.writes;
+			await phone.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+			expect(store.writes).toBe(writes + 1);
+			expect(keeperOf(store)).toBe("mobile");
+		}
+	});
+
+	it("signs every write with when it was made", async () => {
+		const store = new MemStore();
+		const before = Date.now();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha]);
+		expect(deserializeIndex(store.buf!).meta.writtenAt).toBeGreaterThanOrEqual(before);
+	});
+
+	it("a full sync of an unchanged index takes it over from the other kind of device", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha, beta]);
+		const writes = store.writes;
+		const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+		await phone.sync([alpha, beta]); // a phone's Build now: nothing changed, nothing embedded …
+		expect(store.writes).toBe(writes + 1); // … but it signs the file, so its edits are written from now on
+		expect(keeperOf(store)).toBe("mobile");
+		await phone.sync([alpha, beta]);
+		expect(store.writes).toBe(writes + 1); // its own index: an unchanged sync still writes nothing
+	});
+
+	it("a desktop always writes its edits, whoever signed the file", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "mobile" }).sync([alpha]);
+		const desk = new VaultIndexService(new FakeProvider(), store, { device: "desktop" });
+		await desk.hydrateForQuery();
+		const writes = store.writes;
+		await desk.applyBatch({ updates: [note("Notes/delta.md", "alpha")], removes: [] });
+		expect(store.writes).toBe(writes + 1);
+		expect(keeperOf(store)).toBe("desktop");
+	});
+});

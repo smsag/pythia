@@ -53,6 +53,8 @@ const embeddingDe: typeof embeddingEn = {
 	vaultIndexDetailModelMobile: "Modell: {{model}} (mobil)",
 	vaultIndexBackend:           "Engine: {{backend}}",
 	vaultIndexDetailOff:         "Vault-Kontext ist standardmäßig aus – oben einschalten oder pro Unterhaltung über das Bibliothek-Symbol",
+	vaultIndexDetailKeptByDesktop:        "Wird vom Desktop gepflegt, zuletzt geschrieben am {{date}} – Änderungen auf diesem Telefon kommen dort an, sobald der Desktop läuft. Nutzt du den Desktop nicht mehr? Dann übernimmt dieses Telefon den Index mit „Jetzt aufbauen“; eingebettet werden nur geänderte Notizen.",
+	vaultIndexDetailKeptByDesktopUndated: "Wird vom Desktop gepflegt – Änderungen auf diesem Telefon kommen dort an, sobald der Desktop läuft. Nutzt du den Desktop nicht mehr? Dann übernimmt dieses Telefon den Index mit „Jetzt aufbauen“; eingebettet werden nur geänderte Notizen.",
 	vaultIndexBuildNow:          "Jetzt aufbauen",
 	vaultIndexBuildNowTooltip:   "Index fertigstellen oder aktualisieren, Bereits-Indexiertes bleibt erhalten",
 	vaultContextReindexBtn:      "Index neu aufbauen",

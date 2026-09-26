@@ -34,3 +34,20 @@ describe("VaultIndexStore — one index file per vector family (ADR-200)", () =>
 		expect(await pathFor("xenova-all-MiniLM-L6-v2")).not.toBe(await pathFor("xenova-all-MiniLM-L6-v2", "vault-embeddings"));
 	});
 });
+
+describe("VaultIndexStore — the journal sits beside its index (ADR-222)", () => {
+	it("in the same folder, same family, suffixed .journal.bin", async () => {
+		const written: string[] = [];
+		const plugin = {
+			manifest: { dir: ".obsidian/plugins/pythia", id: "pythia" },
+			app: { vault: { configDir: ".obsidian", adapter: {
+				exists: async () => true,
+				writeBinary: async (p: string) => { written.push(p); },
+				mkdir: async () => {},
+			} } },
+		};
+		const store = new VaultIndexStore(plugin as never, "xenova-paraphrase-multilingual-MiniLM-L12-v2-latin" as never, "vault-embeddings");
+		await store.journal().write(new ArrayBuffer(0));
+		expect(written).toEqual([".obsidian/plugins/pythia/vault-embeddings-xenova-paraphrase-multilingual-MiniLM-L12-v2.journal.bin"]);
+	});
+});
