@@ -114,13 +114,14 @@ describe("shouldAutoArmSearch", () => {
 	});
 });
 
-describe("wantsWeb (ADR-217, narrowed by ADR-226)", () => {
-	it("is true for a message that carries a link", () => {
-		expect(wantsWeb("what does https://example.com/essay argue?")).toBe(true);
+describe("wantsWeb (ADR-217/229)", () => {
+	it("is true for a link, and for a time-sensitive question", () => {
+		expect(wantsWeb("what does https://example.com/essay argue?", 2026)).toBe(true);
+		expect(wantsWeb("show me the current ecb rate", 2026)).toBe(true);
 	});
-	it("is false for time-sensitive words, a year, or a dated note — only a link arms the web", () => {
-		for (const text of ["latest ECB decision", "what is the price now", "update my note", "[[2026-09-26 Daily]] summary", "explain recursion"]) {
-			expect(wantsWeb(text), text).toBe(false);
+	it("is false for a timeless question and for a dated note link", () => {
+		for (const text of ["explain recursion", "[[2026-09-26 Daily]] summary"]) {
+			expect(wantsWeb(text, 2026), text).toBe(false);
 		}
 	});
 });

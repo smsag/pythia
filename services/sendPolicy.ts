@@ -1,4 +1,4 @@
-import { containsWebUrl } from "./webSearchHeuristics";
+import { containsWebUrl, looksTimeSensitive } from "./webSearchHeuristics";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -34,8 +34,8 @@ export function shouldGenerateChapterName(userMsg: Message): boolean {
 /**
  * True when web search should be offered for THIS send although the
  * conversation's globe is off (ADR-099): the setting allows it, a key exists,
- * and the message carries a link (ADR-226 — a time-sensitive word no longer
- * counts).
+ * and the message wants the web — it reads as time-sensitive or carries a
+ * link (`wantsWeb`, ADR-229).
  *
  * Lifted out of `sendMessage` under ADR-178's line budget, and it belongs here
  * anyway: it is a four-term rule with no DOM in it, and the only place it was
@@ -77,13 +77,12 @@ export function researchForSend(opts: {
 }
 
 /**
- * Whether an outgoing message wants the web: it carries a link for read_url
- * (ADR-217). ADR-099 also armed on time-sensitive words and on any year from
- * this one on; ADR-226 dropped that — "now", "update", "cost" or a daily note
- * named by its date armed nearly every message, and each armed send told the
- * model to search first, sending text drawn from the user's notes to a third
- * party the user had not switched on.
+ * Whether an outgoing message wants the web: it reads as time-sensitive
+ * (ADR-099) or it carries a link for read_url (ADR-217). ADR-226 dropped the
+ * time cues; ADR-229 restored them — "show me the current ECB rate" is the case
+ * auto-search exists for — without the [[note links]] a daily note's date
+ * lived in. The year anchors the "this year or later" cue.
  */
-export function wantsWeb(text: string): boolean {
-	return containsWebUrl(text);
+export function wantsWeb(text: string, currentYear: number): boolean {
+	return looksTimeSensitive(text, currentYear) || containsWebUrl(text);
 }

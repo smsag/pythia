@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-228 (the rest of the Tavily review: research needs a key, news results carry their date, the recency line uses the local date, the result count is a whole number capped at 20, a link typed without `https://` counts, more private hosts are refused, internationalised top-level domains are accepted as filters, Anthropic tool errors carry `is_error`, the key is trimmed, a query is capped at 400 characters; parallel tool calls stay deferred as D-62).*
+*Last updated: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
+
+*Previously: 2026-09-26 — ADR-228 (the rest of the Tavily review: research needs a key, news results carry their date, the recency line uses the local date, the result count is a whole number capped at 20, a link typed without `https://` counts, more private hosts are refused, internationalised top-level domains are accepted as filters, Anthropic tool errors carry `is_error`, the key is trimmed, a query is capped at 400 characters; parallel tool calls stay deferred as D-62).*
 
 *Previously: 2026-09-26 — ADR-227 (a follow-up can read an earlier answer's source: its page addresses ride in that answer's history and the read allow-list admits them; a `)` inside a link is kept when balanced; a Tavily call gives up after 30 s).*
 
@@ -4913,3 +4915,18 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done (D-62).** Web calls in one round still run one after another. Running them in parallel would race the answer's result numbering, and the same loop runs the write tools, whose confirmation cards must come one at a time. The gain is a second or two on the rare round with two searches.
 
 **Guards.** `tests/sendPolicy.test.ts` (`researchForSend`) · `tests/webSearch.test.ts` (published date, key trim, whole-number count) · `tests/ContextBuilder.test.ts` (local date at 00:30) · `tests/webSearchHeuristics.test.ts` and `tests/webReadScope.test.ts` (scheme-less links, and what does not count) · `tests/tavilyArgs.test.ts` (400-character cap, IDN filter, private and public hosts) · `tests/AnthropicService.test.ts` (`is_error`).
+
+---
+
+## ADR-229 — Auto-search on time-sensitive questions again
+
+**Status:** Active · 2026-09-26 · **revises ADR-226** (auto-search only on a link)
+
+**Context.** ADR-226 recorded the user's decision as "auto-search only on a pasted link" and removed the time cues. The user had actually said *keep the behaviour and also trigger it when URLs are added*. After the merge, "show me the current ECB rate" no longer searched unless the globe was switched on by hand, which is the exact case auto-search exists for (ADR-099). The misreading was ours.
+
+**Decision.**
+- **`wantsWeb(text, year)` is again time-sensitive OR a link.** `looksTimeSensitive` and its English and German cue lists are restored unchanged from before ADR-226. The link cue keeps ADR-228's scheme-less forms.
+- **One of ADR-226's reasons is kept: a [[note link]] no longer counts.** A daily note called `[[2026-09-26]]` or a note titled `[[Current projects]]` names a note, not a moment. The link text is removed before the cues are tested, and prose around the link still counts.
+- **Unchanged from ADR-226/228:** research needs a key, five searches per answer, and numbered citations. The broader trigger means more text goes to Tavily than under ADR-226; that is the user's choice, and the setting describes both triggers.
+
+**Guards.** `tests/webSearchHeuristics.test.ts` (the pre-ADR-226 cue tests restored; "show me the current ecb rate" fires; a date or cue word only inside a note link does not) · `tests/sendPolicy.test.ts` (`wantsWeb` is time OR link).
