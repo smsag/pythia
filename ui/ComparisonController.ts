@@ -141,7 +141,7 @@ export class ComparisonController {
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.d.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.d.plugin.webSearchService.hasApiKey(),
-			wantsWeb: wantsWeb(prompt.content),
+			wantsWeb: wantsWeb(prompt.content, new Date().getFullYear()),
 		}).active;
 		const armed: Conversation = { ...conv, provider: model.provider, model: model.id, writeMode: "none", researchMode: research };
 		const allowed = ToolHandler.allowedToolNames("none", research);

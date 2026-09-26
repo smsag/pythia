@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **The Tavily review is done (ADR-228):** the last eleven findings closed; parallel tool calls in one round stay deferred (D-62) with the reason.*
+*Updated: 2026-09-26 — **Auto-search stopped firing on "show me the current ECB rate" (ADR-229).** ADR-226 had misread the user's decision as link-only; the time cues are back, minus note links.*
+
+*Previously: 2026-09-26 — **The Tavily review is done (ADR-228):** the last eleven findings closed; parallel tool calls in one round stay deferred (D-62) with the reason.*
 
 *Previously: 2026-09-26 — **Three Tavily findings closed (ADR-227):** a follow-up can read an earlier answer's source, a Wikipedia link with parentheses is admitted, and a hung request times out after 30 s.*
 
@@ -2054,4 +2056,11 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The key was not trimmed.** | Low | Closed (ADR-228) |
 | **Query length was uncapped.** | Low | Closed (ADR-228): 400 characters |
 | **Web calls in one round run in sequence.** | Low | Deferred by decision: D-62 (it would race the result numbering and the write confirmations) |
+
+## Bug — auto-search no longer fired on time-sensitive questions (ADR-229), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **"Show me the current ECB rate" did not search without the globe.** ADR-226 removed the time cues on a misreading of the user's decision ("keep the behaviour and also trigger on URLs"). | High | Closed: time cues restored, links still count |
+| **A date or cue word inside a [[note link]] armed a search.** | Low | Closed: note links are ignored by the cues |
 

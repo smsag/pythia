@@ -1311,7 +1311,7 @@ export class PythiaSidebarView extends ItemView {
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
-			wantsWeb: wantsWeb(text),
+			wantsWeb: wantsWeb(text, new Date().getFullYear()),
 		});
 		if (research.autoArmed) this.flashResearchAutoArm();
 		if (research.missingKey) new Notice(t("researchNoKeyNotice"));

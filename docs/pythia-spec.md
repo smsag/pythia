@@ -334,6 +334,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-26 | ADR-229: auto-search fires on time-sensitive questions again (ADR-226 misread the decision). |
 | 2026-09-26 | ADR-228: D-62 narrowed to one item, parallel web calls in a round; everything else closed. |
 | 2026-09-26 | ADR-227: three rows of D-62 closed (parentheses, earlier sources, timeout). |
 | 2026-09-26 | ADR-226: D-62 (the Tavily findings not built). |
