@@ -17,7 +17,8 @@ import { Platform } from "obsidian";
 //
 // The panel folded in the former quick switcher: the header loupe opens it with
 // the search input focused; ↑/↓ move the selection and Enter opens it; an empty
-// box browses (date groups) while a query searches (flat TF-IDF list + snippets).
+// box browses (date groups) while a query searches titles (flat list + snippets;
+// ADR-223 — Schreibstube adds what it finds by meaning).
 // This is the DOM path ADR-107 introduced, which otherwise has no coverage.
 
 /** Far-left header button — created first, so it's the search loupe (HeaderController). */
@@ -109,7 +110,7 @@ describe("conversation search panel (ADR-107)", () => {
 		await tick();
 
 		const input = panelInput(pane);
-		input.value = "seiko";
+		input.value = "kayak";
 		input.dispatchEvent(new Event("input", { bubbles: true }));
 		await settle();
 		expect(historyRows(pane)).toHaveLength(1);       // search narrowed it
@@ -130,16 +131,16 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(historyRows(pane)).toHaveLength(3);
 		expect(pane().querySelector(".p-history-snippet")).toBeNull();
 
-		// Query a word that lives only in one conversation's message body → flat list,
-		// that one result, with a snippet of the matching line (content search, not title).
+		// Query a word in one conversation's title → flat list, that one result, with
+		// a snippet of the message line that also holds it.
 		const input = panelInput(pane);
-		input.value = "seiko";
+		input.value = "quartz";
 		input.dispatchEvent(new Event("input"));
 		await settle();
 
 		expect(pane().querySelector(".p-history-group")).toBeNull(); // flat — no date buckets
 		expect(historyRows(pane)).toHaveLength(1);
-		expect(pane().querySelector(".p-history-snippet")?.textContent).toContain("seiko");
+		expect(pane().querySelector(".p-history-snippet")?.textContent).toContain("quartz");
 	});
 
 	// ── Paging the browse listing (ADR-174) ──────────────────────────────────
@@ -424,13 +425,13 @@ describe("conversation picker (ADR-143)", () => {
 	});
 });
 
-// ── The note dimension and auto-widening (ADR-168) ───────────────────────────
+// ── Titles, and meaning through Schreibstube (ADR-223) ───────────────────────
 //
-// Search stays conversation-shaped: widening adds conversations that matched
-// through a note they attached or cited, never a second kind of row. Because
-// those rows do not visibly contain the query, the panel must say so — a group
-// header, a `via …` line per row, and a chip that undoes it.
-describe("note scope and auto-widening (ADR-168)", () => {
+// Without Schreibstube the box searches titles and nothing else. With it, the
+// conversations it finds by meaning join below the title hits after a pause in
+// typing, under their own header, and an answer for a query that moved on is
+// dropped.
+describe("title search and search by meaning (ADR-223)", () => {
 	let plugin: InstanceType<typeof PythiaPlugin>;
 
 	beforeEach(async () => {
@@ -438,19 +439,17 @@ describe("note scope and auto-widening (ADR-168)", () => {
 		plugin = await makePlugin();
 	});
 
-	/** One conversation whose only link to "mietvertrag" is an attached note, plus
-	 *  two decoys so the browse list is not trivially short. */
-	async function seedWithNote(): Promise<void> {
-		await seedConversation(plugin, {
-			name: "Tuesday chat",
-			messages: [{ ...userMsg("n1", "what do you think about this"), attachedNotes: ["Recht/Mietvertrag.md"] }],
-		} as unknown as Partial<Conversation>);
+	async function seed(): Promise<void> {
+		await seedConversation(plugin, { name: "Einrichtung Seestraße", messages: [userMsg("e1", "die Küche soll hell werden")] } as Partial<Conversation>);
 		await seedConversation(plugin, { name: "Tax filing", messages: [userMsg("t1", "quarterly deadlines")] } as Partial<Conversation>);
 		await seedConversation(plugin, { name: "Quartz watches", messages: [userMsg("q1", "the seiko astron")] } as Partial<Conversation>);
 	}
 
+	const idOf = (name: string): string => plugin.conversations.find((c) => c.name === name)!.id;
 	const open = (view: PythiaSidebarView): void =>
 		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+	/** Past the meaning pause (300 ms) and the answer's microtask. */
+	const afterMeaning = (): Promise<void> => new Promise((r) => setTimeout(r, 380));
 
 	async function search(pane: () => Element, text: string): Promise<void> {
 		const input = panelInput(pane);
@@ -459,73 +458,75 @@ describe("note scope and auto-widening (ADR-168)", () => {
 		await settle();
 	}
 
-	it("a plain query does not reach into attached notes on its own merit", async () => {
-		// It surfaces only under the widened group — never silently mixed into the
-		// conversation-text hits.
-		await seedWithNote();
+	it("without Schreibstube, a word only in a message finds nothing", async () => {
+		await seed();
+		plugin.searchConversationsByMeaning = () => null;
 		const { view, pane } = await mountView(plugin);
 		open(view);
-		await search(pane, "mietvertrag");
-
-		expect(pane().querySelector(".p-history-group")?.textContent).toBe("ALSO IN NOTES");
-		expect(historyRows(pane)).toHaveLength(1);
-	});
-
-	it("tells the user why a widened row is there, and which note did it", async () => {
-		await seedWithNote();
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "mietvertrag");
-
-		const via = pane().querySelector<HTMLElement>(".p-history-via");
-		expect(via).not.toBeNull();
-		expect(via!.textContent).toContain("Mietvertrag");   // the basename, no .md, no brackets
-		expect(pane().querySelector(".p-history-chip-label")?.textContent).toBe("Widened to notes");
-	});
-
-	it("the chip's ✕ writes the scope into the box — the grammar is the control", async () => {
-		await seedWithNote();
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "mietvertrag");
-
-		pane().querySelector<HTMLElement>(".p-history-chip-clear")!
-			.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-
-		expect(panelInput(pane).value).toBe("conv: mietvertrag");
-		expect(historyRows(pane)).toHaveLength(0);           // conversations only, and none match
-		expect(pane().querySelector(".p-history-chip")).toBeNull();
-	});
-
-	it("an explicit note: query is not announced — the user asked for it", async () => {
-		await seedWithNote();
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "note: mietvertrag");
-
-		expect(historyRows(pane)).toHaveLength(1);
-		expect(pane().querySelector(".p-history-chip")).toBeNull();      // no chip
-		expect(pane().querySelector(".p-history-group")).toBeNull();      // no widened group
-		expect(pane().querySelector(".p-history-via")).not.toBeNull();    // but still says which note
-	});
-
-	it("a bare scope prefix keeps browsing until something is typed after it", async () => {
-		await seedWithNote();
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "note:");
-
-		expect(historyRows(pane)).toHaveLength(3);                        // the full browse list
-		expect(pane().querySelector(".p-history-group")?.textContent).not.toBe("ALSO IN NOTES");
-	});
-
-	it("never widens while picking a conversation (ADR-143)", async () => {
-		await seedWithNote();
-		const { view, pane } = await mountView(plugin);
-		view.pickConversation({ onPick: () => {}, placeholder: "Link with conversation…" });
-		await search(pane, "mietvertrag");
+		await search(pane, "küche");
+		await afterMeaning();
 
 		expect(historyRows(pane)).toHaveLength(0);
-		expect(pane().querySelector(".p-history-chip")).toBeNull();
+		expect(pane().querySelector(".p-history-group")).toBeNull();
+	});
+
+	it("with Schreibstube, what it finds by meaning joins below the titles", async () => {
+		await seed();
+		const asked: string[] = [];
+		plugin.searchConversationsByMeaning = (text) => {
+			asked.push(text);
+			return Promise.resolve([idOf("Einrichtung Seestraße")]);
+		};
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "küche");
+		expect(historyRows(pane)).toHaveLength(0);                  // titles answer at once: nothing
+
+		await afterMeaning();
+		expect(asked).toEqual(["küche"]);
+		expect(pane().querySelector(".p-history-group")?.textContent).toBe("BY MEANING · SCHREIBSTUBE");
+		expect(historyRows(pane).map((r) => r.querySelector(".p-history-row-title")?.textContent))
+			.toEqual(["Einrichtung Seestraße"]);
+		expect(pane().querySelector(".p-nav-empty")?.hasAttribute("hidden") ?? true).toBe(true);
+	});
+
+	it("does not repeat a title hit under meaning", async () => {
+		await seed();
+		plugin.searchConversationsByMeaning = () => Promise.resolve([idOf("Quartz watches")]);
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "quartz");
+		await afterMeaning();
+
+		expect(historyRows(pane)).toHaveLength(1);
+		expect(pane().querySelector(".p-history-group")).toBeNull();
+	});
+
+	it("drops an answer for a query that moved on", async () => {
+		await seed();
+		let answer: (ids: string[]) => void = () => undefined;
+		plugin.searchConversationsByMeaning = () => new Promise((r) => (answer = r));
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "küche");
+		await afterMeaning();
+		panelInput(pane).value = "kitchen";                           // typed on, not yet rebuilt
+		answer([idOf("Einrichtung Seestraße")]);
+		await tick();
+
+		expect(historyRows(pane)).toHaveLength(0);
+	});
+
+	it("never offers the conversation being linked from, whoever found it (ADR-143)", async () => {
+		await seed();
+		const self = idOf("Einrichtung Seestraße");
+		plugin.searchConversationsByMeaning = () => Promise.resolve([self, idOf("Tax filing")]);
+		const { view, pane } = await mountView(plugin);
+		view.pickConversation({ excludeId: self, onPick: () => {}, placeholder: "Link with conversation…" });
+		await search(pane, "küche");
+		await afterMeaning();
+
+		expect(historyRows(pane).map((r) => r.querySelector(".p-history-row-title")?.textContent))
+			.toEqual(["Tax filing"]);
 	});
 });

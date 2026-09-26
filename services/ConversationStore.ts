@@ -13,9 +13,28 @@ export class ConversationStore {
 	private _conversations: Conversation[] = [];
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
 	private dirtyIds = new Set<string>();
+	/** Told when the list or a conversation in it changed — Schreibstube re-lists
+	 *  on its next question rather than on every save (ADR-223). */
+	private listeners = new Set<() => void>();
 
 	constructor(plugin: PythiaPlugin) {
 		this.plugin = plugin;
+	}
+
+	/** Subscribe to changes; returns the unsubscribe. */
+	onChange(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	private notify(): void {
+		for (const listener of this.listeners) {
+			try {
+				listener();
+			} catch (e) {
+				debugLog(this.plugin.settings, "conversation change listener failed:", e);
+			}
+		}
 	}
 
 	getAll(): Conversation[] {
@@ -25,6 +44,7 @@ export class ConversationStore {
 	/** Replace the whole list — the only writer of the array reference. */
 	setAll(conversations: Conversation[]): void {
 		this._conversations = conversations;
+		this.notify();
 	}
 
 	getById(id: string): Conversation | undefined {
@@ -46,6 +66,7 @@ export class ConversationStore {
 	 *  conversation is created externally and added to the array. */
 	markDirty(id: string): void {
 		this.dirtyIds.add(id);
+		this.notify();
 	}
 
 	async save(conversation: Conversation): Promise<void> {
@@ -58,6 +79,7 @@ export class ConversationStore {
 		this._conversations[idx] = conversation;
 		this.dirtyIds.add(conversation.id);
 		this.schedulePersist();
+		this.notify();
 	}
 
 	/**
@@ -70,12 +92,14 @@ export class ConversationStore {
 		if (ids.length === 0) return;
 		for (const id of ids) this.dirtyIds.add(id);
 		this.schedulePersist();
+		this.notify();
 	}
 
 	async delete(id: string): Promise<void> {
 		this._conversations = this._conversations.filter((c) => c.id !== id);
 		this.dirtyIds.delete(id);
 		this.cancelPersist();
+		this.notify();
 		await this.plugin.saveConversations();
 	}
 

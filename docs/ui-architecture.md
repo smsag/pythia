@@ -77,7 +77,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 
 ## 3. The other surfaces
 
-- **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (`services/conversationSearch.ts`), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
+- **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (titles via `services/conversationFinder.ts`, meaning via Schreibstube — ADR-223), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
 - **Pin strip:** `.p-pins`, `PinController`. One pin shown at a time — collapsed to one line (‹ n/m › · ↗), open for the content, copy and ✕. Pinned from the selection strip's *Pin* or a block's pin icon. Every jump in the chat lands below it (`scrollChatTo`).
 - **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts.
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Star · Fork · Merge · Define · Person.

@@ -9,16 +9,20 @@ import { DeleteConversationModal } from "../suggest/DeleteConversationModal";
 import { archiveFolderOf } from "../services/conversationArchive";
 import {
 	buildConversationFields,
-	searchConversations,
 	bestMatchSnippet,
 	type ConversationFields,
 } from "../services/conversationSearch";
-import { noteBasename } from "../services/pathUtils";
+import {
+	MEANING_DEBOUNCE_MS,
+	meaningOnly,
+	meaningQuery,
+	searchTitles,
+	SEARCH_RESULT_LIMIT,
+} from "../services/conversationFinder";
 import { keyboardOverlap, readKeyboardHeight, watchViewport } from "./keyboardInset";
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { RelatedMode } from "./RelatedMode";
-import { renderHistoryChip } from "./historyChip";
 
 /**
  * Conversation rows drawn per page of the browse listing (ADR-174). A source
@@ -258,45 +262,21 @@ export class HistoryController {
 			return f;
 		};
 
-		// Auto-widening into the note dimension (ADR-168) is something the user did
-		// not ask for, so it is never silent: a chip, a group header, a `via …` line
-		// on every widened row — and on a phone, where the chip is easiest to miss,
-		// one Notice per panel open.
-		let widenActive = false;
-		let widenAnnounced = false;
-		const announceWiden = (): void => {
-			if (!Platform.isMobile || widenAnnounced) return;
-			widenAnnounced = true;
-			new Notice(t("widenedNotice"));
-		};
-
 		// Keyboard selection over the rendered conversation rows (group headers are
 		// not selectable). Rebuilt on every buildList; ↑/↓ move, Enter opens.
 		let rows: { conv: Conversation; el: HTMLElement }[] = [];
+		// The pending question to Schreibstube (ADR-223), cancelled by the next build.
+		let meaningTimer: ReturnType<typeof setTimeout> | null = null;
 		let selectedIdx = 0;
 		const paintSelection = () => {
 			rows.forEach((r, i) => r.el.toggleClass("selected", i === selectedIdx));
 			rows[selectedIdx]?.el.scrollIntoView({ block: "nearest" });
 		};
 
-		// ── Chips (ADR-109 related · ADR-168 widened) ─────────────────
+		// ── Chip (ADR-109 related) ─────────────────
 		const renderChip = () => {
 			chipEl.empty();
-			if (related.renderChip()) return;
-			// Undoing an automatic widening writes the scope into the box rather than
-			// flipping a hidden flag: the grammar is the control, so the ✕ is also
-			// where the user learns it exists.
-			if (widenActive) {
-				renderHistoryChip(chipEl, {
-					label: t("widenedChip"),
-					tooltip: t("widenedClearTooltip"),
-					onClear: () => {
-						input.value = `conv: ${input.value.trim()}`;
-						syncClear();
-						buildList(input.value);
-					},
-				});
-			}
+			related.renderChip();
 		};
 
 		const related = new RelatedMode({
@@ -348,7 +328,7 @@ export class HistoryController {
 			for (const siblings of forksBySource.values()) siblings.sort(byUpdatedAtDesc);
 		};
 
-		const rowSub = (conv: Conversation, isFork: boolean, viaNotes?: string[]): HTMLElement => {
+		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
 				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
@@ -365,16 +345,6 @@ export class HistoryController {
 					if (priced) sub.createSpan({ cls: "p-history-cost", text: ` · ≈ ${formatCost(usd)}${unpriced ? "+" : ""}` });
 				}
 			}
-			// Why this row is here (ADR-168): the query was found in a note the
-			// conversation attached or cited, not in anything visible on the row. A
-			// bare vault name, no brackets, as in the sources row (ADR-153).
-			if (viaNotes?.length) {
-				const extra = viaNotes.length > 1 ? ` +${viaNotes.length - 1}` : "";
-				sub.createSpan({
-					cls: "p-history-via",
-					text: ` · ${t("viaNote", { name: noteBasename(viaNotes[0]) })}${extra}`,
-				});
-			}
 			return sub;
 		};
 
@@ -384,8 +354,7 @@ export class HistoryController {
 			conv: Conversation,
 			isFork: boolean,
 			indentFork: boolean,
-			snippetTokens?: string[],
-			viaNotes?: string[]
+			snippetTokens?: string[]
 		): void => {
 			if (!selectable(conv)) return;
 			const row = listEl.createDiv({ cls: indentFork ? "p-history-row fork" : "p-history-row" });
@@ -393,7 +362,7 @@ export class HistoryController {
 			if (isFork) setIcon(row.createSpan({ cls: "p-switcher-fork-icon" }), "git-branch");
 			const main = row.createDiv({ cls: "p-history-main" });
 			main.createDiv({ cls: "p-history-row-title", text: conv.name });
-			main.appendChild(rowSub(conv, isFork, viaNotes));
+			main.appendChild(rowSub(conv, isFork));
 			if (snippetTokens) {
 				// fieldsFor is the panel-lifetime memo, so the line tokens behind the
 				// snippet are built once per conversation, not once per keystroke.
@@ -442,30 +411,42 @@ export class HistoryController {
 			const byId = new Map(all.map((c) => [c.id, c]));
 			indexForks();
 
-			// Active query → flat list ranked by content relevance (TF-IDF over
-			// title + summary + messages, and over attached/cited note names when
-			// the scope asks for it), best match first, with match snippets. The
-			// date-grouped/fork-indented layout resumes when the box is empty — and
-			// a bare scope prefix ("note:") counts as empty until something is typed
-			// after it.
-			const outcome = q ? searchConversations(query, all, all.map(fieldsFor), { picking: !!pick }) : null;
-			widenActive = (outcome?.widened.length ?? 0) > 0;
-			if (outcome && outcome.queryTokens.length > 0) {
-				renderChip();
-				const addRow = (r: { conversation: Conversation; matchedNotes: string[] }) => {
-					const isFork = !!r.conversation.forkedFromId && byId.has(r.conversation.forkedFromId);
-					makeRow(r.conversation, isFork, false, outcome.queryTokens, r.matchedNotes);
+			// Active query → the conversations whose title holds every typed word,
+			// best first, with match snippets (ADR-223). When Schreibstube can
+			// answer, the conversations it finds by meaning join below them after
+			// a pause in typing; the title rows never wait for it. The date-grouped
+			// layout resumes when the box is empty.
+			if (meaningTimer !== null) { clearTimeout(meaningTimer); meaningTimer = null; }
+			const search = q ? searchTitles(query, all) : null;
+			if (search && search.queryTokens.length > 0) {
+				const addRow = (conv: Conversation) => {
+					const isFork = !!conv.forkedFromId && byId.has(conv.forkedFromId);
+					makeRow(conv, isFork, false, search.queryTokens);
 				};
-				for (const r of outcome.primary) addRow(r);
-				if (outcome.widened.length > 0) {
-					listEl.createDiv({ cls: "p-history-group", text: t("histNotesGroup") });
-					for (const r of outcome.widened) addRow(r);
-					announceWiden();
-				}
-				if (!listEl.hasChildNodes()) {
-					listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
-				}
+				for (const conv of search.hits) addRow(conv);
+				const empty = listEl.createDiv({ cls: "p-nav-empty", text: t("navNoChapters") });
+				empty.hidden = search.hits.length > 0;
 				paintSelection();
+
+				const text = meaningQuery(query);
+				if (text) {
+					meaningTimer = setTimeout(() => {
+						meaningTimer = null;
+						// Null when Schreibstube is not there to ask (ADR-223).
+						const asked = this.d.plugin.searchConversationsByMeaning(text, SEARCH_RESULT_LIMIT);
+						if (!asked) return;
+						void asked.then((ids) => {
+							// The box moved on, or the panel closed: this answer is stale.
+							if (!overlay.isConnected || input.value !== query) return;
+							const extra = meaningOnly(search.hits, ids, byId).filter(selectable);
+							if (extra.length === 0) return;
+							empty.hidden = true;
+							listEl.createDiv({ cls: "p-history-group", text: t("histMeaningGroup") });
+							for (const conv of extra) addRow(conv);
+							paintSelection();
+						});
+					}, MEANING_DEBOUNCE_MS);
+				}
 				return;
 			}
 			renderChip();

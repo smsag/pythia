@@ -3,43 +3,47 @@ import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 import {
 	buildConversationFields,
-	searchConversations,
 	bestMatchSnippet,
 	type ConversationFields,
 } from "../services/conversationSearch";
-import { noteBasename } from "../services/pathUtils";
+import {
+	MEANING_DEBOUNCE_MS,
+	meaningOnly,
+	meaningQuery,
+	searchTitles,
+	SEARCH_RESULT_LIMIT,
+} from "../services/conversationFinder";
 import { formatDate } from "../services/messageUtils";
 
 export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	private conversations: Conversation[];
+	private byId: Map<string, Conversation>;
 	private onChoose: (conv: Conversation) => void;
 	private onDelete?: (conv: Conversation) => void;
-	/** Searchable fields per conversation, aligned by index to `conversations`.
-	 *  Built once here so each keystroke only re-scores, never re-concatenates. */
-	private fields: ConversationFields[];
-	/** Fields by conversation id — `renderSuggestion` receives a conversation, not
-	 *  an index, and the snippet needs that conversation's cached lines. */
-	private fieldsById: Map<string, ConversationFields>;
+	/** Schreibstube's search by meaning, or null when it is not there (ADR-223). */
+	private searchByMeaning?: (text: string, limit: number) => Promise<string[]> | null;
+	/** Searchable fields by conversation id, built on first use: the snippet
+	 *  needs a conversation's tokenized lines, and most rows are never drawn. */
+	private fieldsById = new Map<string, ConversationFields>();
 	/** Query tokens from the latest getSuggestions call, reused to compute the
 	 *  match snippet while rendering each row. */
 	private queryTokens: string[] = [];
-	/** Why each row surfaced, when it surfaced through an attached or cited note
-	 *  (ADR-168) — the palette's equivalent of the panel's `via …` line. A row the
-	 *  user cannot explain is worse than no row. */
-	private matchedNotes = new Map<string, string[]>();
+	/** The latest query, so an answer that arrives after the next keystroke is dropped. */
+	private latest = "";
 
 	constructor(
 		app: App,
 		conversations: Conversation[],
 		onChoose: (conv: Conversation) => void,
-		onDelete?: (conv: Conversation) => void
+		onDelete?: (conv: Conversation) => void,
+		searchByMeaning?: (text: string, limit: number) => Promise<string[]> | null
 	) {
 		super(app);
 		this.conversations = conversations;
+		this.byId = new Map(conversations.map((c) => [c.id, c]));
 		this.onChoose = onChoose;
 		this.onDelete = onDelete;
-		this.fields = conversations.map(buildConversationFields);
-		this.fieldsById = new Map(conversations.map((c, i) => [c.id, this.fields[i]]));
+		this.searchByMeaning = searchByMeaning;
 		this.setPlaceholder(t("searchConversations"));
 		this.setInstructions([
 			{ command: "↑↓", purpose: t("instrNavigate") },
@@ -48,18 +52,31 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 		]);
 	}
 
-	getSuggestions(query: string): Conversation[] {
-		// The same scope grammar and the same auto-widening as the in-view panel
-		// (ADR-168) — one search, two entry points. Widened rows come last and each
-		// says which note put it there.
-		const outcome = searchConversations(query, this.conversations, this.fields);
-		this.queryTokens = outcome.queryTokens;
-		this.matchedNotes = new Map();
-		const rows = [...outcome.primary, ...outcome.widened];
-		for (const r of rows) {
-			if (r.matchedNotes.length > 0) this.matchedNotes.set(r.conversation.id, r.matchedNotes);
+	/** The same search as the panel (ADR-223): titles at once; with Schreibstube,
+	 *  after a pause in typing, what it finds by meaning below them. */
+	getSuggestions(query: string): Conversation[] | Promise<Conversation[]> {
+		this.latest = query;
+		const { queryTokens, hits } = searchTitles(query, this.conversations);
+		this.queryTokens = queryTokens;
+		// Nothing typed: the newest, as the palette always opened.
+		if (queryTokens.length === 0) {
+			return [...this.conversations]
+				.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+				.slice(0, SEARCH_RESULT_LIMIT);
 		}
-		return rows.map((r) => r.conversation);
+		const text = meaningQuery(query);
+		if (!text || !this.searchByMeaning) return hits;
+		return new Promise((resolve) => {
+			setTimeout(() => {
+				// Superseded: never settle, so an old list cannot land over a newer one.
+				if (this.latest !== query) return;
+				const asked = this.searchByMeaning?.(text, SEARCH_RESULT_LIMIT);
+				if (!asked) return resolve(hits);
+				void asked
+					.then((ids) => resolve([...hits, ...meaningOnly(hits, ids, this.byId)]))
+					.catch(() => resolve(hits));
+			}, MEANING_DEBOUNCE_MS);
+		});
 	}
 
 	renderSuggestion(conv: Conversation, el: HTMLElement): void {
@@ -71,16 +88,12 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 			cls: "pythia-conv-suggest-title",
 			text: date ? `${conv.name}  [${date}]` : conv.name,
 		});
-		const via = this.matchedNotes.get(conv.id);
-		if (via?.length) {
-			const extra = via.length > 1 ? ` +${via.length - 1}` : "";
-			text.createDiv({
-				cls: "pythia-conv-suggest-snippet",
-				text: `${t("viaNote", { name: noteBasename(via[0]) })}${extra}`,
-			});
+		let fields = this.fieldsById.get(conv.id);
+		if (!fields) {
+			fields = buildConversationFields(conv);
+			this.fieldsById.set(conv.id, fields);
 		}
-		const fields = this.fieldsById.get(conv.id);
-		const snippet = fields ? bestMatchSnippet(this.queryTokens, conv, fields) : null;
+		const snippet = bestMatchSnippet(this.queryTokens, conv, fields);
 		if (snippet) {
 			text.createDiv({ cls: "pythia-conv-suggest-snippet", text: snippet });
 		}

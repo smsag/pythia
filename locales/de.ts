@@ -116,12 +116,8 @@ const de: Strings = {
 
 	// ── Quick switcher / history ──────────────────────────────────────────────
 	switcherClear:           "Suche löschen",
-	switcherSearchPlaceholder: "Suchen — notiz: erweitert",
-	histNotesGroup:            "AUCH IN NOTIZEN",
-	viaNote:                   "über {{name}}",
-	widenedChip:               "Auf Notizen erweitert",
-	widenedClearTooltip:       "Nur Gespräche",
-	widenedNotice:             "Wenige Treffer — angehängte Notizen werden mitgesucht.",
+	switcherSearchPlaceholder: "Gespräche suchen",
+	histMeaningGroup:          "NACH BEDEUTUNG · SCHREIBSTUBE",
 	msgCount:                  "{{n}} Nachrichten",
 	msgCountShort:             "{{n}} Nachr.",
 	branchLabel:               "Abzweigung",

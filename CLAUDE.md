@@ -25,8 +25,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename, safeNoteName, normalizeVaultPath, yamlString — the only file-name/path/YAML helpers (ADR-159)
     tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) + applyRelevanceFloor (ADR-168)
-    searchScope.ts            ← pure: parseScope (note:/conv:/all:) + shouldWiden — the search box's grammar and the auto-widen rule (ADR-168)
-    conversationSearch.ts     ← pure: buildConversationFields (title ×3 · notes ×2 · summary · body), noteRefs, rankConversations, searchConversations, bestMatchSnippet (ADR-106/168)
+    conversationFinder.ts     ← pure: searchTitles (every typed word in the title, via matchStrength), meaningQuery, meaningOnly — the search box (ADR-223)
+    conversationSearch.ts     ← pure: bestMatchSnippet + the lazily built snippetLines cache — why a row is in the results (ADR-106/170/223)
+    schreibstubeLink.ts       ← the ONE reader of app.plugins: readSchreibstubeApi (feature-detected API v1), toSourceItem, SchreibstubeLink (hands the conversations over, asks search/related, answers [] on any failure) (ADR-223)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
