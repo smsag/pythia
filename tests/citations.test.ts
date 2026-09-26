@@ -4,7 +4,7 @@ import {
 	stripCitationMarkers,
 	eachCitationSegment,
 	stripForeignCitations,
-	appendWebSources,
+	resolveWebCitations,
 } from "../services/citations";
 
 describe("parseCitations", () => {
@@ -88,36 +88,51 @@ describe("stripForeignCitations", () => {
 	});
 });
 
-describe("appendWebSources", () => {
-	it("appends deduped web sources numbered after existing ones, domain as title", () => {
-		const base = parseCitations("A⟦cite:note:Memo.md⟧");
-		const out = appendWebSources(base, [
-			{ title: "ECB", url: "https://www.ecb.europa.eu/x" },
-			{ title: "ECB dup", url: "https://www.ecb.europa.eu/x" },
-			{ title: "HB", url: "https://handelsblatt.com/y" },
-		]);
-		expect(out.map((s) => [s.n, s.kind, s.title])).toEqual([
-			[1, "vault", "Memo"],
-			[2, "web", "ecb.europa.eu"],
-			[3, "web", "handelsblatt.com"],
-		]);
-		// full URL retained in ref for opening
-		expect(out[1].ref).toBe("https://www.ecb.europa.eu/x");
+describe("resolveWebCitations (ADR-226)", () => {
+	const results = [
+		{ n: 1, title: "ECB", url: "https://www.ecb.europa.eu/press/x" },
+		{ n: 2, title: "HB", url: "https://handelsblatt.com/y" },
+		{ n: 3, title: "HB 2", url: "https://handelsblatt.com/z" },
+	];
+
+	it("a numbered marker opens THAT article — the full URL, not the site's homepage", () => {
+		const { sources } = resolveWebCitations(parseCitations("Rate cut⟦cite:web:3⟧."), results);
+		expect(sources[0]).toMatchObject({ n: 1, kind: "web", ref: "https://handelsblatt.com/z", title: "handelsblatt.com", cite: "3" });
 	});
 
-	it("dedupes a Tavily result against a model-emitted marker for the same domain", () => {
-		// Model cited ⟦cite:web:example.com⟧ (ref = bare domain); Tavily returns a
-		// full URL on the same domain. They must collapse to ONE source (dedup by
-		// domain), and the model's domain source is kept so its inline chip still
-		// maps. A different-domain Tavily result is still appended.
-		const base = parseCitations("Fact⟦cite:web:example.com⟧.");
-		const out = appendWebSources(base, [
-			{ title: "same", url: "https://example.com/article" },
-			{ title: "other", url: "https://other.org/x" },
+	it("keeps two articles from one site as two sources (deduplicated by URL, not domain)", () => {
+		const { sources } = resolveWebCitations(parseCitations("A⟦cite:web:2⟧ B⟦cite:web:3⟧"), results);
+		expect(sources.map((s) => s.ref)).toEqual([
+			"https://handelsblatt.com/y", "https://handelsblatt.com/z", "https://www.ecb.europa.eu/press/x",
 		]);
-		expect(out.map((s) => [s.n, s.kind, s.ref])).toEqual([
-			[1, "web", "example.com"],
-			[2, "web", "https://other.org/x"],
+	});
+
+	it("appends every uncited result once, after the cited ones, with vault sources untouched", () => {
+		const { sources } = resolveWebCitations(parseCitations("A⟦cite:note:Memo.md⟧ B⟦cite:web:2⟧"), results);
+		expect(sources.map((s) => [s.n, s.kind, s.title])).toEqual([
+			[1, "vault", "Memo"],
+			[2, "web", "handelsblatt.com"],
+			[3, "web", "ecb.europa.eu"],
+			[4, "web", "handelsblatt.com"],
 		]);
+	});
+
+	it("a domain marker (an older message, or a model that ignored the instruction) takes the first result from that domain", () => {
+		const { sources } = resolveWebCitations(parseCitations("Fact⟦cite:web:handelsblatt.com⟧."), results);
+		expect(sources[0]).toMatchObject({ ref: "https://handelsblatt.com/y", cite: "handelsblatt.com" });
+		expect(sources).toHaveLength(3);
+	});
+
+	it("drops a marker no fetched result answers for — a made-up citation is not a source", () => {
+		const { sources, dropped } = resolveWebCitations(parseCitations("X⟦cite:web:9⟧ Y⟦cite:web:nowhere.org⟧"), results);
+		expect(dropped).toEqual(["9", "nowhere.org"]);
+		expect(sources.every((s) => s.ref.startsWith("https://"))).toBe(true);
+	});
+
+	it("the chip is found by what the marker said, and an unresolved marker draws no chip", () => {
+		const { sources } = resolveWebCitations(parseCitations("A⟦cite:web:2⟧ B⟦cite:web:9⟧"), results);
+		const seen: (string | null)[] = [];
+		eachCitationSegment("A⟦cite:web:2⟧ B⟦cite:web:9⟧", sources, () => {}, (s) => seen.push(s ? s.ref : null));
+		expect(seen).toEqual(["https://handelsblatt.com/y", null]);
 	});
 });

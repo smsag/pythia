@@ -2,7 +2,7 @@ import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import { noteWriteResult } from "./noteWrites";
-import type { WebSearchService } from "./WebSearchService";
+import type { WebSearchService, WebToolResult } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
 import type { ToolCall, ToolDefinition } from "../models/types";
@@ -15,7 +15,7 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 		`Call this BEFORE answering whenever the question touches anything that can change over time, or that you cannot verify from your training data or the provided context — recent events, news, prices, releases, versions, standings, statistics, dates, or a person's current role or status. ` +
 		`When you are not fully confident your knowledge is current, search rather than answering from memory: a needless search is far cheaper than a confidently outdated answer. You may search more than once to refine the query. ` +
 		`The filters are optional and off by default: use topic "news" for events and announcements, "finance" for markets and companies; time_range when only recent pages will do; include_domains when the user names a site, exclude_domains to leave sites out. If a filtered search finds nothing, search again without the filters. ` +
-		`Results come back with source URLs; cite them inline with the ⟦cite:web:<domain>⟧ marker where you use them, and do not add a separate sources list — the app lists the sources automatically.`,
+		`Results come back numbered; cite a result inline with ⟦cite:web:<n>⟧ using its number where you use it, and do not add a separate sources list — the app lists the sources automatically. At most 5 searches per answer.`,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -54,7 +54,7 @@ const READ_URL_TOOL: ToolDefinition = {
 	name: "read_url",
 	description:
 		`Read the full text of one public web page. Use it when the user gives you a link, or when a search result looks right but its snippet is not enough — instead of searching for a page whose address you already have. ` +
-		`Long pages are cut off, and the result says so. Cite what you use with the ⟦cite:web:<domain>⟧ marker; the app lists the page as a source automatically.`,
+		`Long pages are cut off, and the result says so. The page comes back numbered; cite what you use with ⟦cite:web:<n>⟧ using that number. The app lists the page as a source automatically.`,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -217,12 +217,16 @@ export class ToolHandler {
 	 */
 	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[], readScope?: WebReadScope): Promise<string> {
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
+		// The web tools are gated by research, not the write mode, and say so.
+		if (call.name === "web_search" || call.name === "read_url") {
+			return (await this.executeWeb(call, allowedTools, readScope)).text;
+		}
 		if (allowedTools && !allowedTools.has(call.name)) {
 			return `Error: tool "${call.name}" is not allowed in the current write mode.`;
 		}
 
-		// None of the three read-only tools is a vault write, so all are handled
-		// before the path/content validation below.
+		// render_chart is not a vault write either, so it too is handled before
+		// the path/content validation below.
 		//
 		// A chart reaching HERE means nobody intercepted the call, and so nobody
 		// can place the block — the send path and the comparison both do, through
@@ -233,20 +237,6 @@ export class ToolHandler {
 		if (call.name === "render_chart") {
 			const parsed = parseChartSpec(call.input);
 			return parsed.ok ? CHART_TOOL_UNPLACED : `Error: ${parsed.error}`;
-		}
-
-		if (call.name === "web_search") {
-			if (!this.webSearch) return "Error: web search is not available.";
-			const args = parseSearchArgs(call.input);
-			return args.ok ? this.webSearch.search(args.value) : `Error: ${args.error}`;
-		}
-
-		if (call.name === "read_url") {
-			if (!this.webSearch) return "Error: web search is not available.";
-			const url = parseReadUrlArgs(call.input);
-			if (!url.ok) return `Error: ${url.error}`;
-			const refused = readScope ? readScope.admit(url.value) : "read_url is not available here.";
-			return refused ? `Error: ${refused}` : this.webSearch.extract(url.value);
 		}
 
 		const path = call.input["path"];
@@ -300,6 +290,34 @@ export class ToolHandler {
 		}
 
 		return `Error: unknown tool "${call.name}"`;
+	}
+
+	/**
+	 * The two web tools, returning the numbered results as data beside the text
+	 * the model reads (ADR-226) — the sources row is built from `sources`, never
+	 * parsed back out of `text`. `firstN` is the number the first result gets,
+	 * so numbering runs on across every call in one answer. Never throws.
+	 */
+	async executeWeb(call: ToolCall, allowedTools?: Set<string>, readScope?: WebReadScope, firstN = 1): Promise<WebToolResult> {
+		const refuse = (text: string): WebToolResult => ({ text: `Error: ${text}`, sources: [], error: "other" });
+		if (call.name !== "web_search" && call.name !== "read_url") return refuse(`unknown tool "${call.name}"`);
+		if (allowedTools && !allowedTools.has(call.name)) {
+			return refuse(`tool "${call.name}" is not available: web research is off for this message.`);
+		}
+		if (!this.webSearch) return refuse("web search is not available.");
+		// Without a scope there is no budget and no allow-list: fail closed.
+		if (!readScope) return refuse(`${call.name} is not available here.`);
+
+		if (call.name === "web_search") {
+			const args = parseSearchArgs(call.input);
+			if (!args.ok) return refuse(args.error);
+			const over = readScope.admitSearch();
+			return over ? refuse(over) : this.webSearch.search(args.value, firstN);
+		}
+		const url = parseReadUrlArgs(call.input);
+		if (!url.ok) return refuse(url.error);
+		const refused = readScope.admit(url.value);
+		return refused ? refuse(refused) : this.webSearch.extract(url.value, firstN);
 	}
 
 	static allowedToolNames(writeMode: string, researchEnabled = false): Set<string> {

@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { makePlugin, mountView, seedConversation, userMsg, aiMsg, now } from "./helpers/viewHarness";
 import PythiaPlugin from "../main";
 import { PythiaSidebarView } from "../sidebar";
-import type { Conversation } from "../models/types";
+import type { Conversation, ToolCall } from "../models/types";
 import type { ComposerField } from "../ui/ComposerField";
 
 describe("view render — surfaces present on open (#124/#125)", () => {
@@ -479,6 +479,32 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 		sel.scrollToFavorite(conv.favorites![1]);
 		await new Promise((r) => setTimeout(r, 0));
 		expect(shown.some((m) => m.includes("no longer in this conversation"))).toBe(true);
+	});
+
+	it("a compared model gets web research when the prompt carries a link, and keeps the pages it read as sources (ADR-226)", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Compare web",
+			messages: [userMsg("u1", "what does https://example.com/essay argue?"), aiMsg("a1", "r1")],
+		} as Partial<Conversation>);
+		plugin.settings.webSearchAutoArm = true;
+		(plugin as unknown as { webSearchService: { hasApiKey(): boolean } }).webSearchService.hasApiKey = () => true;
+		(plugin as unknown as { toolHandler: { executeWeb: unknown } }).toolHandler.executeWeb = async (_c: unknown, _a: unknown, _s: unknown, firstN: number) =>
+			({ text: "page", sources: [{ n: firstN, title: "example.com", url: "https://example.com/essay" }] });
+		let armedResearch: boolean | undefined;
+		stubStream(plugin, async (c, _t, _n, append, done, _e, onToolCall) => {
+			armedResearch = (c as Conversation).researchMode;
+			await (onToolCall as (call: ToolCall) => Promise<string>)({ id: "t", name: "read_url", input: { url: "https://example.com/essay" } } as ToolCall);
+			append("It argues X⟦cite:web:1⟧.");
+			await done("It argues X⟦cite:web:1⟧.");
+		});
+		const { view } = await mountView(plugin);
+		comparisonOf(view).start("u1", "a1");
+		await (view as unknown as { comparisonController: { run(m: unknown): Promise<void> } }).comparisonController
+			.run({ id: "gpt-4o", provider: "openai", label: "GPT-4o" });
+
+		expect(armedResearch).toBe(true);
+		const candidate = conv.comparison!.candidates[1];
+		expect(candidate.sources?.[0]).toMatchObject({ kind: "web", ref: "https://example.com/essay", cite: "1" });
 	});
 
 	it("discarding restores the original answer", async () => {

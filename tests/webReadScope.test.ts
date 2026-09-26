@@ -48,3 +48,12 @@ describe("WebReadScope — only links Pythia can vouch for (ADR-217 addendum)", 
 		expect(scope.admit(links[MAX_READS_PER_TURN])).toMatch(new RegExp(`already read ${MAX_READS_PER_TURN} pages`));
 	});
 });
+
+describe("WebReadScope — searches per answer (ADR-226)", () => {
+	it("admits five searches and refuses the sixth with a reason the model can act on", async () => {
+		const { WebReadScope: Scope, MAX_SEARCHES_PER_TURN } = await import("../services/webReadScope");
+		const scope = new Scope();
+		for (let i = 0; i < MAX_SEARCHES_PER_TURN; i++) expect(scope.admitSearch()).toBeNull();
+		expect(scope.admitSearch()).toMatch(/already run 5 times .* Answer from the results you have/);
+	});
+});

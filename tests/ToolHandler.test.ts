@@ -386,8 +386,9 @@ describe("ToolHandler.allowedToolNames — research", () => {
 
 // ── ToolHandler — web_search execution ────────────────────────────────────────
 
-const makeSearch = (result = "web results"): WebSearchService =>
-	({ search: vi.fn().mockResolvedValue(result) } as unknown as WebSearchService);
+const makeSearch = (text = "web results"): WebSearchService =>
+	({ search: vi.fn().mockResolvedValue({ text, sources: [] }) } as unknown as WebSearchService);
+const anyScope = (): WebReadScope => scopeWith("");
 
 describe("ToolHandler — web_search", () => {
 	it("routes to the search service and returns its string result", async () => {
@@ -395,16 +396,16 @@ describe("ToolHandler — web_search", () => {
 		const handler = new ToolHandler(makeWriter(), search);
 		const result = await handler.execute(
 			call("web_search", { query: "latest news" }),
-			new Set(["web_search"])
+			new Set(["web_search"]), undefined, anyScope()
 		);
-		expect(search.search).toHaveBeenCalledWith({ query: "latest news" });
+		expect(search.search).toHaveBeenCalledWith({ query: "latest news" }, 1);
 		expect(result).toBe("Summary: X");
 	});
 
 	it("rejects a missing/empty query before calling the service", async () => {
 		const search = makeSearch();
 		const handler = new ToolHandler(makeWriter(), search);
-		const result = await handler.execute(call("web_search", { query: "  " }), new Set(["web_search"]));
+		const result = await handler.execute(call("web_search", { query: "  " }), new Set(["web_search"]), undefined, anyScope());
 		expect(result).toMatch(/query.*non-empty/i);
 		expect(search.search).not.toHaveBeenCalled();
 	});
@@ -412,7 +413,7 @@ describe("ToolHandler — web_search", () => {
 	it("returns an error when no search service is wired", async () => {
 		const result = await makeHandler().execute(
 			call("web_search", { query: "q" }),
-			new Set(["web_search"])
+			new Set(["web_search"]), undefined, anyScope()
 		);
 		expect(result).toMatch(/web search is not available/i);
 	});
@@ -420,8 +421,8 @@ describe("ToolHandler — web_search", () => {
 	it("is blocked when web_search is not in the allowed set", async () => {
 		const search = makeSearch();
 		const handler = new ToolHandler(makeWriter(), search);
-		const result = await handler.execute(call("web_search", { query: "q" }), new Set(["create_note"]));
-		expect(result).toMatch(/not allowed/i);
+		const result = await handler.execute(call("web_search", { query: "q" }), new Set(["create_note"]), undefined, anyScope());
+		expect(result).toMatch(/web research is off/i);
 		expect(search.search).not.toHaveBeenCalled();
 	});
 });
@@ -431,28 +432,28 @@ describe("ToolHandler — web_search filters and read_url (ADR-217)", () => {
 		const search = makeSearch();
 		await new ToolHandler(makeWriter(), search).execute(
 			call("web_search", { query: "q", topic: "news", include_domains: ["https://www.x.com/"] }),
-			new Set(["web_search"])
+			new Set(["web_search"]), undefined, anyScope()
 		);
-		expect(search.search).toHaveBeenCalledWith({ query: "q", topic: "news", includeDomains: ["x.com"] });
+		expect(search.search).toHaveBeenCalledWith({ query: "q", topic: "news", includeDomains: ["x.com"] }, 1);
 	});
 
 	it("returns the validator's reason for a bad filter, without calling the service", async () => {
 		const search = makeSearch();
 		const result = await new ToolHandler(makeWriter(), search).execute(
 			call("web_search", { query: "q", time_range: "hour" }),
-			new Set(["web_search"])
+			new Set(["web_search"]), undefined, anyScope()
 		);
 		expect(result).toMatch(/^Error: 'time_range'/);
 		expect(search.search).not.toHaveBeenCalled();
 	});
 
 	it("routes read_url to extract, and refuses a private address before any request", async () => {
-		const extract = vi.fn().mockResolvedValue("page");
+		const extract = vi.fn().mockResolvedValue({ text: "page", sources: [] });
 		const svc = { extract } as unknown as WebSearchService;
 		const handler = new ToolHandler(makeWriter(), svc);
 		const scope = scopeWith("https://example.com/a http://192.168.0.2/admin");
 		expect(await handler.execute(call("read_url", { url: "https://example.com/a" }), new Set(["read_url"]), undefined, scope)).toBe("page");
-		expect(extract).toHaveBeenCalledWith("https://example.com/a");
+		expect(extract).toHaveBeenCalledWith("https://example.com/a", 1);
 
 		const refused = await handler.execute(call("read_url", { url: "http://192.168.0.2/admin" }), new Set(["read_url"]), undefined, scope);
 		expect(refused).toMatch(/^Error: .*private or local address/);
@@ -462,7 +463,7 @@ describe("ToolHandler — web_search filters and read_url (ADR-217)", () => {
 	it("is blocked when research is off", async () => {
 		const extract = vi.fn();
 		const handler = new ToolHandler(makeWriter(), { extract } as unknown as WebSearchService);
-		expect(await handler.execute(call("read_url", { url: "https://e.com" }), ToolHandler.allowedToolNames("all"), undefined, scopeWith("https://e.com"))).toMatch(/not allowed/);
+		expect(await handler.execute(call("read_url", { url: "https://e.com" }), ToolHandler.allowedToolNames("all"), undefined, scopeWith("https://e.com"))).toMatch(/web research is off/);
 		expect(extract).not.toHaveBeenCalled();
 	});
 });
@@ -491,3 +492,38 @@ describe("ToolHandler — read_url provenance (ADR-217 addendum)", () => {
 		expect(extract).not.toHaveBeenCalled();
 	});
 });
+
+describe("ToolHandler.executeWeb (ADR-226)", () => {
+	it("returns the numbered sources as data and passes the answer's next number on", async () => {
+		const sources = [{ n: 6, title: "A", url: "https://a.com/1" }];
+		const search = { search: vi.fn().mockResolvedValue({ text: "t", sources }) } as unknown as WebSearchService;
+		const r = await new ToolHandler(makeWriter(), search).executeWeb(call("web_search", { query: "q" }), new Set(["web_search"]), anyScope(), 6);
+		expect(search.search).toHaveBeenCalledWith({ query: "q" }, 6);
+		expect(r.sources).toEqual(sources);
+	});
+
+	it("allows five searches per answer and refuses the sixth before any request", async () => {
+		const search = makeSearch();
+		const handler = new ToolHandler(makeWriter(), search);
+		const scope = anyScope();
+		for (let i = 0; i < 5; i++) {
+			expect((await handler.executeWeb(call("web_search", { query: `q${i}` }), new Set(["web_search"]), scope)).error).toBeUndefined();
+		}
+		const sixth = await handler.executeWeb(call("web_search", { query: "q6" }), new Set(["web_search"]), scope);
+		expect(sixth.text).toMatch(/^Error: web_search has already run 5 times/);
+		expect(search.search).toHaveBeenCalledTimes(5);
+	});
+
+	it("fails closed without a scope, for a search as for a page read", async () => {
+		const search = makeSearch();
+		const r = await new ToolHandler(makeWriter(), search).executeWeb(call("web_search", { query: "q" }), new Set(["web_search"]));
+		expect(r.text).toMatch(/^Error: web_search is not available here/);
+		expect(search.search).not.toHaveBeenCalled();
+	});
+
+	it("says research is off rather than blaming the write mode", async () => {
+		const r = await new ToolHandler(makeWriter(), makeSearch()).executeWeb(call("web_search", { query: "q" }), ToolHandler.allowedToolNames("all"), anyScope());
+		expect(r.text).toMatch(/web research is off/);
+	});
+});
+
