@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-234 (the glossary folder has an outside reader: Schreibstube reads each term note as a concept and adds `schreibstubeAvoid`; Pythia keeps keys it does not own).*
+*Last updated: 2026-09-26 — ADR-234 addendum (Schreibstube also reads `term_<lang>`, offering a term's translations as words to avoid; offered, never applied).*
+
+*Previously: 2026-09-26 — ADR-234 (the glossary folder has an outside reader: Schreibstube reads each term note as a concept and adds `schreibstubeAvoid`; Pythia keeps keys it does not own).*
 
 *Previously: 2026-09-26 — ADR-233 (the settings' resume mode preselects the Resume dialog; new conversations start on full history — closes D-63).*
 
@@ -5010,6 +5012,8 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - **The note format is the contract, not an API.** Schreibstube reads the notes through the metadata cache, so it works with Pythia switched off, and Pythia exposes nothing new. The note format was designed as the integration surface (ADR-149/150); this is its second reader after Bases.
 - **What Schreibstube reads:** `type` (a note is a term unless it says `person` or `theme`), `term` (else the file name), `language` (the inflection endings an avoided word tolerates), `source` (a `model` definition is labelled on its card) and the **first prose paragraph of the body** as the definition. A change to any of these, or to the definition coming first in the body (`renderBody`), breaks the reader; Schreibstube's `glossary-term-folder.test.ts` holds a copy of a real note as its fixture.
 - **Pythia never writes a key it does not own, and never drops one.** `save` swaps the body and leaves the frontmatter block intact (`replaceBody`); before this, every re-lookup deleted the whole block and re-added only Pythia's keys, which would have erased `schreibstubeAvoid` on the next lookup of the term.
-- **No rule comes from the model.** Pythia's translations (`term_<lang>`) are not turned into avoid rules automatically. Offering them as suggestions in Schreibstube is possible later; enforcing them is not.
+- **No rule comes from the model.** Pythia's translations (`term_<lang>`) are not turned into avoid rules automatically; enforcing them is not on offer.
+
+**Addendum (2026-09-26).** Schreibstube's *Add rule* dialog now **reads `term_<lang>`** and offers each translation, other than the note's own language, as a word to avoid; a tap fills the field and nothing is added until the person presses *Add*. That makes `term_<lang>` part of the contract above: renaming the key or storing translations elsewhere empties the offer silently. The rule stands — the translation is offered, never applied.
 
 **Guards.** `tests/glossarySave.test.ts` (a property Pythia did not write survives `save`, on an in-memory vault; fails on the old write) · Schreibstube's `glossary-term-folder.test.ts` and `glossary-registry.test.ts`.
