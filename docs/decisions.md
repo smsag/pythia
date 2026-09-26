@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-226 (web citations are numbered: `⟦cite:web:<n>⟧` opens that exact article; results come back as data, never re-read from text; a citation nothing fetched is dropped; auto-search arms only on a pasted link; five searches per answer; a rejected key or used-up plan says so; comparison runs get the same research rule and sources).*
+*Last updated: 2026-09-26 — ADR-227 (a follow-up can read an earlier answer's source: its page addresses ride in that answer's history and the read allow-list admits them; a `)` inside a link is kept when balanced; a Tavily call gives up after 30 s).*
+
+*Previously: 2026-09-26 — ADR-226 (web citations are numbered: `⟦cite:web:<n>⟧` opens that exact article; results come back as data, never re-read from text; a citation nothing fetched is dropped; auto-search arms only on a pasted link; five searches per answer; a rejected key or used-up plan says so; comparison runs get the same research rule and sources).*
 
 *Previously: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
 
@@ -4859,3 +4861,25 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - `tests/toolCallWeb.test.ts`: numbering across calls, one Notice per send, the chip settles on a throw.
 - `tests/viewRender.test.ts`: a compared model gets research on a linked prompt and keeps its page as a source.
 - `tests/sendPolicy.test.ts` / `tests/webSearchHeuristics.test.ts`: only a link arms the web.
+
+---
+
+## ADR-227 — Read an earlier answer's source; Wikipedia links; a timeout
+
+**Status:** Active · 2026-09-26 · **extends ADR-217 and ADR-226**; closes three rows of D-62
+
+**Context.** Three findings from the Tavily review that ADR-226 deferred:
+1. "Read source 2" after an answer could not work. `read_url` admits only a link the user gave or one this answer's own searches returned. More basically, the model never saw the address: history carried only the answer's text with `⟦cite:web:n⟧` markers.
+2. A Wikipedia link such as `…/Mercury_(planet)` was refused, because the link matcher stopped at `)`.
+3. A hung Tavily request held the answer forever. `requestUrl` cannot be aborted, and nothing timed it out.
+
+**Decision.**
+- **History carries the addresses.** `historyContent(m)` (`services/messageUtils.ts`) appends `[Web sources of this answer: 2. https://… · 3. https://…]` to an assistant message in history, numbered as its sources row numbers them. It is used by all three providers' history mapping, so it lives in one place. A bare-domain source from before ADR-226 is left out, because it is not a page. The text stored and shown is unchanged; this is only what the model reads.
+- **The read allow-list admits them.** `WebReadScope.forConversation` adds each earlier answer's web source exactly as stored (`addUrl`). These addresses are Tavily's, so the exfiltration guard still holds: a URL the model builds with data in it is still refused.
+- **Parentheses.** The matcher keeps `)` and `balanceParens` trims only an unmatched one. `…/Mercury_(planet)` stays whole, while the `)` closing a markdown link or a sentence is dropped.
+- **Timeout.** `post()` races the request against `WEB_REQUEST_TIMEOUT_MS` (30 s). A search takes 1–3 s. The late reply is ignored, not cancelled, since `requestUrl` has no abort. The model is told the call timed out.
+
+**Guards.**
+- `tests/OpenAIProvider.test.ts`: an earlier answer's web sources reach the request, numbered as the row; vault and bare-domain sources do not.
+- `tests/webReadScope.test.ts`: balanced parentheses are kept and unmatched ones dropped; a pasted Wikipedia link is admitted; an earlier answer's source is admitted, and the same address with data added is not.
+- `tests/webSearch.test.ts`: a request that never answers gives up at the timeout.

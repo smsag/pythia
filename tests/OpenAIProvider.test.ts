@@ -550,3 +550,35 @@ describe("OpenAIProvider — answer tabs never reach the model (ADR-219)", () =>
 		expect(sent).not.toContain("SENTINEL TAB");
 	});
 });
+
+describe("OpenAIProvider — an answer's web sources ride in its history (ADR-227)", () => {
+	it("lists the pages an earlier answer cited, numbered as its sources row, so 'read source 2' has an address", async () => {
+		createMock.mockImplementation(async () =>
+			chunkStream([
+				{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+				{ choices: [{}], usage: { prompt_tokens: 5, completion_tokens: 2 } },
+			])
+		);
+		const provider = new OpenAIProvider({} as never, makeSettings(), "key");
+		const conv = makeConv({
+			model: "gpt-4o",
+			messages: [
+				{ id: "u1", role: "user", content: "what happened", timestamp: "" },
+				{
+					id: "a1", role: "assistant", content: "It rained⟦cite:web:1⟧.", timestamp: "",
+					sources: [
+						{ n: 1, kind: "vault", ref: "Notes/Weather.md", title: "Weather" },
+						{ n: 2, kind: "web", ref: "https://news.example/rain", title: "news.example" },
+						{ n: 3, kind: "web", ref: "old.example", title: "old.example" },
+					],
+				},
+				{ id: "u2", role: "user", content: "read source 2", timestamp: "" },
+			],
+		});
+		await provider.streamMessage(conv, "read source 2", [], () => {}, () => {}, () => {});
+		const sent = JSON.stringify((createMock.mock.calls.at(-1)![0] as Record<string, unknown>).messages);
+		expect(sent).toContain("[Web sources of this answer: 2. https://news.example/rain]");
+		expect(sent).not.toContain("Notes/Weather.md");
+		expect(sent).not.toContain("old.example");
+	});
+});

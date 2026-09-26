@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import type { Conversation, ToolCall, EffortLevel } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
+import { historyContent, normalizeMessages, selectHistoryForSend, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
@@ -114,7 +114,7 @@ export class AnthropicService extends BaseProvider {
 			conversation.resumeMode
 		);
 		const historyMessages: ApiMessage[] = trimHistoryToBudget(
-			selected.map((m) => ({ role: m.role, content: m.content })),
+			selected.map((m) => ({ role: m.role, content: historyContent(m) })),
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),

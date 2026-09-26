@@ -23,6 +23,12 @@ const MAX_SNIPPET_CHARS = 500;
  *  so the model never mistakes the first 8 000 characters for the page. */
 export const MAX_EXTRACT_CHARS = 8000;
 
+/** How long one Tavily call may take before the answer goes on without it
+ *  (ADR-227). A search takes 1–3 s and a page read a few more; past this the
+ *  request is presumed hung. `requestUrl` cannot be aborted, so a late reply
+ *  is ignored rather than cancelled. */
+export const WEB_REQUEST_TIMEOUT_MS = 30_000;
+
 /** Fallback result count when the setting is unset or non-positive. */
 const DEFAULT_MAX_RESULTS = 5;
 
@@ -161,8 +167,10 @@ export class WebSearchService {
 	}
 
 	private async post(endpoint: string, body: Record<string, unknown>, what: string): Promise<PostResult> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		try {
-			const res = await requestUrl({
+			const timedOut = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), WEB_REQUEST_TIMEOUT_MS); });
+			const res = await Promise.race([timedOut, requestUrl({
 				url: endpoint,
 				method: "POST",
 				contentType: "application/json",
@@ -175,7 +183,10 @@ export class WebSearchService {
 				// Return the response instead of throwing on 4xx/5xx so we can
 				// surface a readable error string to the model.
 				throw: false,
-			});
+			})]);
+			if (res === "timeout") {
+				return { ok: false, kind: "other", error: `Error: ${what} timed out after ${WEB_REQUEST_TIMEOUT_MS / 1000} s. Answer from what you already have, or try once more.` };
+			}
 			if (res.status === 401 || res.status === 403) {
 				// Say what it is: a rejected key is fixed in settings, not by retrying.
 				return { ok: false, kind: "auth", error: `Error: web search key was rejected (HTTP ${res.status}). Ask the user to check the Tavily API key in Pythia settings.` };
@@ -195,6 +206,8 @@ export class WebSearchService {
 			return { ok: true, json: res.json };
 		} catch (err) {
 			return { ok: false, kind: "other", error: `Error: ${what} request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}` };
+		} finally {
+			clearTimeout(timer);
 		}
 	}
 }

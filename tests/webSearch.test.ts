@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("obsidian", () => ({ requestUrl: vi.fn() }));
 
 import { requestUrl } from "obsidian";
-import { WebSearchService, MAX_EXTRACT_CHARS, TAVILY_MAX_RESULTS } from "../services/WebSearchService";
+import { WebSearchService, MAX_EXTRACT_CHARS, TAVILY_MAX_RESULTS, WEB_REQUEST_TIMEOUT_MS } from "../services/WebSearchService";
 import type { PythiaSettings } from "../models/settings";
 
 const requestUrlMock = requestUrl as unknown as ReturnType<typeof vi.fn>;
@@ -270,5 +270,21 @@ describe("WebSearchService — numbered results as data (ADR-226)", () => {
 		expect(await kind(429)).toBe("rate");
 		expect(await kind(500)).toBe("other");
 		expect((await new WebSearchService(settings(), "").search("q")).error).toBe("auth");
+	});
+});
+
+describe("WebSearchService — a hung request (ADR-227)", () => {
+	it("gives up after the timeout and says so, instead of holding the answer forever", async () => {
+		vi.useFakeTimers();
+		try {
+			requestUrlMock.mockReturnValue(new Promise(() => {}));
+			const pending = new WebSearchService(settings(), "k").search("q");
+			await vi.advanceTimersByTimeAsync(WEB_REQUEST_TIMEOUT_MS);
+			const r = await pending;
+			expect(r.text).toMatch(/timed out after 30 s/);
+			expect(r.error).toBe("other");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

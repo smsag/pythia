@@ -33,9 +33,18 @@ export const MAX_READS_PER_TURN = 5;
 export const MAX_SEARCHES_PER_TURN = 5;
 
 // Same shape as containsWebUrl's cue, but global and stopping at characters
-// that end a link in prose or markdown: whitespace, quotes, angle brackets,
-// and the closing ) of a [text](url) link.
-const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
+// that end a link in prose or markdown: whitespace, quotes, angle brackets and
+// ]. A ) is kept here and trimmed by `balanceParens` only when unmatched, so a
+// Wikipedia `…/Foo_(bar)` stays whole while the ) closing a [text](url) link
+// or a parenthesised sentence is dropped (ADR-227).
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`\]]+/gi;
+
+/** Drop trailing ) that have no ( to close inside the link. */
+export function balanceParens(url: string): string {
+	let out = url;
+	while (out.endsWith(")") && (out.match(/\)/g) ?? []).length > (out.match(/\(/g) ?? []).length) out = out.slice(0, -1);
+	return out;
+}
 
 /** The comparable form of a URL: parsed, fragment dropped (it never reaches the
  *  server), trailing sentence punctuation removed. null when it is not an
@@ -56,7 +65,7 @@ export function normalizeReadableUrl(raw: string): string | null {
 export function urlsInText(text: string): string[] {
 	const out: string[] = [];
 	for (const m of text.matchAll(URL_IN_TEXT_RE)) {
-		const url = normalizeReadableUrl(m[0]);
+		const url = normalizeReadableUrl(balanceParens(m[0].replace(/[.,;:!?]+$/, "")));
 		if (url) out.push(url);
 	}
 	return out;
@@ -67,13 +76,22 @@ export class WebReadScope {
 	private reads = 0;
 	private searches = 0;
 
-	/** Seeds the allow-list from the conversation's user messages. The message
-	 *  being sent is already in `messages` when a send builds its scope. */
+	/** Seeds the allow-list from the conversation's user messages and the web
+	 *  sources of its earlier answers. The message being sent is already in
+	 *  `messages` when a send builds its scope. */
 	static forConversation(conv: Pick<Conversation, "messages">): WebReadScope {
 		const scope = new WebReadScope();
 		// `?? []`: a scope that throws would take the whole send down with it.
 		for (const m of conv.messages ?? []) {
 			if (m.role === "user" && typeof m.content === "string") scope.addText(m.content);
+			// A page an earlier answer fetched and lists as a source (ADR-227):
+			// Tavily returned it, exactly as stored, so "read source 2" can read
+			// it. The model sees these addresses through `historyContent`.
+			if (m.role === "assistant" && Array.isArray(m.sources)) {
+				for (const src of m.sources) {
+					if (src && src.kind === "web" && typeof src.ref === "string") scope.addUrl(src.ref);
+				}
+			}
 		}
 		return scope;
 	}
@@ -86,6 +104,12 @@ export class WebReadScope {
 		}
 		this.searches++;
 		return null;
+	}
+
+	/** Allow one address as it was stored — a source an earlier answer fetched. */
+	addUrl(raw: string): void {
+		const url = normalizeReadableUrl(raw);
+		if (url) this.allowed.add(url);
 	}
 
 	/** Allow every link in `text` — a user message, or a web result of this send. */

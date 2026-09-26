@@ -703,6 +703,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Results travel as data** (`WebToolResult.sources`). Never parse sources back out of the tool text — a page's content could plant one. `ToolHandler.executeWeb` is the web tools' one door
 - **`resolveWebCitations` is the ONE resolver** (send, both commit sites, and every comparison run): number → that result; a domain marker → the first result on that domain; nothing fetched → dropped, no chip. Deduplicate by URL, never domain. `MessageSource.cite` keeps what the marker said so the chip finds its source
 - **Auto-search arms only on a pasted link** (`wantsWeb` = `containsWebUrl`, user decision). Do not bring back word or year cues: they armed nearly every message and sent note-derived text to a third party unasked
+- **An answer's web source addresses ride in its history** (`historyContent`, ADR-227) and the read allow-list admits them, so "read source 2" works. Only Tavily's stored addresses are admitted — never a URL the model built. A Tavily call times out at 30 s
 - **Five searches and five page reads per answer** (`WebReadScope`). A rejected key (`auth`) or used-up plan (`quota`) is a Notice once per send — the model's paraphrase is not a report
 
 ### Notes an answer wrote (ADR-218)
