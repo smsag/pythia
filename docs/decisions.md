@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-232 (*What Pythia sends*: a read-only dialog with the conversation's template, instructions, custom instructions, history and whole system prompt, opened from the header menu and the context box).*
+*Last updated: 2026-09-26 — ADR-233 (the glossary folder has an outside reader: Schreibstube reads each term note as a concept and adds `schreibstubeAvoid`; Pythia keeps keys it does not own).*
 
 *Previously: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
 
@@ -4982,3 +4982,17 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - **Read-only.** Editing a running conversation's instructions is not offered: it would be a second way to do what a template armed for one answer does (ADR-177), and a write that replaces the user's instructions in place has no undo. Recorded as D-64.
 
 **Guards.** `tests/instructionsModal.test.ts` (the facts; the three texts shown verbatim, the whole prompt equal to `previewSystemPrompt`; *None* for an empty prompt; *Send full history* works from the dialog) · `tests/headerInstructions.test.ts` (the menu row) · `tests/uiArchitectureDoc.test.ts` (the modal is named).
+
+## ADR-233 — The glossary folder has an outside reader: Schreibstube's term folder
+
+**Status:** Active · 2026-09-26
+
+**Context.** Schreibstube checks writing against a glossary: which word to use and which to avoid. Pythia's glossary records what a term means. The user sets the same folder in both plugins: Pythia fills it while a topic is discussed, and Schreibstube reads each term note as a concept whose preferred term is the note's term. The rule a check needs, which words to avoid, is not something Pythia knows or should guess, so it lives on the same note as Schreibstube's own property, `schreibstubeAvoid`, managed from Schreibstube's proofreading panel.
+
+**Decision.**
+- **The note format is the contract, not an API.** Schreibstube reads the notes through the metadata cache, so it works with Pythia switched off, and Pythia exposes nothing new. The note format was designed as the integration surface (ADR-149/150); this is its second reader after Bases.
+- **What Schreibstube reads:** `type` (a note is a term unless it says `person` or `theme`), `term` (else the file name), `language` (the inflection endings an avoided word tolerates), `source` (a `model` definition is labelled on its card) and the **first prose paragraph of the body** as the definition. A change to any of these, or to the definition coming first in the body (`renderBody`), breaks the reader; Schreibstube's `glossary-term-folder.test.ts` holds a copy of a real note as its fixture.
+- **Pythia never writes a key it does not own, and never drops one.** `save` swaps the body and leaves the frontmatter block intact (`replaceBody`); before this, every re-lookup deleted the whole block and re-added only Pythia's keys, which would have erased `schreibstubeAvoid` on the next lookup of the term.
+- **No rule comes from the model.** Pythia's translations (`term_<lang>`) are not turned into avoid rules automatically. Offering them as suggestions in Schreibstube is possible later; enforcing them is not.
+
+**Guards.** `tests/glossarySave.test.ts` (a property Pythia did not write survives `save`, on an in-memory vault; fails on the old write) · Schreibstube's `glossary-term-folder.test.ts` and `glossary-registry.test.ts`.
