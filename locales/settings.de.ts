@@ -132,7 +132,7 @@ const settingsDe = {
 
 	// ── Fehlersuche ───────────────────────────────────────────────────────────
 	debugModeName:           "Debug-Modus",
-	debugModeDesc:           "API-Aufrufe, Payloads und den Embedding-Pfad in der Entwicklerkonsole protokollieren. Die Konsole ist die Quelle der Belege für einen Fehlerbericht.",
+	debugModeDesc:           "API-Aufrufe, Payloads und die Aufrufe an Schreibstubes Suche in der Entwicklerkonsole protokollieren. Die Konsole ist die Quelle der Belege für einen Fehlerbericht.",
 };
 
 export default settingsDe;

@@ -26,7 +26,7 @@ const CEILINGS = {
 	// then spent 7 lines back wiring the chart splice into the commit path. The
 	// number is set once, against the finished state: a ceiling lowered halfway
 	// through a change and breached by the rest of it guards nothing.
-	"sidebar.ts": 1463,
+	"sidebar.ts": 1462,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
 	// ui/settings/ (ADR-209) — the split this comment used to ask for. No ceiling

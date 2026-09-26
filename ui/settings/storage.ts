@@ -12,14 +12,13 @@ import { t } from "../../i18n";
  * (ADR-172: archiving happens before the delete, and the folder is part of that
  * rule, not a filing preference).
  *
- * The conversations folder is one of the vault index's two skip folders, so it
- * repaints the index status row (#367).
+ * The conversations folder is never a source of vault context (ADR-224).
  */
 export function renderStorageSection(containerEl: HTMLElement, ctx: SettingsContext): void {
 	section(containerEl, t("storageSection"), t("storageIntro"));
 	const { plugin } = ctx;
 
-	folderRow(ctx, containerEl, t("convsFolderName"), t("convsFolderDesc"), "conversationsFolder", ctx.refreshIndexStatus);
+	folderRow(ctx, containerEl, t("convsFolderName"), t("convsFolderDesc"), "conversationsFolder");
 
 	numberRow(ctx, containerEl, t("messageCapName"), t("messageCapDesc"), {
 		// Empty = no limit, the same convention as the conversation cap (ADR-172).

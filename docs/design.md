@@ -543,14 +543,9 @@ The tab is one linear scroll of eight sections, in the order the shell renders t
 - **The inheritance sentence** — every row of **New conversations** ends with "Conversations follow this unless you pin a different value." It is one shared string (`overridable()`), never re-worded per row, and it is the user-facing half of principle 6: the header's effort and language segments and the conversation dialog sit *on top of* these values without changing them. A gated row replaces it with `(not supported by the selected model)`, because a control the model ignores is the more urgent fact.
 - **No new chrome.** Plain Obsidian `Setting` rows throughout: no cards, no folds, no tabs, no search field, no "Advanced" section — Obsidian's settings pane is a single scroll and core plugins do none of these.
 
-### Settings: the vault index status row (ADR-199)
+### Settings: the "Search by meaning" row (ADR-224)
 
-An Obsidian `Setting` row named **Index status** in the Vault context section, placed first in it, because it is what the rest of the section is about. Its description is two lines:
-
-- `.p-index-status-headline` — the state and what to do about it, in `--text-normal` (Obsidian's description text is muted; this line is the answer, not a footnote). One of seven: not built · building *n of N* · ready · unfinished · out of date · failed (out of memory said in words, never the raw `RangeError`) · paused.
-- `.p-index-status-detail` — reference: `Model: English (mobile) · Engine: worker (blob) · Vault context is off by default`, in `--font-monospace` at `--font-smaller`, 4px under the headline (the settings tab sits outside `.pythia-view`, so the `--s*` tokens are not in scope there).
-
-Two buttons, Obsidian's own `ButtonComponent`s: **Build now** (finish or update, keeping rows; *disabled* — not hidden — while a build runs or the index is ready, so the row does not reflow) and **Rebuild index** (discard and start over). Each embedding section opens with a description-only `Setting` that says in plain words what the feature does; the model row adds, on a phone, which model this device runs instead and why.
+The Vault context section opens with a plain `Setting` row named **Search by meaning**, because it is what the rest of the section depends on: Pythia runs no model of its own, and vault context and related conversations come from Schreibstube. Its description says in one sentence whether Schreibstube is there with its search by meaning on, and what happens without it. It replaced the vault index status row of ADR-199, whose index went to Schreibstube.
 
 ### Conversation settings modal (temperature, max tokens, language, theme)
 

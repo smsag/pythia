@@ -14,17 +14,13 @@ import { t } from "../../i18n";
  *
  * The rule now is that **a folder lives with the feature that writes to it**. The
  * conversations and archive folders are therefore in "History and storage", and
- * the indexed folders stay in the vault-context block.
- *
- * The default-notes folder is one of the vault index's two skip folders, so moving
- * it changes what the index is an index of and repaints the status row (#367) —
- * which is what `ctx.refreshIndexStatus` exists for.
+ * the folders vault context draws from stay in the vault-context block.
  */
 export function renderNotesSection(containerEl: HTMLElement, ctx: SettingsContext): void {
 	section(containerEl, t("notesSection"), t("notesIntro"));
 
 	folderRow(ctx, containerEl, t("templatesFolderName"), t("templatesFolderDesc"), "templatesFolder");
-	folderRow(ctx, containerEl, t("scratchFolderName"), t("scratchFolderDesc"), "scratchFolder", ctx.refreshIndexStatus);
+	folderRow(ctx, containerEl, t("scratchFolderName"), t("scratchFolderDesc"), "scratchFolder");
 
 	new Setting(containerEl)
 		.setName(t("inboxNoteName"))

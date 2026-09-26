@@ -65,7 +65,7 @@ export default tseslint.config(
 	// the dismiss helper itself; the drag-to-pan gesture (pointer capture must
 	// follow the pointer off the element); the action sheet and inline picker
 	// (register and remove in the same open/close pair); the delete bar (capture
-	// listener added and removed by hidePreview); the embedding iframe bridge.
+	// listener added and removed by hidePreview).
 	{
 		files: [
 			"ui/outsideDismiss.ts",
@@ -76,7 +76,6 @@ export default tseslint.config(
 			"ui/ActionSheet.ts",
 			"ui/InlineSuggest.ts",
 			"ui/ExchangeActionsController.ts",
-			"services/embedding/host/**/*.ts",
 		],
 		rules: {
 			"no-restricted-syntax": ["error",

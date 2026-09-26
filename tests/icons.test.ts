@@ -24,9 +24,9 @@ describe("one glyph for regenerate (ADR-191)", () => {
 		}
 		expect(offenders).toEqual([]);
 	});
-	it("the six regenerate controls name REGENERATE_ICON", () => {
+	it("the five regenerate controls name REGENERATE_ICON", () => {
 		const uses = sources.filter((f) => readFileSync(resolve(root, f), "utf8").includes("REGENERATE_ICON")).sort();
-		expect(uses).toEqual(["main.ts", "ui/ForkController.ts", "ui/GlossaryController.ts", "ui/HeaderController.ts", "ui/MergeController.ts", "ui/SummaryController.ts", "ui/icons.ts"].sort());
+		expect(uses).toEqual(["ui/ForkController.ts", "ui/GlossaryController.ts", "ui/HeaderController.ts", "ui/MergeController.ts", "ui/SummaryController.ts", "ui/icons.ts"].sort());
 		expect(REGENERATE_ICON).toBe("refresh-cw");
 	});
 });

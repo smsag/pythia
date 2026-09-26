@@ -1,6 +1,6 @@
 # Pythia — Claude Code Instructions
 
-Pythia is an Obsidian sidebar plugin providing a RAG-powered chat interface for querying notes with an LLM.
+Pythia is an Obsidian sidebar plugin providing a RAG-powered chat interface for querying notes with an LLM. It runs no language model of its own: which notes answer a turn, and which conversations are related, come from Schreibstube's search by meaning through its API (ADR-223/224).
 
 See `agents.md` for agent workflow conventions (commit style, task decomposition, naming, tool use).
 
@@ -25,15 +25,18 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename, safeNoteName, normalizeVaultPath, yamlString — the only file-name/path/YAML helpers (ADR-159)
     tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) + applyRelevanceFloor (ADR-168)
-    searchScope.ts            ← pure: parseScope (note:/conv:/all:) + shouldWiden — the search box's grammar and the auto-widen rule (ADR-168)
-    conversationSearch.ts     ← pure: buildConversationFields (title ×3 · notes ×2 · summary · body), noteRefs, rankConversations, searchConversations, bestMatchSnippet (ADR-106/168)
+    conversationFinder.ts     ← pure: searchTitles (every typed word in the title, via matchStrength), meaningQuery, meaningOnly — the search box (ADR-223)
+    conversationSearch.ts     ← pure: bestMatchSnippet + the lazily built snippetLines cache — why a row is in the results (ADR-106/170/223)
+    schreibstubeLink.ts       ← the ONE reader of app.plugins: readSchreibstubeApi (feature-detected API v1), toSourceItem, RELATED_RESULT_LIMIT, SchreibstubeLink (hands the conversations over with open(id), asks search/searchNotes/related, answers [] on any failure) (ADR-223/224)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
-    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take(hold) drains all but the note being written) + registerVaultWatcher — the four vault listeners, the quiet-window flush, and the held note released on file-open or after 30 s quiet (ADR-121/205/219)
+    vaultWatcher.ts           ← registerVaultWatcher — the four vault listeners: an edit or delete of a note invalidates the glossary cache, a rename is followed at once (ADR-136/218/224). No batching: the index it used to feed is Schreibstube's now
+    vaultContext.ts           ← pure: retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) · isPathInScope · contextScope (include = vaultContextFolders, skip = conversations + scratch) — ADR-183/224
+    VaultContextService.ts    ← getRelevantNotes: asks SchreibstubeLink.searchNotes for 3 × vaultContextMaxNotes, keeps what the scope and the opt-out allow; getAutoContext for the reference row; available() (ADR-224)
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
@@ -54,23 +57,6 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     GlossaryService.ts        ← glossary folder I/O + vault-then-model term lookup (ADR-136/150); translate() caches a definition per language in the note (ADR-166)
     titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
-    embedding/warmIndex.ts    ← pure-ish: shouldWarmIndex + warmIndex — the background index warm and its three guards (ADR-169)
-    embedding/buildGuard.ts   ← pure: BuildGuard + vaultBuildGuard — the per-device marker that pauses automatic index builds after two the OS killed (ADR-199)
-    embedding/buildDecision.ts ← pure: decideBuild — whether a vault-index build runs, and what it resets first; shouldCatchUp — the launch catch-up's brakes (ADR-221); the ONE place those six flags meet (ADR-205)
-    embedding/vaultCatchUp.ts ← catchUpIndex: a desktop's once-per-launch catch-up of a COMPLETE vault index — embeds only notes whose content moved, loads the model only if one did; gated by shouldCatchUp (ADR-221)
-    embedding/indexJournal.ts ← IndexJournal: an edit writes the rows changed since the index file was written (kilobytes) instead of the whole index; tied to its base by writtenAt, folded back in by shouldCompact (5 %, ≥ 50 rows) (ADR-222)
-    embedding/memoryError.ts  ← isOutOfMemoryError + EmbeddingOutOfMemoryError — out of memory ends the backend fallback chain (ADR-199)
-    embedding/indexStatus.ts  ← pure: the vault index's seven states + describeVaultIndexStatus, the words the settings tab shows (ADR-199)
-    embedding/vaultIndexStore.ts ← the .bin per index, named by vectorFamily(modelId) — a variant shares its family's file (ADR-200)
-    embedding/rowProvenance.ts ← pure: which shared-index rows a device may reuse — the variant tags non-Latin rows, the full model re-embeds them (ADR-201)
-    embedding/residency.ts    ← ResidentProvider + EmbeddingResidency: a phone releases the idle model on hide / after 3 min and preloads it on return and input focus; the ONE visibilitychange handler (ADR-202)
-    embedding/EmbeddingHub.ts ← the ONE embedding unit (ADR-205): the shared provider + its cache-and-invalidate rule, activeModelId() (the only reader of settings.embeddingModelId outside the settings control), getRelated, the warm, the vault-RAG lifecycle. Obsidian arrives as EmbeddingHubHost; the module imports no Obsidian runtime
-    embedding/host/visibleClock.ts ← VisibleClock: time that stops while Obsidian is hidden — every embedding deadline is measured on it (ADR-202)
-    embedding/relatedConversations.ts ← rankRelated + relatedMinScore(preset, modelId) — MEASURED per-model floors; vaultRetrievalMinScore keeps vault RAG on its own, UNMEASURED (ADR-169). The shared label type is `SimilarityPreset` — named for the label, never for either question (ADR-176)
-    embedding/vaultRetrieval.ts ← pure: noteEmbedChunks · retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) — ADR-183
-    embedding/host/postMessageBackend.ts ← PostMessageEmbeddingProvider: the protocol both backends speak (ready ping · requests · timeouts · teardown). A backend supplies mount() → BackendChannel, its label and isOffThread() — never a second copy of the protocol (ADR-204)
-    embedding/host/workerPrelude.ts ← WORKER_PRELUDE + withWorkerPrelude: the three statements that hide Node's `process` from the embedding Worker, prepended at the two Worker sites and never to the iframe (#306, ADR-185)
-    embedding/host/frame/batchSlice.ts ← pure: sliceBatch — the short-batch guard, split out because model.ts imports transformers at module scope and no test can load it (ADR-182)
     WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws (ADR-062/217)
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs, parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ToolHandler fails closed without one (ADR-217 addendum)
@@ -140,9 +126,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     toolbarIcons.ts           ← the attach/save inline SVGs of the input toolbar + paintToggle, the one on/off state of its toggles (research · vault · armed template)
     SendHintController.ts     ← the warning beside Send; reads maxTokensAdvice, announces once on mobile (ADR-162)
     TruncationController.ts   ← the card under a cut-off answer: Continue · Retry with raised limit · Compare (ADR-162)
-    vaultIndexStatusSetting.ts ← the settings "Index status" row: live headline + detail, Build now · Rebuild index (ADR-199)
+    vaultContextSettings.ts   ← §5 Vault context: the *Search by meaning* status row (is Schreibstube there), the default toggle, folders to draw from, notes per answer (ADR-224)
     settings/section.ts       ← the ONE place a settings heading is made: section(el, name, intro) + overridable(desc) (ADR-209)
-    settings/context.ts       ← SettingsContext (plugin · saveSoon · registerCommit · refreshIndexStatus) + toggleRow / folderRow / numberRow
+    settings/context.ts       ← SettingsContext (plugin · saveSoon · registerCommit) + toggleRow / folderRow / numberRow
     settings/connections.ts   ← §1 the four API keys, each saying whether a key is selected
     settings/conversationDefaults.ts ← §2 the ONLY overridable section: provider · one model row for it · effort · temperature · max tokens · language · resume mode · research default
     settings/answering.ts     ← §3 the global rules: custom instructions · auto-search · results · note budget · inject active note · show cost
@@ -158,7 +144,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     en.ts                     ← English i18n strings
     de.ts                     ← German i18n strings
     chart.{en,de}.ts          ← the chart card's strings; the PARSER's errors stay English on purpose (they go to the model and into bug reports)
-    embedding.{en,de}.ts      ← the on-device embedding / vault-context strings, spread into en and de — the per-feature split of review #301 (ADR-199)
+    vaultContext.{en,de}.ts   ← the vault-context strings (settings section, status row, the needs-Schreibstube notice), spread into en and de (ADR-224)
     settings.{en,de}.ts       ← the settings tab's strings, section names and intros first in render order (ADR-209)
   docs/
     pythia-spec.md            ← product spec: problem, user stories, the UI vocabulary map (every surface → its class → its owner), and the deferred-decision register (D-1…)
@@ -171,12 +157,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
   scripts/bench-search.mjs    ← per-keystroke cost of the search panel at three vault sizes (ADR-170)
   scripts/bench-rename.mjs    ← what a vault rename costs the stored paths: one scan per event vs one per burst, and one note renamed (ADR-218 addendum)
   scripts/bench-store.mjs     ← what one conversation costs the single-file store: whole-file rewrite per turn, startup parse, list work (ADR-174)
-  scripts/measure-related.mjs ← the related-conversations similarity probe: percentiles, preset behaviour, calibrated floor, boilerplate check (ADR-169)
   scripts/update-pricing.mjs  ← models.dev → models/modelPricing.ts (GENERATED block); weekly PR via .github/workflows/update-pricing.yml (ADR-163)
   scripts/update-models.mjs   ← models.dev → contextWindow in models/knownModels.ts (weekly PR) + a report of new/deprecated models for one standing issue, never applied (ADR-179)
   scripts/modelsDev.mjs       ← what both models.dev scripts share: UPSTREAM_IDS, NO_UPSTREAM, readCatalog, the lookup
-  scripts/prune-embedding-model.py ← builds the Latin-script variant of the multilingual model from the upstream files (npm run model:prune) — what LATIN_VARIANT_REPO_ID holds, byte for byte (ADR-200)
-  scripts/verify-pruned-model.mjs ← proves the variant vector-identical to the full model on Latin-script text (npm run model:verify); fails on any drift
   scripts/obsidian-button-rules.mjs ← reads app.css from the installed Obsidian and lists the rules that can reach a Pythia button; exits 1 when tests/fixtures/obsidianButtonRules.ts has drifted (npm run check:obsidian-cascade, local only — ADR-190)
   eslint.config.mjs           ← ESLint flat config (typescript-eslint)
   vitest.config.ts            ← Vitest coverage configuration
@@ -550,41 +533,12 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Never `transition` a fill that communicates state** — a selected segment, an active toggle, a pressed control. It must be true at the moment of the tap; on iOS WebKit a transitioned `background-color` started from a class toggle in a touch handler may not paint until the next composite, and the user sees the old state until they scroll. Decorative transitions (opacity on a hover-revealed control) are fine
 - **`:hover` rules belong in `@media (hover: hover)`.** iOS keeps `:hover` on the last-tapped element, so a hover fill sticks to exactly the control the user just pressed — and `--background-modifier-hover` next to an accent selection reads as a second selection
 
-### Related conversations (ADR-109/169)
+### Vault context and related conversations — through Schreibstube (ADR-223/224)
 
-- **The floors are measured, not chosen.** They live on the model (`EMBEDDING_MODELS[...].relatedFloors`) because cosine distributions are a property of the model: the multilingual model scores every pair ~0.08 hotter than the English one. **Never share one constant across models** — that made "Balanced" mean 19 of 23 neighbours on one and 11 on the other. Re-measure with `scripts/measure-related.mjs` before changing a floor, and record the numbers
-- **Vault RAG is a different question and keeps its own constants.** `vaultRetrievalMinScore` (0.5 / 0.35 / 0.2) scores a query against note chunks; ADR-169 measured conversation pairs. **Do not merge the two maps** — a test fails if you do. Measure query-to-note retrieval separately first (engineering-review #273)
-- **A floor is a quality gate; `RELATED_RESULT_LIMIT` is the screenful.** The number of pairs clearing a fixed cosine grows linearly with the vault, so without the cap the list length tracks vault size rather than relevance
-- **`maxPairwiseCosine` stays max, not a mean of top-k.** Measured: the lead (title+summary) chunk decides only 2.2% of matches, and mean-of-top-3 changes the top neighbour for 0 of 24 conversations. The boilerplate argument for it was tested and refuted
-- **The warm never surprises**: desktop only, only when a `.bin` already exists (no unrequested ~100 MB model download at launch), ≥2 conversations, silent provider construction, fail-open into the debug log. Guards live in `warmIndex.ts` with tests, because `main.ts` has no coverage
-- **A cold sync is cancellable and commits partial progress before rethrowing** — a cancelled build must leave the next one less to do. The panel aborts on close, on leaving related mode and on the first keystroke; an abort is the panel's own doing and reports nothing
-
-### Vault RAG — the embedding backend and the index (ADR-182/185, engineering-review #306)
-
-- **A phone embeds with a model marked `mobile`** (ADR-199, measured on an iPhone: the multilingual model adds ~0.9–1 GB to a WebContent process iOS kills at ~2 GB; English adds ~130 MB). For the multilingual model that is its **Latin-script variant** (ADR-200, `variantOf`, ≈ +370–400 MB measured): the same vectors, so it shares the family's floors and — because `VaultIndexStore` and `scopeSignature` go by `vectorFamily` — the desktop's index file. A variant is never a dropdown entry (`SELECTABLE_EMBEDDING_MODEL_IDS`) and must stay equal to its family in dim, pooling, window and floors (a test holds it). Rebuild it only with `npm run model:prune` and prove it with `npm run model:verify` before publishing. The ONE resolver is `effectiveEmbeddingModel` → `plugin.activeEmbeddingModelId()`. **Never read `settings.embeddingModelId` anywhere else** — `tests/embeddingModelRule.test.ts` fails on a second reader — and **never write the substitute into the setting**: it syncs, and the desktop keeps its choice (principle 6). A new model gets `mobile: true` only on a measurement from the device
-- **Out of memory is not a refusal.** The fallback chain exists for backends that are *refused*; every backend shares one process, so `isOutOfMemoryError` ends the chain instead of loading the model again. Do not add a backend that bypasses `record`
-- **A build the OS kills leaves a marker** (`BuildGuard`, per-device localStorage — never data.json). Two deaths in a row pause *automatic* builds until the user presses *Build now*; a caught error clears the marker **except out of memory**; `dispose()` clears it on a normal unload. Any new automatic path that starts the vault build goes through `refresh()`, never around it
-- **Deadlines count visible time** (ADR-202). Every embedding timeout goes through `visibleClock` — never `Date.now() - start` or a one-shot `setTimeout`, which fire overdue the moment iOS unfreezes the app (a test fails on either). **A build killed in the background is not a crash**: the marker's `background` flag excuses it (`foregroundDeaths`). **A phone releases an idle model** (`EmbeddingResidency`) and preloads only a model it released — never a first download, never under a build or an in-flight embed, never after a failed load
-- **Whether a build runs is ONE pure decision** (`decideBuild`, ADR-203), not a run of early returns in `refresh`. A new condition is a row in `buildDecision.ts` and a row in its table test — the last two defects here both lived in that tangle
-- **A load that failed in this session blocks AUTOMATIC builds** (#358). The provider memoizes the rejection, so a retry can only fail — and each attempt used to leave another interrupted-build marker, which turned one out-of-memory load into "the last 2 builds died" and paused the index. No marker and no notice on that path: the status line already says it. Only *Build now* (which resets the provider) or a new session clears it
-- **A manual build after a failure really reloads** (#357) — but only after a failed **LOAD** (`phase.loadFailed`, #359); a build that failed with a healthy model keeps it. **Rebuild clears only after the model has loaded** (`refresh({ clear })`) — never clear first and fail after
-- **The UI-thread short-circuit replays the buffered edits before it returns** (#360). That return is the phone's normal path — a complete index, no Worker — so an edit made before the first send lands there or nowhere
-- **The status never loads the model, and never re-reads the index** (#361). `VaultRagService.status()` reads the file header (`peekIndexMeta`) when the session has not built, and remembers it — `IndexStore.read()` returns the WHOLE binary — dropping it whenever this session could have changed the file. Words live in `describeVaultIndexStatus` only. **Paused wins over the file** (ADR-201): a paused session loads no model, so a complete index is not used either — never report it as ready
-- **A shared row is reused only by a device that would have produced it** (ADR-201). Reuse goes through `resolveRowHash(hashPolicyFor(modelId), …)` in BOTH index services — never compare `contentHash` directly again. The variant writes `<hash>~latinScript` for text with a non-Latin letter; the full model re-embeds such rows; the variant accepts the full model's
-
-- **The Worker must see a browser, not Node.** Obsidian gives desktop Workers Node access, so transformers.js reads `process.release.name === "node"`, binds onnxruntime-**node** (macOS device list: `['cpu']`) and rejects the `wasm` device Pythia always passes — which is why every desktop silently ran embedding on the UI-thread iframe for three ADRs. `WORKER_PRELUDE` (`services/embedding/host/workerPrelude.ts`) is prepended by `withWorkerPrelude` at the two Worker construction sites and **nowhere else**; the iframe gets the bare bundle
-- **The prelude has three statements and needs all three.** `delete globalThis.process`, then an assignment, then `const process = void 0`. The first two are *property* operations that a non-configurable / non-writable global defeats through their own `catch`; the `const` binds the identifier, which is what `env.js:38-39` reads, and no descriptor can defeat it. The `const` is unconditional (a `const` inside the guard block would shadow only that block) and safe **only because the bundle is a module** — `import.meta` appears in it, so it cannot load any other way
-- **It cannot live in `frame/entry.ts`.** An ES `import` is hoisted, so any statement there runs after transformers has already read `process`. A textual prefix is the only position that is actually first
-- **The worker file on disk is named by its content hash**, not by version and never by a hand-typed marker. It is written only when absent, so the name is the whole cache key — a `-p1` marker had to be remembered twice and would be missed a third time
-- **The two backends are ONE client** (ADR-204). A Worker and the iframe differ in how a model is mounted, not in how Pythia talks to it: `PostMessageEmbeddingProvider` owns the protocol and a subclass supplies `mount()`, `label` and `isOffThread()`. It was written twice before, and #363 had to be fixed twice. **A `mount()` must not leave anything reachable only from its own scope** — the channel it returns may arrive after an `unload()`, and the base closes it
-- **A load in flight is owned** (#363). A backend becomes `active` only once it is ready, so `unload()` used to have nothing to unload during the first download: the chain ran on and parked the finished model on a provider nobody held — unreachable memory for the life of the process, reachable by a model change mid-download and by `onunload` (an in-app plugin reload, which Obsidian's page survives). `FallbackEmbeddingProvider` carries a **generation**: `unload()` moves it on and unloads every backend in `starting`; `engage()` releases a backend from an older generation instead of engaging it. A new backend joins `starting` or it can be orphaned the same way
-- **A backend that loses says why.** `FallbackEmbeddingProvider` records each failure reason, exposes `backendFailures()` and passes them to `onBackend`; the winner goes to the debug log and the vault-index status line. `Unsupported device: wasm` and `Not allowed to load local resource: blob:` are different bugs with different fixes, and `console.warn` is not a report (principle 2)
-- **An index records what it is and whether it finished** (ADR-184). Format v2 carries `complete` and `scope`; a v1 file is refused and rebuilt. Since ADR-182 persists every 25 embeds, **`size() > 0` stopped meaning "the vault is indexed"** — read `isComplete(scope)`. A scope change (folders · skip · cap · model) invalidates the index; edits during a build are buffered in `deferredChanges` and replayed
-- **Persist mid-build, and persist the whole picture.** A snapshot is what the pass rebuilt *plus* the not-yet-reached notes whose vectors are still valid — the former alone would delete the tail of the index on every interruption. `persist` assigns `this.items` as well as writing, or an in-place retry re-embeds everything the failed pass just saved. Count **embeds**, not notes processed: the `continue` paths stride past a modulus on a processed counter
-- **A failing note is skipped; five in a row rethrow.** Skipping blindly turns a dead backend into a "successful" build that indexed nothing and then reported itself ready. The streak resets on a *reused* note too, or five bad notes scattered through an unchanged vault abort the build forever
-- **An auto-retrieved note is not an attached one** (ADR-183). It gets `AUTO_NOTE_BUDGET_CHARS`, not the manual budget, and none of the attach-a-note warnings — the user cannot remove a path they never added. `pythia: false` in a note's frontmatter opts it out, read **fail-open**, and re-checked at the point the text would leave the vault
-- **Chunk size follows the model's own window** (`embedChunkChars`, vault index only). The conversation index stays at 500 chars because ADR-169's floors were measured there
-- **`truncation: true` is deliberately not set** on the embed call: it would change every vector longer than the window and silently invalidate those measured floors. Padding with an attention mask is neutral for mean pooling, which is what let batching ship without re-measuring
+- **Pythia runs no model and keeps no index.** Which notes answer a turn and which conversations are related are asked of Schreibstube through `services/schreibstubeLink.ts`, the one reader of `app.plugins`; it asks every time and answers `[]` on any failure. `main.ts` exposes `ownsEmbeddingModel = false`, which Schreibstube reads to stop pausing its own engine on a phone. **Do not bring a model, an index or a similarity floor back into Pythia** — a second engine on a phone is the memory problem ADR-224 removed
+- **No fallback.** Without Schreibstube, vault context draws no notes and the related list is empty; the settings row and the toolbar notice say so. That is the designed state, not an error to paper over
+- **What Pythia still decides lives in `services/vaultContext.ts`**, pure and tested: the search text (`retrievalQuery`), the scope (folders to draw from; never the conversations or scratch folder) and the opt-out (`pythia: false`, explicit only, read fail-open). `VaultContextService` applies them to what Schreibstube found; a new rule about what may be sent goes there, not into the link
+- **An auto-retrieved note is not an attached one** (ADR-183). It gets `AUTO_NOTE_BUDGET_CHARS`, not the manual budget, and none of the attach-a-note warnings — the user cannot remove a path they never added
 
 ### Conversation search (ADR-168)
 
@@ -694,11 +648,11 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### The settings tab (ADR-209)
 
-- **One axis: scope.** Eight sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **On-device semantic search** (+ **Vault context**) · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`
-- **Adding a setting means deciding which section's one-sentence remit covers it.** If none does, that is the finding — the old tab's answer was "Behaviour" or "Features", which is how ten unrelated rows landed under one heading and how `customInstructions` and Debug mode ended up rendered *inside* the embedding block by accident
+- **One axis: scope.** Eight sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **Vault context** · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`, except Vault context, in `ui/vaultContextSettings.ts`
+- **Adding a setting means deciding which section's one-sentence remit covers it.** If none does, that is the finding — the old tab's answer was "Behaviour" or "Features", which is how ten unrelated rows landed under one heading and how `customInstructions` and Debug mode ended up rendered *inside* the old embedding block by accident
 - **Only "New conversations" rows are overridable, and every one of them says so** via `overridable()` — the user-facing half of principle 6. A row there without the sentence, or a row elsewhere with it, fails `tests/settingsIA.test.ts`. A gated row shows `paramUnsupportedSuffix` instead, because a control the model ignores is the more urgent fact
 - **Every section opens with one sentence** through `section()`, which is also the ONE place `setHeading()` is called. **Never `createEl("h3")`** in settings code, and never a second heading mechanism — the tab had two and they do not render alike
-- **A folder lives with the feature that writes to it.** There is no "Vault folders" section: templates and the default notes folder sit with the notes, the archive folder directly under the toggle that writes to it, the indexed folders in the vault-context block. **The two skip folders (`conversationsFolder`, `scratchFolder`) pass `ctx.refreshIndexStatus`** — they are part of `scopeSignature`, so moving one makes the index out of date (#367)
+- **A folder lives with the feature that writes to it.** There is no "Vault folders" section: templates and the default notes folder sit with the notes, the archive folder directly under the toggle that writes to it, the folders to draw from in the Vault context section.
 - **One model row, for the provider chosen above it**, rebuilt rather than mutated when the provider changes. Another provider's model is reached by switching the provider, and the row's description says so
 - **No search field, tabs, folds or "Advanced" section** (D-44), no price table (ADR-163), and no `h2` title — Obsidian already titles the tab
 

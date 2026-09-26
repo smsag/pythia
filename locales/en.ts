@@ -1,11 +1,11 @@
 import pinsEn from "./pins.en";
 import chartEn from "./chart.en";
-import embeddingEn from "./embedding.en";
+import vaultContextEn from "./vaultContext.en";
 import settingsEn from "./settings.en";
 
 const en = {
-	// On-device embeddings live in their own module (ADR-199, review #301).
-	...embeddingEn,
+	// Vault context lives in its own module (ADR-199, ADR-224, review #301).
+	...vaultContextEn,
 	// The settings tab's strings likewise (ADR-209).
 	...settingsEn,
 	// Charts in an answer live in their own module (ADR-210).
@@ -113,12 +113,8 @@ const en = {
 	navSourceTag:    "Source",
 	navActiveTag:    "active",
 	switcherClear:           "Clear search",
-	switcherSearchPlaceholder: "Search — note: to widen",
-	histNotesGroup:            "ALSO IN NOTES",
-	viaNote:                   "via {{name}}",
-	widenedChip:               "Widened to notes",
-	widenedClearTooltip:       "Conversations only",
-	widenedNotice:             "Few matches — also searching attached notes.",
+	switcherSearchPlaceholder: "Search conversations",
+	histMeaningGroup:          "BY MEANING · SCHREIBSTUBE",
 	msgCount:                  "{{n}} messages",
 	msgCountShort:             "{{n}} msgs",
 	branchLabel:               "Branch",
@@ -302,7 +298,6 @@ const en = {
 	vaultContextDefaultOff:            "Vault context off by default for new conversations.",
 	vaultContextTooltip:               "Vault context: auto-add relevant notes (semantic RAG)",
 	vaultContextAutoPill:              "auto-retrieved from your vault this turn",
-	cmdReindexVault:                   "Rebuild vault context index",
 	cmdNewConversationFromClipboard:   "New conversation from clipboard",
 	cmdReloadConversations:            "Reload conversations from disk",
 

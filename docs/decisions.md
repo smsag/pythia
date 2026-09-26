@@ -2,6 +2,10 @@
 
 *Last updated: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
 
+*Previously: 2026-09-26 — ADR-224 (Pythia drops its own embedding engine: vault context asks Schreibstube's search by meaning for the notes that answer a turn and filters them by Pythia's folders and `pythia: false`; related conversations come from Schreibstube alone; without Schreibstube there is no vault context and no related list, and the search box finds titles; the embedding model, the vault and conversation indexes, the index-status row and the "Rebuild vault context index" command are removed; closes D-13, D-14, D-16, D-20, D-31…D-34, D-36, D-38, D-39, D-41…D-43).*
+
+*Previously: 2026-09-26 — ADR-223 (the search box searches conversation titles; with Schreibstube installed and its search by meaning on, the conversations it finds by meaning join below them, and related conversations come from its model — Pythia hands its conversations over through Schreibstube's API; the TF-IDF body search, the note scope and auto-widening are removed).*
+
 *Previously: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
 
 *Previously: 2026-09-26 — ADR-221 addendum: a phone holding a desktop's index says so in the settings status row ("kept by your desktop, last written …"), and Build now takes it over: the UI-thread shortcut no longer returns on a complete index when forced, and a full sync signs the file when another kind of device had. The index header carries `writtenAt`.*
@@ -4738,7 +4742,55 @@ The user then asked what happens when the note is renamed. The answer was that n
 
 **Tests.** `tests/indexJournal.test.ts`: `shouldCompact` at the floor and at 5 %; the journal round-trips; a base, another dimension or a torn file is not a journal; only string ids survive in `removed`; `applyJournal`'s replace/add/drop; last change wins in memory; no base means no journal; a journal naming another base is ignored. Through `VaultIndexService` with a journaled store: an edit writes the journal and leaves the index file alone (and the journal is a small fraction of it); the next session reads the two as one, complete; entries carry forward across sessions; 50 edits fold into one base rewrite that loses nothing; a full sync's new base leaves the old journal ignored; a pre-ADR-221 base is rewritten once and journaled after. `tests/vaultIndexStore.test.ts`: the journal's path. Making the journal refuse every write fails three of these (checked by hand).
 
-### ADR-225 — A comparison tab is an answer by its own id
+---
+
+## ADR-223 — Search: titles here, meaning in Schreibstube
+
+*2026-09-26*
+
+**Context.** Two plugins on one device were each loading a language model for the same vault. Schreibstube now owns the engine (its search by meaning is Pythia's engine, ported after ADR-219–222), and it exposes an API: `search`, `related`, `registerSource`, `onIndexChanged`. Pythia's conversations live in `data.json`, out of any vault index, so Pythia has to hand them over. And Pythia's own search had grown a TF-IDF ranking over titles, summaries, messages and the notes a conversation touched, with a scope grammar and auto-widening (ADR-106/168) — lexical recall that meaning now covers better.
+
+**Decision 1 — check, do not assume.** `services/schreibstubeLink.ts` is the one module that reads `app.plugins` (undocumented). It asks every time and never caches: Schreibstube can be switched on, off or updated while Pythia runs, and each load brings a new API object. Anything but a version-1 API whose `ready()` says yes reads as *not available*, never as an error.
+
+**Decision 2 — without Schreibstube, titles only.** The search box and the palette find the conversations whose title holds every typed word, matched with `matchStrength` (so German compounds still work and a row can always show why), newest first among equals, capped at 20. The body text, the summary and the note dimension are no longer searched: `searchScope.ts`, `rankConversations`, `searchConversations`, the widened group, the `via …` line and the chip are removed. `conversationSearch.ts` keeps `bestMatchSnippet` and its line cache.
+
+**Decision 3 — with Schreibstube, meaning joins below.** 300 ms after the typing stops (and from three characters), Pythia asks Schreibstube for conversations by meaning and appends those the titles missed under **BY MEANING · SCHREIBSTUBE**. The title rows never wait. An answer for a query that moved on is dropped; a conversation excluded from a pick is never offered.
+
+**Decision 4 — the conversations are handed over as Pythia's own index text.** `toSourceItem` gives title, summary and the message texts; Schreibstube chunks them exactly as `conversationChunks` does, so the vectors Pythia already built are copied in and reused. Registration happens once per API object; `ConversationStore.onChange` tells Schreibstube to re-list on its next question rather than on every save.
+
+**Decision 5 — related conversations ask Schreibstube first.** `getRelatedConversations` uses Schreibstube's model when it can answer, and Pythia's own otherwise. The background warm of Pythia's related index is skipped when Schreibstube answers, so no second model is loaded for it.
+
+**What this is not yet.** Pythia's engine stays for vault RAG and for devices where Schreibstube pauses (a phone with Pythia on). Moving RAG to Schreibstube and removing Pythia's engine is the next step; until then a phone searches titles only.
+
+**Tests.** `tests/conversationFinder.test.ts`: every word must be in the title; a compound hit ranks below a whole word; the closer match first, then the newer; body text is not searched; capped; a nameless conversation does not throw; meaning is asked from three characters; meaning's extras come in its order, once, only if they exist. `tests/schreibstubeLink.test.ts`: version 1 only, a missing registry or a malformed API reads as absent; `ready()` false or throwing means unavailable; one registration per API object, listing `toSourceItem`s; a search keeps only conversations; a failure answers `[]`; related asks by Pythia's id. `tests/historyPanel.test.ts`: without Schreibstube a body-only word finds nothing; with it the meaning group appears after the pause, never repeats a title hit, drops a stale answer, and never offers the conversation being linked from.
+
+---
+
+## ADR-224 — Pythia drops its engine; vault context and related conversations through Schreibstube
+
+*2026-09-26*
+
+**Context.** ADR-223 moved search by meaning and related conversations to Schreibstube, which owns the one language model on the device, and left Pythia's engine in place for vault context and for phones. That left two models on a phone whenever both plugins were on. Two exceed the iPhone's memory limit, so Schreibstube paused its own engine on a phone whenever Pythia was enabled, and the phone ran Pythia's model instead. The engine was also where most of the work between ADR-182 and ADR-222 went: the Worker and iframe backends, the build guard, residency, the index file, its journal, the catch-up and the index shared between devices. Schreibstube carries the same engine, ported after ADR-222, and its API answers the one question vault context asks: which notes are closest in meaning to this text.
+
+**Decision 1 — Pythia runs no model.** `services/embedding/` is deleted whole (the hub, both index services, the index file and its journal, the build guard and decision, residency, the catch-up, the Worker and iframe hosts), with `services/VaultRagService.ts`, `models/embeddingModels.ts`, the model-pruning and measurement scripts, the embedding bundle's second esbuild pass and the transformers dependency. `main.js` shrinks to 1,128,757 bytes. The plugin exposes `ownsEmbeddingModel = false`; Schreibstube reads it through the plugin registry and no longer pauses its engine on a phone because Pythia is on.
+
+**Decision 2 — vault context asks Schreibstube, and Pythia decides what may be sent.** `VaultContextService.getRelevantNotes` builds the search text with `retrievalQuery` (the message plus up to 200 characters of the previous answer, ADR-183) and asks `SchreibstubeLink.searchNotes` for three times the number of notes per answer, notes only, leaving out the notes attached by hand. It then keeps the notes inside the folders to draw from (`vaultContextFolders`, empty for the whole vault), drops Pythia's conversations and scratch folders, and drops a note whose frontmatter says `pythia: false` (read fail-open, as before), up to `vaultContextMaxNotes`. The rules are pure, in `services/vaultContext.ts`. Excerpting, citations and the untrusted framing downstream (`ContextBuilder`, `BaseProvider`, `noteChunking`) are unchanged, and so is what leaves the device: the excerpts of the selected notes, sent to the chosen provider. Matching the note text happens on the device, in Schreibstube, which honours `pythia: false` in its own index too.
+
+**Decision 3 — no fallback.** Related conversations ask Schreibstube only (`RELATED_RESULT_LIMIT`, 20). When it is not there, vault context draws no notes and the related list is empty: keeping a second engine as a fallback would keep the phone memory problem it was removed to solve, and every defect class with it.
+
+**Decision 4 — settings follow the engine out.** `embeddingModelId`, `relatedSimilarity`, `vaultContextSimilarity` and `vaultContextMaxIndexedNotes` are removed; the settings sanitizer drops old values from `data.json`. Kept: `vaultContextEnabled`, `vaultContextMaxNotes`, and `vaultContextFolders`, which is now a filter on what Schreibstube found rather than the scope of an index. The settings tab's **Vault context** section (`ui/vaultContextSettings.ts`) opens with a status row, *Search by meaning*, saying whether Schreibstube and its search by meaning are available, followed by the default toggle, the folders and the notes per answer. The index-status row, the *Rebuild vault context index* command and the plugin facades behind them are removed. Switching vault context on from the toolbar without Schreibstube says that it needs Schreibstube.
+
+**Decision 5 — the vault watcher keeps what is Pythia's.** With no index to feed, `registerVaultWatcher` invalidates the glossary cache on an edit or delete and follows renames, at once. The batching, the quiet window and the hold on the note being written (ADR-121, ADR-220) are removed with the index they protected.
+
+**What changes for the user.** With Schreibstube installed and its search by meaning on: vault context and related conversations work as before, on every device, with one model loaded instead of two. Without it: no vault context (a turn goes out with the notes attached by hand), no related conversations, and the search box finds titles only (ADR-223). A phone that ran Pythia's model no longer downloads or loads it.
+
+**Tests.** `tests/vaultContext.test.ts`: `retrievalQuery` carries the head of the previous answer into a short follow-up, leaves a long message alone and is empty for an empty one; only an explicit `pythia: false` opts out; folders match by whole path segments and Pythia's own folders are never drawn from; the service asks Schreibstube with the carried-over query for three times the limit, excluding the attached notes, and keeps the limit; it drops what the scope and the opt-out exclude and fills from further down the list; it asks nothing when vault context is off for the conversation; it remembers each conversation's last notes for the reference row. `tests/schreibstubeLink.test.ts`: `searchNotes` asks for notes only, with the limit and the exclusions. `tests/vaultWatcher.test.ts`: four listeners, each registered for teardown; a note or folder rename is followed at once; every note that changed or vanished reaches the glossary cache, a non-markdown file or a folder does not. The 28 engine test files are deleted with the modules they covered.
+
+**Addendum (2026-09-26) — a recommended conversation opens here.** Schreibstube's Recommended panel lists Pythia's conversations beside a note. The source Pythia registers now offers `open(id)`, which activates the view on that conversation, so pressing one there lands in the chat rather than going through the `obsidian://pythia?cmd=resume` link. A conversation deleted since Schreibstube listed it does nothing. Test: `tests/schreibstubeLink.test.ts` — the registered source's `open` reaches the host.
+
+---
+
+## ADR-225 — A comparison tab is an answer by its own id
 
 **Status:** Active · 2026-09-26 · **completes ADR-219**
 

@@ -2,7 +2,6 @@ import { normalizeNoteWrites } from "./noteWrites";
 import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Message, type Pin, type Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
-import { SELECTABLE_EMBEDDING_MODEL_IDS, SIMILARITY_PRESETS } from "../models/embeddingModels";
 import { normalizeAlternatives, normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
@@ -19,11 +18,6 @@ const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
 	defaultPromptFramework: PROMPT_FRAMEWORKS,
 	outputLanguage: OUTPUT_LANGUAGES,
 	effort: EFFORTS,
-	// Selectable ids only: a variant is chosen by the device, never stored (ADR-201).
-	// A stored variant would make the desktop run it too, and match no dropdown option.
-	embeddingModelId: SELECTABLE_EMBEDDING_MODEL_IDS,
-	relatedSimilarity: SIMILARITY_PRESETS,
-	vaultContextSimilarity: SIMILARITY_PRESETS,
 };
 
 /** Keys that may legitimately be absent (the "use the API default" state). */

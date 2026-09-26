@@ -1,10 +1,4 @@
 import type { Provider, EffortLevel, OutputLanguage } from "./types";
-import {
-	type EmbeddingModelId,
-	DEFAULT_EMBEDDING_MODEL_ID,
-	type SimilarityPreset,
-	DEFAULT_SIMILARITY_PRESET,
-} from "./embeddingModels";
 
 export interface PythiaSettings {
 	/** Secret ID referencing the Anthropic API key in Obsidian SecretStorage. */
@@ -82,30 +76,14 @@ export interface PythiaSettings {
 	webSearchAutoArm: boolean;
 	/** Maximum web-search results fetched per query. 0 = use the built-in default. */
 	webSearchMaxResults: number;
-	/** On-device embedding model for "related conversations" semantic search. */
-	embeddingModelId: EmbeddingModelId;
-	/** Strictness of the "related conversations" floor, resolved per embedding
-	 *  model against MEASURED distributions (ADR-169). */
-	relatedSimilarity: SimilarityPreset;
-	/** When true, each chat turn auto-retrieves the most semantically-relevant vault
-	 *  notes and injects them as context (on-device semantic RAG). Reuses the same
-	 *  embedding engine as "related conversations". Off by default. */
+	/** When true, each chat turn draws the most relevant vault notes in as context,
+	 *  found by Schreibstube's search by meaning (ADR-116, ADR-224). Off by default. */
 	vaultContextEnabled: boolean;
-	/** Maximum notes auto-retrieved per turn when vault context is on. */
+	/** Maximum notes drawn in per turn when vault context is on. */
 	vaultContextMaxNotes: number;
-	/** Strictness of the vault-retrieval floor. Shares the three labels with
-	 *  `relatedSimilarity` and NOTHING else: its numbers are unmeasured constants
-	 *  on their own map (engineering-review #273). No settings-tab control. */
-	vaultContextSimilarity: SimilarityPreset;
-	/** Vault folders to index for vault context (semantic RAG). Empty = the whole
-	 *  vault (minus Pythia's own conversations/scratch folders). Scoping to a few
-	 *  folders keeps the on-device index small and fast on large vaults (ADR-119). */
+	/** Vault folders vault context may draw from. Empty = the whole vault (minus
+	 *  Pythia's own conversations/scratch folders). */
 	vaultContextFolders: string[];
-	/** Hard cap on the number of notes indexed for vault context. 0 = unlimited.
-	 *  Protects large vaults from an over-large index / a very long first build;
-	 *  when exceeded, the first N in-scope notes are indexed and the user is warned
-	 *  to scope to folders (ADR-120). */
-	vaultContextMaxIndexedNotes: number;
 }
 
 export const DEFAULT_SETTINGS: PythiaSettings = {
@@ -142,11 +120,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	webSearchDefault: false,
 	webSearchAutoArm: true,
 	webSearchMaxResults: 5,
-	embeddingModelId: DEFAULT_EMBEDDING_MODEL_ID,
-	relatedSimilarity: DEFAULT_SIMILARITY_PRESET,
 	vaultContextEnabled: false,
 	vaultContextMaxNotes: 5,
-	vaultContextSimilarity: DEFAULT_SIMILARITY_PRESET,
 	vaultContextFolders: [],
-	vaultContextMaxIndexedNotes: 5000,
 };

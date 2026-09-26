@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-25 (ADR-216: the pin strip)*
+*Last updated: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
+
+*Previously: 2026-09-25 (ADR-216: the pin strip)*
 
 How the UI is put together and what its parts are called, so changes can be asked for (and found) by name. The words match `README.md` where the user sees them. The full class-by-class map lives in `docs/pythia-spec.md` → *UI architecture*; this file is the orientation that makes that map readable.
 
@@ -11,9 +13,9 @@ The UI is one Obsidian `ItemView`, `PythiaSidebarView` in `sidebar.ts`, built im
 | Suffix / place | What it is | Examples |
 |---|---|---|
 | `…Controller` (`ui/`) | Owns one surface of the view: builds it, repaints it, handles its events. Created once by the view | `HeaderController`, `HistoryController`, `SummaryController`, `ForkController`, `TruncationController`, `ComparisonController` |
-| `…Deps` / `…Host` | The interface a controller or module receives instead of the view: callbacks and getters, never `this` | `HeaderDeps`, `SelectionDeps`, `TermDiscussionHost`, `EmbeddingHubHost` |
+| `…Deps` / `…Host` | The interface a controller or module receives instead of the view: callbacks and getters, never `this` | `HeaderDeps`, `SelectionDeps`, `TermDiscussionHost`, `VaultWatcherHost` |
 | `…Modal` / `…Suggest` (`suggest/`) | Obsidian `Modal` or `SuggestModal` subclass. Every dialog lives here, never in `sidebar.ts` | `DeleteConversationModal`, `ConversationSettingsModal`, `ConversationCapModal`, `CommandHubModal`, `NoteSuggestModal`, `ModelSuggestModal` |
-| `…Setting` / `…Settings` (`ui/`) | A settings control too involved for one `Setting` row | `conversationCapSetting`, `vaultIndexStatusSetting`, `glossarySettings`, `pricingSettings` |
+| `…Setting` / `…Settings` (`ui/`) | A settings control too involved for one `Setting` row | `conversationCapSetting`, `vaultContextSettings`, `glossarySettings`, `pricingSettings` |
 | `ui/settings/*.ts` | One section of the settings tab; `settings.ts` only orders them | `connections`, `conversationDefaults`, `answering`, `optimizer`, `notes`, `storage`, `troubleshooting` |
 | `…Painter` / `…Decorator` | Walks rendered markdown and marks or wraps parts of it | `HighlightPainter`, `citationPainter`, `CodeBlockDecorator`, `tableDecorator` |
 | lower-case module, no suffix | Pure logic, no DOM or DOM-light, unit-tested. The rule lives here; the controller only places it | `turnLabel`, `instructionState`, `composerKeys`, `composerTokens`, `markTap`, `keyboardInset`, `referenceEntries` |
@@ -77,7 +79,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 
 ## 3. The other surfaces
 
-- **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (`services/conversationSearch.ts`), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
+- **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (titles via `services/conversationFinder.ts`, meaning via Schreibstube — ADR-223), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
 - **Pin strip:** `.p-pins`, `PinController`. One pin shown at a time — collapsed to one line (‹ n/m › · ↗), open for the content, copy and ✕. Pinned from the selection strip's *Pin* or a block's pin icon. Every jump in the chat lands below it (`scrollChatTo`).
 - **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts.
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Star · Fork · Merge · Define · Person.
@@ -86,7 +88,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 - **Modals:** `suggest/`.
   - Dialogs: `DeleteConversationModal` (Archive · Delete · Cancel), `DeleteFileModal`, `ConversationSettingsModal`, `ConversationCapModal` (history-limit confirm), `ResumeModeModal`, `CommandHubModal` (`Pythia: Commands…`), `InputModal`, `PromptInputModal`.
   - Pickers, mostly for command-palette entry points that can run with no view open: `ConversationSuggestModal`, `FavoritesSuggestModal`, `NoteSuggestModal`, `TemplateSuggestModal`, `FileSuggestModal`, `FolderSuggestModal`, `ModelSuggestModal` (the comparison's model choice).
-- **Settings tab:** `settings.ts` orders eight sections in `ui/settings/`, each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
+- **Settings tab:** `settings.ts` orders eight sections — seven in `ui/settings/`, and **Vault context** in `ui/vaultContextSettings.ts`, which opens with a *Search by meaning* row saying whether Schreibstube can find notes (ADR-224) — each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
 - **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note.
 
 ## 4. Vocabulary

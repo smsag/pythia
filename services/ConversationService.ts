@@ -470,7 +470,9 @@ export class ConversationService {
 			async (conv) => {
 				const view = await p.activateView();
 				await view.setActiveConversation(conv);
-			}
+			},
+			undefined,
+			(text, limit) => p.searchConversationsByMeaning(text, limit)
 		).open();
 	}
 
@@ -557,7 +559,9 @@ export class ConversationService {
 					const view = await p.activateView();
 					await view.setActiveConversation(conv);
 				}).open();
-			}
+			},
+			undefined,
+			(text, limit) => p.searchConversationsByMeaning(text, limit)
 		).open();
 	}
 }
