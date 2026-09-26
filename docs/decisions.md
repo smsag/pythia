@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
+*Last updated: 2026-09-26 — ADR-223 (the search box searches conversation titles; with Schreibstube installed and its search by meaning on, the conversations it finds by meaning join below them, and related conversations come from its model — Pythia hands its conversations over through Schreibstube's API; the TF-IDF body search, the note scope and auto-widening are removed).*
+
+*Previously: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
 
 *Previously: 2026-09-26 — ADR-221 addendum: a phone holding a desktop's index says so in the settings status row ("kept by your desktop, last written …"), and Build now takes it over: the UI-thread shortcut no longer returns on a complete index when forced, and a full sync signs the file when another kind of device had. The index header carries `writtenAt`.*
 
@@ -4735,3 +4737,25 @@ The user then asked what happens when the note is renamed. The answer was that n
 **Known gap.** The settings status line reads the base's header alone before the index is loaded. Until then its count leaves out the journal's additions, and a phone's "last written" shows the base's time rather than the journal's. Once the index is loaded, both come from memory and are exact.
 
 **Tests.** `tests/indexJournal.test.ts`: `shouldCompact` at the floor and at 5 %; the journal round-trips; a base, another dimension or a torn file is not a journal; only string ids survive in `removed`; `applyJournal`'s replace/add/drop; last change wins in memory; no base means no journal; a journal naming another base is ignored. Through `VaultIndexService` with a journaled store: an edit writes the journal and leaves the index file alone (and the journal is a small fraction of it); the next session reads the two as one, complete; entries carry forward across sessions; 50 edits fold into one base rewrite that loses nothing; a full sync's new base leaves the old journal ignored; a pre-ADR-221 base is rewritten once and journaled after. `tests/vaultIndexStore.test.ts`: the journal's path. Making the journal refuse every write fails three of these (checked by hand).
+
+---
+
+## ADR-223 — Search: titles here, meaning in Schreibstube
+
+*2026-09-26*
+
+**Context.** Two plugins on one device were each loading a language model for the same vault. Schreibstube now owns the engine (its search by meaning is Pythia's engine, ported after ADR-219–222), and it exposes an API: `search`, `related`, `registerSource`, `onIndexChanged`. Pythia's conversations live in `data.json`, out of any vault index, so Pythia has to hand them over. And Pythia's own search had grown a TF-IDF ranking over titles, summaries, messages and the notes a conversation touched, with a scope grammar and auto-widening (ADR-106/168) — lexical recall that meaning now covers better.
+
+**Decision 1 — check, do not assume.** `services/schreibstubeLink.ts` is the one module that reads `app.plugins` (undocumented). It asks every time and never caches: Schreibstube can be switched on, off or updated while Pythia runs, and each load brings a new API object. Anything but a version-1 API whose `ready()` says yes reads as *not available*, never as an error.
+
+**Decision 2 — without Schreibstube, titles only.** The search box and the palette find the conversations whose title holds every typed word, matched with `matchStrength` (so German compounds still work and a row can always show why), newest first among equals, capped at 20. The body text, the summary and the note dimension are no longer searched: `searchScope.ts`, `rankConversations`, `searchConversations`, the widened group, the `via …` line and the chip are removed. `conversationSearch.ts` keeps `bestMatchSnippet` and its line cache.
+
+**Decision 3 — with Schreibstube, meaning joins below.** 300 ms after the typing stops (and from three characters), Pythia asks Schreibstube for conversations by meaning and appends those the titles missed under **BY MEANING · SCHREIBSTUBE**. The title rows never wait. An answer for a query that moved on is dropped; a conversation excluded from a pick is never offered.
+
+**Decision 4 — the conversations are handed over as Pythia's own index text.** `toSourceItem` gives title, summary and the message texts; Schreibstube chunks them exactly as `conversationChunks` does, so the vectors Pythia already built are copied in and reused. Registration happens once per API object; `ConversationStore.onChange` tells Schreibstube to re-list on its next question rather than on every save.
+
+**Decision 5 — related conversations ask Schreibstube first.** `getRelatedConversations` uses Schreibstube's model when it can answer, and Pythia's own otherwise. The background warm of Pythia's related index is skipped when Schreibstube answers, so no second model is loaded for it.
+
+**What this is not yet.** Pythia's engine stays for vault RAG and for devices where Schreibstube pauses (a phone with Pythia on). Moving RAG to Schreibstube and removing Pythia's engine is the next step; until then a phone searches titles only.
+
+**Tests.** `tests/conversationFinder.test.ts`: every word must be in the title; a compound hit ranks below a whole word; the closer match first, then the newer; body text is not searched; capped; a nameless conversation does not throw; meaning is asked from three characters; meaning's extras come in its order, once, only if they exist. `tests/schreibstubeLink.test.ts`: version 1 only, a missing registry or a malformed API reads as absent; `ready()` false or throwing means unavailable; one registration per API object, listing `toSourceItem`s; a search keeps only conversations; a failure answers `[]`; related asks by Pythia's id. `tests/historyPanel.test.ts`: without Schreibstube a body-only word finds nothing; with it the meaning group appears after the pause, never repeats a title hit, drops a stale answer, and never offers the conversation being linked from.

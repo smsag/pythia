@@ -28,7 +28,8 @@ import { embeddingWorkerUrl } from "./services/embedding/host/workerBundleUrl";
 import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
 import { scheduleWarm } from "./services/embedding/warmIndex";
 import { VaultRagService } from "./services/VaultRagService";
-import { EmbeddingHub, type VaultRagLike } from "./services/embedding/EmbeddingHub";
+import { EmbeddingHub, RELATED_RESULT_LIMIT, type VaultRagLike } from "./services/embedding/EmbeddingHub";
+import { SchreibstubeLink } from "./services/schreibstubeLink";
 import type { RelatedResult } from "./services/embedding/relatedConversations";
 import type { EmbeddingModelId } from "./models/embeddingModels";
 import { vaultBuildGuard } from "./services/embedding/buildGuard";
@@ -78,6 +79,9 @@ export default class PythiaPlugin extends Plugin {
 	 *  The methods below are thin facades kept for settings.ts, the sidebar and tests. */
 	embedding!: EmbeddingHub;
 
+	/** Schreibstube's search by meaning, when it is there (ADR-223). */
+	schreibstube!: SchreibstubeLink;
+
 	/** Vault-wide semantic RAG — index lifecycle + retrieval (ADR-116/118/119). */
 	get vaultRag(): VaultRagLike { return this.embedding.vaultRag; }
 
@@ -89,7 +93,17 @@ export default class PythiaPlugin extends Plugin {
 
 	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109). */
 	getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
+		// Schreibstube's model when it can answer (ADR-223); Pythia's own until
+		// its engine is gone, so a phone where Schreibstube pauses keeps working.
+		if (this.schreibstube.available()) return this.schreibstube.related(sourceId, RELATED_RESULT_LIMIT);
 		return this.embedding.getRelated(sourceId, signal);
+	}
+
+	/** Ids of conversations that answer `text` by meaning, or null when
+	 *  Schreibstube is not there to ask — the search then stays with titles. */
+	searchConversationsByMeaning(text: string, limit: number): Promise<string[]> | null {
+		if (!this.schreibstube.available()) return null;
+		return this.schreibstube.searchConversations(text, limit);
 	}
 
 	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background. */
@@ -117,6 +131,12 @@ export default class PythiaPlugin extends Plugin {
 		// then loads data and constructs every remaining service in order.
 		this.conversationStore = new ConversationStore(this);
 		this.container = await AppContainer.create(this);
+		this.schreibstube = new SchreibstubeLink({
+			app: this.app,
+			conversations: () => this.conversations,
+			onConversationsChanged: (cb) => this.conversationStore.onChange(cb),
+			log: (message, data) => debugLog(this.settings, message, data),
+		});
 
 		// On-device embeddings (ADR-109 related conversations + ADR-116 vault RAG):
 		// ONE lazily-built provider shared by both index services, plus the phone's
@@ -188,7 +208,12 @@ export default class PythiaPlugin extends Plugin {
 			// The vault's files are known now, which the replay's guard reads.
 			this.renameFollower.replay();
 			// After the workspace is up, not during it (ADR-169/170).
-			scheduleWarm({ run: () => void this.embedding.warm(), register: (c) => this.register(c) });
+			// Not when Schreibstube answers "related": warming Pythia's own index
+			// would load a second model for nothing (ADR-223).
+			scheduleWarm({
+				run: () => { if (!this.schreibstube.available()) void this.embedding.warm(); },
+				register: (c) => this.register(c),
+			});
 			// The vault index catches up with what changed while Pythia was closed (ADR-221).
 			scheduleWarm({ run: () => void this.embedding.catchUpVaultIndex(), register: (c) => this.register(c), delayMs: CATCH_UP_DELAY_MS });
 		});
@@ -387,6 +412,7 @@ export default class PythiaPlugin extends Plugin {
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
 		this.embedding?.dispose();
+		this.schreibstube?.dispose();
 	}
 
 	// ── Facades delegating to the extracted services (ADR-103 / #121) ──────────
