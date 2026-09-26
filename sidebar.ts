@@ -37,6 +37,7 @@ import { renderRichMarkdown, renderRichMarkdownAsync } from "./ui/renderMarkdown
 import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
+import { findAnswerEl } from "./ui/AnswerTabsController";
 import { SendHintController } from "./ui/SendHintController";
 import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
@@ -1067,10 +1068,8 @@ export class PythiaSidebarView extends ItemView {
 	revealMergeLink(mergeId: string): void { this.mergeController.revealMergeLink(mergeId); }
 
 	scrollToMessage(messageId: string): void {
-		const row = this.messagesEl.querySelector(
-			`[data-msg-id="${messageId}"]`
-		) as HTMLElement | null;
-		if (row) scrollChatTo(this.messagesEl, row);
+		// An answer's row, or a comparison tab brought on screen (ADR-225).
+		void findAnswerEl(this.messagesEl, messageId).then((row) => { if (row) scrollChatTo(this.messagesEl, row); });
 	}
 
 	/** Expand a collapsed long user bubble in `row`, syncing its toggle icon. */

@@ -456,6 +456,31 @@ describe("model comparison on the last exchange (ADR-160)", () => {
 		expect(tabs).toEqual(["GPT-4o", "Sonnet 4.6"]);
 	});
 
+	it("a jump to a favorite made on a tab brings that tab up; one with nothing left says so (ADR-225)", async () => {
+		const conv = await seedConversation(plugin, {
+			name: "Tabs",
+			messages: [userMsg("u1", "q1"), { ...aiMsg("a1", "r1"),
+				alternatives: [{ id: "b1", provider: "openai", model: "gpt-4o", content: "the other answer", timestamp: now() }] }],
+			favorites: [{ id: "f1", messageId: "b1", name: "other", text: "other answer" }, { id: "f2", messageId: "gone", name: "gone" }],
+		} as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		const sel = (view as unknown as { selectionController: { scrollToFavorite(f: unknown): void } }).selectionController;
+		const alt = pane().querySelector<HTMLElement>(".p-answer-alt")!;
+		expect(alt.hidden).toBe(true);
+
+		sel.scrollToFavorite(conv.favorites![0]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(alt.hidden).toBe(false);
+		expect(alt.getAttribute("data-msg-id")).toBe("b1");
+
+		const { Notice } = await import("obsidian");
+		const shown = (Notice as unknown as { shown: string[] }).shown;
+		shown.length = 0;
+		sel.scrollToFavorite(conv.favorites![1]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(shown.some((m) => m.includes("no longer in this conversation"))).toBe(true);
+	});
+
 	it("discarding restores the original answer", async () => {
 		const conv = await seedConversation(plugin, {
 			name: "Discard",

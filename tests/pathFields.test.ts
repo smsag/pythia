@@ -52,7 +52,7 @@ const COMPARISON: Record<keyof Comparison, Kind> = { id: "other", userMessageId:
 const CANDIDATE: Record<keyof ComparisonCandidate, Kind> = {
 	id: "other", provider: "other", model: "other", content: "other", timestamp: "other",
 	tokenUsage: "other", sources: "nested", templateId: "path",
-	cost: "other", noteWrites: "nested",
+	cost: "other", noteWrites: "nested", truncated: "other", rewriteTarget: "nested",
 };
 
 const SETTINGS: Record<keyof PythiaSettings, Kind> = {
@@ -90,6 +90,7 @@ function fixture(): Conversation {
 		id: tag, provider: "anthropic", model: "m", content: "", timestamp: "t",
 		sources: [{ n: 1, kind: "vault", ref: at(`${tag}.source.md`), title: `${tag}.source` }],
 		noteWrites: [put({ action: "created" } as unknown as NoteWrite, NOTE_WRITE, `${tag}.write`)],
+		rewriteTarget: put({ from: { line: 0, ch: 0 }, to: { line: 0, ch: 1 }, text: "x" } as unknown as RewriteTarget, REWRITE_TARGET, `${tag}.rewrite`),
 	} as unknown as ComparisonCandidate, CANDIDATE, tag);
 	const candidate = makeCandidate("cand");
 	const message = put({

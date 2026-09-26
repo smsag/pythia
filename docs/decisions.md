@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-224 (Pythia drops its own embedding engine: vault context asks Schreibstube's search by meaning for the notes that answer a turn and filters them by Pythia's folders and `pythia: false`; related conversations come from Schreibstube alone; without Schreibstube there is no vault context and no related list, and the search box finds titles; the embedding model, the vault and conversation indexes, the index-status row and the "Rebuild vault context index" command are removed; closes D-13, D-14, D-16, D-20, D-31…D-34, D-36, D-38, D-39, D-41…D-43).*
+*Last updated: 2026-09-26 — ADR-225 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
+
+*Previously: 2026-09-26 — ADR-224 (Pythia drops its own embedding engine: vault context asks Schreibstube's search by meaning for the notes that answer a turn and filters them by Pythia's folders and `pythia: false`; related conversations come from Schreibstube alone; without Schreibstube there is no vault context and no related list, and the search box finds titles; the embedding model, the vault and conversation indexes, the index-status row and the "Rebuild vault context index" command are removed; closes D-13, D-14, D-16, D-20, D-31…D-34, D-36, D-38, D-39, D-41…D-43).*
 
 *Previously: 2026-09-26 — ADR-223 (the search box searches conversation titles; with Schreibstube installed and its search by meaning on, the conversations it finds by meaning join below them, and related conversations come from its model — Pythia hands its conversations over through Schreibstube's API; the TF-IDF body search, the note scope and auto-widening are removed).*
 
@@ -4785,3 +4787,31 @@ The user then asked what happens when the note is renamed. The answer was that n
 **Tests.** `tests/vaultContext.test.ts`: `retrievalQuery` carries the head of the previous answer into a short follow-up, leaves a long message alone and is empty for an empty one; only an explicit `pythia: false` opts out; folders match by whole path segments and Pythia's own folders are never drawn from; the service asks Schreibstube with the carried-over query for three times the limit, excluding the attached notes, and keeps the limit; it drops what the scope and the opt-out exclude and fills from further down the list; it asks nothing when vault context is off for the conversation; it remembers each conversation's last notes for the reference row. `tests/schreibstubeLink.test.ts`: `searchNotes` asks for notes only, with the limit and the exclusions. `tests/vaultWatcher.test.ts`: four listeners, each registered for teardown; a note or folder rename is followed at once; every note that changed or vanished reaches the glossary cache, a non-markdown file or a folder does not. The 28 engine test files are deleted with the modules they covered.
 
 **Addendum (2026-09-26) — a recommended conversation opens here.** Schreibstube's Recommended panel lists Pythia's conversations beside a note. The source Pythia registers now offers `open(id)`, which activates the view on that conversation, so pressing one there lands in the chat rather than going through the `obsidian://pythia?cmd=resume` link. A conversation deleted since Schreibstube listed it does nothing. Test: `tests/schreibstubeLink.test.ts` — the registered source's `open` reaches the host.
+
+---
+
+## ADR-225 — A comparison tab is an answer by its own id
+
+**Status:** Active · 2026-09-26 · **completes ADR-219**
+
+**Context.** ADR-219 kept a comparison's other answers as tabs, and said that favorites and merge links on a non-kept answer "stay on the conversation under its id and are painted on its tab". A review after the merge found that only held for marks made *before* Keep. Four ways it failed:
+- **A selection in a tab belonged to the kept answer.** The tab view carried no `data-msg-id`, and every selection path (Star, Pin, Merge, Branch, Define) finds its message with `closest("[data-msg-id]")`, which found the kept answer's row. So a star made on a tab was saved with the kept id and the tab's text, and was painted on neither. A Branch started from the wrong answer, although D-60 says there is no branching from a tab.
+- **Removing an exchange removed only the kept id's marks.** `spliceExchange` (Delete, Retry) left favorites and merge links on the tab ids behind. They stayed in "Starred", and `scrollToFavorite` returned without a word on a missing row (principle 2).
+- **Retry threw the tabs away.** Its guard counted only marks on the kept answer, and the tabs themselves go with the answer.
+- **A switch lost two cards.** `ComparisonCandidate` did not carry `truncated` or `rewriteTarget`, so "Use this answer" dropped a cut-off answer's Continue card and a rewrite proposal's target.
+
+**Decision.**
+- **A tab on screen carries its answer's id** (`data-msg-id` on `.p-answer-alt`, removed when the kept tab is shown). Every selection path then attributes to the tab without being touched.
+- **No Branch from a tab** (D-60): the toolbar hides the button on a selection inside `.p-answer-alt`, and `onForkConversation` refuses one with a Notice.
+- **A jump to an answer goes through `findAnswerEl`** (`ui/AnswerTabsController.ts`). It returns the row, or brings up a tab that is not on screen and waits for its render so the marks are painted. Used by the favorite jump, the pin ↗, `scrollToMessage` and the merge reveal. When the row is already on screen it is found synchronously, so the jump stays inside the tap. A favorite that is found nowhere now says so (`favoriteGone`).
+- **`answerIds(msg)`** is the answer's id plus every tab id. `spliceExchange` removes favorites and merge links on all of them.
+- **Retry is withheld on an answer with tabs**, as it already is for one with a star or a link: Continue and Compare remain.
+- **A candidate carries `truncated` and `rewriteTarget`** both ways, validated on load, along with `tokenUsage`, which the tab's meta line prints and prices. A tab's rewrite target follows a rename. `tests/pathFields.test.ts` again refused to compile until the two fields were classified.
+
+**Guards.**
+- `tests/answerTabs.test.ts`: the tab on screen has its own id and loses it on the kept tab; a selection in a tab resolves to it; `findAnswerEl` brings a tab up and waits for its text.
+- `tests/viewRender.test.ts`: a favorite jump to a tab brings it up; a favorite found nowhere shows a Notice.
+- `tests/conversationEdits.test.ts`: splicing an answer with tabs removes the marks on the tabs.
+- `tests/truncation.test.ts`: Retry is withheld on an answer with tabs.
+- `tests/comparison.test.ts`: `answerIds`; a switch keeps `truncated` and `rewriteTarget` both ways; load drops a malformed flag, target or token count.
+- `tests/pinOverlay.test.ts`: the "gone" case waits for the tab lookup.

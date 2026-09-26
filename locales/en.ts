@@ -419,6 +419,8 @@ const en = {
 	answerTabUse:          "Use this answer",
 	answerTabSwitched:     "{{model}} is now the answer in this conversation",
 	answerTabSwitchRefused: "Only the last answer can change — a later turn was built on this one",
+	favoriteGone: "The starred passage is no longer in this conversation",
+	forkFromTabRefused: "Branch from the answer the conversation holds — a tab is not part of it",
 	compareFailed:         "{{model}} failed: {{error}}",
 	compareDiscarded:      "Comparison discarded — original answer restored",
 	compareBusy:           "Wait for the current answer to finish",

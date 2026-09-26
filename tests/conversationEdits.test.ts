@@ -49,3 +49,16 @@ describe("spliceExchange", () => {
 		expect(c.lastSavedMessageCount).toBe(1);
 	});
 });
+
+describe("spliceExchange — an answer with comparison tabs (ADR-225)", () => {
+	it("removes the favorites and merge links made on its tabs as well", () => {
+		const c = conv();
+		c.messages[3].alternatives = [{ id: "b2", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" }];
+		c.favorites = [{ id: "f", messageId: "a2", name: "x" }, { id: "g", messageId: "b2", name: "y" }, { id: "h", messageId: "a1", name: "z" }] as Conversation["favorites"];
+		c.merges = [{ id: "l", conversationId: "o", messageId: "b2", text: "t", createdAt: "" }] as Conversation["merges"];
+		spliceExchange(c, "u2", "a2");
+		expect(c.favorites?.map((f) => f.id)).toEqual(["h"]);
+		expect(c.merges).toEqual([]);
+	});
+});
+

@@ -1,4 +1,5 @@
 import type { Conversation, Message } from "../models/types";
+import { answerIds } from "./comparison";
 
 /**
  * Remove one exchange — a user turn and, when present, the answer that follows
@@ -27,8 +28,10 @@ export function spliceExchange(
 		conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
 	}
 	if (assistant) {
-		if (conv.favorites?.length) conv.favorites = conv.favorites.filter((f) => f.messageId !== assistant.id);
-		if (conv.merges?.length) conv.merges = conv.merges.filter((l) => l.messageId !== assistant.id);
+		// The answer's tabs go with it, and so does whatever was marked on them (ADR-225).
+		const gone = new Set(answerIds(assistant));
+		if (conv.favorites?.length) conv.favorites = conv.favorites.filter((f) => !gone.has(f.messageId));
+		if (conv.merges?.length) conv.merges = conv.merges.filter((l) => !gone.has(l.messageId));
 	}
 	return { user, assistant };
 }

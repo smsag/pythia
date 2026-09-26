@@ -125,6 +125,10 @@ export interface ComparisonCandidate {
 	 *  its note-write chip survive start → keep/cancel (ADR-219). */
 	cost?: MessageCost;
 	noteWrites?: NoteWrite[];
+	/** Carried like the two above, so a switch between tabs keeps a cut-off
+	 *  answer's Continue card and a rewrite proposal's target (ADR-225). */
+	truncated?: true;
+	rewriteTarget?: RewriteTarget;
 }
 
 /** The pending comparison on a conversation's last exchange (ADR-160). */

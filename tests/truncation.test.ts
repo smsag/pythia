@@ -112,6 +112,17 @@ describe("cut-off answer card (ADR-162)", () => {
 		expect(labels).toEqual([en.truncContinueBtn, en.compareBtn]);
 	});
 
+	it("withholds Retry on an answer with comparison tabs — they would go with it (ADR-225)", async () => {
+		await seedConversation(plugin, {
+			name: "Chat", contextNotes: [],
+			messages: [userMsg("u1", "q"), { ...aiMsg("a1", "half"), truncated: true as const,
+				alternatives: [{ id: "b1", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" }] }],
+		} as Partial<Conversation>);
+		const { pane } = await mountView(plugin);
+		const labels = Array.from(pane().querySelectorAll(".p-trunc-btn")).map((b) => b.textContent);
+		expect(labels).toEqual([en.truncContinueBtn, en.compareBtn]);
+	});
+
 	it("an earlier cut-off answer keeps the note but not the actions", async () => {
 		await seedConversation(plugin, {
 			name: "Chat", contextNotes: [],

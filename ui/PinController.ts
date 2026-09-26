@@ -12,6 +12,7 @@ import { describeErrorForLog } from "../services/redact";
 import { flashText } from "./HighlightPainter";
 import { PIN_ICON } from "./icons";
 import { codeBlockSource, diagramSource, tableMarkdown, type PinBlock } from "./pinSources";
+import { findAnswerEl } from "./AnswerTabsController";
 
 export interface PinDeps {
 	app: App;
@@ -227,9 +228,14 @@ export class PinController {
 	 * jumps to is not under it. A snapshot outlives its message — deleted, retried,
 	 * moved to a fork by a comparison — and then this says so.
 	 */
-	private jump(conv: Conversation, pin: Pin, root: HTMLElement): void {
+	private jump(conv: Conversation, pin: Pin, root: HTMLElement): void { void this.jumpTo(conv, pin, root); }
+
+	private async jumpTo(conv: Conversation, pin: Pin, root: HTMLElement): Promise<void> {
 		const messagesEl = this.d.getMessagesEl();
-		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(pin.messageId)}"]`);
+		// An answer's row — found at once, so the jump stays in the tap — or the
+		// comparison tab it was pinned from, brought up first (ADR-225).
+		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(pin.messageId)}"]`)
+			?? await findAnswerEl(messagesEl, pin.messageId);
 		if (!row) { new Notice(t("pinGone")); return; }
 		this.opened.delete(conv.id);
 		setAccordionOpen(root, false);
