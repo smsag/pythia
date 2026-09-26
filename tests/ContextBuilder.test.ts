@@ -289,6 +289,18 @@ describe("buildSystemPrompt", () => {
 		// A real ISO date (YYYY-MM-DD) is embedded.
 		expect(on).toMatch(/Current date: \d{4}-\d{2}-\d{2}\./);
 	});
+
+	it("dates the recency block by the user's own calendar day, not UTC (ADR-228)", () => {
+		vi.useFakeTimers();
+		try {
+			// 00:30 local on 27 Sep in any zone east of UTC is still 26 Sep in UTC.
+			vi.setSystemTime(new Date(2026, 8, 27, 0, 30));
+			const on = buildSystemPrompt(baseConv({ systemPrompt: "Hi", researchMode: true }));
+			expect(on).toContain("Current date: 2026-09-27.");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
 
 // ── buildAttachedNotesContent ─────────────────────────────────────────────────

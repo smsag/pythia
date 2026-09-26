@@ -422,3 +422,25 @@ describe("AnthropicService — stop reason (ADR-162)", () => {
 		expect(finish?.truncated).toBe(false);
 	});
 });
+
+describe("AnthropicService — a failed tool call is marked as one (ADR-228)", () => {
+	it("sets is_error on an 'Error: …' tool result and not on a successful one", async () => {
+		const round = (id: string) => makeFakeStream([], {
+			content: [{ type: "tool_use", id, name: "web_search", input: {} }],
+			stop_reason: "tool_use",
+			usage: { input_tokens: 1, output_tokens: 1 },
+		});
+		streamMock
+			.mockReturnValueOnce(round("t1"))
+			.mockReturnValueOnce(round("t2"))
+			.mockReturnValueOnce(makeFakeStream(["done"], { content: [{ type: "text", text: "done" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }));
+		const replies = ["Error: web search key was rejected", "Web search results"];
+		await new AnthropicService({} as never, makeSettings(), "key").streamMessage(
+			makeConv(), "hi", [], () => {}, () => {}, () => {}, async () => replies.shift()!,
+		);
+		const results = (streamMock.mock.calls.at(-1)![0] as { messages: { role: string; content: unknown }[] }).messages
+			.flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+			.filter((b: { type?: string }) => b.type === "tool_result") as { tool_use_id: string; is_error?: boolean }[];
+		expect(results.map((r) => [r.tool_use_id, r.is_error ?? false])).toEqual([["t1", true], ["t2", false]]);
+	});
+});

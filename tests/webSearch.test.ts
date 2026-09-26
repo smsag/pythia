@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("obsidian", () => ({ requestUrl: vi.fn() }));
 
 import { requestUrl } from "obsidian";
-import { WebSearchService, MAX_EXTRACT_CHARS, TAVILY_MAX_RESULTS } from "../services/WebSearchService";
+import { WebSearchService, MAX_EXTRACT_CHARS, TAVILY_MAX_RESULTS, WEB_REQUEST_TIMEOUT_MS } from "../services/WebSearchService";
 import type { PythiaSettings } from "../models/settings";
 
 const requestUrlMock = requestUrl as unknown as ReturnType<typeof vi.fn>;
@@ -270,5 +270,44 @@ describe("WebSearchService — numbered results as data (ADR-226)", () => {
 		expect(await kind(429)).toBe("rate");
 		expect(await kind(500)).toBe("other");
 		expect((await new WebSearchService(settings(), "").search("q")).error).toBe("auth");
+	});
+});
+
+describe("WebSearchService — a hung request (ADR-227)", () => {
+	it("gives up after the timeout and says so, instead of holding the answer forever", async () => {
+		vi.useFakeTimers();
+		try {
+			requestUrlMock.mockReturnValue(new Promise(() => {}));
+			const pending = new WebSearchService(settings(), "k").search("q");
+			await vi.advanceTimersByTimeAsync(WEB_REQUEST_TIMEOUT_MS);
+			const r = await pending;
+			expect(r.text).toMatch(/timed out after 30 s/);
+			expect(r.error).toBe("other");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("WebSearchService — the smaller Tavily gaps (ADR-228)", () => {
+	it("shows a news result's published date under its header", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [{ title: "ECB", url: "https://ecb.europa.eu/x", content: "cut", published_date: "Thu, 25 Sep 2026 10:00:00 GMT" }] }));
+		const r = await new WebSearchService(settings(), "k").search("q");
+		expect(r.text).toContain("### 1. ECB\nURL: https://ecb.europa.eu/x\nPublished: Thu, 25 Sep 2026 10:00:00 GMT\ncut");
+	});
+
+	it("trims the key, and a key of only spaces is no key", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [] }));
+		const svc = new WebSearchService(settings(), "  tvly-abc\n");
+		await svc.search("q");
+		expect(requestUrlMock.mock.calls[0][0].headers.Authorization).toBe("Bearer tvly-abc");
+		svc.updateApiKey("   ");
+		expect(svc.hasApiKey()).toBe(false);
+	});
+
+	it("sends a whole number of results even when the stored setting is not one", async () => {
+		requestUrlMock.mockResolvedValue(ok({ results: [] }));
+		await new WebSearchService(settings({ webSearchMaxResults: 3.7 }), "k").search("q");
+		expect(JSON.parse(requestUrlMock.mock.calls[0][0].body).max_results).toBe(3);
 	});
 });

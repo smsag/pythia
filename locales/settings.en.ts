@@ -89,7 +89,7 @@ const settingsEn = {
 	webSearchAutoArmName:    "Read links in a message",
 	webSearchAutoArmDesc:    "When research mode is off, allow web search and page reading for a single message that contains a link. Requires a Tavily key. The globe pulses when this fires.",
 	webSearchMaxResultsName: "Web search results per query",
-	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5).",
+	webSearchMaxResultsDesc: "How many results to fetch for each search. Fewer results use fewer tokens. Leave at 0 to use the default (5); at most 20, Tavily's limit.",
 	maxAttachedNotesTokensName: "Attached notes token warning",
 	maxAttachedNotesTokensDesc: "Warn when attached notes exceed this many estimated tokens before sending. Set to 0 to disable the warning.",
 	attachedNotesTokenWarning: "Attached notes are large (~{{tokens}} tokens) — this may push out room for the conversation itself or bury your question.",

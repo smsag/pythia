@@ -8,7 +8,7 @@ import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
-import { shouldAutoArmSearch, wantsWeb } from "./services/sendPolicy";
+import { researchForSend, wantsWeb } from "./services/sendPolicy";
 import { nameAfterCommit } from "./ui/postCommitNaming";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
@@ -1306,25 +1306,24 @@ export class PythiaSidebarView extends ItemView {
 		// Counts what it forwards, so a chart lands where the model paused (ADR-210).
 		const emit = this.toolCalls.begin(appendToken);
 
-		// Offered for THIS send only — never persisted (ADR-099); the rule is in sendPolicy.
-		const autoArmedSearch = shouldAutoArmSearch({
+		// For THIS send only — never persisted (ADR-099/228); the rule is in sendPolicy.
+		const research = researchForSend({
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
 			wantsWeb: wantsWeb(text),
 		});
-		const researchActive = (conv.researchMode ?? false) || autoArmedSearch;
-		if (autoArmedSearch) this.flashResearchAutoArm();
-
-		const onToolCall = this.toolCalls.handler(conv, researchActive);
+		if (research.autoArmed) this.flashResearchAutoArm();
+		if (research.missingKey) new Notice(t("researchNoKeyNotice"));
+		const onToolCall = this.toolCalls.handler(conv, research.active);
 
 		try {
 		await this.plugin.llmRouter.streamMessage(
-			// Pass an armed shallow clone for an auto-armed send so web_search is
-			// offered this turn. The clone shares conv.messages (read-only in the
+			// A shallow clone carrying this send's research state (armed by a link,
+			// or off for want of a key). It shares conv.messages (read-only in the
 			// provider) and is never persisted — sidebar's own callbacks below save
-			// the original `conv`, so the toggle stays off after the turn.
-			autoArmedSearch ? { ...turnConv, researchMode: true } : turnConv,
+			// the original `conv`, so the toggle is never changed by a send.
+			research.active !== (turnConv.researchMode === true) ? { ...turnConv, researchMode: research.active } : turnConv,
 			this.rewrite.decorate(text, conv),
 			attachedNotes,
 			emit,

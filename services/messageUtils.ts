@@ -121,6 +121,21 @@ export function normalizeMessages<T extends { role: string; content: string }>(
 	return result;
 }
 
+/**
+ * What a past message says to the model as history (ADR-227): its text and,
+ * for an answer that used the web, the addresses of the pages its sources row
+ * lists — numbered as the row numbers them, so "read source 2" names a page the
+ * model can pass to read_url. Without it the model saw only ⟦cite:web:n⟧
+ * markers and no address, and a follow-up about a source had nothing to open.
+ * A bare-domain source (an answer before ADR-226) is left out: it is not a page.
+ */
+export function historyContent(m: { role: string; content: string; sources?: { n: number; kind: string; ref: string }[] }): string {
+	if (m.role !== "assistant" || !Array.isArray(m.sources)) return m.content;
+	const pages = m.sources.filter((s) => s && s.kind === "web" && typeof s.ref === "string" && /^https?:\/\//i.test(s.ref));
+	if (pages.length === 0) return m.content;
+	return `${m.content}\n\n[Web sources of this answer: ${pages.map((s) => `${s.n}. ${s.ref}`).join(" · ")}]`;
+}
+
 // ── History selection ─────────────────────────────────────────────────────────
 
 /** How many recent messages to keep in hybrid resume mode — enough for the

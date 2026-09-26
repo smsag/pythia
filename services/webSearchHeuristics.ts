@@ -11,7 +11,17 @@
 // web search for one message (ADR-217).
 const WEB_URL_RE = /\bhttps?:\/\/[^\s/?#]+\.[^\s/?#]+/i;
 
-/** True when `text` contains an http(s) URL — the read_url tool's cue. */
+/**
+ * A link typed without its scheme (ADR-228): `www.example.com`, or a host with
+ * an alphabetic top-level domain followed by a path (`example.com/article`).
+ * A bare `example.com` is not one — in prose that is a name, not a request to
+ * read a page. The one pattern for both the auto-arm cue and the read allow-list.
+ */
+export const BARE_URL_RE = /(?<![\w@/.:-])(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}(?:\/[^\s<>"'`\]]*)?|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}\/[^\s<>"'`\]]*)/gi;
+
+/** True when `text` contains a web link — the read_url tool's cue. */
 export function containsWebUrl(text: string): boolean {
-	return !!text && WEB_URL_RE.test(text);
+	if (!text) return false;
+	BARE_URL_RE.lastIndex = 0;
+	return WEB_URL_RE.test(text) || BARE_URL_RE.test(text);
 }

@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { estimateCost, formatCost } from "../models/modelPricing";
 import { formatClockTime } from "../services/messageUtils";
 import { parseCitations, resolveWebCitations } from "../services/citations";
-import { shouldAutoArmSearch, wantsWeb } from "../services/sendPolicy";
+import { researchForSend, wantsWeb } from "../services/sendPolicy";
 import type { WebSource } from "../services/WebSearchService";
 import { describeErrorForLog } from "../services/redact";
 import { ToolHandler } from "../services/ToolHandler";
@@ -137,12 +137,12 @@ export class ComparisonController {
 		// Research as the send would have it: the globe, or the link rule that
 		// auto-arms one message (ADR-226) — else a compared model could not read
 		// the page the original answer read.
-		const research = (conv.researchMode ?? false) || shouldAutoArmSearch({
+		const research = researchForSend({
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.d.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.d.plugin.webSearchService.hasApiKey(),
 			wantsWeb: wantsWeb(prompt.content),
-		});
+		}).active;
 		const armed: Conversation = { ...conv, provider: model.provider, model: model.id, writeMode: "none", researchMode: research };
 		const allowed = ToolHandler.allowedToolNames("none", research);
 		// A candidate may draw a chart — one model reaching for one and another not

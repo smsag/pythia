@@ -126,3 +126,31 @@ describe("isPrivateHost", () => {
 		expect(isPrivateHost("fe80::1")).toBe(true);
 	});
 });
+
+describe("ADR-228 — the argument and host gaps from the Tavily review", () => {
+	it("refuses a query over Tavily's 400 characters, naming both numbers", () => {
+		const r = parseSearchArgs({ query: "x".repeat(401) });
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.error).toMatch(/at most 400 characters \(got 401\)/);
+		expect(parseSearchArgs({ query: "x".repeat(400) }).ok).toBe(true);
+	});
+
+	it("accepts an internationalised top-level domain as a site filter", () => {
+		const r = parseSearchArgs({ query: "q", include_domains: ["пример.рф", "xn--e1afmkfd.xn--p1ai"] });
+		expect(r.ok && r.value.includeDomains).toEqual(["xn--e1afmkfd.xn--p1ai"]);
+	});
+
+	it("treats more intranet names and non-public addresses as private", () => {
+		for (const h of [
+			"wiki.corp", "nas.home", "hr.intranet", "files.private",
+			"224.0.0.1", "239.255.255.250", "255.255.255.255", "198.18.0.1", "192.0.2.10", "198.51.100.7", "203.0.113.9",
+			"127.0.0.1.nip.io", "10-0-0-1.sslip.io", "[64:ff9b::7f00:1]", "[ff02::1]",
+		]) expect(isPrivateHost(h), h).toBe(true);
+	});
+
+	it("still lets public addresses and names through", () => {
+		for (const h of ["example.com", "8.8.8.8", "93.184.216.34", "1.2.3.4.example.com", "[2606:4700::1111]", "[64:ff9b::808:808]"]) {
+			expect(isPrivateHost(h), h).toBe(false);
+		}
+	});
+});

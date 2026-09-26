@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch, wantsWeb } from "../services/sendPolicy";
+import { shouldGenerateTitle, shouldGenerateChapterName, shouldAutoArmSearch, wantsWeb, researchForSend } from "../services/sendPolicy";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -122,5 +122,21 @@ describe("wantsWeb (ADR-217, narrowed by ADR-226)", () => {
 		for (const text of ["latest ECB decision", "what is the price now", "update my note", "[[2026-09-26 Daily]] summary", "explain recursion"]) {
 			expect(wantsWeb(text), text).toBe(false);
 		}
+	});
+});
+
+describe("researchForSend — never without a key (ADR-228)", () => {
+	const base = { researchMode: true as boolean | undefined, autoArmEnabled: true, hasApiKey: true, wantsWeb: false };
+	it("is on with the globe and a key", () => {
+		expect(researchForSend(base)).toEqual({ active: true, autoArmed: false, missingKey: false });
+	});
+	it("is off, and says why, when the globe is on but there is no key", () => {
+		expect(researchForSend({ ...base, hasApiKey: false })).toEqual({ active: false, autoArmed: false, missingKey: true });
+	});
+	it("is on for one message that carries a link, with the globe off", () => {
+		expect(researchForSend({ ...base, researchMode: false, wantsWeb: true })).toEqual({ active: true, autoArmed: true, missingKey: false });
+	});
+	it("stays off and silent with the globe off and no key", () => {
+		expect(researchForSend({ ...base, researchMode: undefined, hasApiKey: false, wantsWeb: true })).toEqual({ active: false, autoArmed: false, missingKey: false });
 	});
 });

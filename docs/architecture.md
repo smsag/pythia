@@ -1,6 +1,10 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-226: `WebSearchService.search/extract(…, firstN)` return `WebToolResult { text, sources, error? }` (numbered results as data; `parseWebSourcesFromResult` removed); `ToolHandler.executeWeb` (the web tools' one door, research-gated, fail-closed without a scope); `citations.resolveWebCitations` replaces `appendWebSources`; `MessageSource.cite`; `WebReadScope.admitSearch` (5 searches per answer); `webSearchHeuristics` keeps only `containsWebUrl`; `ToolCallController.resolveSources` serves both commit sites.*
+*Last updated: 2026-09-26 — ADR-228: `sendPolicy.researchForSend` (research never without a key; the send and comparisons); `webSearchHeuristics.BARE_URL_RE` (scheme-less links, shared with `WebReadScope.urlsInText`); `tavilyArgs.MAX_QUERY_CHARS` and wider `isPrivateHost`; `WebSearchService` trims the key, floors the result count and passes `published_date`; `ContextBuilder` dates the recency block with `todayISO`; Anthropic tool results carry `is_error`.*
+
+*Previously: 2026-09-26 — ADR-227: `messageUtils.historyContent` (an answer's web source addresses in its history, used by the three providers); `WebReadScope.addUrl` + seeding from earlier answers' sources; `balanceParens`; `WebSearchService.post` times out at `WEB_REQUEST_TIMEOUT_MS` (30 s).*
+
+*Previously: 2026-09-26 — ADR-226: `WebSearchService.search/extract(…, firstN)` return `WebToolResult { text, sources, error? }` (numbered results as data; `parseWebSourcesFromResult` removed); `ToolHandler.executeWeb` (the web tools' one door, research-gated, fail-closed without a scope); `citations.resolveWebCitations` replaces `appendWebSources`; `MessageSource.cite`; `WebReadScope.admitSearch` (5 searches per answer); `webSearchHeuristics` keeps only `containsWebUrl`; `ToolCallController.resolveSources` serves both commit sites.*
 
 *Previously: 2026-09-26 — ADR-225: `ui/AnswerTabsController.ts` exports `findAnswerEl` (the one way to reach an answer's element by id, bringing a comparison tab up first), used by the favorite jump, the pin ↗, `scrollToMessage` and the merge reveal; the tab view carries `data-msg-id`; `services/comparison.ts` gains `answerIds`, read by `spliceExchange`; `ComparisonCandidate` carries `truncated` + `rewriteTarget`.*
 

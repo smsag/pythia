@@ -14,3 +14,16 @@ describe("containsWebUrl (ADR-217)", () => {
 		expect(containsWebUrl("")).toBe(false);
 	});
 });
+
+describe("containsWebUrl — a link typed without its scheme (ADR-228)", () => {
+	it("fires on www. hosts and on a host with a path", () => {
+		for (const t of ["read www.example.com please", "summarize example.com/article", "see news.bbc.co.uk/world/x"]) {
+			expect(containsWebUrl(t), t).toBe(true);
+		}
+	});
+	it("does not fire on a bare domain in prose, an email, or a vault path", () => {
+		for (const t of ["I like example.com a lot", "mail me at a@example.com", "see [[Projects/Q3.md]]", "version 2.5/3", "file Notes/report.md"]) {
+			expect(containsWebUrl(t), t).toBe(false);
+		}
+	});
+});

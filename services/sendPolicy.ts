@@ -53,6 +53,30 @@ export function shouldAutoArmSearch(opts: {
 }
 
 /**
+ * Whether web research is on for THIS send, and why (ADR-228). The ONE rule —
+ * the send and every comparison run ask it:
+ * - `active`: the tools are offered and the recency block is added. Never
+ *   without a key: research on with no key used to offer tools that could only
+ *   fail and tell the model to search first, wasting rounds.
+ * - `autoArmed`: on for this message only, because it carries a link.
+ * - `missingKey`: the user turned research on but no Tavily key is set, which
+ *   the send says rather than quietly answering without the web.
+ */
+export function researchForSend(opts: {
+	researchMode: boolean | undefined;
+	autoArmEnabled: boolean;
+	hasApiKey: boolean;
+	wantsWeb: boolean;
+}): { active: boolean; autoArmed: boolean; missingKey: boolean } {
+	const autoArmed = shouldAutoArmSearch(opts);
+	return {
+		active: opts.hasApiKey && (opts.researchMode === true || autoArmed),
+		autoArmed,
+		missingKey: opts.researchMode === true && !opts.hasApiKey,
+	};
+}
+
+/**
  * Whether an outgoing message wants the web: it carries a link for read_url
  * (ADR-217). ADR-099 also armed on time-sensitive words and on any year from
  * this one on; ADR-226 dropped that — "now", "update", "cost" or a daily note

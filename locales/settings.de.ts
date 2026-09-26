@@ -83,7 +83,7 @@ const settingsDe = {
 	webSearchAutoArmName:    "Links in einer Nachricht lesen",
 	webSearchAutoArmDesc:    "Wenn der Recherchemodus aus ist, werden Websuche und Seitenlesen für eine einzelne Nachricht erlaubt, die einen Link enthält. Erfordert einen Tavily-Schlüssel. Der Globus pulsiert, wenn dies auslöst.",
 	webSearchMaxResultsName: "Websuchergebnisse pro Anfrage",
-	webSearchMaxResultsDesc: "Wie viele Ergebnisse pro Suche abgerufen werden. Weniger Ergebnisse verbrauchen weniger Tokens. Bei 0 wird der Standard (5) verwendet.",
+	webSearchMaxResultsDesc: "Wie viele Ergebnisse pro Suche abgerufen werden. Weniger Ergebnisse verbrauchen weniger Tokens. Bei 0 wird der Standard (5) verwendet; höchstens 20, das Limit von Tavily.",
 	maxAttachedNotesTokensName: "Token-Warnung für angehängte Notizen",
 	maxAttachedNotesTokensDesc: "Warnen, wenn angehängte Notizen diese geschätzte Token-Anzahl vor dem Senden überschreiten. Bei 0 deaktiviert.",
 	attachedNotesTokenWarning: "Die angehängten Notizen sind umfangreich (~{{tokens}} Token) — das kann den Platz für das eigentliche Gespräch verdrängen oder deine Frage überdecken.",

@@ -1,3 +1,4 @@
+import { TAVILY_MAX_RESULTS } from "../../services/WebSearchService";
 import { numberRow, section, toggleRow, type SettingsContext } from "./context";
 import { Setting } from "obsidian";
 import { renderPricingSettings } from "../pricingSettings";
@@ -39,7 +40,9 @@ export function renderAnsweringSection(containerEl: HTMLElement, ctx: SettingsCo
 
 	numberRow(ctx, containerEl, t("webSearchMaxResultsName"), t("webSearchMaxResultsDesc"), {
 		placeholder: "5",
-		rule: { min: 0 },
+		// Tavily's own ceiling, named in the description and refused here rather
+		// than clamped behind the user's back (ADR-228).
+		rule: { min: 0, max: TAVILY_MAX_RESULTS },
 		read: () => plugin.settings.webSearchMaxResults,
 		write: (n) => { plugin.settings.webSearchMaxResults = n ?? 0; ctx.saveSoon(); },
 	});

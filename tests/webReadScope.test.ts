@@ -57,3 +57,41 @@ describe("WebReadScope — searches per answer (ADR-226)", () => {
 		expect(scope.admitSearch()).toMatch(/already run 5 times .* Answer from the results you have/);
 	});
 });
+
+describe("WebReadScope — Wikipedia links and earlier answers' sources (ADR-227)", () => {
+	it("keeps a balanced ) inside a link and drops the one closing a sentence or a markdown link", () => {
+		expect(urlsInText("see https://en.wikipedia.org/wiki/Mercury_(planet) now")).toEqual(["https://en.wikipedia.org/wiki/Mercury_(planet)"]);
+		expect(urlsInText("(see https://en.wikipedia.org/wiki/Mercury_(planet))."))
+			.toEqual(["https://en.wikipedia.org/wiki/Mercury_(planet)"]);
+		expect(urlsInText("[x](https://a.com/y) and (https://b.com/z)")).toEqual(["https://a.com/y", "https://b.com/z"]);
+	});
+
+	it("admits a Wikipedia link with parentheses the user pasted", () => {
+		const scope = WebReadScope.forConversation(conv({ role: "user", content: "read https://en.wikipedia.org/wiki/Mercury_(planet)" }));
+		expect(scope.admit("https://en.wikipedia.org/wiki/Mercury_(planet)")).toBeNull();
+	});
+
+	it("admits a page an earlier answer lists as a source, and nothing else from it", () => {
+		const scope = WebReadScope.forConversation({ messages: [
+			{ role: "user", content: "what happened" },
+			{ role: "assistant", content: "It rained.", sources: [
+				{ n: 1, kind: "web", ref: "https://news.example/rain", title: "news.example" },
+				{ n: 2, kind: "vault", ref: "Notes/x.md", title: "x" },
+			] },
+			{ role: "user", content: "read source 1" },
+		] } as unknown as Pick<Conversation, "messages">);
+		expect(scope.admit("https://news.example/rain")).toBeNull();
+		expect(scope.admit("https://news.example/rain?d=secret")).toMatch(/only reads a link/);
+	});
+});
+
+describe("WebReadScope — a link typed without its scheme (ADR-228)", () => {
+	it("reads www. and host/path links as https, alongside full links", () => {
+		expect(urlsInText("see www.example.com/a and example.org/b and https://c.net/d"))
+			.toEqual(["https://www.example.com/a", "https://example.org/b", "https://c.net/d"]);
+	});
+	it("admits the https form of a link the user typed without a scheme", () => {
+		const scope = WebReadScope.forConversation(conv({ role: "user", content: "summarize example.com/article" }));
+		expect(scope.admit("https://example.com/article")).toBeNull();
+	});
+});
