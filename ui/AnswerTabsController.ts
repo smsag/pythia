@@ -27,6 +27,28 @@ export interface AnswerTabsDeps {
  *  they belong to the kept answer, not to the one on screen. */
 const KEPT_ONLY = ":scope > .p-sources, :scope > .p-note-write, :scope > .p-trunc, :scope > .p-rewrite";
 
+/** A tab view → its render in flight, so a jump can wait for the marks. */
+const rendered = new WeakMap<HTMLElement, Promise<void>>();
+
+/**
+ * The element an answer is drawn in, by id — a kept answer's row, or one of its
+ * tabs, which is brought on screen first and awaited until its marks are
+ * painted (ADR-223). Every jump to an answer (a favorite, a pin, a merge link,
+ * a message) goes through this, or a jump to a tab not on screen finds nothing.
+ * Null when no answer on screen has that id.
+ */
+export async function findAnswerEl(messagesEl: HTMLElement, id: string): Promise<HTMLElement | null> {
+	const sel = `[data-msg-id="${CSS.escape(id)}"]`;
+	const el = messagesEl.querySelector<HTMLElement>(sel);
+	if (el) return el;
+	const tab = messagesEl.querySelector<HTMLElement>(`.p-answer-tab[data-tab-id="${CSS.escape(id)}"]`);
+	if (!tab) return null;
+	tab.click();
+	const view = messagesEl.querySelector<HTMLElement>(sel);
+	if (view) await rendered.get(view);
+	return view;
+}
+
 /**
  * The tabs a model comparison leaves on the answer it kept (ADR-219, revising
  * ADR-160's forks, which took the other answers out of sight).
@@ -69,7 +91,7 @@ export class AnswerTabsController {
 		for (const tab of tabs) {
 			const btn = strip.createEl("button", {
 				cls: `pb pb-tab p-compare-tab p-answer-tab${tab.kept ? " is-kept" : ""}`,
-				attr: { role: "tab", ...(tab.kept ? { "aria-current": "true", title: t("answerTabKept") } : {}) },
+				attr: { role: "tab", "data-tab-id": tab.id, ...(tab.kept ? { "aria-current": "true", title: t("answerTabKept") } : {}) },
 			});
 			if (tab.kept) setIcon(btn.createSpan({ cls: "p-answer-tab-icon" }), "check");
 			btn.appendText(abbreviateModel(tab.model));
@@ -89,6 +111,10 @@ export class AnswerTabsController {
 			for (const el of Array.from(row.querySelectorAll<HTMLElement>(KEPT_ONLY))) el.hidden = !!alt;
 			altView.hidden = !alt;
 			altView.empty();
+			// The tab on screen is found by its own id, like any answer: a selection
+			// in it stars, links or pins THAT answer, and a jump can reach it (ADR-223).
+			if (alt) altView.setAttribute("data-msg-id", alt.id); else altView.removeAttribute("data-msg-id");
+			rendered.delete(altView);
 			if (alt) this.renderAlternative(altView, msg, alt);
 		};
 
@@ -99,10 +125,12 @@ export class AnswerTabsController {
 		const app = this.d.plugin.app;
 		const body = view.createDiv({ cls: "p-ai-body p-answer-alt-body" });
 		const sources = c.sources ?? parseCitations(c.content);
-		void this.d.renderAnswer(unwrapCodeFence(stripForeignCitations(c.content)), body).then(() => {
+		const done = this.d.renderAnswer(unwrapCodeFence(stripForeignCitations(c.content)), body).then(() => {
 			this.d.paintMarks(body, c.id);
 			paintCitations(app, body, sources);
 		});
+		rendered.set(view, done);
+		void done;
 		renderSourcesRow(app, view, sources);
 
 		const parts = [abbreviateModel(c.model).toUpperCase(), c.timestamp ? formatClockTime(c.timestamp) : ""];

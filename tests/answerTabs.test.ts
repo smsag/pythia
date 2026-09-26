@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./helpers/viewHarness"; // Obsidian's DOM helpers (createDiv, empty, …)
 import { Notice } from "obsidian";
-import { AnswerTabsController, type AnswerTabsDeps } from "../ui/AnswerTabsController";
+import { AnswerTabsController, findAnswerEl, type AnswerTabsDeps } from "../ui/AnswerTabsController";
 import type { Conversation, Message } from "../models/types";
 
 const shown = (): string[] => (Notice as unknown as { shown: string[] }).shown;
@@ -114,5 +114,43 @@ describe("AnswerTabsController — a kept comparison keeps its tabs (ADR-219)", 
 		const again = draw(msg);
 		expect(again.body.hidden).toBe(true);
 		expect(again.row.querySelector(".p-answer-alt-body")?.textContent).toBe("ANSWER B");
+	});
+});
+
+describe("AnswerTabsController — a tab is found by its own id (ADR-223)", () => {
+	it("gives the tab on screen its answer's id, and takes it away on the kept tab", () => {
+		const msg = kept();
+		const { draw } = harness([msg]);
+		const { row } = draw(msg);
+		const alt = row.querySelector<HTMLElement>(".p-answer-alt")!;
+		expect(alt.hasAttribute("data-msg-id")).toBe(false);
+		row.querySelector<HTMLElement>('.p-answer-tab[data-tab-id="b1"]')!.click();
+		expect(alt.getAttribute("data-msg-id")).toBe("b1");
+		row.querySelector<HTMLElement>('.p-answer-tab[data-tab-id="a1"]')!.click();
+		expect(alt.hasAttribute("data-msg-id")).toBe(false);
+	});
+
+	it("a selection inside a tab resolves to the tab, not the kept answer", () => {
+		const msg = kept();
+		const { draw } = harness([msg]);
+		const { row } = draw(msg);
+		row.setAttribute("data-msg-id", "a1");
+		row.querySelector<HTMLElement>('.p-answer-tab[data-tab-id="c1"]')!.click();
+		const text = row.querySelector(".p-answer-alt-body")!;
+		expect(text.closest("[data-msg-id]")!.getAttribute("data-msg-id")).toBe("c1");
+	});
+
+	it("findAnswerEl brings a tab not on screen up, waits for its render, and returns it", async () => {
+		const msg = kept();
+		const { draw } = harness([msg]);
+		const { row } = draw(msg);
+		row.setAttribute("data-msg-id", "a1");
+		const chat = document.createElement("div");
+		chat.appendChild(row);
+		const el = await findAnswerEl(chat, "b1");
+		expect(el?.classList.contains("p-answer-alt")).toBe(true);
+		expect(el?.textContent).toContain("ANSWER B");
+		expect(await findAnswerEl(chat, "a1")).toBe(row);
+		expect(await findAnswerEl(chat, "nope")).toBeNull();
 	});
 });

@@ -4,6 +4,7 @@ import type {
 	Comparison,
 	ComparisonCandidate,
 	Provider,
+	RewriteTarget,
 } from "../models/types";
 import { MODEL_CATALOG } from "../models/knownModels";
 import { normalizeNoteWrites } from "./noteWrites";
@@ -41,6 +42,8 @@ export function candidateFromMessage(msg: Message, provider: Provider, fallbackM
 		...(msg.templateId ? { templateId: msg.templateId } : {}),
 		...(msg.cost ? { cost: msg.cost } : {}),
 		...(msg.noteWrites ? { noteWrites: msg.noteWrites } : {}),
+		...(msg.truncated ? { truncated: true as const } : {}),
+		...(msg.rewriteTarget ? { rewriteTarget: msg.rewriteTarget } : {}),
 	};
 }
 
@@ -57,6 +60,8 @@ export function candidateToMessage(c: ComparisonCandidate): Message {
 		...(c.templateId ? { templateId: c.templateId } : {}),
 		...(c.cost ? { cost: c.cost } : {}),
 		...(c.noteWrites ? { noteWrites: c.noteWrites } : {}),
+		...(c.truncated ? { truncated: true as const } : {}),
+		...(c.rewriteTarget ? { rewriteTarget: c.rewriteTarget } : {}),
 	};
 }
 
@@ -251,7 +256,39 @@ export function normalizeAlternatives(value: unknown): ComparisonCandidate[] | u
 			const writes = normalizeNoteWrites(c.noteWrites);
 			if (writes) c.noteWrites = writes; else delete c.noteWrites;
 		}
+		if (c.truncated !== undefined && c.truncated !== true) delete (c as { truncated?: unknown }).truncated;
+		if (c.rewriteTarget !== undefined && !isRewriteTarget(c.rewriteTarget)) delete c.rewriteTarget;
+		if (c.tokenUsage !== undefined && !isTokenUsage(c.tokenUsage)) delete c.tokenUsage;
 		out.push(c);
 	}
 	return out.length > 0 ? out : undefined;
+}
+
+const isPos = (p: unknown): boolean =>
+	!!p && typeof p === "object" &&
+	Number.isInteger((p as { line?: unknown }).line) && Number.isInteger((p as { ch?: unknown }).ch);
+
+/** A target the Replace button can verify: a path, two editor positions, the text. */
+function isRewriteTarget(v: unknown): v is RewriteTarget {
+	if (!v || typeof v !== "object") return false;
+	const t = v as Partial<RewriteTarget>;
+	return typeof t.path === "string" && !!t.path && typeof t.text === "string" && isPos(t.from) && isPos(t.to);
+}
+
+/** Token counts the meta line prints and prices — finite, non-negative numbers. */
+function isTokenUsage(v: unknown): boolean {
+	if (!v || typeof v !== "object") return false;
+	const u = v as { inputTokens?: unknown; outputTokens?: unknown };
+	const ok = (n: unknown): boolean => typeof n === "number" && Number.isFinite(n) && n >= 0;
+	return ok(u.inputTokens) && ok(u.outputTokens);
+}
+
+/**
+ * Every id an answer is known by: its own and each of its tabs' (ADR-223). A
+ * favorite, merge link or pin made on a tab points at the tab's id, so anything
+ * that removes the answer, or asks whether something points at it, asks about
+ * all of them — the splice of an exchange and Retry's guard read this.
+ */
+export function answerIds(msg: Message): string[] {
+	return [msg.id, ...(msg.alternatives ?? []).map((c) => c.id)];
 }

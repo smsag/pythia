@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
+*Last updated: 2026-09-26 — ADR-223 (a comparison tab is an answer by its own id: a selection in a tab stars, links or pins that tab, never the kept answer; no Branch from a tab; a jump brings the tab up (`findAnswerEl`); Delete/Retry clean up the tabs' marks (`answerIds`) and Retry is withheld on an answer with tabs; a candidate carries `truncated` and `rewriteTarget`).*
+
+*Previously: 2026-09-26 — ADR-222 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
 
 *Previously: 2026-09-26 — ADR-221 addendum: a phone holding a desktop's index says so in the settings status row ("kept by your desktop, last written …"), and Build now takes it over: the UI-thread shortcut no longer returns on a complete index when forced, and a full sync signs the file when another kind of device had. The index header carries `writtenAt`.*
 
@@ -4735,3 +4737,29 @@ The user then asked what happens when the note is renamed. The answer was that n
 **Known gap.** The settings status line reads the base's header alone before the index is loaded. Until then its count leaves out the journal's additions, and a phone's "last written" shows the base's time rather than the journal's. Once the index is loaded, both come from memory and are exact.
 
 **Tests.** `tests/indexJournal.test.ts`: `shouldCompact` at the floor and at 5 %; the journal round-trips; a base, another dimension or a torn file is not a journal; only string ids survive in `removed`; `applyJournal`'s replace/add/drop; last change wins in memory; no base means no journal; a journal naming another base is ignored. Through `VaultIndexService` with a journaled store: an edit writes the journal and leaves the index file alone (and the journal is a small fraction of it); the next session reads the two as one, complete; entries carry forward across sessions; 50 edits fold into one base rewrite that loses nothing; a full sync's new base leaves the old journal ignored; a pre-ADR-221 base is rewritten once and journaled after. `tests/vaultIndexStore.test.ts`: the journal's path. Making the journal refuse every write fails three of these (checked by hand).
+
+### ADR-223 — A comparison tab is an answer by its own id
+
+**Status:** Active · 2026-09-26 · **completes ADR-219**
+
+**Context.** ADR-219 kept a comparison's other answers as tabs, and said that favorites and merge links on a non-kept answer "stay on the conversation under its id and are painted on its tab". A review after the merge found that only held for marks made *before* Keep. Four ways it failed:
+- **A selection in a tab belonged to the kept answer.** The tab view carried no `data-msg-id`, and every selection path (Star, Pin, Merge, Branch, Define) finds its message with `closest("[data-msg-id]")`, which found the kept answer's row. So a star made on a tab was saved with the kept id and the tab's text, and was painted on neither. A Branch started from the wrong answer, although D-60 says there is no branching from a tab.
+- **Removing an exchange removed only the kept id's marks.** `spliceExchange` (Delete, Retry) left favorites and merge links on the tab ids behind. They stayed in "Starred", and `scrollToFavorite` returned without a word on a missing row (principle 2).
+- **Retry threw the tabs away.** Its guard counted only marks on the kept answer, and the tabs themselves go with the answer.
+- **A switch lost two cards.** `ComparisonCandidate` did not carry `truncated` or `rewriteTarget`, so "Use this answer" dropped a cut-off answer's Continue card and a rewrite proposal's target.
+
+**Decision.**
+- **A tab on screen carries its answer's id** (`data-msg-id` on `.p-answer-alt`, removed when the kept tab is shown). Every selection path then attributes to the tab without being touched.
+- **No Branch from a tab** (D-60): the toolbar hides the button on a selection inside `.p-answer-alt`, and `onForkConversation` refuses one with a Notice.
+- **A jump to an answer goes through `findAnswerEl`** (`ui/AnswerTabsController.ts`). It returns the row, or brings up a tab that is not on screen and waits for its render so the marks are painted. Used by the favorite jump, the pin ↗, `scrollToMessage` and the merge reveal. When the row is already on screen it is found synchronously, so the jump stays inside the tap. A favorite that is found nowhere now says so (`favoriteGone`).
+- **`answerIds(msg)`** is the answer's id plus every tab id. `spliceExchange` removes favorites and merge links on all of them.
+- **Retry is withheld on an answer with tabs**, as it already is for one with a star or a link: Continue and Compare remain.
+- **A candidate carries `truncated` and `rewriteTarget`** both ways, validated on load, along with `tokenUsage`, which the tab's meta line prints and prices. A tab's rewrite target follows a rename. `tests/pathFields.test.ts` again refused to compile until the two fields were classified.
+
+**Guards.**
+- `tests/answerTabs.test.ts`: the tab on screen has its own id and loses it on the kept tab; a selection in a tab resolves to it; `findAnswerEl` brings a tab up and waits for its text.
+- `tests/viewRender.test.ts`: a favorite jump to a tab brings it up; a favorite found nowhere shows a Notice.
+- `tests/conversationEdits.test.ts`: splicing an answer with tabs removes the marks on the tabs.
+- `tests/truncation.test.ts`: Retry is withheld on an answer with tabs.
+- `tests/comparison.test.ts`: `answerIds`; a switch keeps `truncated` and `rewriteTarget` both ways; load drops a malformed flag, target or token count.
+- `tests/pinOverlay.test.ts`: the "gone" case waits for the tab lookup.

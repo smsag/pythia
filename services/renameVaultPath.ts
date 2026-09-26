@@ -165,6 +165,7 @@ export function renameVaultPaths(
 		/** A comparison answer — pending, or kept as an alternative tab (ADR-219). */
 		const candidate = (c: ComparisonCandidate): void => {
 			field(c, "templateId");
+			field(c.rewriteTarget, "path");
 			sources(c.sources);
 			for (const w of c.noteWrites ?? []) field(w, "path");
 		};

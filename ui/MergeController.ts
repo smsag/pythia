@@ -7,6 +7,7 @@ import { abbreviateModel } from "../models/knownModels";
 import { repaintMergeLinks as paintMergeLinks } from "./HighlightPainter";
 import { REGENERATE_ICON } from "./icons";
 import { scrollChatTo } from "./chatScroll";
+import { findAnswerEl } from "./AnswerTabsController";
 
 type DomEventRegistrar = (
 	el: HTMLElement,
@@ -197,11 +198,17 @@ export class MergeController {
 	}
 
 	/** Scroll to a merge link's passage and expand its anchor. */
-	revealMergeLink(mergeId: string): void {
+	revealMergeLink(mergeId: string): void { void this.revealLink(mergeId); }
+
+	private async revealLink(mergeId: string): Promise<void> {
 		const messagesEl = this.d.getMessagesEl();
-		const mark = messagesEl.querySelector<HTMLElement>(
-			`.p-merge-link[data-merge-id="${mergeId}"]`
-		);
+		const markSel = `.p-merge-link[data-merge-id="${mergeId}"]`;
+		let mark = messagesEl.querySelector<HTMLElement>(markSel);
+		if (!mark) {
+			// On a comparison tab not on screen: bring it up, then look again (ADR-223).
+			const link = this.d.getConversation()?.merges?.find((l) => l.id === mergeId);
+			if (link && await findAnswerEl(messagesEl, link.messageId)) mark = messagesEl.querySelector<HTMLElement>(markSel);
+		}
 		if (!mark) return;
 		const row = mark.closest("[data-msg-id]") as HTMLElement | null;
 		if (row) this.d.expandBubbleIfCollapsed(row);

@@ -434,6 +434,8 @@ const de: Strings = {
 	answerTabUse:          "Diese Antwort verwenden",
 	answerTabSwitched:     "{{model}} ist jetzt die Antwort in diesem Gespräch",
 	answerTabSwitchRefused: "Nur die letzte Antwort lässt sich wechseln — ein späterer Beitrag baut auf dieser auf",
+	favoriteGone: "Die markierte Stelle ist nicht mehr in diesem Gespräch",
+	forkFromTabRefused: "Abzweigen geht von der Antwort, die das Gespräch hält — ein Tab gehört nicht dazu",
 	compareFailed:         "{{model}} fehlgeschlagen: {{error}}",
 	compareDiscarded:      "Vergleich verworfen — ursprüngliche Antwort wiederhergestellt",
 	compareBusy:           "Warte, bis die aktuelle Antwort fertig ist",

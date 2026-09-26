@@ -65,7 +65,10 @@ export class TruncationController {
 		// Retry re-sends the prompt with a bigger budget, which means removing
 		// this answer. A star or a merge link on it would go with it, so the
 		// action is withheld rather than made destructive; Continue still works.
+		// Its comparison tabs would go with it too, and whatever is marked on
+		// them, so an answer with tabs is withheld as well (ADR-223).
 		const referenced =
+			!!msg.alternatives?.length ||
 			(conv.favorites ?? []).some((f) => f.messageId === msg.id) ||
 			(conv.merges ?? []).some((l) => l.messageId === msg.id);
 		if (!referenced) {

@@ -15,6 +15,7 @@ import {
 	rangeForHighlight,
 } from "./HighlightPainter";
 import { scrollChatTo } from "./chatScroll";
+import { findAnswerEl } from "./AnswerTabsController";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -299,12 +300,15 @@ export class SelectionController {
 	 * the top), re-finds the text if the mark is missing, and falls back to the
 	 * message top for legacy favorites or text that can no longer be located.
 	 */
-	scrollToFavorite(fav: Favorite): void {
+	scrollToFavorite(fav: Favorite): void { void this.jumpToFavorite(fav); }
+
+	private async jumpToFavorite(fav: Favorite): Promise<void> {
 		const messagesEl = this.d.getMessagesEl();
-		const row = messagesEl.querySelector(
-			`[data-msg-id="${fav.messageId}"]`
-		) as HTMLElement | null;
-		if (!row) return;
+		// An answer's row — found at once, so the jump stays in the tap — or the
+		// comparison tab the favorite was made on, brought up first (ADR-223).
+		const row = messagesEl.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(fav.messageId)}"]`)
+			?? await findAnswerEl(messagesEl, fav.messageId);
+		if (!row) { new Notice(t("favoriteGone")); return; }
 
 		// Expand a collapsed long bubble first so the highlight mark is laid out and
 		// its offset is measurable. Reading offsetTop below forces synchronous layout,
@@ -377,7 +381,8 @@ export class SelectionController {
 		const startAi = ownerAiMsg(sel.anchorNode);
 		const inSingleAssistant = startAi !== null && startAi === ownerAiMsg(sel.focusNode);
 		this.favBtn.style.display = inSingleAssistant ? "" : "none";
-		this.forkBtn.style.display = inSingleAssistant ? "" : "none";
+		// No branch from a comparison tab (D-60): only the kept answer is history.
+		this.forkBtn.style.display = inSingleAssistant && !inAnswerTab(sel.anchorNode) ? "" : "none";
 		this.mergeBtn.style.display = inSingleAssistant ? "" : "none";
 		this.pinBtn.style.display = inSingleAssistant ? "" : "none";
 		this.defineBtn.style.display = inSingleAssistant ? "" : "none";
@@ -434,6 +439,7 @@ export class SelectionController {
 		if (!conv) return;
 		const picked = this.readAssistantSelection();
 		if (!picked) return;
+		if (inAnswerTab(window.getSelection()?.anchorNode)) { this.dismiss(); new Notice(t("forkFromTabRefused")); return; }
 		this.dismiss();
 		void this.d.plugin.cmdForkConversation(conv.id, picked.text, picked.messageId, picked.occurrenceIndex);
 	}
@@ -523,4 +529,10 @@ export class SelectionController {
 			new Notice(t("failedSaveToInbox", { error: e instanceof Error ? e.message : String(e) }));
 		}
 	}
+}
+
+/** Whether `node` sits in a comparison tab rather than the kept answer (ADR-223). */
+function inAnswerTab(node: Node | null | undefined): boolean {
+	const el = node instanceof Element ? node : node?.parentElement;
+	return !!el?.closest(".p-answer-alt");
 }

@@ -10,6 +10,8 @@ import {
 	canSwitchAlternative,
 	switchAlternative,
 	normalizeComparison,
+	normalizeAlternatives,
+	answerIds,
 } from "../services/comparison";
 import { parseConversations } from "../services/persistence";
 
@@ -259,3 +261,39 @@ describe("a second comparison on an answer that already has tabs (ADR-219)", () 
 		expect(c.messages[1].alternatives?.map((x) => x.id)).toEqual(["b1"]);
 	});
 });
+
+describe("a tab keeps what makes its cards (ADR-223)", () => {
+	const target = { path: "Notes/X.md", from: { line: 1, ch: 0 }, to: { line: 1, ch: 4 }, text: "old" };
+
+	it("a switch keeps the Continue card of a cut-off answer and a rewrite proposal's target, both ways", () => {
+		const c = conv([u("u1"), { ...a("a1", "cut"), truncated: true, rewriteTarget: target }]);
+		startComparison(c, "u1", "a1");
+		addCandidate(c, { id: "b1", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" });
+		keepCandidate(c, "b1");
+		expect(c.messages[1].alternatives?.[0]).toMatchObject({ id: "a1", truncated: true, rewriteTarget: target });
+		expect(switchAlternative(c, "b1", "a1")).toBe(true);
+		expect(c.messages[1]).toMatchObject({ id: "a1", truncated: true, rewriteTarget: target });
+		expect(c.messages[1].alternatives?.[0].truncated).toBeUndefined();
+	});
+
+	it("answerIds names the answer and every tab", () => {
+		const c = conv([u("u1"), a("a1")]);
+		startComparison(c, "u1", "a1");
+		addCandidate(c, { id: "b1", provider: "openai", model: "gpt-4o", content: "B", timestamp: "" });
+		keepCandidate(c, "a1");
+		expect(answerIds(c.messages[1])).toEqual(["a1", "b1"]);
+		expect(answerIds(a("x"))).toEqual(["x"]);
+	});
+
+	it("load drops a malformed flag, target or token count on a tab, keeping the tab", () => {
+		const tabs = normalizeAlternatives([
+			{ id: "b1", model: "m", content: "B", timestamp: "", truncated: "yes", rewriteTarget: { path: "X.md" }, tokenUsage: { inputTokens: "10" } },
+			{ id: "c1", model: "m", content: "C", timestamp: "", truncated: true, rewriteTarget: target, tokenUsage: { inputTokens: 1, outputTokens: 2 } },
+		]);
+		expect(tabs?.[0]).not.toHaveProperty("truncated");
+		expect(tabs?.[0]).not.toHaveProperty("rewriteTarget");
+		expect(tabs?.[0]).not.toHaveProperty("tokenUsage");
+		expect(tabs?.[1]).toMatchObject({ truncated: true, rewriteTarget: target, tokenUsage: { inputTokens: 1, outputTokens: 2 } });
+	});
+});
+

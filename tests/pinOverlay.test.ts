@@ -187,6 +187,7 @@ describe("↗ back to the source", () => {
 	it("says so when the message is no longer in the conversation", async () => {
 		await open({ pins: [pin("p1", "gone", { messageId: "deleted" })] });
 		action(t("pinJumpTooltip")).click();
+		await new Promise((r) => setTimeout(r, 0)); // a tab not on screen is looked for first (ADR-223)
 		expect(shown()).toContain(t("pinGone"));
 	});
 
