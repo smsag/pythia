@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-220 addendum: a phone holding a desktop's index says so in the settings status row ("kept by your desktop, last written …"), and Build now takes it over: the UI-thread shortcut no longer returns on a complete index when forced, and a full sync signs the file when another kind of device had. The index header carries `writtenAt`.*
+*Last updated: 2026-09-26 — ADR-221 (the vault index gets a journal: an edit rewrites a file of the rows changed since the index was written — kilobytes, not the ~19 MB index — tied to its base by the base's `writtenAt`; the base is rewritten by a full sync, a takeover, or when the journal reaches 5 % of its rows (at least 50); closes D-35).*
+
+*Previously: 2026-09-26 — ADR-220 addendum: a phone holding a desktop's index says so in the settings status row ("kept by your desktop, last written …"), and Build now takes it over: the UI-thread shortcut no longer returns on a complete index when forced, and a full sync signs the file when another kind of device had. The index header carries `writtenAt`.*
 
 *Previously: 2026-09-26 — ADR-220 (a desktop catches its complete vault index up once per launch — only the notes whose content moved are embedded, and the model loads only if one did; a phone applies its edits to a desktop-kept index in memory and no longer rewrites the shared file, so the two devices stop overwriting each other's copy; the index records its `keeper`; closes D-59 in a different shape).*
 
@@ -4685,3 +4687,22 @@ The user then asked what happens when the note is renamed. The answer was that n
 - **Not Rebuild index.** Rebuild would re-embed every note on the phone, which is the load this ADR removes. Build now embeds only the notes whose content moved.
 
 **Tests.** `tests/indexStatus.test.ts`: the note with its date, without one, never on a desktop or a phone-kept or unsigned index, only for an index there is; Build now enabled for it. `tests/embeddingIndex.test.ts`: `writtenAt` round-trips through both readers and keeps only a positive finite number. `tests/VaultIndexService.test.ts`: every write carries its time; an unchanged full sync by the other kind of device writes once and signs, then writes nothing again. `tests/vaultCatchUp.test.ts`: a phone reports the desktop as keeper, and Build now embeds what moved and re-signs the file. Removing either takeover fix fails the last two (checked by hand).
+
+### ADR-221 — The vault index keeps a journal of its edits
+
+**Status:** Active · 2026-09-26
+
+**Context.** D-35: the index was one serialized array, so every write rewrote all of it, about 19 MB at the 5 000-note cap. ADR-219 spaced edit writes 30 s apart and ADR-220 took the phone out of writing. The size of each write stayed the same, and so did the cost of every one of them: a 19 MB allocation, a 19 MB write and a 19 MB sync event on every device, for one edited note. It was also the precondition for moving the engine into Schreibstube.
+
+**Decision.**
+- **A journal beside the index** (`services/embedding/indexJournal.ts`; `VaultIndexStore.journal()`: `vault-embeddings-<family>.journal.bin`). It records the rows changed since the index file (the base) was written: rows re-embedded or added, and ids dropped. It uses the index's own format, with two extra header fields (`journalOf`, `removed`) carried by `serializeIndex`'s new `extra` argument. That argument is spread first, so it can never replace a field the index owns.
+- **An edit writes the journal** (`VaultIndexService.writeEdits`). The journal is rewritten whole: a handful of rows, kilobytes. It is not appended, because `appendBinary` needs Obsidian 1.12.3 and the manifest promises 1.4.0. `doApplyBatch` records each row that moves; `IndexJournal.record` keeps a row either upserted or removed, and the last change wins.
+- **The base is rewritten** by a full sync, a clear, a takeover (ADR-220), or when `shouldCompact`: the journal reaches `COMPACT_SHARE` = 5 % of the base's rows, but never fewer than `COMPACT_MIN_ROWS` = 50. The limit is relative because what a journal costs to read at each launch grows with it, while a base rewrite costs the same whatever it holds. The floor keeps a small vault from being rewritten every other edit. Every base write starts the journal over (`writeBase`).
+- **The journal names its base** by the base's `writtenAt` (ADR-220). A journal naming another base is ignored: the old journal left behind by a compaction until the next edit overwrites it, or a sync that delivers the two files out of order. Its notes then answer from the base's older vectors until the content hash re-embeds them, which is a stale answer, never a wrong row. A base from before ADR-220 has no `writtenAt`, so its first edit rewrites it once, and the journal takes over from then on.
+- **Loading merges the two** (`IndexJournal.load`, `applyJournal`): upserts replace or add, removals drop. The journal's entries become the in-memory journal, so the next write carries them forward across sessions. The journal's keeper and write time override the base's in memory.
+
+**What stays.** The 30 s write window from ADR-219 stays, now mostly to save sync events rather than memory. A build still writes the whole base as it goes (ADR-182). Builds are rare, and a base is what they produce.
+
+**Known gap.** The settings status line reads the base's header alone before the index is loaded. Until then its count leaves out the journal's additions, and a phone's "last written" shows the base's time rather than the journal's. Once the index is loaded, both come from memory and are exact.
+
+**Tests.** `tests/indexJournal.test.ts`: `shouldCompact` at the floor and at 5 %; the journal round-trips; a base, another dimension or a torn file is not a journal; only string ids survive in `removed`; `applyJournal`'s replace/add/drop; last change wins in memory; no base means no journal; a journal naming another base is ignored. Through `VaultIndexService` with a journaled store: an edit writes the journal and leaves the index file alone (and the journal is a small fraction of it); the next session reads the two as one, complete; entries carry forward across sessions; 50 edits fold into one base rewrite that loses nothing; a full sync's new base leaves the old journal ignored; a pre-ADR-220 base is rewritten once and journaled after. `tests/vaultIndexStore.test.ts`: the journal's path. Making the journal refuse every write fails three of these (checked by hand).

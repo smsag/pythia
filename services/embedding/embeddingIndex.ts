@@ -119,8 +119,12 @@ export function serializeIndex(
 	items: IndexedConversation[],
 	dim: number,
 	info: IndexMeta = EMPTY_INDEX_META,
+	/** Header fields of a file built on this format — the journal's (ADR-221).
+	 *  Spread first, so it can never replace a field the index itself owns. */
+	extra: Record<string, unknown> = {},
 ): ArrayBuffer {
 	const meta = {
+		...extra,
 		complete: info.complete === true,
 		scope: typeof info.scope === "string" ? info.scope : "",
 		...signature(info),
@@ -184,7 +188,7 @@ export function peekIndexMeta(buf: ArrayBuffer): (IndexMeta & { count: number })
 
 export function deserializeIndex(
 	buf: ArrayBuffer,
-): { items: IndexedConversation[]; dim: number; meta: IndexMeta } {
+): { items: IndexedConversation[]; dim: number; meta: IndexMeta; header: Record<string, unknown> } {
 	const dv = new DataView(buf);
 	let o = 0;
 	if (dv.getUint32(o) !== MAGIC) throw new Error("deserializeIndex: bad magic"); o += 4;
@@ -228,5 +232,7 @@ export function deserializeIndex(
 		}
 		items.push({ id: m.id, contentHash: m.h, chunks });
 	}
-	return { items, dim, meta: info };
+	// The raw header too, UNVALIDATED: a caller reading fields of its own (the
+	// journal's) validates them itself.
+	return { items, dim, meta: info, header: (head ?? {}) as Record<string, unknown> };
 }

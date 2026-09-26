@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **The vault index never caught up with what changed while Pythia was closed, and two devices overwrote each other's copy of it (ADR-220).** A desktop now catches up once per launch, embedding only what moved. A phone applies its edits to a desktop-kept index in memory and no longer writes the shared file. The index records its keeper. D-59 is closed in that shape.*
+*Updated: 2026-09-26 — **Every write of the vault index was the whole ~19 MB file (D-35, ADR-221).** An edit now writes a journal of the changed rows (kilobytes); the index is rewritten by a build, a takeover, or when the journal reaches 5 % of it. D-35 closed.*
+
+*Previously updated: 2026-09-26 — **The vault index never caught up with what changed while Pythia was closed, and two devices overwrote each other's copy of it (ADR-220).** A desktop now catches up once per launch, embedding only what moved. A phone applies its edits to a desktop-kept index in memory and no longer writes the shared file. The index records its keeper. D-59 is closed in that shape.*
 
 *Previously updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-219).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-59.*
 
@@ -1990,7 +1992,7 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The flush fired every 2 s during a burst**, not once after it: Obsidian's `debounce` without `resetTimer` times from the first call. | High | Closed: `resetTimer: true` on both debouncers |
 | **Every edit batch rewrote the whole index** (~19 MB at the cap), allocated fresh on the phone next to the resident model. | High | Closed: edit batches share one 30 s write window with a trailing write; flushed at unload |
 | **A phone still embeds other notes' edits and writes the synced index.** | Low | Deferred by decision: D-59 |
-| **Each write is still the whole file.** | Medium | Open, unchanged: D-35 (append-only index) |
+| **Each write is still the whole file.** | Medium | Closed (ADR-221): edits write a journal; the index is rewritten only by a build, a takeover or a compaction |
 
 ## Bug — a complete vault index went stale across devices (ADR-220), 2026-09-26
 

@@ -12,6 +12,7 @@ import { hashPolicyFor, resolveRowHash, type HashPolicy } from "./rowProvenance"
 import { DEFAULT_EMBEDDING_MODEL_ID } from "../../models/embeddingModels";
 import { quantize, cosine } from "./vectorMath";
 import { noteEmbedChunks, type RetrievedNote } from "./vaultRetrieval";
+import { IndexJournal } from "./indexJournal";
 
 /** Notes processed between cooperative yields during a build (keeps the UI alive). */
 const YIELD_EVERY_NOTES = 8;
@@ -40,8 +41,8 @@ const PERSIST_EVERY_EMBEDS = 25;
  * one of them is a sync event. Both conditions must hold, so the binding one is
  * whichever is scarcer: on a slow build that is the embed count, on a fast one
  * the clock. Either way the loss window stays ~30s of work, and the write rate
- * stays under 2/min. The real answer is an append-only index that does not
- * rewrite what has not changed — see D-35.
+ * stays under 2/min. A BUILD still writes the whole index this way; edits go to
+ * the journal instead (ADR-221, `indexJournal.ts`).
  */
 const MIN_PERSIST_INTERVAL_MS = 30_000;
 // The same floor holds for the watcher's edit batches (ADR-219). ADR-122 made a
@@ -52,7 +53,8 @@ const MIN_PERSIST_INTERVAL_MS = 30_000;
 // writes at once; batches inside the window stay in memory and one trailing write
 // carries them all. What an app killed inside the window loses is those notes'
 // new vectors: their old rows stay, their content hash no longer matches, and the
-// next edit of each re-embeds it. D-35's append-only index is still the real fix.
+// next edit of each re-embeds it. Since ADR-221 an edit writes the journal —
+// kilobytes — so the window now mostly saves sync events, not memory.
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
  * bad (ADR-182).
@@ -116,7 +118,18 @@ export class VaultIndexService {
 			/** The kind of device this runs on, stamped on every write (ADR-220). */
 			device?: IndexKeeper;
 		} = {}
-	) {}
+	) {
+		this.journal = store.journal ? new IndexJournal(store.journal()) : null;
+	}
+
+	/** Where edits go instead of a base rewrite, when the store has one (ADR-221). */
+	private readonly journal: IndexJournal | null;
+
+	/** Write the whole index — the base — and start the journal over against it. */
+	private async writeBase(items: IndexedConversation[], meta: IndexMeta): Promise<void> {
+		await this.store.write(serializeIndex(items, this.provider.dim, meta));
+		this.journal?.reset(meta.writtenAt);
+	}
 
 	private get device(): IndexKeeper {
 		return this.opts.device ?? "desktop";
@@ -172,7 +185,7 @@ export class VaultIndexService {
 			this.synced = false;
 			this.meta = this.stamp(EMPTY_INDEX_META);
 			this.loaded = true; // don't let a later load() repopulate from the old store
-			await this.store.write(serializeIndex([], this.provider.dim, this.meta));
+			await this.writeBase([], this.meta);
 		});
 	}
 
@@ -213,7 +226,11 @@ export class VaultIndexService {
 				const { items, dim, meta } = deserializeIndex(buf);
 				// A dim mismatch means a different model built the index — drop it and
 				// let the next sync rebuild from scratch.
-				if (dim === this.provider.dim) { this.items = items; this.meta = meta; }
+				if (dim === this.provider.dim) {
+					const merged = this.journal ? await this.journal.load(meta.writtenAt, items, dim) : { items };
+					this.items = merged.items;
+					this.meta = { ...meta, ...(merged.keeper ? { keeper: merged.keeper } : {}), ...(merged.writtenAt ? { writtenAt: merged.writtenAt } : {}) };
+				}
 			} catch (e) {
 				// A corrupt or truncated file (an interrupted write, a half-synced
 				// iCloud copy) is not fatal: an empty index rebuilds on the next sync.
@@ -300,10 +317,13 @@ export class VaultIndexService {
 		await this.load();
 		if (!this.synced) return; // patch only a built index; a full build handles the rest
 		let dirty = false;
-		for (const path of changes.removes) dirty = this.removeInMemory(path) || dirty;
+		// Each row that moves is recorded for the journal (ADR-221): its new state, or
+		// its removal when an update dropped it.
+		const note = (path: string): void => this.journal?.record(path, this.items.find((i) => i.id === path));
+		for (const path of changes.removes) if (this.removeInMemory(path)) { dirty = true; note(path); }
 		let n = 0;
-		for (const note of changes.updates) {
-			dirty = (await this.updateInMemory(note, opts.cap)) || dirty;
+		for (const update of changes.updates) {
+			if (await this.updateInMemory(update, opts.cap)) { dirty = true; note(update.path); }
 			if (++n % YIELD_EVERY_NOTES === 0) await new Promise((r) => setTimeout(r, 0));
 		}
 		// Targeted edits keep whatever the index already claims about itself: a
@@ -335,7 +355,9 @@ export class VaultIndexService {
 	private async writeEdits(): Promise<void> {
 		this.lastEditWriteAt = Date.now();
 		this.meta = this.stamp(this.meta);
-		await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta));
+		// Kilobytes to the journal while it is small; the base only to fold it in.
+		if (this.journal?.canTake(this.items.length)) return this.journal.write(this.provider.dim, this.meta);
+		await this.writeBase(this.items, this.meta);
 	}
 
 	private cancelPendingEditWrite(): boolean {
@@ -438,7 +460,7 @@ export class VaultIndexService {
 		// never finished, or it serves a fraction of the vault and calls it done.
 		const persist = async (items: IndexedConversation[], complete: boolean): Promise<void> => {
 			const meta = this.stamp({ complete, scope });
-			await this.store.write(serializeIndex(items, this.provider.dim, meta));
+			await this.writeBase(items, meta);
 			this.items = items;
 			this.meta = meta;
 			persistedEmbeds = embedded;

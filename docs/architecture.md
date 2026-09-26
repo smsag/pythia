@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-220 addendum: `IndexMeta.writtenAt` + `readWrittenAt`; `VaultIndexService.signature()` (replaces `keeper()`), stamps `writtenAt`, and a full sync writes when another kind of device signed the file; `VaultIndexStatus` gains `keeper`, `writtenAt`, `onPhone`; `isKeptByDesktop` + `buildNowEnabled` in `indexStatus.ts`; the UI-thread refresh shortcut skips a forced build.*
+*Last updated: 2026-09-26 — ADR-221: new `services/embedding/indexJournal.ts` (`IndexJournal`, `serializeJournal`/`deserializeJournal`, `applyJournal`, `shouldCompact`); `IndexStore.journal?()` and `VaultIndexStore.journal()` (`.journal.bin` beside the index); `serializeIndex` takes `extra` header fields and `deserializeIndex` returns the raw `header`; `VaultIndexService` writes edits to the journal and the base through `writeBase`, and merges the journal on load.*
+
+*Previously: 2026-09-26 — ADR-220 addendum: `IndexMeta.writtenAt` + `readWrittenAt`; `VaultIndexService.signature()` (replaces `keeper()`), stamps `writtenAt`, and a full sync writes when another kind of device signed the file; `VaultIndexStatus` gains `keeper`, `writtenAt`, `onPhone`; `isKeptByDesktop` + `buildNowEnabled` in `indexStatus.ts`; the UI-thread refresh shortcut skips a forced build.*
 
 *Previously: 2026-09-26 — ADR-220: new `services/embedding/vaultCatchUp.ts` (`catchUpIndex`, `CATCH_UP_DELAY_MS`, `CATCH_UP_THROTTLE`); `shouldCatchUp` in `buildDecision.ts`; `VaultRagService.catchUp` and the `mobile` dep; `EmbeddingHub.catchUpVaultIndex`, scheduled from `onLayoutReady`; `IndexMeta.keeper` + `readKeeper` in `embeddingIndex.ts`; `VaultIndexService` signs every write (`device`) and a phone does not write edits to a desktop-kept index (`writesEdits`); `scopeSignature` moved to `indexScope.ts`.*
 
@@ -348,6 +350,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/embedding/vectorMath.ts` | 55 | Related-conversations vector ops (ADR-109 M1): L2-normalize, Int8 quantize, cosine, max-pairwise cosine |
 | `services/embedding/conversationText.ts` | 45 | Chunk a conversation into embed-source texts (lead = title + summary, then message bodies packed to a char budget) |
 | `services/embedding/embeddingIndex.ts` | 115 | Vector index: `IndexedConversation`, FNV content hash, `diffIndex` (incremental add/drop), compact Int8 binary `serialize`/`deserialize`; the header's `complete`, `scope` and optional `keeper` (ADR-184/220) |
+| `services/embedding/indexJournal.ts` | 170 | The vault index's journal: rows changed since the base was written, tied to it by `writtenAt`; `shouldCompact` folds it back in at 5 % of the base (≥ 50 rows) (ADR-221) |
 | `services/embedding/vaultCatchUp.ts` | 60 | The once-per-launch catch-up of a complete vault index on a desktop: hydrate, check completeness under today's scope, incremental sync under the build guard (ADR-220) |
 | `services/embedding/EmbeddingProvider.ts` | 12 | Interface between the pure similarity/index logic and the embedding runtime (transformers.js impl lands in M2) |
 | `services/embedding/relatedConversations.ts` | 66 | `rankRelated` — max-pairwise cosine ranking of the index vs a source conversation, min-score floor, source excluded; `relatedMinScore(preset, modelId)` reads the model's own floors (ADR-169), `vaultRetrievalMinScore` keeps vault RAG on the original constants |
