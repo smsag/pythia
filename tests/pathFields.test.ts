@@ -66,9 +66,8 @@ const SETTINGS: Record<keyof PythiaSettings, Kind> = {
 	promptOptimizerTemplateId: "path", defaultPromptFramework: "other", optimizerSuggestsModel: "other",
 	maxTokens: "other", temperature: "other", effort: "other", maxAttachedNotesTokens: "other",
 	customInstructions: "other", webSearchDefault: "other", webSearchAutoArm: "other", webSearchMaxResults: "other",
-	embeddingModelId: "other", relatedSimilarity: "other",
-	vaultContextEnabled: "other", vaultContextMaxNotes: "other", vaultContextSimilarity: "other",
-	vaultContextFolders: "paths", vaultContextMaxIndexedNotes: "other",
+	vaultContextEnabled: "other", vaultContextMaxNotes: "other",
+	vaultContextFolders: "paths",
 };
 
 const pathKeys = <T,>(table: Record<keyof T & string, Kind>, kind: "path" | "paths"): string[] =>

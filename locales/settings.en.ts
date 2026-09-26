@@ -138,7 +138,7 @@ const settingsEn = {
 
 	// ── Troubleshooting ───────────────────────────────────────────────────────
 	debugModeName:           "Debug mode",
-	debugModeDesc:           "Log API calls, payloads, and the embedding path to the developer console. The console is where a bug report's evidence comes from.",
+	debugModeDesc:           "Log API calls, payloads, and the calls to Schreibstube's search to the developer console. The console is where a bug report's evidence comes from.",
 };
 
 export default settingsEn;

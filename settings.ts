@@ -1,6 +1,6 @@
 import { App, PluginSettingTab } from "obsidian";
 import type PythiaPlugin from "./main";
-import { renderEmbeddingSettings } from "./ui/embeddingSettings";
+import { renderVaultContextSettings } from "./ui/vaultContextSettings";
 import type { SettingsContext } from "./ui/settings/context";
 import { renderConnectionsSection } from "./ui/settings/connections";
 import { renderNewConversationsSection } from "./ui/settings/conversationDefaults";
@@ -59,27 +59,20 @@ export class PythiaSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		this.numberCommits = [];
 
-		// The vault-index status row is created by the embedding section; the two
-		// skip-folder pickers that also move the index scope live in later sections
-		// (#367), so the refresh reaches them through the context rather than
-		// through an argument only that one section could receive.
-		let refreshIndexStatus: () => void = () => {};
 		const ctx: SettingsContext = {
 			plugin: this.plugin,
 			// Typed fields save a beat after the last keystroke (every save rewrites
 			// the whole data.json); toggles and dropdowns still save at once.
 			saveSoon: () => this.plugin.saveSettingsSoon(),
 			registerCommit: (commit) => this.numberCommits.push(commit),
-			refreshIndexStatus: () => refreshIndexStatus(),
 		};
 
 		renderConnectionsSection(containerEl, ctx);
 		renderNewConversationsSection(containerEl, ctx);
 		renderAnsweringSection(containerEl, ctx);
 		renderOptimizerSection(containerEl, ctx);
-		// On-device semantic search and vault context: two sections of its own, and
-		// the block whose per-section intro the rest of the tab now follows.
-		refreshIndexStatus = renderEmbeddingSettings(containerEl, this.plugin, ctx.registerCommit);
+		// Vault context: which notes a turn may draw in, found by Schreibstube (ADR-224).
+		renderVaultContextSettings(containerEl, this.plugin, ctx.registerCommit);
 		renderNotesSection(containerEl, ctx);
 		renderStorageSection(containerEl, ctx);
 		renderTroubleshootingSection(containerEl, ctx);

@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-223: the search box searches titles, and Schreibstube adds meaning. New pure `services/conversationFinder.ts` (`searchTitles` — every typed word in the title, scored by `matchStrength`, newest first among equals, capped at `SEARCH_RESULT_LIMIT` 20 —, `meaningQuery`, `meaningOnly`, `MEANING_DEBOUNCE_MS` 300) and `services/schreibstubeLink.ts` (`readSchreibstubeApi` — the one reader of `app.plugins`, feature-detected, version 1 only —, `toSourceItem`, `SchreibstubeLink`: hands the conversations over once per API object, `searchConversations`, `related`, `[]` on any failure). `ConversationStore.onChange`. `main.ts`: `schreibstube`, `searchConversationsByMeaning`, `getRelatedConversations` asks Schreibstube first, and the related warm is skipped when it answers. `HistoryController` and `ConversationSuggestModal` search titles and append meaning; the note scope, auto-widening, `searchScope.ts`, `rankConversations` and `searchConversations` are gone, and `conversationSearch.ts` keeps only the snippet.*
+*Last updated: 2026-09-26 — ADR-224: Pythia drops its embedding engine. Deleted: `services/embedding/**`, `services/VaultRagService.ts`, `models/embeddingModels.ts`, `ui/embeddingSettings.ts`, `ui/vaultIndexStatusSetting.ts`, `locales/embedding.{en,de}.ts`, `globals.d.ts`, `scripts/prune-embedding-model.py`, `scripts/verify-pruned-model.mjs`, `scripts/measure-related.mjs`, the esbuild second pass and its bundle placeholder, and the transformers dependency; `main.js` is 1,128,757 bytes. New pure `services/vaultContext.ts` (`retrievalQuery`, `isIndexingOptedOut`, `isPathInScope`, `contextScope`) and `services/VaultContextService.ts` (`getRelevantNotes` asks `SchreibstubeLink.searchNotes` for three times `vaultContextMaxNotes`, then filters by scope and `pythia: false`; `getAutoContext`; `available`), wired through `LLMRouter.setVaultRetriever`. `SchreibstubeLink` gains `searchNotes` and `RELATED_RESULT_LIMIT` (20); `getRelatedConversations` asks Schreibstube only. `main.ts` exposes `ownsEmbeddingModel = false`, which Schreibstube reads through the plugin registry; the embedding facades and the `reindex-vault-context` command are removed. New `ui/vaultContextSettings.ts` (`renderVaultContextSettings`: the *Search by meaning* status row, the default toggle, folders to draw from, notes per answer) and `locales/vaultContext.{en,de}.ts`; `SettingsContext` loses `refreshIndexStatus`. `services/vaultWatcher.ts` keeps glossary invalidation and rename following (four listeners, no batching). Settings `embeddingModelId`, `relatedSimilarity`, `vaultContextSimilarity` and `vaultContextMaxIndexedNotes` are dropped by the sanitizer.*
+
+*Previously: 2026-09-26 — ADR-223: the search box searches titles, and Schreibstube adds meaning. New pure `services/conversationFinder.ts` (`searchTitles` — every typed word in the title, scored by `matchStrength`, newest first among equals, capped at `SEARCH_RESULT_LIMIT` 20 —, `meaningQuery`, `meaningOnly`, `MEANING_DEBOUNCE_MS` 300) and `services/schreibstubeLink.ts` (`readSchreibstubeApi` — the one reader of `app.plugins`, feature-detected, version 1 only —, `toSourceItem`, `SchreibstubeLink`: hands the conversations over once per API object, `searchConversations`, `related`, `[]` on any failure). `ConversationStore.onChange`. `main.ts`: `schreibstube`, `searchConversationsByMeaning`, `getRelatedConversations` asks Schreibstube first, and the related warm is skipped when it answers. `HistoryController` and `ConversationSuggestModal` search titles and append meaning; the note scope, auto-widening, `searchScope.ts`, `rankConversations` and `searchConversations` are gone, and `conversationSearch.ts` keeps only the snippet.*
 
 *Previously: 2026-09-26 — ADR-222: new `services/embedding/indexJournal.ts` (`IndexJournal`, `serializeJournal`/`deserializeJournal`, `applyJournal`, `shouldCompact`); `IndexStore.journal?()` and `VaultIndexStore.journal()` (`.journal.bin` beside the index); `serializeIndex` takes `extra` header fields and `deserializeIndex` returns the raw `header`; `VaultIndexService` writes edits to the journal and the base through `writeBase`, and merges the journal on load.*
 
@@ -314,17 +316,18 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 |---|---:|---|
 | `sidebar.ts` | 2 028 | `PythiaSidebarView` — UI, rendering, streaming, interaction; `buildUI()` split into `buildHeader()`/`buildChatArea()`/`buildInputArea()` |
 | `styles.css` | 1 456 | All plugin CSS (no framework, no CSS-in-JS) |
-| `main.ts` | 400 | Plugin entry: `onload` wiring, view/ribbon/command/file-menu registration, and thin facades onto the extracted services (ADR-205 — the embedding block, the vault watcher and the deep-link handler live in `services/`) |
+| `main.ts` | 392 | Plugin entry: `onload` wiring, view/ribbon/command/file-menu registration, and thin facades onto the extracted services (ADR-205 — the vault watcher and the deep-link handler live in `services/`; ADR-224 — vault context in `VaultContextService`, and `ownsEmbeddingModel = false` for Schreibstube to read) |
 | `settings.ts` | 87 | Settings tab **shell** (ADR-206): re-exports the schema from `models/settings.ts`, holds the section order, and flushes the numeric fields in `hide()`. No rows of its own — a test fails on a `new Setting(` here |
-| `ui/settings/section.ts` | 42 | The section grammar (ADR-206): `section(el, name, intro)` — the ONE place `setHeading()` is called — and `overridable(desc)`, the sentence every "New conversations" row carries and no other row may. Deliberately free of plugin-bound imports so `ui/embeddingSettings.ts` can use it |
-| `ui/settings/context.ts` | 136 | `SettingsContext` (plugin · `saveSoon` · `registerCommit` · `refreshIndexStatus`) + the shared rows `toggleRow` / `folderRow` / `numberRow`, and the `FolderSettingKey` / `BooleanSettingKey` types |
+| `ui/settings/section.ts` | 42 | The section grammar (ADR-206): `section(el, name, intro)` — the ONE place `setHeading()` is called — and `overridable(desc)`, the sentence every "New conversations" row carries and no other row may. Deliberately free of plugin-bound imports so `ui/vaultContextSettings.ts` can use it |
+| `ui/settings/context.ts` | 136 | `SettingsContext` (plugin · `saveSoon` · `registerCommit`) + the shared rows `toggleRow` / `folderRow` / `numberRow`, and the `FolderSettingKey` / `BooleanSettingKey` types |
 | `ui/settings/connections.ts` | 75 | §1 — the four API keys, each row saying whether a key is actually selected (`hasApiKeyFor` / `plaintextSearchKey`), repainted after a pick |
 | `ui/settings/conversationDefaults.ts` | 212 | §2 — the only overridable section: provider, **one** model row for the chosen provider (rebuilt, not mutated, when the provider changes) + custom id, effort, temperature (both gated by `parameterSupport`), max tokens, answer language, resume mode, research default |
 | `ui/settings/answering.ts` | 58 | §3 — the global rules: custom instructions, auto-search, results per query, attached-notes warning, inject-active-note, and the cost toggle via `renderPricingSettings` |
 | `ui/settings/optimizer.ts` | 55 | §4 — optimizer template (with a `FileSuggestModal` browse), framework (an unknown stored value reads as `none`), model suggestion |
-| `ui/settings/notes.ts` | 46 | §6 — templates folder, default notes folder (a skip folder → refreshes the index status), inbox note, and the **Glossary** subsection around `renderGlossarySettings` |
-| `ui/settings/storage.ts` | 40 | §7 — conversations folder (skip folder → refreshes the status), message cap, the history limit via `renderConversationCapSetting`, archive toggle + the archive folder directly under it |
+| `ui/settings/notes.ts` | 46 | §6 — templates folder, default notes folder, inbox note, and the **Glossary** subsection around `renderGlossarySettings` |
+| `ui/settings/storage.ts` | 40 | §7 — conversations folder, message cap, the history limit via `renderConversationCapSetting`, archive toggle + the archive folder directly under it |
 | `ui/settings/troubleshooting.ts` | 20 | §8 — debug mode. Last, and governs nothing above it |
+| `ui/vaultContextSettings.ts` | 71 | §5 — **Vault context** (ADR-224), `renderVaultContextSettings`: the *Search by meaning* row (whether Schreibstube's search is available), the default toggle, folders to draw from, notes per answer |
 | `utils.ts` | 55 | Root-level pure helpers: `getFilesInFolder` (md + pdf), `todayISO` (local date), `resumeDeepLink` (the one `obsidian://pythia` builder), `withConversationBacklink` |
 | `services/OpenAIProvider.ts` | 304 | OpenAI streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls` for the template method loop; retry, temperature/`reasoning_effort`, PDF file-block splice, resumeMode gating |
 | `services/AnthropicService.ts` | 250 | Anthropic streaming (extends BaseProvider); implements `prepareStream`/`runStreamRound`/`handleToolCalls`; retry, prompt caching, temperature/`output_config.effort`, PDF document-block splice, resumeMode gating |
@@ -350,26 +353,12 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking, `#` suggestion ranking, and conversation search |
 | `services/conversationSearch.ts` | 96 | Why a row is in the results (ADR-106/170/223): `bestMatchSnippet` (the best-matching message line, by `matchStrength`) over `snippetLines`, the line-token cache built on first use |
 | `services/conversationFinder.ts` | 103 | The search box (ADR-223): `searchTitles` (every typed word in the title), `meaningQuery`, `meaningOnly` (what Schreibstube found that the titles did not, each once, only if it still exists) |
-| `services/schreibstubeLink.ts` | 153 | Schreibstube's API v1, reached through `app.plugins` (ADR-223): `readSchreibstubeApi`, `toSourceItem`, `SchreibstubeLink` (register the conversations, `searchConversations`, `related`) |
+| `services/schreibstubeLink.ts` | 170 | Schreibstube's API v1, reached through `app.plugins` (ADR-223/224): `readSchreibstubeApi`, `toSourceItem`, `RELATED_RESULT_LIMIT` (20), `SchreibstubeLink` (register the conversations, `searchConversations`, `searchNotes` — notes only, for vault context — and `related`) |
 | `services/tokenMatch.ts` | 102 | The ONE matching rule (ADR-168): `matchStrength` (exact 1 · prefix .9 · infix .6 · reverse .5, with the length floors that stop a stopword matching the corpus), `tokenMatches`, `applyRelevanceFloor` / `RELEVANCE_FLOOR` |
-| `services/embedding/vectorMath.ts` | 55 | Related-conversations vector ops (ADR-109 M1): L2-normalize, Int8 quantize, cosine, max-pairwise cosine |
-| `services/embedding/conversationText.ts` | 45 | Chunk a conversation into embed-source texts (lead = title + summary, then message bodies packed to a char budget) |
-| `services/embedding/embeddingIndex.ts` | 115 | Vector index: `IndexedConversation`, FNV content hash, `diffIndex` (incremental add/drop), compact Int8 binary `serialize`/`deserialize`; the header's `complete`, `scope` and optional `keeper` (ADR-184/220) |
-| `services/embedding/indexJournal.ts` | 160 | The vault index's journal: rows changed since the base was written, tied to it by `writtenAt`; `shouldCompact` folds it back in at 5 % of the base (≥ 50 rows) (ADR-222) |
-| `services/embedding/vaultCatchUp.ts` | 60 | The once-per-launch catch-up of a complete vault index on a desktop: hydrate, check completeness under today's scope, incremental sync under the build guard (ADR-221) |
-| `services/embedding/EmbeddingProvider.ts` | 12 | Interface between the pure similarity/index logic and the embedding runtime (transformers.js impl lands in M2) |
-| `services/embedding/relatedConversations.ts` | 66 | `rankRelated` — max-pairwise cosine ranking of the index vs a source conversation, min-score floor, source excluded; `relatedMinScore(preset, modelId)` reads the model's own floors (ADR-169), `vaultRetrievalMinScore` keeps vault RAG on the original constants |
-| `services/embedding/warmIndex.ts` | 74 | The background index warm (ADR-169): `shouldWarmIndex` (desktop only · an index must exist · ≥2 conversations) and `warmIndex` — fail-open, silent, logged |
-| `services/embedding/host/workerBundleUrl.ts` | 30 | Writes the embedding worker bundle to the plugin folder once per version and returns a same-origin resource-path URL (ADR-126); moved out of `main.ts` for the file-size ceiling |
-| `services/embedding/EmbeddingHub.ts` | 294 | Everything on-device embedding, out of `main.ts` (ADR-205): the ONE shared provider and its cache-and-invalidate rule, `activeModelId()` (the only reader of `settings.embeddingModelId` outside the settings control), `getRelated` (the model's measured floor + `RELATED_RESULT_LIMIT`), `warm`, and the vault-RAG lifecycle. Obsidian reaches it through `EmbeddingHubHost`; the module itself imports no Obsidian runtime |
-| `services/vaultWatcher.ts` | 181 | Vault-index freshness (ADR-121/205/219): `VaultChangeBatch` — a path is changed or deleted, never both, last event wins, non-markdown ignored, `take(hold)` drains all but the held note's edit — plus `registerVaultWatcher` for the four listeners, the quiet-window flush, and the note being written held until it is left (`file-open`) or quiet for 30 s |
+| `services/vaultWatcher.ts` | 49 | What Pythia keeps in step with the vault (ADR-136/218/224): `registerVaultWatcher` — four vault listeners; an edit or delete of a note invalidates the glossary cache, a rename is followed at once through `followRename`. The index batching and the hold on the note being written (ADR-121/220) went with the index |
+| `services/vaultContext.ts` | 60 | Pure (ADR-183/224): `retrievalQuery` (the message plus up to 200 characters of the previous answer, for a short follow-up), `isIndexingOptedOut` (`pythia: false`, explicit only), `isPathInScope` (whole path segments), `contextScope` (include = `vaultContextFolders`; skip = conversations and scratch folders) |
+| `services/VaultContextService.ts` | 74 | Vault context for a turn (ADR-116/224): `getRelevantNotes` — gated by `conversation.vaultContext ?? settings.vaultContextEnabled`, asks `SchreibstubeLink.searchNotes` for three times `vaultContextMaxNotes` (notes only, attached notes excluded), keeps what the scope and the opt-out allow, up to the limit; remembers each conversation's last notes for the reference row (`getAutoContext`); `available()` |
 | `services/deepLink.ts` | 89 | `obsidian://pythia` routing and validation (ADR-205): which `cmd` values exist, which parameter each needs, what is said when one is missing or names nothing; never rejects, because Obsidian does not await a protocol handler |
-| `services/embedding/ConversationIndexService.ts` | 110 | Orchestrator (ADR-109 M2): sync the index (embed new/changed via provider, drop removed, persist via `IndexStore`), `getRelated`; provider + store injected → unit-tested with fakes |
-| `services/embedding/host/frame/model.ts` | 95 | **Iframe-only.** transformers.js feature-extraction pipeline (WebGPU/WASM, model downloaded on first use). The only file importing `@huggingface/transformers` |
-| `services/embedding/host/frame/bootstrap.ts` | 60 | Iframe entry: reads the injected model config, answers `texts[] → vectors[]` over postMessage |
-| `services/embedding/host/iframeEmbeddingProvider.ts` | 150 | Host side: hidden same-origin iframe (`about:srcdoc`) running the model; postMessage protocol; implements `EmbeddingProvider`. Carries the inlined bootstrap (`__IFRAME_CONTENTS_PLACEHOLDER__`) — runtime-only |
-| `services/embedding/vaultIndexStore.ts` | 35 | `IndexStore` backed by a model-keyed `.bin` in the plugin dir (ADR-109 M3) |
-| `models/embeddingModels.ts` | 55 | Embedding model registry (Xenova MiniLM: English + Multilingual, 384-dim); `EmbeddingModelId`, `EMBEDDING_MODELS`, default = Multilingual |
 | `services/retry.ts` | 17 | Retry/backoff predicate + schedule for transient failures, incl. 5xx/529; exports `ABORT_ERROR_NAMES` |
 | `appContainer.ts` | 75 | Composition root (ADR-104 / #122): `AppContainer.create(plugin)` async factory constructs every service in dependency order after `loadPluginData`; the plugin exposes each via a getter (`plugin.llmRouter` etc.) so no call site changed |
 | `services/ConversationStore.ts` | ~85 | **Owns** the conversation list (`_conversations`, ADR-104 / #122) — `getAll()` returns the live array, `setAll()` replaces it; `plugin.conversations` is a read/write accessor delegating here. In-memory store + 300 ms debounced persistence; dirty-flag tracking (`dirtyIds` + `markDirty`/`clearDirty`) skips no-op writes; `save()` no-ops for a deleted conversation instead of resurrecting it |
@@ -425,8 +414,8 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `suggest/` | — | Modal dialogs (picker, delete confirm, settings, etc.); `NoteSuggestModal` overrides `getItems()` to include PDFs, `FileSuggestModal` stays markdown-only (also used by the template picker); `DeleteFileModal` extracted from sidebar |
 | `models/types.ts` | 102 | All shared TypeScript interfaces, incl. `ToolLoopLimitError`, `EffortLevel` |
 | `locales/en.ts` / `locales/de.ts` | 468 / 477 | i18n strings (English / German); the per-feature modules are spread in at the top |
+| `locales/vaultContext.{en,de}.ts` | 20 / 20 | The vault-context strings: the settings section, the *Search by meaning* status row, the notice when vault context is switched on without Schreibstube (ADR-224) |
 | `locales/settings.{en,de}.ts` | 144 / 138 | The settings tab's strings (ADR-206), section names and intros first, in render order — split out because both locale files sat just under the 600-line ceiling |
-| `locales/embedding.{en,de}.ts` | 63 / 62 | The on-device embedding / vault-context strings (ADR-199, review #301) |
 | `tests/` | — | Vitest unit tests (723 tests across 48 files, ~5 s) |
 | `eslint.config.mjs` | 46 | ESLint flat config (typescript-eslint); typed linting via `projectService`, `no-floating-promises: error` |
 | `vitest.config.ts` | 24 | Coverage configuration |
@@ -443,11 +432,9 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 PythiaPlugin (main.ts)
 ├── ConversationStore          — persists conversations[] via Obsidian's saveData()
 ├── watchDataJson()            — polls adapter.stat() every 5 s for cross-device sync
-├── EmbeddingHub               — the ONE shared embedding provider + model identity (ADR-205)
-│   ├── ConversationIndexService — "related conversations" (ADR-109)
-│   ├── VaultRagService          — vault-wide semantic RAG (ADR-116/118/119)
-│   └── EmbeddingResidency       — release/preload the model on a phone (ADR-202)
-├── registerVaultWatcher()     — VaultChangeBatch + the four vault listeners (ADR-121)
+├── SchreibstubeLink           — Schreibstube's API: conversations handed over, search, related, searchNotes (ADR-223/224)
+├── VaultContextService        — the notes a turn draws in, found by Schreibstube, filtered by scope + opt-out (ADR-224)
+├── registerVaultWatcher()     — the four vault listeners: glossary invalidation + rename following (ADR-224)
 ├── handleDeepLink()           — obsidian://pythia routing and validation
 ├── LLMRouter                  — routes to AnthropicService, OpenAIProvider, or MistralService
 │   ├── AnthropicService       — Anthropic SDK streaming; extends BaseProvider
@@ -547,6 +534,14 @@ User types + presses Enter (e.isComposing guard prevents IME false fires)
       → appendMessageBubble() renders user bubble
       → createStreamingBubble() creates live token target
       → LLMRouter.streamMessage(conv, text, conv.contextNotes, …)
+          → vaultRetriever (set by setVaultRetriever) — fail-open
+              → VaultContextService.getRelevantNotes(conv, text, attached)
+                  — nothing when vault context is off for the conversation
+                  → SchreibstubeLink.searchNotes(retrievalQuery(…), limit × 3, attached)
+                      — Schreibstube matches on the device; [] when it is absent
+                  — keeps notes in the folders to draw from, outside Pythia's own
+                    folders, without `pythia: false`, up to vaultContextMaxNotes
+              — the found paths join the attached ones as autoNotes (tighter budget)
           → ContextBuilder.buildSystemPrompt()
               — appends a grounding instruction when contextNotes.length > 0
               — the XML-ish tag names (`system_prompt`, `previous_conversation_summary`,

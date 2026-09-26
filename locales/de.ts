@@ -1,12 +1,12 @@
 import pinsDe from "./pins.de";
 import chartDe from "./chart.de";
 import type { Strings } from "./en";
-import embeddingDe from "./embedding.de";
+import vaultContextDe from "./vaultContext.de";
 import settingsDe from "./settings.de";
 
 const de: Strings = {
-	// On-device embeddings live in their own module (ADR-199, review #301).
-	...embeddingDe,
+	// Vault context lives in its own module (ADR-199, ADR-224, review #301).
+	...vaultContextDe,
 	// The settings tab's strings likewise (ADR-209).
 	...settingsDe,
 	// Diagramme in einer Antwort in eigenem Modul (ADR-210).
@@ -308,7 +308,6 @@ const de: Strings = {
 	vaultContextDefaultOff:            "Vault-Kontext für neue Unterhaltungen standardmäßig aus.",
 	vaultContextTooltip:               "Vault-Kontext: relevante Notizen automatisch hinzufügen (semantisches RAG)",
 	vaultContextAutoPill:              "in diesem Zug automatisch aus dem Vault geholt",
-	cmdReindexVault:                   "Vault-Kontext-Index neu aufbauen",
 	cmdNewConversationFromClipboard:   "Neues Gespräch aus Zwischenablage",
 	cmdReloadConversations:            "Gespräche von Festplatte neu laden",
 

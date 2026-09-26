@@ -609,7 +609,6 @@ export class PythiaSidebarView extends ItemView {
 
 		this.registerDomEvent(this.composer.el, "focus", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
-			this.plugin.prewarmEmbedding(); // typing hides a released model's reload (ADR-202)
 		});
 		this.registerDomEvent(this.composer.el, "blur", () => {
 			setTimeout(() => this.adjustForKeyboard(), 300);
@@ -1124,14 +1123,14 @@ export class PythiaSidebarView extends ItemView {
 	}
 
 
-	/** Toggle vault-context (semantic RAG) for the active conversation; persists.
-	 *  The first send after enabling lazily builds the embedding index. */
+	/** Toggle vault context for the active conversation; persists. The notes are
+	 *  found by Schreibstube's search by meaning (ADR-224). */
 	private toggleVaultContext(): void {
 		const conv = this.activeConversation;
 		if (!conv) return;
 		conv.vaultContext = !(conv.vaultContext ?? this.plugin.settings.vaultContextEnabled);
 		this.updateToolbarToggles();
-		new Notice(conv.vaultContext ? t("vaultContextOn") : t("vaultContextOff"));
+		new Notice(!conv.vaultContext ? t("vaultContextOff") : this.plugin.vaultContext.available() ? t("vaultContextOn") : t("vaultContextNeedsSchreibstube"));
 		void this.plugin.conversationStore.save(conv);
 	}
 

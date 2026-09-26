@@ -99,4 +99,15 @@ describe("SchreibstubeLink", () => {
 		expect(await link(api).related("c1", 5)).toEqual([{ id: "c3", score: 0.8 }]);
 		expect(api.related).toHaveBeenCalledWith({ source: "pythia", id: "c1" }, { kinds: ["conversation"], limit: 5 });
 	});
+
+	it("keeps only notes from a note search, and passes the excluded paths on", async () => {
+		const api = fakeApi({
+			search: vi.fn(async () => [
+				{ kind: "note", id: "a.md", title: "a", score: 0.6 },
+				{ kind: "image", id: "b.jpg", title: "b", score: 0.5 },
+			]),
+		});
+		expect(await link(api).searchNotes("küche", 5, ["x.md"])).toEqual(["a.md"]);
+		expect(api.search).toHaveBeenCalledWith("küche", { kinds: ["note"], limit: 5, exclude: ["x.md"] });
+	});
 });

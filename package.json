@@ -13,9 +13,7 @@
     "coverage": "vitest run --coverage",
     "update:pricing": "node scripts/update-pricing.mjs",
     "update:models": "node scripts/update-models.mjs",
-    "check:obsidian-cascade": "node scripts/obsidian-button-rules.mjs",
-    "model:prune": "python3 scripts/prune-embedding-model.py",
-    "model:verify": "node scripts/verify-pruned-model.mjs"
+    "check:obsidian-cascade": "node scripts/obsidian-button-rules.mjs"
   },
   "keywords": [],
   "author": "",
@@ -36,18 +34,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
-    "@huggingface/transformers": "^3.8.1",
     "@mistralai/mistralai": "^2.7.0",
     "@opentelemetry/api": "^1.9.1",
     "openai": "^7.19.0"
   },
-  "overrides": {
-    "sharp": "^0.35.3"
-  },
   "allowScripts": {
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true,
-    "onnxruntime-node@1.21.0": true,
     "protobufjs@7.6.6": true
   }
 }

@@ -16,6 +16,10 @@ import type { Conversation } from "../models/types";
  * version all read as "not available", never as an error.
  */
 
+/** Related conversations asked for at most: a screenful. Past it the list grows
+ *  with the vault, not with relevance (ADR-169). */
+export const RELATED_RESULT_LIMIT = 20;
+
 export interface SchreibstubeHit {
 	kind: "note" | "image" | "conversation";
 	id: string;
@@ -128,6 +132,19 @@ export class SchreibstubeLink {
 			return hits.filter((h) => h.kind === "conversation").map((h) => h.id);
 		} catch (e) {
 			this.host.log("schreibstube: search failed", e);
+			return [];
+		}
+	}
+
+	/** Paths of the notes that answer `text` by meaning, best first. */
+	async searchNotes(text: string, limit: number, exclude: string[]): Promise<string[]> {
+		const api = this.api();
+		if (!api) return [];
+		try {
+			const hits = await api.search(text, { kinds: ["note"], limit, exclude });
+			return hits.filter((h) => h.kind === "note").map((h) => h.id);
+		} catch (e) {
+			this.host.log("schreibstube: note search failed", e);
 			return [];
 		}
 	}
