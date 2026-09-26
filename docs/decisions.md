@@ -1,6 +1,12 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
+*Last updated: 2026-09-26 — ADR-232 (*What Pythia sends*: a read-only dialog with the conversation's template, instructions, custom instructions, history and whole system prompt, opened from the header menu and the context box).*
+
+*Previously: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
+
+*Previously: 2026-09-26 — ADR-230 (the web-search globe shows on · no key · auto · off, an auto-armed send keeps it lit for the whole answer, and its tooltip and search chips name the word that armed it).*
+
+*Previously: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
 
 *Previously: 2026-09-26 — ADR-228 (the rest of the Tavily review: research needs a key, news results carry their date, the recency line uses the local date, the result count is a whole number capped at 20, a link typed without `https://` counts, more private hosts are refused, internationalised top-level domains are accepted as filters, Anthropic tool errors carry `is_error`, the key is trimmed, a query is capped at 400 characters; parallel tool calls stay deferred as D-62).*
 
@@ -4930,3 +4936,49 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - **Unchanged from ADR-226/228:** research needs a key, five searches per answer, and numbered citations. The broader trigger means more text goes to Tavily than under ADR-226; that is the user's choice, and the setting describes both triggers.
 
 **Guards.** `tests/webSearchHeuristics.test.ts` (the pre-ADR-226 cue tests restored; "show me the current ecb rate" fires; a date or cue word only inside a note link does not) · `tests/sendPolicy.test.ts` (`wantsWeb` is time OR link).
+
+## ADR-230 — The web-search globe shows four states, and an unasked search names its cue
+
+**Status:** Active · 2026-09-26 · **revises D-5** (decided 2026-09-18 to leave the globe as on/off) · closes engineering-review #257
+
+**Context.** The globe said on or off. But auto-search (ADR-099/229) searches on an "off" conversation, shown only by a 1.6 s pulse, and "on" without a Tavily key does nothing after one Notice (ADR-228 made research need a key). D-5 left this alone because an answer that searched carries its own evidence in the sources row. That evidence comes after the answer, and it does not say *why* a search ran, which is what a user asks when auto-search fires on something unexpected — D-5's own revisit condition.
+
+**Decision.**
+- **Four states, one pure rule:** `researchState(researchMode, hasApiKey, autoArmEnabled)` in `ui/ResearchToggleController.ts` → `on` (accent fill) · `noKey` (no fill, `--text-warning`, `.is-nokey`) · `auto` (plain; the tooltip says it searches by itself for time-sensitive questions and links) · `off`. Each state has its own tooltip.
+- **An auto-armed send stays visible for the whole answer.** The globe keeps `.is-auto-armed` from the send until streaming stops (it used to pulse for 1.6 s), and its tooltip names the cue.
+- **The cue is named, not just detected.** `timeSensitiveCue(text, year)` returns the word that fired (the whole declined word for a German stem, the year, or the phrase), and `webCue` adds `"link"`. `wantsWeb`/`looksTimeSensitive` are the same rule read as a boolean — one builder. Every search chip in that answer reads `… · automatic: “current”`.
+- The globe moves out of `sidebar.ts` into `ResearchToggleController` (mount · paint · arm · disarm · toggle).
+
+**Not done.** The first cue found is named by kind (word, phrase, stem, year), not by position in the text. It names a real reason, which is the point.
+
+**Guards.** `tests/researchState.test.ts` (four states; the cue for a word, a stem, a year and a link; none for a `[[link]]`; the chip names the cue only when auto-armed).
+
+## ADR-231 — A resume mode reduces only what came before the resume, and says so
+
+**Status:** Active · 2026-09-26 · closes engineering-review #256
+
+**Context.** `Pythia: Resume conversation` stored `resumeMode` on the conversation, and every later send applied it to the **whole** history: `summary` sent no prior message at all, `hybrid` only the last six. So a resumed conversation forgot its own new turns — ask "shorter, please" and the model no longer had the answer it was meant to shorten. The same applied, from the first message, to any conversation created by a template with `resume_mode: summary` or while the settings' *Resume mode* default was `summary`, and a fork copied its source's mode onto an empty conversation. Nothing in the panel showed any of it, and nothing switched it back.
+
+**Decision.**
+- **The mode covers a boundary, not the conversation.** `Conversation.resumedAfterId` is the last message when the conversation was resumed in summary or hybrid mode. `selectHistoryForSend(messages, mode, resumedAt)` reduces only the first `resumedAt` messages and sends every message after them. `resumeBoundary(conv)` computes that count, one builder for all three providers.
+- **No boundary, no reduction.** A mode that reached the conversation any other way (template, settings default, fork, a conversation resumed before this ADR) reduces nothing. So does a boundary message that no longer exists. The missing case errs towards sending more; `trimHistoryToBudget` still guards the context window. A conversation resumed before this change therefore sends its full history again, which can cost more tokens; it no longer loses context silently.
+- **Never silent.** Resuming in summary or hybrid mode shows a Notice naming how many messages are left out. As long as any are, the context box shows a `SUMMARY` chip and a row saying how many are not sent, with **Send full history**, which sets `resumeMode = "full"` and drops the boundary. `omittedByResume(conv)` is the one count for both.
+- **Validated on load:** `sanitizeConversationFields` drops a `resumedAfterId` that is not a non-empty string.
+
+**Not done.** The settings' *Resume mode* default is still written onto new conversations, where it is now inert until the resume command. It is kept for templates that name a mode and for a later decision on preselecting the resume dialog, recorded as D-63.
+
+**Guards.** `tests/messageUtils.test.ts` (only the part before the boundary is reduced; no boundary → nothing; `resumeBoundary`/`omittedByResume`) · `tests/resumeVisible.test.ts` (the row names the count; the button restores full history and the row goes) · `tests/pathFields.test.ts` (the new field is classified).
+
+## ADR-232 — "What Pythia sends": the system prompt is readable from the conversation
+
+**Status:** Active · 2026-09-26 · closes engineering-review #258
+
+**Context.** A conversation's instructions were fixed when it was created, usually from a template, and were invisible afterwards: the template's name showed only in the sources row under answers, the prompt text nowhere, and the global custom instructions only in the settings. The context box said "+ System prompt ~1.2k" and nothing more. A user asking *why does it answer like that* had no way to look.
+
+**Decision.**
+- **One read-only dialog, `InstructionsModal`** (*What Pythia sends*), in five sections: the template the conversation came from (and a template armed for the next answer, ADR-177), **this conversation's instructions** (`systemPrompt`), **your custom instructions** (with where to change them), **history** (the ADR-231 fact, with *Send full history* when it is reduced), and **the whole system prompt** as the next answer builds it, with a copy button.
+- **Two doors:** a header-menu row (*What Pythia sends*, after conversation settings) and the context box's system-prompt line, which was already the number and is now the link to the text.
+- **One preview builder.** `previewSystemPrompt(conv, settings)` in `services/sendPreview.ts` is what the context box's token estimate and the dialog both read, so the text shown is the text counted. It is the prompt *before* notes and web results join it; the dialog says so. `sendFullHistory` moved there too, shared by the context box and the dialog.
+- **Read-only.** Editing a running conversation's instructions is not offered: it would be a second way to do what a template armed for one answer does (ADR-177), and a write that replaces the user's instructions in place has no undo. Recorded as D-64.
+
+**Guards.** `tests/instructionsModal.test.ts` (the facts; the three texts shown verbatim, the whole prompt equal to `previewSystemPrompt`; *None* for an empty prompt; *Send full history* works from the dialog) · `tests/headerInstructions.test.ts` (the menu row) · `tests/uiArchitectureDoc.test.ts` (the modal is named).

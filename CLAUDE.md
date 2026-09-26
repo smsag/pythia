@@ -32,6 +32,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
+    sendPreview.ts            ← previewSystemPrompt: the ONE preview of the system prompt (context box estimate + What Pythia sends) · sendFullHistory (ADR-231/232)
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
     vaultWatcher.ts           ← registerVaultWatcher — the four vault listeners: an edit or delete of a note invalidates the glossary cache, a rename is followed at once (ADR-136/218/224). No batching: the index it used to feed is Schreibstube's now
@@ -85,6 +86,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     dragToPan.ts              ← shared drag-to-scroll for horizontally overflowing content
     tableDecorator.ts         ← wraps wide markdown tables in a scroll frame (ADR-131)
     clipboard.ts              ← the ONE copy control: copyTextWithFeedback + copyBlobWithFeedback (ClipboardItem gets an UNRESOLVED promise, or Safari loses the gesture) — ADR-210
+    ResearchToggleController.ts ← the web-search globe: researchState (on · no key · auto · off), arm(cue)/disarm around an auto-armed send (ADR-230)
     ToolCallController.ts     ← what happens when the model calls a tool mid-answer: the chips, the web sources and the accepted charts, plus the stream counter that says where a chart belongs (ADR-210)
     chart/palette.ts          ← the ONE module allowed to name a colour: series swatches derived per theme ground on a WCAG shifted-luminance ladder, floored at 3:1 (ADR-198's number)
     chart/layout.ts           ← pure chart geometry, no DOM — a bar's axis ALWAYS includes zero, a line keeps its own range, a gap breaks the line (ADR-210)
@@ -375,7 +377,7 @@ Order left→right (ADR-165, revising ADR-098): search · name (grows) · [ctx c
 - **A segment shows what the send uses, resolved** (`Hoch`, `DE`, `AUTO`), never a bare "Standard". **Accent tint (`.is-pinned`) = set for this conversation; plain = follows the plugin settings.** Every picker's first row returns to the default and stores `undefined` (principle 6); a test fails if it stores the value
 - `AUTO` = no language instruction (ADR-148's `auto`). `obsidian` shows the resolved locale code. A model without effort shows a dimmed `—` (`.is-off`) and tapping says so; a stored effort on such a model is kept, not tinted
 - Temperature and token limit stay out of the header (settings dialog; the token warning stays beside Send)
-- **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings. Rename and link no longer have header buttons
+- **Menu `⌄`** (`.p-hdr-menu`): rename · copy link · conversation settings · what Pythia sends (`InstructionsModal`, read-only, ADR-232). Rename and link no longer have header buttons
 - **Rename has two verbs on one row** (ADR-186): the row edits by hand; its trailing ↻ (`ActionSheetItem.trailing`) renames with AI **without opening the editor** — from the summary plus the last exchange (`retitleConversation`), never the first exchange. The editor `.p-rename-input` is the title made editable: same font, weight, line-height and padding as `.p-title`, no border/underline/fill — never let Obsidian's input chrome back in
 - **Regenerate is one glyph everywhere**: `REGENERATE_ICON` from `ui/icons.ts`, never a literal `refresh-cw`/`rotate-cw` (ADR-191). An outdated summary shows the same way wherever it sits: accent regenerate (`.is-stale`) plus `· outdated`
 - The header repaints on a global default change via `plugin.onSettingsTabClosed()` → `view.refreshInstructions()`

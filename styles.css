@@ -1279,6 +1279,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-inspector-summarize {
   flex-shrink: 0;
 }
+/* History a resume mode leaves out (ADR-231): the warn row's grammar, at the
+   top of the body, without the divider — it is the first thing in the box. */
+.p-inspector-resume { display: flex; align-items: center; gap: 8px; }
+.p-inspector-resume-chip {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--text-warning, var(--color-orange));
+}
 
 .p-inspector-footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .p-inspector-add {
@@ -1290,6 +1299,37 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .p-inspector-add:hover { color: var(--color-accent); }
 .p-inspector-sys { font-family: var(--font-monospace); font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+/* The system-prompt line opens "What Pythia sends" (ADR-232): a control, so
+   never --text-faint (ADR-188). */
+.p-inspector-open { cursor: pointer; }
+.p-inspector-sys.p-inspector-open { color: var(--text-muted); }
+@media (hover: hover) {
+  .p-inspector-open:hover { color: var(--text-normal); text-decoration: underline; }
+}
+
+/* "What Pythia sends" (ADR-232): read-only sections, each text verbatim. */
+.pythia-instructions-section { margin-top: var(--s3); }
+.pythia-instructions-section h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s1);
+  font-size: var(--font-ui-small, 13px);
+}
+.pythia-instructions-section p { margin: 0 0 var(--s1); }
+.pythia-instructions-text {
+  margin: 0 0 var(--s1);
+  padding: var(--s2);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller, 11px);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+}
 
 /* ── Welcome / empty-conversation state (F6) ────────────────────── */
 .p-welcome {
@@ -2708,11 +2748,17 @@ body.is-phone .workspace-drawer .p-input-area {
   font-size: var(--font-smaller, 12px);
 }
 
-/* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
-   allowed for this send, without the persistent .is-active toggled state. */
+/* Auto-armed web search (ADR-099/230): pulse the globe, then keep it accent for
+   the whole answer, without the persistent .is-active toggled state. The
+   tooltip names the cue that armed it. */
 .p-tool-btn.is-auto-armed {
   animation: p-auto-arm-pulse 0.8s ease-in-out 2;
   color: var(--color-accent);
+}
+/* Web search switched on without a Tavily key (ADR-230): no fill, because it
+   is not searching; the warning colour and the tooltip say why. */
+.p-tool-btn.is-nokey {
+  color: var(--text-warning);
 }
 @keyframes p-auto-arm-pulse {
   0%, 100% { color: var(--text-faint); }

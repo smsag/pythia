@@ -1,4 +1,4 @@
-import { containsWebUrl, looksTimeSensitive } from "./webSearchHeuristics";
+import { containsWebUrl, timeSensitiveCue } from "./webSearchHeuristics";
 import type { Conversation, Message } from "../models/types";
 
 /**
@@ -84,5 +84,11 @@ export function researchForSend(opts: {
  * lived in. The year anchors the "this year or later" cue.
  */
 export function wantsWeb(text: string, currentYear: number): boolean {
-	return looksTimeSensitive(text, currentYear) || containsWebUrl(text);
+	return webCue(text, currentYear) !== null;
+}
+
+/** Why a message wants the web — the time cue as it appears, or "link" — or
+ *  null. The one answer both `wantsWeb` and the visible reason read (ADR-230). */
+export function webCue(text: string, currentYear: number): string | null {
+	return timeSensitiveCue(text, currentYear) ?? (containsWebUrl(text) ? "link" : null);
 }

@@ -8,7 +8,8 @@ import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
 import { parseCitations, stripForeignCitations } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
-import { researchForSend, wantsWeb } from "./services/sendPolicy";
+import { researchForSend, webCue } from "./services/sendPolicy";
+import { ResearchToggleController } from "./ui/ResearchToggleController";
 import { nameAfterCommit } from "./ui/postCommitNaming";
 import { t } from "./i18n";
 import { InlineSuggest } from "./ui/InlineSuggest";
@@ -145,7 +146,7 @@ export class PythiaSidebarView extends ItemView {
 	private navigatorEl!: HTMLElement;
 	private disposeViewport: (() => void) | null = null;
 
-	private researchBtnEl!: HTMLButtonElement;
+	private research!: ResearchToggleController;
 	private templateBtnEl!: HTMLButtonElement;
 	private readonly composerSend = new ComposerSend({
 		input: () => this.composer?.el,
@@ -385,6 +386,11 @@ export class PythiaSidebarView extends ItemView {
 		});
 		this.referenceRow.mount(container);
 
+		this.research = new ResearchToggleController({
+			plugin: this.plugin,
+			getConversation: () => this.activeConversation,
+			registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+		});
 		this.buildInputArea(container);
 
 		this.optimizationController = new OptimizationController({
@@ -648,12 +654,7 @@ export class PythiaSidebarView extends ItemView {
 			void this.onApplyTemplate();
 		});
 
-		this.researchBtnEl = toolbarLeft.createEl("button", {
-			cls: "pb pb-icon p-tool-btn",
-			attr: { title: t("researchToggleTooltip") },
-		});
-		setIcon(this.researchBtnEl, SOURCE_ICONS.web);
-		this.registerDomEvent(this.researchBtnEl, "click", () => this.toggleResearchMode());
+		this.research.mount(toolbarLeft); // off · on · no key · auto (ADR-230)
 
 		this.vaultBtnEl = toolbarLeft.createEl("button", {
 			cls: "pb pb-icon p-tool-btn",
@@ -1092,35 +1093,10 @@ export class PythiaSidebarView extends ItemView {
 	 *  Called on build and on every switch: the toolbar is not rebuilt. */
 	private updateToolbarToggles(): void {
 		const conv = this.activeConversation;
-		paintToggle(this.researchBtnEl, !!conv?.researchMode);
+		this.research.paint();
 		paintToggle(this.vaultBtnEl, !!(conv?.vaultContext ?? this.plugin.settings.vaultContextEnabled));
 		paintToggle(this.templateBtnEl, !!conv?.pendingTemplate);
 	}
-
-	/** Briefly pulse the research globe to show web search was auto-armed for this
-	 *  send (ADR-099) without flipping the persistent per-conversation toggle. */
-	private flashResearchAutoArm(): void {
-		if (!this.researchBtnEl) return;
-		this.researchBtnEl.addClass("is-auto-armed");
-		window.setTimeout(() => this.researchBtnEl?.removeClass("is-auto-armed"), 1600);
-	}
-
-	/** Toggle web search for the active conversation. Warns (but still toggles)
-	 *  when no Tavily key is configured so the intent is remembered for when one
-	 *  is added. Persists so the choice survives reloads and device sync. */
-	private toggleResearchMode(): void {
-		const conv = this.activeConversation;
-		if (!conv) return;
-		conv.researchMode = !conv.researchMode;
-		this.updateToolbarToggles();
-		if (conv.researchMode && !this.plugin.webSearchService.hasApiKey()) {
-			new Notice(t("researchNoKeyNotice"));
-		} else {
-			new Notice(conv.researchMode ? t("researchEnabledNotice") : t("researchDisabledNotice"));
-		}
-		void this.plugin.conversationStore.save(conv);
-	}
-
 
 	/** Toggle vault context for the active conversation; persists. The notes are
 	 *  found by Schreibstube's search by meaning (ADR-224). */
@@ -1307,15 +1283,17 @@ export class PythiaSidebarView extends ItemView {
 		const emit = this.toolCalls.begin(appendToken);
 
 		// For THIS send only — never persisted (ADR-099/228); the rule is in sendPolicy.
+		const cue = webCue(text, new Date().getFullYear());
 		const research = researchForSend({
 			researchMode: conv.researchMode,
 			autoArmEnabled: this.plugin.settings.webSearchAutoArm,
 			hasApiKey: this.plugin.webSearchService.hasApiKey(),
-			wantsWeb: wantsWeb(text, new Date().getFullYear()),
+			wantsWeb: cue !== null,
 		});
-		if (research.autoArmed) this.flashResearchAutoArm();
+		// Lit, and saying why, for the whole answer — the chip names it too (ADR-230).
+		if (research.autoArmed && cue) this.research.arm(cue);
 		if (research.missingKey) new Notice(t("researchNoKeyNotice"));
-		const onToolCall = this.toolCalls.handler(conv, research.active);
+		const onToolCall = this.toolCalls.handler(conv, research.active, research.autoArmed ? cue : null);
 
 		try {
 		await this.plugin.llmRouter.streamMessage(
@@ -1452,6 +1430,7 @@ export class PythiaSidebarView extends ItemView {
 			this.sendBtn.setText(t("stopBtn"));
 			this.sendBtn.addClass("stop");
 		} else {
+			this.research.disarm();
 			this.updateSendBtnLabel();
 			this.sendBtn.removeClass("stop");
 		}

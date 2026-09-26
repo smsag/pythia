@@ -125,8 +125,10 @@ export class ToolCallController {
 	 *
 	 * `researchActive` is passed rather than read off the conversation because an
 	 * auto-armed search is a per-send override that is never persisted (ADR-099).
+	 * `autoCue` is the word that armed it, named on every search chip of this
+	 * answer so an unasked search is never anonymous (ADR-230).
 	 */
-	handler(conv: Conversation, researchActive: boolean): (call: ToolCall) => Promise<string> {
+	handler(conv: Conversation, researchActive: boolean, autoCue: string | null = null): (call: ToolCall) => Promise<string> {
 		// Built here, once per send, after the outgoing message joined `messages`:
 		// the links read_url may read in this answer (ADR-217 addendum).
 		const readScope = WebReadScope.forConversation(conv);
@@ -138,16 +140,16 @@ export class ToolCallController {
 			if (call.name === "render_chart") {
 				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
-			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope);
+			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope, autoCue);
 			return this.runWrite(call, conv, researchActive);
 		};
 	}
 
 	/** web_search and read_url are read-only — run directly with a live status
 	 *  chip, no write-confirmation prompt (that would make research unusable). */
-	private async runSearch(call: ToolCall, conv: Conversation, researchActive: boolean, readScope: WebReadScope): Promise<string> {
+	private async runSearch(call: ToolCall, conv: Conversation, researchActive: boolean, readScope: WebReadScope, autoCue: string | null): Promise<string> {
 		const messagesEl = this.d.messagesEl();
-		const labels = chipLabels(call);
+		const labels = chipLabels(call, autoCue);
 		const searchChip = messagesEl.createDiv({ cls: "pythia-tool-call" });
 		searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.running });
 		this.d.reveal(searchChip, false); // a status: follow it only if following the answer
@@ -266,14 +268,16 @@ export class ToolCallController {
 
 /** The chip's three states for a web tool call. The filters are described by
  *  the same builder the no-results message uses (ADR-217); an argument the
- *  handler will reject still gets a readable label, never a crash. */
-function chipLabels(call: ToolCall): { running: string; done: string; failed: string } {
+ *  handler will reject still gets a readable label, never a crash. An
+ *  auto-armed send names its cue on the chip (ADR-230). */
+export function chipLabels(call: ToolCall, autoCue: string | null = null): { running: string; done: string; failed: string } {
+	const auto = (label: string) => (autoCue ? t("searchAutoLabel", { label, cue: autoCue }) : label);
 	if (call.name === "read_url") {
 		const raw = typeof call.input["url"] === "string" ? call.input["url"] : "";
 		const site = webDomain(raw) || raw;
 		return {
-			running: t("readingUrlLabel", { site }),
-			done: t("readUrlLabel", { site }),
+			running: auto(t("readingUrlLabel", { site })),
+			done: auto(t("readUrlLabel", { site })),
 			failed: t("readUrlFailedLabel", { site }),
 		};
 	}
@@ -282,8 +286,8 @@ function chipLabels(call: ToolCall): { running: string; done: string; failed: st
 	const filters = parsed.ok ? describeSearchFilters(parsed.value, localFilterWords()) : "";
 	const withFilters = (label: string) => (filters ? t("searchFilteredLabel", { label, filters }) : label);
 	return {
-		running: withFilters(t("searchingLabel", { query })),
-		done: withFilters(t("searchedLabel", { query })),
+		running: auto(withFilters(t("searchingLabel", { query }))),
+		done: auto(withFilters(t("searchedLabel", { query }))),
 		failed: t("searchFailedLabel"),
 	};
 }

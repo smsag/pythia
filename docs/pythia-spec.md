@@ -104,7 +104,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │   │   ├── .p-inst-seg.p-inst-model                → .p-model-pop
 │   │   ├── .p-inst-seg.p-inst-effort               → .p-choice-pop / .p-sheet
 │   │   └── .p-inst-seg.p-inst-lang                 → .p-choice-pop / .p-sheet
-│   ├── .p-hdr-btn.p-hdr-menu (⌄)                   rename [↻ .p-choice-trailing = AI rename] · copy link · conversation settings
+│   ├── .p-hdr-btn.p-hdr-menu (⌄)                   rename [↻ .p-choice-trailing = AI rename] · copy link · conversation settings · what Pythia sends (InstructionsModal, ADR-232)
 │   ├── .p-hdr-btn            (trash)               → DeleteConversationModal
 │   └── .p-hdr-btn            (plus)                new conversation — always the last child
 │
@@ -115,6 +115,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │
 ├── .p-chat                                         sidebar.ts — the scroll area, flex: 1
 │   ├── .p-inspector-wrap                           context inspector (what is in the prompt)  — a .p-acc like the summary cards (ADR-192)
+│   │   └── .p-inspector-resume                     history a resume mode leaves out + Send full history (ADR-231)
 │   ├── .pythia-fork-banner                         on a fork: "branched from …"   ui/ForkController.ts
 │   ├── .pythia-merge-banner                        inbound merge links             ui/MergeController.ts
 │   ├── .p-summary-cards                            ui/SummaryController.ts
@@ -151,7 +152,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
     │   └── .is-drop-target                         notes are being dragged over it (ADR-214)   ui/noteDrop.ts
     ├── .p-ctx-bar > .p-ctx-bar-fill                attached-note token budget
     └── .p-toolbar
-        ├── .p-toolbar-left > .p-tool-btn           attach · save · globe (web) · library (vault context)
+        ├── .p-toolbar-left > .p-tool-btn           attach · save · globe (web, `ResearchToggleController`: on · no key · auto · off) · library (vault context)
         ├── .p-send-hint                            token-limit warning   ui/SendHintController.ts
         ├── .p-model-hint                           optimizer's model suggestion (one send)   ui/ModelSuggestionController.ts
         └── .p-send-wrap > .p-send                  long-press → .p-send-menu
@@ -213,7 +214,7 @@ Name the surface and the class: *"`.p-history-sub` should show the archive state
 
 `models/types.ts` is the source of truth. The shape, briefly:
 
-- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode`, optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
+- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode` (+ `resumedAfterId`, the point it reduces up to — ADR-231), optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
 - **`Message`** — `id`, `role`, `content`, `timestamp`, plus what that turn used and cost: `model`, `tokenUsage`, `cost` (snapshotted, ADR-163), `attachedNotes`, `sources`, `truncated`.
 - **An optional field that is `undefined` means *inherit*** — never a copy of the resolved default (engineering principle 6). A control may show the default; it must not store it.
 
@@ -248,7 +249,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-2 | **Should archived conversations be indexed by vault context?** They are, today. | #300 | Undecided, both sides recorded. Since ADR-224 the index is Schreibstube's; Pythia's scope skips its conversations and scratch folders but not the archive folder, so an archived conversation can still be drawn into a turn. Excluding matches the two sibling folders; including is the only semantic path back to an archived conversation. | Before an archive fills on a real vault — afterwards it is a migration, not a default. |
 | D-3 | **The model can change the vault and nothing says so.** `writeMode` defaults to `all`; no surface shows it, and a conversation cannot be made read-only. | #255 | **Decided 2026-09-18 — no change.** The write is implied by the words of the conversation: the model writes when it is asked to, and the blast radius is already bounded without a mode being visible — `create_note` refuses an existing path, `rewrite_note` can only target a note already attached as context, and **every** write shows a confirm chip naming the note before it executes. A standing permission indicator would restate what the confirmation already asks. | A write lands that nobody asked for, or a user reports not knowing the model could modify an attached note. |
 | D-4 | **Resume mode silently drops history.** `summary` sends no prior messages, `hybrid` only the last six, for every later send. Nothing says so and nothing switches back. | #256 | **Decided 2026-09-18 — leave as is.** The default is `full`, so the silent case only exists for a user who deliberately chose otherwise. Folding it into `trimHistoryToBudget` was considered and not taken: it would change what "summary" means and rewrite the send path for a case nobody has reported. | Someone reports the model forgetting a conversation they can still see on screen. |
-| D-5 | **Web-search state is ambiguous** — on · off · auto-armed · no-key are four states shown as two. | #257 | **Decided 2026-09-18 — leave as is.** Re-read against the code first: auto-arm is a **per-send override**, not a mode flip (`{ ...conv, researchMode: true }` is passed to that one send and never persisted), and an answer that searched carries its own evidence in the sources row (`Web: … ↗`). What is left is a label being narrower than the behaviour, not a hidden decision. | The heuristic fires on something plainly not time-sensitive, or a user asks why a search ran. |
+| D-5 | **Web-search state is ambiguous** — on · off · auto-armed · no-key are four states shown as two. | #257 | **Built 2026-09-26 (ADR-230)**, revising the 2026-09-18 "leave as is": the sources row shows *that* a search ran, only after the answer, never *why*. The globe now shows the four states and names the cue. | — |
 | D-6 | **The system prompt cannot be read from the conversation.** A template also sets up to six fields when applied. | #258 | Open, Medium — but **smaller than first written**: the template's *name* is in the sources row under the answer it shaped (ADR-140), the model is on every answer's meta line, and effort and language are resolved in the header (ADR-165). With D-3 and D-4 decided, what stays invisible is max tokens (visible when it bites, via the truncation card) and the prompt text itself. | Next conversation-controls pass. |
 | D-7 | **Two model pickers** with different information (header popover vs. settings modal). | #261 | Open, Low — principle 4 violation, kept because merging them changes two flows. | " |
 | D-8 | **Summaries and prompt optimization are long-press only.** | #262 | Partly addressed by ADR-165; the rest stands. | " |
@@ -274,6 +275,8 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-60 | **No fork from a tab.** The other answers stay as tabs only; there is no "Continue in a fork" (user decision). The selection toolbar's Branch is hidden and refused on a tab (ADR-225). | ADR-219/225 | Automatic forks hid the answers (the reason for ADR-219); a manual one was declined as a second place for the same answer. | Users copy a tab's text into a new conversation by hand to follow it. |
 | D-61 | **A phone that embeds no vault notes ("read-mostly").** **Closed by ADR-221 (2026-09-26), in a different shape:** a phone still embeds its own edits, in memory, so its answers see them; it no longer writes an index a desktop keeps, and a desktop catches up once per launch on what changed while it was closed. Embedding nothing would have left a phone blind to what was just written on it. | ADR-220, ADR-221 | The residue: a phone's in-memory edits are gone at its next launch until the desktop has caught up. Moot since ADR-224: Pythia keeps no index on any device. | A phone answering from stale vectors where the desktop rarely runs. |
 | D-62 | **Web tool calls in one round run one after another.** Every other finding of the Tavily review was closed by ADR-226/227/228. When a model asks for two searches in one round, the second waits for the first. | ADR-228 | Running them together would race the answer's result numbering (`firstN`), and the same loop runs the write tools, whose confirmation cards must come one at a time. A search takes 1–3 s, and models seldom ask for two at once. | Measured answers where parallel searches are common and the wait is noticed; the numbering would then be reserved per call before any request starts. |
+| D-63 | **The settings' *Resume mode* default does nothing on its own.** It is still written onto every new conversation, but a mode reduces history only past a resume point, which only the resume command sets. | ADR-231 | Removing the setting or making it preselect the resume dialog is a separate UX decision; leaving it inert costs nothing and loses no context. | Someone sets it to *Summary* expecting cheaper conversations, or the resume dialog gets a remembered choice. |
+| D-64 | **A running conversation's instructions are shown, not edited.** *What Pythia sends* is read-only. | ADR-232 | Editing in place would duplicate a template armed for one answer (ADR-177), and would replace the user's own instructions with no undo. | A user wants to change a conversation's standing instructions mid-way and a one-answer template is the workaround more than once. |
 
 ### Measurements not yet made
 
@@ -348,6 +351,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-26 | ADR-225: D-60 now enforced in the selection toolbar (no Branch from a tab). |
+| 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). |
 | 2026-09-25 | ADR-219: the answer tabs (`.p-answer-tabs`) added to the UI map; D-59 (tabs are never searched, archived or sent) and D-60 (no fork from a tab). |
 | 2026-09-25 | ADR-218: D-58 (links inside message text are not rewritten on rename); the permanent write chip (`.p-note-write`) added to the UI map. |
 | 2026-09-25 | ADR-217: D-56 (crawl · map · research) and D-57 (advanced depth · auto-parameters · raw content) — the Tavily capabilities left out. |

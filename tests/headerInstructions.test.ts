@@ -102,11 +102,11 @@ describe("header instructions (ADR-165)", () => {
 		expect(seg(pane, "lang").classList.contains("is-pinned")).toBe(false);
 	});
 
-	it("the menu holds rename, copy link and conversation settings", async () => {
+	it("the menu holds rename, copy link, conversation settings and what Pythia sends", async () => {
 		const { pane } = await open();
 		click(pane().querySelector(".p-header .p-hdr-menu")!);
 		const labels = choiceRows(pane).map((r) => r.querySelector(".p-choice-label")?.textContent);
-		expect(labels).toEqual([t("renameConvTooltip"), t("copyConvLinkTooltip"), t("openConvSettings")]);
+		expect(labels).toEqual([t("renameConvTooltip"), t("copyConvLinkTooltip"), t("openConvSettings"), t("instrMenu")]);
 
 		pick(pane, t("renameConvTooltip"));
 		const wrap = pane().querySelector<HTMLElement>(".p-rename-wrap")!;

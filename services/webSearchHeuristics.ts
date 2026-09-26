@@ -75,6 +75,8 @@ const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const WORD_CUE_RE = new RegExp(`\\b(?:${CUE_WORDS.filter((c) => !c.includes(" ")).map(escapeRx).join("|")})\\b`);
 const PHRASE_CUES = CUE_WORDS.filter((c) => c.includes(" "));
 const STEM_CUE_RE = new RegExp(`\\b(?:${STEM_CUES.map(escapeRx).join("|")})`);
+// The whole declined word a stem matched, for naming the cue (ADR-230).
+const STEM_WORD_RE = new RegExp(`${STEM_CUE_RE.source}\\p{L}*`, "u");
 
 /**
  * Returns true when `text` reads as time-sensitive and should auto-arm web
@@ -83,25 +85,35 @@ const STEM_CUE_RE = new RegExp(`\\b(?:${STEM_CUES.map(escapeRx).join("|")})`);
  * intent; older years (historical questions) do not.
  */
 export function looksTimeSensitive(text: string, currentYear: number): boolean {
-	if (!text) return false;
+	return timeSensitiveCue(text, currentYear) !== null;
+}
+
+/**
+ * The cue that makes `text` read as time-sensitive — the word, phrase or year
+ * as it appears — or null. What the globe and the search chip name when
+ * auto-search fires, so the user can see why it did (ADR-230).
+ */
+export function timeSensitiveCue(text: string, currentYear: number): string | null {
+	if (!text) return null;
 	// A [[note link]] names a note, not a moment: a daily note called
 	// [[2026-09-26]] or a note titled "Current projects" is no reason to search
 	// the web (ADR-229).
 	const prose = text.replace(/\[\[[^\]]*\]\]/g, " ");
 	const lower = prose.toLowerCase();
 
-	if (WORD_CUE_RE.test(lower)) return true;
-	for (const cue of PHRASE_CUES) if (lower.includes(cue)) return true;
+	const word = WORD_CUE_RE.exec(lower);
+	if (word) return word[0];
+	for (const cue of PHRASE_CUES) if (lower.includes(cue)) return cue;
 	// Declining German stems: word-start boundary, any suffix.
-	if (STEM_CUE_RE.test(lower)) return true;
+	const stem = STEM_WORD_RE.exec(lower);
+	if (stem) return stem[0];
 
 	let m: RegExpExecArray | null;
 	YEAR_RE.lastIndex = 0;
 	while ((m = YEAR_RE.exec(prose)) !== null) {
-		if (Number(m[1]) >= currentYear) return true;
+		if (Number(m[1]) >= currentYear) return m[1];
 	}
-
-	return false;
+	return null;
 }
 
 // An http(s) address with a dotted host. A pasted link is the clearest possible

@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
+*Last updated: 2026-09-26 (ADR-232: `InstructionsModal`, *What Pythia sends*; ADR-231: the context box's resume row; ADR-230: the web-search globe is `ResearchToggleController`)*
+
+*Previously: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
 
 *Previously: 2026-09-25 (ADR-216: the pin strip)*
 
@@ -69,7 +71,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
    │  └─ .p-composer-chip                an attached note (# pick or dropped from the vault — noteDrop): library icon + name, reads as [[Name]]
    ├─ .p-ctx-bar                         attached-note token budget
    └─ .p-toolbar
-      ├─ attach · save · globe · library  toolbarIcons
+      ├─ attach · save · globe · library  toolbarIcons; the globe is ResearchToggleController (on · no key · auto · off)
       ├─ .p-send-hint                    token-limit warning (SendHintController)
       ├─ .p-model-hint                   optimizer's model suggestion (ModelSuggestionController)
       └─ .p-send                         long-press → .p-send-menu
@@ -86,7 +88,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 - **Send menu:** `.p-send-menu`, built in `sidebar.ts` (an `ActionSheet` on mobile). Summarize conversation · Summarize favorites · Optimize prompt (`OptimizationController`).
 - **Rewrite:** `RewriteController` + `editorSelectionEntries`. A passage selected in the **editor** is armed as a target; the answer becomes a proposal card with *Replace in note*.
 - **Modals:** `suggest/`.
-  - Dialogs: `DeleteConversationModal` (Archive · Delete · Cancel), `DeleteFileModal`, `ConversationSettingsModal`, `ConversationCapModal` (history-limit confirm), `ResumeModeModal`, `CommandHubModal` (`Pythia: Commands…`), `InputModal`, `PromptInputModal`.
+  - Dialogs: `DeleteConversationModal` (Archive · Delete · Cancel), `DeleteFileModal`, `ConversationSettingsModal`, `InstructionsModal` (*What Pythia sends*: template, instructions, custom instructions, history, the whole system prompt — read-only; header menu and the context box's system-prompt line), `ConversationCapModal` (history-limit confirm), `ResumeModeModal`, `CommandHubModal` (`Pythia: Commands…`), `InputModal`, `PromptInputModal`.
   - Pickers, mostly for command-palette entry points that can run with no view open: `ConversationSuggestModal`, `FavoritesSuggestModal`, `NoteSuggestModal`, `TemplateSuggestModal`, `FileSuggestModal`, `FolderSuggestModal`, `ModelSuggestModal` (the comparison's model choice).
 - **Settings tab:** `settings.ts` orders eight sections — seven in `ui/settings/`, and **Vault context** in `ui/vaultContextSettings.ts`, which opens with a *Search by meaning* row saying whether Schreibstube can find notes (ADR-224) — each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
 - **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note.

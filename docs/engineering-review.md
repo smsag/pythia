@@ -1,6 +1,12 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **Auto-search stopped firing on "show me the current ECB rate" (ADR-229).** ADR-226 had misread the user's decision as link-only; the time cues are back, minus note links.*
+*Updated: 2026-09-26 — **#258 done (ADR-232):** *What Pythia sends* shows a conversation's instructions, template, custom instructions, history and whole system prompt. Six rows about the embedding index (#269, #273, #274, #275, #282 and the phone-embedding row) closed as obsolete by ADR-224.*
+
+*Previously: 2026-09-26 — **#256 done (ADR-231):** a resumed conversation no longer forgets its own new turns, and a reduced history is shown with a way back.*
+
+*Previously: 2026-09-26 — **#257 done (ADR-230):** the web-search globe shows four states and names what armed an automatic search.*
+
+*Previously: 2026-09-26 — **Auto-search stopped firing on "show me the current ECB rate" (ADR-229).** ADR-226 had misread the user's decision as link-only; the time cues are back, minus note links.*
 
 *Previously: 2026-09-26 — **The Tavily review is done (ADR-228):** the last eleven findings closed; parallel tool calls in one round stay deferred (D-62) with the reason.*
 
@@ -1473,9 +1479,9 @@ An audit of every per-conversation setting against what the panel actually shows
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 255 | **The model can change the vault and nothing says so.** `Conversation.writeMode` defaults to `all` (`create_note`, `prepend_note`, `rewrite_note`) in `ToolHandler.getToolDefinitions`; only template frontmatter sets it, no surface shows it, and there is no way to make a conversation read-only. Also decide whether a conversation without a template should default to something narrower than `all` (product decision, needs an ADR). | High | Open |
-| 256 | **Resume mode silently drops history.** `cmdResumeConversation` stores `resumeMode` on the conversation; from then on `summary` sends no prior messages and `hybrid` only the last 6 (`HYBRID_TAIL_COUNT`) on every send. Nothing in the panel says so, and nothing switches it back to `full`. | High | Open |
-| 257 | **Web search state is ambiguous.** The globe's tint says on/off, but `webSearchAutoArm` searches on an "off" conversation for a time-sensitive message, signalled only by a 1.6 s pulse (`flashResearchAutoArm`); "on" without a Tavily key does nothing after the first notice. Needs off · on · auto · no-key as visible states. | High | Open |
-| 258 | **The system prompt is a black box.** Applying a template replaces `systemPrompt` and can reset model, temperature, effort, max tokens, resume mode and write mode (`onApplyTemplate`); afterwards the template name appears only in the sources row under answers, and neither the prompt text nor the global `customInstructions` can be viewed from the conversation. | Medium | Open |
+| 256 | **Resume mode silently drops history.** `cmdResumeConversation` stores `resumeMode` on the conversation; from then on `summary` sends no prior messages and `hybrid` only the last 6 (`HYBRID_TAIL_COUNT`) on every send. Nothing in the panel says so, and nothing switches it back to `full`. **Fixed by ADR-231:** the mode reduces only the messages before the resume point (`resumedAfterId`), a Notice names what is left out, and the context box shows it with *Send full history*. | High | Done |
+| 257 | **Web search state is ambiguous.** The globe's tint says on/off, but `webSearchAutoArm` searches on an "off" conversation for a time-sensitive message, signalled only by a 1.6 s pulse (`flashResearchAutoArm`); "on" without a Tavily key does nothing after the first notice. Needs off · on · auto · no-key as visible states. **Fixed by ADR-230:** four states with their own tooltip, the auto-armed state held for the whole answer, and the cue named on the globe and every search chip. | High | Done |
+| 258 | **The system prompt is a black box.** Applying a template replaces `systemPrompt` and can reset model, temperature, effort, max tokens, resume mode and write mode (`onApplyTemplate`); afterwards the template name appears only in the sources row under answers, and neither the prompt text nor the global `customInstructions` can be viewed from the conversation. **Fixed by ADR-232:** *What Pythia sends* (header menu, and the context box's system-prompt line) shows the template, both instruction texts, the history and the whole prompt as built, read-only. | Medium | Done |
 | 259 | **Generation parameters are two taps deep.** Effort, temperature, max tokens and language live only in `ConversationSettingsModal`, reached via the model popover's footer; the badge shows the model alone, so a Low and a High effort conversation look identical. | Medium | Done (ADR-165): effort and language sit beside the model in the header, each opens its own picker; temperature and token limit deliberately stay in the dialog |
 | 260 | **Inherited vs. pinned is invisible outside the modal.** `vaultContext`, `effort`, `temperature`, `maxTokens` and `outputLanguage` each have an inherit state (principle 6); the toolbar and header never show which applies. | Medium | Done for effort and language (ADR-165): accent tint = set for this conversation, default row stores `undefined`. Vault context is not covered |
 | 261 | **Two model pickers with different information.** The header popover (speed · depth · cost, context window, reasoning tag) and the modal's provider/model dropdowns (plus custom id) both set the model (principle 4). | Low | Open |
@@ -1519,10 +1525,10 @@ An audit of every per-conversation setting against what the panel actually shows
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| 269 | **Percentile-based floors instead of constants.** The floors calibrated for ~5 results land at roughly the p75–p78 of each model's own distribution — the same *percentile* ports across models where the same *constant* does not, and it would self-calibrate as a vault grows. Needs a second vault to confirm before replacing three constants with a runtime computation; a tiny vault also needs an absolute sanity floor. | Medium | Open |
-| 273 | **Vault-RAG retrieval floors are unmeasured.** ADR-169 measured conversation pairs; `vaultRetrievalMinScore` keeps 0.5 / 0.35 / 0.2 on faith. The equivalent probe for query-to-note retrieval does not exist yet. | Medium | Open |
-| 274 | **Show the matched chunk on each related row.** `maxPairwiseCosine` already knows which pair of chunks won and throws the indices away; the index does not persist chunk text. Related mode currently shows a bare conversation name with no score and no evidence — the failure ADR-168 legislated against for search. | Medium | Open |
-| 275 | **The settings copy undersells the speed difference.** "English is faster" is measured at **4.4×** (30.5s vs 135.2s for the same 554 chunks). A user on a large vault choosing the default multilingual model is choosing ~19 minutes over ~4. | Low | Open |
+| 269 | **Percentile-based floors instead of constants.** The floors calibrated for ~5 results land at roughly the p75–p78 of each model's own distribution — the same *percentile* ports across models where the same *constant* does not, and it would self-calibrate as a vault grows. Needs a second vault to confirm before replacing three constants with a runtime computation; a tiny vault also needs an absolute sanity floor. | Medium | Obsolete — ADR-224: Pythia keeps no model, index or floor; retrieval and related conversations are Schreibstube's |
+| 273 | **Vault-RAG retrieval floors are unmeasured.** ADR-169 measured conversation pairs; `vaultRetrievalMinScore` keeps 0.5 / 0.35 / 0.2 on faith. The equivalent probe for query-to-note retrieval does not exist yet. | Medium | Obsolete — ADR-224: Pythia keeps no model, index or floor; retrieval and related conversations are Schreibstube's |
+| 274 | **Show the matched chunk on each related row.** `maxPairwiseCosine` already knows which pair of chunks won and throws the indices away; the index does not persist chunk text. Related mode currently shows a bare conversation name with no score and no evidence — the failure ADR-168 legislated against for search. | Medium | Obsolete — ADR-224: Pythia keeps no model, index or floor; retrieval and related conversations are Schreibstube's |
+| 275 | **The settings copy undersells the speed difference.** "English is faster" is measured at **4.4×** (30.5s vs 135.2s for the same 554 chunks). A user on a large vault choosing the default multilingual model is choosing ~19 minutes over ~4. | Low | Obsolete — ADR-224: Pythia keeps no model, index or floor; retrieval and related conversations are Schreibstube's |
 
 ## Follow-up (#276–#280) — search cost, and reviewing the previous diff, 2026-09-17
 
@@ -1539,7 +1545,7 @@ An audit of every per-conversation setting against what the panel actually shows
 | # | Item | Severity | Status |
 |---|---|---|---|
 | 281 | **`openHistoryView` is a ~350-line function holding ~25 closures.** The file-size ratchet counts files, not functions, so nothing flags it. The natural seam is browse/search rendering vs. related mode — the split ADR-109 made conceptually and never structurally. | Medium | Partly done — related mode extracted to `ui/RelatedMode.ts` and the shared chip to `ui/historyChip.ts` (HistoryController 559 → 507). The remaining function still holds list building, row rendering and keyboard nav, which share `rows`/`selectedIdx` and are a poorer seam. |
-| 282 | **`sync` can only abort between conversations.** `provider.embed(chunks)` embeds one conversation's chunks in a single uninterruptible call — fine at the measured ~23 chunks, unbounded in principle. | Low | Open |
+| 282 | **`sync` can only abort between conversations.** `provider.embed(chunks)` embeds one conversation's chunks in a single uninterruptible call — fine at the measured ~23 chunks, unbounded in principle. | Low | Obsolete — ADR-224: Pythia keeps no model, index or floor; retrieval and related conversations are Schreibstube's |
 
 ## Follow-up (#283–#285) — CI and supply-chain hardening, 2026-09-17
 
@@ -2016,7 +2022,7 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The note being typed in was re-embedded on every autosave.** Each save is a `modify`, and the watcher treated the open note like any other. | High | Closed: held until it is left (`file-open`) or quiet for 30 s |
 | **The flush fired every 2 s during a burst**, not once after it: Obsidian's `debounce` without `resetTimer` times from the first call. | High | Closed: `resetTimer: true` on both debouncers |
 | **Every edit batch rewrote the whole index** (~19 MB at the cap), allocated fresh on the phone next to the resident model. | High | Closed: edit batches share one 30 s write window with a trailing write; flushed at unload |
-| **A phone still embeds other notes' edits and writes the synced index.** | Low | Deferred by decision: D-61 |
+| **A phone still embeds other notes' edits and writes the synced index.** | Low | Obsolete — ADR-224: a phone embeds nothing and writes no index (D-61 closed by ADR-221 first) |
 | **Each write is still the whole file.** | Medium | Closed (ADR-222): edits write a journal; the index is rewritten only by a build, a takeover or a compaction |
 
 ## Bug — a complete vault index went stale across devices (ADR-221), 2026-09-26

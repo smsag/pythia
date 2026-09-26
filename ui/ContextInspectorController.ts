@@ -1,14 +1,15 @@
 import { Notice, setIcon, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message } from "../models/types";
-import { t, getObsidianLocale } from "../i18n";
-import { estimateTokensFromText, resolveLanguageLabel } from "../services/messageUtils";
-import { buildSystemPrompt } from "../services/ContextBuilder";
+import { t } from "../i18n";
+import { estimateTokensFromText, omittedByResume } from "../services/messageUtils";
 import { getContextWindow } from "../models/knownModels";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
 import { buildAccordion } from "./accordion";
 import { appendSourceIcon, SOURCE_ICONS } from "./icons";
+import { InstructionsModal } from "../suggest/InstructionsModal";
+import { previewSystemPrompt, sendFullHistory } from "../services/sendPreview";
 
 export interface ContextInspectorDeps {
 	plugin: PythiaPlugin;
@@ -86,16 +87,7 @@ export class ContextInspectorController {
 			return { path: p, tokens };
 		});
 		const noteTotal = noteTok.reduce((a, b) => a + b.tokens, 0);
-		const sysTokens = estimateTokensFromText(
-			buildSystemPrompt(conv, this.d.plugin.settings.customInstructions, {
-				// The language directive is part of what is really sent, so the
-				// inspector's token count has to include it (ADR-148).
-				languageLabel: resolveLanguageLabel(
-					conv.outputLanguage ?? this.d.plugin.settings.outputLanguage,
-					getObsidianLocale()
-				),
-			})
-		);
+		const sysTokens = estimateTokensFromText(previewSystemPrompt(conv, this.d.plugin.settings));
 		const last = this.d.getLastTokenUsageMsg();
 		const windowSize = getContextWindow(conv.model);
 		const used = last?.tokenUsage
@@ -104,8 +96,11 @@ export class ContextInspectorController {
 		const frac = windowSize > 0 ? Math.min(1, used / windowSize) : 0;
 		const budgetTight = frac >= 0.8;
 
-		// Nothing worth a card: no context notes and plenty of budget.
-		if (notes.length === 0 && !budgetTight) { wrap.style.display = "none"; return; }
+		// Messages the resume mode leaves out — never silent (ADR-231, #256).
+		const omitted = omittedByResume(conv);
+
+		// Nothing worth a card: no context notes, full history, plenty of budget.
+		if (notes.length === 0 && !budgetTight && omitted === 0) { wrap.style.display = "none"; return; }
 		wrap.style.display = "";
 
 		// ── The shared accordion (ADR-192): same box as the summary cards ──
@@ -129,6 +124,10 @@ export class ContextInspectorController {
 		// ── Body ─────────────────────────────────────────────────────
 		const body = acc.body;
 		body.addClass("p-inspector-body");
+		if (omitted > 0) {
+			acc.meta.createSpan({ cls: "p-inspector-resume-chip", text: t("ctxResumeChip") });
+			this.resumeRow(body, conv, omitted);
+		}
 
 		const miniBar = (row: HTMLElement, fraction: number, warn = false) => {
 			const bar = row.createDiv({ cls: "p-ins-bar" });
@@ -168,7 +167,9 @@ export class ContextInspectorController {
 			}
 
 			const sysRow = body.createDiv({ cls: "p-inspector-row" });
-			sysRow.createSpan({ cls: "p-inspector-rowlabel", text: t("ctxSystemPrompt") });
+			const sysLabel = sysRow.createSpan({ cls: "p-inspector-rowlabel p-inspector-open", text: t("ctxSystemPrompt") });
+			sysLabel.setAttr("title", t("instrShow"));
+			sysLabel.addEventListener("click", () => this.openInstructions(conv));
 			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
 			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
 
@@ -202,8 +203,34 @@ export class ContextInspectorController {
 					}
 				}).open();
 			});
-			footer.createSpan({ cls: "p-inspector-sys", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+			const sys = footer.createSpan({ cls: "p-inspector-sys p-inspector-open", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
+			sys.setAttr("title", t("instrShow"));
+			sys.addEventListener("click", () => this.openInstructions(conv));
 		}
+	}
+
+	/** "What Pythia sends" (ADR-232). */
+	private openInstructions(conv: Conversation): void {
+		new InstructionsModal(this.d.plugin.app, this.d.plugin, conv, () => this.refresh()).open();
+	}
+
+	/** What the resume mode leaves out, and the one way back (ADR-231). */
+	private resumeRow(body: HTMLElement, conv: Conversation, omitted: number): void {
+		const row = body.createDiv({ cls: "p-inspector-resume" });
+		setIcon(row.createSpan({ cls: "p-inspector-warn-icon" }), "history");
+		row.createSpan({
+			cls: "p-inspector-warn-text",
+			text: conv.resumeMode === "summary"
+				? t("ctxResumeSummary", { count: String(omitted) })
+				: t("ctxResumeHybrid", { count: String(omitted) }),
+		});
+		const btn = row.createEl("button", { cls: "pb pb-secondary p-inspector-summarize", text: t("ctxSendFullHistory") });
+		btn.addEventListener("click", async (e) => {
+			e.stopPropagation();
+			await sendFullHistory(conv, this.d.plugin);
+			new Notice(t("ctxFullHistoryOn"));
+			this.refresh();
+		});
 	}
 
 	/** Context-budget bar under the header: fill = (last-known context size) /

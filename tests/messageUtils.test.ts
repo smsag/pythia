@@ -6,6 +6,8 @@ import {
 	formatSummaryTimestamp,
 	normalizeMessages,
 	selectHistoryForSend,
+	resumeBoundary,
+	omittedByResume,
 	trimHistoryToBudget,
 	estimateTokensFromText,
 	arrayBufferToBase64,
@@ -164,43 +166,61 @@ describe("normalizeMessages — OpenAI predicate (system allowed at position 0)"
 
 // ── selectHistoryForSend ──────────────────────────────────────────────────────
 
-describe("selectHistoryForSend", () => {
+describe("selectHistoryForSend (ADR-231: only what came before the resume)", () => {
 	const msgs: Msg[] = [
 		{ role: "user", content: "Hi" },
 		{ role: "assistant", content: "Hello" },
 	];
+	const many = (n: number): Msg[] => Array.from({ length: n }, (_, i) => ({
+		role: i % 2 === 0 ? "user" as const : "assistant" as const,
+		content: `msg-${i}`,
+	}));
 
-	it("returns full history unchanged when resumeMode is 'full'", () => {
-		expect(selectHistoryForSend(msgs, "full")).toBe(msgs);
+	it("returns full history unchanged when resumeMode is 'full' or undefined", () => {
+		expect(selectHistoryForSend(msgs, "full", 2)).toBe(msgs);
+		expect(selectHistoryForSend(msgs, undefined, 2)).toBe(msgs);
 	});
 
-	it("returns full history unchanged when resumeMode is undefined", () => {
-		expect(selectHistoryForSend(msgs, undefined)).toBe(msgs);
+	it("a mode with no resume point reduces nothing — a template's or the setting's mode alone", () => {
+		expect(selectHistoryForSend(msgs, "summary", 0)).toBe(msgs);
+		expect(selectHistoryForSend(many(12), "hybrid", 0)).toHaveLength(12);
 	});
 
-	it("returns an empty array when resumeMode is 'summary'", () => {
-		expect(selectHistoryForSend(msgs, "summary")).toEqual([]);
+	it("'summary' drops the messages before the resume and keeps every one after it", () => {
+		const result = selectHistoryForSend(many(10), "summary", 6);
+		expect(result.map((m) => m.content)).toEqual(["msg-6", "msg-7", "msg-8", "msg-9"]);
+		expect(selectHistoryForSend(msgs, "summary", 2)).toEqual([]);
 	});
 
-	it("does not mutate the input array in 'summary' mode", () => {
+	it("'hybrid' keeps the last 6 before the resume, and everything after it", () => {
+		const result = selectHistoryForSend(many(16), "hybrid", 12);
+		expect(result).toHaveLength(10);
+		expect(result[0].content).toBe("msg-6");
+		expect(result[9].content).toBe("msg-15");
+		expect(selectHistoryForSend(msgs, "hybrid", 2)).toEqual(msgs);
+	});
+
+	it("does not mutate the input, and clamps a boundary past the end", () => {
 		const copy = msgs.map(m => ({ ...m }));
-		selectHistoryForSend(msgs, "summary");
+		expect(selectHistoryForSend(msgs, "summary", 99)).toEqual([]);
 		expect(msgs).toEqual(copy);
 	});
+});
 
-	it("returns only the last 6 messages in 'hybrid' mode", () => {
-		const longHistory: Msg[] = Array.from({ length: 12 }, (_, i) => ({
-			role: i % 2 === 0 ? "user" as const : "assistant" as const,
-			content: `msg-${i}`,
-		}));
-		const result = selectHistoryForSend(longHistory, "hybrid");
-		expect(result).toHaveLength(6);
-		expect(result[0].content).toBe("msg-6");
-		expect(result[5].content).toBe("msg-11");
+describe("resumeBoundary / omittedByResume (ADR-231)", () => {
+	const messages = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}` }));
+
+	it("counts up to and including the message the conversation was resumed after", () => {
+		expect(resumeBoundary({ resumeMode: "summary", resumedAfterId: "m3", messages })).toBe(4);
+		expect(omittedByResume({ resumeMode: "summary", resumedAfterId: "m3", messages })).toBe(4);
+		expect(omittedByResume({ resumeMode: "hybrid", resumedAfterId: "m7", messages })).toBe(2);
+		expect(omittedByResume({ resumeMode: "hybrid", resumedAfterId: "m3", messages })).toBe(0);
 	});
 
-	it("returns all messages in 'hybrid' mode when history is shorter than the tail count", () => {
-		expect(selectHistoryForSend(msgs, "hybrid")).toEqual(msgs);
+	it("is 0 for full, for no resume point, and for a resume point that is gone", () => {
+		expect(resumeBoundary({ resumeMode: "full", resumedAfterId: "m3", messages })).toBe(0);
+		expect(resumeBoundary({ resumeMode: "summary", messages })).toBe(0);
+		expect(resumeBoundary({ resumeMode: "summary", resumedAfterId: "deleted", messages })).toBe(0);
 	});
 });
 
