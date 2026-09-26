@@ -12,6 +12,12 @@ import { VaultIndexService, type IndexableNote } from "../services/embedding/Vau
 import { VaultRagService } from "../services/VaultRagService";
 import type { IndexStore } from "../services/embedding/ConversationIndexService";
 import { FakeProvider, settings, conv, DEPS, settle } from "./helpers/vaultRagFixtures";
+import { deserializeIndex } from "../services/embedding/embeddingIndex";
+
+/** A phone's backend: the model runs on the UI thread. */
+class PhoneProvider extends FakeProvider {
+	override isOffThread(): boolean { return false; }
+}
 
 class CountingStore implements IndexStore {
 	buf: ArrayBuffer | null = null;
@@ -159,5 +165,38 @@ describe("VaultRagService.catchUp — once per session, desktop only (ADR-220)",
 		await settle();
 		expect(provider.embedded).toEqual([]);
 		expect(svc.isReady()).toBe(false);
+	});
+});
+
+describe("a phone takes a desktop's index over with Build now (ADR-220)", () => {
+	const vault = (text: { value: string }) => ({
+		vault: {
+			getMarkdownFiles: () => [{ path: "Notes/a.md", stat: { mtime: 1 } }],
+			cachedRead: async () => text.value,
+			getAbstractFileByPath: () => null,
+		},
+		metadataCache: { getFileCache: () => ({ frontmatter: undefined }) },
+	});
+
+	it("reports the desktop as keeper, then Build now embeds what moved and signs the file", async () => {
+		const store = new CountingStore();
+		const text = { value: "alpha" };
+		const desktop = new VaultRagService(vault(text) as never, () => settings(), () => new FakeProvider(), () => store, DEPS);
+		await desktop.getRelevantNotes(conv, "alpha");
+		await settle();
+
+		text.value = "alpha, written on the trip";
+		const provider = new PhoneProvider();
+		const phone = new VaultRagService(vault(text) as never, () => settings(), () => provider, () => store, { ...DEPS, mobile: true });
+		const before = await phone.status();
+		expect(before.keeper).toBe("desktop");
+		expect(before.writtenAt).toBeGreaterThan(0);
+
+		phone.buildNow();
+		await settle();
+		// The UI-thread shortcut used to return on a complete index and do nothing.
+		expect(provider.embedded).toEqual(["alpha, written on the trip"]);
+		expect(deserializeIndex(store.buf!).meta.keeper).toBe("mobile");
+		expect((await phone.status()).keeper).toBe("mobile");
 	});
 });

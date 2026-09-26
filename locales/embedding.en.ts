@@ -54,6 +54,8 @@ const embeddingEn = {
 	vaultIndexDetailModelMobile: "Model: {{model}} (mobile)",
 	vaultIndexBackend:           "Engine: {{backend}}",
 	vaultIndexDetailOff:         "Vault context is off by default — turn it on above, or per conversation with the library icon",
+	vaultIndexDetailKeptByDesktop:        "Kept by your desktop, last written {{date}} — edits made on this phone reach it when the desktop runs. No longer using that desktop? Build now lets this phone take the index over; only notes that changed are embedded.",
+	vaultIndexDetailKeptByDesktopUndated: "Kept by your desktop — edits made on this phone reach it when the desktop runs. No longer using that desktop? Build now lets this phone take the index over; only notes that changed are embedded.",
 	vaultIndexBuildNow:          "Build now",
 	vaultIndexBuildNowTooltip:   "Finish or update the index, keeping what is already indexed",
 	vaultContextReindexBtn:      "Rebuild index",

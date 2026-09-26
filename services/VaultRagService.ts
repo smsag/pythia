@@ -43,7 +43,7 @@ import { t } from "../i18n";
 /** The index half of the settings status; the plugin adds the model half. */
 export type VaultIndexSnapshot = Pick<
 	VaultIndexStatus,
-	"state" | "count" | "done" | "total" | "error" | "outOfMemory" | "marker" | "backend"
+	"state" | "count" | "done" | "total" | "error" | "outOfMemory" | "marker" | "backend" | "keeper" | "writtenAt"
 >;
 
 type Phase =
@@ -185,14 +185,17 @@ export class VaultRagService {
 	async status(): Promise<VaultIndexSnapshot> {
 		const base: VaultIndexSnapshot = {
 			state: "notBuilt", count: 0, done: 0, total: 0, error: null, outOfMemory: false,
-			marker: this.deps.guard?.marker() ?? null, backend: this.backend,
+			marker: this.deps.guard?.marker() ?? null, backend: this.backend, keeper: null, writtenAt: null,
 		};
 		const phase = this.phase;
 		if (phase.kind === "loading") return { ...base, state: "loading" };
 		if (phase.kind === "building") return { ...base, state: "building", done: phase.done, total: phase.total };
 		if (phase.kind === "failed") return { ...base, state: "failed", error: phase.error, outOfMemory: phase.outOfMemory };
 		const scope = this.scopeSignature();
-		if (this.service?.isComplete(scope)) return { ...base, state: "ready", count: this.service.size() };
+		if (this.service?.isComplete(scope)) {
+			const { keeper, writtenAt } = this.service.signature();
+			return { ...base, state: "ready", count: this.service.size(), keeper: keeper ?? null, writtenAt: writtenAt ?? null };
+		}
 		let file = this.fileMeta ?? null;
 		if (this.fileMeta === undefined) {
 			try {
@@ -212,7 +215,10 @@ export class VaultRagService {
 		// calling that "ready" left vault context dead behind a green status with
 		// Build now disabled. The count still says what is kept.
 		const paused = !(this.deps.guard?.mayAutoBuild() ?? true);
-		return { ...base, state: paused ? "paused" : state, count: file?.count ?? 0 };
+		return {
+			...base, state: paused ? "paused" : state, count: file?.count ?? 0,
+			keeper: file?.keeper ?? null, writtenAt: file?.writtenAt ?? null,
+		};
 	}
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
@@ -375,7 +381,7 @@ export class VaultRagService {
 				// out-of-scope index now falls through and resumes, throttled.
 				if (!offThread) {
 					await svc.hydrateForQuery();
-					if (svc.isComplete(scope)) {
+					if (svc.isComplete(scope) && !opts.force) { // Build now: a phone taking a desktop's index over (ADR-220)
 						guard?.end();
 						this.setPhase({ kind: "idle" });
 						// The edits buffered while the index was not yet hydrated land

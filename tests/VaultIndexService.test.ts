@@ -456,6 +456,25 @@ describe("VaultIndexService — a phone does not rewrite a desktop's index (ADR-
 		}
 	});
 
+	it("signs every write with when it was made", async () => {
+		const store = new MemStore();
+		const before = Date.now();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha]);
+		expect(deserializeIndex(store.buf!).meta.writtenAt).toBeGreaterThanOrEqual(before);
+	});
+
+	it("a full sync of an unchanged index takes it over from the other kind of device", async () => {
+		const store = new MemStore();
+		await new VaultIndexService(new FakeProvider(), store, { device: "desktop" }).sync([alpha, beta]);
+		const writes = store.writes;
+		const phone = new VaultIndexService(new FakeProvider(), store, { device: "mobile" });
+		await phone.sync([alpha, beta]); // a phone's Build now: nothing changed, nothing embedded …
+		expect(store.writes).toBe(writes + 1); // … but it signs the file, so its edits are written from now on
+		expect(keeperOf(store)).toBe("mobile");
+		await phone.sync([alpha, beta]);
+		expect(store.writes).toBe(writes + 1); // its own index: an unchanged sync still writes nothing
+	});
+
 	it("a desktop always writes its edits, whoever signed the file", async () => {
 		const store = new MemStore();
 		await new VaultIndexService(new FakeProvider(), store, { device: "mobile" }).sync([alpha]);

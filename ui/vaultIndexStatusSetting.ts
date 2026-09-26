@@ -1,6 +1,6 @@
 import { Setting, type ButtonComponent } from "obsidian";
 import { t } from "../i18n";
-import { canBuildNow, describeVaultIndexStatus, type VaultIndexStatus } from "../services/embedding/indexStatus";
+import { buildNowEnabled, describeVaultIndexStatus, type VaultIndexStatus } from "../services/embedding/indexStatus";
 
 /** What the status row needs from the plugin — narrow, so a test can hand it a fake. */
 export interface VaultIndexStatusSource {
@@ -54,7 +54,7 @@ export function renderVaultIndexStatus(containerEl: HTMLElement, source: VaultIn
 		if (ticket !== latest) return;
 		const { headline, detail } = describeVaultIndexStatus(status);
 		row.setDesc(statusFragment(headline, detail));
-		buildNow?.setDisabled(!canBuildNow(status.state));
+		buildNow?.setDisabled(!buildNowEnabled(status));
 	};
 
 	const unsubscribe = source.onVaultIndexChange(() => {

@@ -286,6 +286,7 @@ export class EmbeddingHub {
 			modelId,
 			modelSubstituted: substituted,
 			enabledByDefault: settings.vaultContextEnabled,
+			onPhone: this.host.isMobile,
 		};
 	}
 

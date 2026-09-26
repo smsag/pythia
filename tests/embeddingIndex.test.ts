@@ -6,6 +6,7 @@ import {
 	deserializeIndex,
 	peekIndexMeta,
 	readKeeper,
+	readWrittenAt,
 	type IndexedConversation,
 } from "../services/embedding/embeddingIndex";
 
@@ -163,5 +164,22 @@ describe("the index's keeper (ADR-220)", () => {
 		for (const bad of ["tablet", "", 1, null, undefined, {}]) expect(readKeeper(bad)).toBeUndefined();
 		const forged = serializeIndex(rows, 4, { complete: true, scope: "S", keeper: "tablet" as never });
 		expect(deserializeIndex(forged).meta.keeper).toBeUndefined();
+	});
+});
+
+describe("when the index was written (ADR-220)", () => {
+	const rows: IndexedConversation[] = [{ id: "a", contentHash: "h", chunks: [Int8Array.from([1, 2, 3, 4])] }];
+
+	it("round-trips through both readers", () => {
+		const buf = serializeIndex(rows, 4, { complete: true, scope: "S", keeper: "desktop", writtenAt: 1_790_000_000_000 });
+		expect(deserializeIndex(buf).meta.writtenAt).toBe(1_790_000_000_000);
+		expect(peekIndexMeta(buf)?.writtenAt).toBe(1_790_000_000_000);
+	});
+
+	it("keeps only a positive finite number", () => {
+		expect(readWrittenAt(1)).toBe(1);
+		for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, "1790000000000", null, undefined]) {
+			expect(readWrittenAt(bad)).toBeUndefined();
+		}
 	});
 });

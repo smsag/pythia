@@ -124,12 +124,13 @@ export class VaultIndexService {
 
 	/** What a write records about itself: the meta, signed by this device (ADR-220). */
 	private stamp(meta: IndexMeta): IndexMeta {
-		return { ...meta, keeper: this.device };
+		return { ...meta, keeper: this.device, writtenAt: Date.now() };
 	}
 
-	/** Which kind of device last wrote the index, as far as this instance knows. */
-	keeper(): IndexKeeper | undefined {
-		return this.meta.keeper;
+	/** Which kind of device last wrote the index, and when, as far as this
+	 *  instance knows — for the settings status line (ADR-220). */
+	signature(): { keeper?: IndexKeeper; writtenAt?: number } {
+		return { keeper: this.meta.keeper, writtenAt: this.meta.writtenAt };
 	}
 
 	/**
@@ -524,7 +525,10 @@ export class VaultIndexService {
 		const dropped = [...existing.keys()].some((id) => !seen.has(id));
 		this.items = kept;
 		const changed = embedded > persistedEmbeds || dropped;
-		if (changed || !this.meta.complete || this.meta.scope !== scope) {
+		// …and when another kind of device signed it: a full sync is how a device
+		// takes the index over (a phone's Build now, a desktop's catch-up), and an
+		// unchanged index it does not sign stays the other device's (ADR-220).
+		if (changed || !this.meta.complete || this.meta.scope !== scope || this.meta.keeper !== this.device) {
 			await persist(this.items, true);
 		}
 		this.synced = true;
