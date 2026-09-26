@@ -124,8 +124,7 @@ const read = (f: string): string => readFileSync(resolve(ROOT, f), "utf8");
  *  rather than on the mistake. */
 const code = (f: string): string => read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
-function makeCtx(over: Partial<typeof DEFAULT_SETTINGS> = {}): { ctx: SettingsContext; host: HTMLElement; refreshes: () => number } {
-	let refreshes = 0;
+function makeCtx(over: Partial<typeof DEFAULT_SETTINGS> = {}): { ctx: SettingsContext; host: HTMLElement } {
 	const plugin = {
 		settings: { ...DEFAULT_SETTINGS, ...over },
 		app: {},
@@ -141,12 +140,10 @@ function makeCtx(over: Partial<typeof DEFAULT_SETTINGS> = {}): { ctx: SettingsCo
 	const host = document.createElement("div");
 	return {
 		host,
-		refreshes: () => refreshes,
 		ctx: {
 			plugin: plugin as unknown as PythiaPlugin,
 			saveSoon: () => {},
 			registerCommit: () => {},
-			refreshIndexStatus: () => { refreshes++; },
 		},
 	};
 }
@@ -263,22 +260,6 @@ describe("the model row follows the chosen provider (ADR-209)", () => {
 });
 
 describe("a folder lives with the feature that writes to it (ADR-209)", () => {
-	it("the two index skip folders repaint the index status row (#367)", () => {
-		// The conversations and default-notes folders are `scopeSignature`'s skip
-		// list, so moving one makes the index out of date. Before ADR-209 they had
-		// no way to reach the status row and it went on reading "Ready" with the one
-		// non-destructive action greyed out.
-		const skip = ["conversationsFolder", "scratchFolder"];
-		for (const file of ["ui/settings/notes.ts", "ui/settings/storage.ts"]) {
-			const src = read(file);
-			for (const key of skip) {
-				if (!src.includes(`"${key}"`)) continue;
-				const line = src.split("\n").find((l) => l.includes(`"${key}"`))!;
-				expect(line, `${file}: the ${key} picker must pass ctx.refreshIndexStatus`).toContain("ctx.refreshIndexStatus");
-			}
-		}
-	});
-
 	it("keeps the archive folder beside the toggle that writes to it", () => {
 		const s = renderAll().find((x) => x.heading === t("storageSection"))!;
 		const names = s.controls.map((r) => r.name);
@@ -298,11 +279,10 @@ describe("one way to make a heading (ADR-209, principle 3)", () => {
 		"ui/settings/notes.ts",
 		"ui/settings/storage.ts",
 		"ui/settings/troubleshooting.ts",
-		"ui/embeddingSettings.ts",
+		"ui/vaultContextSettings.ts",
 		"ui/glossarySettings.ts",
 		"ui/pricingSettings.ts",
 		"ui/conversationCapSetting.ts",
-		"ui/vaultIndexStatusSetting.ts",
 	];
 
 	it("no raw h2/h3 anywhere in the settings tab", () => {
@@ -332,7 +312,7 @@ describe("the tab is a shell, and the order is the architecture (ADR-209)", () =
 			"renderNewConversationsSection",
 			"renderAnsweringSection",
 			"renderOptimizerSection",
-			"renderEmbeddingSettings",
+			"renderVaultContextSettings",
 			"renderNotesSection",
 			"renderStorageSection",
 			"renderTroubleshootingSection",
@@ -346,11 +326,5 @@ describe("the tab is a shell, and the order is the architecture (ADR-209)", () =
 		// Every row belongs to a section module; a `new Setting(` here is a row that
 		// no section's remit had to cover — which is how the tab grew to 528 lines.
 		expect(code("settings.ts")).not.toContain("new Setting(");
-	});
-
-	it("the embedding block renders before the sections that repaint its status row", () => {
-		const src = read("settings.ts");
-		expect(src.indexOf("renderEmbeddingSettings")).toBeLessThan(src.indexOf("renderNotesSection"));
-		expect(src.indexOf("renderEmbeddingSettings")).toBeLessThan(src.indexOf("renderStorageSection"));
 	});
 });

@@ -1,6 +1,6 @@
 import { CHART_BLOCK_LANG } from "./services/chartSpec";
 import { renderChartCard } from "./ui/chart/card";
-import { Menu, Notice, Platform, Plugin, TFile, TFolder } from "obsidian";
+import { Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
 import { debugLog } from "./services/messageUtils";
@@ -24,22 +24,12 @@ import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import type { ViewManager } from "./services/ViewManager";
-import { embeddingWorkerUrl } from "./services/embedding/host/workerBundleUrl";
-import { VaultIndexStore } from "./services/embedding/vaultIndexStore";
-import { scheduleWarm } from "./services/embedding/warmIndex";
-import { VaultRagService } from "./services/VaultRagService";
-import { EmbeddingHub, RELATED_RESULT_LIMIT, type VaultRagLike } from "./services/embedding/EmbeddingHub";
-import { SchreibstubeLink } from "./services/schreibstubeLink";
-import type { RelatedResult } from "./services/embedding/relatedConversations";
-import type { EmbeddingModelId } from "./models/embeddingModels";
-import { vaultBuildGuard } from "./services/embedding/buildGuard";
-import { installEmbeddingResidency } from "./services/embedding/residency";
-import type { VaultIndexStatus } from "./services/embedding/indexStatus";
+import { RELATED_RESULT_LIMIT, SchreibstubeLink } from "./services/schreibstubeLink";
+import { VaultContextService } from "./services/VaultContextService";
 import { registerVaultWatcher } from "./services/vaultWatcher";
-import { CATCH_UP_DELAY_MS } from "./services/embedding/vaultCatchUp";
 import { RenameFollower } from "./services/renameFollower";
 import { handleDeepLink } from "./services/deepLink";
-import { REGENERATE_ICON, SOURCE_ICONS } from "./ui/icons";
+import { SOURCE_ICONS } from "./ui/icons";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -74,29 +64,24 @@ export default class PythiaPlugin extends Plugin {
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
-	/** On-device embeddings: the shared provider, "related conversations" (ADR-109)
-	 *  and vault-wide semantic RAG (ADR-116) — see `services/embedding/EmbeddingHub.ts`.
-	 *  The methods below are thin facades kept for settings.ts, the sidebar and tests. */
-	embedding!: EmbeddingHub;
+	/** Pythia loads no language model of its own (ADR-224): Schreibstube runs
+	 *  the one on the device. Schreibstube reads this flag, and lifts the pause
+	 *  it keeps on a phone while a Pythia that still runs a model is on. */
+	readonly ownsEmbeddingModel = false;
 
 	/** Schreibstube's search by meaning, when it is there (ADR-223). */
 	schreibstube!: SchreibstubeLink;
 
-	/** Vault-wide semantic RAG — index lifecycle + retrieval (ADR-116/118/119). */
-	get vaultRag(): VaultRagLike { return this.embedding.vaultRag; }
-
-	/** The model this device embeds with (ADR-199/200). */
-	activeEmbeddingModelId(): EmbeddingModelId { return this.embedding.activeModelId(); }
+	/** The notes each turn draws from the vault, found by Schreibstube (ADR-224). */
+	vaultContext!: VaultContextService;
 
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
-	getAutoContext(conversationId: string): string[] { return this.embedding.getAutoContext(conversationId); }
+	getAutoContext(conversationId: string): string[] { return this.vaultContext.getAutoContext(conversationId); }
 
-	/** Conversations semantically related to `sourceId`, most-similar first (ADR-109). */
-	getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<RelatedResult[]> {
-		// Schreibstube's model when it can answer (ADR-223); Pythia's own until
-		// its engine is gone, so a phone where Schreibstube pauses keeps working.
-		if (this.schreibstube.available()) return this.schreibstube.related(sourceId, RELATED_RESULT_LIMIT);
-		return this.embedding.getRelated(sourceId, signal);
+	/** Conversations semantically related to `sourceId`, most-similar first
+	 *  (ADR-109) — answered by Schreibstube, or not at all (ADR-224). */
+	getRelatedConversations(sourceId: string, _signal?: AbortSignal): Promise<{ id: string; score: number }[]> {
+		return this.schreibstube.related(sourceId, RELATED_RESULT_LIMIT);
 	}
 
 	/** Ids of conversations that answer `text` by meaning, or null when
@@ -105,24 +90,6 @@ export default class PythiaPlugin extends Plugin {
 		if (!this.schreibstube.available()) return null;
 		return this.schreibstube.searchConversations(text, limit);
 	}
-
-	/** Full reindex of vault context (ADR-119) — clear + rebuild in the background. */
-	reindexVault(): Promise<void> { return this.embedding.reindexVault(); }
-
-	/** "Build now" in settings: finish or update the index, keeping its rows (ADR-199). */
-	buildVaultIndexNow(): void { this.embedding.buildVaultIndexNow(); }
-
-	/** The chat input got focus: load a model the phone released (ADR-202). */
-	prewarmEmbedding(): void { this.embedding.prewarm(); }
-
-	onVaultIndexChange(listener: () => void): () => void { return this.embedding.onVaultIndexChange(listener); }
-
-	/** Where the vault index stands, for the settings tab (ADR-199). */
-	vaultIndexStatus(): Promise<VaultIndexStatus> { return this.embedding.vaultIndexStatus(); }
-
-	/** Drop the provider + index services so the next use rebuilds with the current
-	 *  model. Called by the settings tab on a model change. */
-	invalidateRelatedService(): void { this.embedding.invalidate(); }
 
 	async onload(): Promise<void> {
 		// ConversationStore owns the conversation list and must exist before
@@ -138,32 +105,11 @@ export default class PythiaPlugin extends Plugin {
 			log: (message, data) => debugLog(this.settings, message, data),
 		});
 
-		// On-device embeddings (ADR-109 related conversations + ADR-116 vault RAG):
-		// ONE lazily-built provider shared by both index services, plus the phone's
-		// residency rule. The Obsidian-shaped pieces are supplied here; everything
-		// with a rule to it lives in `services/embedding/EmbeddingHub.ts`.
-		this.embedding = new EmbeddingHub({
-			settings: () => this.settings,
-			conversations: () => this.conversations,
-			isMobile: Platform.isMobile,
-			makeStore: (modelId, prefix) => new VaultIndexStore(this, modelId, prefix),
-			workerUrl: () => embeddingWorkerUrl(this),
-			makeVaultRag: (w) => new VaultRagService(
-				this.app,
-				() => this.settings,
-				w.getProvider,
-				w.makeStore,
-				{ modelId: w.modelId, guard: vaultBuildGuard(this.app), mobile: Platform.isMobile },
-			),
-			installResidency: (deps) => installEmbeddingResidency(this, deps),
-			notice: (message) => new Notice(message),
-			log: (m, d) => debugLog(this.settings, m, d),
-			firstRunMessage: t("relatedFirstRun"),
-		});
-		// Let the router auto-retrieve relevant vault notes per turn (fail-open, and
-		// non-blocking — returns [] until the background index is ready).
+		this.vaultContext = new VaultContextService(this.app, () => this.settings, this.schreibstube);
+		// Let the router draw relevant vault notes into each turn (fail-open:
+		// without Schreibstube a turn simply goes out with what was attached).
 		this.llmRouter.setVaultRetriever((conv, query, exclude) =>
-			this.vaultRag.getRelevantNotes(conv, query, exclude)
+			this.vaultContext.getRelevantNotes(conv, query, exclude)
 		);
 
 		// Before the view is registered: a leaf restored from workspace.json asks
@@ -207,15 +153,6 @@ export default class PythiaPlugin extends Plugin {
 			this.viewManager.initLeaf();
 			// The vault's files are known now, which the replay's guard reads.
 			this.renameFollower.replay();
-			// After the workspace is up, not during it (ADR-169/170).
-			// Not when Schreibstube answers "related": warming Pythia's own index
-			// would load a second model for nothing (ADR-223).
-			scheduleWarm({
-				run: () => { if (!this.schreibstube.available()) void this.embedding.warm(); },
-				register: (c) => this.register(c),
-			});
-			// The vault index catches up with what changed while Pythia was closed (ADR-221).
-			scheduleWarm({ run: () => void this.embedding.catchUpVaultIndex(), register: (c) => this.register(c), delayMs: CATCH_UP_DELAY_MS });
 		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering
@@ -306,23 +243,12 @@ export default class PythiaPlugin extends Plugin {
 			},
 		});
 
-		this.addCommand({
-			id: "reindex-vault-context",
-			name: t("cmdReindexVault"),
-			icon: REGENERATE_ICON,
-			callback: () => void this.reindexVault(),
-		});
-
-		// Keep the vault index fresh with EVENT-DRIVEN, targeted updates (ADR-121).
-		// The batching rules live in `services/vaultWatcher.ts`, where they are tested.
+		// The glossary and the paths stored in conversations follow the vault.
 		registerVaultWatcher(this, {
-			applyChanges: (changed, deleted) => void this.vaultRag.applyChanges(changed, deleted),
 			invalidateGlossary: (path) => {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
 			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
-			// The note being written waits until it is left or quiet (ADR-220).
-			activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
 		});
 
 		registerEditorSelectionEntries(this);
@@ -411,7 +337,6 @@ export default class PythiaPlugin extends Plugin {
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
 		this.llmRouter?.abort();
-		this.embedding?.dispose();
 		this.schreibstube?.dispose();
 	}
 

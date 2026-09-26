@@ -44,9 +44,9 @@ interface ActiveRelated {
 
 export class RelatedMode {
 	private active: ActiveRelated | null = null;
-	/** The in-flight query. Cancelling matters because the query syncs the
-	 *  embedding index first, and a cold build is minutes of work — on the iframe
-	 *  fallback, minutes of UI thread (ADR-169). */
+	/** The in-flight query. Cancelling matters because Schreibstube may be
+	 *  indexing the conversations first, and a result that arrives after the
+	 *  user moved on must not replace what they are looking at (ADR-169/224). */
 	private run: AbortController | null = null;
 
 	constructor(private readonly d: RelatedModeDeps) {}

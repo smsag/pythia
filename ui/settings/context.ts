@@ -16,25 +16,17 @@ export { section, overridable };
  *
  * The tab used to be one 528-line `display()`; it is now a shell that calls one
  * `render*Section` per section in order, and this is the only thing they share.
- * Three of the four fields exist because a section cannot reach the tab:
+ * Two of the three fields exist because a section cannot reach the tab:
  *
  * - `saveSoon` — a typed field saves a beat after the last keystroke, because
  *   every save rewrites the whole data.json. Toggles and dropdowns save at once.
  * - `registerCommit` — a numeric field commits on blur (ADR-171), and closing the
  *   tab destroys the input before `blur` fires, so the tab flushes them itself.
- * - `refreshIndexStatus` — **every control that changes what the vault index is
- *   an index OF repaints the status row** (#367). That is the indexed folders,
- *   the note cap and the embedding model (`ui/embeddingSettings.ts`) *and* the
- *   two skip folders — the conversations and default-notes pickers, which live in
- *   other sections. Before ADR-209 those two had no way to reach the row, and
- *   moving where conversations are stored left it reading "Ready" with the one
- *   non-destructive action greyed out.
  */
 export interface SettingsContext {
 	plugin: PythiaPlugin;
 	saveSoon: () => void;
 	registerCommit: (commit: () => void) => void;
-	refreshIndexStatus: () => void;
 }
 
 /** The settings a folder picker can set. */
