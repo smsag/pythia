@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-232 (*What Pythia sends*: a read-only dialog with the conversation's template, instructions, custom instructions, history and whole system prompt, opened from the header menu and the context box).*
+*Last updated: 2026-09-26 — ADR-233 (the settings' resume mode preselects the Resume dialog; new conversations start on full history — closes D-63).*
+
+*Previously: 2026-09-26 — ADR-232 (*What Pythia sends*: a read-only dialog with the conversation's template, instructions, custom instructions, history and whole system prompt, opened from the header menu and the context box).*
 
 *Previously: 2026-09-26 — ADR-231 (a resume mode reduces only the messages before the resume point, and the context box says how many are left out, with *Send full history*).*
 
@@ -4982,3 +4984,16 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - **Read-only.** Editing a running conversation's instructions is not offered: it would be a second way to do what a template armed for one answer does (ADR-177), and a write that replaces the user's instructions in place has no undo. Recorded as D-64.
 
 **Guards.** `tests/instructionsModal.test.ts` (the facts; the three texts shown verbatim, the whole prompt equal to `previewSystemPrompt`; *None* for an empty prompt; *Send full history* works from the dialog) · `tests/headerInstructions.test.ts` (the menu row) · `tests/uiArchitectureDoc.test.ts` (the modal is named).
+
+## ADR-233 — The settings' resume mode preselects the Resume dialog
+
+**Status:** Active · 2026-09-26 · closes D-63 (the user's decision: "should set the default choice")
+
+**Context.** After ADR-231 a resume mode reduces only the messages before a resume point, which only the Resume command sets. The settings' *Resume mode* default was still written onto every new conversation, where it did nothing, and the Resume dialog always led with *Summary* whatever the setting said.
+
+**Decision.**
+- **The setting is the dialog's default choice.** `preselectedResumeMode(conv, settingsDefault)` picks the conversation's own mode when it is summary or hybrid (it was resumed that way before, or its template names one), else the setting. The dialog puts that choice first, gives it the `mod-cta` fill and focuses it, so Enter takes it. `resumeChoiceOrder` is the one ordering.
+- **A new conversation starts on full history** unless a template names a mode; the setting is no longer copied onto it.
+- The setting's description says what it now does.
+
+**Guards.** `tests/resumePreselect.test.ts` (the preselection rule; order, fill, focus and click in the dialog).

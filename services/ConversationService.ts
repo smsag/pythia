@@ -12,7 +12,7 @@ import { archiveFolderOf } from "./conversationArchive";
 import { describeErrorForLog } from "./redact";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
-import { ResumeModeModal } from "../suggest/ResumeModeModal";
+import { preselectedResumeMode, ResumeModeModal } from "../suggest/ResumeModeModal";
 
 /**
  * Conversation creation + the conversation-oriented commands extracted from
@@ -96,7 +96,9 @@ export class ConversationService {
 			templateId: opts.templateId,
 			systemPrompt: opts.systemPrompt ?? "",
 			contextNotes: opts.contextNotes ?? [],
-			resumeMode: opts.resumeMode ?? p.settings.defaultResumeMode,
+			// The settings' default preselects the Resume dialog; it is not a mode a
+			// new conversation starts in (ADR-233). A template may still name one.
+			resumeMode: opts.resumeMode ?? "full",
 			provider: resolvedProvider,
 			model: resolvedModel,
 			maxTokens: opts.maxTokens,
@@ -514,7 +516,7 @@ export class ConversationService {
 			p.app,
 			p.conversations,
 			(conv) => {
-				new ResumeModeModal(p.app, conv, async (mode) => {
+				new ResumeModeModal(p.app, conv, preselectedResumeMode(conv, p.settings.defaultResumeMode), async (mode) => {
 					conv.resumeMode = mode;
 					// The mode reduces only what is here now; every later turn is
 					// sent in full (ADR-231).
