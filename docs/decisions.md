@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
+*Last updated: 2026-09-26 — ADR-230 (the web-search globe shows on · no key · auto · off, an auto-armed send keeps it lit for the whole answer, and its tooltip and search chips name the word that armed it).*
+
+*Previously: 2026-09-26 — ADR-229 (auto-search fires on time-sensitive questions again, as well as on links — ADR-226 misread the user's decision; a date or cue word inside a [[note link]] no longer counts).*
 
 *Previously: 2026-09-26 — ADR-228 (the rest of the Tavily review: research needs a key, news results carry their date, the recency line uses the local date, the result count is a whole number capped at 20, a link typed without `https://` counts, more private hosts are refused, internationalised top-level domains are accepted as filters, Anthropic tool errors carry `is_error`, the key is trimmed, a query is capped at 400 characters; parallel tool calls stay deferred as D-62).*
 
@@ -4930,3 +4932,19 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 - **Unchanged from ADR-226/228:** research needs a key, five searches per answer, and numbered citations. The broader trigger means more text goes to Tavily than under ADR-226; that is the user's choice, and the setting describes both triggers.
 
 **Guards.** `tests/webSearchHeuristics.test.ts` (the pre-ADR-226 cue tests restored; "show me the current ecb rate" fires; a date or cue word only inside a note link does not) · `tests/sendPolicy.test.ts` (`wantsWeb` is time OR link).
+
+## ADR-230 — The web-search globe shows four states, and an unasked search names its cue
+
+**Status:** Active · 2026-09-26 · **revises D-5** (decided 2026-09-18 to leave the globe as on/off) · closes engineering-review #257
+
+**Context.** The globe said on or off. But auto-search (ADR-099/229) searches on an "off" conversation, shown only by a 1.6 s pulse, and "on" without a Tavily key does nothing after one Notice (ADR-228 made research need a key). D-5 left this alone because an answer that searched carries its own evidence in the sources row. That evidence comes after the answer, and it does not say *why* a search ran, which is what a user asks when auto-search fires on something unexpected — D-5's own revisit condition.
+
+**Decision.**
+- **Four states, one pure rule:** `researchState(researchMode, hasApiKey, autoArmEnabled)` in `ui/ResearchToggleController.ts` → `on` (accent fill) · `noKey` (no fill, `--text-warning`, `.is-nokey`) · `auto` (plain; the tooltip says it searches by itself for time-sensitive questions and links) · `off`. Each state has its own tooltip.
+- **An auto-armed send stays visible for the whole answer.** The globe keeps `.is-auto-armed` from the send until streaming stops (it used to pulse for 1.6 s), and its tooltip names the cue.
+- **The cue is named, not just detected.** `timeSensitiveCue(text, year)` returns the word that fired (the whole declined word for a German stem, the year, or the phrase), and `webCue` adds `"link"`. `wantsWeb`/`looksTimeSensitive` are the same rule read as a boolean — one builder. Every search chip in that answer reads `… · automatic: “current”`.
+- The globe moves out of `sidebar.ts` into `ResearchToggleController` (mount · paint · arm · disarm · toggle).
+
+**Not done.** The first cue found is named by kind (word, phrase, stem, year), not by position in the text. It names a real reason, which is the point.
+
+**Guards.** `tests/researchState.test.ts` (four states; the cue for a word, a stem, a year and a link; none for a `[[link]]`; the chip names the cue only when auto-armed).

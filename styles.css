@@ -2708,11 +2708,17 @@ body.is-phone .workspace-drawer .p-input-area {
   font-size: var(--font-smaller, 12px);
 }
 
-/* Auto-armed web search (ADR-099): pulse the globe accent to show a search was
-   allowed for this send, without the persistent .is-active toggled state. */
+/* Auto-armed web search (ADR-099/230): pulse the globe, then keep it accent for
+   the whole answer, without the persistent .is-active toggled state. The
+   tooltip names the cue that armed it. */
 .p-tool-btn.is-auto-armed {
   animation: p-auto-arm-pulse 0.8s ease-in-out 2;
   color: var(--color-accent);
+}
+/* Web search switched on without a Tavily key (ADR-230): no fill, because it
+   is not searching; the warning colour and the tooltip say why. */
+.p-tool-btn.is-nokey {
+  color: var(--text-warning);
 }
 @keyframes p-auto-arm-pulse {
   0%, 100% { color: var(--text-faint); }

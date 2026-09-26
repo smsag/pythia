@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
+*Last updated: 2026-09-26 (ADR-230: the web-search globe is `ResearchToggleController`)*
+
+*Previously: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
 
 *Previously: 2026-09-25 (ADR-216: the pin strip)*
 
@@ -69,7 +71,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
    │  └─ .p-composer-chip                an attached note (# pick or dropped from the vault — noteDrop): library icon + name, reads as [[Name]]
    ├─ .p-ctx-bar                         attached-note token budget
    └─ .p-toolbar
-      ├─ attach · save · globe · library  toolbarIcons
+      ├─ attach · save · globe · library  toolbarIcons; the globe is ResearchToggleController (on · no key · auto · off)
       ├─ .p-send-hint                    token-limit warning (SendHintController)
       ├─ .p-model-hint                   optimizer's model suggestion (ModelSuggestionController)
       └─ .p-send                         long-press → .p-send-menu

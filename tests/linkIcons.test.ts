@@ -97,7 +97,7 @@ describe("the reference row", () => {
 		const { pane } = await mountView(plugin);
 		const iconOf = (title: string) => pane().querySelector(`.p-tool-btn[title="${title}"]`)?.getAttribute("data-icon");
 		expect(iconOf(t("applyTemplateTooltip"))).toBe(SOURCE_ICONS.template);
-		expect(iconOf(t("researchToggleTooltip"))).toBe(SOURCE_ICONS.web);
+		expect(pane().querySelector(".p-research-btn")?.getAttribute("data-icon")).toBe(SOURCE_ICONS.web);
 		expect(iconOf(t("vaultContextTooltip"))).toBe(SOURCE_ICONS.auto);
 	});
 });

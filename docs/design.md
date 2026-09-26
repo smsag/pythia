@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-25 — ADR-219: a kept comparison leaves its tabs on the answer — `.p-answer-tabs` is the card's own `.p-compare-tabs` strip above `.p-ai-body`; the kept tab `.is-kept` leads with a 12px `check`; another tab shows `.p-answer-alt` (body, sources, meta, `pb-secondary` "Use this answer"). No new tokens; no transition on the tab fill (ADR-155).*
+*Last updated: 2026-09-26 — ADR-230: the globe's states — `.is-active` (on), `.p-tool-btn.is-nokey` (`--text-warning`, no fill: on without a key), `.is-auto-armed` held for the whole auto-armed answer instead of a 1.6 s pulse. No new tokens.*
+
+*Previously: 2026-09-25 — ADR-219: a kept comparison leaves its tabs on the answer — `.p-answer-tabs` is the card's own `.p-compare-tabs` strip above `.p-ai-body`; the kept tab `.is-kept` leads with a 12px `check`; another tab shows `.p-answer-alt` (body, sources, meta, `pb-secondary` "Use this answer"). No new tokens; no transition on the tab fill (ADR-155).*
 
 *Previously: 2026-09-25 — ADR-218 addendum: the ✓ chip of a written note loses its `[[ ]]` and leads the name with the vault-note icon (`.p-source-icon`, `library`), like every other vault reference (ADR-193/212). No new tokens.*
 
