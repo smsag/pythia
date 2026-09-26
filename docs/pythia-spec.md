@@ -269,6 +269,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-56 | **No Tavily `/crawl`, `/map` or `/research`.** Pythia reads one page (`read_url`) and runs searches; it does not walk a site or hand a question to an asynchronous research agent. | ADR-217 | Crawl and map are batch jobs, not chat actions, and scale credit use with a site's size. `/research` needs polling and returns its own citation formats, which clash with the `⟦cite:web⟧` contract (ADR-077). | A user asks for a multi-page task ("compare every pricing page on this site") often enough that repeated `read_url` calls are the workaround. |
 | D-57 | **No `search_depth: "advanced"`, `auto_parameters` or raw page content on search.** Every search is `basic`, with 500-character snippets. | ADR-217 | Each can double a search's credit cost, or fill the context window, without anyone choosing it. `read_url` covers the "I need the whole page" case, one page at a time. | Credit cost per research answer is measured (Tavily's `include_usage`) and the better snippets are shown to change answers. |
 | D-58 | **A `[[link]]` inside a message is not rewritten when its note is renamed.** Every stored path follows the rename (ADR-218), but the text of what was said stays as it was; tapping an old link says the note was renamed or deleted. | ADR-218 | The text is history, and the model reads it on the next turn. Rewriting it changes that history, and two notes sharing a name could make the new link point at the wrong one. | Users regularly rename notes that answers linked, and the "renamed or deleted" notice becomes a common tap rather than a rare one. |
+| D-59 | **A phone that embeds no vault notes ("read-mostly").** Since ADR-219 a phone no longer embeds the note being written, but it still embeds every other edit and writes the index. | ADR-219 | Leaving vault notes to the desktop removes the phone's remaining index load and its writes to a synced file, but only if the desktop catches up on notes that changed while it was closed. A complete index is served as-is today and relies on `modify` events a file iCloud delivered before launch never raises. Needs a startup reconciliation (mtime or content-hash sweep) first. | A reload on a phone that ADR-219 did not stop, or D-35 lands and the reconciliation comes with it. |
 
 ### Measurements not yet made
 
@@ -328,6 +329,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-09-26 | ADR-219: D-59 (a read-mostly phone that leaves vault notes to the desktop) deferred. |
 | 2026-09-23 | ADR-209: the settings tab's sections and its section component added to the UI map; D-44 (no search field or nested navigation in the settings tab) and D-45 (web search spread across three sections). |
 | 2026-09-22 | D-41: the phone's model-load peak (ADR-200 addendum, verified on the device). |
 | 2026-09-22 | ADR-200: D-40 closed — a phone runs the Latin-script variant of the multilingual model. |

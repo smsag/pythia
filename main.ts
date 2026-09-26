@@ -293,6 +293,8 @@ export default class PythiaPlugin extends Plugin {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
 			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
+			// The note being written waits until it is left or quiet (ADR-219).
+			activePath: () => this.app.workspace.getActiveFile()?.path ?? null,
 		});
 
 		registerEditorSelectionEntries(this);

@@ -135,6 +135,12 @@ export class VaultRagService {
 	dispose(): void {
 		if (this.syncing) this.deps.guard?.end();
 		this.listeners.clear();
+		// Edits held by the write window (ADR-219) are written rather than left to a
+		// timer that dies with the plugin. Not awaited: unload is synchronous here,
+		// and the write needs no plugin state beyond the store it already holds.
+		void this.service?.flushPendingWrites().catch((e: unknown) => {
+			console.warn("[Pythia] vault RAG: held edits could not be written at unload", e);
+		});
 	}
 
 	/**

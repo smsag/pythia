@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
+*Updated: 2026-09-26 — **Obsidian reloaded on the iPhone while a note was being edited (ADR-219).** Confirmed by a day with vault context off. Every autosave re-embedded the note being written and rewrote the ~19 MB index, because the watcher's debounce fired every two seconds during a burst instead of once after it. The note being written is now held until it is left or quiet for 30 s, both windows are real quiet windows, and edit batches share one 30 s write window. A read-mostly phone is deferred as D-59.*
+
+*Previously updated: 2026-09-25 — **ADR-218 review: seven findings fixed.** A folder rename was one scan per file (12.0 s → 39 ms measured); nine path settings did not follow (one, `promptOptimizerTemplateId`, found by the new compile-time guard); a sync could undo a rename (rename log, replayed with a guard); a note-only turn lost its record; the rules got guards; the chip lost its `[[ ]]`; a link in a table no longer breaks the cell.*
 
 *Previously updated: 2026-09-25 — **A written note could not be opened from the answer, and a rename lost it (ADR-218).** Four causes: the model was never asked for a link; `[[links]]` in the chat had no click handler; the ✓ chip was DOM-only; the chip opened by name and could create an empty note. And no stored path followed a rename. All five are fixed; links inside message text stay as written (D-58).*
 
@@ -1978,3 +1980,12 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | **The chip kept `[[ ]]`.** | Consistency | Low | Closed |
 | **`[[a\|b]]` broke a table cell.** | Correctness | Low | Closed: the tool result says to escape the bar |
 
+## Bug — Obsidian reloads on the iPhone while a note is being edited (ADR-219), 2026-09-26
+
+| Item | Severity | Status |
+|---|---|---|
+| **The note being typed in was re-embedded on every autosave.** Each save is a `modify`, and the watcher treated the open note like any other. | High | Closed: held until it is left (`file-open`) or quiet for 30 s |
+| **The flush fired every 2 s during a burst**, not once after it: Obsidian's `debounce` without `resetTimer` times from the first call. | High | Closed: `resetTimer: true` on both debouncers |
+| **Every edit batch rewrote the whole index** (~19 MB at the cap), allocated fresh on the phone next to the resident model. | High | Closed: edit batches share one 30 s write window with a trailing write; flushed at unload |
+| **A phone still embeds other notes' edits and writes the synced index.** | Low | Deferred by decision: D-59 |
+| **Each write is still the whole file.** | Medium | Open, unchanged: D-35 (append-only index) |

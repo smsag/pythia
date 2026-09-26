@@ -43,6 +43,15 @@ const PERSIST_EVERY_EMBEDS = 25;
  * rewrite what has not changed — see D-35.
  */
 const MIN_PERSIST_INTERVAL_MS = 30_000;
+// The same floor holds for the watcher's edit batches (ADR-219). ADR-122 made a
+// batch cost one write instead of one per note, but a batch arrived every couple
+// of seconds while someone typed, and each one serialized the whole index again —
+// ~19 MB allocated and written per flush, on a phone next to a loaded model, is
+// what reloaded Obsidian mid-sentence. The first batch after a quiet spell still
+// writes at once; batches inside the window stay in memory and one trailing write
+// carries them all. What an app killed inside the window loses is those notes'
+// new vectors: their old rows stay, their content hash no longer matches, and the
+// next edit of each re-embeds it. D-35's append-only index is still the real fix.
 /**
  * Consecutive embed failures that mean the BACKEND is gone, not that one note is
  * bad (ADR-182).
@@ -88,6 +97,10 @@ export class VaultIndexService {
 	 *  never interleave — a targeted edit can't race a full build (ADR-121). */
 	private chain: Promise<unknown> = Promise.resolve();
 	private synced = false;
+	/** When an edit batch last wrote the index, and the trailing write that is
+	 *  holding the batches since (ADR-219). */
+	private lastEditWriteAt = Number.NEGATIVE_INFINITY;
+	private pendingEditWrite: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(
 		private readonly provider: EmbeddingProvider,
@@ -118,6 +131,7 @@ export class VaultIndexService {
 	 *  sync re-embeds every note from scratch. Backs the "reindex" action (ADR-119). */
 	clear(): Promise<void> {
 		return this.enqueue(async () => {
+			this.cancelPendingEditWrite(); // the edits it held are being wiped with everything else
 			this.items = [];
 			this.synced = false;
 			this.meta = EMPTY_INDEX_META;
@@ -252,7 +266,45 @@ export class VaultIndexService {
 		// Targeted edits keep whatever the index already claims about itself: a
 		// watcher flush neither completes an unfinished build nor invalidates a
 		// finished one.
-		if (dirty) await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta)); // one write for the batch
+		if (dirty) await this.persistEdits();
+	}
+
+	/** Write an edit batch now, or leave it to the window's trailing write (ADR-219).
+	 *  Runs inside the op chain, so the trailing write is enqueued rather than run
+	 *  from the timer — it must not interleave with a build. */
+	private async persistEdits(): Promise<void> {
+		const interval = this.opts.persistIntervalMs ?? MIN_PERSIST_INTERVAL_MS;
+		const wait = this.lastEditWriteAt + interval - Date.now();
+		if (wait <= 0) {
+			this.cancelPendingEditWrite();
+			await this.writeEdits();
+			return;
+		}
+		if (this.pendingEditWrite) return; // one trailing write carries every batch in the window
+		this.pendingEditWrite = setTimeout(() => {
+			this.pendingEditWrite = null;
+			void this.enqueue(() => this.writeEdits());
+		}, wait);
+	}
+
+	private async writeEdits(): Promise<void> {
+		this.lastEditWriteAt = Date.now();
+		await this.store.write(serializeIndex(this.items, this.provider.dim, this.meta));
+	}
+
+	private cancelPendingEditWrite(): boolean {
+		if (!this.pendingEditWrite) return false;
+		clearTimeout(this.pendingEditWrite);
+		this.pendingEditWrite = null;
+		return true;
+	}
+
+	/** Write edits still held by the window now — the plugin is unloading, and a
+	 *  timer does not outlive it (ADR-219). */
+	flushPendingWrites(): Promise<void> {
+		return this.enqueue(async () => {
+			if (this.cancelPendingEditWrite()) await this.writeEdits();
+		});
 	}
 
 	/** Re-embed / add / drop a single note IN MEMORY (no persist). Returns whether

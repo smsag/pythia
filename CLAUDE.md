@@ -33,7 +33,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
-    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take() drains) + registerVaultWatcher — the four vault listeners and the debounced flush (ADR-121/205)
+    vaultWatcher.ts           ← pure VaultChangeBatch (a path is changed OR deleted, last event wins, non-md ignored, take(hold) drains all but the note being written) + registerVaultWatcher — the four vault listeners, the quiet-window flush, and the held note released on file-open or after 30 s quiet (ADR-121/205/219)
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)

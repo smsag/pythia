@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-25 — ADR-218 addendum (review): a rename burst is one scan (`RenameFollower`, 12.0 s → 39 ms for a 500-file folder, measured); nine path settings follow a rename too; a rename log in data.json is replayed after every load, so a stale copy from another device is put right; a turn that only wrote a note keeps its record (no text, Stop, or an error after the write); guards: the compiler refuses an unclassified field, and a test refuses a new `openLinkText` call; the chip loses its `[[ ]]`.*
+*Last updated: 2026-09-26 — ADR-219 (the note being written is held back from the vault index until it is left or quiet for 30 s; the watcher's flush is a real quiet window; edit batches share one write window, so typing no longer rewrites the ~19 MB index every two seconds — the cause of Obsidian reloading on the iPhone while editing, confirmed by switching vault context off).*
+
+*Previously: 2026-09-25 — ADR-218 addendum (review): a rename burst is one scan (`RenameFollower`, 12.0 s → 39 ms for a 500-file folder, measured); nine path settings follow a rename too; a rename log in data.json is replayed after every load, so a stale copy from another device is put right; a turn that only wrote a note keeps its record (no text, Stop, or an error after the write); guards: the compiler refuses an unclassified field, and a test refuses a new `openLinkText` call; the chip loses its `[[ ]]`.*
 
 *Previously: 2026-09-25 — ADR-218 (a note an answer wrote stays one tap away: the tool result hands the model a `[[path|name]]` link, links in the conversation open by what resolves and never create a note, the ✓ chip is recorded on the message as `noteWrites` and redrawn on every render, and a rename or move is followed in every stored vault path by `renameVaultPath`).*
 
@@ -4629,3 +4631,23 @@ The user then asked what happens when the note is renamed. The answer was that n
 
 `tests/toolCallNoteWrites.test.ts`: the writes-only text, and the message kept on failure. `tests/pluginDataStore.test.ts`: the log is written. `tests/ConversationStore.test.ts`: `markChanged` does not touch `updatedAt`.
 
+### ADR-219 — The note being written stays out of the index until it is left
+
+**Status:** Active · 2026-09-26
+
+**Context.** On the iPhone, Obsidian reloaded itself while a note was being edited. A day with vault context switched off had no reloads, which pointed at the vault index. Reading the path an edit takes found three things stacked on each other:
+
+1. **Every autosave is a `modify`,** so the note being typed in was a change to the index every couple of seconds.
+2. **The watcher's flush was not a quiet window.** Obsidian's `debounce` without `resetTimer` fires its timeout after the *first* call and ignores the ones after it. A note typed in for a minute was flushed about thirty times, not once.
+3. **Every flush rewrote the whole index.** ADR-122 made a batch cost one write rather than one per note, but each write still serializes every row — about 19 MB at the 5 000-note cap. On a phone the embed runs next to the editor, often on the UI thread (ADR-126), with the model resident (+370–400 MB, ADR-200). A fresh 19 MB buffer every two seconds on top of that is what reached the kill line.
+
+**Decision.**
+- **The note being written is held back** (`VaultChangeBatch.take(hold)`, `registerVaultWatcher`'s `activePath`). A flush hands every other change to the index and keeps that note's edit. It reaches the index when the writer **leaves it** (`file-open`: the old note goes at once, and the new one becomes the held note), or after **`VAULT_HOLD_IDLE_MS` = 30 s** without a save of it. That clock restarts with every save of the held note, so it cannot run out mid-sentence. **A delete is never held:** a note that is gone must leave the index now.
+- **Both windows are real quiet windows** (`resetTimer: true`): the 2 s flush and the 30 s hold.
+- **Edit batches share one write window** (`VaultIndexService.persistEdits`). The first batch after a quiet spell writes at once, as before. A batch inside `MIN_PERSIST_INTERVAL_MS` (30 s, the build's own floor from ADR-182) stays in memory, and one trailing write, enqueued on the op chain, carries every batch in the window. `clear()` drops a held write. `flushPendingWrites()` writes it at unload (`VaultRagService.dispose`).
+
+**What it costs.** A note left open and unedited for less than 30 s is not yet findable by its newest text; its previous vectors still answer. An app killed inside the write window loses those notes' new vectors. Their old rows stay, their content hash no longer matches, and the next edit of each re-embeds it. Both are the price of not doing the work while someone types, and both are bounded.
+
+**Not done.** A phone that embeds no vault notes at all and leaves them to the desktop ("read-mostly") would take the rest of the load off the phone, but only if the desktop reconciles notes that changed while it was closed. Today a complete index is served as-is and relies on `modify` events it may never see for a file iCloud delivered before launch. Deferred as D-59. D-35's append-only index remains the real fix for the write size.
+
+**Tests.** `tests/vaultWatcher.test.ts`: `take(hold)` keeps only the held edit, never a delete; both debouncers reset; a pause flushes every note but the one being written; repeated saves of it reach nothing; its quiet clock restarts on each of its saves and not on other notes'; idle releases it; leaving it sends it at once and holds the newly opened note; teardown cancels both clocks. The fake `debounce` now records each debouncer by its timeout, so the two can be told apart. `tests/VaultIndexService.test.ts`: the first batch writes at once; three batches in the window are one trailing write carrying the latest state; `flushPendingWrites` writes now and leaves the timer nothing; nothing held writes nothing; a batch after the window writes at once; `clear` drops a held write. Reverting either change fails these tests (checked by hand).
