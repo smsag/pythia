@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-27 — ADR-235: the `favorite-selection` command ("Favorisieren"). New pure `ui/favoriteSelection.ts` `selectedAnswer(sel, messagesEl)` — the one rule for which answer a selection can be favorited in, now read by the toolbar's Favorite button and by the command. `SelectionController` gains `canFavoriteSelection` / `favoriteSelection` (the toolbar's own action); the view forwards both; `main.ts` registers the command with a `checkCallback` over `loadedPythiaViews`.*
+*Last updated: 2026-09-27 — ADR-236: `services/chartSpec.ts` gains `chartWorthDrawing` (+ `MIN_WORTH_POINTS`, `MIN_DISTINCT_BAR_VALUES`), applied by `acceptChartCall` only. `ui/chart/layout.ts` `layoutChart` and `ui/chart/render.ts` `renderChartSvg` take `withTitle`; `ui/chart/card.ts` draws the screen SVG untitled and a titled one for *Copy image*. `CHART_WHEN_INSTRUCTION` names the new refusals and one measure per axis. `chartWorthDrawing` also refuses slivers (`MIN_BAR_SHARE`). `ui/chart/layout.ts` gains `fitLabel`, `slotChars`, `MIN_LABEL_CHARS`; `CategoryTick.full`; `render.ts` puts a shortened label's full name in a `<title>`.*
+
+*Previously: 2026-09-27 — ADR-235: the `favorite-selection` command ("Favorisieren"). New pure `ui/favoriteSelection.ts` `selectedAnswer(sel, messagesEl)` — the one rule for which answer a selection can be favorited in, now read by the toolbar's Favorite button and by the command. `SelectionController` gains `canFavoriteSelection` / `favoriteSelection` (the toolbar's own action); the view forwards both; `main.ts` registers the command with a `checkCallback` over `loadedPythiaViews`.*
 
 *Previously: 2026-09-26 — ADR-233: `suggest/ResumeModeModal.ts` gains `preselectedResumeMode` and `resumeChoiceOrder` and takes the preselected mode; `ConversationService.createConversation` no longer copies `defaultResumeMode` onto a new conversation.*
 

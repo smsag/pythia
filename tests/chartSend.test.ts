@@ -30,8 +30,9 @@ const chartCall = (over: Record<string, unknown> = {}): ToolCall => ({
 	id:    "call-1",
 	name:  "render_chart",
 	input: {
-		type: "bar", categories: ["2023", "2024"],
-		series: [{ name: "EMEA", values: [1, 2] }],
+		// Three different values: the least a new chart is drawn for (ADR-236).
+		type: "bar", categories: ["2022", "2023", "2024"],
+		series: [{ name: "EMEA", values: [1, 2, 3] }],
 		...over,
 	},
 });

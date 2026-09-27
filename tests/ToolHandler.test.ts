@@ -8,7 +8,8 @@ vi.mock("../services/NoteWriter", () => ({ NoteWriter: class {} }));
 import { getToolDefinitions, ToolHandler } from "../services/ToolHandler";
 import { parseNoteWrite } from "../services/noteWrites";
 import {
-	acceptChartCall, CHART_TOOL_OK, CHART_TOOL_UNPLACED, type PendingChartBlock,
+	acceptChartCall, CHART_TOOL_OK, CHART_TOOL_UNPLACED, chartWorthDrawing, parseChartSpec,
+	type PendingChartBlock,
 } from "../services/chartSpec";
 import { CHART_BLOCK_SCHEMA } from "../services/promptConstants";
 import type { NoteWriter } from "../services/NoteWriter";
@@ -132,8 +133,78 @@ describe("ToolHandler — render_chart", () => {
 
 // ── acceptChartCall — the one place a tool call becomes a chart ───────────────
 
+describe("chartWorthDrawing — whether a valid chart says more than a sentence (ADR-236)", () => {
+	const bar = (categories: string[], values: (number | null)[]) =>
+		({ type: "bar" as const, categories, series: [{ name: "Price", values }] });
+
+	it("refuses the chart that prompted it: equal prices, one free, one unknown", () => {
+		const refusal = chartWorthDrawing(bar(
+			["SpaceJump", "AirSpace", "FlashSpace", "AltTab", "Other"],
+			[9.99, null, 9.99, 0, 9.99],
+		));
+		expect(refusal).toContain("only 2 different value(s) (9.99, 0)");
+		expect(refusal).toContain("sentence or a short table");
+	});
+
+	it("refuses fewer than three values", () => {
+		expect(chartWorthDrawing(bar(["a", "b"], [1, 2]))).toContain("Only 2 value(s)");
+	});
+
+	it("refuses a line or a pie with nothing to see", () => {
+		expect(chartWorthDrawing({ type: "line", categories: ["a", "b", "c"], series: [{ name: "s", values: [5, 5, 5] }] }))
+			.toContain("Every value is 5");
+		expect(chartWorthDrawing({ type: "pie", categories: ["a", "b", "c"], series: [{ name: "s", values: [1, 1, 1] }] }))
+			.toContain("Every value is 1");
+	});
+
+	it("refuses an empty bar in a one-series chart, naming the category", () => {
+		expect(chartWorthDrawing(bar(["a", "b", "c", "d"], [1, 2, null, 3])))
+			.toContain('No value for "c"');
+	});
+
+	it("draws a gap in a line, and a grouped bar chart with a missing value", () => {
+		expect(chartWorthDrawing({ type: "line", categories: ["a", "b", "c", "d"], series: [{ name: "s", values: [1, null, 3, 4] }] }))
+			.toBeNull();
+		expect(chartWorthDrawing({
+			type: "bar", categories: ["a", "b", "c"],
+			series: [{ name: "x", values: [1, 2, 3] }, { name: "y", values: [4, null, 6] }],
+		})).toBeNull();
+	});
+
+	it("refuses the context-switching chart: four measures on one axis, three of them slivers", () => {
+		const refusal = chartWorthDrawing(bar(
+			["App/tab toggles per day", "Working spheres", "Typical open tabs", "Virtual desktops"],
+			[1200, 10, 8, 4],
+		));
+		expect(refusal).toContain("Values from 4 to 1200 on one axis");
+		expect(refusal).toContain("do not belong on one axis");
+	});
+
+	it("measures a sliver against the tallest bar, ignoring zero and sign", () => {
+		expect(chartWorthDrawing(bar(["a", "b", "c", "d"], [100, 50, 0, 25]))).toBeNull();
+		expect(chartWorthDrawing(bar(["a", "b", "c"], [-100, 50, 1]))).toContain("Values from 1 to 100");
+		expect(chartWorthDrawing(bar(["a", "b", "c"], [100, 50, 2]))).toBeNull();
+	});
+
+	it("draws three different values", () => {
+		expect(chartWorthDrawing(bar(["a", "b", "c"], [1, 2, 3]))).toBeNull();
+	});
+
+	it("is applied by the tool door, which says it did not draw", () => {
+		const into: PendingChartBlock[] = [];
+		const reply = acceptChartCall(bar(["a", "b", "c", "d"], [9.99, 9.99, 9.99, 0]), 0, into);
+		expect(reply).toMatch(/^Error: not drawn\. /);
+		expect(into).toHaveLength(0);
+	});
+
+	it("is not applied to a block already written: an old chart still parses", () => {
+		expect(parseChartSpec(bar(["a", "b"], [1, 2])).ok).toBe(true);
+	});
+});
+
 describe("acceptChartCall", () => {
-	const good = { type: "bar", categories: ["a", "b"], series: [{ name: "s", values: [1, 2] }] };
+	// Three different values: the least a new chart is drawn for (ADR-236).
+	const good = { type: "bar", categories: ["a", "b", "c"], series: [{ name: "s", values: [1, 2, 3] }] };
 
 	it("records the block at the offset it was called at", () => {
 		const into: PendingChartBlock[] = [];

@@ -248,6 +248,71 @@ export function parseChartSpec(raw: unknown): ChartParse {
 	return { ok: true, spec };
 }
 
+/** A new chart needs at least this many values to show a shape, and a bar chart
+ *  at least this many different ones to show more than "same or not". */
+export const MIN_WORTH_POINTS = 3;
+export const MIN_DISTINCT_BAR_VALUES = 3;
+/** A bar shorter than this share of the tallest is a sliver, not a bar. */
+export const MIN_BAR_SHARE = 0.02;
+
+/**
+ * Whether a valid chart says anything a sentence would not (ADR-236).
+ *
+ * `parseChartSpec` answers "can this be drawn"; this answers "should it be",
+ * and only for a chart the model is asking for now — the `render_chart` door.
+ * A block already in a note keeps rendering: a rule about taste must not turn
+ * yesterday's chart into an error card. Each refusal names what it saw and
+ * what to write instead, because it goes to the model mid-answer.
+ *
+ * - Fewer than three values: a shape needs three points.
+ * - A bar chart whose values take two different values or fewer ("9.99, 9.99,
+ *   9.99, 0"): it shows only "the same" and "different", which one sentence says.
+ * - A line or pie whose values are all equal: no change, no share to see.
+ * - A one-series bar chart with a missing value: the empty slot reads as zero.
+ * - A bar chart where a non-zero bar is under 2% of the tallest: it is a
+ *   sliver, and values that far apart are usually different measures that do
+ *   not belong on one axis at all (1,200 switches a day beside 4 desktops).
+ */
+export function chartWorthDrawing(spec: ChartSpec): string | null {
+	const values = spec.series.flatMap((s) => s.values).filter((v): v is number => v !== null);
+	const noChart = "Say it in a sentence or a short table instead, and do not write it as a chart block either.";
+	if (values.length < MIN_WORTH_POINTS) {
+		return `Only ${values.length} value(s): a chart needs at least ${MIN_WORTH_POINTS} to show a shape. ${noChart}`;
+	}
+	const distinct = [...new Set(values)];
+	if (spec.type === "bar" && distinct.length < MIN_DISTINCT_BAR_VALUES) {
+		return (
+			`The ${values.length} values take only ${distinct.length} different value(s) ` +
+			`(${distinct.join(", ")}): a bar chart of that shows only "the same" and "different". ${noChart}`
+		);
+	}
+	if (spec.type !== "bar" && distinct.length === 1) {
+		return `Every value is ${distinct[0]}: there is no change or share to see. ${noChart}`;
+	}
+	if (spec.type === "bar") {
+		const largest = Math.max(...values.map((v) => Math.abs(v)));
+		const smallest = Math.min(...values.filter((v) => v !== 0).map((v) => Math.abs(v)));
+		if (largest > 0 && smallest / largest < MIN_BAR_SHARE) {
+			return (
+				`Values from ${smallest} to ${largest} on one axis: the small bars would be slivers. ` +
+				"If they measure different things, they do not belong on one axis at all; write them " +
+				"out as a list or a short table, and do not write it as a chart block either."
+			);
+		}
+	}
+	if (spec.type === "bar" && spec.series.length === 1) {
+		const missing = spec.categories.filter((_, i) => spec.series[0].values[i] === null);
+		if (missing.length > 0) {
+			return (
+				`No value for ${missing.map((c) => `"${c}"`).join(", ")}: in a one-series bar chart an ` +
+				`empty slot reads as zero. Leave those categories out and name them in "note". ` +
+				"If what is left is not worth a chart, say it in a sentence or a short table."
+			);
+		}
+	}
+	return null;
+}
+
 /** The ONE canonical emitter. Key order is fixed so `formatChartBlock` round-trips
  *  through `parseChartBlock` unchanged — which is what lets `spliceChartBlocks`
  *  recognise a block the model already wrote. */
@@ -364,6 +429,8 @@ export const CHART_TOOL_UNPLACED =
 export function acceptChartCall(input: unknown, offset: number, into: PendingChartBlock[]): string {
 	const parsed = parseChartSpec(input);
 	if (!parsed.ok) return `Error: ${parsed.error}`;
+	const refusal = chartWorthDrawing(parsed.spec);
+	if (refusal) return `Error: not drawn. ${refusal}`;
 	into.push({ offset, block: formatChartBlock(parsed.spec) });
 	return CHART_TOOL_OK;
 }

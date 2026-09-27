@@ -21,7 +21,8 @@ import type { ChartSpec } from "../../services/chartSpec";
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export interface ValueTick { value: number; label: string; y: number }
-export interface CategoryTick { index: number; label: string; x: number }
+/** `label` is what is drawn — possibly shortened; `full` is the category's name. */
+export interface CategoryTick { index: number; label: string; full: string; x: number }
 export interface LegendEntry { seriesIndex: number; name: string; swatchX: number; textX: number; y: number }
 
 export interface BarRect {
@@ -170,6 +171,22 @@ export function formatTick(value: number, step: number, unit?: string): string {
 	return unit ? text + unit : text;
 }
 
+/** A shortened category label keeps at least this many characters, the
+ *  ellipsis included; a slot narrower than that thins the labels instead. */
+export const MIN_LABEL_CHARS = 6;
+
+/** How many characters of a category label fit its slot. */
+export function slotChars(count: number, plotWidth: number): number {
+	if (count <= 0 || plotWidth <= 0) return 0;
+	return Math.floor((plotWidth / count - 6) / (FONT_LABEL * CHAR_W));
+}
+
+/** A label cut to `maxChars` with an ellipsis, or unchanged when it fits. */
+export function fitLabel(label: string, maxChars: number): string {
+	if (label.length <= maxChars) return label;
+	return label.slice(0, Math.max(1, maxChars - 1)).trimEnd() + "…";
+}
+
 /**
  * Show every nth category label, so they never overlap.
  *
@@ -286,11 +303,19 @@ function layoutCartesian(
 	const groups = spec.categories.length;
 	const groupW = plot.w / groups;
 	const longest = spec.categories.reduce((m, c) => Math.max(m, c.length), 0);
-	const stride = labelStride(groups, plot.w, longest);
+	// Every bar keeps a name while a shortened one is still a word: thinning a
+	// handful of categories left every other bar unnamed (ADR-236, D-66). Only
+	// a slot too narrow for MIN_LABEL_CHARS falls back to thinning.
+	const fits = slotChars(groups, plot.w);
+	const shorten = longest > fits && fits >= MIN_LABEL_CHARS;
+	const stride = shorten ? 1 : labelStride(groups, plot.w, longest);
 	const categoryTicks: CategoryTick[] = [];
 	for (let i = 0; i < groups; i++) {
 		if (i % stride !== 0) continue;
-		categoryTicks.push({ index: i, label: spec.categories[i], x: plot.x + groupW * (i + 0.5) });
+		const full = spec.categories[i];
+		categoryTicks.push({
+			index: i, full, label: shorten ? fitLabel(full, fits) : full, x: plot.x + groupW * (i + 0.5),
+		});
 	}
 
 	const bars: BarRect[] = [];
@@ -351,10 +376,13 @@ function layoutCartesian(
 	};
 }
 
-/** The one entry point: a validated spec plus the width it has to fit. */
-export function layoutChart(spec: ChartSpec, width: number): ChartGeometry {
+/** The one entry point: a validated spec plus the width it has to fit.
+ *  `withTitle` is off on screen, where the card's head row already names the
+ *  chart (ADR-236), and on for the exported picture, which has no head row. */
+export function layoutChart(spec: ChartSpec, width: number, withTitle = true): ChartGeometry {
 	const w = Math.max(200, Math.round(width));
-	const headTop = spec.title ? TITLE_H : PAD;
+	const titled = withTitle && !!spec.title;
+	const headTop = titled ? TITLE_H : PAD;
 	const { entries, height: legendH } = legendLayout(spec, w, headTop);
 
 	const geometry = spec.type === "pie"
@@ -362,6 +390,6 @@ export function layoutChart(spec: ChartSpec, width: number): ChartGeometry {
 		: layoutCartesian(spec, w, headTop, legendH);
 
 	geometry.legend = entries;
-	if (spec.title) geometry.title = { text: spec.title, x: PAD, y: FONT_TITLE + 2 };
+	if (titled && spec.title) geometry.title = { text: spec.title, x: PAD, y: FONT_TITLE + 2 };
 	return geometry;
 }
