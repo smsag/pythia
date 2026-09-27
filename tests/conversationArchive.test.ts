@@ -105,6 +105,15 @@ describe("archiveNoteContent", () => {
 		expect(note.match(/\[\^1\]: /g)).toHaveLength(1);
 	});
 
+	it("keeps favorites as highlights (ADR-239)", () => {
+		const m = msg("assistant", "Die **Nebenkosten** sind umlagefähig.");
+		const note = archiveNoteContent(
+			conv({ messages: [m], favorites: [{ id: "f1", messageId: m.id, name: "x", text: "Nebenkosten sind umlagefähig", occurrenceIndex: 0 }] }),
+			"obsidian://pythia?id=c1",
+		);
+		expect(note).toContain("Die ==**Nebenkosten** sind umlagefähig==.");
+	});
+
 	it("survives an empty conversation", () => {
 		const note = archiveNoteContent(conv({ messages: [] }), "obsidian://pythia?id=c1");
 		expect(note).toContain("messages: 0");

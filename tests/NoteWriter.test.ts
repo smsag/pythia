@@ -374,6 +374,14 @@ describe("appendConversationSlice", () => {
 		expect(content).toContain("[^3]: [[Fin/Rates|Rates]]");
 		expect(content).not.toContain("⟦cite:");
 	});
+
+	it("saves the conversation's favorites as highlights (ADR-239)", async () => {
+		const messages = [{ id: "m1", role: "assistant" as const, content: "Keep this part, not that.", timestamp: "" }];
+		await writer.appendConversationSlice(messages, "Log/fav.md", undefined, [
+			{ id: "f1", messageId: "m1", name: "Keep", text: "this part", occurrenceIndex: 0 },
+		]);
+		expect(vault.content("Log/fav.md")).toContain("**Pythia:** Keep ==this part==, not that.");
+	});
 });
 
 // ── prependToInbox ────────────────────────────────────────────────────────────

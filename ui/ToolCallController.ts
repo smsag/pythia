@@ -12,6 +12,7 @@ import { parseNoteWrite, writesOnlyContent } from "../services/noteWrites";
 import { fillNoteWriteChip } from "./noteLinks";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
+import { favoritePassages } from "../services/favoriteHighlights";
 
 export interface ToolCallDeps {
 	app: App;
@@ -249,8 +250,12 @@ export class ToolCallController {
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
 		// The results fetched so far, so the note's web citations become footnotes
-		// that name those pages (ADR-238).
-		const result = await this.d.plugin.toolHandler.execute(call, allowed, conv.contextNotes, undefined, this.webSources);
+		// that name those pages (ADR-238), and the favorites, so a passage the user
+		// starred stays marked in the note (ADR-239).
+		const result = await this.d.plugin.toolHandler.execute(call, allowed, conv.contextNotes, undefined, {
+			webSources: this.webSources,
+			favorites: favoritePassages(conv),
+		});
 
 		if (result.startsWith("Error")) {
 			chipEl.addClass("pythia-tool-call--error");

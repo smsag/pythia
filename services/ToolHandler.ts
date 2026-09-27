@@ -3,6 +3,7 @@ import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import { noteWriteResult } from "./noteWrites";
 import { citationsToFootnotes } from "./noteFootnotes";
+import { highlightPassages } from "./favoriteHighlights";
 import type { WebSearchService, WebSource, WebToolResult } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
@@ -218,12 +219,23 @@ export class ToolHandler {
 	 * @param readScope  Which pages read_url may read in this send, and how many
 	 *   (ADR-217 addendum). Without one, read_url refuses — the guard fails
 	 *   closed, so a new caller cannot forget it into an open door.
-	 * @param webSources  The numbered web results this answer has fetched so far.
-	 *   A note write turns its `⟦cite:…⟧` markers into footnotes, and a web
-	 *   marker is resolved against these (ADR-238); without them a web marker
-	 *   is dropped, a vault one still becomes a footnote.
+	 * @param note  What a note write is prepared with. `webSources`: the
+	 *   numbered web results this answer has fetched so far — the content's
+	 *   `⟦cite:…⟧` markers become footnotes, and a web marker is resolved against
+	 *   these (ADR-238); without them a web marker is dropped, a vault one still
+	 *   becomes a footnote. `favorites`: the conversation's favorites as text
+	 *   (`favoritePassages`); where the content repeats one it is highlighted
+	 *   `==…==` (ADR-239).
 	 */
-	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[], readScope?: WebReadScope, webSources: WebSource[] = []): Promise<string> {
+	async execute(
+		call: ToolCall,
+		allowedTools?: Set<string>,
+		contextNotes?: string[],
+		readScope?: WebReadScope,
+		note: { webSources?: WebSource[]; favorites?: string[] } = {},
+	): Promise<string> {
+		const webSources = note.webSources ?? [];
+		const favorites = (note.favorites ?? []).map((text) => ({ text }));
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		// The web tools are gated by research, not the write mode, and say so.
 		if (call.name === "web_search" || call.name === "read_url") {
@@ -279,7 +291,7 @@ export class ToolHandler {
 				// create_note never overwrites: an existing note is an error the
 				// model can recover from by choosing another path (or rewrite_note on
 				// a context note, which the user confirms by name).
-				const withFootnotes = citationsToFootnotes(content, webSources);
+				const withFootnotes = citationsToFootnotes(highlightPassages(content, favorites), webSources);
 				const file = call.name === "create_note"
 					? await this.writer.createNote(withFootnotes, path)
 					: await this.writer.writeNote(withFootnotes, path);
@@ -294,7 +306,7 @@ export class ToolHandler {
 				// Footnotes are built against the note's current text, so a label the
 				// author already uses is never reused.
 				const file = await this.writer.prependWithSeparator(content, path,
-					(block, current) => citationsToFootnotes(block, webSources, current));
+					(block, current) => citationsToFootnotes(highlightPassages(block, favorites), webSources, current));
 				return noteWriteResult("prepended", file.path);
 			} catch (err) {
 				return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;

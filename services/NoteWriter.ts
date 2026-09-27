@@ -1,8 +1,9 @@
 import { App, TFile } from "obsidian";
-import type { Conversation, Message } from "../models/types";
+import type { Conversation, Favorite, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { todayISO, resumeDeepLink } from "../utils";
 import { FootnoteNumbering, messageSourcesResolver } from "./noteFootnotes";
+import { highlightMessageFavorites } from "./favoriteHighlights";
 import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
 import { archiveNoteContent, archiveNotePath } from "./conversationArchive";
 
@@ -236,7 +237,9 @@ ${summary}
 		await this.writeNote(entry + currentContent, inboxPath);
 	}
 
-	async appendConversationSlice(messages: Message[], filePath: string, conversationId?: string): Promise<void> {
+	/** `favorites` are the conversation's: each saved message's own become
+	 *  `==highlights==` (ADR-239). */
+	async appendConversationSlice(messages: Message[], filePath: string, conversationId?: string, favorites: Favorite[] = []): Promise<void> {
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");
 		const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -256,7 +259,7 @@ ${summary}
 		const lines: string[] = [heading, ""];
 		for (const msg of messages) {
 			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
-			const body = footnotes.apply(msg.content, messageSourcesResolver(msg.sources));
+			const body = footnotes.apply(highlightMessageFavorites(msg, favorites), messageSourcesResolver(msg.sources));
 			// The label goes on its own line whenever the message opens with a fenced
 			// block: `**Pythia:** ```pythia-chart` is not a fence at the start of a
 			// line, so it never opens, and the chart the note was saved for would be

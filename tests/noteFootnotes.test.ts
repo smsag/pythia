@@ -79,7 +79,7 @@ describe("note writes turn citations into footnotes", () => {
 		const writer = makeWriter();
 		await new ToolHandler(writer).execute(
 			call("create_note", { path: "Notes/new.md", content: "A ⟦cite:note:Src.md⟧. B ⟦cite:web:1⟧." }),
-			undefined, undefined, undefined, sources,
+			undefined, undefined, undefined, { webSources: sources },
 		);
 		expect(writer.createNote).toHaveBeenCalledWith(
 			"A[^1]. B[^2].\n\n[^1]: [[Src]]\n[^2]: [Page](https://example.com/p)\n", "Notes/new.md",
@@ -89,14 +89,14 @@ describe("note writes turn citations into footnotes", () => {
 	it("rewrite_note writes footnotes too", async () => {
 		const writer = makeWriter();
 		await new ToolHandler(writer).execute(call("rewrite_note", { path: "Notes/doc.md", content: "A ⟦cite:web:1⟧" }),
-			undefined, ["Notes/doc.md"], undefined, sources);
+			undefined, ["Notes/doc.md"], undefined, { webSources: sources });
 		expect(writer.writeNote).toHaveBeenCalledWith("A[^1]\n\n[^1]: [Page](https://example.com/p)\n", "Notes/doc.md");
 	});
 
 	it("prepend_note numbers around the labels the note already uses", async () => {
 		const writer = makeWriter();
 		await new ToolHandler(writer).execute(call("prepend_note", { path: "Notes/doc.md", content: "A ⟦cite:web:1⟧" }),
-			undefined, ["Notes/doc.md"], undefined, sources);
+			undefined, ["Notes/doc.md"], undefined, { webSources: sources });
 		const prepare = vi.mocked(writer.prependWithSeparator).mock.calls[0][2]!;
 		expect(prepare("A ⟦cite:web:1⟧", "Old[^1]\n\n[^1]: theirs")).toBe("A[^2]\n\n[^2]: [Page](https://example.com/p)\n");
 	});
@@ -138,3 +138,18 @@ describe("messageSourcesResolver", () => {
 		expect(numbering.apply("B ⟦cite:note:N.md⟧", resolve)).toBe("B[^2]");
 	});
 });
+
+describe("note writes highlight the conversation's favorites (ADR-239)", () => {
+	it("create_note highlights a favorite the content repeats, then footnotes its citation", async () => {
+		const writer = makeWriter();
+		await new ToolHandler(writer).execute(
+			call("create_note", { path: "Notes/new.md", content: "Rates rose ⟦cite:web:1⟧ sharply." }),
+			undefined, undefined, undefined,
+			{ webSources: [{ n: 1, title: "Page", url: "https://example.com/p" }], favorites: ["Ratesrosesharply"] },
+		);
+		expect(writer.createNote).toHaveBeenCalledWith(
+			"==Rates rose[^1] sharply==.\n\n[^1]: [Page](https://example.com/p)\n", "Notes/new.md",
+		);
+	});
+});
+

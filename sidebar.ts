@@ -1203,7 +1203,7 @@ export class PythiaSidebarView extends ItemView {
 					return;
 				}
 				try {
-					await this.plugin.noteWriter.appendConversationSlice(slice, path, conv.id);
+					await this.plugin.noteWriter.appendConversationSlice(slice, path, conv.id, conv.favorites);
 					conv.savedNotePath = path;
 					conv.lastSavedMessageCount = boundary;
 					await this.plugin.conversationStore.save(conv);
