@@ -248,7 +248,9 @@ export class ToolCallController {
 		}
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
-		const result = await this.d.plugin.toolHandler.execute(call, allowed, conv.contextNotes);
+		// The results fetched so far, so the note's web citations become footnotes
+		// that name those pages (ADR-238).
+		const result = await this.d.plugin.toolHandler.execute(call, allowed, conv.contextNotes, undefined, this.webSources);
 
 		if (result.startsWith("Error")) {
 			chipEl.addClass("pythia-tool-call--error");

@@ -75,20 +75,6 @@ export function stripForeignCitations(content: string): string {
 		.replace(/[ \t]{2,}/g, " ");
 }
 
-/** Remove all citation markers from content (for note export / plain text) —
- *  both Pythia's `⟦cite:…⟧` and foreign `【…†…】` forms. Collapses a doubled
- *  space or a stray space-before-punctuation left behind. */
-export function stripCitationMarkers(content: string): string {
-	let out = content ?? "";
-	if (out.indexOf("⟦cite:") !== -1) {
-		out = out
-			.replace(markerRegExp(), "")
-			.replace(/ +([.,;:!?])/g, "$1")
-			.replace(/[ \t]{2,}/g, " ");
-	}
-	return stripForeignCitations(out);
-}
-
 /** Normalize a web ref (a bare domain from a model marker, or a full URL from a
  *  Tavily result) to a comparable bare domain. Falls back to the stripped input
  *  when it can't be parsed as a URL. */

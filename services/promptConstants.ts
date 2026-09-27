@@ -152,6 +152,15 @@ export const WEB_CITATION_INSTRUCTION =
 	"When a statement draws on a web result or page, append a citation marker immediately after it: ⟦cite:web:<n>⟧, where n is the number shown before that result (e.g. ⟦cite:web:3⟧ for \"### 3.\"). " +
 	"Cite only numbers that were shown to you, one marker per source, and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
 
+/** What the note-writing tools tell the model about sources (ADR-238). The
+ *  markers are the chat's own, so the model has one way to cite; Pythia turns
+ *  them into Markdown footnotes when it writes the note. A sources list the
+ *  model writes itself would repeat the footnotes, and could name a page
+ *  nothing fetched. */
+export const NOTE_CITATION_INSTRUCTION =
+	"When the content draws on an attached note or a web result, cite it inline in the content with the same markers as in chat — ⟦cite:note:<note-path>⟧ or ⟦cite:web:<n>⟧ — immediately after the statement. " +
+	"Pythia turns them into footnotes in the note; do not write your own footnotes or sources list.";
+
 /**
  * What a chart block contains — the shape both doors onto it are told.
  *

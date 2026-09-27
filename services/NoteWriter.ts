@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import type { Conversation, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { todayISO, resumeDeepLink } from "../utils";
-import { stripCitationMarkers } from "./citations";
+import { FootnoteNumbering, messageSourcesResolver } from "./noteFootnotes";
 import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
 import { archiveNoteContent, archiveNotePath } from "./conversationArchive";
 
@@ -64,11 +64,15 @@ export class NoteWriter {
 		return this.app.vault.create(normalized, content);
 	}
 
-	async prependWithSeparator(content: string, filePath: string): Promise<TFile> {
+	/** `prepare` sees the note's current text before the content is placed —
+	 *  what the citation footnotes need to avoid a label the note already uses
+	 *  (ADR-238). */
+	async prependWithSeparator(content: string, filePath: string, prepare?: (content: string, current: string) => string): Promise<TFile> {
 		const normalized = normalizeVaultPath(filePath);
 		const existing = this.app.vault.getAbstractFileByPath(normalized);
 		const current =
 			existing instanceof TFile ? await this.app.vault.read(existing) : "";
+		if (prepare) content = prepare(content, current);
 
 		const fmRx = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
@@ -241,10 +245,18 @@ ${summary}
 		const min = String(now.getMinutes()).padStart(2, "0");
 		const heading = `## ${dd}.${mm}.${yyyy}, ${hh}:${min}`;
 
+		const normalized = normalizeVaultPath(filePath);
+		const existing = this.app.vault.getAbstractFileByPath(normalized);
+		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
+
+		// Each message's citations become footnotes, resolved against its own
+		// sources, numbered once across the note and around the labels it
+		// already uses (ADR-238).
+		const footnotes = new FootnoteNumbering([current, ...messages.map((m) => m.content)]);
 		const lines: string[] = [heading, ""];
 		for (const msg of messages) {
 			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
-			const body = stripCitationMarkers(msg.content);
+			const body = footnotes.apply(msg.content, messageSourcesResolver(msg.sources));
 			// The label goes on its own line whenever the message opens with a fenced
 			// block: `**Pythia:** ```pythia-chart` is not a fence at the start of a
 			// line, so it never opens, and the chart the note was saved for would be
@@ -254,10 +266,6 @@ ${summary}
 			else lines.push(`${label} ${body}`, "");
 		}
 		const block = lines.join("\n").trimEnd();
-
-		const normalized = normalizeVaultPath(filePath);
-		const existing = this.app.vault.getAbstractFileByPath(normalized);
-		const current = existing instanceof TFile ? await this.app.vault.read(existing) : "";
 
 		if (!current && conversationId) {
 			const frontmatter = `---\nsource: "${this.resumeUri(conversationId)}"\n---\n\n`;

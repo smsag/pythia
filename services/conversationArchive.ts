@@ -1,7 +1,7 @@
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
 import { DEFAULT_SETTINGS } from "../models/settings";
-import { stripCitationMarkers } from "./citations";
+import { FootnoteNumbering, messageSourcesResolver } from "./noteFootnotes";
 import { formatDate, formatClockTime } from "./messageUtils";
 import { safeNoteName, yamlString } from "./pathUtils";
 
@@ -77,12 +77,15 @@ export function archiveNoteContent(conv: Conversation, resumeUri: string): strin
 	const body: string[] = ["", `# ${conv.name}`, ""];
 	if (conv.summaryText) body.push(conv.summaryText.trim(), "");
 
+	// Citations become footnotes: the conversation is being removed, so the
+	// note is the only place its sources survive (ADR-238).
+	const footnotes = new FootnoteNumbering(conv.messages.map((m) => m.content));
 	for (const msg of conv.messages) {
 		const who = msg.role === "user" ? "You" : "Pythia";
 		const when = msg.timestamp
 			? `${formatDate(msg.timestamp)} · ${formatClockTime(msg.timestamp)}`
 			: "";
-		body.push(`## ${who}${when ? ` — ${when}` : ""}`, "", stripCitationMarkers(msg.content).trim(), "");
+		body.push(`## ${who}${when ? ` — ${when}` : ""}`, "", footnotes.apply(msg.content, messageSourcesResolver(msg.sources)).trim(), "");
 	}
 
 	return `${front}\n${body.join("\n").replace(/\n{3,}$/, "\n")}`;
