@@ -16,6 +16,7 @@ import {
 } from "./HighlightPainter";
 import { scrollChatTo } from "./chatScroll";
 import { findAnswerEl } from "./AnswerTabsController";
+import { selectedAnswer } from "./favoriteSelection";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -277,6 +278,20 @@ export class SelectionController {
 		this.repaintFavorites(body, messageId);
 	}
 
+	/**
+	 * Whether the "Favorite selection" command has something to act on: text
+	 * selected inside one answer — the toolbar's own rule — or a tapped
+	 * highlight, which that selection then is and which the command removes.
+	 */
+	canFavoriteSelection(): boolean {
+		return selectedAnswer(window.getSelection(), this.d.getMessagesEl()) !== null;
+	}
+
+	/** The toolbar's Favorite, for a keyboard shortcut: the same action, one implementation. */
+	favoriteSelection(): Promise<void> {
+		return this.onFavoriteSelection();
+	}
+
 	/** Remove a favorite by its id and strip its highlight from the DOM. */
 	async removeFavorite(favId: string): Promise<void> {
 		const conv = this.d.getConversation();
@@ -374,12 +389,7 @@ export class SelectionController {
 		// them only when both endpoints resolve to the same `.p-msg-ai`; hide otherwise
 		// (selection in a user bubble, or crossing a message boundary). Copy / Insert /
 		// Inbox stay available for any selection.
-		const ownerAiMsg = (node: Node | null | undefined): Element | null => {
-			const el = node instanceof Element ? node : node?.parentElement;
-			return el?.closest(".p-msg-ai") ?? null;
-		};
-		const startAi = ownerAiMsg(sel.anchorNode);
-		const inSingleAssistant = startAi !== null && startAi === ownerAiMsg(sel.focusNode);
+		const inSingleAssistant = selectedAnswer(sel, this.d.getMessagesEl()) !== null;
 		this.favBtn.style.display = inSingleAssistant ? "" : "none";
 		// No branch from a comparison tab (D-60): only the kept answer is history.
 		this.forkBtn.style.display = inSingleAssistant && !inAnswerTab(sel.anchorNode) ? "" : "none";

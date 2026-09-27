@@ -318,6 +318,7 @@ const en = {
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
 	cmdSummarizeFavorites:             "Summarize favorites",
+	cmdFavoriteSelection:              "Favorite selection",
 	cmdToggleVaultContext:             "Toggle vault context default (semantic RAG)",
 	vaultContextOn:                    "Vault context on — relevant notes are auto-added to this conversation.",
 	vaultContextOff:                   "Vault context off for this conversation.",

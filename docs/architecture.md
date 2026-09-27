@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-26 — ADR-233: `suggest/ResumeModeModal.ts` gains `preselectedResumeMode` and `resumeChoiceOrder` and takes the preselected mode; `ConversationService.createConversation` no longer copies `defaultResumeMode` onto a new conversation.*
+*Last updated: 2026-09-27 — ADR-235: the `favorite-selection` command ("Favorisieren"). New pure `ui/favoriteSelection.ts` `selectedAnswer(sel, messagesEl)` — the one rule for which answer a selection can be favorited in, now read by the toolbar's Favorite button and by the command. `SelectionController` gains `canFavoriteSelection` / `favoriteSelection` (the toolbar's own action); the view forwards both; `main.ts` registers the command with a `checkCallback` over `loadedPythiaViews`.*
+
+*Previously: 2026-09-26 — ADR-233: `suggest/ResumeModeModal.ts` gains `preselectedResumeMode` and `resumeChoiceOrder` and takes the preselected mode; `ConversationService.createConversation` no longer copies `defaultResumeMode` onto a new conversation.*
 
 *Previously: 2026-09-26 — ADR-232: new `suggest/InstructionsModal.ts` (*What Pythia sends*, with the pure `instructionFacts`) and `services/sendPreview.ts` (`previewSystemPrompt` — the ONE preview behind the context box's estimate and the dialog — and `sendFullHistory`); `HeaderController`'s menu gains the row; the context box's system-prompt line opens the dialog. Engineering-review rows about the removed embedding index closed as obsolete.*
 

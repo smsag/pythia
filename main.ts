@@ -23,7 +23,7 @@ import type { PromptOptimizerService } from "./services/PromptOptimizerService";
 import type { SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
-import type { ViewManager } from "./services/ViewManager";
+import { loadedPythiaViews, type ViewManager } from "./services/ViewManager";
 import { RELATED_RESULT_LIMIT, SchreibstubeLink } from "./services/schreibstubeLink";
 import { VaultContextService } from "./services/VaultContextService";
 import { registerVaultWatcher } from "./services/vaultWatcher";
@@ -228,6 +228,20 @@ export default class PythiaPlugin extends Plugin {
 					action: () => this.pluginDataStore.reloadFromDisk(),
 				},
 			]).open(),
+		});
+
+		// No toolbar tap needed: a hotkey favorites the text selected in an answer,
+		// by the toolbar's own rule, or removes the tapped highlight (ADR-235).
+		this.addCommand({
+			id: "favorite-selection",
+			name: t("cmdFavoriteSelection"),
+			icon: "star",
+			checkCallback: (checking) => {
+				const view = loadedPythiaViews(this.app.workspace).find((v) => v.canFavoriteSelection());
+				if (!view) return false;
+				if (!checking) void view.favoriteSelection();
+				return true;
+			},
 		});
 
 		this.addCommand({

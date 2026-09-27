@@ -278,6 +278,9 @@ export class PythiaSidebarView extends ItemView {
 
 	/** Repaint the header's model | effort | language after a global default changed (ADR-165). */
 	refreshInstructions(): void { this.headerController?.updateInstructions(); }
+	/** The "Favorite selection" command: the toolbar's Favorite, by its rule. */
+	canFavoriteSelection(): boolean { return this.selectionController?.canFavoriteSelection() ?? false; }
+	favoriteSelection(): Promise<void> { return this.selectionController.favoriteSelection(); }
 
 	attachNoteToInput(path: string): void {
 		const conv = this.activeConversation;

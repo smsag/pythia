@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-26 — ADR-234 addendum (Schreibstube also reads `term_<lang>`, offering a term's translations as words to avoid; offered, never applied).*
+*Last updated: 2026-09-27 — ADR-235 ("Favorisieren" is a command, `favorite-selection`, by the toolbar's own rule and action, so a favorite can have a hotkey).*
+
+*Previously: 2026-09-26 — ADR-234 addendum (Schreibstube also reads `term_<lang>`, offering a term's translations as words to avoid; offered, never applied).*
 
 *Previously: 2026-09-26 — ADR-234 (the glossary folder has an outside reader: Schreibstube reads each term note as a concept and adds `schreibstubeAvoid`; Pythia keeps keys it does not own).*
 
@@ -5017,3 +5019,20 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Addendum (2026-09-26).** Schreibstube's *Add rule* dialog now **reads `term_<lang>`** and offers each translation, other than the note's own language, as a word to avoid; a tap fills the field and nothing is added until the person presses *Add*. That makes `term_<lang>` part of the contract above: renaming the key or storing translations elsewhere empties the offer silently. The rule stands — the translation is offered, never applied.
 
 **Guards.** `tests/glossarySave.test.ts` (a property Pythia did not write survives `save`, on an in-memory vault; fails on the old write) · Schreibstube's `glossary-term-folder.test.ts` and `glossary-registry.test.ts`.
+
+## ADR-235 — "Favorisieren" is a command, so a favorite can have a hotkey
+
+**Status:** Active · 2026-09-27
+
+**Context.** Favoriting a passage (ADR-085) was reachable only through the selection toolbar: select, then move the pointer to *Favorisieren*. Someone who marks passages while reading wants it on a key, and Obsidian gives a key only to a command.
+
+**Decision.**
+- **One command, `favorite-selection`** (*Favorisieren* / *Favorite selection*, `star` icon). It runs **the toolbar's own action**, `SelectionController.favoriteSelection` → `onFavoriteSelection`: the same favorite, the same save, the same repaint, and on a tapped highlight the same removal. Never a second implementation of favoriting.
+- **One rule for when it applies**, `selectedAnswer` in `ui/favoriteSelection.ts`: text selected wholly inside ONE assistant answer, each endpoint resolved to its own answer. The toolbar's Favorite button is shown by it and the command is available by it (`checkCallback`), so a shortcut can never favorite what the toolbar would refuse — a prompt, a span across two answers, text outside the chat.
+- **Any open Pythia view.** The command acts on the view whose chat holds the selection (`loadedPythiaViews`), so it works with the panel in either sidebar or a tab.
+- **No default hotkey.** Obsidian's convention for plugins; the user assigns one under Settings → Hotkeys, where the command is listed whatever is selected.
+
+**Not done.** The command palette is not a way to run it on a selection: opening the palette moves focus into its input, which ends the selection in the chat, so there the command is simply not offered. The hotkey is the point.
+
+**Guards.** `tests/favoriteSelection.test.ts` (inside one answer across paragraphs; nothing over a prompt, across answers, from a prompt into an answer, outside the chat, or for an empty selection).
+
