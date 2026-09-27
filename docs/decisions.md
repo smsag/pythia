@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-27 — ADR-236 addendum (D-65 closed: a chart the model writes as a block is held to `chartWorthDrawing` at commit, and a refused one becomes the table of its data — `commitAnswerCharts`).*
+*Last updated: 2026-09-27 — ADR-237 (the files Pythia's engine left in the plugin folder are removed at layout-ready: `removeLeftoverEngineFiles`; the model in Cache Storage is Schreibstube's too and is kept).*
+
+*Previously: 2026-09-27 — ADR-236 addendum (D-65 closed: a chart the model writes as a block is held to `chartWorthDrawing` at commit, and a refused one becomes the table of its data — `commitAnswerCharts`).*
 
 *Previously: 2026-09-27 — ADR-236 (a chart is named once — head row on screen, title in the PNG — and a new chart must be worth drawing: `chartWorthDrawing` at the `render_chart` door, slivers included; category labels shortened before thinned, closing D-66; D-65 stays open).*
 
@@ -5060,3 +5062,16 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 
 **Addendum (2026-09-27) — D-65 closed: a chart the model writes itself is checked at commit.** `commitAnswerCharts` is now the ONE commit step for the send and for a model comparison: it splices the tool's charts in (`spliceChartBlocks`) and then runs `demoteUnworthyCharts`, which holds every ```pythia-chart block the model wrote itself to `chartWorthDrawing`. A refused block becomes the table of its data (`chartAsTable`): the title as a bold line, one row per category, one column per series with the unit in its header, a gap as "–", the note and the series' sources under it — nothing lost, and no word added in any language, since the answer's language is the model's. A table is what the tool door tells the model to write instead, so the two paths now end the same way. It runs once, on the answer being committed, **never on a stored message**: the render door still draws what is already there. A block that does not parse is left for the card to explain. Guards: `tests/chartCommit.test.ts`.
 
+## ADR-237 — The files Pythia's engine left behind are removed
+
+**Status:** Active · 2026-09-27
+
+**Context.** ADR-224 deleted the engine but not what it had written. The plugin folder still holds `vault-embeddings-<family>.bin` and `related-embeddings-<family>.bin` (tens of megabytes on a large vault), their `.journal.bin` files and `embedding-worker-<version>-<hash>.mjs`, and a synced vault carries them to every device. The one reader left was Schreibstube's one-time import of Pythia's index, and Schreibstube's move to transformers 4 (its PR #206) marks every row with the runtime generation that embedded it and rejects unmarked rows. Pythia's files predate the mark and nothing here will ever write it, so an import now copies the files only for every row to be embedded again.
+
+**Decision.** At layout-ready, `removeLeftoverEngineFiles` (`services/leftoverEngineFiles.ts`) lists the plugin folder and removes the files `isLeftoverEngineFile` matches: those two index names with a `.bin` or `.journal.bin` ending, and the Worker bundle, directly in the folder only. Anything else, in a subfolder or by any other name, is left. A file that cannot be removed is named in the debug log and tried again at the next start. It runs off the startup path; nothing waits for it.
+
+**Not done.** The model download is left alone. transformers.js kept it in the browser's Cache Storage, which every plugin on the origin shares, and Schreibstube reads the same model from it. A device still on a Pythia from before ADR-224 writes its files again, and a current one removes them again, until both are updated. That costs disk writes and nothing else.
+
+**Guards.** `tests/leftoverEngineFiles.test.ts`: both indexes, their journals and the Worker bundle match; `data.json`, `main.js`, `manifest.json`, `styles.css` and `secrets.json` do not, nor a file in a subfolder, in another plugin's folder or under a look-alike name; removal keeps the rest, names a file it could not remove and carries on, and is silent when there is nothing to do.
+
+---

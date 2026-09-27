@@ -30,6 +30,7 @@ import { registerVaultWatcher } from "./services/vaultWatcher";
 import { RenameFollower } from "./services/renameFollower";
 import { handleDeepLink } from "./services/deepLink";
 import { SOURCE_ICONS } from "./ui/icons";
+import { removeLeftoverEngineFiles } from "./services/leftoverEngineFiles";
 
 export default class PythiaPlugin extends Plugin {
 	settings!: PythiaSettings;
@@ -158,6 +159,12 @@ export default class PythiaPlugin extends Plugin {
 			this.viewManager.initLeaf();
 			// The vault's files are known now, which the replay's guard reads.
 			this.renameFollower.replay();
+			// Off the startup path: nothing waits for it, and a file left over
+			// is only disk space until the next start (ADR-237).
+			const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+			removeLeftoverEngineFiles(this.app.vault.adapter, dir, (m) => debugLog(this.settings, m)).catch(
+				(e) => debugLog(this.settings, "could not list the plugin folder for old index files", e)
+			);
 		});
 
 		// Watch data.json for external changes (iCloud/Obsidian Sync delivering

@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-27 — ADR-236 addendum (D-65): `services/chartSpec.ts` gains `commitAnswerCharts` (splice, then `demoteUnworthyCharts`) and `chartAsTable`; `sidebar.ts` and `ui/ComparisonController.ts` commit through it instead of `spliceChartBlocks`.*
+*Last updated: 2026-09-27 — ADR-237: new pure-ish `services/leftoverEngineFiles.ts` (`isLeftoverEngineFile`, `removeLeftoverEngineFiles`), called from `main.ts` at layout-ready.*
+
+*Previously: 2026-09-27 — ADR-236 addendum (D-65): `services/chartSpec.ts` gains `commitAnswerCharts` (splice, then `demoteUnworthyCharts`) and `chartAsTable`; `sidebar.ts` and `ui/ComparisonController.ts` commit through it instead of `spliceChartBlocks`.*
 
 *Previously: 2026-09-27 — ADR-236: `services/chartSpec.ts` gains `chartWorthDrawing` (+ `MIN_WORTH_POINTS`, `MIN_DISTINCT_BAR_VALUES`), applied by `acceptChartCall` only. `ui/chart/layout.ts` `layoutChart` and `ui/chart/render.ts` `renderChartSvg` take `withTitle`; `ui/chart/card.ts` draws the screen SVG untitled and a titled one for *Copy image*. `CHART_WHEN_INSTRUCTION` names the new refusals and one measure per axis. `chartWorthDrawing` also refuses slivers (`MIN_BAR_SHARE`). `ui/chart/layout.ts` gains `fitLabel`, `slotChars`, `MIN_LABEL_CHARS`; `CategoryTick.full`; `render.ts` puts a shortened label's full name in a `<title>`.*
 
@@ -378,6 +380,7 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/noteRelevance.ts` | 49 | IDF-weighted keyword-overlap scoring (`scoreRelevanceWeighted` + pre-tokenized, batch `scoreRelevanceTokensWeighted`) shared by note chunking, `#` suggestion ranking, and conversation search |
 | `services/conversationSearch.ts` | 96 | Why a row is in the results (ADR-106/170/223): `bestMatchSnippet` (the best-matching message line, by `matchStrength`) over `snippetLines`, the line-token cache built on first use |
 | `services/conversationFinder.ts` | 103 | The search box (ADR-223): `searchTitles` (every typed word in the title), `meaningQuery`, `meaningOnly` (what Schreibstube found that the titles did not, each once, only if it still exists) |
+| `services/leftoverEngineFiles.ts` | 56 | What the removed engine left in the plugin folder (ADR-237): `isLeftoverEngineFile` (both index names, their journals, the Worker bundle, directly in the folder only) and `removeLeftoverEngineFiles`, run once at layout-ready; the model in Cache Storage is Schreibstube's too and stays |
 | `services/schreibstubeLink.ts` | 170 | Schreibstube's API v1, reached through `app.plugins` (ADR-223/224): `readSchreibstubeApi`, `toSourceItem`, `RELATED_RESULT_LIMIT` (20), `SchreibstubeLink` (register the conversations, `searchConversations`, `searchNotes` — notes only, for vault context — and `related`) |
 | `services/tokenMatch.ts` | 102 | The ONE matching rule (ADR-168): `matchStrength` (exact 1 · prefix .9 · infix .6 · reverse .5, with the length floors that stop a stopword matching the corpus), `tokenMatches`, `applyRelevanceFloor` / `RELEVANCE_FLOOR` |
 | `services/vaultWatcher.ts` | 49 | What Pythia keeps in step with the vault (ADR-136/218/224): `registerVaultWatcher` — four vault listeners; an edit or delete of a note invalidates the glossary cache, a rename is followed at once through `followRename`. The index batching and the hold on the note being written (ADR-121/220) went with the index |
