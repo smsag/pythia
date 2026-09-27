@@ -328,6 +328,7 @@ const de: Strings = {
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
 	cmdSummarizeFavorites:             "Favoriten zusammenfassen",
+	cmdFavoriteSelection:              "Favorisieren",
 	cmdToggleVaultContext:             "Vault-Kontext-Standard umschalten (semantisches RAG)",
 	vaultContextOn:                    "Vault-Kontext an – relevante Notizen werden dieser Unterhaltung automatisch hinzugefügt.",
 	vaultContextOff:                   "Vault-Kontext für diese Unterhaltung aus.",

@@ -99,6 +99,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
     pricingSettings.ts        ← Show-cost toggle + the estimate-not-bill disclaimer naming models.dev; no price table (ADR-163)
     entitySelection.ts        ← pure: the selection rule shared by Define and Person (ADR-151)
+    favoriteSelection.ts      ← pure: selectedAnswer — the ONE rule for which answer a selection can be favorited in; the toolbar's Favorite and the `favorite-selection` command both read it (ADR-235)
     markTap.ts                ← pure: which nested mark a tap opens — innermost wins (ADR-157)
     GlossaryController.ts     ← glossary term marks + inline definition anchor (ADR-136)
     termDiscussion.ts         ← saveTermDiscussion + TermDiscussionHost: a forked discussion written back into its term's note; the header owns the menu row, this owns the rule (ADR-208)
