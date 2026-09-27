@@ -351,10 +351,13 @@ function layoutCartesian(
 	};
 }
 
-/** The one entry point: a validated spec plus the width it has to fit. */
-export function layoutChart(spec: ChartSpec, width: number): ChartGeometry {
+/** The one entry point: a validated spec plus the width it has to fit.
+ *  `withTitle` is off on screen, where the card's head row already names the
+ *  chart (ADR-236), and on for the exported picture, which has no head row. */
+export function layoutChart(spec: ChartSpec, width: number, withTitle = true): ChartGeometry {
 	const w = Math.max(200, Math.round(width));
-	const headTop = spec.title ? TITLE_H : PAD;
+	const titled = withTitle && !!spec.title;
+	const headTop = titled ? TITLE_H : PAD;
 	const { entries, height: legendH } = legendLayout(spec, w, headTop);
 
 	const geometry = spec.type === "pie"
@@ -362,6 +365,6 @@ export function layoutChart(spec: ChartSpec, width: number): ChartGeometry {
 		: layoutCartesian(spec, w, headTop, legendH);
 
 	geometry.legend = entries;
-	if (spec.title) geometry.title = { text: spec.title, x: PAD, y: FONT_TITLE + 2 };
+	if (titled && spec.title) geometry.title = { text: spec.title, x: PAD, y: FONT_TITLE + 2 };
 	return geometry;
 }

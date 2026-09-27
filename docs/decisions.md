@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-27 — ADR-235 ("Favorisieren" is a command, `favorite-selection`, by the toolbar's own rule and action, so a favorite can have a hotkey).*
+*Last updated: 2026-09-27 — ADR-236 (a chart is named once — head row on screen, title in the PNG — and a new chart must be worth drawing: `chartWorthDrawing` at the `render_chart` door; D-65, D-66).*
+
+*Previously: 2026-09-27 — ADR-235 ("Favorisieren" is a command, `favorite-selection`, by the toolbar's own rule and action, so a favorite can have a hotkey).*
 
 *Previously: 2026-09-26 — ADR-234 addendum (Schreibstube also reads `term_<lang>`, offering a term's translations as words to avoid; offered, never applied).*
 
@@ -5035,4 +5037,19 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** The command palette is not a way to run it on a selection: opening the palette moves focus into its input, which ends the selection in the chat, so there the command is simply not offered. The hotkey is the point.
 
 **Guards.** `tests/favoriteSelection.test.ts` (inside one answer across paragraphs; nothing over a prompt, across answers, from a prompt into an answer, outside the chat, or for an empty selection).
+
+## ADR-236 — A chart is named once, and a new chart must say more than a sentence
+
+**Status:** Active · 2026-09-27
+
+**Context.** A research answer drew *Preispunkte direkter Space-Tools (Einmalkauf)*: four tools, three at 9.99 $, one free, one price not found. Two things were wrong. The title appeared twice, once in the card's head row and again inside the SVG. And the chart said nothing a sentence would not: three equal bars, one at zero meaning "free", and an empty slot for the price nobody had. The standing prompt's rule (ADR-210: not fewer than three points, not a single figure, not non-numeric data) let it through, and nothing checked it.
+
+**Decision.**
+- **Named once.** On screen the SVG is drawn without its title (`layoutChart` / `renderChartSvg` take `withTitle`); the head row carries it, as HTML that wraps where an SVG title cannot. The PNG has no head row, so *Copy image* draws a titled SVG of its own, hidden beside the live one only as long as the export needs to read its computed paint, which happens before the export's first await.
+- **Worth drawing, at the tool door.** `chartWorthDrawing(spec)` in `services/chartSpec.ts` answers "should it be drawn" after `parseChartSpec` has answered "can it". `acceptChartCall` refuses a new chart with fewer than 3 values; a bar chart whose values take fewer than 3 different values (it shows only "same" and "different"); a line or pie that is all one value; a one-series bar chart with a missing value (the empty slot reads as zero). Each refusal is `Error: not drawn. …`, naming what it saw and telling the model to write a sentence or a short table, and never to write the chart as a block. A chart call draws no chip, so the refusal is not shown to the user; the model answers in text instead.
+- **Not at the render door.** Charts already in notes and conversations render as before: a rule about taste must not turn yesterday's chart into an error card. The standing prompt (`CHART_WHEN_INSTRUCTION`) states the same rule for the block path.
+
+**Not done.** A block the model writes itself is not checked (D-65). Category labels that do not fit are still thinned rather than shortened, so a valid chart can still leave bars unnamed (D-66).
+
+**Guards.** `tests/ToolHandler.test.ts` (`chartWorthDrawing`: the chart that prompted this, too few values, a flat line and pie, an empty bar named, a line gap and a grouped bar still drawn; the door says "not drawn" and adds nothing; an old two-point chart still parses) · `tests/chartCard.test.ts` (the title appears once) · `tests/chartLayout.test.ts` (no title and no room for one when left out). The fixtures of three tests moved from two points to three, the least a new chart is drawn for.
 

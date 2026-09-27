@@ -156,7 +156,7 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 		ground = chartGround();
 		const palette = chartPalette(swatchCount(spec), ground.rgb);
 		body.empty();
-		svg = renderChartSvg(spec, width, palette);
+		svg = renderChartSvg(spec, width, palette, false);
 		body.appendChild(svg);
 	};
 
@@ -167,8 +167,20 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 	imageBtn.addEventListener("click", (e) => {
 		e.stopPropagation();
 		if (!svg) return;
+		// The picture has no head row, so it carries the title the screen leaves
+		// to the head (ADR-236). It is drawn beside the live one, hidden, because
+		// the export reads each node's computed paint — and it reads it before
+		// its first await, so the node can go as soon as the promise exists.
+		const titled = renderChartSvg(spec, Number(svg.getAttribute("width")) || MAX_WIDTH,
+			chartPalette(swatchCount(spec), ground.rgb), true);
+		titled.style.position = "absolute";
+		titled.style.visibility = "hidden";
+		titled.style.pointerEvents = "none";
+		body.appendChild(titled);
+		const blob = chartPngBlob(titled, ground.css);
+		titled.remove();
 		// The blob is handed over unresolved on purpose — see ui/clipboard.ts.
-		void copyBlobWithFeedback(imageBtn, "image/png", chartPngBlob(svg, ground.css), {
+		void copyBlobWithFeedback(imageBtn, "image/png", blob, {
 			fallbackText:   formatChartBlock(spec),
 			fallbackNotice: t("chartImageCopyFallback"),
 			restoreIcon:    "image",

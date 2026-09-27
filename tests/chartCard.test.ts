@@ -85,6 +85,15 @@ describe("renderChartCard — a valid block", () => {
 		expect(host.querySelector(".p-chart-head-label")?.textContent).toBe("Pie chart");
 	});
 
+	// The head row names the chart; the SVG on screen does not name it again
+	// (ADR-236). The exported picture carries the title — see chartLayout.
+	it("names the chart once: in the head row, not again inside the SVG", () => {
+		renderChartCard(BAR, host);
+		expect(host.querySelector(".p-chart-head-label")?.textContent).toBe("Revenue");
+		expect(host.querySelectorAll(".p-chart-title")).toHaveLength(0);
+		expect(host.textContent?.split("Revenue").length).toBe(2);
+	});
+
 	it("lists each distinct series source once", () => {
 		renderChartCard(body({
 			type: "bar", categories: ["a", "b"],

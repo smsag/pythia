@@ -210,7 +210,9 @@ export const CHART_WHEN_INSTRUCTION =
 	"duplication only: a table of DIFFERENT numbers is not a duplicate, and if the user asks for " +
 	"the table as well, or for the figures written out, give them both — their request wins. " +
 	"Do not chart fewer than three data points, a single figure, or anything that is not numeric: " +
-	"say those in words.";
+	"say those in words. Nor chart values that are nearly all the same — prices that are equal but " +
+	"for one free option, a list of yes and no — or leave a bar empty for a value you do not have: " +
+	"a sentence or a short table says that better.";
 
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves

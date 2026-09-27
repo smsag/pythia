@@ -18,7 +18,9 @@
  *   silently does nothing on some DOMs.
  *
  * The title and legend are drawn here, inside the SVG, because the exported PNG
- * is the whole point and it has to carry them.
+ * is the whole point and it has to carry them. On screen the title is left out
+ * (`withTitle` false): the card's head row already names the chart, and a
+ * title drawn twice read as a stutter (ADR-236).
  */
 
 import type { ChartSpec } from "../../services/chartSpec";
@@ -163,8 +165,8 @@ function drawPie(svg: SVGSVGElement, geometry: ChartGeometry, palette: ChartPale
  * so the thing the reader tells apart is the slice. Everywhere else the colour
  * belongs to the series.
  */
-export function renderChartSvg(spec: ChartSpec, width: number, palette: ChartPalette): SVGSVGElement {
-	const geometry = layoutChart(spec, width);
+export function renderChartSvg(spec: ChartSpec, width: number, palette: ChartPalette, withTitle = true): SVGSVGElement {
+	const geometry = layoutChart(spec, width, withTitle);
 	const svg = document.createElementNS(SVG_NS, "svg");
 	svg.setAttribute("class", "p-chart-svg");
 	svg.setAttribute("viewBox", `0 0 ${geometry.width} ${geometry.height}`);

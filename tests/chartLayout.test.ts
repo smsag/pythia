@@ -271,6 +271,15 @@ describe("layoutChart — the frame", () => {
 		expect(layoutChart(spec(), 420).title).toBeUndefined();
 	});
 
+	// On screen the card's head row names the chart; drawing the title inside
+	// the SVG as well read as a stutter (ADR-236). No title, and no room kept for one.
+	it("leaves the title out when asked, and the room it would take", () => {
+		const titled   = layoutChart(spec({ title: "Revenue" }), 420);
+		const untitled = layoutChart(spec({ title: "Revenue" }), 420, false);
+		expect(untitled.title).toBeUndefined();
+		expect(untitled.height).toBeLessThan(titled.height);
+	});
+
 	it("shows a legend only when there is more than one series", () => {
 		expect(layoutChart(spec(), 420).legend).toEqual([]);
 		expect(layoutChart(spec({
