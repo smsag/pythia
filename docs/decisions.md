@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-27 — ADR-236 (a chart is named once — head row on screen, title in the PNG — and a new chart must be worth drawing: `chartWorthDrawing` at the `render_chart` door, slivers included; category labels shortened before thinned, closing D-66; D-65 stays open).*
+*Last updated: 2026-09-27 — ADR-236 addendum (D-65 closed: a chart the model writes as a block is held to `chartWorthDrawing` at commit, and a refused one becomes the table of its data — `commitAnswerCharts`).*
+
+*Previously: 2026-09-27 — ADR-236 (a chart is named once — head row on screen, title in the PNG — and a new chart must be worth drawing: `chartWorthDrawing` at the `render_chart` door, slivers included; category labels shortened before thinned, closing D-66; D-65 stays open).*
 
 *Previously: 2026-09-27 — ADR-235 ("Favorisieren" is a command, `favorite-selection`, by the toolbar's own rule and action, so a favorite can have a hotkey).*
 
@@ -5055,4 +5057,6 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** A block the model writes itself is not checked (D-65).
 
 **Guards.** `tests/ToolHandler.test.ts` (`chartWorthDrawing`: both charts that prompted this, slivers measured against the tallest bar ignoring zero and sign, too few values, a flat line and pie, an empty bar named, a line gap and a grouped bar still drawn; the door says "not drawn" and adds nothing; an old two-point chart still parses) · `tests/chartCard.test.ts` (the title appears once) · `tests/chartLayout.test.ts` (no title and no room for one when left out; four long category names all drawn, shortened, whole in `full`; forty still thinned). The fixtures of three tests moved from two points to three, the least a new chart is drawn for.
+
+**Addendum (2026-09-27) — D-65 closed: a chart the model writes itself is checked at commit.** `commitAnswerCharts` is now the ONE commit step for the send and for a model comparison: it splices the tool's charts in (`spliceChartBlocks`) and then runs `demoteUnworthyCharts`, which holds every ```pythia-chart block the model wrote itself to `chartWorthDrawing`. A refused block becomes the table of its data (`chartAsTable`): the title as a bold line, one row per category, one column per series with the unit in its header, a gap as "–", the note and the series' sources under it — nothing lost, and no word added in any language, since the answer's language is the model's. A table is what the tool door tells the model to write instead, so the two paths now end the same way. It runs once, on the answer being committed, **never on a stored message**: the render door still draws what is already there. A block that does not parse is left for the card to explain. Guards: `tests/chartCommit.test.ts`.
 

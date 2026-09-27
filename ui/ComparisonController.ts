@@ -12,7 +12,7 @@ import type { WebSource } from "../services/WebSearchService";
 import { describeErrorForLog } from "../services/redact";
 import { ToolHandler } from "../services/ToolHandler";
 import { WebReadScope } from "../services/webReadScope";
-import { acceptChartCall, spliceChartBlocks, type PendingChartBlock } from "../services/chartSpec";
+import { acceptChartCall, commitAnswerCharts, type PendingChartBlock } from "../services/chartSpec";
 import {
 	startComparison,
 	comparisonPrompt,
@@ -174,7 +174,7 @@ export class ComparisonController {
 				[...(prompt.attachedNotes ?? conv.contextNotes ?? [])],
 				(text) => { textNode.data += text; this.d.scrollToBottom(); },
 				(fullText, tokenUsage) => {
-					candidate.content = spliceChartBlocks(fullText, charts);
+					candidate.content = commitAnswerCharts(fullText, charts);
 					if (tokenUsage) candidate.tokenUsage = tokenUsage;
 					// The same resolver as the send, so a kept candidate keeps the
 					// pages it read, not only what it cited (ADR-226).

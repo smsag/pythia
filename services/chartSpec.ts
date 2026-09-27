@@ -405,6 +405,59 @@ export function spliceChartBlocks(text: string, blocks: readonly PendingChartBlo
 	return out + text.slice(cursor);
 }
 
+/** A chart block the model wrote into its answer: the fence line, the JSON,
+ *  the closing fence. A chart's JSON never holds three backticks. */
+const CHART_FENCE_RX = new RegExp("```" + CHART_BLOCK_LANG + "[^\\n]*\\n([\\s\\S]*?)\\n```", "g");
+
+/** A table cell's text: a pipe would end the cell, a line break the row. */
+function cell(text: string): string {
+	return text.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim() || " ";
+}
+
+/**
+ * A chart's data as the Markdown table it should have been (ADR-236, D-65).
+ *
+ * Everything the block held survives: the title as a bold line, one row per
+ * category and one column per series with the unit in its header, a gap as
+ * "–", the note and the series' sources under it. No word is added in any
+ * language, because the answer's language is the model's.
+ */
+export function chartAsTable(spec: ChartSpec): string {
+	const unit = spec.unit ? ` (${spec.unit})` : "";
+	const head = `| ${cell("")} | ${spec.series.map((s) => cell(s.name + unit)).join(" | ")} |`;
+	const rule = `|${" --- |".repeat(spec.series.length + 1)}`;
+	const rows = spec.categories.map((category, i) =>
+		`| ${cell(category)} | ${spec.series.map((s) => (s.values[i] === null ? "–" : String(s.values[i]))).join(" | ")} |`
+	);
+	const sources = [...new Set(spec.series.map((s) => s.source).filter((s): s is string => !!s))];
+	const foot = [spec.note, sources.length > 0 ? `(${sources.join(", ")})` : ""].filter(Boolean).join(" ");
+	return [spec.title ? `**${spec.title}**\n` : "", [head, rule, ...rows].join("\n"), foot ? `\n${foot}` : ""]
+		.filter(Boolean)
+		.join("\n");
+}
+
+/**
+ * Every chart the model wrote itself, held to the rule the tool door holds
+ * (ADR-236, closing D-65): a block `chartWorthDrawing` refuses becomes the
+ * table of its data. Run once, on the answer being committed — never on a
+ * stored message, where a rule about taste must not rewrite what is there. A
+ * block that does not parse is left for the card to explain, source and all.
+ */
+export function demoteUnworthyCharts(text: string): string {
+	return text.replace(CHART_FENCE_RX, (whole: string, body: string) => {
+		const parsed = parseChartBlock(body);
+		if (!parsed.ok || !chartWorthDrawing(parsed.spec)) return whole;
+		return chartAsTable(parsed.spec);
+	});
+}
+
+/** The answer as it is stored: the tool's charts spliced in where the model
+ *  asked for them, and the charts it wrote itself held to the same rule. The
+ *  ONE commit step for the send and for a model comparison. */
+export function commitAnswerCharts(text: string, blocks: readonly PendingChartBlock[]): string {
+	return demoteUnworthyCharts(spliceChartBlocks(text, blocks));
+}
+
 /** What the model is told when a chart was accepted and placed. Short, and it
  *  carries the one instruction that matters: the numbers are drawn now, so do
  *  not write them out again underneath. */

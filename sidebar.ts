@@ -43,7 +43,7 @@ import { SendHintController } from "./ui/SendHintController";
 import { drawAttachIcon, drawSaveIcon, paintToggle } from "./ui/toolbarIcons";
 import { ModelSuggestionController } from "./ui/ModelSuggestionController";
 import { costSnapshot } from "./models/modelPricing";
-import { spliceChartBlocks } from "./services/chartSpec";
+import { commitAnswerCharts } from "./services/chartSpec";
 import { ComposerAttachments } from "./ui/ComposerAttachments";
 import { ReferenceRowController } from "./ui/ReferenceRowController";
 import { ToolCallController } from "./ui/ToolCallController";
@@ -1312,7 +1312,7 @@ export class PythiaSidebarView extends ItemView {
 				// `content` below, never `fullText`: a chart dropped from the stored
 				// message would flash and vanish (ADR-210).
 				// A turn that only wrote a note still says so, or its record is lost (ADR-218).
-				const content = spliceChartBlocks(fullText, this.toolCalls.takeChartBlocks()) || this.toolCalls.writesOnlyContent();
+				const content = commitAnswerCharts(fullText, this.toolCalls.takeChartBlocks()) || this.toolCalls.writesOnlyContent();
 				// Defense-in-depth: switching conversations mid-stream is blocked in the
 				// UI, but the view can still be torn down (onClose aborts) while this
 				// callback is in flight — don't touch messagesEl/chatScroll in that case.
