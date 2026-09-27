@@ -313,7 +313,7 @@ describe("ToolHandler — prepend_note", () => {
 	it("calls writer.prependWithSeparator with the correct arguments", async () => {
 		const writer = makeWriter();
 		await new ToolHandler(writer).execute(call("prepend_note", { path: "Notes/doc.md", content: "prefix" }));
-		expect(writer.prependWithSeparator).toHaveBeenCalledWith("prefix", "Notes/doc.md");
+		expect(writer.prependWithSeparator).toHaveBeenCalledWith("prefix", "Notes/doc.md", expect.any(Function));
 	});
 
 	it("returns a success message containing the updated path", async () => {
@@ -597,4 +597,3 @@ describe("ToolHandler.executeWeb (ADR-226)", () => {
 		expect(r.text).toMatch(/web research is off/);
 	});
 });
-

@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-27 — ADR-237 (the files Pythia's engine left in the plugin folder are removed at layout-ready: `removeLeftoverEngineFiles`; the model in Cache Storage is Schreibstube's too and is kept).*
+*Last updated: 2026-09-27 — ADR-239 (a favorite becomes an `==…==` highlight in every note Pythia writes: `services/favoriteHighlights.ts`).*
+
+*Previously: 2026-09-27 — ADR-238 (every note Pythia writes — the three note tools, Save to note, the archive — turns `⟦cite:…⟧` markers into Markdown footnotes; vault → wikilink, web → the fetched page; `stripCitationMarkers` removed).*
+
+*Previously: 2026-09-27 — ADR-237 (the files Pythia's engine left in the plugin folder are removed at layout-ready: `removeLeftoverEngineFiles`; the model in Cache Storage is Schreibstube's too and is kept).*
 
 *Previously: 2026-09-27 — ADR-236 addendum (D-65 closed: a chart the model writes as a block is held to `chartWorthDrawing` at commit, and a refused one becomes the table of its data — `commitAnswerCharts`).*
 
@@ -5073,5 +5077,40 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** The model download is left alone. transformers.js kept it in the browser's Cache Storage, which every plugin on the origin shares, and Schreibstube reads the same model from it. A device still on a Pythia from before ADR-224 writes its files again, and a current one removes them again, until both are updated. That costs disk writes and nothing else.
 
 **Guards.** `tests/leftoverEngineFiles.test.ts`: both indexes, their journals and the Worker bundle match; `data.json`, `main.js`, `manifest.json`, `styles.css` and `secrets.json` do not, nor a file in a subfolder, in another plugin's folder or under a look-alike name; removal keeps the rest, names a file it could not remove and carries on, and is silent when there is nothing to do.
+
+---
+
+## ADR-238 — A note Pythia writes cites its sources as footnotes
+
+**Status:** Active · 2026-09-27
+
+**Context.** In the chat, a statement drawn from a vault note or a Tavily result carries a `⟦cite:…⟧` marker, painted as a numbered chip, and the sources row lists what each number points at. A note written by `create_note`, `rewrite_note` or `prepend_note` had neither. The note tools never mentioned citing, so a model either left the markers in the content — literal `⟦cite:web:3⟧` in the vault, pointing at nothing a reader could follow — or dropped the sources, and the note read as the author's own knowledge. The web results that could have named the pages were in `ToolCallController`, one step from the write and never handed to it.
+
+**Decision.** A note write turns every citation marker into a Markdown footnote, in `citationsToFootnotes` (`services/noteFootnotes.ts`, pure):
+- `⟦cite:note:<path>⟧` becomes `[^n]` with `[^n]: [[Folder/Note|Note]]` — `noteWikilink`, the one link builder, so it resolves to THIS note when two share a name.
+- `⟦cite:web:<n>⟧` becomes `[^n]` with `[^n]: [Title](url)`, resolved against the results this answer fetched by the chat's own rule (number, then domain — ADR-226). `ToolHandler.execute` takes them as a fifth argument; `ToolCallController.runWrite` passes its `webSources`. A marker nothing fetched answers for is dropped with no footnote, as its chip is in the chat.
+- Numbered by first appearance, one footnote per source. A number already used as a label in the content, or in the note a `prepend_note` joins (`NoteWriter.prependWithSeparator`'s new `prepare` sees the current text), is skipped, so Pythia's footnotes never collide with the author's. A marker inside a fenced code block is text and stays. Foreign `【…†…】` noise is removed.
+- The three note tools tell the model to cite with the same markers and not to write footnotes or a sources list of its own (`NOTE_CITATION_INSTRUCTION`): one way to cite, and Pythia owns the numbering, as in the chat.
+
+**Transcripts too** (same day, asked for by the user). *Save to note* (`appendConversationSlice`) and the archive (`archiveNoteContent`) footnoted the markers away with `stripCitationMarkers`; the archive most of all needs them, because the conversation it saves is about to be deleted and the note is where its sources survive. Both now use `FootnoteNumbering`: one numbering per note, built over every message and (Save to note) the note being appended to, and each message's markers resolved against its OWN stored `sources` (`messageSourcesResolver`, found by what the marker said, as the chip is — ADR-226; a pre-ADR-226 bare-domain source is linked as https). A source cited in two messages keeps its first number and is defined once, under the message that cited it first. `stripCitationMarkers` had no caller left and is removed. The chat answer itself is unchanged.
+
+**Guards.** `tests/noteFootnotes.test.ts`: a vault and a web marker become footnotes; a domain marker resolves to its first result; an unresolved web marker, or any web marker with no results, leaves no footnote; two markers for one source share one; a title's brackets and a URL's spaces and parentheses cannot break the link; a label in the content or the existing note is never reused; a fenced marker is left alone; a message's markers resolve against its own sources, a legacy domain source links as https, a numbering shared across messages defines a source once. `tests/conversationArchive.test.ts` and `tests/NoteWriter.test.ts`: the archive and Save to note write footnotes, numbered around the note's labels. Through `ToolHandler`: `create_note` and `rewrite_note` write the footnoted content, `prepend_note` numbers around the note's labels, and every note tool's description carries the marker instruction.
+
+---
+
+## ADR-239 — A favorite is a highlight in the note it is written to
+
+**Status:** Active · 2026-09-27
+
+**Context.** A favorite marks a passage of an answer the user wanted to keep (ADR-085), painted yellow in the panel. Once the passage left the panel it lost the mark: *Save to note*, the archive, and a note the model wrote with the passage in it all carried the text, but nothing said which part the user had starred. The note is where the conversation lives on after the archive deletes it, so a mark that does not reach the note does not last.
+
+**Decision.** Every note Pythia writes wraps a favorited passage in Obsidian's Markdown highlight `==…==`, through one pure module, `services/favoriteHighlights.ts`.
+- **Found by what the user saw.** A favorite stores the *rendered* text and its occurrence (ADR-085), not a source offset. The Markdown source is projected unit by unit onto what it renders to — `**bold**` shows "bold", `[text](url)` "text", `[[Folder/Note|Note]]` "Note", a citation marker its chip's number (`messageCiteText`, the chip's own lookup), a list or heading marker nothing — and the favorite is found in that projection, whitespace ignored.
+- **Nested properly, or not at all.** A covered run whose markup is balanced is wrapped whole (`==a **b** c==`), widened to the delimiters touching its edges when that balances it (a passage starting at a link's text). Otherwise it is wrapped piece by piece around the plain text between the markup (`**b==old==** ==claim==`), so it never produces `**b==old** claim==`, which Obsidian renders as neither. A code span and a wikilink are atomic and wrapped whole, because `==` inside them would be literal. A fenced block, a table-cell boundary and an existing highlight are never crossed or doubled, and a highlight never crosses a line.
+- **Three doors.** *Save to note* (`appendConversationSlice` takes the conversation's favorites) and the archive (`archiveNoteContent`) highlight each message's own favorites before its citations become footnotes (ADR-238). A note tool (`create_note` · `rewrite_note` · `prepend_note`) highlights where its content repeats a favorite: `favoritePassages` finds each favorite in its own message and keeps the text without the chip numbers, since the model's markers in the new note are numbered differently. `ToolHandler.execute`'s fifth argument became `{ webSources, favorites }`.
+
+**Not done.** A favorite that cannot be found (its message changed, a legacy favorite with no text, or a selection over several blocks that `findRange` could not repaint either, D-23) is skipped without a word: the note is written, and the missing mark is visible in the note itself. The chat, the navigator and *Save to inbox* are unchanged. See D-67.
+
+**Guards.** `tests/favoriteHighlights.test.ts`: plain, bold, link, partial-bold, occurrence, whitespace, list prefix, wikilink and code span atomic, fenced block untouched, no doubled highlight, no crossing table cells, overlapping favorites merged, a missing one skipped, chip numbers read and kept outside the highlight, and a favorite found in text the model writes with other citation numbers. `tests/conversationArchive.test.ts`, `tests/NoteWriter.test.ts` and `tests/noteFootnotes.test.ts` cover the three doors.
 
 ---

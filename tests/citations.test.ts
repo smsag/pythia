@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
 	parseCitations,
-	stripCitationMarkers,
 	eachCitationSegment,
 	stripForeignCitations,
 	resolveWebCitations,
@@ -40,17 +39,6 @@ describe("parseCitations", () => {
 		const s = parseCitations("⟦cite:note:folder/sub/My Note.md⟧ ⟦cite:web:www.ecb.europa.eu⟧");
 		expect(s[0].title).toBe("My Note");
 		expect(s[1].title).toBe("ecb.europa.eu");
-	});
-});
-
-describe("stripCitationMarkers", () => {
-	it("removes markers and tidies spacing before punctuation", () => {
-		const c = "The rate is 1.75%⟦cite:web:ecb.europa.eu⟧, confirmed⟦cite:note:Memo.md⟧.";
-		expect(stripCitationMarkers(c)).toBe("The rate is 1.75%, confirmed.");
-	});
-
-	it("is a no-op when there are no markers", () => {
-		expect(stripCitationMarkers("nothing here")).toBe("nothing here");
 	});
 });
 

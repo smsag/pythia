@@ -81,13 +81,37 @@ describe("archiveNoteContent", () => {
 		expect(note).toContain('  - "Recht/Mietrecht.md"');
 	});
 
-	it("strips citation markers — they point at a conversation that is being removed", () => {
+	it("keeps citations as footnotes — the note is where the sources survive (ADR-238)", () => {
 		const note = archiveNoteContent(
 			conv({ messages: [msg("assistant", "Abschnitt 4.⟦cite:note:Recht/Mietrecht.md⟧")] }),
 			"obsidian://pythia?id=c1",
 		);
-		expect(note).toContain("Abschnitt 4.");
+		expect(note).toContain("Abschnitt 4.[^1]");
+		expect(note).toContain("[^1]: [[Recht/Mietrecht|Mietrecht]]");
 		expect(note).not.toContain("⟦cite:");
+	});
+
+	it("numbers footnotes once across the transcript, each message against its own sources", () => {
+		const a = { ...msg("assistant", "Eins ⟦cite:web:1⟧."), sources: [{ n: 1, kind: "web" as const, ref: "https://a.de/x", title: "a.de", cite: "1" }] };
+		const b = { ...msg("assistant", "Zwei ⟦cite:web:1⟧ und ⟦cite:web:2⟧."), sources: [
+			{ n: 1, kind: "web" as const, ref: "https://b.de/y", title: "b.de", cite: "1" },
+			{ n: 2, kind: "web" as const, ref: "https://a.de/x", title: "a.de", cite: "2" },
+		] };
+		const note = archiveNoteContent(conv({ messages: [a, b] }), "obsidian://pythia?id=c1");
+		expect(note).toContain("Eins[^1].");
+		expect(note).toContain("[^1]: [a.de](https://a.de/x)");
+		expect(note).toContain("Zwei[^2] und[^1].");
+		expect(note).toContain("[^2]: [b.de](https://b.de/y)");
+		expect(note.match(/\[\^1\]: /g)).toHaveLength(1);
+	});
+
+	it("keeps favorites as highlights (ADR-239)", () => {
+		const m = msg("assistant", "Die **Nebenkosten** sind umlagefähig.");
+		const note = archiveNoteContent(
+			conv({ messages: [m], favorites: [{ id: "f1", messageId: m.id, name: "x", text: "Nebenkosten sind umlagefähig", occurrenceIndex: 0 }] }),
+			"obsidian://pythia?id=c1",
+		);
+		expect(note).toContain("Die ==**Nebenkosten** sind umlagefähig==.");
 	});
 
 	it("survives an empty conversation", () => {

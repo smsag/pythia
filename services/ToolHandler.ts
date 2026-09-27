@@ -2,11 +2,13 @@ import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import { noteWriteResult } from "./noteWrites";
-import type { WebSearchService, WebToolResult } from "./WebSearchService";
+import { citationsToFootnotes } from "./noteFootnotes";
+import { highlightPassages } from "./favoriteHighlights";
+import type { WebSearchService, WebSource, WebToolResult } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
 import type { ToolCall, ToolDefinition } from "../models/types";
-import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR } from "./promptConstants";
+import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR, NOTE_CITATION_INSTRUCTION } from "./promptConstants";
 
 const WEB_SEARCH_TOOL: ToolDefinition = {
 	name: "web_search",
@@ -105,7 +107,8 @@ const CREATE_NOTE_TOOL = (defaultFolder: string): ToolDefinition => ({
 		`Create a new markdown note in the Obsidian vault at a path you choose. ` +
 		`Use this when the user asks to save, write, or create a note — e.g. "save this as a note", "create a note called…". ` +
 		`Do NOT use for content the user wants to read in chat, and do NOT use this to modify a note that was provided as context — use rewrite_note or prepend_note for that. ` +
-		`If the user does not specify a path, default to "${defaultFolder}/<descriptive-name>.md".`,
+		`If the user does not specify a path, default to "${defaultFolder}/<descriptive-name>.md". ` +
+		NOTE_CITATION_INSTRUCTION,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -127,7 +130,8 @@ const PREPEND_NOTE_TOOL: ToolDefinition = {
 	description:
 		`Add content above the existing text of a note that was provided as context, separated by a horizontal rule (---). ` +
 		`Use this when the user asks to prepend, add to the top of, or insert content before an existing document — e.g. "add a summary above this", "prepend this to my doc". ` +
-		`The path must exactly match the ${ATTACHED_NOTE_PATH_ATTR} attribute of an <${ATTACHED_NOTE_TAG}> tag you received.`,
+		`The path must exactly match the ${ATTACHED_NOTE_PATH_ATTR} attribute of an <${ATTACHED_NOTE_TAG}> tag you received. ` +
+		NOTE_CITATION_INSTRUCTION,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -150,7 +154,8 @@ const REWRITE_NOTE_TOOL: ToolDefinition = {
 		`Replace the full content of a note that was provided as context. ` +
 		`Use this when the user asks to rewrite, restructure, revise, or replace a document — e.g. "rewrite this doc", "restructure as bullet points", "make this more concise". ` +
 		`The path must exactly match the ${ATTACHED_NOTE_PATH_ATTR} attribute of an <${ATTACHED_NOTE_TAG}> tag you received — do not invent a path. ` +
-		`Do NOT use this to answer questions or produce content the user wants to read in chat.`,
+		`Do NOT use this to answer questions or produce content the user wants to read in chat. ` +
+		NOTE_CITATION_INSTRUCTION,
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -214,8 +219,23 @@ export class ToolHandler {
 	 * @param readScope  Which pages read_url may read in this send, and how many
 	 *   (ADR-217 addendum). Without one, read_url refuses — the guard fails
 	 *   closed, so a new caller cannot forget it into an open door.
+	 * @param note  What a note write is prepared with. `webSources`: the
+	 *   numbered web results this answer has fetched so far — the content's
+	 *   `⟦cite:…⟧` markers become footnotes, and a web marker is resolved against
+	 *   these (ADR-238); without them a web marker is dropped, a vault one still
+	 *   becomes a footnote. `favorites`: the conversation's favorites as text
+	 *   (`favoritePassages`); where the content repeats one it is highlighted
+	 *   `==…==` (ADR-239).
 	 */
-	async execute(call: ToolCall, allowedTools?: Set<string>, contextNotes?: string[], readScope?: WebReadScope): Promise<string> {
+	async execute(
+		call: ToolCall,
+		allowedTools?: Set<string>,
+		contextNotes?: string[],
+		readScope?: WebReadScope,
+		note: { webSources?: WebSource[]; favorites?: string[] } = {},
+	): Promise<string> {
+		const webSources = note.webSources ?? [];
+		const favorites = (note.favorites ?? []).map((text) => ({ text }));
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		// The web tools are gated by research, not the write mode, and say so.
 		if (call.name === "web_search" || call.name === "read_url") {
@@ -271,9 +291,10 @@ export class ToolHandler {
 				// create_note never overwrites: an existing note is an error the
 				// model can recover from by choosing another path (or rewrite_note on
 				// a context note, which the user confirms by name).
+				const withFootnotes = citationsToFootnotes(highlightPassages(content, favorites), webSources);
 				const file = call.name === "create_note"
-					? await this.writer.createNote(content, path)
-					: await this.writer.writeNote(content, path);
+					? await this.writer.createNote(withFootnotes, path)
+					: await this.writer.writeNote(withFootnotes, path);
 				return noteWriteResult(call.name === "create_note" ? "created" : "rewritten", file.path);
 			} catch (err) {
 				return `Error writing note: ${err instanceof Error ? err.message : String(err)}`;
@@ -282,7 +303,10 @@ export class ToolHandler {
 
 		if (call.name === "prepend_note") {
 			try {
-				const file = await this.writer.prependWithSeparator(content, path);
+				// Footnotes are built against the note's current text, so a label the
+				// author already uses is never reused.
+				const file = await this.writer.prependWithSeparator(content, path,
+					(block, current) => citationsToFootnotes(highlightPassages(block, favorites), webSources, current));
 				return noteWriteResult("prepended", file.path);
 			} catch (err) {
 				return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;

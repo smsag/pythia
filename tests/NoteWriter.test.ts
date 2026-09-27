@@ -359,6 +359,29 @@ describe("appendConversationSlice", () => {
 		const content = vault.content("Log/existing.md");
 		expect(content).not.toContain("source:");
 	});
+
+	it("saves citations as footnotes, numbered around the labels the note already uses (ADR-238)", async () => {
+		vault.seed("Log/cited.md", "Earlier[^1]\n\n[^1]: mine");
+		const messages = [{
+			id: "m1", role: "assistant" as const, timestamp: "",
+			content: "Rates rose ⟦cite:web:1⟧, see ⟦cite:note:Fin/Rates.md⟧.",
+			sources: [{ n: 1, kind: "web" as const, ref: "https://ecb.europa.eu/p", title: "ecb.europa.eu", cite: "1" }],
+		}];
+		await writer.appendConversationSlice(messages, "Log/cited.md");
+		const content = vault.content("Log/cited.md");
+		expect(content).toContain("**Pythia:** Rates rose[^2], see[^3].");
+		expect(content).toContain("[^2]: [ecb.europa.eu](https://ecb.europa.eu/p)");
+		expect(content).toContain("[^3]: [[Fin/Rates|Rates]]");
+		expect(content).not.toContain("⟦cite:");
+	});
+
+	it("saves the conversation's favorites as highlights (ADR-239)", async () => {
+		const messages = [{ id: "m1", role: "assistant" as const, content: "Keep this part, not that.", timestamp: "" }];
+		await writer.appendConversationSlice(messages, "Log/fav.md", undefined, [
+			{ id: "f1", messageId: "m1", name: "Keep", text: "this part", occurrenceIndex: 0 },
+		]);
+		expect(vault.content("Log/fav.md")).toContain("**Pythia:** Keep ==this part==, not that.");
+	});
 });
 
 // ── prependToInbox ────────────────────────────────────────────────────────────
