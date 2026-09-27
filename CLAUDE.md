@@ -27,6 +27,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) + applyRelevanceFloor (ADR-168)
     conversationFinder.ts     ← pure: searchTitles (every typed word in the title, via matchStrength), meaningQuery, meaningOnly — the search box (ADR-223)
     conversationSearch.ts     ← pure: bestMatchSnippet + the lazily built snippetLines cache — why a row is in the results (ADR-106/170/223)
+    leftoverEngineFiles.ts    ← isLeftoverEngineFile + removeLeftoverEngineFiles: the index, journal and Worker files the removed engine left in the plugin folder, removed at layout-ready — never the model in Cache Storage, which Schreibstube shares (ADR-237)
     schreibstubeLink.ts       ← the ONE reader of app.plugins: readSchreibstubeApi (feature-detected API v1), toSourceItem, RELATED_RESULT_LIMIT, SchreibstubeLink (hands the conversations over with open(id), asks search/searchNotes/related, answers [] on any failure) (ADR-223/224)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
