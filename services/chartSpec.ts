@@ -252,6 +252,8 @@ export function parseChartSpec(raw: unknown): ChartParse {
  *  at least this many different ones to show more than "same or not". */
 export const MIN_WORTH_POINTS = 3;
 export const MIN_DISTINCT_BAR_VALUES = 3;
+/** A bar shorter than this share of the tallest is a sliver, not a bar. */
+export const MIN_BAR_SHARE = 0.02;
 
 /**
  * Whether a valid chart says anything a sentence would not (ADR-236).
@@ -267,6 +269,9 @@ export const MIN_DISTINCT_BAR_VALUES = 3;
  *   9.99, 0"): it shows only "the same" and "different", which one sentence says.
  * - A line or pie whose values are all equal: no change, no share to see.
  * - A one-series bar chart with a missing value: the empty slot reads as zero.
+ * - A bar chart where a non-zero bar is under 2% of the tallest: it is a
+ *   sliver, and values that far apart are usually different measures that do
+ *   not belong on one axis at all (1,200 switches a day beside 4 desktops).
  */
 export function chartWorthDrawing(spec: ChartSpec): string | null {
 	const values = spec.series.flatMap((s) => s.values).filter((v): v is number => v !== null);
@@ -283,6 +288,17 @@ export function chartWorthDrawing(spec: ChartSpec): string | null {
 	}
 	if (spec.type !== "bar" && distinct.length === 1) {
 		return `Every value is ${distinct[0]}: there is no change or share to see. ${noChart}`;
+	}
+	if (spec.type === "bar") {
+		const largest = Math.max(...values.map((v) => Math.abs(v)));
+		const smallest = Math.min(...values.filter((v) => v !== 0).map((v) => Math.abs(v)));
+		if (largest > 0 && smallest / largest < MIN_BAR_SHARE) {
+			return (
+				`Values from ${smallest} to ${largest} on one axis: the small bars would be slivers. ` +
+				"If they measure different things, they do not belong on one axis at all; write them " +
+				"out as a list or a short table, and do not write it as a chart block either."
+			);
+		}
 	}
 	if (spec.type === "bar" && spec.series.length === 1) {
 		const missing = spec.categories.filter((_, i) => spec.series[0].values[i] === null);

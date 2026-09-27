@@ -212,7 +212,9 @@ export const CHART_WHEN_INSTRUCTION =
 	"Do not chart fewer than three data points, a single figure, or anything that is not numeric: " +
 	"say those in words. Nor chart values that are nearly all the same — prices that are equal but " +
 	"for one free option, a list of yes and no — or leave a bar empty for a value you do not have: " +
-	"a sentence or a short table says that better.";
+	"a sentence or a short table says that better. Put only values of the same measure and unit on " +
+	"one axis: switches per day beside open tabs beside desktops is a list of facts, not a " +
+	"comparison — write it as one.";
 
 /** Conservative cap on raw (pre-base64) PDF file size. Base64 inflates size
  *  ~37%, and Anthropic's request body cap is ~32MB total — 20MB raw leaves

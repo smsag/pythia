@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-	layoutChart, niceTicks, axisDomain, formatTick, labelStride,
+	layoutChart, niceTicks, axisDomain, formatTick, labelStride, fitLabel, slotChars, MIN_LABEL_CHARS,
 	type CartesianGeometry, type PieGeometry,
 } from "../ui/chart/layout";
 import { parseChartSpec, type ChartSpec } from "../services/chartSpec";
@@ -147,6 +147,39 @@ describe("labelStride", () => {
 
 	it("never strides past the number of categories", () => {
 		expect(labelStride(6, 10, 30)).toBeLessThanOrEqual(6);
+	});
+});
+
+describe("category labels — shortened before thinned (ADR-236, D-66)", () => {
+	it("keeps a label that fits, and cuts one that does not with an ellipsis", () => {
+		expect(fitLabel("Tabs", 10)).toBe("Tabs");
+		expect(fitLabel("Typical open tabs", 8)).toBe("Typical…");
+		expect(fitLabel("Typical open tabs", 8).length).toBe(8);
+	});
+
+	it("counts the characters a slot holds, and nothing for no room", () => {
+		expect(slotChars(4, 400)).toBeGreaterThan(MIN_LABEL_CHARS);
+		expect(slotChars(0, 400)).toBe(0);
+		expect(slotChars(4, 0)).toBe(0);
+	});
+
+	it("names every bar of a handful of long categories, each whole on hover", () => {
+		const g = cartesian(spec({
+			categories: ["App/tab toggles per day", "Working spheres", "Typical open tabs", "Virtual desktops"],
+			series:     [{ name: "n", values: [30, 20, 25, 10] }],
+		}), 420);
+		expect(g.categoryTicks.map((t) => t.index)).toEqual([0, 1, 2, 3]);
+		expect(g.categoryTicks[0].full).toBe("App/tab toggles per day");
+		expect(g.categoryTicks[0].label.endsWith("…")).toBe(true);
+		expect(g.categoryTicks[0].label.length).toBeGreaterThanOrEqual(MIN_LABEL_CHARS);
+	});
+
+	it("still thins when a slot cannot hold a word", () => {
+		const many = Array.from({ length: 40 }, (_, i) => `Category ${i}`);
+		const g = cartesian(spec({
+			categories: many, series: [{ name: "n", values: many.map((_, i) => i + 1) }],
+		}), 300);
+		expect(g.categoryTicks.length).toBeLessThan(many.length);
 	});
 });
 

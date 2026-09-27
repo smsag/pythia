@@ -171,6 +171,21 @@ describe("chartWorthDrawing — whether a valid chart says more than a sentence 
 		})).toBeNull();
 	});
 
+	it("refuses the context-switching chart: four measures on one axis, three of them slivers", () => {
+		const refusal = chartWorthDrawing(bar(
+			["App/tab toggles per day", "Working spheres", "Typical open tabs", "Virtual desktops"],
+			[1200, 10, 8, 4],
+		));
+		expect(refusal).toContain("Values from 4 to 1200 on one axis");
+		expect(refusal).toContain("do not belong on one axis");
+	});
+
+	it("measures a sliver against the tallest bar, ignoring zero and sign", () => {
+		expect(chartWorthDrawing(bar(["a", "b", "c", "d"], [100, 50, 0, 25]))).toBeNull();
+		expect(chartWorthDrawing(bar(["a", "b", "c"], [-100, 50, 1]))).toContain("Values from 1 to 100");
+		expect(chartWorthDrawing(bar(["a", "b", "c"], [100, 50, 2]))).toBeNull();
+	});
+
 	it("draws three different values", () => {
 		expect(chartWorthDrawing(bar(["a", "b", "c"], [1, 2, 3]))).toBeNull();
 	});

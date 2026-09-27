@@ -98,10 +98,12 @@ function drawCartesian(svg: SVGSVGElement, spec: ChartSpec, geometry: ChartGeome
 	});
 
 	for (const tick of geometry.categoryTicks) {
-		el(svg, "text", {
+		const text = el(svg, "text", {
 			class: "p-chart-axis", x: tick.x, y: plot.y + plot.h + 14,
 			"font-size": FONT_LABEL, "text-anchor": "middle",
 		}, tick.label);
+		// A shortened name keeps its whole self one hover away.
+		if (tick.label !== tick.full) el(text, "title", {}, tick.full);
 	}
 
 	for (const bar of geometry.bars) {
