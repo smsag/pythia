@@ -54,13 +54,17 @@ export function readSchreibstubeApi(app: App): SchreibstubeApi | null {
 
 /** A conversation as Schreibstube indexes it: title and summary lead, then the
  *  message texts — the same text Pythia's own index embedded, so its vectors
- *  carry over. */
+ *  carry over. `notes` are the notes attached as context: Schreibstube's
+ *  Recommended panel counts each as a link between the note and the
+ *  conversation. They are not embedded, so handing them over re-indexes
+ *  nothing; an older Schreibstube ignores the field. */
 export function toSourceItem(conv: Conversation): {
 	id: string;
 	title: string;
 	updatedAt: number;
 	summary: string;
 	messages: string[];
+	notes: string[];
 } {
 	const updated = Date.parse(conv.updatedAt ?? "");
 	const messages = Array.isArray(conv.messages) ? conv.messages : [];
@@ -70,6 +74,9 @@ export function toSourceItem(conv: Conversation): {
 		updatedAt: Number.isFinite(updated) ? updated : 0,
 		summary: typeof conv.summaryText === "string" ? conv.summaryText : "",
 		messages: messages.map((m) => (typeof m?.content === "string" ? m.content : "")),
+		notes: Array.isArray(conv.contextNotes)
+			? conv.contextNotes.filter((path): path is string => typeof path === "string" && path.length > 0)
+			: [],
 	};
 }
 
