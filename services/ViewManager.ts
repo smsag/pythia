@@ -1,4 +1,4 @@
-import type { Workspace, WorkspaceLeaf } from "obsidian";
+import { Platform, type Workspace, type WorkspaceLeaf } from "obsidian";
 import type PythiaPlugin from "../main";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "../sidebar";
 
@@ -76,6 +76,37 @@ export class ViewManager {
 			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
 		}
 		void workspace.revealLeaf(leaf);
+		return this.viewOf(leaf);
+	}
+
+	/** Pythia in the RIGHT SIDEBAR, whatever else is open: the command for a user
+	 *  whose only Pythia leaf sits in the main area (or who closed the sidebar
+	 *  one). An existing sidebar leaf is reused, never a second one beside it;
+	 *  a leaf elsewhere is left where it is — it is the user's to keep.
+	 *  The cursor lands in the composer on desktop; on a phone focusing would
+	 *  raise the soft keyboard over the drawer, so it is left to the tap (ADR-152). */
+	async openInSidebar(): Promise<PythiaSidebarView> {
+		const { workspace } = this.plugin.app;
+		let leaf = workspace
+			.getLeavesOfType(PYTHIA_VIEW_TYPE)
+			.find((l) => l.getRoot() === workspace.rightSplit);
+		if (leaf && !(leaf.view instanceof PythiaSidebarView) && typeof leaf.loadIfDeferred === "function") {
+			await leaf.loadIfDeferred();
+		}
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false) ?? undefined;
+			if (!leaf) throw new Error("Pythia: no right sidebar to open in");
+			await leaf.setViewState({ type: PYTHIA_VIEW_TYPE, active: true });
+		}
+		// Awaited here, unlike activateView: revealing makes the leaf active, and a
+		// focus set before that would be taken away again.
+		await workspace.revealLeaf(leaf);
+		const view = this.viewOf(leaf);
+		if (!Platform.isMobile) view.focusComposer();
+		return view;
+	}
+
+	private viewOf(leaf: WorkspaceLeaf): PythiaSidebarView {
 		const view = leaf.view;
 		if (!(view instanceof PythiaSidebarView)) {
 			// Loud rather than a cast: a caller would otherwise fail later on a

@@ -344,6 +344,11 @@ export class PythiaSidebarView extends ItemView {
 		})();
 	}
 
+	/** Put the cursor in the composer, ready to type (the open-in-sidebar command). */
+	focusComposer(): void {
+		this.composer?.focus();
+	}
+
 	prefillInput(text: string): void {
 		if (!this.composer) return;
 		this.composer.value = text;

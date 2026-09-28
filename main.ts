@@ -30,6 +30,7 @@ import { registerVaultWatcher } from "./services/vaultWatcher";
 import { RenameFollower } from "./services/renameFollower";
 import { handleDeepLink } from "./services/deepLink";
 import { SOURCE_ICONS } from "./ui/icons";
+import { noticeFailure } from "./ui/failureNotice";
 import { removeLeftoverEngineFiles } from "./services/leftoverEngineFiles";
 
 export default class PythiaPlugin extends Plugin {
@@ -174,6 +175,13 @@ export default class PythiaPlugin extends Plugin {
 
 		this.addRibbonIcon(PYTHIA_ICON_ID, "Pythia", () => this.activateView());
 		this.addSettingTab(new PythiaSettingTab(this.app, this));
+
+		this.addCommand({
+			id: "open-in-sidebar",
+			name: t("cmdOpenInSidebar"),
+			icon: PYTHIA_ICON_ID,
+			callback: () => this.viewManager.openInSidebar().catch((err) => noticeFailure("open in sidebar", err)),
+		});
 
 		this.addCommand({
 			id: "new-conversation",

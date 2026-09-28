@@ -311,6 +311,7 @@ const en = {
 	filePathLabel:  "File path",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
+	cmdOpenInSidebar:                  "Open in right sidebar",
 	cmdNewConversation:                "New conversation",
 	cmdNewConversationFromTemplate:    "New conversation from template",
 	cmdNewConversationWithCurrentNote: "New conversation with current note",

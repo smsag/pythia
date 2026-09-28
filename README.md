@@ -50,6 +50,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 
 | Command | Description |
 |---|---|
+| `Pythia: Open in right sidebar` | Show Pythia in the right sidebar — reuses the sidebar leaf, or opens one there even when Pythia is already open in a tab |
 | `Pythia: New conversation` | Blank conversation, no context |
 | `Pythia: Resume conversation` | Pick a past conversation → choose resume mode |
 | `Pythia: Commands…` | The command hub — everything below, searchable in one dialog |
