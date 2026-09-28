@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-28 — ADR-241: diagram rules target `div.mermaid` (what Obsidian draws) and exclude `.vizardry-canvas`.*
+*Last updated: 2026-09-28 — ADR-242: diagram rules target `div.mermaid` (what Obsidian draws) and exclude `.vizardry-canvas`.*
+
+*Previously: 2026-09-28 — ADR-241: the settings tab's **Links and shortcuts** section; `.pythia-link-preview` shows each link whole under its description (`--font-monospace`, `user-select: all`, `word-break: break-all`), copied by a labelled **Copy link** button (`copyTextFromLabel` in `ui/clipboard.ts`: the word reads "Copied" for a moment, then returns — an icon alone was easy to miss). Three rows: open · new conversation · ask (ends in `&text=`).*
 
 *Previously: 2026-09-28 — ADR-240: `.p-remote-media-load` (a `pb pb-link` placeholder naming the host of a deferred remote image), `.pythia-tool-call-path` (the whole path under a create-note confirm, mono 11px, `--text-muted`), a focus ring on the controls made keyboard-reachable (`makeKeyActivatable`).*
 
@@ -285,7 +287,7 @@ Font families: `var(--font-interface)` for UI text; `var(--font-monospace)` for 
 
 ### Diagram overflow containment
 
-Diagrams — Obsidian's own Mermaid output (`div.mermaid`, which replaces the `<pre>`; there is no `block-language-mermaid`) and any `.block-language-*` container — must scroll within their own frame, not the whole conversation (ADR-241). **A Vizardry canvas (`.vizardry-canvas`) is excluded**: it lays itself out and scrolls in its own frames. Three rules are required together:
+Diagrams — Obsidian's own Mermaid output (`div.mermaid`, which replaces the `<pre>`; there is no `block-language-mermaid`) and any `.block-language-*` container — must scroll within their own frame, not the whole conversation (ADR-242). **A Vizardry canvas (`.vizardry-canvas`) is excluded**: it lays itself out and scrolls in its own frames. Three rules are required together:
 
 ```css
 /* 1. Hard stop at the chat level — clip without creating a scroll container */
@@ -308,7 +310,7 @@ Without rule 1: CSS coerces `overflow-x` to `auto` when `overflow-y: auto` is se
 Without rule 2: flex items default to `min-width: auto` (min-content), expanding to accommodate wide SVG content.
 Without rule 3's `width: 100%`: the diagram container has no definite width to clip against.
 
-`fixDiagramSvgSize()` stamps explicit pixel dimensions on the SVG using a MutationObserver (for attribute/style mutations) and a ResizeObserver fallback (for layout-only mutations used by Vega and Mermaid v10+). The selector `:is(.mermaid, [class*='block-language-'])` covers Obsidian's Mermaid and every renderer plugin. The SVG stamped is the diagram's own (`diagramSvg`) — never an icon in a button or toolbar ahead of it. A Mermaid block still pending at decoration time is watched until Obsidian swaps it in (ADR-241).
+`fixDiagramSvgSize()` stamps explicit pixel dimensions on the SVG using a MutationObserver (for attribute/style mutations) and a ResizeObserver fallback (for layout-only mutations used by Vega and Mermaid v10+). The selector `:is(.mermaid, [class*='block-language-'])` covers Obsidian's Mermaid and every renderer plugin. The SVG stamped is the diagram's own (`diagramSvg`) — never an icon in a button or toolbar ahead of it. A Mermaid block still pending at decoration time is watched until Obsidian swaps it in (ADR-242).
 
 ### Touch devices — `@media (hover: none)`
 

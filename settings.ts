@@ -8,6 +8,7 @@ import { renderAnsweringSection } from "./ui/settings/answering";
 import { renderOptimizerSection } from "./ui/settings/optimizer";
 import { renderNotesSection } from "./ui/settings/notes";
 import { renderStorageSection } from "./ui/settings/storage";
+import { renderLinksSection } from "./ui/settings/links";
 import { renderTroubleshootingSection } from "./ui/settings/troubleshooting";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
@@ -76,6 +77,7 @@ export class PythiaSettingTab extends PluginSettingTab {
 		renderVaultContextSettings(containerEl, this.plugin, ctx.registerCommit);
 		renderNotesSection(containerEl, ctx);
 		renderStorageSection(containerEl, ctx);
+		renderLinksSection(containerEl, ctx);
 		renderTroubleshootingSection(containerEl, ctx);
 	}
 }

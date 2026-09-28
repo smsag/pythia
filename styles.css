@@ -2964,6 +2964,16 @@ body.is-phone .workspace-drawer .p-input-area {
   line-height: 1.45;
   max-width: 62ch;
 }
+/* The shortcut links (ADR-241): shown whole so they can be read and selected,
+   broken anywhere because a link has no word boundaries to wrap at. */
+.pythia-link-preview {
+  margin-top: var(--s1, 4px);
+}
+.pythia-link-preview code {
+  font-family: var(--font-monospace);
+  user-select: all;
+  word-break: break-all;
+}
 /* The free-text model id, shown only when "Custom…" is chosen. A class rather
    than an inline style so the row has no visual rules of its own in TypeScript. */
 .pythia-custom-model {

@@ -90,6 +90,12 @@ vi.mock("obsidian", () => {
 			cb(b);
 			return this;
 		}
+		addExtraButton(cb: (b: unknown) => void): this {
+			const b: Record<string, unknown> = { extraSettingsEl: document.createElement("div") };
+			for (const m of ["setIcon", "setTooltip", "onClick"]) b[m] = () => b;
+			cb(b);
+			return this;
+		}
 		addComponent(cb: (el: HTMLElement) => void): this { cb(this.controlEl); return this; }
 	}
 	class SecretComponent {
@@ -111,6 +117,7 @@ import { renderAnsweringSection } from "../ui/settings/answering";
 import { renderOptimizerSection } from "../ui/settings/optimizer";
 import { renderNotesSection } from "../ui/settings/notes";
 import { renderStorageSection } from "../ui/settings/storage";
+import { renderLinksSection } from "../ui/settings/links";
 import { renderTroubleshootingSection } from "../ui/settings/troubleshooting";
 import type { SettingsContext } from "../ui/settings/context";
 import { DEFAULT_SETTINGS } from "../models/settings";
@@ -127,7 +134,7 @@ const code = (f: string): string => read(f).replace(/\/\*[\s\S]*?\*\//g, "").rep
 function makeCtx(over: Partial<typeof DEFAULT_SETTINGS> = {}): { ctx: SettingsContext; host: HTMLElement } {
 	const plugin = {
 		settings: { ...DEFAULT_SETTINGS, ...over },
-		app: {},
+		app: { vault: { getName: () => "My Vault" } },
 		conversations: [],
 		plaintextSearchKey: "",
 		hasApiKeyFor: () => false,
@@ -171,6 +178,7 @@ const RENDERERS = [
 	renderOptimizerSection,
 	renderNotesSection,
 	renderStorageSection,
+	renderLinksSection,
 	renderTroubleshootingSection,
 ];
 
@@ -278,6 +286,7 @@ describe("one way to make a heading (ADR-209, principle 3)", () => {
 		"ui/settings/optimizer.ts",
 		"ui/settings/notes.ts",
 		"ui/settings/storage.ts",
+		"ui/settings/links.ts",
 		"ui/settings/troubleshooting.ts",
 		"ui/vaultContextSettings.ts",
 		"ui/glossarySettings.ts",
@@ -315,6 +324,7 @@ describe("the tab is a shell, and the order is the architecture (ADR-209)", () =
 			"renderVaultContextSettings",
 			"renderNotesSection",
 			"renderStorageSection",
+			"renderLinksSection",
 			"renderTroubleshootingSection",
 		];
 		const positions = order.map((name) => src.indexOf(`${name}(containerEl`));

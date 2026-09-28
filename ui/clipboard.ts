@@ -39,6 +39,21 @@ export async function copyTextWithFeedback(
 	flashCopied(btn, restoreIcon);
 }
 
+/** Copy `text` from a button that carries a WORD, not an icon (the settings
+ *  tab's "Copy link"): the label reads "Copied" for a moment, then returns.
+ *  `flashCopied` would swap the word for an icon and never bring it back. */
+export async function copyTextFromLabel(btn: HTMLElement, text: string, label: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch {
+		new Notice(t("copyFailed"));
+		return;
+	}
+	btn.setText(t("copied"));
+	btn.addClass("copied");
+	setTimeout(() => { btn.setText(label); btn.removeClass("copied"); }, FLASH_MS);
+}
+
 export interface BlobCopyOptions {
 	/** Copied instead when the image write is refused — never nothing. */
 	fallbackText: string;

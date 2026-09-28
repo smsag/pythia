@@ -1,6 +1,6 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-241).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
+*Updated: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-242).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
 
 *Previously: 2026-09-28 — **Third whole-codebase review (ADR-240): 75 defects fixed** across security, providers, persistence, UI and tooling; three new principles (7–9) in CLAUDE.md. Two items deferred (D-68, D-69).*
 
@@ -2146,7 +2146,7 @@ Six parallel reviews; every finding verified against the code before it was fixe
 
 **Deferred:** D-68 (one provider instance for every view), D-69 (remote images in written notes).
 
-## Bug — a Mermaid diagram shrank to the chat's width (ADR-241), 2026-09-28
+## Bug — a Mermaid diagram shrank to the chat's width (ADR-242), 2026-09-28
 
 **Symptom.** A wide flowchart in an answer was drawn at a third of its size, unreadable, with nothing to scroll.
 

@@ -22,6 +22,8 @@ const settingsEn = {
 	glossaryIntro:           "Terms and people you look up with Define are kept as one note each, so Obsidian Bases and Dataview can browse them.",
 	storageSection:          "History and storage",
 	storageIntro:            "How many conversations Pythia keeps, where their notes go, and what that costs. Pythia rewrites its whole storage file after every message, so the size below matters more than the count.",
+	linksSection:            "Links and shortcuts",
+	linksIntro:              "Links that open Pythia from outside Obsidian — a macOS or iOS Shortcut's Open URL action, a launcher, a browser bookmark. They name this vault, so copy them from the vault they should open.",
 	troubleshootingSection:  "Troubleshooting",
 	troubleshootingIntro:    "For when something is not working. Anything about vault context is answered by the index status row above first.",
 
@@ -137,6 +139,14 @@ const settingsEn = {
 	capConfirmRemove:        "Delete {{count}}",
 
 	// ── Troubleshooting ───────────────────────────────────────────────────────
+	linkOpenName:            "Open Pythia",
+	linkOpenDesc:            "Shows the Pythia panel with the conversation you had open.",
+	linkNewName:             "Start a new conversation",
+	linkNewDesc:             "The same link with &new=true: Pythia opens on an empty conversation.",
+	linkAskName:             "Ask a question from a Shortcut",
+	linkAskDesc:             "Ends in &text= for the Shortcut to complete: put Ask for Input and URL Encode before Open URL, and add the encoded text after this link. The question waits in the composer and is only sent when you press Send; one over {{max}} characters is refused.",
+	linkCopyButton:          "Copy link",
+
 	debugModeName:           "Debug mode",
 	debugModeDesc:           "Log API calls, payloads, and the calls to Schreibstube's search to the developer console. The console is where a bug report's evidence comes from.",
 };
