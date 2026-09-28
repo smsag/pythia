@@ -1616,11 +1616,14 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-code-frame .copy-code-button,
 .p-ai-body [class*='block-language-'] .copy-code-button { display: none !important; }
 
-/* Diagram blocks — Mermaid, PlantUML, Vega, and any other renderer that
-   produces content inside a .block-language-* container.
+/* Diagram blocks — Obsidian's Mermaid (`div.mermaid`: it replaces the <pre>,
+   there is no block-language container), PlantUML, and any other renderer that
+   produces content inside a .block-language-* container. A Vizardry canvas
+   (.vizardry-canvas) lays itself out and has its own scroll frames, so it is
+   excluded here and in CodeBlockDecorator's SELF_SIZED.
    overflow-scroll in place; no DOM wrapping so async renderers can find
    and replace their placeholder in its original position. */
-.p-ai-body [class*='block-language-'] {
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) {
   position: relative; /* establishes containing block for the in-diagram copy button */
   overflow-x: auto;
   width: 100%;
@@ -1630,14 +1633,14 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   scrollbar-width: thin;
   scrollbar-color: rgba(128,128,128,0.25) transparent;
 }
-.p-ai-body [class*='block-language-']::-webkit-scrollbar       { height: 4px; }
-.p-ai-body [class*='block-language-']::-webkit-scrollbar-track { background: transparent; }
-.p-ai-body [class*='block-language-']::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 2px; }
-.p-ai-body [class*='block-language-'].p-panning                { cursor: grabbing; user-select: none; }
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas))::-webkit-scrollbar       { height: 4px; }
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas))::-webkit-scrollbar-track { background: transparent; }
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas))::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 2px; }
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)).p-panning                { cursor: grabbing; user-select: none; }
 /* JS stamps explicit pixel width from viewBox/attributes onto the SVG.
    Override any renderer-set width:100% so the SVG uses its natural size
    and the container scrolls rather than squashing the diagram. */
-.p-ai-body [class*='block-language-'] svg {
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) svg {
   width: auto !important;
   max-width: none !important;
   display: block;
