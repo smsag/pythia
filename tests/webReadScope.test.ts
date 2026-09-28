@@ -36,8 +36,16 @@ describe("WebReadScope — only links Pythia can vouch for (ADR-217 addendum)", 
 	it("admits a link once a result of this send returned it", () => {
 		const scope = WebReadScope.forConversation(conv());
 		expect(scope.admit("https://news.example/a")).not.toBeNull();
-		scope.addText("### 1. A\nURL: https://news.example/a\nsnippet");
+		scope.addResults([{ url: "https://news.example/a" }]);
 		expect(scope.admit("https://news.example/a")).toBeNull();
+	});
+
+	it("never admits a link printed INSIDE a result — only the result's own address", () => {
+		// A hostile page listing /a00…/a63 must not become 64 readable choices.
+		const scope = WebReadScope.forConversation(conv());
+		scope.addResults([{ url: "https://page.example/" }]);
+		expect(scope.admit("https://evil.example/a17")).not.toBeNull();
+		expect(scope.admit("https://page.example/")).toBeNull();
 	});
 
 	it(`reads at most ${MAX_READS_PER_TURN} pages, and a refused call costs nothing`, () => {

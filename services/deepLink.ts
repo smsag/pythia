@@ -35,7 +35,8 @@ export interface DeepLinkHost {
 	resume(id: string): Promise<boolean>;
 	/** `cmd=template&name=…` — false when no template has that name. */
 	template(name: string): Promise<boolean>;
-	/** `cmd=inject&text=…` — pick a template, then auto-prompt with `text`.
+	/** `cmd=inject&text=…` — pick a template, then PREFILL the composer with `text`
+	 *  (never auto-sent: the link's origin is untrusted).
 	 *  False when the vault holds no templates to pick from. */
 	inject(text: string): Promise<boolean>;
 	/** Named in the "no templates" message, so the user knows where to look. */

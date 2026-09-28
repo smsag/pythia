@@ -268,6 +268,12 @@ export class ToolHandler {
 		if (typeof content !== "string") {
 			return "Error: 'content' must be a string.";
 		}
+		// A template's body is a system prompt, its context_notes become rewrite
+		// targets: a note the MODEL writes must never become one, or a single
+		// injected page plants an instruction in every later conversation.
+		if (declaresPythiaTemplate(content)) {
+			return "Error: a note written by a tool cannot be a Pythia prompt template. Remove the template frontmatter; the user creates templates by hand.";
+		}
 		if (!path.endsWith(".md")) {
 			return "Error: path must end with .md";
 		}
@@ -362,4 +368,19 @@ export class ToolHandler {
 		names.add("render_chart");
 		return names;
 	}
+}
+
+/**
+ * Pure: whether `content` opens with frontmatter that names a Pythia prompt
+ * template (`type: Pythia Prompt Template`, as `TemplateLoader` reads it).
+ * Deliberately loose — the frontmatter is compared as letters only, so case,
+ * quotes, folded scalars and YAML escapes cannot hide it — because a false
+ * positive costs the model one retry and a false negative is a persistent
+ * prompt injection.
+ */
+export function declaresPythiaTemplate(content: string): boolean {
+	const fm = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content.trimStart());
+	if (!fm) return false;
+	const letters = fm[1].toLowerCase().replace(/\\x20|\\u0020|[^a-z]/g, "");
+	return letters.includes("pythiaprompttemplate");
 }
