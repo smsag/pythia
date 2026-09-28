@@ -124,3 +124,25 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	vaultContextMaxNotes: 5,
 	vaultContextFolders: [],
 };
+
+/** The range every numeric setting may hold — ONE table, read by the settings
+ *  fields (`ui/numberSetting.ts` rules) and by `mergeSettings` when data.json is
+ *  loaded (ADR-159: the boundary validates). A value outside it falls back to
+ *  the default rather than reaching a provider or the eviction logic. */
+export const NUMBER_SETTING_BOUNDS = {
+	maxMessagesPerSession: { min: 0 },
+	maxConversations: { min: 0 },
+	maxAttachedNotesTokens: { min: 0 },
+	webSearchMaxResults: { min: 0, max: 20 },
+	vaultContextMaxNotes: { min: 1, max: 20 },
+	maxTokens: { min: 1 },
+	temperature: { min: 0, max: 1, decimal: true },
+} as const satisfies Partial<Record<keyof PythiaSettings, { min: number; max?: number; decimal?: boolean }>>;
+
+/** Pure: whether `value` is a number the setting `key` may hold. */
+export function isNumberInBounds(key: keyof typeof NUMBER_SETTING_BOUNDS, value: unknown): value is number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return false;
+	const b: { min: number; max?: number; decimal?: boolean } = NUMBER_SETTING_BOUNDS[key];
+	if (b.decimal !== true && !Number.isInteger(value)) return false;
+	return value >= b.min && (b.max === undefined || value <= b.max);
+}

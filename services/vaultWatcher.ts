@@ -1,4 +1,4 @@
-import { TFile, type EventRef, type TAbstractFile, type Vault } from "obsidian";
+import { TFile, type EventRef, type MetadataCache, type TAbstractFile, type Vault } from "obsidian";
 
 /**
  * What Pythia keeps in step with the vault, lifted out of `main.ts`
@@ -13,7 +13,7 @@ import { TFile, type EventRef, type TAbstractFile, type Vault } from "obsidian";
  */
 
 export interface VaultWatcherHost {
-	app: { vault: Vault };
+	app: { vault: Vault; metadataCache: MetadataCache };
 	/** Obsidian's own registration, so every listener dies with the plugin. */
 	registerEvent(ref: EventRef): void;
 }
@@ -37,6 +37,10 @@ export function registerVaultWatcher(host: VaultWatcherHost, deps: VaultWatcherD
 		if (isNote(f)) deps.invalidateGlossary(f.path);
 	};
 	host.registerEvent(vault.on("modify", onEdit));
+	// The glossary is read from frontmatter, which Obsidian re-parses AFTER
+	// `modify`: a cache rebuilt in between (a repaint right after a translation
+	// recorded a new form) would keep the old properties until the next edit.
+	host.registerEvent(host.app.metadataCache.on("changed", onEdit));
 	host.registerEvent(vault.on("create", onEdit));
 	host.registerEvent(vault.on("delete", (f) => {
 		if (f instanceof TFile) deps.invalidateGlossary(f.path);

@@ -53,12 +53,11 @@ export function folderOf(path: string): string {
 
 /** Vault path of the note holding `term`. */
 export function termPath(root: string, term: string, kind: EntryKind = "term"): string {
-	const folder = kind === "person" ? PEOPLE_SUBFOLDER : TERMS_SUBFOLDER;
-	return `${root}/${folder}/${sanitizeFileName(term)}.md`;
+	return `${root}/${subfolderFor(kind)}/${sanitizeFileName(term)}.md`;
 }
 
 /** The folder an entry of this kind is filed in, relative to the glossary root. */
-export function subfolderFor(kind: EntryKind): string {
+function subfolderFor(kind: EntryKind): string {
 	return kind === "person" ? PEOPLE_SUBFOLDER : TERMS_SUBFOLDER;
 }
 
@@ -428,4 +427,22 @@ export function mergeEntry(
  */
 export function effectiveTheme(conversation: Conversation): string {
 	return (conversation.theme ?? conversation.name ?? "").trim();
+}
+
+/**
+ * Pure: `next` (what a save writes) with its list properties unioned with what
+ * the FILE holds now. A save builds its entry from the metadata cache, which can
+ * lag a hand edit made seconds before — so an alias or theme the user just added
+ * would otherwise be replaced by the older list. Writes merge, never overwrite.
+ */
+export function withListsOnDisk(next: Record<string, unknown>, onDisk: Record<string, unknown>): Record<string, unknown> {
+	const out = { ...next };
+	for (const key of ["aliases", "theme"]) {
+		const disk = onDisk[key];
+		const ours = out[key];
+		if (Array.isArray(disk) && Array.isArray(ours)) {
+			out[key] = [...ours, ...disk.filter((v) => !ours.includes(v))];
+		}
+	}
+	return out;
 }

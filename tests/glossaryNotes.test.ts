@@ -496,3 +496,16 @@ describe("round-tripping a note through save's own composition (ADR-208)", () =>
 		expect(back.discussion).toBe("Text.");
 	});
 });
+
+describe("withListsOnDisk — a save never drops a hand-added alias or theme", () => {
+	it("unions the list properties with what the file holds now", async () => {
+		const { withListsOnDisk } = await import("../services/glossaryNotes");
+		const out = withListsOnDisk(
+			{ type: "term", aliases: ["Zählern"], theme: ["[[Energie]]"], definition: "x" },
+			{ aliases: ["Zählern", "Stromzähler"], theme: ["[[Haus]]"], tags: ["t"] },
+		);
+		expect(out.aliases).toEqual(["Zählern", "Stromzähler"]);
+		expect(out.theme).toEqual(["[[Energie]]", "[[Haus]]"]);
+		expect(out.tags).toBeUndefined(); // other keys are the block's, merged by processFrontMatter
+	});
+});

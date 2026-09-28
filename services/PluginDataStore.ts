@@ -1,7 +1,6 @@
 import { Notice, debounce, normalizePath } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
-import { DEFAULT_SETTINGS } from "../settings";
 import { t } from "../i18n";
 import { loadedPythiaViews } from "./ViewManager";
 import { debugLog } from "./messageUtils";
@@ -10,7 +9,6 @@ import { archiveFolderOf } from "./conversationArchive";
 import { formatBytes, storageLevel } from "./storageSize";
 import { mergeRenameLogs, normalizeRenameLog, type RenameLogEntry } from "./renameFollower";
 import {
-	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
 	shouldRefuseLoad,
@@ -21,7 +19,7 @@ import {
 
 /**
  * data.json I/O extracted from `PythiaPlugin` (ADR-103, engineering-review
- * #121): load (with settings migrations + iCloud-eviction guard), persist (with
+ * #121): load (validated through mergeSettings, with the iCloud-eviction guard), persist (with
  * conversation eviction + own-write stamping), the cross-device watcher, and
  * the disk-reload refresh. Behaviour is identical to the inline plugin methods
  * it replaced; `settings`/`conversations`/`plaintext*` still live on the plugin
@@ -50,26 +48,6 @@ export class PluginDataStore {
 		const p = this.plugin;
 		const data = (await p.loadData()) ?? {};
 		const saved = (data.settings ?? {}) as Record<string, unknown>;
-
-		const { needsSave, legacyAnthropicCiphertext, legacyOpenAICiphertext } =
-			applySettingsMigrations(saved);
-
-		if (legacyAnthropicCiphertext) {
-			const plaintext = legacyDecrypt(legacyAnthropicCiphertext);
-			if (plaintext) {
-				p.app.secretStorage.setSecret(DEFAULT_SETTINGS.anthropicSecretName, plaintext);
-			} else {
-				new Notice(t("migrateAnthropicFailed"), 8000);
-			}
-		}
-		if (legacyOpenAICiphertext) {
-			const plaintext = legacyDecrypt(legacyOpenAICiphertext);
-			if (plaintext) {
-				p.app.secretStorage.setSecret(DEFAULT_SETTINGS.openaiSecretName, plaintext);
-			} else {
-				new Notice(t("migrateOpenAIFailed"), 8000);
-			}
-		}
 
 		p.settings = mergeSettings(saved);
 		// Union, not replace: a sync must not drop the renames this device logged.
@@ -136,10 +114,6 @@ export class PluginDataStore {
 				secret(p.settings.searchSecretName),
 			]);
 
-		if (needsSave) {
-			await p.saveData({ settings: p.settings, conversations: p.conversations, renameLog: this.renameLog });
-		}
-
 		void this.warnIfStoreIsLarge();
 	}
 
@@ -174,9 +148,21 @@ export class PluginDataStore {
 	 * opened in more than one leaf, so every leaf's conversation counts.
 	 */
 	private activeConversationIds(): string[] {
-		return loadedPythiaViews(this.plugin.app.workspace)
+		const open = loadedPythiaViews(this.plugin.app.workspace)
 			.map((view) => view.activeConversationId)
 			.filter((id): id is string => id !== null);
+		return [...open, ...this.createdThisSession];
+	}
+
+	/** Conversations created in this session. `createConversation` saves BEFORE a
+	 *  view opens it, so without this a list full of protected conversations would
+	 *  archive the new one on the very write that created it, and every later save
+	 *  of it would be skipped as "no longer exists". */
+	private readonly createdThisSession = new Set<string>();
+
+	/** Called by `createConversation` before its first write. */
+	protectNewConversation(id: string): void {
+		this.createdThisSession.add(id);
 	}
 
 	/** How many conversations lowering the cap to `cap` would delete. The settings
@@ -184,6 +170,9 @@ export class PluginDataStore {
 	pendingEvictionCount(cap: number): number {
 		return countEvictions(this.plugin.conversations, cap, this.activeConversationIds());
 	}
+
+	/** The large-store Notice has been shown this session (ADR-174). */
+	private warnedLargeStore = false;
 
 	/** One eviction at a time: `persist` can be re-entered while the archive is
 	 *  writing, and a second pass would archive the same conversation twice. */
@@ -230,10 +219,13 @@ export class PluginDataStore {
 			if (failed.length > 0) {
 				// Kept, not deleted. The next persist tries again.
 				new Notice(t("archiveFailedNotice", { count: String(failed.length) }), 10000);
-				const failedIds = new Set(failed.map((c) => c.id));
-				return p.conversations.filter((c) => kept.includes(c) || failedIds.has(c.id));
 			}
-			return kept;
+			// Filter the LIVE list, not `kept`: the archive writes above awaited, and a
+			// conversation created, deleted or reloaded meanwhile must not be undone
+			// by a list computed before them.
+			const failedIds = new Set(failed.map((c) => c.id));
+			const droppedIds = new Set(removed.filter((c) => !failedIds.has(c.id)).map((c) => c.id));
+			return p.conversations.filter((c) => !droppedIds.has(c.id));
 		} finally {
 			this.evicting = false;
 		}
@@ -351,8 +343,12 @@ export class PluginDataStore {
 	 * readout carries `warn`, and a Notice the user cannot act on twice is noise.
 	 */
 	private async warnIfStoreIsLarge(): Promise<void> {
+		// Once per session: loadPluginData also runs on every background sync
+		// reload, and a 12 s Notice every few seconds is how warnings get ignored.
+		if (this.warnedLargeStore) return;
 		const bytes = await this.dataFileBytes();
 		if (bytes === null || storageLevel(bytes) !== "high") return;
+		this.warnedLargeStore = true;
 		new Notice(
 			t("storageHighNotice", {
 				size: formatBytes(bytes),
@@ -445,36 +441,4 @@ export class PluginDataStore {
 
 		p.register(() => window.clearInterval(handle));
 	}
-}
-
-/**
- * One-time migration helper: decrypts a value that was previously stored by
- * the old SecureStorage implementation (Electron safeStorage or plain: prefix).
- * Used only during the migration path in loadPluginData() — not for any
- * ongoing encryption/decryption.
- */
-function legacyDecrypt(stored: string): string {
-	if (!stored) return "";
-
-	if (stored.startsWith("enc:")) {
-		try {
-			// Buffer is a Node.js/Electron API — unavailable on iOS/Android.
-			// Guard before calling to avoid ReferenceError on mobile.
-			if (typeof Buffer === "undefined") return "";
-			const electron = (window as any).require?.("electron"); // any: Electron API not in TS types
-			const ss = electron?.safeStorage;
-			if (ss?.isEncryptionAvailable()) {
-				const buf = Buffer.from(stored.slice(4), "base64");
-				return ss.decryptString(buf) as string;
-			}
-		} catch {
-			// safeStorage unavailable or decryption failed
-		}
-		return "";
-	}
-
-	if (stored.startsWith("plain:")) return stored.slice(6);
-
-	// Legacy: raw plaintext with no prefix
-	return stored;
 }

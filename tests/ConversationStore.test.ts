@@ -187,6 +187,17 @@ describe("dirty-flag tracking", () => {
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
 	});
 
+	it("an id marked AGAIN while its write was in flight stays dirty (the newest turn survives)", async () => {
+		const conv = makeConv("d2c");
+		store.getAll().push(conv);
+		await store.save(conv);
+		const snapshot = store.snapshotDirty();
+		await store.save(conv); // the answer commits while saveData is pending
+		store.clearDirtySnapshot(snapshot);
+		vi.advanceTimersByTime(300);
+		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);
+	});
+
 	it("markDirty() makes the next debounced persist write", async () => {
 		const conv = makeConv("d3");
 		store.getAll().push(conv);
@@ -254,7 +265,7 @@ describe("ConversationStore.markChanged (ADR-218)", () => {
 		const a = makeConv("a");
 		store.setAll([a, makeConv("b")]);
 		store.markChanged(["a"]);
-		expect([...store.snapshotDirty()]).toEqual(["a"]);
+		expect([...store.snapshotDirty().keys()]).toEqual(["a"]);
 		expect(a.updatedAt).toBe("2026-01-01T00:00:00.000Z");
 		await vi.runAllTimersAsync();
 		expect(plugin.saveConversations).toHaveBeenCalledTimes(1);

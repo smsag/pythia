@@ -36,8 +36,8 @@ export class ViewManager {
 	 *  hot-reload (BRAT update) the existing leaf's view hasn't been
 	 *  re-instantiated yet, so getLeavesOfType returns 0 and a second leaf
 	 *  would be created. iterateAllLeaves inspects the raw view-state type,
-	 *  which is always present. Any extras accumulated from previous
-	 *  hot-reloads are detached here to keep the sidebar clean. */
+	 *  which is always present. Extras accumulated from previous
+	 *  hot-reloads (siblings in one tab group) are detached here. */
 	initLeaf(): void {
 		const { workspace } = this.plugin.app;
 		const existing: WorkspaceLeaf[] = [];
@@ -46,9 +46,14 @@ export class ViewManager {
 				existing.push(leaf);
 			}
 		});
-		// Deduplicate: keep the first, detach any extras from hot-reloads.
-		for (let i = 1; i < existing.length; i++) {
-			existing[i].detach();
+		// Deduplicate hot-reload extras: they pile up as siblings in ONE tab group.
+		// A second leaf the user opened elsewhere (a main-area tab, the other
+		// sidebar) has another parent and is theirs to keep — the view supports
+		// several leaves (activeConversationIds counts every one).
+		const seenParents = new Set<unknown>();
+		for (const leaf of existing) {
+			if (seenParents.has(leaf.parent)) leaf.detach();
+			else seenParents.add(leaf.parent);
 		}
 		if (existing.length >= 1) return;
 		void workspace.getRightLeaf(false)?.setViewState({ type: PYTHIA_VIEW_TYPE });

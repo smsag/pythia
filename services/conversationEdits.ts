@@ -25,7 +25,10 @@ export function spliceExchange(
 	const removeCount = assistant ? 2 : 1;
 	conv.messages.splice(userIdx, removeCount);
 	if (conv.lastSavedMessageCount !== undefined && conv.lastSavedMessageCount > userIdx) {
-		conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - removeCount);
+		// Only the removed messages that sat BEFORE the boundary move it: a
+		// boundary inside the exchange (user saved, answer not) moves by one.
+		const savedRemoved = Math.min(removeCount, conv.lastSavedMessageCount - userIdx);
+		conv.lastSavedMessageCount = Math.max(0, conv.lastSavedMessageCount - savedRemoved);
 	}
 	if (assistant) {
 		// The answer's tabs go with it, and so does whatever was marked on them (ADR-225).

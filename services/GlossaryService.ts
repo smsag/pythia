@@ -29,6 +29,7 @@ import {
 	cachedTranslation,
 	definitionHash,
 	definitionLanguageOf,
+	withListsOnDisk,
 } from "./glossaryNotes";
 import { LANG_LABELS } from "./messageUtils";
 import { parseDefinitionReply } from "./glossaryReply";
@@ -374,8 +375,9 @@ export class GlossaryService {
 
 		const file = app.vault.getAbstractFileByPath(path);
 		if (file instanceof TFile) {
+			// `merged` came from the metadata cache, which can lag a hand edit.
 			await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-				Object.assign(fm, entryFrontmatter(merged));
+				Object.assign(fm, withListsOnDisk(entryFrontmatter(merged), fm));
 			});
 		}
 		for (const theme of merged.theme ?? []) await this.ensureThemeNote(theme);
