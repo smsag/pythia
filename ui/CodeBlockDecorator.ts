@@ -8,6 +8,36 @@ import { chartSourceOf } from "./chart/card";
 
 type DiagObserverEntry = { mo: MutationObserver; ro: ResizeObserver };
 
+/**
+ * What Obsidian's own Mermaid renderer leaves (measured in 1.13.7's app.js): a
+ * post-processor finds `code.language-mermaid`, renders it asynchronously and
+ * REPLACES the `<pre>` with `<div class="mermaid"><svg width="100%" …>` — no
+ * `block-language-*` container, and no source left in the DOM. Only a plugin's
+ * code-block processor produces a `block-language-*` container.
+ */
+const MERMAID_PENDING = "pre > code.language-mermaid";
+/** Where a pending Mermaid block stays when the vault has not trusted Mermaid:
+ *  Obsidian's guard shows the source with an Allow button; left as it is. */
+const MERMAID_GUARD = ".mermaid-wrapper";
+
+/**
+ * A canvas that lays itself out: Vizardry sizes its SVGs to its host and gives
+ * each its own scroll frame, and its root carries `block-language-vizardry`.
+ * Pythia's diagram treatment (natural size, outer scroll, drag-to-pan) fought
+ * it — stamping a toolbar icon and leaving the diagram alone, or collapsing
+ * a wheel to nothing. styles.css excludes the same class.
+ */
+const SELF_SIZED = ".vizardry-canvas";
+
+const DIAGRAM_SELECTOR = `:is(.mermaid, [class*='block-language-']):not([data-decorated]):not(${SELF_SIZED})`;
+
+/** The diagram's own SVG — never an icon in a button or a toolbar, which may
+ *  come first in the block and would be stamped instead of the drawing. */
+function diagramSvg(el: HTMLElement): SVGElement | null {
+	return Array.from(el.querySelectorAll<SVGElement>("svg"))
+		.find((svg) => !svg.closest("button") && !svg.classList.contains("svg-icon")) ?? null;
+}
+
 function wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
 	const frame = createEl("div", { cls: "p-code-frame" });
 	scrollEl.parentNode!.insertBefore(frame, scrollEl);
@@ -78,7 +108,7 @@ function fixDiagramSvgSize(
 	prev?.mo.disconnect();
 	prev?.ro.disconnect();
 
-	const existing = el.querySelector<SVGElement>("svg");
+	const existing = diagramSvg(el);
 	if (existing && stampSvgSize(existing)) return;
 
 	let svgWatched = false;
@@ -88,7 +118,7 @@ function fixDiagramSvgSize(
 		diagObservers.delete(el);
 	};
 	const mo = new MutationObserver(() => {
-		const svg = el.querySelector<SVGElement>("svg");
+		const svg = diagramSvg(el);
 		if (!svg) return;
 		if (stampSvgSize(svg)) { done(); return; }
 		if (!svgWatched) {
@@ -107,7 +137,7 @@ function fixDiagramSvgSize(
 	});
 
 	const ro = new ResizeObserver(() => {
-		const svg = el.querySelector<SVGElement>("svg");
+		const svg = diagramSvg(el);
 		if (svg && stampSvgSize(svg)) done();
 	});
 	ro.observe(el);
@@ -130,6 +160,9 @@ export function decorateCodeBlocks(
 ): void {
 	container.querySelectorAll<HTMLElement>("pre:not([data-decorated])").forEach((pre) => {
 		if (pre.closest(".block-language-mermaid, .block-language-plantuml")) return;
+		// Obsidian is about to replace this <pre> with the drawing; framing it
+		// as code would leave the diagram inside a "mermaid" code frame.
+		if (pre.querySelector(":scope > code.language-mermaid")) return;
 		pre.dataset.decorated = "1";
 		const frame = wrapInScrollFrame(pre);
 
@@ -154,9 +187,62 @@ export function decorateCodeBlocks(
 		attachDragToPan(pre);
 	});
 
-	const DIAG_SELECTOR = "[class*='block-language-']:not([data-decorated])";
-	container.querySelectorAll<HTMLElement>(DIAG_SELECTOR).forEach((el) => {
-		if (el.querySelector("pre") && !el.querySelector("svg")) return;
+	decorateDiagrams(container, diagObservers, onPin);
+	watchPendingMermaid(container, diagObservers, onPin);
+
+	// A chart card is drawn by the global code-block processor, which cannot be
+	// handed a pin; it records its source instead, and the pin goes on here.
+	if (onPin) {
+		container.querySelectorAll<HTMLElement>(".p-chart-card:not(.p-chart-card--error)").forEach((card) => {
+			const actions = card.querySelector<HTMLElement>(".p-chart-actions");
+			const source = chartSourceOf(card);
+			if (!actions || !source || actions.querySelector(".p-pin-btn")) return;
+			appendPinButton(actions, "p-chart-btn", "chart", () => source, onPin);
+		});
+	}
+
+	// Wide tables get the same scroll-frame treatment (ADR-131).
+	decorateTables(container, onPin);
+}
+
+/**
+ * Obsidian draws a Mermaid block after the render returns, when its library has
+ * loaded and the block is on screen, by swapping the `<pre>` for a new element.
+ * So a pending block is watched until none is left: each swap is decorated as
+ * it lands. No timeout — a block in a hidden pane is drawn when shown, which may
+ * be much later. The observer ends when the last block is drawn; if the answer
+ * is thrown away first, it goes with the subtree it observes.
+ */
+const mermaidWatchers = new WeakMap<HTMLElement, MutationObserver>();
+
+function watchPendingMermaid(
+	container: HTMLElement,
+	diagObservers: WeakMap<HTMLElement, DiagObserverEntry>,
+	onPin?: PinBlock,
+): void {
+	const pending = (): boolean => Array.from(container.querySelectorAll(MERMAID_PENDING))
+		.some((code) => !code.closest(MERMAID_GUARD));
+	mermaidWatchers.get(container)?.disconnect();
+	mermaidWatchers.delete(container);
+	if (!pending()) return;
+	const mo = new MutationObserver(() => {
+		decorateDiagrams(container, diagObservers, onPin);
+		if (!pending()) { mo.disconnect(); mermaidWatchers.delete(container); }
+	});
+	mo.observe(container, { childList: true, subtree: true });
+	mermaidWatchers.set(container, mo);
+}
+
+/** Every undecorated diagram in `container`: natural size, a scroll frame, and
+ *  Copy/Pin when the renderer left its source behind. */
+function decorateDiagrams(
+	container: HTMLElement,
+	diagObservers: WeakMap<HTMLElement, DiagObserverEntry>,
+	onPin?: PinBlock,
+): void {
+	container.querySelectorAll<HTMLElement>(DIAGRAM_SELECTOR).forEach((el) => {
+		if (el.closest(SELF_SIZED)) return;
+		if (el.querySelector("pre") && !diagramSvg(el)) return;
 		el.dataset.decorated = "1";
 
 		const source = diagramSource(el);
@@ -177,18 +263,4 @@ export function decorateCodeBlocks(
 		fixDiagramSvgSize(el, diagObservers);
 		attachDragToPan(el);
 	});
-
-	// A chart card is drawn by the global code-block processor, which cannot be
-	// handed a pin; it records its source instead, and the pin goes on here.
-	if (onPin) {
-		container.querySelectorAll<HTMLElement>(".p-chart-card:not(.p-chart-card--error)").forEach((card) => {
-			const actions = card.querySelector<HTMLElement>(".p-chart-actions");
-			const source = chartSourceOf(card);
-			if (!actions || !source || actions.querySelector(".p-pin-btn")) return;
-			appendPinButton(actions, "p-chart-btn", "chart", () => source, onPin);
-		});
-	}
-
-	// Wide tables get the same scroll-frame treatment (ADR-131).
-	decorateTables(container, onPin);
 }

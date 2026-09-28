@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-28 — **Third whole-codebase review (ADR-240): 75 defects fixed** across security, providers, persistence, UI and tooling; three new principles (7–9) in CLAUDE.md. Two items deferred (D-68, D-69).*
+*Updated: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-241).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
+
+*Previously: 2026-09-28 — **Third whole-codebase review (ADR-240): 75 defects fixed** across security, providers, persistence, UI and tooling; three new principles (7–9) in CLAUDE.md. Two items deferred (D-68, D-69).*
 
 *Previously: 2026-09-26 — **Glossary save fixed:** a re-lookup no longer deletes frontmatter keys Pythia did not write (`replaceBody`), so a term note can carry another plugin's or the user's properties.*
 
@@ -2143,3 +2145,16 @@ Six parallel reviews; every finding verified against the code before it was fixe
 | Tooling | **Dead exports** (`evictConversations`, `applyRelevanceFloor`, `tokenMatches`, `scoreRelevanceWeighted`, `looksTimeSensitive`, `insertTokens`, `PluginData`, `REASONING_MODELS`×2) and stale docs (AGENTS.md file map, the Mistral/OpenTelemetry comment). | Low | Removed / corrected. |
 
 **Deferred:** D-68 (one provider instance for every view), D-69 (remote images in written notes).
+
+## Bug — a Mermaid diagram shrank to the chat's width (ADR-241), 2026-09-28
+
+**Symptom.** A wide flowchart in an answer was drawn at a third of its size, unreadable, with nothing to scroll.
+
+**Cause.** Obsidian 1.13.7 replaces a Mermaid `<pre>` with `div.mermaid > svg[width="100%"]` — no `block-language-*` container. Pythia's diagram CSS and `stampSvgSize` only matched `[class*='block-language-']`, so neither ran; a block still pending at decoration was framed as code instead. The test fixtures described the same non-existent DOM, so nothing failed.
+
+**Found alongside.** A Vizardry canvas matched the generic diagram rules: `stampSvgSize` sized its toolbar icon (the first SVG in the block) instead of the drawing, and `svg { width: auto !important }` reached every SVG in the canvas.
+
+**Fix.** `div.mermaid` is a diagram; a pending block is watched until swapped in; `diagramSvg` skips icons; `.vizardry-canvas` is excluded in the decorator and in `styles.css`. Guard: `tests/diagramDecorator.test.ts`.
+
+**Open.** Copy and Pin are still missing on a Mermaid diagram — Obsidian leaves no source in the DOM (D-70).
+

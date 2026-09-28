@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-28 — ADR-240 (whole-codebase quality and security review: 75 defects fixed; three new engineering principles — an await is a boundary in time, everything started has an owner that ends it, model and web output carry no authority).*
+*Last updated: 2026-09-28 — ADR-241 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
+
+*Previously: 2026-09-28 — ADR-240 (whole-codebase quality and security review: 75 defects fixed; three new engineering principles — an await is a boundary in time, everything started has an owner that ends it, model and web output carry no authority).*
 
 *Previously: 2026-09-27 — ADR-239 (a favorite becomes an `==…==` highlight in every note Pythia writes: `services/favoriteHighlights.ts`).*
 
@@ -5147,3 +5149,21 @@ Notable decisions inside the fixes:
 **Guards.** Principle 7: `tests/ConversationStore.test.ts` (a re-marked id survives), `tests/viewFixes.test.ts` (a render abandoned mid-switch). Principle 8: `tests/retry.test.ts` and `tests/BaseProvider.test.ts` with the SDKs' real abort classes, `tests/toolCallNoteWrites.test.ts` (Stop declines a pending confirm). Principle 9: `tests/remoteMedia.test.ts` (no remote `src` survives; no other render entry point), `tests/declaresPythiaTemplate.test.ts`, `tests/webReadScope.test.ts` (a link inside a result is refused). Tooling: `noImplicitOverride`, `isolatedModules`, `allowUnreachableCode: false` and `lint --max-warnings 0`; the release workflow runs the four CI steps.
 
 ---
+
+## ADR-241 — A diagram is sized where Obsidian actually draws it
+
+**Status:** Active · 2026-09-28
+
+**Context.** A wide Mermaid flowchart in an answer was shrunk to the chat's width: labels a third of their size, nothing to scroll. ADR-004's treatment (natural size from the viewBox, a scroll frame, drag-to-pan) never ran on it. Read out of the installed Obsidian 1.13.7 (`app.js`): the Mermaid post-processor finds `code.language-mermaid`, renders asynchronously and **replaces the `<pre>`** with `<div class="mermaid"><svg width="100%" style="max-width: …">`. There is no `block-language-mermaid` container — only a plugin's `registerMarkdownCodeBlockProcessor` makes one — and no source left in the DOM. Every Pythia selector and test fixture described a DOM Obsidian does not produce. When the decorator ran before the swap, the `<pre>` was framed as a code block and the diagram then landed inside a "mermaid" code frame. Separately, a Vizardry canvas *is* a `block-language-vizardry` element; the generic treatment made its root the scroll container, forced `width: auto` on every SVG in it, and `stampSvgSize` sized the first SVG it found — a 16px toolbar icon, stamped to 24px — while the drawing itself was untouched.
+
+**Decision.**
+- **`div.mermaid` is a diagram**, beside `[class*='block-language-']`, in `ui/CodeBlockDecorator.ts` and in `styles.css`.
+- **A pending Mermaid `<pre>` is not framed as code**, and the container is watched (`watchPendingMermaid`) until no pending block is left; each swap is decorated as it lands. No timeout: Obsidian draws a block in a hidden pane only when it is shown. The observer ends when the last block is drawn, and otherwise goes with the subtree it observes. A block behind Obsidian's untrusted-vault guard (`.mermaid-wrapper`) is left as Obsidian drew it and does not keep the watch alive.
+- **The diagram's own SVG** (`diagramSvg`) is the first SVG outside a button that is not an `.svg-icon`.
+- **A canvas that lays itself out is left alone** (`SELF_SIZED = ".vizardry-canvas"`, and `:not(.vizardry-canvas)` in every diagram rule). Vizardry sizes its SVGs to the host and scrolls them in its own frames; its readability floor lives in Vizardry (Vizardry DECISIONS, 2026-09-28: no SVG canvas below 90% of its designed size).
+- **No Copy or Pin on a Mermaid diagram yet.** The source is gone from the DOM once Obsidian swaps it in, so `diagramSource` finds nothing and no button is drawn, as before. Recovering it from the message's Markdown (the n-th fence ↔ the n-th `div.mermaid`) is D-70.
+
+**Verified** in a Chromium harness with Pythia's stylesheet and decorator, Vizardry's real renderer and Mermaid 11 swapped in the way Obsidian 1.13.7 does it, at 400px and 640px: the reported flowchart draws at scale 1.0 (16px labels) and scrolls; every Vizardry SVG keeps its smallest label at 9px or more and scrolls in its own frame.
+
+**Guards.** `tests/diagramDecorator.test.ts` — Obsidian's real Mermaid markup is sized, a pending block is not framed and is sized on swap, the guard is left alone, a Vizardry canvas gets no stamp and no diagram rule, and an icon ahead of the drawing is never the SVG sized. All six fail against the previous decorator.
+
