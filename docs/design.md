@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-26 — ADR-232: *What Pythia sends* — `.pythia-instructions-modal` on `.pythia-modal`; `.pythia-instructions-section` (h3 + text), `.pythia-instructions-text` (verbatim mono block, hairline border, 240px then scrolls), a `pb-icon` copy in the last heading; `.p-inspector-open` makes the context box's system-prompt line a link (`--text-muted`, underline on hover, never `--text-faint`). No new tokens.*
+*Last updated: 2026-09-28 — ADR-240: `.p-remote-media-load` (a `pb pb-link` placeholder naming the host of a deferred remote image), `.pythia-tool-call-path` (the whole path under a create-note confirm, mono 11px, `--text-muted`), a focus ring on the controls made keyboard-reachable (`makeKeyActivatable`).*
+
+*Previously: 2026-09-26 — ADR-232: *What Pythia sends* — `.pythia-instructions-modal` on `.pythia-modal`; `.pythia-instructions-section` (h3 + text), `.pythia-instructions-text` (verbatim mono block, hairline border, 240px then scrolls), a `pb-icon` copy in the last heading; `.p-inspector-open` makes the context box's system-prompt line a link (`--text-muted`, underline on hover, never `--text-faint`). No new tokens.*
 
 *Previously: 2026-09-26 — ADR-231: `.p-inspector-resume` (the warn row's grammar with a `history` icon and a `pb-secondary` *Send full history*, first in the context box) and `.p-inspector-resume-chip` (9px mono caps, warning colour) in the box's header. No new tokens.*
 

