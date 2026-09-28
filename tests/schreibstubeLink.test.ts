@@ -65,7 +65,16 @@ describe("toSourceItem", () => {
 			updatedAt: Date.parse("2026-02-01T00:00:00.000Z"),
 			summary: "Texte",
 			messages: ["Schreib", "", ""],
+			notes: [],
 		});
+	});
+
+	it("hands over the notes attached as context, and only paths", () => {
+		const attached = {
+			...conversation,
+			contextNotes: ["Projekte/Pythia/readme.md", 7, "", "Projekte/Pythia/spec.md"],
+		} as unknown as Conversation;
+		expect(toSourceItem(attached).notes).toEqual(["Projekte/Pythia/readme.md", "Projekte/Pythia/spec.md"]);
 	});
 });
 
