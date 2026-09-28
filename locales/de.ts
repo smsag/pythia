@@ -321,6 +321,7 @@ const de: Strings = {
 	filePathLabel: "Dateipfad",
 
 	// ── Main / commands ───────────────────────────────────────────────────────
+	cmdOpenInSidebar:                  "In rechter Seitenleiste öffnen",
 	cmdNewConversation:                "Neues Gespräch",
 	cmdNewConversationFromTemplate:    "Neues Gespräch aus Vorlage",
 	cmdNewConversationWithCurrentNote: "Neues Gespräch mit aktueller Notiz",
