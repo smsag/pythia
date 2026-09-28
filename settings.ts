@@ -12,7 +12,8 @@ import { renderTroubleshootingSection } from "./ui/settings/troubleshooting";
 
 // PythiaSettings interface and DEFAULT_SETTINGS live in models/settings.ts so
 // that service modules can import them without pulling in the Obsidian UI layer.
-export { PythiaSettings, DEFAULT_SETTINGS } from "./models/settings";
+export type { PythiaSettings } from "./models/settings";
+export { DEFAULT_SETTINGS } from "./models/settings";
 
 /**
  * The settings tab is a shell (ADR-209): it owns the section order, the numeric
@@ -47,14 +48,14 @@ export class PythiaSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	hide(): void {
+	override hide(): void {
 		// Commit the number field the user is still standing in, then flush what was
 		// typed in the last few hundred ms and repaint the header's defaults (ADR-165).
 		for (const commit of this.numberCommits) commit();
 		this.plugin.onSettingsTabClosed();
 	}
 
-	display(): void {
+	override display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		this.numberCommits = [];

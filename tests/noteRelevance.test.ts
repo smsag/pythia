@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { tokenize, scoreRelevanceWeighted, scoreRelevanceTokensWeighted } from "../services/noteRelevance";
+import { tokenize, scoreRelevanceTokensWeighted } from "../services/noteRelevance";
+
+const scoreRelevanceWeighted = (query: string, haystacks: string[]): number[] =>
+	scoreRelevanceTokensWeighted(tokenize(query), haystacks);
 
 describe("tokenize", () => {
 	it("lowercases and splits on non-alphanumeric characters", () => {

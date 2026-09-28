@@ -31,8 +31,8 @@ const CEILINGS = {
 	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
 	// ui/settings/ (ADR-209) — the split this comment used to ask for. No ceiling
 	// needed; the locale files split the same way (locales/settings.{en,de}.ts).
-	// locales/en.ts and de.ts dropped under DEFAULT_MAX once the embedding strings
-	// moved to locales/embedding.{en,de}.ts — the per-feature split review #301
+	// locales/en.ts and de.ts dropped under DEFAULT_MAX once feature strings moved
+	// to per-feature files (locales/<feature>.{en,de}.ts) — the split review #301
 	// proposed (ADR-199). No ceiling needed; split the next area the same way.
 	// tests/viewRender.test.ts dropped under DEFAULT_MAX once the mount fixture
 	// moved to tests/helpers/viewHarness.ts and the conversation-panel describes

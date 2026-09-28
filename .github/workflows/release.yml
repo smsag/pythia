@@ -20,6 +20,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release action takes its token as an input; git never needs it.
+          persist-credentials: false
 
       # The tag says one thing and the manifest says another — and Obsidian
       # believes the manifest: its installer reads manifest.json's `version`,
@@ -79,12 +82,22 @@ jobs:
       - name: Install dependencies
         # --ignore-scripts: no dependency's install hook runs in the same job as
         # the token (engineering-review #286). Nothing here needs one — esbuild's
-        # binary arrives via its platform optional dependency and onnxruntime-node
-        # ships its CPU binary in-package, both as plain files in the tarball.
+        # binary arrives via its platform optional dependency, as plain files in the tarball.
         run: npm ci --ignore-scripts
+
+      # The same four steps CI runs: a manual dispatch can release any commit,
+      # so the release gate cannot be weaker than the PR gate.
+      - name: Lint
+        run: npm run lint
+
+      - name: File-size budget
+        run: npm run check:filesize
 
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

@@ -79,16 +79,6 @@ const STEM_CUE_RE = new RegExp(`\\b(?:${STEM_CUES.map(escapeRx).join("|")})`);
 const STEM_WORD_RE = new RegExp(`${STEM_CUE_RE.source}\\p{L}*`, "u");
 
 /**
- * Returns true when `text` reads as time-sensitive and should auto-arm web
- * search. `currentYear` anchors the year check; pass the real year at the call
- * site. A year strictly in the future, or the current year, counts as recency
- * intent; older years (historical questions) do not.
- */
-export function looksTimeSensitive(text: string, currentYear: number): boolean {
-	return timeSensitiveCue(text, currentYear) !== null;
-}
-
-/**
  * The cue that makes `text` read as time-sensitive — the word, phrase or year
  * as it appears — or null. What the globe and the search chip name when
  * auto-search fires, so the user can see why it did (ADR-230).

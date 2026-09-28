@@ -2,12 +2,9 @@
 
 ## Project Overview
 
-Obsidian plugin (TypeScript, esbuild). Lets users run LLM conversations (Anthropic + OpenAI) directly in the vault. Conversations, templates, and summary notes are first-class vault objects.
+Obsidian plugin (TypeScript, esbuild). LLM conversations (Anthropic, OpenAI, Mistral) inside the vault; conversations, templates, glossary entries and summary notes are first-class vault objects. Search by meaning is Schreibstube's, reached through its API (ADR-223/224) — Pythia runs no model of its own.
 
-- **Entry point**: `main.ts` → `PythiaPlugin extends Plugin`
-- **Sidebar**: `sidebar.ts` → `PythiaSidebarView extends ItemView`
-- **Settings**: `settings.ts` → `PythiaSettingTab`, `PythiaSettings`, `DEFAULT_SETTINGS`
-- **Types**: `models/types.ts` — `Conversation`, `Message`, `Favorite`, `PythiaTemplate`
+**The file map, the engineering principles and the hard rules live in `CLAUDE.md`.** This file does not repeat them: a second copy of a file map is how this one went stale (it listed `settings.ts` as the home of `DEFAULT_SETTINGS`, two providers, and a Haiku favorite-name call removed long ago).
 
 ## Build & Test
 
@@ -17,45 +14,19 @@ npm run build     # tsc -noEmit -skipLibCheck && esbuild production
 npm run dev       # watch mode
 ```
 
-Always run `npm run build` after any TypeScript change to verify compilation.
+Before every commit run the same four steps CI runs: `npm run lint`, `npm run check:filesize`, `npm run build`, `npm test`.
 
 CI installs with `npm ci --ignore-scripts`, so **no dependency may rely on an
 install hook** (engineering-review #286). Adding one that does will pass locally
-and fail in CI. Today nothing needs one: esbuild's binary arrives through its
-platform optional dependency and `onnxruntime-node` ships its CPU binary in the
-package. Check a new native dependency against that before adding it.
-
-## Architecture
-
-```
-main.ts           ← Plugin lifecycle, commands, data persistence
-sidebar.ts        ← All chat UI (ItemView)
-settings.ts       ← Settings tab + DEFAULT_SETTINGS
-models/types.ts   ← Shared interfaces (Conversation, Message, Favorite, PythiaTemplate)
-services/
-  AnthropicService.ts   ← Streaming + summary + favorite name generation (Haiku)
-  OpenAIProvider.ts     ← Same interface, GPT-4o-mini for favorite names
-  LLMProvider.ts        ← Interface: streamMessage, generateSummary, generateFavoriteName
-  LLMRouter.ts          ← Routes calls to the correct provider by conversation.provider
-  ContextBuilder.ts     ← buildSystemPrompt(), buildAttachedNotesContent()
-  ConversationStore.ts  ← CRUD over plugin.conversations + saveConversations()
-  NoteWriter.ts         ← Vault file writes (summary notes, ad-hoc saves)
-  TemplateLoader.ts     ← Scans templatesFolder for pythia_template: true notes
-suggest/
-  ConversationSuggest.ts, NoteSuggest.ts, FolderSuggest.ts   ← FuzzySuggestModal wrappers
-  TemplateSuggest.ts    ← Uses PythiaTemplate
-  ConversationSettingsModal.ts  ← Provider/model picker (contains real model IDs — do not rename)
-  InputModal.ts, ResumeModeModal.ts
-```
+and fail in CI. Check a new native dependency against that before adding it.
 
 ## Key Conventions
 
-- **Never rename Anthropic model IDs** (`claude-sonnet-4-6`, `claude-opus-4`, `claude-haiku-3-5`, `gpt-4o`, `gpt-4o-mini`, etc.) — these are real API values.
+- **Never rename model IDs** in `models/knownModels.ts` — they are real API values.
 - **Naming**: use `Pythia`/`pythia` prefix for all plugin-level identifiers. Never use `Claude`/`claude` as an identifier (only in model ID strings).
-- **Secret storage**: API keys live in `app.secretStorage` (Obsidian-native, since 1.11.4). Settings store only the secret name (`pythia-anthropic`, `pythia-openai`), never the key value.
-- **Persistence**: `Conversation` objects (including `favorites[]`) are serialized to `data.json` via `ConversationStore`. Settings live in the same file under `settings`.
-- **Context vs attached notes**: `conversation.contextNotes` → system prompt, every turn. `pendingAttachedNotes` → one message only, then cleared.
-- **Frontmatter key**: templates use `pythia_template: true` (not `claude_template`).
+- **Secret storage**: API keys live in `app.secretStorage` (Obsidian-native). Settings store only the secret name (`pythia-anthropic`, `pythia-openai`, …), never the key value.
+- **Persistence**: `Conversation` objects are serialized to `data.json` through `PluginDataStore`; settings live in the same file under `settings`. Every value read back is validated (`mergeSettings`, `sanitizeConversationFields` — ADR-159).
+- **Frontmatter key**: templates use `pythia_template: true`.
 - **Default folders**: `Pythia/Templates`, `Pythia/Conversations`, `Pythia/Scratch`.
 
 ## README Rule

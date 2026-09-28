@@ -76,37 +76,9 @@ export function tokensPresent(value: string, tracked: readonly TrackedNote[]): T
 	return { present, absent };
 }
 
-/** Where the cursor lands after an insert, and the text it lands in. */
-export interface Insertion {
-	value: string;
-	cursor: number;
-}
-
-/**
- * Put `tokens` into `value` at `at`.
- *
- * A space is added on each side only where there is not one already, so the
- * sentence reads correctly whether the link is dropped mid-phrase, at the end, or
- * into an empty composer — and the caller never has to think about it.
- */
-export function insertTokens(value: string, at: number, tokens: readonly string[]): Insertion {
-	if (tokens.length === 0) return { value, cursor: at };
-	const pos = Math.min(Math.max(at, 0), value.length);
-	const before = value.slice(0, pos);
-	const after = value.slice(pos);
-
-	const { lead, trail } = tokenSpacing(value, pos);
-	const body = tokens.join(" ");
-
-	return {
-		value:  before + lead + body + trail + after,
-		cursor: before.length + lead.length + body.length + trail.length,
-	};
-}
-
 /** The spaces an insert at `at` needs on each side — one only where the text
- *  there does not already have one. Shared by `insertTokens` and the chip
- *  composer, which inserts the same spacing around chips (D-52). */
+ *  there does not already have one. Used by the chip composer, which inserts
+ *  this spacing around chips (D-52). */
 export function tokenSpacing(value: string, at: number): { lead: string; trail: string } {
 	const pos = Math.min(Math.max(at, 0), value.length);
 	const before = value.slice(0, pos);

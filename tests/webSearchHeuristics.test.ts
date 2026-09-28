@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { containsWebUrl, looksTimeSensitive } from "../services/webSearchHeuristics";
+import { containsWebUrl, timeSensitiveCue } from "../services/webSearchHeuristics";
+
+const looksTimeSensitive = (text: string, year: number): boolean => timeSensitiveCue(text, year) !== null;
 
 const YEAR = 2026;
 
