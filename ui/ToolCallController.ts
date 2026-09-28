@@ -13,6 +13,7 @@ import { fillNoteWriteChip } from "./noteLinks";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
 import { favoritePassages } from "../services/favoriteHighlights";
+import type { ToolCallHandler } from "../services/LLMProvider";
 
 export interface ToolCallDeps {
 	app: App;
@@ -129,11 +130,11 @@ export class ToolCallController {
 	 * `autoCue` is the word that armed it, named on every search chip of this
 	 * answer so an unasked search is never anonymous (ADR-230).
 	 */
-	handler(conv: Conversation, researchActive: boolean, autoCue: string | null = null): (call: ToolCall) => Promise<string> {
+	handler(conv: Conversation, researchActive: boolean, autoCue: string | null = null): ToolCallHandler {
 		// Built here, once per send, after the outgoing message joined `messages`:
 		// the links read_url may read in this answer (ADR-217 addendum).
 		const readScope = WebReadScope.forConversation(conv);
-		return async (call: ToolCall): Promise<string> => {
+		return async (call: ToolCall, signal?: AbortSignal): Promise<string> => {
 			// A chart writes nothing, so there is nothing to confirm and no chip to
 			// show — the chart itself is the feedback, and it appears the moment the
 			// answer commits. Validation is instantaneous, so a spinner would only
@@ -142,7 +143,7 @@ export class ToolCallController {
 				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
 			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope, autoCue);
-			return this.runWrite(call, conv, researchActive);
+			return this.runWrite(call, conv, researchActive, signal);
 		};
 	}
 
@@ -166,7 +167,7 @@ export class ToolCallController {
 			// The real results — a read page too — as data, for the sources row.
 			this.webSources.push(...result.sources);
 			// A link a result returned may be read later in this answer.
-			if (!failed) readScope.addText(result.text);
+			if (!failed) readScope.addResults(result.sources);
 			return result.text;
 		} finally {
 			// Always settles, even if the call threw: a chip left on "Searching…"
@@ -187,7 +188,7 @@ export class ToolCallController {
 		new Notice(kind === "auth" ? t("webSearchKeyRejected") : t("webSearchQuotaReached"), 10000);
 	}
 
-	private async runWrite(call: ToolCall, conv: Conversation, researchActive: boolean): Promise<string> {
+	private async runWrite(call: ToolCall, conv: Conversation, researchActive: boolean, signal?: AbortSignal): Promise<string> {
 		const messagesEl = this.d.messagesEl();
 		const rawPath = typeof call.input["path"] === "string" ? call.input["path"] : call.name;
 		const noteName = noteBasename(rawPath);
@@ -218,6 +219,11 @@ export class ToolCallController {
 				: isPrepend  ? t("confirmPrependNote", { name: noteName })
 				:              t("confirmCreateNote",  { name: noteName }),
 		});
+		// The whole path, not only the name: where a note lands is what the user
+		// is agreeing to (a templates or glossary folder is not a neutral place).
+		if (!isRewrite && !isPrepend && rawPath !== call.name) {
+			chipEl.createSpan({ cls: "pythia-tool-call-path", text: rawPath });
+		}
 
 		const actionsEl = chipEl.createDiv({ cls: "pythia-tool-call-actions" });
 		const actionLabel = isRewrite ? t("confirmRewriteBtn")
@@ -232,8 +238,23 @@ export class ToolCallController {
 			const cancelBtn = actionsEl.createEl("button", {
 				cls: "pb pb-quiet pythia-tool-call-btn", text: t("cancelBtn"),
 			});
-			this.d.registerDomEvent(actionBtn, "click", () => resolve(true));
-			this.d.registerDomEvent(cancelBtn, "click", () => resolve(false));
+			// Stop while the chip waits is a decline, never a later write: the
+			// buttons go dead at once and the promise settles as "no". The provider
+			// then ends the loop on the aborted signal (ToolCancelledError).
+			const onAbort = (): void => {
+				actionBtn.disabled = true;
+				cancelBtn.disabled = true;
+				resolve(false);
+			};
+			const settle = (value: boolean): void => {
+				if (signal?.aborted) return; // already declined by the stop
+				signal?.removeEventListener("abort", onAbort);
+				resolve(value);
+			};
+			this.d.registerDomEvent(actionBtn, "click", () => settle(true));
+			this.d.registerDomEvent(cancelBtn, "click", () => settle(false));
+			if (signal?.aborted) { onAbort(); return; }
+			signal?.addEventListener("abort", onAbort, { once: true });
 			// Only now, with the label and both buttons in it, does the card have its
 			// height. The answer waits on it, so it is shown even to a user who has
 			// scrolled up (ADR-215).
@@ -246,6 +267,13 @@ export class ToolCallController {
 			chipEl.addClass("pythia-tool-call--cancelled");
 			chipEl.createSpan({ cls: "pythia-tool-call-label", text: t("toolCallCancelled") });
 			return "User declined. Please output the content directly in this conversation instead of saving it to a file.";
+		}
+
+		// A confirm that raced the stop still writes nothing.
+		if (signal?.aborted) {
+			chipEl.addClass("pythia-tool-call--cancelled");
+			chipEl.createSpan({ cls: "pythia-tool-call-label", text: t("toolCallCancelled") });
+			return "User stopped the answer. Nothing was written.";
 		}
 
 		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);

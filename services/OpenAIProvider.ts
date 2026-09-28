@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import { App } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, EffortLevel } from "../models/types";
+import type { Conversation, EffortLevel } from "../models/types";
+import type { ToolCallHandler } from "./LLMProvider";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
 import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
@@ -18,6 +19,11 @@ type OAILoopMessage =
 	| OAIMessage
 	| { role: "assistant"; content: null; tool_calls: OAIToolCallBlock[] }
 	| { role: "tool"; tool_call_id: string; content: string };
+
+/** The reasoning effort every utility call (title, chapter, summary, glossary)
+ *  asks a reasoning model for. `low` is the lowest level the o-series and the
+ *  GPT-5 family all accept. */
+export const UTILITY_REASONING_EFFORT = "low" as const;
 
 export class OpenAIProvider extends BaseProvider {
 	private client: OpenAI | null = null;
@@ -52,12 +58,30 @@ export class OpenAIProvider extends BaseProvider {
 		const messages: { role: "system" | "user"; content: string }[] = [];
 		if (systemMessage) messages.push({ role: "system", content: systemMessage });
 		messages.push({ role: "user", content: userMessage });
+		const reasoning = isReasoningModel(model);
 		const response = await this.getClient().chat.completions.create({
 			model,
-			...(isReasoningModel(model) ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+			// A reasoning model spends `max_completion_tokens` on hidden reasoning
+			// first; at its default effort a 15–20 token title budget is gone
+			// before a word is written. Utility calls are small tasks, so they
+			// ask for the least reasoning every reasoning model accepts.
+			...(reasoning
+				? { max_completion_tokens: maxTokens, reasoning_effort: UTILITY_REASONING_EFFORT }
+				: { max_tokens: maxTokens }),
 			messages,
 		});
-		return response.choices[0]?.message?.content?.trim() ?? "";
+		const choice = response.choices[0];
+		const text = choice?.message?.content?.trim() ?? "";
+		if (!text && choice?.finish_reason === "length") {
+			// "" is never "nothing happened" (ADR-158): the budget ran out, most
+			// likely on reasoning. Say so where a report can quote it.
+			console.warn("[Pythia] OpenAI utility call hit its token limit before writing any text:", {
+				model,
+				maxTokens,
+				reasoningTokens: response.usage?.completion_tokens_details?.reasoning_tokens,
+			});
+		}
+		return text;
 	}
 
 	private getClient(): OpenAI {
@@ -84,15 +108,13 @@ export class OpenAIProvider extends BaseProvider {
 		userContent: string,
 		systemPrompt: string,
 		pdfAttachments: PdfAttachment[],
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: ToolCallHandler
 	): Promise<void> {
 		this.streamModel = this.resolveModel(conversation.model);
 		// Reasoning models (o-series, GPT-5) reject a custom temperature and
 		// `max_tokens`. They DO take a system message — OpenAI treats it as a
 		// developer message; only o1-mini, long retired, had no system role (#304).
-		this.streamTemperature = isReasoningModel(this.streamModel)
-			? undefined
-			: conversation.temperature ?? this.settings.temperature;
+		this.streamTemperature = this.sendTemperature(conversation, this.streamModel);
 		const requestedEffort = conversation.effort ?? this.settings.effort;
 		this.streamReasoningEffort = requestedEffort !== undefined && isReasoningModel(this.streamModel)
 			? requestedEffort
@@ -113,6 +135,7 @@ export class OpenAIProvider extends BaseProvider {
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),
+			estimateTokensFromText(userContent),
 		);
 
 		let apiMessages: OAIMessage[];
@@ -185,10 +208,12 @@ export class OpenAIProvider extends BaseProvider {
 		onToken: (text: string) => void,
 	): Promise<RoundResult> {
 		let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> | undefined;
+		// Outside the retry: a missing key is not transient (see AnthropicService).
+		const client = this.getClient();
 
 		for (let attempt = 0; !stream; ) {
 			try {
-				stream = await this.getClient().chat.completions.create(
+				stream = await client.chat.completions.create(
 					{
 						model: this.streamModel,
 						...(isReasoningModel(this.streamModel)
@@ -206,7 +231,7 @@ export class OpenAIProvider extends BaseProvider {
 			} catch (err) {
 				// create() rejects before any chunk is consumed, so no tokens have
 				// been emitted yet — safe to retry transient failures here.
-				if (isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+				if (isRetryableError(err, signal) && attempt < RETRY_BACKOFF_MS.length) {
 					debugLog(this.settings, "retry", attempt + 1, err);
 					await sleep(RETRY_BACKOFF_MS[attempt]);
 					attempt++;
@@ -273,7 +298,8 @@ export class OpenAIProvider extends BaseProvider {
 	}
 
 	protected async handleToolCalls(
-		onToolCall: (call: ToolCall) => Promise<string>
+		onToolCall: ToolCallHandler,
+		signal: AbortSignal
 	): Promise<void> {
 		const calls = this.lastPendingCalls;
 		this.loopMessages.push({
@@ -286,12 +312,13 @@ export class OpenAIProvider extends BaseProvider {
 			})),
 		});
 		for (const tc of calls) {
+			this.throwIfStopped(signal);
 			const parsed = parseToolArguments(tc.arguments);
 			// Malformed JSON used to run the tool with `{}` — the model then saw a
 			// misleading "path must be a non-empty string" instead of the real
 			// problem, and a write tool ran on arguments it never sent.
 			const result = parsed.ok
-				? await onToolCall({ id: tc.id, name: tc.name, input: parsed.input })
+				? await onToolCall({ id: tc.id, name: tc.name, input: parsed.input }, signal)
 				: parsed.error;
 			this.loopMessages.push({
 				role: "tool" as const,

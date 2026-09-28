@@ -49,11 +49,29 @@ describe("selectRelevantChunks", () => {
 		expect(result.text).toContain("Roadmap");
 	});
 
-	it("returns heading-less content unchanged when it has only one paragraph", () => {
+	it("cuts an unsplittable heading-less note to the budget instead of returning it whole", () => {
 		const long = "x".repeat(NOTE_CHUNK_THRESHOLD_CHARS + 100);
 		const result = selectRelevantChunks(long, "anything");
-		expect(result.isExcerpt).toBe(false);
-		expect(result.text).toBe(long);
+		expect(result.isExcerpt).toBe(true);
+		expect(result.text).toBe(long.slice(0, NOTE_CHUNK_THRESHOLD_CHARS));
+	});
+
+	it("never returns more than the budget for a huge single-section note", () => {
+		const huge = `# Only section\n${"word ".repeat(200_000)}`;
+		const result = selectRelevantChunks(huge, "word", 5000);
+		expect(result.isExcerpt).toBe(true);
+		expect(result.text.length).toBeLessThanOrEqual(5000);
+		expect(result.text.startsWith("# Only section")).toBe(true);
+	});
+
+	it("never returns more than the budget when every section is large", () => {
+		const filler = "lorem ipsum ".repeat(2000);
+		const md = ["Intro", "Alpha", "Beta", "Gamma"].map((h) => `# ${h}\n${h} ${filler}`).join("\n");
+		for (const budget of [1000, 5000, NOTE_CHUNK_THRESHOLD_CHARS]) {
+			const result = selectRelevantChunks(md, "gamma", budget);
+			expect(result.text.length).toBeLessThanOrEqual(budget);
+			expect(result.text).toContain("Gamma");
+		}
 	});
 
 	it("excerpts a long, headed note down to the relevant sections", () => {

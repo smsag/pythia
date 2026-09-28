@@ -54,7 +54,7 @@ vi.mock("@mistralai/mistralai/types/fp.js", () => ({
 	},
 }));
 
-import { MistralService } from "../services/MistralService";
+import { MistralService, mistralContentText } from "../services/MistralService";
 import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
 
@@ -163,6 +163,11 @@ describe("MistralService — temperature / reasoningEffort / maxTokens request s
 	it("folds low to `none` and medium to `high` — never a value the API does not list", async () => {
 		expect((await sentFor("mistral-medium-latest", "low")).reasoningEffort).toBe("none");
 		expect((await sentFor("mistral-medium-latest", "medium")).reasoningEffort).toBe("high");
+	});
+
+	it("sends no temperature to Magistral, which parameterSupport marks unsupported", async () => {
+		expect(await sentFor("magistral-medium-latest", "high")).not.toHaveProperty("temperature");
+		expect((await sentFor("mistral-large-latest", "high")).temperature).toBe(0.5);
 	});
 
 	it("sends no effort at all to a model without adjustable reasoning", async () => {
@@ -402,5 +407,42 @@ describe("MistralService — finish reason (ADR-162)", () => {
 		let finish: { truncated: boolean } | undefined;
 		await provider.streamMessage(makeConv(), "hi", [], () => {}, (_t, _u, f) => { finish = f; }, () => {});
 		expect(finish?.truncated).toBe(true);
+	});
+});
+
+describe("MistralService — content chunks (a string OR a list)", () => {
+	it("streams the text of a delta whose content is a chunk list, skipping thinking", async () => {
+		chatStreamMock.mockReturnValueOnce(
+			okStream([
+				{ choices: [{ delta: { content: [{ type: "thinking", thinking: [{ type: "text", text: "hmm" }] }] } }] },
+				{ choices: [{ delta: { content: [{ type: "text", text: "Hel" }, { type: "text", text: "lo" }] } }] },
+				{ choices: [{ delta: { content: " world" }, finishReason: "stop" }] },
+			])
+		);
+		const provider = new MistralService({} as never, makeSettings(), "key");
+		let completedText = "";
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, (t) => { completedText = t; }, () => {});
+		expect(completedText).toBe("Hello world");
+	});
+
+	it("mistralContentText reads a string, a chunk list, and nothing else", () => {
+		expect(mistralContentText("plain")).toBe("plain");
+		expect(mistralContentText([{ type: "text", text: "a" }, { type: "image_url", imageUrl: "x" }, { type: "text", text: "b" }])).toBe("ab");
+		expect(mistralContentText(null)).toBe("");
+		expect(mistralContentText(undefined)).toBe("");
+		expect(mistralContentText([{ type: "text", text: 5 }])).toBe("");
+	});
+});
+
+describe("MistralService — a missing key is not a network error", () => {
+	it("fails once with the key message, without a retry", async () => {
+		const provider = new MistralService({} as never, makeSettings(), "");
+		let errored: Error | undefined;
+		const started = Date.now();
+		await provider.streamMessage(makeConv(), "hi", [], () => {}, () => {}, (e) => { errored = e; });
+		expect(errored?.message).toBe("mistralKeyNotConfigured");
+		// A retry would have slept 500 ms before the second attempt.
+		expect(Date.now() - started).toBeLessThan(400);
+		expect(chatStreamMock).not.toHaveBeenCalled();
 	});
 });

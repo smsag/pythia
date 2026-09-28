@@ -231,21 +231,21 @@ describe("trimHistoryToBudget", () => {
 
 	it("returns history unchanged when within budget", () => {
 		const history = [mkMsg("short")];
-		const result = trimHistoryToBudget(history, 100_000, 4096, 500);
+		const result = trimHistoryToBudget(history, 100_000, 4096, 500, 10);
 		expect(result).toBe(history);
 	});
 
 	it("trims oldest messages when history exceeds budget", () => {
 		const big = "x".repeat(4000);
 		const history = [mkMsg(big), mkMsg(big), mkMsg("keep")];
-		const result = trimHistoryToBudget(history, 3000, 1000, 500);
+		const result = trimHistoryToBudget(history, 3000, 1000, 500, 0);
 		expect(result.length).toBeLessThan(history.length);
 		expect(result[result.length - 1].content).toBe("keep");
 	});
 
 	it("never trims below one message", () => {
 		const history = [mkMsg("x".repeat(100_000))];
-		const result = trimHistoryToBudget(history, 1000, 500, 500);
+		const result = trimHistoryToBudget(history, 1000, 500, 500, 0);
 		expect(result).toHaveLength(1);
 	});
 
@@ -253,14 +253,28 @@ describe("trimHistoryToBudget", () => {
 		const big = "x".repeat(4000);
 		const history = [mkMsg(big), mkMsg(big), mkMsg("last")];
 		const copy = [...history];
-		trimHistoryToBudget(history, 4000, 1000, 500);
+		trimHistoryToBudget(history, 4000, 1000, 500, 0);
 		expect(history).toEqual(copy);
 	});
 
-	it("returns history unchanged when available budget is zero or negative", () => {
-		const history = [mkMsg("hello")];
-		const result = trimHistoryToBudget(history, 1000, 900, 200);
-		expect(result).toBe(history);
+	it("counts the new user message against the window", () => {
+		// 2 × 1000 tokens of history fit in 10 000 − 1000 − 500 = 8500 on their
+		// own; a 7000-token paste leaves 1500, so the older message must go.
+		const history = [mkMsg("a".repeat(4000)), mkMsg("b".repeat(4000))];
+		expect(trimHistoryToBudget(history, 10_000, 1000, 500, 0)).toBe(history);
+		const trimmed = trimHistoryToBudget(history, 10_000, 1000, 500, 7000);
+		expect(trimmed).toHaveLength(1);
+		expect(trimmed[0].content[0]).toBe("b");
+	});
+
+	it("keeps only the most recent message when the fixed parts already fill the window", () => {
+		const history = [mkMsg("first"), mkMsg("second"), mkMsg("third")];
+		const result = trimHistoryToBudget(history, 1000, 900, 200, 0);
+		expect(result).toEqual([mkMsg("third")]);
+	});
+
+	it("returns an empty history unchanged when nothing fits", () => {
+		expect(trimHistoryToBudget([], 1000, 900, 200, 50)).toEqual([]);
 	});
 });
 

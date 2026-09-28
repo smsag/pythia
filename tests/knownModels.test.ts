@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
 	KNOWN_MODELS,
-	REASONING_MODELS,
 	isReasoningModel,
 	MODEL_ABBREVIATIONS,
 	supportsEffort,
@@ -23,14 +22,14 @@ describe("isReasoningModel", () => {
 		}
 	});
 
-	it("every OpenAI model selectable in KNOWN_MODELS agrees with REASONING_MODELS", () => {
+	it("every OpenAI model selectable in KNOWN_MODELS agrees with isReasoningModel", () => {
 		// Regression guard for the exact bug this module fixes: a model listed as
 		// selectable but missing from the reasoning-model set (e.g. o4-mini).
 		// GPT-5 and later reason too: they reject temperature and max_tokens the
 		// same way the o-series does (ADR-179).
 		for (const model of KNOWN_MODELS.openai) {
 			const looksLikeReasoningModel = /^(o\d|gpt-([5-9]|\d\d))/.test(model);
-			expect(REASONING_MODELS.has(model)).toBe(looksLikeReasoningModel);
+			expect(isReasoningModel(model)).toBe(looksLikeReasoningModel);
 		}
 	});
 });

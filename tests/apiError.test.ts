@@ -5,6 +5,8 @@ vi.mock("../i18n", () => ({
 		vars ? `${key}(${JSON.stringify(vars)})` : key,
 }));
 
+import { APIConnectionError as AnthropicConnectionError, APIConnectionTimeoutError, APIUserAbortError, AnthropicError } from "@anthropic-ai/sdk/core/error";
+import { APIConnectionError as OpenAIConnectionError } from "openai/core/error";
 import { classifyApiError, buildStreamErrorMessage } from "../services/apiError";
 
 describe("classifyApiError", () => {
@@ -28,8 +30,20 @@ describe("classifyApiError", () => {
 		expect(classifyApiError(new TypeError("Failed to fetch"))).toBe("network");
 	});
 
-	it("returns 'network' when the error has no status property", () => {
-		expect(classifyApiError(new Error("plain error"))).toBe("network");
+	it("returns 'other', not 'network', for a status-less error that is not a connection failure", () => {
+		// A missing API key: retrying it and calling it a network error hid the message.
+		expect(classifyApiError(new Error("Anthropic API key not configured"))).toBe("other");
+		// MessageStream's bare re-wrap, and a user abort.
+		expect(classifyApiError(new AnthropicError("stream processing failed"))).toBe("other");
+		expect(classifyApiError(new APIUserAbortError())).toBe("other");
+	});
+
+	it("returns 'network' for the SDKs' own connection errors", () => {
+		expect(classifyApiError(new AnthropicConnectionError({ message: undefined }))).toBe("network");
+		expect(classifyApiError(new APIConnectionTimeoutError())).toBe("network");
+		expect(classifyApiError(new OpenAIConnectionError({ message: undefined }))).toBe("network");
+		expect(classifyApiError(Object.assign(new Error("fetch failed"), { name: "ConnectionError" }))).toBe("network");
+		expect(classifyApiError(Object.assign(new Error("timed out"), { name: "RequestTimeoutError" }))).toBe("network");
 	});
 
 	it("returns 'invalid_key' for HTTP 401", () => {
@@ -107,7 +121,7 @@ describe("buildStreamErrorMessage", () => {
 	// generic, potentially false claim about the user's own connectivity.
 	describe("'network'-classified errors (status-less)", () => {
 		it("surfaces the real error message instead of the generic connectivity string", () => {
-			const err = new Error('{"type":"error","error":{"type":"overloaded_error"}}');
+			const err = new AnthropicConnectionError({ message: '{"type":"error","error":{"type":"overloaded_error"}}' });
 			expect(buildStreamErrorMessage(err, "m")).toBe(
 				`networkErrorDetail({"detail":${JSON.stringify(err.message)}})`
 			);
@@ -115,7 +129,7 @@ describe("buildStreamErrorMessage", () => {
 
 		it("truncates an overlong message for Notice display", () => {
 			const longMessage = "x".repeat(300);
-			const err = new Error(longMessage);
+			const err = new AnthropicConnectionError({ message: longMessage });
 			const expectedDetail = "x".repeat(160) + "…";
 			expect(buildStreamErrorMessage(err, "m")).toBe(
 				`networkErrorDetail({"detail":${JSON.stringify(expectedDetail)}})`
@@ -123,7 +137,7 @@ describe("buildStreamErrorMessage", () => {
 		});
 
 		it("falls back to the generic connectivity message when there is no message at all", () => {
-			const err = new Error();
+			const err = Object.assign(new Error(), { name: "ConnectionError" });
 			expect(buildStreamErrorMessage(err, "m")).toBe("networkError");
 		});
 	});

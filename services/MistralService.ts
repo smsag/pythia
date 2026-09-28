@@ -1,10 +1,9 @@
 // Uses the SDK's tree-shakeable standalone-function API (MistralCore +
 // funcs/chatComplete, funcs/chatStream) rather than the full `Mistral` client
-// class — importing the class pulls in its `beta`/observability getters,
-// which statically import `@opentelemetry/api` (an optional peer dependency
-// this plugin doesn't install), and esbuild fails to resolve it at bundle
-// time. See FUNCTIONS.md in the installed package for the SDK's own
-// rationale for this API shape.
+// class, which pulls in its `beta` getters. The core still imports the SDK's
+// observability module, and with it `@opentelemetry/api` — which is why that
+// package is a dependency and is bundled (~36 KB; see the ADR on Mistral).
+// See FUNCTIONS.md in the installed package for the SDK's own rationale.
 import { MistralCore } from "@mistralai/mistralai/core.js";
 import { chatComplete } from "@mistralai/mistralai/funcs/chatComplete.js";
 import { chatStream } from "@mistralai/mistralai/funcs/chatStream.js";
@@ -19,7 +18,8 @@ import type { EventStream } from "@mistralai/mistralai/lib/event-streams";
 import { App } from "obsidian";
 import { Notice } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall } from "../models/types";
+import type { Conversation } from "../models/types";
+import type { ToolCallHandler } from "./LLMProvider";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
 import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
@@ -77,15 +77,7 @@ export class MistralService extends BaseProvider {
 		// Same shape of bug as Anthropic's (ADR-158): `content` is a string OR a list
 		// of content chunks, and returning "" for the list case makes a successful
 		// call look like an empty result.
-		const content = response.choices?.[0]?.message?.content;
-		if (typeof content === "string") return content.trim();
-		if (Array.isArray(content)) {
-			return content
-				.map((c) => (typeof c === "string" ? c : c?.type === "text" ? c.text : ""))
-				.join("")
-				.trim();
-		}
-		return "";
+		return mistralContentText(response.choices?.[0]?.message?.content).trim();
 	}
 
 	private getClient(): MistralCore {
@@ -103,7 +95,7 @@ export class MistralService extends BaseProvider {
 		userContent: string,
 		systemPrompt: string,
 		pdfAttachments: PdfAttachment[],
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: ToolCallHandler
 	): Promise<void> {
 		// PDF attachments aren't supported for Mistral yet (unconfirmed whether
 		// the chat API accepts document content blocks — see ADR for this
@@ -113,7 +105,9 @@ export class MistralService extends BaseProvider {
 		}
 
 		this.streamModel = this.resolveModel(conversation.model);
-		this.streamTemperature = conversation.temperature ?? this.settings.temperature;
+		// Magistral takes no temperature (parameterSupport) — the same gate as the
+		// settings tab, so what the UI calls unsupported never reaches the wire.
+		this.streamTemperature = this.sendTemperature(conversation, this.streamModel);
 		// The SDK's types accept any effort string on any model; the API does not
 		// (#303). mistralReasoningEffort is the one place that decides what is sent.
 		this.streamReasoningEffort = mistralReasoningEffort(this.streamModel, conversation.effort ?? this.settings.effort);
@@ -133,6 +127,7 @@ export class MistralService extends BaseProvider {
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),
+			estimateTokensFromText(userContent),
 		);
 
 		// Mistral supports a native "system" role on every model (confirmed via
@@ -189,11 +184,13 @@ export class MistralService extends BaseProvider {
 		onToken: (text: string) => void,
 	): Promise<RoundResult> {
 		let stream: EventStream<{ data: CompletionChunk }> | undefined;
+		// Outside the retry: a missing key is not transient (see AnthropicService).
+		const client = this.getClient();
 
 		for (let attempt = 0; !stream; ) {
 			try {
 				stream = await unwrapAsync(chatStream(
-					this.getClient(),
+					client,
 					{
 						model: this.streamModel,
 						maxTokens: this.streamMaxTokens,
@@ -207,7 +204,7 @@ export class MistralService extends BaseProvider {
 			} catch (err) {
 				// stream() rejects before any chunk is consumed, so no tokens have
 				// been emitted yet — safe to retry transient failures here.
-				if (isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+				if (isRetryableError(err, signal) && attempt < RETRY_BACKOFF_MS.length) {
 					debugLog(this.settings, "retry", attempt + 1, err);
 					await sleep(RETRY_BACKOFF_MS[attempt]);
 					attempt++;
@@ -226,9 +223,11 @@ export class MistralService extends BaseProvider {
 		for await (const event of stream) {
 			const chunk = event.data;
 			const delta = chunk.choices[0]?.delta;
-			if (delta?.content && typeof delta.content === "string") {
-				onToken(delta.content);
-			}
+			// A delta's content is a string OR a list of chunks (a reasoning
+			// model streams `thinking` chunks beside its `text`); only the text
+			// is the answer. Dropping the list case lost the whole reply.
+			const text = mistralContentText(delta?.content);
+			if (text) onToken(text);
 			// Accumulate streaming tool call fragments
 			if (delta?.toolCalls) {
 				for (const tc of delta.toolCalls) {
@@ -277,7 +276,8 @@ export class MistralService extends BaseProvider {
 	}
 
 	protected async handleToolCalls(
-		onToolCall: (call: ToolCall) => Promise<string>
+		onToolCall: ToolCallHandler,
+		signal: AbortSignal
 	): Promise<void> {
 		const calls = this.lastPendingCalls;
 		this.loopMessages.push({
@@ -290,12 +290,13 @@ export class MistralService extends BaseProvider {
 			})),
 		});
 		for (const tc of calls) {
+			this.throwIfStopped(signal);
 			const parsed = parseToolArguments(tc.arguments);
 			// Malformed JSON used to run the tool with `{}` — the model then saw a
 			// misleading "path must be a non-empty string" instead of the real
 			// problem, and a write tool ran on arguments it never sent.
 			const result = parsed.ok
-				? await onToolCall({ id: tc.id, name: tc.name, input: parsed.input })
+				? await onToolCall({ id: tc.id, name: tc.name, input: parsed.input }, signal)
 				: parsed.error;
 			this.loopMessages.push({
 				role: "tool" as const,
@@ -304,4 +305,22 @@ export class MistralService extends BaseProvider {
 			});
 		}
 	}
+}
+
+/**
+ * The answer text in a Mistral `content` field — the ONE reader, for the
+ * utility reply and every streamed delta alike (ADR-158's shape of bug):
+ * `content` is a string OR a list of chunks, and only `type: "text"` chunks are
+ * the answer (a reasoning model also sends `thinking` chunks). Anything else is "".
+ */
+export function mistralContentText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((c: unknown) => {
+			if (typeof c === "string") return c;
+			const chunk = c as { type?: unknown; text?: unknown } | null;
+			return chunk?.type === "text" && typeof chunk.text === "string" ? chunk.text : "";
+		})
+		.join("");
 }

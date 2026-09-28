@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { App } from "obsidian";
 import { t } from "../i18n";
-import type { Conversation, ToolCall, EffortLevel } from "../models/types";
+import type { Conversation, EffortLevel } from "../models/types";
+import type { ToolCallHandler } from "./LLMProvider";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
 import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
@@ -9,7 +10,7 @@ import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
 import { resolveDefaultMaxTokens } from "./promptConstants";
-import { supportsTemperature, supportsEffort, getContextWindow } from "../models/knownModels";
+import { supportsEffort, getContextWindow } from "../models/knownModels";
 
 type ApiMessage = { role: "user" | "assistant"; content: string };
 
@@ -45,7 +46,7 @@ export class AnthropicService extends BaseProvider {
 		return "claude-haiku-4-5";
 	}
 
-	protected get assistantLabel(): string {
+	protected override get assistantLabel(): string {
 		return "Claude";
 	}
 
@@ -100,7 +101,7 @@ export class AnthropicService extends BaseProvider {
 		userContent: string,
 		systemPrompt: string,
 		pdfAttachments: PdfAttachment[],
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: ToolCallHandler
 	): Promise<void> {
 		// Exclude the last message — already pushed by the caller; sending it
 		// again in history would duplicate it. A summary or hybrid resume leaves
@@ -119,9 +120,10 @@ export class AnthropicService extends BaseProvider {
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),
+			estimateTokensFromText(userContent),
 		);
 		const requestedTemperature = conversation.temperature ?? this.settings.temperature;
-		this.streamTemperature = supportsTemperature(this.streamModel) ? requestedTemperature : undefined;
+		this.streamTemperature = this.sendTemperature(conversation, this.streamModel);
 		const requestedEffort = conversation.effort ?? this.settings.effort;
 		this.streamEffort = requestedEffort !== undefined && supportsEffort(this.streamModel) ? requestedEffort : undefined;
 
@@ -187,6 +189,9 @@ export class AnthropicService extends BaseProvider {
 	): Promise<RoundResult> {
 		let finalMsg: Anthropic.Message | undefined;
 		let tokensEmitted = 0;
+		// Outside the retry: a missing key is not a transient failure, and retrying
+		// it twice then calling it a network error hid the real message.
+		const client = this.getClient();
 
 		for (let attempt = 0; !finalMsg; ) {
 			try {
@@ -203,7 +208,7 @@ export class AnthropicService extends BaseProvider {
 					messages: this.loopMessages,
 					...(this.anthropicTools?.length ? { tools: this.anthropicTools } : {}),
 				};
-				const stream = this.getClient().messages.stream(params, { signal });
+				const stream = client.messages.stream(params, { signal });
 
 				stream.on("text", (text) => {
 					tokensEmitted += text.length;
@@ -214,7 +219,7 @@ export class AnthropicService extends BaseProvider {
 			} catch (err) {
 				// Only retry if no tokens were emitted yet this attempt — otherwise
 				// a retry would duplicate partial output already sent via onToken.
-				if (tokensEmitted === 0 && isRetryableError(err) && attempt < RETRY_BACKOFF_MS.length) {
+				if (tokensEmitted === 0 && isRetryableError(err, signal) && attempt < RETRY_BACKOFF_MS.length) {
 					debugLog(this.settings, "retry", attempt + 1, err);
 					await sleep(RETRY_BACKOFF_MS[attempt]);
 					attempt++;
@@ -238,7 +243,8 @@ export class AnthropicService extends BaseProvider {
 	}
 
 	protected async handleToolCalls(
-		onToolCall: (call: ToolCall) => Promise<string>
+		onToolCall: ToolCallHandler,
+		signal: AbortSignal
 	): Promise<void> {
 		const finalMsg = this.lastFinalMsg!;
 		this.loopMessages.push({
@@ -249,11 +255,12 @@ export class AnthropicService extends BaseProvider {
 		const toolResults: Anthropic.ToolResultBlockParam[] = [];
 		for (const block of finalMsg.content) {
 			if (block.type === "tool_use") {
+				this.throwIfStopped(signal);
 				const result = await onToolCall({
 					id: block.id,
 					name: block.name,
 					input: block.input as Record<string, unknown>,
-				});
+				}, signal);
 				toolResults.push({
 					type: "tool_result",
 					tool_use_id: block.id,

@@ -74,3 +74,42 @@ describe("ToolCallController — a turn that only wrote a note keeps its record 
 		expect(calls.writesOnlyMessage("m1")).toBeNull();
 	});
 });
+
+describe("ToolCallController — Stop while the confirm chip waits never writes", () => {
+	function counting() {
+		const messages = document.createElement("div");
+		let executed = 0;
+		const deps: ToolCallDeps = {
+			app: {} as ToolCallDeps["app"],
+			plugin: { toolHandler: { execute: async () => { executed++; return noteWriteResult("created", "Out/Plan.md"); } } } as unknown as ToolCallDeps["plugin"],
+			messagesEl: () => messages,
+			registerDomEvent: (el, type, cb) => el.addEventListener(type, cb),
+			reveal: () => {},
+		};
+		return { calls: new ToolCallController(deps), messages, executed: () => executed };
+	}
+
+	it("settles as declined on abort, and a late click on the button does nothing", async () => {
+		const { calls, messages, executed } = counting();
+		const stop = new AbortController();
+		calls.begin(() => {});
+		const pending = calls.handler(conv, false)(create, stop.signal);
+		await Promise.resolve();
+		const action = messages.querySelector<HTMLButtonElement>(".pythia-tool-call-btn--action")!;
+		stop.abort();
+		action.click();
+		await pending;
+		expect(executed()).toBe(0);
+		expect(calls.takeNoteWrites()).toEqual({});
+		expect(messages.querySelector(".pythia-tool-call--cancelled")).not.toBeNull();
+	});
+
+	it("never shows the confirm for a send that is already stopped", async () => {
+		const { calls, executed } = counting();
+		const stop = new AbortController();
+		stop.abort();
+		calls.begin(() => {});
+		await calls.handler(conv, false)(create, stop.signal);
+		expect(executed()).toBe(0);
+	});
+});

@@ -1,5 +1,6 @@
-import type { Conversation, Provider, ToolCall, TokenUsage, StreamFinish } from "../models/types";
-import type { LLMProvider } from "./LLMProvider";
+import type { Conversation, Provider, TokenUsage, StreamFinish } from "../models/types";
+import type { LLMProvider, ToolCallHandler } from "./LLMProvider";
+import { describeErrorForLog } from "./redact";
 import type { AnthropicService } from "./AnthropicService";
 import type { OpenAIProvider } from "./OpenAIProvider";
 import type { MistralService } from "./MistralService";
@@ -68,7 +69,7 @@ export class LLMRouter {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: ToolCallHandler
 	): Promise<void> {
 		// Vault-RAG augmentation (ADR-116): fail-open — a retrieval error must never
 		// block the turn, so fall back to just the manually-attached notes.
@@ -85,7 +86,9 @@ export class LLMRouter {
 					notes = [...attachedNotes, ...added];
 					autoNotes = new Set(added);
 				}
-			} catch {
+			} catch (e) {
+				// Fail-open is the rule; silence is not (ADR-159): a report can quote this.
+				console.warn("[Pythia] vault context lookup failed; sending with the attached notes only:", describeErrorForLog(e));
 				notes = attachedNotes;
 			}
 		}

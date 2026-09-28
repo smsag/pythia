@@ -102,7 +102,6 @@ export function abbreviateModel(model: string): string {
 }
 
 const REASONING_SET = new Set(MODEL_CATALOG.filter((m) => m.isReasoning).map((m) => m.id));
-export { REASONING_SET as REASONING_MODELS };
 
 export function isReasoningModel(model: string): boolean {
 	return REASONING_SET.has(model);
@@ -121,7 +120,6 @@ export function supportsEffort(model: string): boolean {
 }
 
 const MISTRAL_REASONING_SET = new Set(MODEL_CATALOG.filter((m) => m.isMistralReasoning).map((m) => m.id));
-export { MISTRAL_REASONING_SET as MISTRAL_REASONING_MODELS };
 
 export function isMistralReasoningModel(model: string): boolean {
 	return MISTRAL_REASONING_SET.has(model) || model.startsWith("magistral-");

@@ -1,9 +1,9 @@
 import { App, Notice } from "obsidian";
 import { t, getObsidianLocale } from "../i18n";
-import type { Conversation, ToolCall, TokenUsage, StreamFinish, Provider } from "../models/types";
-import { ToolLoopLimitError } from "../models/types";
+import type { Conversation, TokenUsage, StreamFinish, Provider } from "../models/types";
+import { ToolLoopLimitError, ToolCancelledError } from "../models/types";
 import type { PythiaSettings } from "../settings";
-import type { LLMProvider } from "./LLMProvider";
+import type { LLMProvider, ToolCallHandler } from "./LLMProvider";
 import {
 	parseTitleAndSummary,
 	resolveLanguageLabel,
@@ -21,11 +21,11 @@ import {
 	termDiscussionPrompt,
 	translateDefinitionPrompt,
 } from "./glossaryPrompts";
-import { resolveDefaultModelForProvider } from "../models/knownModels";
+import { parameterSupport, resolveDefaultModelForProvider } from "../models/knownModels";
 import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from "./ContextBuilder";
 import type { PdfAttachment } from "./ContextBuilder";
-import { ABORT_ERROR_NAMES } from "./retry";
+import { isAbortError } from "./retry";
 import { buildRetitleDigest, chapterNamePrompt, conversationTitlePrompt, retitlePrompt } from "./titlePrompts";
 
 /** Safety net against a confused model looping on tool calls indefinitely. */
@@ -133,6 +133,15 @@ export abstract class BaseProvider implements LLMProvider {
 		return modelOverride || resolveDefaultModelForProvider(this.providerType, this.settings);
 	}
 
+	/** The temperature a send carries, or undefined when the model does not take
+	 *  one. The ONE gate, `parameterSupport`, for all three providers — the same
+	 *  rule the settings tab and the conversation modal show (a model the API
+	 *  rejects temperature for must never be sent one). */
+	protected sendTemperature(conversation: Conversation, model: string): number | undefined {
+		if (!parameterSupport(this.providerType, model).temperature) return undefined;
+		return conversation.temperature ?? this.settings.temperature;
+	}
+
 	/**
 	 * The English language name every prompt in this class instructs the model
 	 * with, or "" for "say nothing and let the model follow the conversation"
@@ -167,7 +176,7 @@ export abstract class BaseProvider implements LLMProvider {
 		userContent: string,
 		systemPrompt: string,
 		pdfAttachments: PdfAttachment[],
-		onToolCall?: (call: ToolCall) => Promise<string>
+		onToolCall?: ToolCallHandler
 	): Promise<void>;
 
 	/** Provider-specific: run one streaming round (create stream, consume chunks).
@@ -180,10 +189,19 @@ export abstract class BaseProvider implements LLMProvider {
 
 	/** Provider-specific: process tool calls from the last round and append
 	 *  tool result messages to the loop messages.
-	 *  Called when runStreamRound returns action "tool_use". */
+	 *  Called when runStreamRound returns action "tool_use". Must check
+	 *  `signal.aborted` before each call (`throwIfStopped`) and hand `signal` to
+	 *  `onToolCall`, so Stop ends the loop instead of running the next tool. */
 	protected abstract handleToolCalls(
-		onToolCall: (call: ToolCall) => Promise<string>
+		onToolCall: ToolCallHandler,
+		signal: AbortSignal
 	): Promise<void>;
+
+	/** Throws `ToolCancelledError` once the send was stopped — a normal stop, not
+	 *  an error: `finishOrError` keeps what streamed and says nothing. */
+	protected throwIfStopped(signal: AbortSignal): void {
+		if (signal.aborted) throw new ToolCancelledError();
+	}
 
 	// ── Shared streaming loop ─────────────────────────────────────────────────
 
@@ -194,7 +212,7 @@ export abstract class BaseProvider implements LLMProvider {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>,
+		onToolCall?: ToolCallHandler,
 		autoNotes: ReadonlySet<string> = new Set()
 	): Promise<void> {
 		this.abort();
@@ -206,20 +224,30 @@ export abstract class BaseProvider implements LLMProvider {
 		const startedAt = Date.now();
 		let round = 0;
 
+		// Outside the try, so a Stop or a mid-answer error still reports what the
+		// completed rounds cost and whether the last one was cut short.
+		let totalInputTokens = 0;
+		let totalOutputTokens = 0;
+		let totalCacheReadTokens = 0;
+		let totalCacheCreationTokens = 0;
+		let receivedUsage = false;
+		// Only the last round can be cut short: a truncated round has no tool
+		// call to answer, so the loop ends on it.
+		let truncated = false;
+		const usageSoFar = (): TokenUsage | undefined => receivedUsage
+			? {
+				inputTokens: totalInputTokens,
+				outputTokens: totalOutputTokens,
+				...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
+				...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
+			}
+			: undefined;
+
 		try {
 			const { userContent, systemPrompt, pdfAttachments } =
 				await this.resolveUserContent(conversation, attachedNotes, newMessage, autoNotes);
 
 			await this.prepareStream(conversation, userContent, systemPrompt, pdfAttachments, onToolCall);
-
-			let totalInputTokens = 0;
-			let totalOutputTokens = 0;
-			let totalCacheReadTokens = 0;
-			let totalCacheCreationTokens = 0;
-			let receivedUsage = false;
-			// Only the last round can be cut short: a truncated round has no tool
-			// call to answer, so the loop ends on it.
-			let truncated = false;
 
 			while (true) {
 				if (++round > MAX_TOOL_ROUNDS) throw new ToolLoopLimitError();
@@ -244,20 +272,16 @@ export abstract class BaseProvider implements LLMProvider {
 				});
 
 				if (result.action === "tool_use" && onToolCall) {
-					await this.handleToolCalls(onToolCall);
+					await this.handleToolCalls(onToolCall, signal);
+					// Stopped while the last tool ran (a confirmation chip, a slow
+					// search): no further round.
+					this.throwIfStopped(signal);
 				} else {
 					break;
 				}
 			}
 
-			const tokenUsage: TokenUsage | undefined = receivedUsage
-				? {
-					inputTokens: totalInputTokens,
-					outputTokens: totalOutputTokens,
-					...(totalCacheReadTokens > 0 ? { cacheReadTokens: totalCacheReadTokens } : {}),
-					...(totalCacheCreationTokens > 0 ? { cacheCreationTokens: totalCacheCreationTokens } : {}),
-				}
-				: undefined;
+			const tokenUsage = usageSoFar();
 			// One line per turn with everything a slowness or cost report needs.
 			debugLog(this.settings, `stream done (${Date.now() - startedAt}ms)`, {
 				provider: this.providerType,
@@ -275,7 +299,7 @@ export abstract class BaseProvider implements LLMProvider {
 				streamedChars: fullText.length,
 				error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
 			});
-			this.finishOrError(error, fullText, onComplete, onError);
+			this.finishOrError(error, fullText, onComplete, onError, signal, usageSoFar(), { truncated });
 		} finally {
 			if (this.abortController === controller) this.abortController = null;
 		}
@@ -361,15 +385,20 @@ export abstract class BaseProvider implements LLMProvider {
 	protected finishOrError(
 		error: unknown,
 		fullText: string,
-		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
-		onError: (error: Error) => void
+		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
+		onError: (error: Error) => void,
+		signal?: AbortSignal,
+		tokenUsage?: TokenUsage,
+		finish?: StreamFinish,
 	): void {
 		const err = error instanceof Error ? error : new Error(String(error));
-		const isAbort = ABORT_ERROR_NAMES.has(err.name);
 
-		if (isAbort) {
-			// Clean user-initiated stop — keep whatever streamed as the final turn.
-			onComplete(fullText);
+		// The SDKs' APIUserAbortError reads "Error" by name, so the name alone
+		// missed every Stop; `isAbortError` also knows the class and the signal.
+		if (isAbortError(err, signal)) {
+			// Clean user-initiated stop — keep whatever streamed as the final turn,
+			// with what the completed rounds cost.
+			onComplete(fullText, tokenUsage, finish);
 			return;
 		}
 
@@ -378,7 +407,7 @@ export abstract class BaseProvider implements LLMProvider {
 			// Keep that partial as the assistant turn and tell the user it was cut
 			// short, rather than erasing an answer they already saw.
 			new Notice(t("streamInterruptedPartialKept", { error: err.message }), 8000);
-			onComplete(fullText);
+			onComplete(fullText, tokenUsage, finish);
 			return;
 		}
 
