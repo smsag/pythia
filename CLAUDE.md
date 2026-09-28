@@ -39,7 +39,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     vaultWatcher.ts           ← registerVaultWatcher — the vault listeners: an edit, a frontmatter re-parse or a delete of a note invalidates the glossary cache, a rename is followed at once (ADR-136/218/224). No batching: the index it used to feed is Schreibstube's now
     vaultContext.ts           ← pure: retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) · isPathInScope · contextScope (include = vaultContextFolders, skip = conversations + scratch) — ADR-183/224
     VaultContextService.ts    ← getRelevantNotes: asks SchreibstubeLink.searchNotes for 3 × vaultContextMaxNotes, keeps what the scope and the opt-out allow; getAutoContext for the reference row; available() (ADR-224)
-    deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
+    deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205); the `new` flag, linkText (≤ 4000 chars, hidden characters removed, prefilled never sent) and host.ready() before any action (ADR-241)
     ToolHandler.ts            ← tool definitions (create_note, rewrite_note, prepend_note) + execution
     chartSpec.ts              ← pure: the chart contract and its ONE validator — parseChartSpec (both doors), formatChartBlock, parseChartBlock, acceptChartCall, spliceChartBlocks (ADR-210)
     comparison.ts             ← pure: model comparison on the last exchange — start/keep/cancel/normalize, and the tabs a keep leaves: canSwitchAlternative · switchAlternative · normalizeAlternatives · answerIds (ADR-160/219/225)
@@ -146,7 +146,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     settings/optimizer.ts     ← §4 optimizer template · framework · model suggestion
     settings/notes.ts         ← §6 templates · default notes folder · inbox note · the Glossary subsection
     settings/storage.ts       ← §7 conversations folder · message cap · history limit · archive toggle + folder
-    settings/troubleshooting.ts ← §8 debug mode
+    settings/links.ts         ← §8 Links and shortcuts: the open / new-conversation / ask (`&text=`) links with this vault's name, each with a "Copy link" button (ADR-241)
+    settings/troubleshooting.ts ← §9 debug mode
   suggest/                    ← modal dialogs (conversation picker, delete confirm, etc.)
   assets/logo.svg             ← the same icon as a standalone 24×24 SVG, for the README and the store listing
   tests/                      ← Vitest unit tests (npm test)
@@ -665,7 +666,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### The settings tab (ADR-209)
 
-- **One axis: scope.** Eight sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **Vault context** · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`, except Vault context, in `ui/vaultContextSettings.ts`
+- **One axis: scope.** Nine sections in this order — **Connections** (the four keys) · **New conversations** · **While answering** · **Prompt optimizer** · **Vault context** · **Notes Pythia writes** (+ **Glossary**) · **History and storage** · **Links and shortcuts** (ADR-241) · **Troubleshooting**. `settings.ts` holds the order and nothing else; each section is a module in `ui/settings/` over one `SettingsContext`, except Vault context, in `ui/vaultContextSettings.ts`
 - **Adding a setting means deciding which section's one-sentence remit covers it.** If none does, that is the finding — the old tab's answer was "Behaviour" or "Features", which is how ten unrelated rows landed under one heading and how `customInstructions` and Debug mode ended up rendered *inside* the old embedding block by accident
 - **Only "New conversations" rows are overridable, and every one of them says so** via `overridable()` — the user-facing half of principle 6. A row there without the sentence, or a row elsewhere with it, fails `tests/settingsIA.test.ts`. A gated row shows `paramUnsupportedSuffix` instead, because a control the model ignores is the more urgent fact
 - **Every section opens with one sentence** through `section()`, which is also the ONE place `setHeading()` is called. **Never `createEl("h3")`** in settings code, and never a second heading mechanism — the tab had two and they do not render alike

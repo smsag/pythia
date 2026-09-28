@@ -375,6 +375,7 @@ const de: Strings = {
 	uriMissingId:           "Pythia URI: Parameter 'id' fehlt.",
 	uriMissingName:         "Pythia URI: Parameter 'name' fehlt.",
 	uriMissingText:         "Pythia URI: Parameter 'text' fehlt.",
+	uriTextTooLong:         "Pythia-Link nicht geöffnet: Sein 'text' ist länger als {{max}} Zeichen.",
 	convNotFound:           "Pythia: Gespräch \"{{id}}\" nicht gefunden.",
 	templateNotFound:       "Pythia: Vorlage \"{{name}}\" nicht gefunden.",
 	unknownAction:          "Pythia: Unbekannte Aktion \"{{action}}\".",

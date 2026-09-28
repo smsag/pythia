@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-28 — `ViewManager.openInSidebar()` behind the new `open-in-sidebar` command: reuses the Pythia leaf whose root is `workspace.rightSplit`, else opens one with `getRightLeaf(false)`; a Pythia tab in the main area is left alone. It awaits the reveal, then focuses the composer on desktop (`view.focusComposer()`), not on mobile (ADR-152). `tests/viewManagerOpenInSidebar.test.ts`.*
+*Last updated: 2026-09-28 — ADR-241: the shortcut link. `services/deepLink.ts` gains `linkText` (the one check of a link's `text`), `wantsNewConversation` (the `new` flag) and `host.ready()`, awaited before any action; `utils.ts` gains `pythiaLink`; new settings section `ui/settings/links.ts`.*
+
+*Previously: 2026-09-28 — `ViewManager.openInSidebar()` behind the new `open-in-sidebar` command: reuses the Pythia leaf whose root is `workspace.rightSplit`, else opens one with `getRightLeaf(false)`; a Pythia tab in the main area is left alone. It awaits the reveal, then focuses the composer on desktop (`view.focusComposer()`), not on mobile (ADR-152). `tests/viewManagerOpenInSidebar.test.ts`.*
 
 *Previously: 2026-09-28 — ADR-240: new `ui/remoteMedia.ts` (`deferRemoteMedia` before render, `blockRemoteMedia` after; `renderAnswerMarkdown` in `ui/renderMarkdown.ts` is the one render entry point for model output, with `RenderSlot` owning each rebuild's render children), `ui/keyActivate.ts` (`makeKeyActivatable`), `ui/failureNotice.ts` (`noticeFailure`). `services/retry.ts` gains `isAbortError`; providers take the abort signal into `handleToolCalls`; `BaseProvider.sendTemperature()`. `persistence.ts` loses the settings migrations and gains `sanitizeOverrides`; `comparison.normalizeAnswerFields` is the one answer-field guard; `NUMBER_SETTING_BOUNDS` in `models/settings.ts`. `SecretStore.setKey(kind)` replaces four setters. `WebReadScope.addResults`; `ToolHandler.declaresPythiaTemplate`. `vaultWatcher` also listens to `metadataCache.changed`.*
 
@@ -761,10 +763,13 @@ See ADR-042 for why summary resolution is awaited synchronously rather than fire
 |---|---|
 | *(none)* | Same as `open` — a link with no verb means "show me Pythia" |
 | `open` | Activate the sidebar view |
-| `new` | Create a new conversation and open it |
+| *(none)* + `new` flag | Same as `new` — the shortcut link, `?vault=…&new=true` (ADR-241); `new=0`/`false`/`no` means open |
+| `new` | Create a new conversation and open it; a `text` is prefilled in the composer, never sent |
 | `resume?id=<id>` | Open a specific conversation, scroll to **top** |
 | `template?name=<name>` | Create a new conversation from a named template |
-| `inject?text=<text>` | Pick a template, then auto-prompt with `text` (used verbatim — Obsidian has already decoded it, and decoding again throws on a bare `%`) |
+| `inject?text=<text>` | Pick a template, then prefill the composer with `text` — never sent (ADR-240). Not decoded again: Obsidian has already decoded it, and decoding again throws on a bare `%` |
+
+`text` passes `linkText` before anything happens: invisible control and bidi characters removed, at most `MAX_LINK_TEXT_CHARS` (4000), refused whole beyond that. Then the router awaits `host.ready()` — `workspace.onLayoutReady` — because a link may be what launched Obsidian (ADR-241). `pythiaLink(vault, "open" | "new" | "ask")` in `utils.ts` builds the three shortcut links the settings tab's **Links and shortcuts** section (`ui/settings/links.ts`) copies.
 
 Every failure says something: a missing parameter, an id or name that matches nothing, an unknown `cmd`, or a thrown error all produce a `Notice`. `handleDeepLink` never rejects — Obsidian does not await an async protocol handler, so a rejection would be swallowed by the platform.
 

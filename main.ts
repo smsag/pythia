@@ -331,10 +331,16 @@ export default class PythiaPlugin extends Plugin {
 		// this is the Obsidian half. `handleDeepLink` never rejects, which matters
 		// because Obsidian does not await an async protocol handler.
 		this.registerObsidianProtocolHandler("pythia", (params) => void handleDeepLink(params, {
+			// A link can be what launched Obsidian: act only once the workspace
+			// exists, or the view opens into a layout about to be replaced (ADR-241).
+			ready: () => new Promise<void>((resolve) => this.app.workspace.onLayoutReady(resolve)),
 			open: async () => void (await this.activateView()),
-			create: async () => {
+			create: async (text) => {
 				const conv = await this.createConversation({ name: `Conversation ${todayISO()}` });
-				await (await this.activateView()).setActiveConversation(conv);
+				const view = await this.activateView();
+				await view.setActiveConversation(conv);
+				// Prefilled, never sent — same reason as inject below.
+				if (text) view.prefillInput(text);
 			},
 			resume: async (id) => {
 				const conv = this.conversationStore.getById(id);

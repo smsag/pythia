@@ -365,6 +365,7 @@ const en = {
 	uriMissingId:           "Pythia URI: missing 'id' parameter.",
 	uriMissingName:         "Pythia URI: missing 'name' parameter.",
 	uriMissingText:         "Pythia URI: missing 'text' parameter.",
+	uriTextTooLong:         "Pythia link not opened: its 'text' is longer than {{max}} characters.",
 	convNotFound:           "Pythia: conversation \"{{id}}\" not found.",
 	templateNotFound:       "Pythia: template \"{{name}}\" not found.",
 	unknownAction:          "Pythia: unknown action \"{{action}}\".",

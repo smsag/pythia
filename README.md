@@ -137,9 +137,23 @@ Use `obsidian://pythia` links to open Pythia from browsers, Shortcuts automation
 |---|---|
 | `obsidian://pythia` | Open the sidebar |
 | `obsidian://pythia?cmd=open` | Open the sidebar (explicit) |
-| `obsidian://pythia?cmd=new` | Create a new blank conversation |
+| `obsidian://pythia?new=true` | Create a new blank conversation (the shortcut link) |
+| `obsidian://pythia?new=true&text=<text>` | New conversation with `text` waiting in the composer — never sent until you press Send |
+| `obsidian://pythia?cmd=new` | Create a new blank conversation (same as `new=true`) |
 | `obsidian://pythia?cmd=resume&id=<uuid>` | Open a specific conversation by ID |
 | `obsidian://pythia?cmd=template&name=<name>` | Create a conversation from a named template |
+
+Add `vault=<name>` to target a vault; without it Obsidian uses the last one opened. A link works when Obsidian is closed too: Pythia waits for the workspace before acting. `text` is capped at 4000 characters (a longer one is refused, not cut) and is only ever prefilled — any web page can open an `obsidian://` link.
+
+### macOS / iOS Shortcut
+
+**Settings → Pythia → Links and shortcuts** has three links with your vault name filled in, each with a **Copy link** button:
+
+| Link | Shortcut |
+|---|---|
+| Open Pythia | **Open URL** with the pasted link |
+| Start a new conversation | **Open URL** with the pasted link |
+| Ask a question from a Shortcut | **Ask for Input** → **URL Encode** → **Open URL** with the pasted link (it ends in `&text=`) followed by the *URL Encoded Text* variable |
 
 Vault note example:
 

@@ -16,6 +16,8 @@ const settingsDe = {
 	glossaryIntro:           "Begriffe und Personen, die du mit „Erklären“ nachschlägst, werden als je eine Notiz abgelegt, damit Obsidian Bases und Dataview sie durchsehen können.",
 	storageSection:          "Verlauf und Speicher",
 	storageIntro:            "Wie viele Gespräche Pythia behält, wo ihre Notizen landen und was das kostet. Pythia schreibt ihre Speicherdatei nach jeder Nachricht vollständig neu — die Größe unten zählt deshalb mehr als die Anzahl.",
+	linksSection:            "Links und Kurzbefehle",
+	linksIntro:              "Links, die Pythia von außerhalb Obsidians öffnen — die Aktion „URL öffnen“ eines Kurzbefehls auf macOS oder iOS, ein Launcher, ein Lesezeichen. Sie nennen diesen Vault, also kopiere sie aus dem Vault, den sie öffnen sollen.",
 	troubleshootingSection:  "Fehlersuche",
 	troubleshootingIntro:    "Für den Fall, dass etwas nicht funktioniert. Alles zum Vault-Kontext beantwortet zuerst die Indexstatus-Zeile weiter oben.",
 
@@ -131,6 +133,14 @@ const settingsDe = {
 	capConfirmRemove:        "{{count}} löschen",
 
 	// ── Fehlersuche ───────────────────────────────────────────────────────────
+	linkOpenName:            "Pythia öffnen",
+	linkOpenDesc:            "Zeigt das Pythia-Panel mit dem zuletzt offenen Gespräch.",
+	linkNewName:             "Neues Gespräch beginnen",
+	linkNewDesc:             "Derselbe Link mit &new=true: Pythia öffnet sich mit einem leeren Gespräch.",
+	linkAskName:             "Frage aus einem Kurzbefehl stellen",
+	linkAskDesc:             "Endet auf &text=, damit der Kurzbefehl ihn vervollständigt: „Nach Eingabe fragen“ und „URL codieren“ vor „URL öffnen“, dann den codierten Text an diesen Link anhängen. Die Frage wartet im Eingabefeld und wird erst gesendet, wenn du auf Senden drückst; eine über {{max}} Zeichen wird abgelehnt.",
+	linkCopyButton:          "Link kopieren",
+
 	debugModeName:           "Debug-Modus",
 	debugModeDesc:           "API-Aufrufe, Payloads und die Aufrufe an Schreibstubes Suche in der Entwicklerkonsole protokollieren. Die Konsole ist die Quelle der Belege für einen Fehlerbericht.",
 };

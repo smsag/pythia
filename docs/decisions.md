@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-28 — ADR-240 (whole-codebase quality and security review: 75 defects fixed; three new engineering principles — an await is a boundary in time, everything started has an owner that ends it, model and web output carry no authority).*
+*Last updated: 2026-09-28 — ADR-241 (the shortcut link: `obsidian://pythia?vault=…&new=true`, a checked and bounded `text`, waiting for the workspace, and a Links and shortcuts settings section).*
+
+*Previously: 2026-09-28 — ADR-240 (whole-codebase quality and security review: 75 defects fixed; three new engineering principles — an await is a boundary in time, everything started has an owner that ends it, model and web output carry no authority).*
 
 *Previously: 2026-09-27 — ADR-239 (a favorite becomes an `==…==` highlight in every note Pythia writes: `services/favoriteHighlights.ts`).*
 
@@ -5147,3 +5149,19 @@ Notable decisions inside the fixes:
 **Guards.** Principle 7: `tests/ConversationStore.test.ts` (a re-marked id survives), `tests/viewFixes.test.ts` (a render abandoned mid-switch). Principle 8: `tests/retry.test.ts` and `tests/BaseProvider.test.ts` with the SDKs' real abort classes, `tests/toolCallNoteWrites.test.ts` (Stop declines a pending confirm). Principle 9: `tests/remoteMedia.test.ts` (no remote `src` survives; no other render entry point), `tests/declaresPythiaTemplate.test.ts`, `tests/webReadScope.test.ts` (a link inside a result is refused). Tooling: `noImplicitOverride`, `isolatedModules`, `allowUnreachableCode: false` and `lint --max-warnings 0`; the release workflow runs the four CI steps.
 
 ---
+
+## ADR-241 — The shortcut link: open Pythia, or start a conversation, from outside Obsidian
+
+**Status:** Active · 2026-09-28
+
+**Context.** The user wants a macOS / iOS Shortcut that starts Pythia: by default it opens the panel, with one parameter it starts a new conversation. `obsidian://pythia` already did both (`cmd=new`), but three things were missing: a link fired while Obsidian was closed acted before the workspace existed; `text` had no length check and invisible characters passed through to the composer; and the user had to assemble the link by hand, vault name included.
+
+**Decision.**
+- **One link, one switch.** `obsidian://pythia?vault=<name>` opens; adding `&new=true` starts a conversation. The flag counts by presence (Obsidian may deliver a bare `&new` as `""` or `"true"`); `0`/`false`/`no` is the explicit "just open"; an explicit `cmd` wins. `cmd=new` stays.
+- **The link keeps the plugin's name.** Obsidian's link actions are one namespace across all plugins; `pythia` is already Pythia's own, so no second action (`pythia-new-conversation`) was registered — two names for one handler is two things to document.
+- **`text` is untrusted.** Any page can open an `obsidian://` link. `linkText` is the one check: control, zero-width and bidi characters removed (they would hide text from the reader before Send), trimmed, and at most `MAX_LINK_TEXT_CHARS` = 4000 — **refused whole with a Notice**, never cut, because a truncated prompt is a different prompt. It applies to `inject` as well. With `new`, the text is **prefilled, never sent** (ADR-240's rule for `inject`): nothing that costs money or sends data starts until the user presses Send.
+- **Wait for the workspace.** `DeepLinkHost.ready()` (`workspace.onLayoutReady`) is awaited before any action — after the text check, so a refused link opens nothing.
+- **Copy, not type.** A new settings section, **Links and shortcuts** (`ui/settings/links.ts`), just before Troubleshooting, shows three links with the current vault name (read at render time, never stored) — open, new conversation, and *ask*, which ends in `&text=` so a Shortcut appends its URL-encoded input — each with a labelled **Copy link** button (`copyTextFromLabel`, `ui/clipboard.ts`; an icon-only button was easy to miss). No existing section's remit covered "how to reach the plugin from outside", which ADR-209 says is the finding, not a reason to squeeze it into Troubleshooting.
+
+**Guards.** `tests/deepLink.test.ts` (the flag's forms, `ready()` gating, the limit refused before anything opens, invisible characters stripped, `pythiaLink`), `tests/settingsIA.test.ts` (section order and remit).
+
