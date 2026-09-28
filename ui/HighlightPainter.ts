@@ -108,6 +108,31 @@ function rangeFromOffsets(nodes: TextPos[], from: number, to: number): Range | n
 }
 
 /**
+ * The offset in the concatenated body text of a DOM boundary point. A point in
+ * a text node is that node's start plus the offset; a point in an ELEMENT (a
+ * triple-click, a selection that starts at a paragraph edge) sits between two
+ * children, so it is the start of the first text node at or after that child —
+ * or the end of the text when nothing follows. -1 when the point is outside.
+ */
+function boundaryTextOffset(nodes: TextPos[], total: number, container: Node, offset: number): number {
+	if (container.nodeType === Node.TEXT_NODE) {
+		const hit = nodes.find((n) => n.node === container);
+		return hit ? hit.start + offset : -1;
+	}
+	const child = container.childNodes[offset] ?? null;
+	for (const { node, start } of nodes) {
+		if (child) {
+			if (child === node || child.contains(node) ||
+				(child.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) return start;
+		} else if (!container.contains(node) &&
+			(container.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+			return start;
+		}
+	}
+	return total;
+}
+
+/**
  * Count how many times `range`'s text already appears in `root` before the
  * range's own start. Used at favorite-creation time so re-finding later paints
  * the same occurrence when the message contains duplicate text.
@@ -117,14 +142,7 @@ export function computeOccurrenceIndex(root: HTMLElement, range: Range): number 
 	if (!text) return 0;
 	const { nodes, full } = collectTextNodes(root);
 
-	// Global offset of the range start within the concatenated body text.
-	let startOffset = -1;
-	for (const { node, start } of nodes) {
-		if (node === range.startContainer) {
-			startOffset = start + range.startOffset;
-			break;
-		}
-	}
+	const startOffset = boundaryTextOffset(nodes, full.length, range.startContainer, range.startOffset);
 	if (startOffset === -1) return 0;
 
 	let count = 0;

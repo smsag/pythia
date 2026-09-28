@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { safeHttpUrl } from "../services/urlSafety";
 import { noteBasename } from "../services/pathUtils";
 import { appendSourceIcon, type SourceKind } from "./icons";
+import { makeKeyActivatable } from "./keyActivate";
 
 /**
  * The citation "sources" surface, extracted from `PythiaSidebarView` (ADR-103
@@ -50,6 +51,7 @@ function renderWikilink(app: App, item: HTMLElement, src: MessageSource, title?:
 		attr: title ? { title } : {},
 	});
 	name.addEventListener("click", () => void openCitationSource(app, src));
+	makeKeyActivatable(name, () => void openCitationSource(app, src), "link");
 }
 
 /**
@@ -105,6 +107,7 @@ export function renderSourcesRow(
 				appendSourceIcon(item, "web");
 				const link = item.createSpan({ cls: "p-source-web", text: s.title });
 				link.addEventListener("click", () => void openCitationSource(app, s));
+				makeKeyActivatable(link, () => void openCitationSource(app, s), "link");
 			} else {
 				renderWikilink(app, item, s, tip?.(s), kindOf);
 			}

@@ -67,6 +67,25 @@ export class ActionSheet {
 		}
 
 		const list = sheet.createDiv({ cls: "p-sheet-list" });
+		// A tap, not a drag: a swipe-to-dismiss that starts on a row ends with a
+		// pointerup on it too, and must not run the row's action. Measured from the
+		// pointerdown on the same element.
+		const TAP_SLOP_PX = 10;
+		const onTap = (el: HTMLElement, run: () => void): void => {
+			let start: { x: number; y: number } | null = null;
+			el.addEventListener("pointerdown", (e) => { start = { x: e.clientX, y: e.clientY }; });
+			el.addEventListener("pointercancel", () => { start = null; });
+			el.addEventListener("pointerup", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const from = start;
+				start = null;
+				if (!from || Math.hypot(e.clientX - from.x, e.clientY - from.y) > TAP_SLOP_PX) return;
+				if (!this.cleanup) return; // the swipe already closed the sheet
+				this.close();
+				run();
+			});
+		};
 		for (const item of items) {
 			const row = list.createDiv({
 				cls: `p-sheet-item${item.disabled ? " p-sheet-item-disabled" : ""}${item.active ? " is-active" : ""}`,
@@ -85,23 +104,12 @@ export class ActionSheet {
 					attr: { "aria-label": tr.label, title: tr.label },
 				});
 				setIcon(btn, tr.icon);
-				btn.addEventListener("pointerup", (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					this.close();
-					tr.onSelect();
-				});
+				onTap(btn, () => tr.onSelect());
 			}
 			// pointerup fires for both touch and mouse and, unlike mousedown, lets a
 			// tap complete without stealing focus mid-gesture; preventDefault keeps a
 			// synthetic click from also reaching the element behind the scrim.
-			row.addEventListener("pointerup", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				const run = item.onSelect;
-				this.close();
-				run();
-			});
+			onTap(row, item.onSelect);
 		}
 
 		// Animate in on the next frame (starts from the CSS `.p-sheet` off-screen

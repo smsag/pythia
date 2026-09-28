@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, Notice, setIcon, type App } from "obsidian";
+import { Component, Notice, setIcon, type App } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Pin, PinKind } from "../models/types";
 import { t } from "../i18n";
@@ -13,6 +13,7 @@ import { flashText } from "./HighlightPainter";
 import { PIN_ICON } from "./icons";
 import { codeBlockSource, diagramSource, tableMarkdown, type PinBlock } from "./pinSources";
 import { findAnswerEl } from "./AnswerTabsController";
+import { renderAnswerMarkdown } from "./renderMarkdown";
 
 export interface PinDeps {
 	app: App;
@@ -172,12 +173,14 @@ export class PinController {
 
 	private renderBody(body: HTMLElement, pin: Pin): void {
 		if (pin.kind === "text") {
+			this.releaseBody(); // the previous pin's rendered body, if it had one
 			// Selected text is not Markdown: a leading "#" or "1." must stay itself.
 			body.createDiv({ cls: "p-pin-text", text: pin.source });
 			return;
 		}
 		const inner = body.createDiv({ cls: "p-pin-rendered p-ai-body" });
-		MarkdownRenderer.render(this.d.app, pin.source, inner, "", this.freshBodyComponent()).then(
+		// A snapshot of model output: remote media waits for a press (ui/remoteMedia.ts).
+		renderAnswerMarkdown(this.d.app, pin.source, inner, this.freshBodyComponent()).then(
 			// The same decorations as in the answer — header, copy, pan, sizing — and
 			// deliberately NO pin: a pin's body is not a place to pin from.
 			() => decorateCodeBlocks(inner, this.diagObservers),
@@ -270,6 +273,11 @@ export class PinController {
 			this.stripObserver = new ResizeObserver(set);
 			this.stripObserver.observe(head);
 		}
+	}
+
+	/** The view closed: stop measuring the strip and release the pin's body. */
+	dispose(): void {
+		this.hide();
 	}
 
 	private hide(): void {

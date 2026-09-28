@@ -38,6 +38,12 @@ export class InlineSuggest {
 	/** Tokenized note haystacks by path, kept for the life of one dropdown so a
 	 *  keystroke re-scores every candidate without re-tokenizing the vault. */
 	private tokenCache = new Map<string, Set<string>>();
+	/** The vault's notes and folders, listed once per open dropdown (refreshed on
+	 *  the next open): a keystroke filters this, never `vault.getFiles()` again. */
+	private snapshot: { files: { file: TFile; path: string; name: string }[]; folders: TFolder[] } | null = null;
+	/** Relevance of every note to the text before `#`, scored once per distinct
+	 *  context — while the user types the `#` fragment the context does not change. */
+	private relevance: { context: string; byPath: Map<string, number> } | null = null;
 
 	constructor(
 		app: App,
@@ -104,6 +110,8 @@ export class InlineSuggest {
 		this.context = "";
 		if (this.dropdown) { this.dropdown.remove(); this.dropdown = null; }
 		this.tokenCache.clear();
+		this.snapshot = null;
+		this.relevance = null;
 		if (this.outsideHandler) {
 			document.removeEventListener("mousedown", this.outsideHandler);
 			this.outsideHandler = null;
@@ -127,11 +135,34 @@ export class InlineSuggest {
 		return set;
 	}
 
+	private vaultSnapshot(): NonNullable<InlineSuggest["snapshot"]> {
+		this.snapshot ??= {
+			files: this.app.vault.getFiles()
+				.filter((f) => f.extension === "md" || f.extension === "pdf")
+				.map((file) => ({ file, path: file.path.toLowerCase(), name: file.basename.toLowerCase() })),
+			folders: this.app.vault.getAllFolders(),
+		};
+		return this.snapshot;
+	}
+
+	/** Every note's relevance to the text typed before `#` (cache-only, no disk). */
+	private relevanceFor(context: string): Map<string, number> {
+		if (this.relevance?.context === context) return this.relevance.byPath;
+		const files = this.vaultSnapshot().files;
+		const tokens = tokenize(context);
+		// Nothing typed before `#`: every note scores 0, and no note is tokenized.
+		const scores = tokens.length === 0 ? [] : scoreRelevanceTokenSets(tokens, files.map((f) => this.noteTokens(f.file)));
+		const byPath = new Map(files.map((f, i) => [f.file.path, scores[i]]));
+		this.relevance = { context, byPath };
+		return byPath;
+	}
+
 	/** Build the flat search view (no folder drilled into). */
 	private buildGlobalEntries(): Entry[] {
 		const q = this.query.toLowerCase();
+		const snap = this.vaultSnapshot();
 
-		const matchingFolders = this.app.vault.getAllFolders()
+		const matchingFolders = snap.folders
 			.filter((f) => f.path !== "/" && (q === "" || f.path.toLowerCase().includes(q)))
 			.sort((a, b) => {
 				const aName = a.name.toLowerCase().includes(q);
@@ -144,15 +175,12 @@ export class InlineSuggest {
 		// it); relevance to the message-so-far is the tiebreaker, so when the "#" fragment
 		// doesn't narrow things down (or several notes match it equally) the topically
 		// relevant ones surface first instead of arbitrary vault order.
-		const contextTokens = tokenize(this.context);
-		const candidates = this.app.vault.getFiles()
-			.filter((f) => f.extension === "md" || f.extension === "pdf")
-			.filter((f) => q === "" || f.path.toLowerCase().includes(q));
-		const scores = scoreRelevanceTokenSets(contextTokens, candidates.map((f) => this.noteTokens(f)));
-		const matchingFiles = candidates
-			.map((f, i) => ({
-				file: f,
-				score: (f.basename.toLowerCase().includes(q) ? 1000 : 0) + scores[i],
+		const relevance = this.relevanceFor(this.context);
+		const matchingFiles = snap.files
+			.filter((f) => q === "" || f.path.includes(q))
+			.map((f) => ({
+				file: f.file,
+				score: (f.name.includes(q) ? 1000 : 0) + (relevance.get(f.file.path) ?? 0),
 			}))
 			.sort((a, b) => b.score - a.score)
 			.slice(0, 8 - matchingFolders.length)

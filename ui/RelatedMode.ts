@@ -33,6 +33,9 @@ export interface RelatedModeDeps {
 	renderChip(): void;
 	/** Leave this mode and show the normal browse/search list again. */
 	showNormalList(): void;
+	/** The mode is taking the list over: whatever the panel still has in flight
+	 *  for its own list (the "by meaning" rows) must not land in it. */
+	onEnter?(): void;
 }
 
 interface ActiveRelated {
@@ -112,6 +115,7 @@ export class RelatedMode {
 	/** Enter the mode for `conv` and run the query. */
 	async enter(conv: Conversation): Promise<void> {
 		if (!this.d.getRelated) return;
+		this.d.onEnter?.();
 		this.cancel();
 		const run = new AbortController();
 		this.run = run;
@@ -119,8 +123,9 @@ export class RelatedMode {
 		this.render();
 		try {
 			const results = await this.d.getRelated(conv.id, run.signal);
-			// Guard the source: a second `enter` while this one was in flight must win.
-			if (this.active?.sourceId === conv.id) {
+			// Guard the source: a second `enter` while this one was in flight must
+			// win, and a cancelled run (the panel closed) draws nothing.
+			if (!run.signal.aborted && this.active?.sourceId === conv.id) {
 				this.active.results = results;
 				this.active.loading = false;
 				this.render();

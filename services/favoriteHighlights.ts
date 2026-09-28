@@ -61,10 +61,29 @@ const ESC_Y = /\\([!-/:-@[-`{-~])/y;
 const CITE_Y = /[ \t]*⟦cite:(note|web):([^⟧]+)⟧/y;
 const FOREIGN_Y = /[ \t]*【[^】]*†[^】]*】/y;
 const WIKI_Y = /!?\[\[([^\]]+)\]\]/y;
-const CODE_Y = /(`+)(.*?[^`])\1(?!`)/y;
 const LINK_Y = /\[([^\]\n]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/y;
 const HTML_Y = /<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^>]*)?\/?>/y;
 const EMPHASIS = ["**", "__", "~~"];
+
+/**
+ * The inline code span opening at `i` (a run of N backticks, closed by the next
+ * run of exactly N), or null. A linear scan over backtick runs rather than
+ * `/(`+)(.*?[^`])\1(?!`)/`, which backtracked over every prefix of the run at
+ * every position and went quadratic on a line of unmatched backticks.
+ */
+export function codeSpanAt(line: string, i: number): { end: number; content: string } | null {
+	let r = 0;
+	while (line[i + r] === "`") r++;
+	if (r === 0) return null;
+	let j = line.indexOf("`", i + r);
+	while (j !== -1) {
+		let k = 0;
+		while (line[j + k] === "`") k++;
+		if (k === r) return { end: j + k, content: line.slice(i + r, j) };
+		j = line.indexOf("`", j + k);
+	}
+	return null;
+}
 
 function stickyAt(re: RegExp, line: string, i: number): RegExpExecArray | null {
 	re.lastIndex = i;
@@ -109,7 +128,16 @@ function tokenizeLine(line: string, base: number, out: Unit[], citeText: CiteTex
 			i += m[0].length;
 			continue;
 		}
-		if ((m = stickyAt(CODE_Y, line, i))) { push(i, i + m[0].length, "atom", m[2]); i += m[0].length; continue; }
+		if (line[i] === "`") {
+			const span = codeSpanAt(line, i);
+			if (span) { push(i, span.end, "atom", span.content); i = span.end; continue; }
+			// An unmatched run is literal text, the whole run at once: retrying the
+			// match from every backtick of it is what made a long run quadratic.
+			let j = i;
+			while (line[j] === "`") { push(j, j + 1, "char", "`"); j++; }
+			i = j;
+			continue;
+		}
 		if ((m = stickyAt(LINK_Y, line, i))) {
 			push(i, i + 1, "markup", "", "[");
 			linkCloses.set(i + 1 + m[1].length, m[0].length - 1 - m[1].length);

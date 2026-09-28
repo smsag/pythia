@@ -2,6 +2,26 @@ import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 import { attachOutsideDismiss } from "./outsideDismiss";
+import { makeKeyActivatable } from "./keyActivate";
+
+/**
+ * A navigator row or control: mousedown (so the chat's selection and focus are
+ * not disturbed — preventDefault) AND the keyboard, through the one helper.
+ */
+function onActivate(el: HTMLElement, run: () => void, label?: string): void {
+	if (label) el.setAttribute("aria-label", label);
+	el.addEventListener("mousedown", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		run();
+	});
+	makeKeyActivatable(el, () => run());
+}
+
+/** After a row was removed: the section's empty line when none is left. */
+function showEmptyIfNone(body: HTMLElement, text: string): void {
+	if (!body.querySelector(".p-nav-item")) body.createDiv({ cls: "p-nav-empty", text });
+}
 
 export interface NavigatorDeps {
 	plugin: PythiaPlugin;
@@ -53,11 +73,7 @@ export class NavigatorController {
 			const labelEl = header.createEl("span", { cls: "p-nav-group-name", text: label });
 			if (labelLink && "onClick" in labelLink) {
 				labelEl.addClass("p-nav-link");
-				labelEl.addEventListener("mousedown", (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					labelLink.onClick();
-				});
+				onActivate(labelEl, () => labelLink.onClick());
 			} else if (labelLink && "disabled" in labelLink) {
 				labelEl.addClass("p-nav-disabled");
 			}
@@ -72,10 +88,10 @@ export class NavigatorController {
 				buildItems(body);
 			}
 
-			header.addEventListener("mousedown", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				if (body.style.display === "none") {
+			header.setAttribute("aria-expanded", String(!defaultCollapsed));
+			onActivate(header, () => {
+				const open = body.style.display === "none";
+				if (open) {
 					body.style.display = "";
 					chevron.setText("▾");
 					if (!body.hasChildNodes()) buildItems(body);
@@ -83,6 +99,7 @@ export class NavigatorController {
 					body.style.display = "none";
 					chevron.setText("▸");
 				}
+				header.setAttribute("aria-expanded", String(open));
 			});
 			return section;
 		};
@@ -114,10 +131,7 @@ export class NavigatorController {
 			srcRow.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
 			srcRow.createEl("span", { cls: "p-nav-label", text: root.name });
 			srcRow.createEl("span", { cls: "p-nav-tag", text: t("navSourceTag") });
-			srcRow.addEventListener("mousedown", (e) => {
-				e.preventDefault(); e.stopPropagation();
-				if (root.id !== conv?.id) openConv(root);
-			});
+			onActivate(srcRow, () => { if (root.id !== conv?.id) openConv(root); });
 			// Children, indented under a vertical rule
 			const kids = body.createDiv({ cls: "p-nav-tree-children" });
 			for (const child of children) {
@@ -132,10 +146,7 @@ export class NavigatorController {
 				} else {
 					row.createEl("span", { cls: "p-nav-count-inline", text: String(child.messages.length) });
 				}
-				row.addEventListener("mousedown", (e) => {
-					e.preventDefault(); e.stopPropagation();
-					if (!isActive) openConv(child);
-				});
+				onActivate(row, () => { if (!isActive) openConv(child); });
 			}
 		});
 
@@ -161,24 +172,14 @@ export class NavigatorController {
 						text: "✕",
 						attr: { title: t("mergeRemove") },
 					});
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						// Jump synchronously, then close — same order as Favorites/Chapters.
-						this.d.revealMergeLink(merge.id);
-						this.close();
-					});
-					del.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						void this.d.removeMergeLink(merge.id).then(() => {
-							item.remove();
-							const count = item.parentElement?.querySelectorAll(".p-nav-item").length ?? 0;
-							if (count === 0) {
-								body.createDiv({ cls: "p-nav-empty", text: t("navNoMerges") });
-							}
-						});
-					});
+					// Jump synchronously, then close — same order as Favorites/Chapters.
+					onActivate(item, () => { this.d.revealMergeLink(merge.id); this.close(); });
+					onActivate(del, () => void this.d.removeMergeLink(merge.id).then(() => {
+						// Counted on the section body AFTER the removal: the removed
+						// row has no parent to count from.
+						item.remove();
+						showEmptyIfNone(body, t("navNoMerges"));
+					}), t("mergeRemove"));
 				}
 			});
 		}
@@ -209,25 +210,12 @@ export class NavigatorController {
 						text: "✕",
 						attr: { title: t("removeHighlight") },
 					});
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						// Mirror the Chapters handler exactly: jump synchronously, then close.
-						this.d.scrollToFavorite(fav);
-						this.close();
-					});
-					del.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						void this.d.removeFavorite(fav.id).then(() => {
-							item.remove();
-							// Keep the header count in sync without a full rebuild.
-							const count = item.parentElement?.querySelectorAll(".p-nav-item").length ?? 0;
-							if (count === 0) {
-								body.createDiv({ cls: "p-nav-empty", text: t("navNoFavorites") });
-							}
-						});
-					});
+					// Mirror the Chapters handler exactly: jump synchronously, then close.
+					onActivate(item, () => { this.d.scrollToFavorite(fav); this.close(); });
+					onActivate(del, () => void this.d.removeFavorite(fav.id).then(() => {
+						item.remove();
+						showEmptyIfNone(body, t("navNoFavorites"));
+					}), t("removeHighlight"));
 				}
 			}
 		}, favLabelLink);
@@ -242,12 +230,7 @@ export class NavigatorController {
 					const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
 					const item = body.createDiv({ cls: "p-nav-item" });
 					item.createEl("span", { cls: "p-nav-label", text: label });
-					item.addEventListener("mousedown", (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						this.d.scrollToMessage(msg.id);
-						this.close();
-					});
+					onActivate(item, () => { this.d.scrollToMessage(msg.id); this.close(); });
 				}
 			}
 		});

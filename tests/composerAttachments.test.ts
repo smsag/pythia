@@ -272,3 +272,25 @@ describe("the clipboard (D-52)", () => {
 		expect(el.querySelector("b, i, a, img")).toBeNull();
 	});
 });
+
+describe("a link to a note that was already attached", () => {
+	it("deleting its chip does not detach the note (it never attached it)", () => {
+		conv.contextNotes = ["Notes/Plan.md"];
+		attachments(view).attach(["Notes/Plan.md"]);
+		expect(input(view).value).toContain("[[Plan]]");
+		type(view, "");
+		expect(conv.contextNotes).toEqual(["Notes/Plan.md"]);
+	});
+});
+
+describe("tracking belongs to one conversation", () => {
+	it("a switch drops the tracking, so an absent token detaches nothing there", async () => {
+		attachments(view).attach(["Notes/Plan.md"]);
+		const other = await seedConversation(plugin, {
+			name: "Other", messages: [], contextNotes: ["Notes/Plan.md"],
+		} as Partial<Conversation>);
+		await view.setActiveConversation(other);
+		type(view, "something else");
+		expect(other.contextNotes).toEqual(["Notes/Plan.md"]);
+	});
+});

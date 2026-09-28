@@ -30,7 +30,7 @@ export class ResumeModeModal extends Modal {
 		super(app);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: t("resumeConvTitle") });
@@ -78,7 +78,7 @@ export class ResumeModeModal extends Modal {
 		}
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

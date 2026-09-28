@@ -14,6 +14,7 @@
 
 import { Notice, setIcon } from "obsidian";
 import { t } from "../i18n";
+import { describeErrorForLog } from "../services/redact";
 
 const FLASH_MS = 1500;
 
@@ -63,6 +64,10 @@ export async function copyBlobWithFeedback(
 	btn: HTMLElement, mime: string, blob: Promise<Blob>, opts: BlobCopyOptions,
 ): Promise<void> {
 	const restore = opts.restoreIcon ?? "copy";
+	// Observed at once: on the text path (no ClipboardItem, or the write refused
+	// before reading it) nothing else awaits the blob, and a failed rasterisation
+	// would surface as an unhandled rejection instead of a line a report can quote.
+	blob.catch((err: unknown) => console.warn("[Pythia] image for clipboard failed", describeErrorForLog(err)));
 	const Item = (window as unknown as { ClipboardItem?: new (i: Record<string, Promise<Blob>>) => ClipboardItem })
 		.ClipboardItem;
 	if (Item && typeof navigator.clipboard?.write === "function") {

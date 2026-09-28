@@ -38,19 +38,35 @@ const MAX_VARIANTS = 8;
  * term.
  */
 export function cleanSurfaceForm(raw: string): string {
+	// Length first: a surface form is at most 60 characters, and a reply line far
+	// longer than that (annotations included) is a sentence, not a form — and
+	// the only input the patterns below could spend real time on.
+	if (raw.length > MAX_RAW_FORM) return "";
 	// Strip the decoration models add around list items: bullets, quotes,
 	// a trailing period, and the "(plural)" style annotations.
-	const cleaned = raw
+	const cleaned = trimTrailing(raw
 		.replace(/\([^)]*\)/g, " ")
-		.replace(/^[\s\-\u2013\u2014*\u2022\u201c\u201d\u2018\u2019"']+/, "")
-		// `*` is stripped at both ends, not just the leading one: a model that
-		// emphasises a form writes `*Zählern*`, and a trailing asterisk left on it
-		// becomes part of the surface form and stops it ever matching.
-		.replace(/[\s.;:*\u201c\u201d\u2018\u2019"']+$/, "")
+		.replace(/^[\s\-\u2013\u2014*\u2022\u201c\u201d\u2018\u2019"']+/, ""))
 		.trim();
 	if (cleaned.length < 2 || cleaned.length > 60) return "";
 	if (/^(none|keine|n\/a|-)$/i.test(cleaned)) return "";
 	return cleaned;
+}
+
+/** Longest raw line `cleanSurfaceForm` looks at: the 60-character form plus
+ *  room for a bullet, quotes and a "(plural)" note. */
+const MAX_RAW_FORM = 200;
+
+/** `*` is stripped at both ends, not just the leading one: a model that
+ *  emphasises a form writes `*Zählern*`, and a trailing asterisk left on it
+ *  becomes part of the surface form and stops it ever matching. A loop, not
+ *  `/[…]+$/`, which retries from every position of a long run of those
+ *  characters that is not at the end. */
+const TRAILING_DECORATION = new Set([".", ";", ":", "*", "\u201c", "\u201d", "\u2018", "\u2019", '"', "'"]);
+function trimTrailing(text: string): string {
+	let end = text.length;
+	while (end > 0 && (TRAILING_DECORATION.has(text[end - 1]) || /\s/.test(text[end - 1]))) end--;
+	return text.slice(0, end);
 }
 
 /** What `translateDefinition` returns: the definition in the target language and,

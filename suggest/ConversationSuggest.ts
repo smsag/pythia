@@ -99,7 +99,10 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 		}
 
 		if (!this.onDelete) return;
-		const trashBtn = el.createEl("button", { cls: "pythia-conv-suggest-delete" });
+		const trashBtn = el.createEl("button", {
+			cls: "pythia-conv-suggest-delete",
+			attr: { "aria-label": t("deleteConvTooltip"), title: t("deleteConvTooltip") },
+		});
 		setIcon(trashBtn, "trash");
 		trashBtn.addEventListener("click", (e) => {
 			e.stopPropagation();

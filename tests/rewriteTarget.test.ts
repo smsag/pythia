@@ -87,3 +87,15 @@ describe("targetLabel", () => {
 		expect(targetLabel("x".repeat(80)).endsWith("…")).toBe(true);
 	});
 });
+
+describe("sameRewriteTarget — a stale card never disarms another passage", () => {
+	it("matches only path, both ends and the text exactly", async () => {
+		const { sameRewriteTarget } = await import("../ui/RewriteController");
+		const a: RewriteTarget = { path: "N.md", from: { line: 1, ch: 0 }, to: { line: 1, ch: 4 }, text: "abcd" };
+		expect(sameRewriteTarget(a, { ...a })).toBe(true);
+		expect(sameRewriteTarget(a, { ...a, text: "abce" })).toBe(false);
+		expect(sameRewriteTarget(a, { ...a, to: { line: 1, ch: 5 } })).toBe(false);
+		expect(sameRewriteTarget(a, { ...a, path: "M.md" })).toBe(false);
+		expect(sameRewriteTarget(undefined, a)).toBe(false);
+	});
+});

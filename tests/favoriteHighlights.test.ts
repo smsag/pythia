@@ -100,3 +100,20 @@ describe("favoritePassages", () => {
 		expect(written).toBe("# Note\n\n==Rates rose ⟦cite:web:2⟧ sharply==.");
 	});
 });
+
+describe("inline code and backtick runs", () => {
+	it("still treats a closed code span as one atom", () => {
+		expect(hl("Run `npm test` now.", "npm test")).toBe("Run ==`npm test`== now.");
+	});
+
+	it("a long line of unmatched backticks completes quickly (no quadratic backtracking)", async () => {
+		const { codeSpanAt } = await import("../services/favoriteHighlights");
+		const line = "a " + "`".repeat(50000) + " x `` tail"; // not at line start: that would be a fence
+		const started = Date.now();
+		const out = hl(line, "tail");
+		expect(Date.now() - started).toBeLessThan(1000);
+		expect(out.endsWith("==tail==")).toBe(true);
+		expect(codeSpanAt("``a`b``", 0)).toEqual({ end: 7, content: "a`b" });
+		expect(codeSpanAt("``a`", 0)).toBeNull();
+	});
+});

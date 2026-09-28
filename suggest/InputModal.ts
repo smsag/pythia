@@ -21,7 +21,7 @@ export class InputModal extends Modal {
 		this.onSubmit = onSubmit;
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: this.heading });
@@ -32,7 +32,8 @@ export class InputModal extends Modal {
 			inputEl = text.inputEl;
 			text.setValue(this.initialValue);
 			text.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
-				if (e.key === "Enter") {
+				// An IME's own Enter commits the composition, never the dialog.
+				if (e.key === "Enter" && !e.isComposing) {
 					e.preventDefault();
 					this.submit(inputEl.value);
 				}
@@ -63,7 +64,7 @@ export class InputModal extends Modal {
 		}
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

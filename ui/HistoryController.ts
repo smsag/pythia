@@ -23,6 +23,7 @@ import { keyboardOverlap, readKeyboardHeight, watchViewport } from "./keyboardIn
 import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { RelatedMode } from "./RelatedMode";
+import { makeKeyActivatable } from "./keyActivate";
 
 /**
  * Conversation rows drawn per page of the browse listing (ADR-174). A source
@@ -157,6 +158,7 @@ export class HistoryController {
 			// be registered synchronously, and nothing invokes it before the
 			// constructors further down have run.
 			related.cancel();
+			stopMeaning(); // a late "by meaning" answer must not land after close
 			overlay.remove();
 			detachEscape();
 			detachKeyboardInset();
@@ -267,6 +269,13 @@ export class HistoryController {
 		let rows: { conv: Conversation; el: HTMLElement }[] = [];
 		// The pending question to Schreibstube (ADR-223), cancelled by the next build.
 		let meaningTimer: ReturnType<typeof setTimeout> | null = null;
+		/** Bumped by every list build, by related mode taking the list and by
+		 *  close: a "by meaning" answer from an older generation is dropped. */
+		let listGen = 0;
+		const stopMeaning = (): void => {
+			listGen++;
+			if (meaningTimer !== null) { clearTimeout(meaningTimer); meaningTimer = null; }
+		};
 		let selectedIdx = 0;
 		const paintSelection = () => {
 			rows.forEach((r, i) => r.el.toggleClass("selected", i === selectedIdx));
@@ -289,6 +298,7 @@ export class HistoryController {
 			paintSelection: () => paintSelection(),
 			renderChip: () => renderChip(),
 			showNormalList: () => buildList(input.value),
+			onEnter: () => stopMeaning(),
 		});
 
 		/** Re-render whichever mode is active (used after a row delete). */
@@ -372,9 +382,10 @@ export class HistoryController {
 			// Relate affordance (ADR-109): a hover-revealed icon on desktop; a
 			// long-press on the row on touch devices. Both open related mode.
 			if (this.d.getRelated && !pick) {
-				const relate = row.createSpan({ cls: "p-history-relate", attr: { title: t("relatedTooltip") } });
+				const relate = row.createSpan({ cls: "p-history-relate", attr: { title: t("relatedTooltip"), "aria-label": t("relatedTooltip") } });
 				setIcon(relate, "git-compare");
 				relate.addEventListener("click", (e) => { e.stopPropagation(); void related.enter(conv); });
+				makeKeyActivatable(relate, () => void related.enter(conv));
 			}
 			if (conv.id === this.d.getConversation()?.id) {
 				row.createSpan({ cls: "p-history-active", text: t("navActiveTag") });
@@ -382,12 +393,11 @@ export class HistoryController {
 				// No delete control while picking: the panel is being used to name a
 				// target, and a trash icon one thumb-width from every row is the wrong
 				// thing to offer when the user's intent is "choose this one".
-				const del = row.createSpan({ cls: "p-switcher-del", attr: { title: t("deleteConvTooltip") } });
+				const del = row.createSpan({ cls: "p-switcher-del", attr: { title: t("deleteConvTooltip"), "aria-label": t("deleteConvTooltip") } });
 				setIcon(del, "trash");
-				del.addEventListener("click", (e) => {
-					e.stopPropagation();
-					this.deleteConversationWithConfirm(conv, () => refreshList());
-				});
+				const remove = (): void => this.deleteConversationWithConfirm(conv, () => refreshList());
+				del.addEventListener("click", (e) => { e.stopPropagation(); remove(); });
+				makeKeyActivatable(del, remove);
 			}
 
 			// Long-press on touch → the row's context menu (show similar + delete),
@@ -416,7 +426,8 @@ export class HistoryController {
 			// answer, the conversations it finds by meaning join below them after
 			// a pause in typing; the title rows never wait for it. The date-grouped
 			// layout resumes when the box is empty.
-			if (meaningTimer !== null) { clearTimeout(meaningTimer); meaningTimer = null; }
+			stopMeaning();
+			const gen = listGen;
 			const search = q ? searchTitles(query, all) : null;
 			if (search && search.queryTokens.length > 0) {
 				const addRow = (conv: Conversation) => {
@@ -436,8 +447,9 @@ export class HistoryController {
 						const asked = this.d.plugin.searchConversationsByMeaning(text, SEARCH_RESULT_LIMIT);
 						if (!asked) return;
 						void asked.then((ids) => {
-							// The box moved on, or the panel closed: this answer is stale.
-							if (!overlay.isConnected || input.value !== query) return;
+							// The box moved on, related mode took the list, or the panel
+							// closed: this answer is stale.
+							if (gen !== listGen || !overlay.isConnected || input.value !== query) return;
 							const extra = meaningOnly(search.hits, ids, byId).filter(selectable);
 							if (extra.length === 0) return;
 							empty.hidden = true;

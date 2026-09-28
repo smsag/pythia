@@ -3,8 +3,8 @@
 const pinsDe = {
 	pinBtn:            "Anheften",
 	pinTooltip:        "Oben im Gespräch anheften",
-	pinNotYet:         "Die Antwort wird noch geschrieben — heften Sie sie an, wenn sie fertig ist.",
-	pinLimit:          "Ein Gespräch behält höchstens {{limit}} angeheftete Elemente — lösen Sie zuerst eines.",
+	pinNotYet:         "Die Antwort wird noch geschrieben — heft sie an, wenn sie fertig ist.",
+	pinLimit:          "Ein Gespräch behält höchstens {{limit}} angeheftete Elemente — löse zuerst eines.",
 	pinTooLong:        "Zu lang zum Anheften: {{chars}} Zeichen, höchstens {{max}}.",
 	pinGone:           "Die angeheftete Stelle ist nicht mehr in diesem Gespräch.",
 	pinKindText:       "Text",

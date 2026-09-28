@@ -150,3 +150,16 @@ describe("parseDefinitionReply", () => {
 		expect(parseDefinitionReply(`DEFINITION:\nX.\nVARIANTS: ${many}`).variants).toHaveLength(8);
 	});
 });
+
+describe("cleanSurfaceForm on pathological input", () => {
+	it("returns quickly on a long run of trailing-decoration characters", () => {
+		const started = Date.now();
+		expect(cleanSurfaceForm(" ".repeat(100000) + "x")).toBe("");
+		expect(cleanSurfaceForm("(".repeat(100000))).toBe("");
+		expect(Date.now() - started).toBeLessThan(200);
+	});
+
+	it("still strips trailing decoration in a loop", () => {
+		expect(cleanSurfaceForm("Kartellrecht. ;*”")).toBe("Kartellrecht");
+	});
+});

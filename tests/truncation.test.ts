@@ -167,3 +167,37 @@ describe("warning beside Send (ADR-162: same rule as the modal)", () => {
 		expect(hint(pane).style.display).toBe("none");
 	});
 });
+
+describe("retry is withheld at press time too", () => {
+	let plugin: InstanceType<typeof PythiaPlugin>;
+	beforeEach(async () => {
+		document.body.innerHTML = "";
+		plugin = await makePlugin();
+	});
+
+	it("isRetryWithheld sees a star, a merge link, tabs and a pending comparison", async () => {
+		const { isRetryWithheld } = await import("../ui/TruncationController");
+		const msg = { id: "a1", role: "assistant", content: "x", timestamp: "" } as Conversation["messages"][number];
+		const base = { messages: [msg], favorites: [], merges: [] } as unknown as Conversation;
+		expect(isRetryWithheld(base, msg)).toBe(false);
+		expect(isRetryWithheld({ ...base, favorites: [{ messageId: "a1" }] } as unknown as Conversation, msg)).toBe(true);
+		expect(isRetryWithheld({ ...base, merges: [{ messageId: "a1" }] } as unknown as Conversation, msg)).toBe(true);
+		expect(isRetryWithheld({ ...base, comparison: {} } as unknown as Conversation, msg)).toBe(true);
+		expect(isRetryWithheld(base, { ...msg, alternatives: [{}] } as unknown as typeof msg)).toBe(true);
+	});
+
+	it("a star added after the card was painted refuses the retry with a notice", async () => {
+		const conv = await seedConversation(plugin, { name: "Chat", messages: [], contextNotes: [], model: "claude-sonnet-4-6" } as Partial<Conversation>);
+		const { view, pane } = await mountView(plugin);
+		const calls = stubStream(plugin, "half an ans", { truncated: true });
+		input(view).value = "write a chapter";
+		await view.sendMessage();
+		const answerId = conv.messages[1].id;
+		conv.favorites = [{ id: "f1", messageId: answerId, text: "half", occurrenceIndex: 0 } as never];
+		const retry = Array.from(pane().querySelectorAll<HTMLElement>(".p-trunc-btn"))[1];
+		retry.click();
+		await flush();
+		expect(conv.messages.map((m) => m.id)).toContain(answerId);
+		expect(calls).toHaveLength(1);
+	});
+});

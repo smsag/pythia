@@ -1,6 +1,7 @@
 import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, MergeLink } from "../models/types";
+import { makeKeyActivatable } from "./keyActivate";
 import { t } from "../i18n";
 import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
@@ -118,7 +119,7 @@ export class MergeController {
 			// A span, not an <a> — same reason as the fork banner (ADR-083): Obsidian
 			// core's anchor underline out-specifies a plugin text-decoration rule.
 			const nameEl = entry.createSpan({ cls: "pythia-merge-source-link", text: source.name });
-			nameEl.addEventListener("click", async () => {
+			const openSource = async (): Promise<void> => {
 				await this.d.setActiveConversation(source);
 				// Prefer landing on the passage itself (scrolls + expands its anchor);
 				// fall back to the message when the mark can't be located.
@@ -127,7 +128,9 @@ export class MergeController {
 				);
 				if (mark) this.revealMergeLink(link.id);
 				else this.d.scrollToMessage(link.messageId);
-			});
+			};
+			nameEl.addEventListener("click", () => void openSource());
+			makeKeyActivatable(nameEl, () => void openSource(), "link");
 			// Shorter excerpt than the fork banner's 220: a conversation can be merged
 			// with from many passages, so each row has to stay one or two lines.
 			const MAX = 120;

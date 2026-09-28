@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
+import { type Component, ItemView, MarkdownRenderer, MarkdownView, Notice, Platform, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { ActionSheet, type ActionSheetItem } from "./ui/ActionSheet";
 import { todayISO } from "./utils";
 import { lastTokenUsageMessage, unwrapCodeFence } from "./services/messageUtils";
@@ -34,7 +34,7 @@ import { SelectionController } from "./ui/SelectionController";
 import { PinController } from "./ui/PinController";
 import { HeaderController } from "./ui/HeaderController";
 import { decorateCodeBlocks } from "./ui/CodeBlockDecorator";
-import { renderRichMarkdown, renderRichMarkdownAsync } from "./ui/renderMarkdown";
+import { renderAnswerMarkdown, renderRichMarkdown, renderRichMarkdownAsync, RenderSlot } from "./ui/renderMarkdown";
 import { renderNoConversation, renderWelcome } from "./ui/emptyState";
 import { ExchangeActionsController } from "./ui/ExchangeActionsController";
 import { ComparisonController } from "./ui/ComparisonController";
@@ -108,6 +108,10 @@ export class PythiaSidebarView extends ItemView {
 	// Selection toolbar (Copy/Favorite/Branch/Insert/Inbox) + span-favorites (ADR-103).
 	private selectionController!: SelectionController;
 	private pins!: PinController; // answer content pinned to the top (ADR-216)
+	// One owner per full rebuild of the list, released by the next; a newer render
+	// bumps the generation and an older loop still awaiting a message stops.
+	private readonly rebuildSlot = new RenderSlot(() => this);
+	private renderGen = 0;
 	private lastMarkdownView: MarkdownView | null = null;
 
 	// Fork-origin banner, painted marks, and the inline anchor/menu (ADR-103).
@@ -172,11 +176,11 @@ export class PythiaSidebarView extends ItemView {
 		return "Pythia";
 	}
 
-	getIcon(): string {
+	override getIcon(): string {
 		return PYTHIA_ICON_ID;
 	}
 
-	async onOpen(): Promise<void> {
+	override async onOpen(): Promise<void> {
 		this.buildUI();
 
 		// Viewport-driven insets (ADR-132/134): lift above the keyboard, and drop the
@@ -216,7 +220,7 @@ export class PythiaSidebarView extends ItemView {
 		}
 	}
 
-	async onClose(): Promise<void> {
+	override async onClose(): Promise<void> {
 		this.plugin.llmRouter.abort();
 
 		// Summaries are generated only via the Send-button menu — no auto-save on close.
@@ -235,6 +239,14 @@ export class PythiaSidebarView extends ItemView {
 		this.navigatorController?.close();
 		this.headerController?.close();
 		this.historyController?.close();
+		// Their capture-phase document listeners, the pin strip's observer, and what
+		// the message list rendered go with the leaf.
+		this.exchangeActions?.hidePreview();
+		this.forkController?.closeAnchor();
+		this.mergeController?.closeAnchor();
+		this.glossaryController?.closeAnchor();
+		this.pins?.dispose();
+		this.rebuildSlot.release();
 
 		// The selectionchange listener is registered via registerDomEvent and is
 		// cleaned up automatically on view unload — no manual removal needed.
@@ -435,7 +447,7 @@ export class PythiaSidebarView extends ItemView {
 			getConversation: () => this.activeConversation,
 			getCardsEl: () => this.summaryCardsEl,
 			getMessagesEl: () => this.messagesEl,
-			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this.renderOwner()),
 			renderHeader: () => this.headerController.renderHeader(),
 		});
 
@@ -463,7 +475,7 @@ export class PythiaSidebarView extends ItemView {
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
-			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this.renderOwner()),
 			runFavoritesSummary: (conv) => this.summaryController.runFavoritesSummary(conv),
 		});
 
@@ -471,7 +483,7 @@ export class PythiaSidebarView extends ItemView {
 			plugin: this.plugin,
 			getConversation: () => this.activeConversation,
 			getMessagesEl: () => this.messagesEl,
-			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this.renderOwner()),
 			openConversation: (conv) => this.setActiveConversation(conv),
 			prefillInput: (text) => this.prefillInput(text),
 		});
@@ -518,11 +530,12 @@ export class PythiaSidebarView extends ItemView {
 			getMessagesEl: () => this.messagesEl,
 			isStreaming: () => this.isStreaming,
 			setStreamingState: (on) => this.setStreamingState(on),
-			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			renderMarkdown: (md, el, owner) => renderRichMarkdown(this.app, md, el, owner),
+			owner: () => this.renderOwner(),
 			onStarted: (userId) => { this.lastRenderedMsgId = userId; },
 			rerender: () => { this.renderedConvId = null; void this.renderMessages(); },
 			scrollToBottom: () => this.scrollToBottom(),
-			renderAnswer: (md, el) => renderRichMarkdownAsync(this.app, md, el, this),
+			renderAnswer: (md, el, owner) => renderRichMarkdownAsync(this.app, md, el, owner),
 			paintMarks: (body, id) => { decorateCodeBlocks(body, this.diagObservers); this.selectionController.repaintFavorites(body, id); this.mergeController.repaintMergeLinks(body, id); },
 		});
 
@@ -533,7 +546,7 @@ export class PythiaSidebarView extends ItemView {
 			setActiveConversation: (conv) => this.setActiveConversation(conv),
 			scrollToMessage: (id) => this.scrollToMessage(id),
 			expandBubbleIfCollapsed: (row) => this.expandBubbleIfCollapsed(row),
-			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this),
+			renderMarkdown: (md, el) => renderRichMarkdown(this.app, md, el, this.renderOwner()),
 			registerDomEvent: (el, type, cb, opts) =>
 				this.registerDomEvent(el, type as keyof HTMLElementEventMap, cb as never, opts),
 		});
@@ -824,11 +837,15 @@ export class PythiaSidebarView extends ItemView {
 		if (this.inputAreaCollapsed) this.toggleInputArea();
 	}
 
+	/** What renders into the message list hang under: the current rebuild's owner. */
+	private renderOwner(): Component { return this.rebuildSlot.current ?? this; }
+
 	private async renderMessages(scrollTo: "bottom" | "top" = "bottom"): Promise<void> {
 		this.exchangeActions.hidePreview();
 		this.pins.render();
 
 		if (!this.activeConversation) {
+			this.renderGen++;
 			this.messagesEl.empty();
 			this.renderedConvId = null;
 			this.lastRenderedMsgId = null;
@@ -843,14 +860,11 @@ export class PythiaSidebarView extends ItemView {
 		// ── Same conversation, nothing new ───────────────────────────────────────
 		// The DOM already reflects the full message list — only handle scroll.
 		if (this.renderedConvId === conv.id && this.lastRenderedMsgId === tailId) {
-			if (scrollTo === "top") {
-				this.scrollToTop();
-			} else {
-				this.scrollToBottom();
-			}
+			if (scrollTo === "top") this.scrollToTop(); else this.scrollToBottom();
 			this.exchangeActions.attach();
 			return;
 		}
+		const gen = ++this.renderGen; // a render still awaiting a message stops at its next check
 
 		// ── Same conversation, new messages appended ─────────────────────────────
 		// Append only the messages that aren't yet in the DOM.
@@ -859,18 +873,15 @@ export class PythiaSidebarView extends ItemView {
 			if (anchorIdx !== -1) {
 				this.messagesEl.querySelector(".pythia-empty, .p-welcome")?.remove();
 				for (let i = anchorIdx + 1; i < msgs.length; i++) {
+					this.lastRenderedMsgId = msgs[i].id; // its row exists from here on
 					await this.appendMessageBubble(msgs[i]);
+					if (gen !== this.renderGen) return;
 				}
-				this.lastRenderedMsgId = tailId;
 				// New turn(s) changed the context size — refresh the inspector so
 				// its budget figure / near-full warning stay current without a
 				// full rebuild.
 				this.contextInspector.refresh();
-				if (scrollTo === "top") {
-					this.scrollToTop();
-				} else {
-					this.scrollToBottom();
-				}
+				if (scrollTo === "top") this.scrollToTop(); else this.scrollToBottom();
 				this.exchangeActions.attach();
 				return;
 			}
@@ -880,6 +891,7 @@ export class PythiaSidebarView extends ItemView {
 
 		// ── Full rebuild ─────────────────────────────────────────────────────────
 		this.messagesEl.empty();
+		this.rebuildSlot.renew(); // unloads what the previous list rendered
 		this.forkController.closeAnchor(); // fork anchor DOM detached by empty(); drop the stale reference + listeners
 		this.mergeController.closeAnchor(); // same for the merge anchor
 		this.glossaryController.closeAnchor();
@@ -908,17 +920,14 @@ export class PythiaSidebarView extends ItemView {
 			return;
 		}
 		for (const msg of msgs) {
+			this.lastRenderedMsgId = msg.id;
 			await this.appendMessageBubble(msg);
+			if (gen !== this.renderGen) return; // a newer render owns messagesEl now
 		}
-		this.lastRenderedMsgId = tailId;
 		// A pending comparison sits after the prompt it answers (ADR-160).
 		if (conv.comparison) this.comparisonController.render();
 
-		if (scrollTo === "top") {
-			this.scrollToTop();
-		} else {
-			this.scrollToBottom();
-		}
+		if (scrollTo === "top") this.scrollToTop(); else this.scrollToBottom();
 		this.exchangeActions.attach();
 	}
 
@@ -954,7 +963,7 @@ export class PythiaSidebarView extends ItemView {
 			const isLong = msg.content.length > LONG_BUBBLE_CHARS;
 			if (isLong) bubble.addClass("p-bubble-collapsed");
 			try {
-				await MarkdownRenderer.render(this.app, unwrapCodeFence(msg.content), bubble, "", this);
+				await MarkdownRenderer.render(this.app, unwrapCodeFence(msg.content), bubble, "", this.renderOwner());
 			} catch (e) {
 				console.error("[Pythia] render error:", e);
 			}
@@ -974,7 +983,7 @@ export class PythiaSidebarView extends ItemView {
 		renderTurnLabel(row, msg, this.activeConversation, { showCost: this.plugin.settings.showCost });
 		const aiBody = row.createDiv({ cls: "p-ai-body" });
 		try {
-			await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, "", this);
+			await renderAnswerMarkdown(this.app, unwrapCodeFence(stripForeignCitations(msg.content)), aiBody, this.renderOwner());
 		} catch (e) {
 			console.error("[Pythia] render error:", e);
 		}
@@ -1029,7 +1038,7 @@ export class PythiaSidebarView extends ItemView {
 				aiBody.removeClass("pythia-streaming");
 				aiBody.empty();
 				try {
-					await MarkdownRenderer.render(this.app, unwrapCodeFence(stripForeignCitations(fullText)), aiBody, "", this);
+					await renderAnswerMarkdown(this.app, unwrapCodeFence(stripForeignCitations(fullText)), aiBody, this.renderOwner());
 				} catch (e) {
 					console.error("[Pythia] render error:", e);
 				}

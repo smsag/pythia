@@ -95,6 +95,25 @@ describe("HighlightPainter", () => {
 			expect(computeOccurrenceIndex(body, range)).toBe(2);
 		});
 
+		it("counts from an ELEMENT boundary (a selection starting at a paragraph edge)", () => {
+			const body = makeBody("<p>foo bar</p><p>foo baz</p>");
+			const second = body.querySelectorAll("p")[1];
+			const range = document.createRange();
+			range.setStart(second, 0);          // element container, not a text node
+			range.setEnd(second.firstChild!, 3);
+			expect(range.toString()).toBe("foo");
+			expect(computeOccurrenceIndex(body, range)).toBe(1);
+		});
+
+		it("counts from a boundary in the body itself, between paragraphs", () => {
+			const body = makeBody("<p>x</p><p>x</p><p>x</p>");
+			const third = body.querySelectorAll("p")[2];
+			const range = document.createRange();
+			range.setStart(body, 2);
+			range.setEnd(third.firstChild!, 1);
+			expect(computeOccurrenceIndex(body, range)).toBe(2);
+		});
+
 		it("round-trips with findRange", () => {
 			const body = makeBody("<p>x y x y x</p>");
 			const range = findRange(body, "x", 1)!;

@@ -42,12 +42,39 @@ export interface ComposerAttachmentsDeps {
  */
 export class ComposerAttachments {
 	private tracked: TrackedNote[] = [];
+	/** Tracked paths that were ALREADY attached when their link was picked.
+	 *  Their chip draws like any other, but deleting it detaches nothing: the
+	 *  link did not attach the note, so removing the link must not detach it. */
+	private preAttached = new Set<string>();
+	/** The conversation the tracked links were written for. Tracking belongs
+	 *  to one composition in one conversation; a switch invalidates it. */
+	private conversationId: string | null = null;
 
 	constructor(private readonly d: ComposerAttachmentsDeps) {}
 
+	/** The active conversation, with the tracking dropped when it is not the
+	 *  one the links were written for — so a switch can never detach a note in
+	 *  the next conversation by a token that happens to be absent there. */
+	private current(): Conversation | null {
+		const conv = this.d.getConversation();
+		if ((conv?.id ?? null) !== this.conversationId) {
+			this.clear();
+			this.conversationId = conv?.id ?? null;
+		}
+		return conv;
+	}
+
+	/** The view switched conversations. Optional: every entry point also checks
+	 *  lazily through `current()`; calling this just drops the state sooner. */
+	setConversation(conv: Conversation | null): void {
+		if ((conv?.id ?? null) === this.conversationId) return;
+		this.clear();
+		this.conversationId = conv?.id ?? null;
+	}
+
 	/** A note (or a folder's worth) picked from the `#` menu. */
 	attach(paths: string[]): void {
-		const conv = this.d.getConversation();
+		const conv = this.current();
 		if (!conv || paths.length === 0) return;
 
 		const input = this.d.inputEl();
@@ -71,6 +98,7 @@ export class ComposerAttachments {
 			// two leaves the note attached — which is what the remaining link says.
 			if (!this.tracked.some((n) => n.path === path)) {
 				this.tracked.push({ path, token: tokens[i] });
+				if (conv.contextNotes.includes(path)) this.preAttached.add(path);
 			}
 			if (!conv.contextNotes.includes(path)) { conv.contextNotes.push(path); changed = true; }
 		}
@@ -86,12 +114,13 @@ export class ComposerAttachments {
 	 */
 	sync(): void {
 		if (this.tracked.length === 0) return;
-		const conv = this.d.getConversation();
-		if (!conv) return;
+		const conv = this.current();
+		if (!conv || this.tracked.length === 0) return;
 
 		const { present, absent } = tokensPresent(this.d.inputEl().value, this.tracked);
 		let changed = false;
 		for (const path of absent) {
+			if (this.preAttached.has(path)) continue;
 			if (conv.contextNotes.includes(path)) {
 				conv.contextNotes = conv.contextNotes.filter((n) => n !== path);
 				changed = true;
@@ -111,6 +140,7 @@ export class ComposerAttachments {
 		const index = this.tracked.findIndex((n) => n.path === path);
 		if (index === -1) return;
 		const [note] = this.tracked.splice(index, 1);
+		this.preAttached.delete(path);
 		const input = this.d.inputEl();
 		const next = removeToken(input.value, note.token);
 		if (next === input.value) return;
@@ -122,11 +152,13 @@ export class ComposerAttachments {
 
 	/** The tokens the composer draws as chips, each with its note's name. */
 	chips(): ReadonlyMap<string, string> {
+		this.current();
 		return new Map(this.tracked.map((n) => [n.token, noteBasename(n.path)]));
 	}
 
 	/** The message went; its links went with it. The notes stay attached. */
 	clear(): void {
 		this.tracked = [];
+		this.preAttached.clear();
 	}
 }
