@@ -24,7 +24,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     BaseProvider.ts           ← abstract base: shared fields, lifecycle, all generate* utility methods
     messageUtils.ts           ← shared: parseTitleAndSummary, normalizeMessages, token estimation, output-language resolution + the three prompt shapes (ADR-148), formatDate/formatClockTime (the only UI date + time formatters — ADR-139)
     pathUtils.ts              ← noteBasename, safeNoteName, normalizeVaultPath, yamlString — the only file-name/path/YAML helpers (ADR-159)
-    tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) + applyRelevanceFloor (ADR-168)
+    tokenMatch.ts             ← pure: matchStrength — the ONE token-matching rule (exact · prefix · infix · reverse) (ADR-168)
     conversationFinder.ts     ← pure: searchTitles (every typed word in the title, via matchStrength), meaningQuery, meaningOnly — the search box (ADR-223)
     conversationSearch.ts     ← pure: bestMatchSnippet + the lazily built snippetLines cache — why a row is in the results (ADR-106/170/223)
     leftoverEngineFiles.ts    ← isLeftoverEngineFile + removeLeftoverEngineFiles: the index, journal and Worker files the removed engine left in the plugin folder, removed at layout-ready — never the model in Cache Storage, which Schreibstube shares (ADR-237)
@@ -36,7 +36,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     sendPreview.ts            ← previewSystemPrompt: the ONE preview of the system prompt (context box estimate + What Pythia sends) · sendFullHistory (ADR-231/232)
     NoteWriter.ts             ← vault write operations
     ViewManager.ts            ← leaf lifecycle + loadedPythiaViews: the ONE way to reach Pythia views — a deferred leaf (Obsidian ≥1.7.2) holds a placeholder, never cast `leaf.view` (#342)
-    vaultWatcher.ts           ← registerVaultWatcher — the four vault listeners: an edit or delete of a note invalidates the glossary cache, a rename is followed at once (ADR-136/218/224). No batching: the index it used to feed is Schreibstube's now
+    vaultWatcher.ts           ← registerVaultWatcher — the vault listeners: an edit, a frontmatter re-parse or a delete of a note invalidates the glossary cache, a rename is followed at once (ADR-136/218/224). No batching: the index it used to feed is Schreibstube's now
     vaultContext.ts           ← pure: retrievalQuery (the message plus 200 chars of the previous answer) · isIndexingOptedOut (`pythia: false`, explicit only) · isPathInScope · contextScope (include = vaultContextFolders, skip = conversations + scratch) — ADR-183/224
     VaultContextService.ts    ← getRelevantNotes: asks SchreibstubeLink.searchNotes for 3 × vaultContextMaxNotes, keeps what the scope and the opt-out allow; getAutoContext for the reference row; available() (ADR-224)
     deepLink.ts               ← pure: handleDeepLink — the obsidian://pythia grammar, its messages, and the catch that stops an error being swallowed by the platform (ADR-205)
@@ -47,7 +47,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     settingsAdvice.ts         ← pure: the ONE token-limit rule — maxTokensAdvice (clear | pin | null), effectiveMaxTokens, raisedMaxTokens (ADR-162)
     conversationEdits.ts      ← pure: spliceExchange — the one way to remove an exchange (delete bar, retry) (ADR-162)
     TemplateLoader.ts         ← template discovery + frontmatter parsing
-    persistence.ts            ← pure functions: applySettingsMigrations, mergeSettings (validates every value — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + evictConversations/countEvictions through it
+    persistence.ts            ← pure functions: mergeSettings (validates every value, numbers against `NUMBER_SETTING_BOUNDS` — ADR-159), parseConversations (+ sanitizeConversationFields), mergeConversations, shouldRefuseLoad, partitionEvictions (the ONE eviction rule — ADR-172) + countEvictions through it
     storageSize.ts            ← pure: storageLevel + formatBytes — MEASURED data.json thresholds (warn 25 MB · high 50 MB), ADR-174
     rewriteTarget.ts          ← pure: rangeText · targetState · replaceRange · targetLabel — a captured range PLUS its text, verified exactly before any write (ADR-178)
     pendingTemplate.ts        ← pure: armPendingTemplate + applyPendingTemplate — a template applied to a RUNNING conversation is a one-shot layer, never a write (ADR-177)
@@ -67,7 +67,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     noteWrites.ts             ← pure: the write tools' result (naming the note as a [[path|name]] link), parseNoteWrite, normalizeNoteWrites — what the ✓ chip is drawn from (ADR-218)
     renameVaultPath.ts        ← pure: THE list of stored vault-path fields — conversations AND the nine path settings — and compileRenames, one mover per rename burst (ADR-218 + addendum)
     renameFollower.ts         ← RenameFollower: rename events → one scan per burst, settings followed, the rename log kept in data.json and replayed after every load with its guard (ADR-218 addendum)
-    apiError.ts               ← HTTP error classification
+    apiError.ts               ← HTTP error classification — "network" only for the SDKs' own connection errors (ADR-240)
+    retry.ts                  ← withRetry + isAbortError(err, signal): the ONE abort rule — the SDKs' APIUserAbortError has name "Error" (ADR-240)
+    SecretStore.ts            ← setKey(kind, secretName): the four connections' secret names and in-memory keys, one table (ADR-240)
   ui/
     InlineSuggest.ts          ← the `#` note picker in the composer
     ComposerField.ts          ← the composer: a contenteditable with a textarea's surface (value · selectionStart · setSelectionRange · disabled · focus); note chips; edits through execCommand so undo works (ADR-213)
@@ -96,7 +98,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     chart/render.ts           ← geometry → SVG via createElementNS; never createEl("svg"), which renders nothing and reports nothing
     chart/card.ts             ← renderChartCard: what a ```pythia-chart block becomes, in the panel AND in any vault note
     chart/export.ts           ← SVG → resolved-colour clone → canvas → PNG; a CSS custom property does not cross the <img> boundary
-    renderMarkdown.ts         ← MarkdownRenderer + shared decorations; use for any non-message markdown
+    renderMarkdown.ts         ← renderAnswerMarkdown: the ONE MarkdownRenderer entry point for model output (remote media deferred, ADR-240) + renderRichMarkdown + RenderSlot (one child Component per rebuild, released on the next); tests/remoteMedia.test.ts fails on another call site
+    remoteMedia.ts            ← deferRemoteMedia (markdown, before render) + blockRemoteMedia (DOM, after): a remote image/iframe/media loads only when the user presses the placeholder naming its host (ADR-240)
+    keyActivate.ts            ← makeKeyActivatable: role, tabindex and Enter/Space for a control that is not a <button> (ADR-240)
+    failureNotice.ts          ← noticeFailure: the Notice + describeErrorForLog for a failed async click handler (ADR-240)
     keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
     languageOptions.ts        ← the language dropdown's options, shared by the settings tab and the conversation modal (ADR-148)
     glossarySettings.ts       ← glossary folder + migration controls for the settings tab (ADR-150)
@@ -191,6 +196,12 @@ Three more from the second review (ADR-161), which read the UI layer the first o
 4. **One implementation per interaction.** A gesture, a dismissal, a copy-to-clipboard: the second hand-rolled copy is where the leak lives. `attachLongPress` (five copies before), `attachOutsideDismiss` (five, four of them leaking), `copyWithFeedback`. ESLint now confines raw `document`/`window` listeners to an allow-list; a new surface uses the helper or names its reason in `eslint.config.mjs`.
 5. **Pay for the keystroke, not the corpus.** Work triggered by input is proportional to the input. The conversation panel re-tokenized every conversation per keystroke; the `#` picker re-tokenized every vault file; every typed settings character rewrote the whole `data.json`. Cache what the keystroke does not change (`tokensFor`, `noteTokens`), debounce what the disk does not need to see yet (`saveSettingsSoon`), precompute what the loop reads (`countForks`).
 6. **Inherited stays inherited.** `undefined` on an override means *follow the default*, and a control may *show* the resolved default but must never *store* it — the conversation modal pinned temperature and max-tokens on every Save, turning "follow the global setting" into "frozen at today's value". Already the rule for `theme` and `outputLanguage`; it is the rule for every override.
+
+Three more from the third review (ADR-240, 2026-09-28), where 30 of 75 defects were one of three shapes the first six did not name:
+
+7. **An await is a boundary in time.** After an `await`, re-read what you are about to write — by id from the store (`conversationStore.getById`), never the object captured before — and check the world you started in still holds: a generation counter (`renderGen`, the history panel's list generation), a value still equal to what you asked about (the auto title), a mark unchanged (`clearDirtySnapshot`). Never assign a value computed before the await over live state (`applyCap` did, and a conversation created meanwhile vanished).
+8. **Everything started has an owner that ends it.** A request, a pending promise, a listener, an observer, a render child or a timer is tied to something that ends it — the abort signal, a `Component`/`RenderSlot`, the view's `onClose`, the plugin's `onunload`. Stop and close reach every pending thing, including one waiting on the user (a write confirmation). Abort is recognised by `isAbortError(err, signal)`, never by `err.name`.
+9. **Model and web output carry no authority.** Text from a model, a fetched page or a link from outside is data. It never authorizes an action, widens what may be read (`WebReadScope.addResults`, never the page's text), fetches from the network (`ui/remoteMedia.ts` — every model render goes through `renderAnswerMarkdown`), becomes a standing instruction (`declaresPythiaTemplate`), or is sent as the user's message (`cmd=inject` prefills). A gesture from the user is the only thing that turns it into one.
 
 The canonical list lives here, because this file is what every session reads first; the reasoning behind each lives in its ADR (159, 161); the guard that stops the regression lives in `eslint.config.mjs`, `tsconfig.json` or a test that fails in the forbidden direction.
 
@@ -549,7 +560,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 ### Conversation search (ADR-168)
 
 - **One matching rule, in `services/tokenMatch.ts`.** `matchStrength` is graded (exact 1 · prefix .9 · infix .6 · reverse .5), never boolean — the caller multiplies IDF by it. The length floors are load-bearing: without them a 2-char stopword reverse-matches every long query and the result set becomes the corpus. **Never hand-roll a second comparison** — `bestMatchSnippet` shares it, or a row surfaces on a compound hit with no snippet to explain it
-- **A loosened rule needs `applyRelevanceFloor`.** `score > 0` is not a filter once weak matches exist. The floor is **relative** (15% of the best) — IDF moves with corpus size, so an absolute cut-off means different things in different vaults
+- **A loosened rule needs a relative floor.** `score > 0` is not a filter once weak matches exist; a floor must be **relative** to the best result — IDF moves with corpus size, so an absolute cut-off means different things in different vaults. (The title search of ADR-223 requires every typed word, so it needs none; `applyRelevanceFloor` was removed as unused in the 2026-09-28 review.)
 - **Results are always conversations.** Widening adds a *field* (`notes`), never a second corpus: scores from two corpora are not comparable, and a note row would have to answer to pick mode, the fork indent and the delete control. **Do not add vault notes, glossary entries or templates as result rows** — Obsidian's own search is one keystroke away
 - The note dimension is `attachedNotes` + vault `sources` + `templateId`, **deduped, attached and cited weighted the same**, and it costs **no vault I/O** — the paths are already in `data.json`. Note *bodies* are deliberately not searched (engineering-review #266)
 - **`Conversation.name` has no special case any more.** The old "title hit ×3" is `FIELD_WEIGHTS.title`; a new field is a weight, not an `if`
@@ -602,7 +613,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Every eviction outcome speaks**: archived · removed-because-archiving-is-off · could-not-archive, each a `Notice`. Silent eviction is the bug these two ADRs are about
 - **"No limit" is an empty field, not 0** (ADR-172). `0` stays the stored form; `capFieldValue` and the field's `read` in `ui/conversationCapSetting.ts` are the only two places that know it. The message cap follows the same convention — never let one pane carry two "unlimited" spellings
 - **`maxConversations` deletes conversations. It is not a cache size.** Only `saveConversations()` applies it: `persist({ evict })` defaults to **off**, so a settings write or a secret write can never evict. Never flip that default back
-- **Lowering the limit asks first.** `ConversationCapModal` names the count from `countEvictions` — read from `evictConversations` itself, never a second copy of its protection rules — and what survives (starred · open in a leaf · merge target). Escape and the outside press are "no"; a cancelled dialog restores the stored number in the field
+- **Lowering the limit asks first.** `ConversationCapModal` names the count from `countEvictions` — read from `partitionEvictions` itself, never a second copy of its protection rules — and what survives (starred · open in a leaf · merge target). Escape and the outside press are "no"; a cancelled dialog restores the stored number in the field
 - **No numeric settings field commits per keystroke.** `onChange` fires per character, so lowering "200" to "0" passes through 20 and 2 — that is what deleted a vault's conversations. Every numeric field goes through `bindNumberSetting` (`ui/numberSetting.ts`), which commits on blur or Enter and restores the stored value on a rejected entry; `PythiaSettingTab.hide()` flushes the field the user is standing in, because closing the tab destroys the input before `blur` fires. `settings.ts` holds no `parseInt`, and a new field is a rule object, not another hand-rolled parse
 - A rejected entry never clamps. Storing a number the user did not type is how "0 means unlimited" became "2"
 

@@ -8,6 +8,8 @@ import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { noteBasename } from "../services/pathUtils";
 import { buildAccordion } from "./accordion";
 import { appendSourceIcon, SOURCE_ICONS } from "./icons";
+import { makeKeyActivatable } from "./keyActivate";
+import { noticeFailure } from "./failureNotice";
 import { InstructionsModal } from "../suggest/InstructionsModal";
 import { previewSystemPrompt, sendFullHistory } from "../services/sendPreview";
 
@@ -144,11 +146,15 @@ export class ContextInspectorController {
 				text: noteBasename(path),
 				attr: { title: path },
 			});
-			name.addEventListener("click", async () => {
+			const openNote = (): void => {
 				const f = this.d.plugin.app.vault.getAbstractFileByPath(path);
-				if (f instanceof TFile) await this.d.plugin.app.workspace.getLeaf(false).openFile(f);
-				else new Notice(t("fileNotFound", { path }));
-			});
+				if (f instanceof TFile) {
+					this.d.plugin.app.workspace.getLeaf(false).openFile(f)
+						.catch((err: unknown) => noticeFailure("open note failed", err));
+				} else new Notice(t("fileNotFound", { path }));
+			};
+			name.addEventListener("click", openNote);
+			makeKeyActivatable(name, openNote, "link");
 			return row;
 		};
 
@@ -170,6 +176,7 @@ export class ContextInspectorController {
 			const sysLabel = sysRow.createSpan({ cls: "p-inspector-rowlabel p-inspector-open", text: t("ctxSystemPrompt") });
 			sysLabel.setAttr("title", t("instrShow"));
 			sysLabel.addEventListener("click", () => this.openInstructions(conv));
+			makeKeyActivatable(sysLabel, () => this.openInstructions(conv));
 			miniBar(sysRow, windowSize > 0 ? sysTokens / windowSize : 0);
 			sysRow.createSpan({ cls: "p-inspector-rowval", text: this.fmtTok(sysTokens) });
 
@@ -185,16 +192,18 @@ export class ContextInspectorController {
 				const row = wikilinkRow(body, n.path);
 				row.createSpan({ cls: "p-wikilink-tokens", text: this.fmtTok(n.tokens) });
 				const x = row.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
-				x.addEventListener("click", async () => {
+				x.setAttr("aria-label", t("removeNoteAria", { name: noteBasename(n.path) }));
+				x.addEventListener("click", () => {
 					conv.contextNotes = conv.contextNotes.filter((p) => p !== n.path);
 					this.d.onContextNoteRemoved(n.path);
-					await this.d.plugin.conversationStore.save(conv);
 					this.d.refreshReferencePills();
+					this.d.plugin.conversationStore.save(conv)
+						.catch((err: unknown) => noticeFailure("detach note: save failed", err, "saveFailed"));
 				});
 			}
 			const footer = body.createDiv({ cls: "p-inspector-footer" });
 			const addLink = footer.createSpan({ cls: "p-inspector-add", text: t("ctxAddNote") });
-			addLink.addEventListener("click", () => {
+			const addNote = (): void => {
 				new NoteSuggestModal(this.d.plugin.app, (file) => {
 					if (!conv.contextNotes.includes(file.path)) {
 						conv.contextNotes.push(file.path);
@@ -202,10 +211,13 @@ export class ContextInspectorController {
 						this.d.refreshReferencePills();
 					}
 				}).open();
-			});
+			};
+			addLink.addEventListener("click", addNote);
+			makeKeyActivatable(addLink, addNote);
 			const sys = footer.createSpan({ cls: "p-inspector-sys p-inspector-open", text: t("ctxSystemPromptEst", { est: this.fmtTok(sysTokens) }) });
 			sys.setAttr("title", t("instrShow"));
 			sys.addEventListener("click", () => this.openInstructions(conv));
+			makeKeyActivatable(sys, () => this.openInstructions(conv));
 		}
 	}
 
@@ -225,11 +237,18 @@ export class ContextInspectorController {
 				: t("ctxResumeHybrid", { count: String(omitted) }),
 		});
 		const btn = row.createEl("button", { cls: "pb pb-secondary p-inspector-summarize", text: t("ctxSendFullHistory") });
-		btn.addEventListener("click", async (e) => {
+		btn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			await sendFullHistory(conv, this.d.plugin);
-			new Notice(t("ctxFullHistoryOn"));
-			this.refresh();
+			void (async () => {
+				try {
+					await sendFullHistory(conv, this.d.plugin);
+				} catch (err) {
+					noticeFailure("send full history failed", err, "saveFailed");
+					return;
+				}
+				new Notice(t("ctxFullHistoryOn"));
+				this.refresh();
+			})();
 		});
 	}
 

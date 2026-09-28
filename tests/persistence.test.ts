@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-	applySettingsMigrations,
 	mergeSettings,
 	parseConversations,
 	sanitizeMessages,
 	normalizeFavorites,
 	normalizeMerges,
 	shouldRefuseLoad,
+	sanitizeConversationFields,
 } from "../services/persistence";
 import { DEFAULT_SETTINGS } from "../models/settings";
 import type { Conversation } from "../models/types";
@@ -31,83 +31,6 @@ const makeConv = (
 	favorites: favorites as Conversation["favorites"],
 });
 
-// ── applySettingsMigrations ───────────────────────────────────────────────────
-
-describe("applySettingsMigrations", () => {
-	it("returns needsSave: false and no ciphertexts for clean data", () => {
-		const saved = { defaultProvider: "anthropic" };
-		const result = applySettingsMigrations(saved);
-		expect(result).toEqual({ needsSave: false, legacyAnthropicCiphertext: null, legacyOpenAICiphertext: null });
-	});
-
-	it("removes legacy apiKey field and sets needsSave", () => {
-		const saved: Record<string, unknown> = { apiKey: "sk-old" };
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(saved).not.toHaveProperty("apiKey");
-	});
-
-	it("migrates defaultModel → defaultAnthropicModel", () => {
-		const saved: Record<string, unknown> = { defaultModel: "claude-opus-4-8" };
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(saved.defaultAnthropicModel).toBe("claude-opus-4-8");
-		expect(saved).not.toHaveProperty("defaultModel");
-	});
-
-	it("does not overwrite existing defaultAnthropicModel when defaultModel is present", () => {
-		const saved: Record<string, unknown> = {
-			defaultModel: "claude-old",
-			defaultAnthropicModel: "claude-sonnet-4-6",
-		};
-		applySettingsMigrations(saved);
-		expect(saved.defaultAnthropicModel).toBe("claude-sonnet-4-6");
-		expect(saved.defaultModel).toBe("claude-old");
-	});
-
-	it("extracts encryptedApiKey and removes the field", () => {
-		const saved: Record<string, unknown> = { encryptedApiKey: "plain:sk-test" };
-		const { needsSave, legacyAnthropicCiphertext } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(legacyAnthropicCiphertext).toBe("plain:sk-test");
-		expect(saved).not.toHaveProperty("encryptedApiKey");
-	});
-
-	it("extracts encryptedOpenAIKey and removes the field", () => {
-		const saved: Record<string, unknown> = { encryptedOpenAIKey: "plain:sk-openai" };
-		const { needsSave, legacyOpenAICiphertext } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(legacyOpenAICiphertext).toBe("plain:sk-openai");
-		expect(saved).not.toHaveProperty("encryptedOpenAIKey");
-	});
-
-	it('migrates outputLanguage "English" → "en"', () => {
-		const saved: Record<string, unknown> = { outputLanguage: "English" };
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(saved.outputLanguage).toBe("en");
-	});
-
-	it('migrates outputLanguage "German" → "de"', () => {
-		const saved: Record<string, unknown> = { outputLanguage: "German" };
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(saved.outputLanguage).toBe("de");
-	});
-
-	it("handles multiple migrations in a single call", () => {
-		const saved: Record<string, unknown> = {
-			apiKey: "old",
-			defaultModel: "old-model",
-			outputLanguage: "German",
-		};
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(needsSave).toBe(true);
-		expect(saved).not.toHaveProperty("apiKey");
-		expect(saved.defaultAnthropicModel).toBe("old-model");
-		expect(saved.outputLanguage).toBe("de");
-	});
-});
 
 // ── mergeSettings ─────────────────────────────────────────────────────────────
 
@@ -397,3 +320,70 @@ describe("shouldRefuseLoad", () => {
 });
 
 
+
+// ── the boundary validates ranges, not only types (ADR-159) ──────────────────
+
+describe("mergeSettings — numeric bounds", () => {
+	it("falls back to the default for a number outside its range", () => {
+		const s = mergeSettings({
+			vaultContextMaxNotes: 1e6,
+			webSearchMaxResults: -3,
+			temperature: 5,
+			maxMessagesPerSession: 2.5,
+			maxConversations: -1,
+		});
+		expect(s.vaultContextMaxNotes).toBe(DEFAULT_SETTINGS.vaultContextMaxNotes);
+		expect(s.webSearchMaxResults).toBe(DEFAULT_SETTINGS.webSearchMaxResults);
+		expect(s.temperature).toBe(DEFAULT_SETTINGS.temperature);
+		expect(s.maxMessagesPerSession).toBe(DEFAULT_SETTINGS.maxMessagesPerSession);
+		expect(s.maxConversations).toBe(DEFAULT_SETTINGS.maxConversations);
+	});
+
+	it("keeps an in-range value, and drops an invalid maxTokens", () => {
+		const s = mergeSettings({ vaultContextMaxNotes: 12, temperature: 0.2, maxTokens: "4096" });
+		expect(s.vaultContextMaxNotes).toBe(12);
+		expect(s.temperature).toBe(0.2);
+		expect(s.maxTokens).toBeUndefined();
+	});
+
+	it("no longer migrates the pre-3.x shapes: an old key is simply dropped", () => {
+		const s = mergeSettings({ apiKey: "sk-old", outputLanguage: "German" }) as unknown as Record<string, unknown>;
+		expect(s.apiKey).toBeUndefined();
+		expect(s.outputLanguage).toBe(DEFAULT_SETTINGS.outputLanguage);
+	});
+});
+
+describe("sanitizeConversationFields — overrides and pending rewrite", () => {
+	it("drops overrides a send would pass straight to a provider", () => {
+		const c = {
+			id: "c", messages: [], maxTokens: "4096", temperature: 9, effort: "max",
+			researchMode: "yes", vaultContext: 1,
+			pendingRewrite: { path: "a.md", text: "x", from: { line: 0 }, to: { line: 0, ch: 1 } },
+		} as unknown as Conversation;
+		sanitizeConversationFields(c);
+		const r = c as unknown as Record<string, unknown>;
+		for (const k of ["maxTokens", "temperature", "effort", "researchMode", "vaultContext", "pendingRewrite"]) {
+			expect(r[k], k).toBeUndefined();
+		}
+	});
+
+	it("keeps valid overrides", () => {
+		const c = { id: "c", messages: [], maxTokens: 2048, temperature: 0.3, effort: "low", researchMode: true } as unknown as Conversation;
+		sanitizeConversationFields(c);
+		expect(c.maxTokens).toBe(2048);
+		expect(c.temperature).toBe(0.3);
+		expect(c.effort).toBe("low");
+		expect(c.researchMode).toBe(true);
+	});
+});
+
+describe("sanitizeMessages — answer fields", () => {
+	it("drops a malformed rewrite target and token usage on a kept message", () => {
+		const c = {
+			messages: [{ id: "a", role: "assistant", content: "x", rewriteTarget: { path: "" }, tokenUsage: { inputTokens: -1, outputTokens: 2 } }],
+		} as unknown as Conversation;
+		sanitizeMessages(c);
+		expect(c.messages[0].rewriteTarget).toBeUndefined();
+		expect(c.messages[0].tokenUsage).toBeUndefined();
+	});
+});

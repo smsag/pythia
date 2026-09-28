@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { attachLongPress } from "./longPress";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
 import { spliceExchange } from "../services/conversationEdits";
+import { attachOutsideDismiss } from "./outsideDismiss";
 
 export interface ExchangeActionsDeps {
 	plugin: PythiaPlugin;
@@ -36,7 +37,7 @@ export class ExchangeActionsController {
 		userRow: HTMLElement;
 		assistantRow: HTMLElement;
 		bar: HTMLElement;
-		outsideHandler: EventListener;
+		detachOutside: () => void;
 	} | null = null;
 
 	constructor(private readonly d: ExchangeActionsDeps) {}
@@ -78,10 +79,10 @@ export class ExchangeActionsController {
 		const compareBtn = bar.createEl("button", { cls: "pb pb-secondary p-del-compare", text: t("compareBtn") });
 		const cancelBtn  = bar.createEl("button", { cls: "pb pb-quiet p-del-cancel",  text: t("cancelBtn") });
 
+		// `click`, never `mousedown`/`touchstart`: a scroll that merely starts on
+		// Delete must not delete, and `click` is also what Enter/Space fire.
 		const on = (btn: HTMLElement, fn: () => void) => {
-			const handler = (e: Event) => { e.preventDefault(); e.stopPropagation(); fn(); };
-			btn.addEventListener("mousedown",  handler);
-			btn.addEventListener("touchstart", handler, { passive: false });
+			btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
 		};
 		on(confirmBtn, () => void this.confirmDelete(userRow, assistantRow));
 		on(compareBtn, () => this.compare(userRow, assistantRow));
@@ -89,25 +90,21 @@ export class ExchangeActionsController {
 
 		assistantRow.insertAdjacentElement("beforebegin", bar);
 
-		const outsideHandler: EventListener = (e) => {
-			const target = (e as MouseEvent | TouchEvent).target as Node | null;
-			if (target && !bar.contains(target) && !userRow.contains(target) && !assistantRow.contains(target)) {
-				this.hidePreview();
-			}
-		};
-		document.addEventListener("mousedown",  outsideHandler, { capture: true });
-		document.addEventListener("touchstart", outsideHandler, { capture: true });
-		this.preview = { userRow, assistantRow, bar, outsideHandler };
+		const detachOutside = attachOutsideDismiss(
+			(target) => !!target && (bar.contains(target) || userRow.contains(target) || assistantRow.contains(target)),
+			() => this.hidePreview(),
+			{ touch: true, escape: true },
+		);
+		this.preview = { userRow, assistantRow, bar, detachOutside };
 	}
 
 	hidePreview(): void {
 		if (!this.preview) return;
-		const { userRow, assistantRow, bar, outsideHandler } = this.preview;
+		const { userRow, assistantRow, bar, detachOutside } = this.preview;
 		userRow.removeClass("p-del-preview");
 		assistantRow.removeClass("p-del-preview");
 		bar.remove();
-		document.removeEventListener("mousedown",  outsideHandler, { capture: true });
-		document.removeEventListener("touchstart", outsideHandler, { capture: true });
+		detachOutside();
 		this.preview = null;
 	}
 

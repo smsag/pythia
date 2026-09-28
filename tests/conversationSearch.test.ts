@@ -60,6 +60,26 @@ describe("bestMatchSnippet", () => {
 	});
 });
 
+describe("the snippet shows the match", () => {
+	it("centres the window on a match far into a long line, with ellipses on both cut sides", () => {
+		const long = `${"lead ".repeat(60)}the kayak trip ${"tail ".repeat(60)}`.trim();
+		const c = conv({ name: "x", messages: [msg(long)] });
+		const snippet = bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c), 60)!;
+		expect(snippet).toContain("kayak");
+		expect(snippet.startsWith("…")).toBe(true);
+		expect(snippet.endsWith("…")).toBe(true);
+		expect(snippet.length).toBeLessThanOrEqual(62);
+	});
+
+	it("finds the match by the same prefix rule the ranking uses", () => {
+		const long = `${"x ".repeat(100)}kayaking today`;
+		const c = conv({ name: "x", messages: [msg(long)] });
+		const snippet = bestMatchSnippet(tokenize("kayak"), c, buildConversationFields(c), 40)!;
+		expect(snippet).toContain("kayaking");
+		expect(snippet.endsWith("…")).toBe(false);
+	});
+});
+
 describe("snippet line cache", () => {
 	it("tokenizes a conversation's lines once and reuses them", () => {
 		// The panel calls bestMatchSnippet once per rendered row per keystroke.

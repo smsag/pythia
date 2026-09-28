@@ -15,9 +15,6 @@ export function getFilesInFolder(folder: TFolder): TFile[] {
 	return results;
 }
 
-/** Today's date as `YYYY-MM-DD` in the user's LOCAL time zone. `toISOString()`
- *  reports UTC, so a conversation started at 23:30 in Berlin used to be named
- *  and filed under the previous day. */
 /**
  * The `obsidian://pythia` deep link that reopens a conversation. One builder,
  * because the header's copy-link action, the inbox/insert backlinks and the
@@ -28,6 +25,9 @@ export function resumeDeepLink(conversationId: string, vaultName: string): strin
 	return `obsidian://pythia?vault=${encodeURIComponent(vaultName)}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
 }
 
+/** Today's date as `YYYY-MM-DD` in the user's LOCAL time zone. `toISOString()`
+ *  reports UTC, so a conversation started at 23:30 in Berlin used to be named
+ *  and filed under the previous day. */
 export function todayISO(now: Date = new Date()): string {
 	const y = now.getFullYear();
 	const m = String(now.getMonth() + 1).padStart(2, "0");

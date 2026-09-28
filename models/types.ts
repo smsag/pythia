@@ -302,11 +302,6 @@ export interface PythiaTemplate {
 	systemPrompt: string;
 }
 
-export interface PluginData {
-	settings: Record<string, unknown>;
-	conversations: Conversation[];
-}
-
 export interface ToolDefinition {
 	name: string;
 	description: string;

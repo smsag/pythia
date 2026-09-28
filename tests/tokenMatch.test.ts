@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchStrength, tokenMatches, applyRelevanceFloor, RELEVANCE_FLOOR } from "../services/tokenMatch";
+import { matchStrength } from "../services/tokenMatch";
 
 describe("matchStrength", () => {
 	it("scores an exact hit highest", () => {
@@ -58,27 +58,4 @@ describe("matchStrength", () => {
 		expect(matchStrength([], "anything")).toBe(0);
 	});
 
-	it("tokenMatches is the boolean view of the same rule", () => {
-		expect(tokenMatches(["mietvertrag"], "vertrag")).toBe(true);
-		expect(tokenMatches(["in"], "integration")).toBe(false);
-	});
-});
-
-describe("applyRelevanceFloor", () => {
-	it("keeps results within the floor of the best one", () => {
-		const kept = applyRelevanceFloor([{ score: 10 }, { score: 5 }, { score: 2 }]);
-		expect(kept).toHaveLength(3);
-	});
-
-	it("drops results far below the best one", () => {
-		// Graded matching makes "score > 0" too weak a filter on its own: without
-		// the floor, one weak reverse hit puts the whole corpus in the list.
-		const kept = applyRelevanceFloor([{ score: 10 }, { score: 10 * RELEVANCE_FLOOR * 0.5 }]);
-		expect(kept).toHaveLength(1);
-	});
-
-	it("returns nothing when the best score is zero", () => {
-		expect(applyRelevanceFloor([{ score: 0 }])).toEqual([]);
-		expect(applyRelevanceFloor([])).toEqual([]);
-	});
 });

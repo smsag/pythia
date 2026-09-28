@@ -10,7 +10,6 @@ import { join, relative, sep } from "node:path";
  */
 const ALLOWED = new Set([
 	"ui/noteLinks.ts",          // resolves the link first, then opens it
-	"ui/GlossaryController.ts", // opens pathFor(entry) of an entry it has just read from that note
 ]);
 
 const ROOT = join(__dirname, "..");

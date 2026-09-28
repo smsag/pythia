@@ -14,7 +14,10 @@ function watcher() {
 	const renamed: [string, string][] = [];
 	let registered = 0;
 	const host = {
-		app: { vault: { on: (name: string, cb: Handler) => { handlers[name] = cb; return { name }; } } },
+		app: {
+			vault: { on: (name: string, cb: Handler) => { handlers[name] = cb; return { name }; } },
+			metadataCache: { on: (name: string, cb: Handler) => { handlers[`meta:${name}`] = cb; return { name }; } },
+		},
 		registerEvent: () => { registered++; },
 	};
 	registerVaultWatcher(host as never, {
@@ -27,8 +30,14 @@ function watcher() {
 }
 
 describe("registerVaultWatcher (ADR-136, ADR-218, ADR-224)", () => {
-	it("registers each of its four listeners for teardown", () => {
-		expect(watcher().registered()).toBe(4);
+	it("registers each of its five listeners for teardown", () => {
+		expect(watcher().registered()).toBe(5);
+	});
+
+	it("a re-parsed frontmatter invalidates the glossary again (the cache must not keep stale properties)", () => {
+		const w = watcher();
+		w.handlers["meta:changed"](w.file("Glossary/Terms/Zähler.md"));
+		expect(w.invalidated).toEqual(["Glossary/Terms/Zähler.md"]);
 	});
 
 	it("a rename reaches the conversations at once (ADR-218)", () => {

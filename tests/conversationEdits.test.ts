@@ -48,6 +48,15 @@ describe("spliceExchange", () => {
 		spliceExchange(c, "u2", "a2");
 		expect(c.lastSavedMessageCount).toBe(1);
 	});
+
+	it("moves the boundary by one when it falls INSIDE the removed exchange", () => {
+		// u1 a1 u2 saved, a2 not: removing u2/a2 leaves u1 a1 saved — 2, not 1,
+		// or the next Save to note would append a1 a second time.
+		const c = conv();
+		c.lastSavedMessageCount = 3;
+		spliceExchange(c, "u2", "a2");
+		expect(c.lastSavedMessageCount).toBe(2);
+	});
 });
 
 describe("spliceExchange — an answer with comparison tabs (ADR-225)", () => {

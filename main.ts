@@ -20,7 +20,7 @@ import type { GlossaryService } from "./services/GlossaryService";
 import type { ToolHandler } from "./services/ToolHandler";
 import type { WebSearchService } from "./services/WebSearchService";
 import type { PromptOptimizerService } from "./services/PromptOptimizerService";
-import type { SecretStore } from "./services/SecretStore";
+import type { KeyKind, SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
 import { loadedPythiaViews, type ViewManager } from "./services/ViewManager";
@@ -33,7 +33,7 @@ import { SOURCE_ICONS } from "./ui/icons";
 import { removeLeftoverEngineFiles } from "./services/leftoverEngineFiles";
 
 export default class PythiaPlugin extends Plugin {
-	settings!: PythiaSettings;
+	override settings!: PythiaSettings;
 	/** Decrypted API keys held only in memory — never written to disk as plaintext. */
 	plaintextApiKey = "";
 	plaintextOpenAIKey = "";
@@ -92,7 +92,7 @@ export default class PythiaPlugin extends Plugin {
 		return this.schreibstube.searchConversations(text, limit);
 	}
 
-	async onload(): Promise<void> {
+	override async onload(): Promise<void> {
 		// ConversationStore owns the conversation list and must exist before
 		// AppContainer.create() runs loadPluginData (which writes conversations
 		// through the plugin.conversations accessor → the store). The container
@@ -349,7 +349,11 @@ export default class PythiaPlugin extends Plugin {
 					const conv = await this.createConversationFromTemplate(tpl);
 					const view = await this.activateView();
 					await view.setActiveConversation(conv);
-					view.triggerAutoPrompt(text);
+					// Prefilled, never sent: the link can come from any web page or
+					// email, and a sent message is "the user's own words" — it arms
+					// auto-search and admits its links to read_url (WebReadScope).
+					// The user reads it and presses Send.
+					view.prefillInput(text);
 				}).open();
 				return true;
 			},
@@ -358,10 +362,14 @@ export default class PythiaPlugin extends Plugin {
 		}));
 	}
 
-	async onunload(): Promise<void> {
+	override async onunload(): Promise<void> {
 		// Flush any pending debounced save so the last conversation state
 		// is written to disk before the plugin unloads.
 		await this.conversationStore?.flush();
+		// A typed setting still inside its debounce window, and renames queued in
+		// the last tick (their timer is cleared on unload), would otherwise be lost.
+		this.pluginDataStore?.flushSettingsSave();
+		this.renameFollower?.flush();
 		this.llmRouter?.abort();
 		this.schreibstube?.dispose();
 	}
@@ -370,10 +378,7 @@ export default class PythiaPlugin extends Plugin {
 	// Public API kept stable for settings.ts, the sidebar controllers,
 	// ConversationStore, PromptOptimizerService, and tests.
 
-	setApiKey(secretName: string): Promise<void> { return this.secretStore.setApiKey(secretName); }
-	setOpenAIKey(secretName: string): Promise<void> { return this.secretStore.setOpenAIKey(secretName); }
-	setMistralKey(secretName: string): Promise<void> { return this.secretStore.setMistralKey(secretName); }
-	setSearchKey(secretName: string): Promise<void> { return this.secretStore.setSearchKey(secretName); }
+	setKey(kind: KeyKind, secretName: string): Promise<void> { return this.secretStore.setKey(kind, secretName); }
 	hasApiKeyFor(provider: Provider): boolean { return this.secretStore.hasApiKeyFor(provider); }
 
 	saveSettings(): Promise<void> { return this.pluginDataStore.saveSettings(); }

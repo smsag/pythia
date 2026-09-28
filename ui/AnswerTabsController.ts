@@ -1,4 +1,4 @@
-import { Notice, setIcon } from "obsidian";
+import { type Component, Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { ComparisonCandidate, Conversation, Message } from "../models/types";
 import { abbreviateModel } from "../models/knownModels";
@@ -9,13 +9,16 @@ import { parseCitations, stripForeignCitations } from "../services/citations";
 import { canSwitchAlternative, switchAlternative } from "../services/comparison";
 import { paintCitations } from "./citationPainter";
 import { renderSourcesRow } from "./sourcesRow";
+import { RenderSlot } from "./renderMarkdown";
 
 export interface AnswerTabsDeps {
 	plugin: PythiaPlugin;
 	getConversation(): Conversation | null;
 	isStreaming(): boolean;
 	/** Render an answer's markdown into `el`, awaited — the tabs paint onto it. */
-	renderAnswer(md: string, el: HTMLElement): Promise<void>;
+	renderAnswer(md: string, el: HTMLElement, owner: Component): Promise<void>;
+	/** What a tab's render owner hangs under (the current message-list rebuild). */
+	owner?(): Component;
 	/** Code-block controls, favorites and merge links for an answer body, by the
 	 *  id they were made on — the same painters the kept answer gets. */
 	paintMarks(body: HTMLElement, id: string): void;
@@ -66,6 +69,8 @@ export async function findAnswerEl(messagesEl: HTMLElement, id: string): Promise
 export class AnswerTabsController {
 	/** message id → the tab on screen, when it is not the kept one. */
 	private readonly showing = new Map<string, string>();
+	/** message id → the owner of the tab on screen's render, released on the next select. */
+	private readonly slots = new Map<string, RenderSlot>();
 
 	constructor(private readonly d: AnswerTabsDeps) {}
 
@@ -110,6 +115,7 @@ export class AnswerTabsController {
 			aiBody.hidden = !!alt;
 			for (const el of Array.from(row.querySelectorAll<HTMLElement>(KEPT_ONLY))) el.hidden = !!alt;
 			altView.hidden = !alt;
+			this.slotFor(msg.id).release();
 			altView.empty();
 			// The tab on screen is found by its own id, like any answer: a selection
 			// in it stars, links or pins THAT answer, and a jump can reach it (ADR-225).
@@ -125,7 +131,7 @@ export class AnswerTabsController {
 		const app = this.d.plugin.app;
 		const body = view.createDiv({ cls: "p-ai-body p-answer-alt-body" });
 		const sources = c.sources ?? parseCitations(c.content);
-		const done = this.d.renderAnswer(unwrapCodeFence(stripForeignCitations(c.content)), body).then(() => {
+		const done = this.d.renderAnswer(unwrapCodeFence(stripForeignCitations(c.content)), body, this.slotFor(msg.id).renew()).then(() => {
 			this.d.paintMarks(body, c.id);
 			paintCitations(app, body, sources);
 		});
@@ -147,6 +153,12 @@ export class AnswerTabsController {
 			cls: "pb pb-secondary p-answer-use", text: t("answerTabUse"),
 		});
 		use.addEventListener("click", () => void this.use(msg.id, c));
+	}
+
+	private slotFor(messageId: string): RenderSlot {
+		let slot = this.slots.get(messageId);
+		if (!slot) this.slots.set(messageId, slot = new RenderSlot(() => this.d.owner?.()));
+		return slot;
 	}
 
 	/** Make `c` the answer the conversation holds (ADR-219). */

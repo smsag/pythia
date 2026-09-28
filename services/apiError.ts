@@ -1,3 +1,5 @@
+import { APIConnectionError as AnthropicConnectionError } from "@anthropic-ai/sdk/core/error";
+import { APIConnectionError as OpenAIConnectionError } from "openai/core/error";
 import { t } from "../i18n";
 
 export type ApiErrorClass =
@@ -15,25 +17,32 @@ export type ApiErrorClass =
  * The Anthropic and OpenAI SDKs surface HTTP errors as `Error` subclasses
  * with a numeric `.status` property (e.g. `error.status === 401`); Mistral's
  * SDK uses `.statusCode` instead (models/errors/mistralerror.ts) — both are
- * checked. Network-level failures (DNS, timeout, connection refused) arrive
- * as `TypeError` (no status property at all).
+ * checked.
  *
- * The `status === undefined` fallback below is also hit by errors that
- * aren't genuine connectivity failures: the Anthropic SDK's own
- * `APIError.generate()` (error.js) collapses ANY status-less error into
- * `APIConnectionError` — including a mid-stream SSE `error` event (e.g. a
- * capacity/overload condition reported after the stream already started
- * with a 200) — and `MessageStream`'s internal catch-all re-wraps any
- * exception during stream processing as a bare `AnthropicError`, also
- * status-less. Neither overrides `.name` (verified against the installed
- * SDK), so they aren't distinguishable from a real `TypeError` by name and
- * fall into this same "network" bucket. `buildStreamErrorMessage()` below
- * is where that distinction actually matters for the user-facing message.
+ * "network" is reserved for what really is a connection failure: the SDKs'
+ * own connection errors (Anthropic/OpenAI `APIConnectionError` and its timeout
+ * subclass, Mistral's `ConnectionError`/`RequestTimeoutError`) and a `TypeError`
+ * whose message is a fetch failure. Everything else without a status is
+ * "other" — a missing API key, a bare `AnthropicError` re-wrap from
+ * `MessageStream`, a user abort — so it is neither retried nor reported as the
+ * user's connectivity. The Anthropic SDK's `APIError.generate()` still wraps a
+ * mid-stream SSE `error` event (e.g. an overload after a 200) as an
+ * `APIConnectionError`; that stays "network", and `buildStreamErrorMessage()`
+ * below shows its real message rather than a generic connectivity claim.
  */
 /** Chromium ("Failed to fetch"), WebKit ("Load failed"), Node undici ("fetch
  *  failed"), Firefox ("NetworkError when attempting…"), plus the generic words
  *  the SDKs' own connection wrappers use. */
 const NETWORK_TYPEERROR_RX = /fetch|network|load failed|connection|socket|ECONN|ENOTFOUND|EAI_AGAIN|timed? ?out/i;
+
+/** Mistral's HTTP-client errors set `.name` as a class field (a string literal,
+ *  so it survives minification): httpclienterrors.ts. */
+const MISTRAL_CONNECTION_ERROR_NAMES = new Set(["ConnectionError", "RequestTimeoutError"]);
+
+function isConnectionError(error: Error): boolean {
+	if (error instanceof AnthropicConnectionError || error instanceof OpenAIConnectionError) return true;
+	return MISTRAL_CONNECTION_ERROR_NAMES.has(error.name);
+}
 
 export function classifyApiError(error: unknown): ApiErrorClass {
 	if (!(error instanceof Error)) return "other";
@@ -44,6 +53,7 @@ export function classifyApiError(error: unknown): ApiErrorClass {
 	// retries it twice. Only the messages fetch implementations actually use
 	// count as network; any other TypeError is reported as what it says.
 	if (error instanceof TypeError) return NETWORK_TYPEERROR_RX.test(error.message) ? "network" : "other";
+	if (isConnectionError(error)) return "network";
 
 	const errRecord = error as unknown as Record<string, unknown>;
 	const status = errRecord.status ?? errRecord.statusCode;
@@ -55,9 +65,8 @@ export function classifyApiError(error: unknown): ApiErrorClass {
 	// class of problem as a rate limit — worth retrying, not a hard failure.
 	if (typeof status === "number" && status >= 500 && status <= 599) return "server_error";
 
-	// No status property at all → also treat as a network-level failure
-	if (status === undefined) return "network";
-
+	// No status and not a connection error: a missing key, an SDK re-wrap, a
+	// bug. Never "network" — that would retry it and blame the user's connection.
 	return "other";
 }
 

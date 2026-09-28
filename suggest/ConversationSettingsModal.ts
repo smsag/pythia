@@ -1,5 +1,6 @@
 import { App, DropdownComponent, Modal, Setting, SliderComponent } from "obsidian";
 import type { Conversation, Provider, EffortLevel, OutputLanguage } from "../models/types";
+import { noticeFailure } from "../ui/failureNotice";
 import { t } from "../i18n";
 import {
 	KNOWN_MODELS as MODELS_BY_PROVIDER,
@@ -35,7 +36,7 @@ export class ConversationSettingsModal extends Modal {
 		this.defaultLanguage = defaultLanguage;
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.empty();
@@ -393,6 +394,14 @@ export class ConversationSettingsModal extends Modal {
 							selectedModel = customInput.value.trim();
 						}
 
+						// What Save changes, kept so a failed save does not leave the
+						// in-memory conversation holding values the disk never saw.
+						const c = this.conversation;
+						const before = {
+							provider: c.provider, model: c.model, temperature: c.temperature,
+							effort: c.effort, maxTokens: c.maxTokens,
+							outputLanguage: c.outputLanguage, theme: c.theme,
+						};
 						this.conversation.provider = selectedProvider;
 						this.conversation.model = selectedModel;
 						// An untouched field stays "inherit": the readout said `· Standard`,
@@ -403,7 +412,13 @@ export class ConversationSettingsModal extends Modal {
 						this.conversation.maxTokens = maxTokensIsDefault ? undefined : maxTokensValue;
 						this.conversation.outputLanguage = languageValue;
 						this.conversation.theme = themeValue;
-						await this.onSave(this.conversation);
+						try {
+							await this.onSave(this.conversation);
+						} catch (err) {
+							Object.assign(c, before);
+							noticeFailure("conversation settings: save failed", err, "saveFailed");
+							return; // stay open: the choices are still on screen to retry
+						}
 						this.close();
 					})
 			)
@@ -412,7 +427,7 @@ export class ConversationSettingsModal extends Modal {
 			);
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

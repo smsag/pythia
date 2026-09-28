@@ -7,6 +7,7 @@ import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { PromptInputModal } from "../suggest/PromptInputModal";
 import { OUTPUT_ONLY_INSTRUCTION, cleanOptimizedOutput } from "./promptOptimizerText";
 import { t } from "../i18n";
+import { describeErrorForLog } from "./redact";
 import { DIFFICULTY_INSTRUCTION, parseDifficulty, type Difficulty } from "./modelRecommendation";
 
 const FRAMEWORK_INSTRUCTIONS: Record<string, string> = {
@@ -66,7 +67,9 @@ export class PromptOptimizerService {
 					rawProvider === "anthropic" || rawProvider === "openai" || rawProvider === "mistral" ? rawProvider : undefined;
 				const model = typeof fm.model === "string" && fm.model.trim() ? fm.model.trim() : undefined;
 				return { body: fmMatch[2].trim(), provider, model };
-			} catch {
+			} catch (e) {
+				// The body still works without provider/model; say why they were ignored.
+				console.warn(`[Pythia] optimizer template "${filePath}": frontmatter is not valid YAML, provider and model ignored:`, describeErrorForLog(e));
 				return { body: fmMatch[2].trim() };
 			}
 		}
@@ -97,9 +100,7 @@ export class PromptOptimizerService {
 			throw new Error("template-not-found");
 		}
 
-		let userMessage = template.body.includes("{{prompt}}")
-			? template.body.replace(/\{\{prompt\}\}/g, rawText)
-			: rawText;
+		let userMessage = fillPromptPlaceholder(template.body, rawText);
 
 		if (framework !== "none") {
 			const instruction = FRAMEWORK_INSTRUCTIONS[framework];
@@ -147,10 +148,7 @@ export class PromptOptimizerService {
 			// Fallback: collect raw prompt, substitute into template body
 			const raw = await this.showInputModal();
 			if (raw === null) return;
-			const body = template.body;
-			userMessage = body.includes("{{prompt}}")
-				? body.replace(/\{\{prompt\}\}/g, raw)
-				: raw;
+			userMessage = fillPromptPlaceholder(template.body, raw);
 		}
 
 		if (!userMessage) return;
@@ -220,4 +218,15 @@ export class PromptOptimizerService {
 			new PromptInputModal(this.app, resolve).open();
 		});
 	}
+}
+
+/**
+ * The optimizer template with the user's prompt in place of every
+ * `{{prompt}}`, or the prompt alone when the template has none. The ONE
+ * substitution for both entry points. A FUNCTION replacer, never a string one:
+ * `String.replace` expands `$&`, `$1`, `$$` … in a replacement string, so a
+ * prompt containing them (regex help, shell, prices) arrived mangled.
+ */
+export function fillPromptPlaceholder(body: string, prompt: string): string {
+	return body.includes("{{prompt}}") ? body.replace(/\{\{prompt\}\}/g, () => prompt) : prompt;
 }

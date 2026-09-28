@@ -19,6 +19,7 @@ import { openChoicePicker, placeBelow, type ChoiceItem } from "./choicePicker";
 import { resolveEffortState, resolveLanguageState } from "./instructionState";
 import { languageOptions, languageOptionLabel } from "./languageOptions";
 import { REGENERATE_ICON } from "./icons";
+import { makeKeyActivatable } from "./keyActivate";
 
 type DomEventRegistrar = (
 	el: HTMLElement | Document | Window,
@@ -453,16 +454,7 @@ export class HeaderController {
 					row.createSpan({ cls: "p-model-pop-good", text: t("reasoningNeedsBudget", { recommended: String(DEFAULT_MAX_TOKENS_REASONING) }) });
 				}
 				row.createSpan({ cls: "p-model-pop-taphint", text: t("tapAgainToSelect") });
-				row.addEventListener("mousedown", (e) => {
-					e.preventDefault(); e.stopPropagation();
-					if (coarse && armedId !== m.id) {
-						// First tap: reveal the explainer and wait for a confirming tap.
-						armedId = m.id;
-						pop.querySelectorAll(".p-model-pop-row.armed")
-							.forEach((r) => r.classList.remove("armed"));
-						row.addClass("armed");
-						return;
-					}
+				const choose = (): void => {
 					// Confirmed: drop the armed state so the row stops showing the
 					// touch hint and a later tap re-arms rather than re-applying.
 					armedId = null;
@@ -473,6 +465,21 @@ export class HeaderController {
 					// only the store write is deferred.
 					void this.applyModelChoice(m);
 					paintActive();
+				};
+				// The keyboard chooses at once: the two-tap arm is a touch guard.
+				row.setAttribute("aria-label", m.abbreviation);
+				makeKeyActivatable(row, choose, "menuitem");
+				row.addEventListener("mousedown", (e) => {
+					e.preventDefault(); e.stopPropagation();
+					if (coarse && armedId !== m.id) {
+						// First tap: reveal the explainer and wait for a confirming tap.
+						armedId = m.id;
+						pop.querySelectorAll(".p-model-pop-row.armed")
+							.forEach((r) => r.classList.remove("armed"));
+						row.addClass("armed");
+						return;
+					}
+					choose();
 				});
 			}
 		}
@@ -481,11 +488,9 @@ export class HeaderController {
 		const footer = pop.createDiv({ cls: "p-model-pop-footer" });
 		setIcon(footer.createSpan({ cls: "p-model-pop-footer-icon" }), "sliders");
 		footer.createSpan({ text: t("openConvSettings") });
-		footer.addEventListener("mousedown", (e) => {
-			e.preventDefault(); e.stopPropagation();
-			closePop();
-			this.openConversationSettings();
-		});
+		const openSettings = (): void => { closePop(); this.openConversationSettings(); };
+		footer.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); openSettings(); });
+		makeKeyActivatable(footer, openSettings, "menuitem");
 
 	}
 

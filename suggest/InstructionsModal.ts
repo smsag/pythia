@@ -1,6 +1,7 @@
 import { App, Modal, Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
+import { noticeFailure } from "../ui/failureNotice";
 import { t } from "../i18n";
 import { noteBasename } from "../services/pathUtils";
 import { omittedByResume } from "../services/messageUtils";
@@ -52,7 +53,7 @@ export class InstructionsModal extends Modal {
 		super(app);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.render();
 	}
 
@@ -86,11 +87,18 @@ export class InstructionsModal extends Modal {
 					: t("ctxResumeHybrid", { count: String(facts.omitted) }),
 			});
 			const btn = hist.createEl("button", { cls: "pb pb-secondary", text: t("ctxSendFullHistory") });
-			btn.addEventListener("click", async () => {
-				await sendFullHistory(this.conv, this.plugin);
-				new Notice(t("ctxFullHistoryOn"));
-				this.onChanged();
-				this.render();
+			btn.addEventListener("click", () => {
+				void (async () => {
+					try {
+						await sendFullHistory(this.conv, this.plugin);
+					} catch (err) {
+						noticeFailure("send full history failed", err, "saveFailed");
+						return;
+					}
+					new Notice(t("ctxFullHistoryOn"));
+					this.onChanged();
+					this.render();
+				})();
 			});
 		}
 
@@ -121,7 +129,7 @@ export class InstructionsModal extends Modal {
 		el.createEl("p", { cls: "pythia-modal-hint", text: hint });
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 	}
 }

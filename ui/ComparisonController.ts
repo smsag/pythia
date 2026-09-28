@@ -1,4 +1,4 @@
-import { Notice, setIcon } from "obsidian";
+import { type Component, Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, ComparisonCandidate, Message, ToolCall } from "../models/types";
 import type { ModelInfo } from "../models/knownModels";
@@ -23,6 +23,7 @@ import {
 } from "../services/comparison";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
 import { AnswerTabsController } from "./AnswerTabsController";
+import { RenderSlot } from "./renderMarkdown";
 
 export interface ComparisonDeps {
 	plugin: PythiaPlugin;
@@ -32,8 +33,11 @@ export interface ComparisonDeps {
 	/** The view's streaming state: disables the input, turns Send into Stop. A
 	 *  candidate run is a stream like any other and must be stoppable the same way. */
 	setStreamingState(streaming: boolean): void;
-	/** Render markdown into `el` using the view as the owning Component. */
-	renderMarkdown(md: string, el: HTMLElement): void;
+	/** Render model markdown into `el`, owned by `owner` (a RenderSlot's child). */
+	renderMarkdown(md: string, el: HTMLElement, owner: Component): void;
+	/** What the card's and the tabs' render owners hang under — the current
+	 *  message-list rebuild, so the next rebuild releases them all. */
+	owner?(): Component;
 	/** The comparison opened: the assistant row is gone and the conversation now
 	 *  ends with `userMessageId`, so the view's incremental-render anchor moves. */
 	onStarted(userMessageId: string): void;
@@ -41,7 +45,7 @@ export interface ComparisonDeps {
 	rerender(): void;
 	scrollToBottom(): void;
 	/** For the tabs a kept comparison leaves on its answer (ADR-219). */
-	renderAnswer(md: string, el: HTMLElement): Promise<void>;
+	renderAnswer(md: string, el: HTMLElement, owner: Component): Promise<void>;
 	paintMarks(body: HTMLElement, id: string): void;
 }
 
@@ -63,6 +67,8 @@ export class ComparisonController {
 	private cardEl: HTMLElement | null = null;
 	private activeId: string | null = null;
 	private running: { id: string; textNode: Text } | null = null;
+	/** Owns the card body's render; replaced on every repaint. */
+	private readonly bodySlot = new RenderSlot(() => this.d.owner?.());
 
 	/** The tabs a kept comparison leaves on its answer — drawn from the message
 	 *  on every render, so they outlive the card (ADR-219). */
@@ -157,7 +163,7 @@ export class ComparisonController {
 		const runWebTool = async (call: ToolCall): Promise<string> => {
 			const result = await this.d.plugin.toolHandler.executeWeb(call, allowed, readScope, webSources.length + 1);
 			webSources.push(...result.sources);
-			if (!result.error) readScope.addText(result.text);
+			if (!result.error) readScope.addResults(result.sources);
 			return result.text;
 		};
 		const onToolCall = (call: ToolCall): Promise<string> =>
@@ -205,6 +211,7 @@ export class ComparisonController {
 
 	/** Paint (or repaint) the card at the end of the message list. */
 	render(): void {
+		this.bodySlot.release();
 		this.cardEl?.remove();
 		this.cardEl = null;
 		const conv = this.d.getConversation();
@@ -237,7 +244,7 @@ export class ComparisonController {
 			body.addClass("pythia-streaming");
 			body.appendChild(this.running.textNode);
 		} else {
-			this.d.renderMarkdown(active.content, body);
+			this.d.renderMarkdown(active.content, body, this.bodySlot.renew());
 		}
 
 		const meta = card.createDiv({ cls: "p-compare-meta" });

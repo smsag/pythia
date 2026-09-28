@@ -21,11 +21,14 @@ export interface NamingDeps {
 export function nameAfterCommit(d: NamingDeps, conv: Conversation, userMsg: Message, fullText: string): void {
 	if (shouldGenerateTitle(conv)) {
 		const convId = conv.id;
+		const nameBefore = conv.name;
 		d.plugin.llmRouter
 			.generateConversationTitle(userMsg.content, fullText, conv.provider, conv)
 			.then(async (title) => {
 				const c = d.plugin.conversationStore.getById(convId);
-				if (!c) return;
+				// A rename the user made while the title generated wins: the live
+				// name must still be the one the title was asked for.
+				if (!c || !title || c.name !== nameBefore) return;
 				await d.plugin.renameConversation(c, title);
 				if (d.activeId() === convId) d.setConvName(c.name);
 			})

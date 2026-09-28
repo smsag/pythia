@@ -4,7 +4,9 @@ import { describe, it, expect, vi } from "vitest";
 // window.moment at module load time (Obsidian-only global, absent in Node).
 vi.mock("../i18n", () => ({ t: (key: string) => key }));
 
-import { isRetryableError, RETRY_BACKOFF_MS, sleep } from "../services/retry";
+import { APIUserAbortError as AnthropicUserAbortError, APIConnectionError as AnthropicConnectionError } from "@anthropic-ai/sdk/core/error";
+import { APIUserAbortError as OpenAIUserAbortError } from "openai/core/error";
+import { isAbortError, isRetryableError, RETRY_BACKOFF_MS, sleep } from "../services/retry";
 
 describe("isRetryableError", () => {
 	it("returns true for a rate-limit error (HTTP 429)", () => {
@@ -54,8 +56,46 @@ describe("isRetryableError", () => {
 		expect(isRetryableError(err)).toBe(false);
 	});
 
+	it("returns false for the SDKs' real APIUserAbortError, whose name is just \"Error\"", () => {
+		const anthropic = new AnthropicUserAbortError();
+		const openai = new OpenAIUserAbortError();
+		// The reason a name list was not enough.
+		expect(anthropic.name).toBe("Error");
+		expect(isRetryableError(anthropic)).toBe(false);
+		expect(isRetryableError(openai)).toBe(false);
+	});
+
+	it("returns false for any error once the request's signal has fired", () => {
+		const stop = new AbortController();
+		stop.abort();
+		expect(isRetryableError(new TypeError("Failed to fetch"), stop.signal)).toBe(false);
+	});
+
+	it("returns true for the SDK's real connection error", () => {
+		expect(isRetryableError(new AnthropicConnectionError({ message: undefined }))).toBe(true);
+	});
+
+	it("returns false for a status-less error that is not a connection failure (a missing key)", () => {
+		expect(isRetryableError(new Error("Anthropic API key not configured"))).toBe(false);
+	});
+
 	it("returns false for non-Error values", () => {
 		expect(isRetryableError("oops")).toBe(false);
+	});
+});
+
+describe("isAbortError", () => {
+	it("recognises both SDKs' abort classes, the abort names and a fired signal", () => {
+		expect(isAbortError(new AnthropicUserAbortError())).toBe(true);
+		expect(isAbortError(new OpenAIUserAbortError())).toBe(true);
+		expect(isAbortError(Object.assign(new Error("x"), { name: "RequestAbortedError" }))).toBe(true);
+		const stop = new AbortController();
+		stop.abort();
+		expect(isAbortError(new Error("anything"), stop.signal)).toBe(true);
+	});
+
+	it("is false for an ordinary error on a live signal", () => {
+		expect(isAbortError(new Error("Overloaded"), new AbortController().signal)).toBe(false);
 	});
 });
 

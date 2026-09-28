@@ -1,8 +1,7 @@
-import { normalizeNoteWrites } from "./noteWrites";
 import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Message, type Pin, type Provider } from "../models/types";
 import { OUTPUT_LANGUAGES } from "../models/types";
-import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
-import { normalizeAlternatives, normalizeComparison } from "./comparison";
+import { DEFAULT_SETTINGS, NUMBER_SETTING_BOUNDS, isNumberInBounds, type PythiaSettings } from "../models/settings";
+import { isRewriteTarget, normalizeAlternatives, normalizeAnswerFields, normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
@@ -22,61 +21,6 @@ const ENUM_KEYS: Partial<Record<keyof PythiaSettings, readonly string[]>> = {
 
 /** Keys that may legitimately be absent (the "use the API default" state). */
 const OPTIONAL_KEYS = new Set<keyof PythiaSettings>(["maxTokens", "temperature", "effort"]);
-
-/** The conversation cap shipped up to 2.20.x. See the migration below. */
-const LEGACY_DEFAULT_MAX_CONVERSATIONS = 200;
-
-/**
- * Apply one-time settings migrations to a raw saved-settings object.
- * Mutates `saved` in place (same semantics as the original inline code).
- * Returns flags and any legacy ciphertext the caller must handle via Obsidian APIs.
- */
-export function applySettingsMigrations(saved: Record<string, unknown>): {
-	needsSave: boolean;
-	legacyAnthropicCiphertext: string | null;
-	legacyOpenAICiphertext: string | null;
-} {
-	let needsSave = false;
-	let legacyAnthropicCiphertext: string | null = null;
-	let legacyOpenAICiphertext: string | null = null;
-
-	if (saved.apiKey) {
-		delete saved.apiKey;
-		needsSave = true;
-	}
-
-	if (saved.defaultModel && !saved.defaultAnthropicModel) {
-		saved.defaultAnthropicModel = saved.defaultModel;
-		delete saved.defaultModel;
-		needsSave = true;
-	}
-
-	if (saved.encryptedApiKey) {
-		legacyAnthropicCiphertext = saved.encryptedApiKey as string;
-		delete saved.encryptedApiKey;
-		needsSave = true;
-	}
-
-	if (saved.encryptedOpenAIKey) {
-		legacyOpenAICiphertext = saved.encryptedOpenAIKey as string;
-		delete saved.encryptedOpenAIKey;
-		needsSave = true;
-	}
-
-	// The old 200 was never a measured number (ADR-174): at ~22 KB per
-	// conversation it capped data.json around 4.5 MB, well below where anything
-	// gets slow. A vault still sitting on it is one that never touched the field,
-	// so it moves to the new default. Raising a cap can only ever keep more.
-	if (saved.maxConversations === LEGACY_DEFAULT_MAX_CONVERSATIONS) {
-		saved.maxConversations = DEFAULT_SETTINGS.maxConversations;
-		needsSave = true;
-	}
-
-	if (saved.outputLanguage === "English") { saved.outputLanguage = "en"; needsSave = true; }
-	if (saved.outputLanguage === "German")  { saved.outputLanguage = "de"; needsSave = true; }
-
-	return { needsSave, legacyAnthropicCiphertext, legacyOpenAICiphertext };
-}
 
 /**
  * Merge saved settings with plugin defaults to produce a complete PythiaSettings.
@@ -109,14 +53,17 @@ export function mergeSettings(saved: Record<string, unknown>): PythiaSettings {
 			continue;
 		}
 		if (typeof fallback === "number") {
-			if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+			const bounded = key in NUMBER_SETTING_BOUNDS
+				? isNumberInBounds(key as keyof typeof NUMBER_SETTING_BOUNDS, value)
+				: typeof value === "number" && Number.isFinite(value);
+			if (bounded) out[key] = value;
 			continue;
 		}
 		if (typeof value === typeof fallback) out[key] = value;
 	}
 	// Optional keys have no default to type against.
-	if (typeof saved.maxTokens === "number" && saved.maxTokens > 0) out.maxTokens = saved.maxTokens;
-	if (typeof saved.temperature === "number" && Number.isFinite(saved.temperature)) out.temperature = saved.temperature;
+	// maxTokens has no default to type against; temperature is bounded in the loop.
+	if (isNumberInBounds("maxTokens", saved.maxTokens)) out.maxTokens = saved.maxTokens;
 	return out as unknown as PythiaSettings;
 }
 
@@ -234,27 +181,14 @@ export function sanitizeMessages(conv: Conversation): void {
 	);
 	for (const m of conv.messages) {
 		if (typeof m.content !== "string") m.content = m.content == null ? "" : String(m.content);
-		// `truncated` is a flag that only ever reads `true`; anything else is noise
-		// from a hand edit and would paint a recovery card under a finished answer.
-		if (m.truncated !== undefined && m.truncated !== true) delete (m as { truncated?: unknown }).truncated;
-		// A cost snapshot is `{ usd, asOf }` with a finite non-negative number;
-		// anything else would render as `$NaN` on the label.
-		if (m.cost !== undefined) {
-			const c = m.cost as { usd?: unknown; asOf?: unknown } | null;
-			const ok = !!c && typeof c === "object" && typeof c.usd === "number" && Number.isFinite(c.usd) && c.usd >= 0 && typeof c.asOf === "string";
-			if (!ok) delete (m as { cost?: unknown }).cost;
-		}
+		// Cost, note writes, the truncated flag, a rewrite target and token usage:
+		// the same guard a kept tab and a comparison candidate get.
+		normalizeAnswerFields(m);
 		// The other answers kept as tabs are drawn and switched to (ADR-219).
 		if (m.alternatives !== undefined) {
 			const tabs = normalizeAlternatives(m.alternatives);
 			if (tabs && m.role === "assistant") m.alternatives = tabs;
 			else delete m.alternatives;
-		}
-		// Every entry is a path the chip opens and a rename rewrites (ADR-218).
-		if (m.noteWrites !== undefined) {
-			const writes = normalizeNoteWrites(m.noteWrites);
-			if (writes) m.noteWrites = writes;
-			else delete m.noteWrites;
 		}
 	}
 }
@@ -287,7 +221,23 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	if (c.glossaryTerm !== undefined && (typeof c.glossaryTerm !== "string" || !c.glossaryTerm.trim())) {
 		delete c.glossaryTerm;
 	}
+	sanitizeOverrides(c);
+	if (c.researchMode !== undefined && typeof c.researchMode !== "boolean") delete c.researchMode;
+	if (c.vaultContext !== undefined && typeof c.vaultContext !== "boolean") delete c.vaultContext;
+	// A pending rewrite drives a write into a note (ADR-178): verified shape or nothing.
+	if (c.pendingRewrite !== undefined && !isRewriteTarget(c.pendingRewrite)) delete c.pendingRewrite;
 	sanitizePendingTemplate(c);
+}
+
+/**
+ * The per-conversation overrides a send reads straight into the request —
+ * shared by a conversation and its one-shot template (principle 6: an invalid
+ * override is dropped, so the value falls back to *inherit*, never frozen junk).
+ */
+function sanitizeOverrides(o: Record<string, unknown>): void {
+	if (o.maxTokens !== undefined && !isNumberInBounds("maxTokens", o.maxTokens)) delete o.maxTokens;
+	if (o.temperature !== undefined && !isNumberInBounds("temperature", o.temperature)) delete o.temperature;
+	if (o.effort !== undefined && !(EFFORTS as readonly unknown[]).includes(o.effort)) delete o.effort;
 }
 
 /**
@@ -309,9 +259,7 @@ function sanitizePendingTemplate(c: Record<string, unknown>): void {
 	if (typeof t.name !== "string" || !t.name.trim()) t.name = t.id;
 	if (!PROVIDERS.includes(t.provider as Provider)) delete t.provider;
 	if (typeof t.model !== "string" || !t.model) delete t.model;
-	if (typeof t.maxTokens !== "number" || !Number.isFinite(t.maxTokens) || t.maxTokens <= 0) delete t.maxTokens;
-	if (typeof t.temperature !== "number" || !Number.isFinite(t.temperature)) delete t.temperature;
-	if (!(EFFORTS as readonly unknown[]).includes(t.effort)) delete t.effort;
+	sanitizeOverrides(t);
 	if (!(WRITE_MODES as readonly unknown[]).includes(t.writeMode)) delete t.writeMode;
 	if (typeof t.outputFolder !== "string") delete t.outputFolder;
 	t.contextNotes = Array.isArray(t.contextNotes)
@@ -437,37 +385,12 @@ function byUpdatedAtDesc(a: Conversation, b: Conversation): number {
 }
 
 /**
- * Evict the oldest unprotected conversations when `conversations.length > cap`.
- * Starred conversations (any favorites), every currently-active conversation
- * (one per open sidebar leaf, not just one), and every conversation another
- * conversation has merged with (ADR-130) are always kept.
- *
- * Merge targets are protected for the same reason favorites are: a merge link
- * paints only while its target exists, so evicting a target would silently
- * delete a link the user deliberately placed, with no warning and nothing left
- * on screen to explain the disappearance.
- *
- * Survivors are returned in the SAME relative order as the input — the rest of
- * the app (e.g. `onOpen`/`handleDeleteConversation` picking the most recent as
- * `conversations[length - 1]`) treats the array as insertion-ordered, so
- * re-sorting the survivors here would silently make "most recent" resolve to the
- * oldest after an eviction. `updatedAt` is used only to choose WHICH plain
- * conversations to keep, not to reorder the result.
- * When cap === 0 (unlimited) or length ≤ cap the input is returned unchanged.
- */
-export function evictConversations(
-	conversations: Conversation[],
-	cap: number,
-	activeIds: string[],
-): Conversation[] {
-	return partitionEvictions(conversations, cap, activeIds).kept;
-}
-
-/**
- * The same decision, with the losers named (ADR-172). The archive has to write
+ * THE eviction rule (ADR-172), with the losers named. The archive has to write
  * the conversations before they are dropped, and the confirmation dialog has to
  * count them — both read this rather than re-deriving which ones go, because a
  * second copy of the protection rules is a second answer to the same question.
+ * `kept` preserves the input order (the array is insertion-ordered; `updatedAt`
+ * only chooses WHICH plain conversations survive). cap 0 = no limit.
  */
 export function partitionEvictions(
 	conversations: Conversation[],
@@ -498,7 +421,7 @@ export function partitionEvictions(
 }
 
 /**
- * How many conversations `evictConversations` would delete at this cap (ADR-171).
+ * How many conversations `partitionEvictions` would delete at this cap (ADR-171).
  *
  * Lowering the cap is the only settings value that destroys content, so the
  * settings tab names the number and asks before applying it. The count comes

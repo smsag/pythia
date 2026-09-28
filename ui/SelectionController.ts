@@ -104,6 +104,10 @@ export class SelectionController {
 			const btn = this.selectionToolbar.createEl("button", { cls: "pb pb-quiet pythia-sel-btn", text: label, attr: { title: label } });
 			this.d.registerDomEvent(btn, "mousedown", (e) => { e.preventDefault(); action(); });
 			this.d.registerDomEvent(btn, "touchend", makeSelTouch(action));
+			// The keyboard: Enter/Space on a focused button is a click with no
+			// pointer behind it (detail 0). A pointer's own click follows the
+			// mousedown that already acted, so it is ignored here.
+			this.d.registerDomEvent(btn, "click", (e) => { if ((e as MouseEvent).detail === 0) action(); });
 			return btn;
 		};
 

@@ -77,26 +77,3 @@ export function matchStrength(candidateTokens: string[], queryToken: string): nu
 	}
 	return best;
 }
-
-/** Whether a query token matches at all. The boolean view of `matchStrength`,
- *  for callers that count documents rather than score them. */
-export function tokenMatches(candidateTokens: string[], queryToken: string): boolean {
-	return matchStrength(candidateTokens, queryToken) > 0;
-}
-
-/** Results scoring below this fraction of the best result are dropped.
- *
- *  Graded matching makes "score > 0" too weak a filter on its own: a single
- *  weak reverse hit on a common word would put the whole corpus in the list,
- *  ranked but unusable. The floor is RELATIVE, not absolute — IDF weights move
- *  with corpus size, so an absolute cut-off would mean something different in a
- *  20-conversation vault than in a 2000-conversation one. */
-export const RELEVANCE_FLOOR = 0.15;
-
-/** Drop results far below the best one. Input must be sorted descending. */
-export function applyRelevanceFloor<T extends { score: number }>(sorted: T[]): T[] {
-	const top = sorted[0]?.score ?? 0;
-	if (top <= 0) return [];
-	const cutoff = top * RELEVANCE_FLOOR;
-	return sorted.filter((r) => r.score >= cutoff);
-}

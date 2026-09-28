@@ -35,12 +35,6 @@ updates:
         dependency-type: development
         patterns: ["*"]
     ignore:
-      # The embedding runtime is bundled into main.js and pinned against a
-      # measured model set (ADR-109/169); a major bump changes what ships to
-      # users and is a deliberate piece of work, not a dependency refresh.
-      - dependency-name: "@huggingface/transformers"
-        update-types: ["version-update:semver-major"]
-
       # TypeScript majors are gated on typescript-eslint, not on us. Every
       # published typescript-eslint (8.70.0 at time of writing) peer-requires
       # `typescript >=4.8.4 <6.1.0`, so a TS 7 bump cannot install at all —

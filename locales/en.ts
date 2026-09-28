@@ -367,8 +367,6 @@ const en = {
 	convNotFound:           "Pythia: conversation \"{{id}}\" not found.",
 	templateNotFound:       "Pythia: template \"{{name}}\" not found.",
 	unknownAction:          "Pythia: unknown action \"{{action}}\".",
-	migrateAnthropicFailed: "Could not migrate your Anthropic API key. Please re-enter it in Settings → Pythia.",
-	migrateOpenAIFailed:    "Could not migrate your OpenAI API key. Please re-enter it in Settings → Pythia.",
 
 	// ── Services ──────────────────────────────────────────────────────────────
 	anthropicKeyNotConfigured: "Anthropic API key not configured. Set it in Settings → Pythia.",
@@ -525,6 +523,15 @@ const en = {
 	inlineAttachAll:    "Attach all ({{count}})",
 	inlineDrillTooltip: "Open folder",
 	inlineBackTooltip:  "Back",
+
+	// ── Remote media in an answer (loads only on a press) ─────────────────────
+	remoteMediaLoad:    "Load external media · {{host}}",
+	remoteMediaTooltip: "Not loaded yet: loading it sends a request to {{url}}. An answer can use an external image to send text out of your vault.",
+
+	// ── Review fixes: refusals and control names ──────────────────────────────
+	truncRetryRefused: "Retry would remove this answer, and something now points at it (a star, a link, tabs or a comparison). Use Continue instead.",
+	removeNoteAria:    "Remove {{name}}",
+	deleteNoteAria:    "Delete note {{name}}",
 };
 
 export type Strings = typeof en;

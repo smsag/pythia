@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-	noteToken, tokensPresent, insertTokens, removeToken, type TrackedNote,
+	noteToken, tokensPresent, removeToken, type TrackedNote,
 } from "../ui/composerTokens";
 
 const track = (path: string): TrackedNote => ({ path, token: noteToken(path) });
@@ -16,38 +16,6 @@ describe("noteToken", () => {
 	});
 });
 
-describe("insertTokens", () => {
-	it("spaces the link off from the words around it", () => {
-		const { value } = insertTokens("Compare with last year", 8, ["[[Q3]]"]);
-		expect(value).toBe("Compare [[Q3]] with last year");
-	});
-
-	it("does not double a space that is already there", () => {
-		expect(insertTokens("Compare  year", 8, ["[[Q3]]"]).value).toBe("Compare [[Q3]] year");
-	});
-
-	it("needs no leading space at the start of an empty composer", () => {
-		expect(insertTokens("", 0, ["[[Q3]]"]).value).toBe("[[Q3]] ");
-	});
-
-	it("leaves the cursor after the link, ready to keep typing", () => {
-		const { value, cursor } = insertTokens("Compare", 7, ["[[Q3]]"]);
-		expect(value.slice(0, cursor)).toBe("Compare [[Q3]] ");
-	});
-
-	it("puts a whole folder in as separate links", () => {
-		expect(insertTokens("", 0, ["[[A]]", "[[B]]"]).value).toBe("[[A]] [[B]] ");
-	});
-
-	it("clamps an offset past either end rather than losing the link", () => {
-		expect(insertTokens("abc", 99, ["[[Q3]]"]).value).toContain("[[Q3]]");
-		expect(insertTokens("abc", -4, ["[[Q3]]"]).value).toContain("[[Q3]]");
-	});
-
-	it("returns the text untouched when there is nothing to insert", () => {
-		expect(insertTokens("abc", 1, [])).toEqual({ value: "abc", cursor: 1 });
-	});
-});
 
 describe("tokensPresent", () => {
 	const q3 = track("Notes/Q3 revenue.md");

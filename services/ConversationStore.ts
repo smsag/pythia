@@ -12,7 +12,10 @@ export class ConversationStore {
 	 *  onto it); `setAll()` replaces it (used by loadPluginData / persist eviction). */
 	private _conversations: Conversation[] = [];
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
-	private dirtyIds = new Set<string>();
+	/** Dirty ids with a mark counter: a persist clears an id only when nobody
+	 *  marked it again while its write was in flight (see clearDirtySnapshot). */
+	private dirtyIds = new Map<string, number>();
+	private markSeq = 0;
 	/** Told when the list or a conversation in it changed — Schreibstube re-lists
 	 *  on its next question rather than on every save (ADR-223). */
 	private listeners = new Set<() => void>();
@@ -51,33 +54,41 @@ export class ConversationStore {
 		return this._conversations.find((c) => c.id === id);
 	}
 
-	/** Returns a snapshot of the current dirty IDs for race-safe clearing. */
-	snapshotDirty(): Set<string> {
-		return new Set(this.dirtyIds);
+	/** Returns a snapshot of the current dirty IDs (with their mark) for race-safe clearing. */
+	snapshotDirty(): ReadonlyMap<string, number> {
+		return new Map(this.dirtyIds);
 	}
 
-	/** Clears only the IDs that were in the snapshot — IDs added after the
-	 *  snapshot was taken survive for the next persist cycle. */
-	clearDirtySnapshot(snapshot: Set<string>): void {
-		for (const id of snapshot) this.dirtyIds.delete(id);
+	/** Clears only the IDs whose mark is unchanged since the snapshot. An id
+	 *  added — or marked AGAIN — while the write was in flight survives for the
+	 *  next persist cycle; clearing it would lose the newest turn on quit. */
+	clearDirtySnapshot(snapshot: ReadonlyMap<string, number>): void {
+		for (const [id, mark] of snapshot) {
+			if (this.dirtyIds.get(id) === mark) this.dirtyIds.delete(id);
+		}
+	}
+
+	private mark(id: string): void {
+		this.dirtyIds.set(id, ++this.markSeq);
 	}
 
 	/** Marks a conversation as dirty without triggering a persist — used when a new
 	 *  conversation is created externally and added to the array. */
 	markDirty(id: string): void {
-		this.dirtyIds.add(id);
+		this.mark(id);
 		this.notify();
 	}
 
 	async save(conversation: Conversation): Promise<void> {
 		const idx = this._conversations.findIndex((c) => c.id === conversation.id);
 		if (idx < 0) {
-			debugLog(this.plugin.settings, "save() skipped — conversation no longer exists:", conversation.id);
+			// Not debug-only: a skipped save is a lost turn if it was not a delete.
+			console.warn("[Pythia] save() skipped — conversation no longer exists:", conversation.id);
 			return;
 		}
 		conversation.updatedAt = new Date().toISOString();
 		this._conversations[idx] = conversation;
-		this.dirtyIds.add(conversation.id);
+		this.mark(conversation.id);
 		this.schedulePersist();
 		this.notify();
 	}
@@ -90,7 +101,7 @@ export class ConversationStore {
 	 */
 	markChanged(ids: string[]): void {
 		if (ids.length === 0) return;
-		for (const id of ids) this.dirtyIds.add(id);
+		for (const id of ids) this.mark(id);
 		this.schedulePersist();
 		this.notify();
 	}

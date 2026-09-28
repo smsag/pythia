@@ -111,6 +111,7 @@ export class ConversationService {
 		};
 		p.conversations.push(conv);
 		p.conversationStore.markDirty(conv.id);
+		p.pluginDataStore.protectNewConversation(conv.id);
 		await p.saveConversations();
 		return conv;
 	}
@@ -517,11 +518,11 @@ export class ConversationService {
 			p.conversations,
 			(conv) => {
 				new ResumeModeModal(p.app, conv, preselectedResumeMode(conv, p.settings.defaultResumeMode), async (mode) => {
-					conv.resumeMode = mode;
-					// The mode reduces only what is here now; every later turn is
-					// sent in full (ADR-231).
-					if (mode === "full") delete conv.resumedAfterId;
-					else conv.resumedAfterId = conv.messages[conv.messages.length - 1]?.id;
+					// The boundary is where the conversation stands NOW, captured before
+					// the summary call; the mode itself is written only once that call
+					// has succeeded — an early return must not leave "summary" set with
+					// no summary, which would send the model no context at all.
+					const boundaryId = conv.messages[conv.messages.length - 1]?.id;
 
 					if (mode === "summary") {
 						if (!conv.summaryText) {
@@ -553,6 +554,12 @@ export class ConversationService {
 						// actually excludes prior messages from the request in "summary"
 						// mode — no data is deleted here.
 					}
+
+					conv.resumeMode = mode;
+					// The mode reduces only what is here now; every later turn is
+					// sent in full (ADR-231).
+					if (mode === "full") delete conv.resumedAfterId;
+					else conv.resumedAfterId = boundaryId;
 
 					// The summary generation above can take several seconds — the
 					// conversation may have been deleted in the meantime. Don't

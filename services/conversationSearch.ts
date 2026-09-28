@@ -92,5 +92,31 @@ export function bestMatchSnippet(
 	}
 
 	if (bestScore === 0) return null;
-	return bestLine.length > maxLen ? `${bestLine.slice(0, maxLen).trimEnd()}…` : bestLine;
+	return snippetWindow(bestLine, queryTokens, maxLen);
+}
+
+/**
+ * At most `maxLen` characters of `line`, centred on its first word that matches
+ * the query — a match at character 300 of a long line must be IN the snippet,
+ * or the row still does not say why it is there. Ellipses mark each cut side.
+ * Runs on the one best line of a rendered row, never the corpus.
+ */
+export function snippetWindow(line: string, queryTokens: string[], maxLen: number): string {
+	if (line.length <= maxLen) return line;
+	const lower = line.normalize("NFC").toLowerCase();
+	let at = 0;
+	for (const word of lower.matchAll(/[\p{L}\p{N}]+/gu)) {
+		if (queryTokens.some((q) => matchStrength([word[0]], q) > 0)) { at = word.index ?? 0; break; }
+	}
+	// Lowercasing can change a string's length in rare scripts; stay inside it.
+	at = Math.min(at, line.length);
+	let start = Math.max(0, Math.min(at - Math.floor(maxLen / 3), line.length - maxLen));
+	// Begin on a word, not mid-word, when a space is near.
+	if (start > 0) {
+		const space = line.lastIndexOf(" ", start);
+		if (space !== -1 && start - space < 15 && space + 1 <= at) start = space + 1;
+	}
+	const end = Math.min(line.length, start + maxLen);
+	const body = line.slice(start, end).trim();
+	return `${start > 0 ? "…" : ""}${body}${end < line.length ? "…" : ""}`;
 }

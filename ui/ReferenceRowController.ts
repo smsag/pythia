@@ -8,6 +8,8 @@ import { referenceEntries } from "./referenceEntries";
 import { appendSourceIcon } from "./icons";
 import { DeleteFileModal } from "../suggest/DeleteFileModal";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
+import { makeKeyActivatable } from "./keyActivate";
+import { noticeFailure } from "./failureNotice";
 
 export interface ReferenceRowDeps {
 	app: App;
@@ -92,35 +94,59 @@ export class ReferenceRowController {
 		appendSourceIcon(ref, entry.kind === "context" ? "note" : entry.kind);
 		const labelTitle = entry.kind === "auto" ? `${entry.path} — ${t("vaultContextAutoPill")}` : entry.path;
 		const label = ref.createEl("span", { text: displayName, cls: "p-wikilink-name", attr: { title: labelTitle } });
-		label.addEventListener("click", async () => {
+		const openNote = (): void => {
 			const f = this.d.app.vault.getAbstractFileByPath(entry.path);
-			if (f instanceof TFile) await this.d.app.workspace.getLeaf(false).openFile(f);
-			else new Notice(t("fileNotFound", { path: entry.path }));
-		});
+			if (f instanceof TFile) {
+				this.d.app.workspace.getLeaf(false).openFile(f)
+					.catch((err: unknown) => noticeFailure("open note failed", err));
+			} else new Notice(t("fileNotFound", { path: entry.path }));
+		};
+		label.addEventListener("click", openNote);
+		makeKeyActivatable(label, openNote, "link");
 		if (tokEst) ref.createEl("span", { cls: "p-wikilink-tokens", text: tokEst });
 		if (entry.kind === "auto") return; // read-only: no remove/delete affordance
 
-		const x = ref.createEl("button", { cls: "pb pb-icon is-inline p-wikilink-x", text: "×" });
+		const x = ref.createEl("button", {
+			cls: "pb pb-icon is-inline p-wikilink-x",
+			text: "×",
+			attr: {
+				"aria-label": entry.kind === "output"
+					? t("deleteNoteAria", { name: displayName })
+					: t("removeNoteAria", { name: displayName }),
+			},
+		});
 		if (entry.kind !== "output") {
-			x.addEventListener("click", async () => {
+			x.addEventListener("click", () => {
 				if (entry.kind === "template") conv.pendingTemplate = undefined;
 				else if (entry.kind === "rewrite") conv.pendingRewrite = undefined;
 				else {
 					conv.contextNotes = conv.contextNotes.filter((n) => n !== entry.path);
 					this.d.onContextNoteRemoved(entry.path);
 				}
-				await this.d.plugin.conversationStore.save(conv);
 				this.render();
+				this.d.plugin.conversationStore.save(conv)
+					.catch((err: unknown) => noticeFailure("reference row: save failed", err, "saveFailed"));
 			});
 			return;
 		}
 		x.addEventListener("click", () => {
 			new DeleteFileModal(this.d.app, fileName, async () => {
 				const f = this.d.app.vault.getAbstractFileByPath(entry.path);
-				if (f instanceof TFile) await this.d.app.vault.trash(f, true);
+				try {
+					if (f instanceof TFile) await this.d.app.vault.trash(f, true);
+				} catch (err) {
+					// The note is still there, so the pill stays: forgetting it would
+					// leave a file nothing in Pythia points at any more.
+					noticeFailure("reference row: trash failed", err);
+					return;
+				}
 				conv[entry.field] = undefined;
-				await this.d.plugin.conversationStore.save(conv);
 				this.render();
+				try {
+					await this.d.plugin.conversationStore.save(conv);
+				} catch (err) {
+					noticeFailure("reference row: save failed", err, "saveFailed");
+				}
 			}).open();
 		});
 	}

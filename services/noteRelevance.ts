@@ -63,12 +63,3 @@ export function scoreRelevanceTokenSets(queryTokens: string[], tokenSets: Set<st
 		queryTokens.reduce((score, tok) => score + (set.has(tok) ? weights.get(tok)! : 0), 0)
 	);
 }
-
-/**
- * Convenience wrapper over scoreRelevanceTokensWeighted for a raw query
- * string — tokenizes once, then delegates. Prefer the *Tokens variant when
- * scoring the same query against haystacks gathered across multiple calls.
- */
-export function scoreRelevanceWeighted(query: string, haystacks: string[]): number[] {
-	return scoreRelevanceTokensWeighted(tokenize(query), haystacks);
-}

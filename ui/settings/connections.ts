@@ -21,22 +21,22 @@ export function renderConnectionsSection(containerEl: HTMLElement, ctx: Settings
 
 	keyRow(containerEl, ctx, t("anthropicKeyName"), t("apiKeyDesc"),
 		() => ctx.plugin.settings.anthropicSecretName,
-		(name) => ctx.plugin.setApiKey(name),
+		(name) => ctx.plugin.setKey("anthropic", name),
 		() => ctx.plugin.hasApiKeyFor("anthropic"));
 
 	keyRow(containerEl, ctx, t("openaiKeyName"), t("apiKeyDesc"),
 		() => ctx.plugin.settings.openaiSecretName,
-		(name) => ctx.plugin.setOpenAIKey(name),
+		(name) => ctx.plugin.setKey("openai", name),
 		() => ctx.plugin.hasApiKeyFor("openai"));
 
 	keyRow(containerEl, ctx, t("mistralKeyName"), t("apiKeyDesc"),
 		() => ctx.plugin.settings.mistralSecretName,
-		(name) => ctx.plugin.setMistralKey(name),
+		(name) => ctx.plugin.setKey("mistral", name),
 		() => ctx.plugin.hasApiKeyFor("mistral"));
 
 	keyRow(containerEl, ctx, t("searchKeyName"), t("searchKeyDesc"),
 		() => ctx.plugin.settings.searchSecretName,
-		(name) => ctx.plugin.setSearchKey(name),
+		(name) => ctx.plugin.setKey("search", name),
 		() => ctx.plugin.plaintextSearchKey !== "",
 		t("connectionSearchMissing"));
 }

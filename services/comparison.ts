@@ -216,6 +216,8 @@ export function normalizeComparison(conv: Conversation): void {
 			typeof c.id === "string" && typeof c.model === "string" &&
 			typeof c.content === "string" && c.content.length > 0
 	);
+	// A candidate becomes a Message on Keep — held to the same bar as a kept tab.
+	for (const c of cmp.candidates) normalizeAnswerFields(c);
 	if (cmp.priorAlternativeIds !== undefined && !(Array.isArray(cmp.priorAlternativeIds) && cmp.priorAlternativeIds.every((x) => typeof x === "string"))) {
 		delete cmp.priorAlternativeIds;
 	}
@@ -247,21 +249,33 @@ export function normalizeAlternatives(value: unknown): ComparisonCandidate[] | u
 		const c = raw as ComparisonCandidate;
 		if (typeof c.id !== "string" || !c.id || typeof c.model !== "string" || typeof c.content !== "string" || !c.content) continue;
 		if (typeof c.timestamp !== "string") c.timestamp = "";
-		if (c.cost !== undefined) {
-			const cost = c.cost as { usd?: unknown; asOf?: unknown } | null;
-			const ok = !!cost && typeof cost.usd === "number" && Number.isFinite(cost.usd) && cost.usd >= 0 && typeof cost.asOf === "string";
-			if (!ok) delete c.cost;
-		}
-		if (c.noteWrites !== undefined) {
-			const writes = normalizeNoteWrites(c.noteWrites);
-			if (writes) c.noteWrites = writes; else delete c.noteWrites;
-		}
-		if (c.truncated !== undefined && c.truncated !== true) delete (c as { truncated?: unknown }).truncated;
-		if (c.rewriteTarget !== undefined && !isRewriteTarget(c.rewriteTarget)) delete c.rewriteTarget;
-		if (c.tokenUsage !== undefined && !isTokenUsage(c.tokenUsage)) delete c.tokenUsage;
+		normalizeAnswerFields(c);
 		out.push(c);
 	}
 	return out.length > 0 ? out : undefined;
+}
+
+/**
+ * The ONE load-time guard for the fields an answer carries — a kept message,
+ * one of its tabs and a pending comparison candidate alike (principle 1). A
+ * malformed cost, note-write list, flag, rewrite target or usage is dropped
+ * rather than drawn wrong (`$NaN`, a phantom recovery card). Mutates.
+ */
+export function normalizeAnswerFields(m: {
+	cost?: unknown; noteWrites?: unknown; truncated?: unknown; rewriteTarget?: unknown; tokenUsage?: unknown;
+}): void {
+	if (m.cost !== undefined) {
+		const cost = m.cost as { usd?: unknown; asOf?: unknown } | null;
+		const ok = !!cost && typeof cost === "object" && typeof cost.usd === "number" && Number.isFinite(cost.usd) && cost.usd >= 0 && typeof cost.asOf === "string";
+		if (!ok) delete m.cost;
+	}
+	if (m.noteWrites !== undefined) {
+		const writes = normalizeNoteWrites(m.noteWrites);
+		if (writes) m.noteWrites = writes; else delete m.noteWrites;
+	}
+	if (m.truncated !== undefined && m.truncated !== true) delete m.truncated;
+	if (m.rewriteTarget !== undefined && !isRewriteTarget(m.rewriteTarget)) delete m.rewriteTarget;
+	if (m.tokenUsage !== undefined && !isTokenUsage(m.tokenUsage)) delete m.tokenUsage;
 }
 
 const isPos = (p: unknown): boolean =>
@@ -269,7 +283,7 @@ const isPos = (p: unknown): boolean =>
 	Number.isInteger((p as { line?: unknown }).line) && Number.isInteger((p as { ch?: unknown }).ch);
 
 /** A target the Replace button can verify: a path, two editor positions, the text. */
-function isRewriteTarget(v: unknown): v is RewriteTarget {
+export function isRewriteTarget(v: unknown): v is RewriteTarget {
 	if (!v || typeof v !== "object") return false;
 	const t = v as Partial<RewriteTarget>;
 	return typeof t.path === "string" && !!t.path && typeof t.text === "string" && isPos(t.from) && isPos(t.to);

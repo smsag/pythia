@@ -43,8 +43,7 @@ jobs:
       - name: Install dependencies
         # --ignore-scripts: no dependency's install hook runs in the same job as
         # the token (engineering-review #286). Nothing here needs one — esbuild's
-        # binary arrives via its platform optional dependency and onnxruntime-node
-        # ships its CPU binary in-package, both as plain files in the tarball.
+        # binary arrives via its platform optional dependency, as plain files in the tarball.
         run: npm ci --ignore-scripts
 
       - name: Update the price table
@@ -57,6 +56,7 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: chore/update-pricing
+          add-paths: models/modelPricing.ts
           delete-branch: true
           commit-message: "Update list prices from models.dev"
           title: "Update list prices (models.dev)"

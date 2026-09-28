@@ -31,6 +31,8 @@ import type { App } from "obsidian";
 import { TFile as TFileCls } from "obsidian";
 import type { PythiaSettings } from "../settings";
 import type { Conversation, TokenUsage } from "../models/types";
+import { APIUserAbortError } from "@anthropic-ai/sdk/core/error";
+import type { ToolCallHandler } from "../services/LLMProvider";
 
 /**
  * Minimal concrete BaseProvider that stubs the abstract streaming hooks and
@@ -55,10 +57,10 @@ class TestProvider extends BaseProvider {
 		return Promise.resolve(this.reply);
 	}
 	protected prepareStream(): Promise<void> { return Promise.resolve(); }
-	protected runStreamRound(): Promise<RoundResult> {
+	protected runStreamRound(_signal: AbortSignal, _onToken: (text: string) => void): Promise<RoundResult> {
 		return Promise.resolve({ action: "done", inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, hasUsage: false, truncated: false });
 	}
-	protected handleToolCalls(): Promise<void> { return Promise.resolve(); }
+	protected handleToolCalls(_onToolCall: ToolCallHandler, _signal: AbortSignal): Promise<void> { return Promise.resolve(); }
 
 	/** `languageLabel` is protected; expose it so the resolution order is testable. */
 	lang(conversation?: Conversation): string {
@@ -76,8 +78,10 @@ class TestProvider extends BaseProvider {
 		fullText: string,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage) => void,
 		onError: (error: Error) => void,
+		signal?: AbortSignal,
+		tokenUsage?: TokenUsage,
 	): void {
-		this.finishOrError(error, fullText, onComplete, onError);
+		this.finishOrError(error, fullText, onComplete, onError, signal, tokenUsage, tokenUsage ? { truncated: false } : undefined);
 	}
 }
 
@@ -98,9 +102,41 @@ describe("BaseProvider.finishOrError", () => {
 		const err = new Error("cancelled");
 		err.name = "AbortError";
 		p.finish(err, "partial answer", onComplete, onError);
-		expect(onComplete).toHaveBeenCalledWith("partial answer");
+		expect(onComplete).toHaveBeenCalledWith("partial answer", undefined, undefined);
 		expect(onError).not.toHaveBeenCalled();
 		expect(noticeMessages).toHaveLength(0);
+	});
+
+	it("treats the SDK's real APIUserAbortError (name \"Error\") as a stop, not a failure", () => {
+		const p = makeProvider();
+		const onComplete = vi.fn();
+		const onError = vi.fn();
+		p.finish(new APIUserAbortError(), "partial", onComplete, onError);
+		expect(onComplete).toHaveBeenCalledWith("partial", undefined, undefined);
+		expect(onError).not.toHaveBeenCalled();
+		expect(noticeMessages).toHaveLength(0);
+	});
+
+	it("treats any error as a stop once the send's signal fired, even with nothing streamed", () => {
+		const p = makeProvider();
+		const onComplete = vi.fn();
+		const onError = vi.fn();
+		const stop = new AbortController();
+		stop.abort();
+		p.finish(new Error("Connection error."), "", onComplete, onError, stop.signal);
+		expect(onComplete).toHaveBeenCalled();
+		expect(onError).not.toHaveBeenCalled();
+		expect(noticeMessages).toHaveLength(0);
+	});
+
+	it("passes the usage of the completed rounds through a stop and a kept partial", () => {
+		const p = makeProvider();
+		const usage = { inputTokens: 10, outputTokens: 5 };
+		const onComplete = vi.fn();
+		p.finish(new APIUserAbortError(), "partial", onComplete, vi.fn(), undefined, usage);
+		p.finish(new Error("Overloaded"), "partial", onComplete, vi.fn(), undefined, usage);
+		expect(onComplete).toHaveBeenNthCalledWith(1, "partial", usage, { truncated: false });
+		expect(onComplete).toHaveBeenNthCalledWith(2, "partial", usage, { truncated: false });
 	});
 
 	it("keeps the streamed partial and shows a non-destructive Notice on a genuine post-stream error", () => {
@@ -109,7 +145,7 @@ describe("BaseProvider.finishOrError", () => {
 		const onError = vi.fn();
 		p.finish(new Error("Overloaded"), "streamed so far", onComplete, onError);
 		// The visible reply is preserved as the assistant turn...
-		expect(onComplete).toHaveBeenCalledWith("streamed so far");
+		expect(onComplete).toHaveBeenCalledWith("streamed so far", undefined, undefined);
 		// ...and the destructive path is NOT taken.
 		expect(onError).not.toHaveBeenCalled();
 		// ...while the user is told it was cut short.
@@ -376,5 +412,49 @@ describe("term discussion — budget and truncation (ADR-208 review)", () => {
 		const p = makeProvider({ outputLanguage: "auto" });
 		await p.summarizeTermDiscussion("X", "d", longConv(2));
 		expect(p.budgets[0]).toBeGreaterThanOrEqual(1024);
+	});
+});
+
+// ── Stop during a tool call (a pending confirmation chip) ─────────────────────
+
+/** Streams one tool-calling round with usage, then "answers" the tool through
+ *  the handler the way a provider does: check the signal, pass it on. */
+class ToolRoundProvider extends TestProvider {
+	rounds = 0;
+	protected override runStreamRound(_signal: AbortSignal, onToken: (text: string) => void): Promise<RoundResult> {
+		this.rounds++;
+		onToken("Let me write that. ");
+		return Promise.resolve({ action: "tool_use", inputTokens: 100, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, hasUsage: true, truncated: false });
+	}
+	protected override async handleToolCalls(onToolCall: ToolCallHandler, signal: AbortSignal): Promise<void> {
+		for (const id of ["a", "b"]) {
+			this.throwIfStopped(signal);
+			await onToolCall({ id, name: "create_note", input: {} }, signal);
+		}
+	}
+	protected override resolveUserContent(): Promise<{ userContent: string; systemPrompt: string; pdfAttachments: [] }> {
+		return Promise.resolve({ userContent: "hi", systemPrompt: "", pdfAttachments: [] });
+	}
+}
+
+describe("BaseProvider — Stop while a tool call waits", () => {
+	beforeEach(() => { noticeMessages.length = 0; });
+
+	it("runs no further tool or round, keeps the partial with its usage, and raises no error", async () => {
+		const p = new ToolRoundProvider({} as App, {} as PythiaSettings, "", "anthropic");
+		const seen: string[] = [];
+		const onComplete = vi.fn();
+		const onError = vi.fn();
+		await p.streamMessage({ model: "m" } as Conversation, "hi", [], () => {}, onComplete, onError, async (call, signal) => {
+			seen.push(call.id);
+			expect(signal).toBeDefined();
+			p.abort(); // the user presses Stop while the chip is showing
+			return "User declined.";
+		});
+		expect(seen).toEqual(["a"]); // the second call never ran
+		expect(p.rounds).toBe(1); // and no round followed
+		expect(onError).not.toHaveBeenCalled();
+		expect(noticeMessages).toHaveLength(0);
+		expect(onComplete).toHaveBeenCalledWith("Let me write that. ", { inputTokens: 100, outputTokens: 20 }, { truncated: false });
 	});
 });

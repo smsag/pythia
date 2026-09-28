@@ -202,17 +202,24 @@ export function omittedByResume(conv: {
 
 /**
  * Trims oldest messages from the front of `history` when the estimated total
- * tokens (system prompt + notes + history + output budget) would exceed
- * `contextWindow`. Returns a new array — never mutates the input.
+ * tokens (system prompt + notes + the new user message + history + output
+ * budget) would exceed `contextWindow`. Returns a new array — never mutates the
+ * input. The new message is counted because it is sent too: leaving it out let
+ * a long paste push the request over the window with the history untrimmed.
+ *
+ * At least the most recent history message is always kept. When the fixed
+ * parts alone already fill the window (`available <= 0`), that minimum is all
+ * that is kept — sending the whole history there is a guaranteed rejection.
  */
 export function trimHistoryToBudget<T extends { content: string }>(
 	history: T[],
 	contextWindow: number,
 	outputBudget: number,
-	systemPromptTokens: number
+	systemPromptTokens: number,
+	newMessageTokens: number,
 ): T[] {
-	const available = contextWindow - outputBudget - systemPromptTokens;
-	if (available <= 0) return history;
+	const available = contextWindow - outputBudget - systemPromptTokens - newMessageTokens;
+	if (available <= 0) return history.slice(-1);
 
 	let total = 0;
 	for (const msg of history) total += estimateTokensFromText(msg.content);
@@ -291,9 +298,6 @@ export function formatSummaryTimestamp(iso: string): string {
 	return `${formatDate(iso)} · ${formatClockTime(iso)}`;
 }
 
-/** Estimate token count from a text string. Uses a weighted heuristic: Latin
- *  characters average ~4 per token, but CJK/non-ASCII characters average ~1.5
- *  per token. Falls back to ÷4 for purely Latin text. */
 /** The most recent message carrying token usage (the last completed assistant
  *  turn), or undefined when the conversation has none yet. Generic over the
  *  message shape so it stays free of the view's `Message` import. */
@@ -306,6 +310,9 @@ export function lastTokenUsageMessage<T extends { tokenUsage?: unknown }>(
 	return undefined;
 }
 
+/** Estimate token count from a text string. Uses a weighted heuristic: Latin
+ *  characters average ~4 per token, but CJK/non-ASCII characters average ~1.5
+ *  per token. Falls back to ÷4 for purely Latin text. */
 export function estimateTokensFromText(text: string): number {
 	if (text.length === 0) return 0;
 	const nonAscii = text.replace(/[\x00-\x7F]/g, "").length;
@@ -314,7 +321,7 @@ export function estimateTokensFromText(text: string): number {
 }
 
 /** Buffer-free ArrayBuffer → base64 conversion — Node's Buffer is unavailable
- *  on Obsidian mobile (see main.ts's legacyDecrypt guard). Processes in chunks
+ *  on Obsidian mobile. Processes in chunks
  *  to avoid a call-stack overflow from String.fromCharCode(...hugeArray) on
  *  large files. */
 export function arrayBufferToBase64(buf: ArrayBuffer): string {

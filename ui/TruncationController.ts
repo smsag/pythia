@@ -19,6 +19,19 @@ export interface TruncationDeps {
 }
 
 /**
+ * Retry removes the answer, so it is withheld while anything points at it: its
+ * comparison tabs (ADR-225), a star or a merge link on it — or a comparison is
+ * pending on the conversation (ADR-160). Read when the card is painted AND when
+ * the button is pressed.
+ */
+export function isRetryWithheld(conv: Conversation, msg: Message): boolean {
+	return !!conv.comparison ||
+		!!msg.alternatives?.length ||
+		(conv.favorites ?? []).some((f) => f.messageId === msg.id) ||
+		(conv.merges ?? []).some((l) => l.messageId === msg.id);
+}
+
+/**
  * The recovery card under an answer that stopped at the token cap (ADR-162).
  * A reply cut at `max_tokens` reads exactly like a finished one; the provider
  * knows the difference and, until this card, Pythia dropped that fact on the
@@ -47,10 +60,13 @@ export class TruncationController {
 		setIcon(icon, "alert-triangle");
 		head.createSpan({ cls: "p-trunc-label", text: t("truncLabel") });
 
-		const max = effectiveMaxTokens(conv.model, conv.maxTokens, this.d.plugin.settings.maxTokens);
+		// The model that ANSWERED, not the conversation's current one (#305): the
+		// budget and the reasoning note describe the run that was cut off.
+		const model = msg.model ?? conv.model;
+		const max = effectiveMaxTokens(model, conv.maxTokens, this.d.plugin.settings.maxTokens);
 		const meta = card.createDiv({ cls: "p-trunc-meta" });
 		meta.setText(t("truncMeta", { max: String(max) }));
-		if (isThinkingModel(conv.model)) meta.appendText(` ${t("truncReasoningNote")}`);
+		if (isThinkingModel(model)) meta.appendText(` ${t("truncReasoningNote")}`);
 
 		const isLast = conv.messages.at(-1)?.id === msg.id;
 		if (!isLast || conv.comparison) return;
@@ -67,12 +83,8 @@ export class TruncationController {
 		// action is withheld rather than made destructive; Continue still works.
 		// Its comparison tabs would go with it too, and whatever is marked on
 		// them, so an answer with tabs is withheld as well (ADR-225).
-		const referenced =
-			!!msg.alternatives?.length ||
-			(conv.favorites ?? []).some((f) => f.messageId === msg.id) ||
-			(conv.merges ?? []).some((l) => l.messageId === msg.id);
-		if (!referenced) {
-			const raised = raisedMaxTokens(conv.model, max);
+		if (!isRetryWithheld(conv, msg)) {
+			const raised = raisedMaxTokens(model, max);
 			const retry = actions.createEl("button", { cls: "pb pb-secondary p-trunc-btn", text: t("truncRetryBtn", { n: String(raised) }) });
 			on(retry, () => void this.retryWithRaisedLimit(msg, raised));
 		}
@@ -102,6 +114,12 @@ export class TruncationController {
 	private async retryWithRaisedLimit(msg: Message, raised: number): Promise<void> {
 		const conv = this.d.getConversation();
 		if (!conv || this.d.isStreaming()) return;
+		// Re-checked at press time: a star, a merge link or a comparison may have
+		// arrived since the card was painted, and the splice would take it along.
+		if (isRetryWithheld(conv, msg) || conv.messages.at(-1)?.id !== msg.id) {
+			new Notice(t("truncRetryRefused"));
+			return;
+		}
 		const idx = conv.messages.findIndex((m) => m.id === msg.id);
 		const user = idx > 0 ? conv.messages[idx - 1] : undefined;
 		if (!user || user.role !== "user") return;

@@ -2,6 +2,13 @@ import type { Conversation, ToolCall, TokenUsage, StreamFinish } from "../models
 import type { PythiaSettings } from "../settings";
 import type { TranslatedDefinition } from "./glossaryReply";
 
+/**
+ * Runs one tool call mid-answer. `signal` is the send's own abort signal: a
+ * handler that waits on the user (the write-confirmation chip) must settle as
+ * declined when it fires, so Stop can never be followed by a write.
+ */
+export type ToolCallHandler = (call: ToolCall, signal?: AbortSignal) => Promise<string>;
+
 export interface LLMProvider {
 	updateSettings(settings: PythiaSettings): void;
 	updateApiKey(key: string): void;
@@ -13,7 +20,7 @@ export interface LLMProvider {
 		onToken: (text: string) => void,
 		onComplete: (fullText: string, tokenUsage?: TokenUsage, finish?: StreamFinish) => void,
 		onError: (error: Error) => void,
-		onToolCall?: (call: ToolCall) => Promise<string>,
+		onToolCall?: ToolCallHandler,
 		/** Which of `attachedNotes` the vault-RAG hook added rather than the user
 		 *  (ADR-183). They get a tighter excerpt budget, and the warnings about
 		 *  missing or oversized notes stay off them — the user did not attach them

@@ -1,15 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-	applySettingsMigrations,
-	evictConversations,
+	partitionEvictions,
 	countEvictions,
 } from "../services/persistence";
-import { DEFAULT_SETTINGS } from "../models/settings";
 import type { Conversation } from "../models/types";
 
 // The conversation cap: which conversations an eviction keeps (ADR-088/130),
-// how many it would remove (ADR-171), and the default's own migration
-// (ADR-174). Split out of tests/persistence.test.ts under the ADR-097 ratchet.
+// how many it would remove (ADR-171)
+// Split out of tests/persistence.test.ts under the ADR-097 ratchet.
 
 const makeConv = (
 	id: string,
@@ -29,12 +27,14 @@ const makeConv = (
 	favorites: favorites as Conversation["favorites"],
 });
 
-// ── evictConversations ────────────────────────────────────────────────────────
+// ── partitionEvictions(…).kept ────────────────────────────────────────────────────────
 
-describe("evictConversations", () => {
+const keptBy = (...args: Parameters<typeof partitionEvictions>) => partitionEvictions(...args).kept;
+
+describe("partitionEvictions — kept", () => {
 	it("returns the input unchanged when under cap", () => {
 		const convs = [makeConv("a"), makeConv("b")];
-		expect(evictConversations(convs, 5, [])).toHaveLength(2);
+		expect(keptBy(convs, 5, [])).toHaveLength(2);
 	});
 
 	it("protects a conversation another conversation has merged with (ADR-130)", () => {
@@ -46,7 +46,7 @@ describe("evictConversations", () => {
 		recent.merges = [
 			{ id: "m1", conversationId: "old", messageId: "msg1", text: "passage", createdAt: "2026-03-01T00:00:00.000Z" },
 		];
-		const kept = evictConversations([old, mid, recent], 2, []).map((c) => c.id);
+		const kept = keptBy([old, mid, recent], 2, []).map((c) => c.id);
 		expect(kept).toContain("old");
 		expect(kept).toContain("recent");
 		expect(kept).not.toContain("mid");
@@ -54,12 +54,12 @@ describe("evictConversations", () => {
 
 	it("returns the input unchanged when at exactly the cap", () => {
 		const convs = [makeConv("a"), makeConv("b"), makeConv("c")];
-		expect(evictConversations(convs, 3, [])).toHaveLength(3);
+		expect(keptBy(convs, 3, [])).toHaveLength(3);
 	});
 
 	it("returns all conversations when cap is 0 (unlimited)", () => {
 		const convs = Array.from({ length: 10 }, (_, i) => makeConv(String(i)));
-		expect(evictConversations(convs, 0, [])).toHaveLength(10);
+		expect(keptBy(convs, 0, [])).toHaveLength(10);
 	});
 
 	it("evicts down to cap, keeping the newest conversations", () => {
@@ -68,7 +68,7 @@ describe("evictConversations", () => {
 			makeConv("mid", "2026-06-01T00:00:00.000Z"),
 			makeConv("new", "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, []);
+		const result = keptBy(convs, 2, []);
 		expect(result).toHaveLength(2);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("new");
@@ -82,7 +82,7 @@ describe("evictConversations", () => {
 			makeConv("newer",  "2026-06-01T00:00:00.000Z"),
 			makeConv("newest", "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, ["oldest"]);
+		const result = keptBy(convs, 2, ["oldest"]);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("oldest");
 		expect(ids).toContain("newest");
@@ -95,7 +95,7 @@ describe("evictConversations", () => {
 			makeConv("newer",       "2026-06-01T00:00:00.000Z"),
 			makeConv("newest",      "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, []);
+		const result = keptBy(convs, 2, []);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("starred-old");
 		expect(ids).toContain("newest");
@@ -106,7 +106,7 @@ describe("evictConversations", () => {
 		const starred = Array.from({ length: 5 }, (_, i) =>
 			makeConv(`s${i}`, "2026-01-01T00:00:00.000Z", [{ messageId: "m", name: "f" }])
 		);
-		const result = evictConversations(starred, 3, []);
+		const result = keptBy(starred, 3, []);
 		// all starred must survive — result may exceed cap
 		expect(result.length).toBe(5);
 	});
@@ -120,7 +120,7 @@ describe("evictConversations", () => {
 			makeConv("c", "2026-12-01T00:00:00.000Z"),
 			makeConv("d", "2026-06-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 3, []);
+		const result = keptBy(convs, 3, []);
 		expect(result.map((c) => c.id)).toEqual(["b", "c", "d"]);
 	});
 
@@ -133,7 +133,7 @@ describe("evictConversations", () => {
 			makeConv("mid",    "2026-06-01T00:00:00.000Z"),
 			makeConv("newest", "2026-12-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, []);
+		const result = keptBy(convs, 2, []);
 		expect(result.at(-1)?.id).toBe("newest");
 	});
 
@@ -144,7 +144,7 @@ describe("evictConversations", () => {
 			makeConv("plain-new",   "2026-12-01T00:00:00.000Z"),
 			makeConv("plain-old",   "2026-06-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 3, ["active-old"]);
+		const result = keptBy(convs, 3, ["active-old"]);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("active-old");
 		expect(ids).toContain("starred-old");
@@ -158,7 +158,7 @@ describe("evictConversations", () => {
 			{ ...makeConv("bad"), updatedAt: undefined as unknown as string },
 			makeConv("newest", "2026-12-01T00:00:00.000Z"),
 		];
-		expect(() => evictConversations(convs, 2, [])).not.toThrow();
+		expect(() => keptBy(convs, 2, [])).not.toThrow();
 	});
 
 	it("protects the active conversation from every open leaf, not just one", () => {
@@ -168,7 +168,7 @@ describe("evictConversations", () => {
 			makeConv("plain-new",    "2026-12-01T00:00:00.000Z"),
 			makeConv("plain-old",    "2026-06-01T00:00:00.000Z"),
 		];
-		const result = evictConversations(convs, 2, ["leaf1-active", "leaf2-active"]);
+		const result = keptBy(convs, 2, ["leaf1-active", "leaf2-active"]);
 		const ids = result.map((c) => c.id);
 		expect(ids).toContain("leaf1-active");
 		expect(ids).toContain("leaf2-active");
@@ -207,30 +207,3 @@ describe("countEvictions", () => {
 	});
 });
 
-// ── the conversation cap's new default (ADR-174) ──────────────────────────────
-
-describe("applySettingsMigrations — conversation cap", () => {
-	it("moves a vault still on the old default to the new one", () => {
-		// 200 was never a measured number and capped data.json around 4.5 MB.
-		// Raising a cap can only ever keep more conversations, never fewer.
-		const saved: Record<string, unknown> = { maxConversations: 200 };
-		const { needsSave } = applySettingsMigrations(saved);
-		expect(saved.maxConversations).toBe(DEFAULT_SETTINGS.maxConversations);
-		expect(DEFAULT_SETTINGS.maxConversations).toBe(450);
-		expect(needsSave).toBe(true);
-	});
-
-	it("leaves every other value alone, including no limit", () => {
-		for (const cap of [0, 50, 199, 201, 450, 1000]) {
-			const saved: Record<string, unknown> = { maxConversations: cap };
-			applySettingsMigrations(saved);
-			expect(saved.maxConversations).toBe(cap);
-		}
-	});
-
-	it("does not invent a cap for a vault that never had one saved", () => {
-		const saved: Record<string, unknown> = {};
-		applySettingsMigrations(saved);
-		expect("maxConversations" in saved).toBe(false);
-	});
-});

@@ -180,10 +180,12 @@ export class SummaryController {
 		try {
 			const { title, summary } = await this.d.plugin.llmRouter.generateSummaryWithTitle(conv);
 			if (!summary) { new Notice(t("summaryEmpty")); return; } // ADR-158: "" is not a result
-			conv.summaryText = summary;
-			conv.summaryUpdatedAt = new Date().toISOString();
-			if (title) await this.d.plugin.renameConversation(conv, title);
-			await this.d.plugin.conversationStore.save(conv);
+			// The live object, not the captured one — same reason as runFavoritesSummary.
+			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
+			live.summaryText = summary;
+			live.summaryUpdatedAt = new Date().toISOString();
+			if (title) await this.d.plugin.renameConversation(live, title);
+			await this.d.plugin.conversationStore.save(live);
 			// Only touch UI if the user hasn't switched conversations meanwhile.
 			if (this.d.getConversation()?.id === conv.id) {
 				if (title) this.d.renderHeader();

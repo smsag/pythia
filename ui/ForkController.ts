@@ -6,6 +6,7 @@ import { debugLog, formatSummaryTimestamp } from "../services/messageUtils";
 import { abbreviateModel } from "../models/knownModels";
 import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
+import { makeKeyActivatable } from "./keyActivate";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { REGENERATE_ICON } from "./icons";
 import { scrollChatTo } from "./chatScroll";
@@ -65,7 +66,7 @@ export class ForkController {
 				text: source.name,
 			});
 			const forkId = conv.id;
-			link.addEventListener("click", async () => {
+			const openSource = async (): Promise<void> => {
 				await this.d.setActiveConversation(source);
 				// Prefer landing on the fork-origin anchor (scrolls + expands it);
 				// fall back to the branch message if the snippet can't be located.
@@ -75,7 +76,9 @@ export class ForkController {
 				} else if (conv.forkedFromMessageId) {
 					this.d.scrollToMessage(conv.forkedFromMessageId);
 				}
-			});
+			};
+			link.addEventListener("click", () => void openSource());
+			makeKeyActivatable(link, () => void openSource(), "link");
 		} else {
 			label.createEl("span", {
 				cls: "pythia-fork-source-deleted",
@@ -245,6 +248,12 @@ export class ForkController {
 			this.suppressNextForkOpen = true;
 			this.openForkMenu(wrap, anchor, fork);
 		});
+		// On touch no click may follow a long press at all, so the flag would
+		// swallow the NEXT, deliberate tap. Every new press starts clean; the
+		// long press sets it again 450 ms into its own hold.
+		const fresh = (): void => { this.suppressNextForkOpen = false; };
+		btn.addEventListener("mousedown", fresh);
+		btn.addEventListener("touchstart", fresh, { passive: true });
 	}
 
 	/** The fork anchor's long-press menu — a popover above the Open-fork button.
@@ -263,12 +272,14 @@ export class ForkController {
 			setIcon(ic, icon);
 			item.createSpan({ cls: "p-send-menu-label", text: label });
 			if (disabled) return;
-			item.addEventListener("mousedown", (e) => {
+			const run = (e: Event): void => {
 				e.preventDefault();
 				e.stopPropagation();
 				this.closeForkMenu();
 				action();
-			});
+			};
+			item.addEventListener("mousedown", run);
+			makeKeyActivatable(item, run, "menuitem");
 		};
 
 		addItem(t("menuSummarizeConversation"), "align-left", fork.messages.length === 0,

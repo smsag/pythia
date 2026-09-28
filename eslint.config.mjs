@@ -75,7 +75,6 @@ export default tseslint.config(
 			"ui/keyboardInset.ts",
 			"ui/ActionSheet.ts",
 			"ui/InlineSuggest.ts",
-			"ui/ExchangeActionsController.ts",
 		],
 		rules: {
 			"no-restricted-syntax": ["error",

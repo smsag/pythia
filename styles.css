@@ -87,6 +87,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
+/* A span or row made a keyboard control (ui/keyActivate.ts) shows focus the
+   same way; a hover-revealed icon is revealed by focus too. */
+.pythia-view [role="button"][tabindex]:focus-visible,
+.pythia-view [role="menuitem"][tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.p-history-row .p-history-relate:focus-visible,
+.p-history-row .p-switcher-del:focus-visible { opacity: 1; }
 
 /* ── Buttons: one rule set per role (ADR-188) ──────────────────────────────
    Every Pythia button carries `pb` plus ONE role class; its own class keeps
@@ -3116,6 +3125,14 @@ body.is-phone .workspace-drawer .p-input-area {
    the gap gave it. */
 .pythia-view .p-msg-ai > .p-note-write {
   margin-top: var(--s2);
+}
+
+.pythia-tool-call-path {
+  display: block;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .pythia-tool-call-label {

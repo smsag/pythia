@@ -119,7 +119,17 @@ export class WebReadScope {
 		if (url) this.allowed.add(url);
 	}
 
-	/** Allow every link in `text` — a user message, or a web result of this send. */
+	/**
+	 * Allow the addresses a web tool RETURNED — each result's URL, as Tavily gave
+	 * it. Never the links printed inside a result's snippet or a read page's
+	 * body: that text is the page author's, and admitting it would let a hostile
+	 * page steer the next read (a link chosen by a secret is a side channel).
+	 */
+	addResults(sources: readonly { url: string }[]): void {
+		for (const s of sources) this.addUrl(s.url);
+	}
+
+	/** Allow every link in `text` — a message the USER wrote. Never a tool result. */
 	addText(text: string): void {
 		for (const url of urlsInText(text)) this.allowed.add(url);
 	}

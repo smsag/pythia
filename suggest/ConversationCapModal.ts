@@ -26,7 +26,7 @@ export class ConversationCapModal extends Modal {
 		super(app);
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		const archiving = this.archiveFolder !== null;
@@ -63,7 +63,7 @@ export class ConversationCapModal extends Modal {
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		this.contentEl.empty();
 		if (!this.confirmed) this.onCancel();
 	}

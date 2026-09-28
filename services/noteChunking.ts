@@ -45,12 +45,24 @@ function chunkByParagraphs(content: string): Chunk[] {
 		.filter((c) => c.text.length > 0);
 }
 
+/** A cut piece of a chunk shorter than this is noise, not context: it is left out. */
+const MIN_PARTIAL_CHARS = 200;
+const CHUNK_SEPARATOR = "\n\n";
+
 /**
  * For long notes, keeps only the chunks most relevant to `query` (up to
  * `budgetChars`) instead of inlining the whole note — prevents a large
  * attached note from burying the actual question or blowing the context
  * budget. Short notes pass through unchanged. Notes without headings fall
  * back to paragraph-level chunking.
+ *
+ * `budgetChars` is a hard ceiling on the text returned. The old loop compared
+ * AFTER adding (so the last chunk could double the budget) and returned a note
+ * it could not split whole — a single-section note of any size reached the
+ * prompt uncut. Now: the most relevant chunk goes in first (cut to the budget
+ * if it alone is larger), then the note's first chunk for framing, then the
+ * rest by rank; a chunk that does not fit is cut to the room left, and a note
+ * that cannot be split is cut to the budget.
  */
 export function selectRelevantChunks(
 	content: string,
@@ -62,7 +74,7 @@ export function selectRelevantChunks(
 	let chunks = chunkByHeadings(content);
 	if (chunks.length <= 1) {
 		chunks = chunkByParagraphs(content);
-		if (chunks.length <= 1) return { text: content, isExcerpt: false };
+		if (chunks.length <= 1) return { text: content.slice(0, budgetChars), isExcerpt: true };
 	}
 
 	const queryTokens = tokenize(query);
@@ -72,23 +84,29 @@ export function selectRelevantChunks(
 		.map((c, i) => ({ ...c, score: scores[i] }))
 		.sort((a, b) => b.score - a.score);
 
-	const kept: typeof ranked = [];
-	let total = 0;
+	const kept: { order: number; text: string }[] = [];
+	let used = 0;
+	const add = (c: Chunk, minPartial: number): void => {
+		const sep = kept.length > 0 ? CHUNK_SEPARATOR.length : 0;
+		const room = budgetChars - used - sep;
+		if (room <= 0) return;
+		if (c.text.length > room && room < minPartial) return;
+		const text = c.text.slice(0, room);
+		kept.push({ order: c.order, text });
+		used += sep + text.length;
+	};
 
-	// Always include the first chunk (introduction/overview) for framing context.
+	// The most relevant chunk always goes in, cut to the budget when larger.
+	const top = ranked[0];
+	add(top, 0);
+	// Then the first chunk (introduction/overview) for framing context.
 	const firstChunk = ranked.find((c) => c.order === 0);
-	if (firstChunk) {
-		kept.push(firstChunk);
-		total += firstChunk.text.length;
-	}
-
+	if (firstChunk && firstChunk !== top) add(firstChunk, MIN_PARTIAL_CHARS);
 	for (const c of ranked) {
-		if (c.order === 0) continue; // already added
-		if (kept.length > 0 && total >= budgetChars) break;
-		kept.push(c);
-		total += c.text.length;
+		if (c === top || c === firstChunk) continue;
+		add(c, MIN_PARTIAL_CHARS);
 	}
 	kept.sort((a, b) => a.order - b.order); // restore original document order
 
-	return { text: kept.map((c) => c.text).join("\n\n"), isExcerpt: true };
+	return { text: kept.map((c) => c.text).join(CHUNK_SEPARATOR), isExcerpt: true };
 }

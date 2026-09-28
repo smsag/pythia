@@ -1,5 +1,6 @@
 import { App, Modal } from "obsidian";
 import { t } from "../i18n";
+import { composerKeyAction } from "../ui/composerKeys";
 
 export class PromptInputModal extends Modal {
 	private resolve: (value: string | null) => void;
@@ -10,7 +11,7 @@ export class PromptInputModal extends Modal {
 		this.resolve = resolve;
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass("pythia-prompt-input-modal");
 
@@ -33,7 +34,9 @@ export class PromptInputModal extends Modal {
 		confirmBtn.addEventListener("click", () => this.confirm());
 
 		this.textareaEl.addEventListener("keydown", (e: KeyboardEvent) => {
-			if (e.key === "Enter" && !e.shiftKey) {
+			// The composer's rule (ADR-175): Enter is a line break, Cmd/Ctrl+Enter
+			// submits, and nothing fires while an IME is composing.
+			if (composerKeyAction(e) === "send") {
 				e.preventDefault();
 				this.confirm();
 			}
@@ -42,7 +45,7 @@ export class PromptInputModal extends Modal {
 		this.textareaEl.focus();
 	}
 
-	onClose(): void {
+	override onClose(): void {
 		// Resolve with null if closed without confirming
 		this.resolve(null);
 		this.contentEl.empty();

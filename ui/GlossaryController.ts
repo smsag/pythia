@@ -11,6 +11,7 @@ import { abbreviateModel } from "../models/knownModels";
 import { repaintTerms } from "./HighlightPainter";
 import { termForkOpeningPrompt } from "../services/glossaryPrompts";
 import { REGENERATE_ICON } from "./icons";
+import { openNotePath } from "./noteLinks";
 
 export interface GlossaryDeps {
 	plugin: PythiaPlugin;
@@ -349,7 +350,9 @@ export class GlossaryController {
 			// The note's own path, not a link-text lookup by term: a person and a
 			// term can share a name, and a term whose file name was sanitized
 			// ("C#" → "C-") would not resolve by name at all.
-			void this.d.plugin.app.workspace.openLinkText(this.d.plugin.glossaryService.pathFor(entry), "", true);
+			// Through openNotePath: a note deleted since the lookup is announced,
+			// never re-created empty by a link-text open (ADR-218).
+			void openNotePath(this.d.plugin.app, this.d.plugin.glossaryService.pathFor(entry), true);
 		});
 	}
 
@@ -375,8 +378,8 @@ export class GlossaryController {
 		};
 		input.addEventListener("keydown", (e) => {
 			e.stopPropagation(); // the view's Scope owns Enter; this field owns it here
-			if (e.key === "Enter") { e.preventDefault(); submit(); }
-			if (e.key === "Escape") { e.preventDefault(); box.remove(); }
+			if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); submit(); }
+			if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); box.remove(); }
 		});
 		// Blur closes without asking: a stray tap must not fire a model call.
 		input.addEventListener("blur", () => box.remove());

@@ -11,7 +11,7 @@ export class DeleteFileModal extends Modal {
 		this.onConfirm = onConfirm;
 	}
 
-	onOpen(): void {
+	override onOpen(): void {
 		this.modalEl.addClass("pythia-modal");
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: t("deleteFileTitle") });
@@ -26,5 +26,5 @@ export class DeleteFileModal extends Modal {
 		cancelBtn.addEventListener("click", () => this.close());
 	}
 
-	onClose(): void { this.contentEl.empty(); }
+	override onClose(): void { this.contentEl.empty(); }
 }

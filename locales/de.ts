@@ -377,8 +377,6 @@ const de: Strings = {
 	convNotFound:           "Pythia: Gespräch \"{{id}}\" nicht gefunden.",
 	templateNotFound:       "Pythia: Vorlage \"{{name}}\" nicht gefunden.",
 	unknownAction:          "Pythia: Unbekannte Aktion \"{{action}}\".",
-	migrateAnthropicFailed: "Anthropic-API-Schlüssel konnte nicht migriert werden. Bitte in Einstellungen → Pythia neu eingeben.",
-	migrateOpenAIFailed:    "OpenAI-API-Schlüssel konnte nicht migriert werden. Bitte in Einstellungen → Pythia neu eingeben.",
 
 	// ── Services ──────────────────────────────────────────────────────────────
 	anthropicKeyNotConfigured: "Anthropic-API-Schlüssel nicht konfiguriert. Trage ihn in Einstellungen → Pythia ein.",
@@ -535,6 +533,15 @@ const de: Strings = {
 	inlineAttachAll:    "Alle anhängen ({{count}})",
 	inlineDrillTooltip: "Ordner öffnen",
 	inlineBackTooltip:  "Zurück",
+
+	// ── Remote media in an answer (loads only on a press) ─────────────────────
+	remoteMediaLoad:    "Externes Medium laden · {{host}}",
+	remoteMediaTooltip: "Noch nicht geladen: Laden schickt eine Anfrage an {{url}}. Eine Antwort kann über ein externes Bild Text aus deinem Vault versenden.",
+
+	// ── Review fixes: refusals and control names ──────────────────────────────
+	truncRetryRefused: "Neu senden würde diese Antwort entfernen, und etwas verweist jetzt auf sie (ein Stern, eine Verknüpfung, Tabs oder ein Vergleich). Nimm stattdessen Weiter.",
+	removeNoteAria:    "{{name}} entfernen",
+	deleteNoteAria:    "Notiz {{name}} löschen",
 };
 
 export default de;

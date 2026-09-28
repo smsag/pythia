@@ -139,19 +139,20 @@ export function isPrivateHost(hostname: string): boolean {
 	if (PRIVATE_SUFFIXES.some((suffix) => h.endsWith(suffix))) return true;
 	if (!h.includes(".") && !h.includes(":")) return true; // a single-label intranet name
 	if (h.includes(":")) {
-		// IPv4-mapped (::ffff:a.b.c.d) and NAT64 (64:ff9b::a.b.c.d), which the
-		// URL parser writes as two hex groups, are the IPv4 address they carry.
-		const mapped = /^(?:::ffff|64:ff9b:):([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+		// IPv4-mapped (::ffff:a.b.c.d), NAT64 (64:ff9b::a.b.c.d) and the deprecated
+		// IPv4-compatible form (::a.b.c.d), which the URL parser writes as two hex
+		// groups, are the IPv4 address they carry.
+		const mapped = /^(?:::ffff:|64:ff9b::|::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
 		if (mapped) {
 			const hi = parseInt(mapped[1], 16);
 			const lo = parseInt(mapped[2], 16);
 			return isPrivateIPv4(hi >> 8, hi & 255, lo >> 8);
 		}
-		const dotted = /^(?:::ffff|64:ff9b:):(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+		const dotted = /^(?:::ffff:|64:ff9b::|::)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
 		if (dotted) return isPrivateHost(dotted[1]);
 		// IPv6: loopback, unspecified, unique-local (fc00::/7), link-local
-		// (fe80::/10), multicast (ff00::/8).
-		return h === "::1" || h === "::" || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h) || /^ff[0-9a-f]{0,2}:/.test(h);
+		// (fe80::/10), the deprecated site-local (fec0::/10), multicast (ff00::/8).
+		return h === "::1" || h === "::" || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89a-f][0-9a-f]?:/.test(h) || /^ff[0-9a-f]{0,2}:/.test(h);
 	}
 	const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
 	if (m) return isPrivateIPv4(Number(m[1]), Number(m[2]), Number(m[3]));

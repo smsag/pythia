@@ -114,6 +114,16 @@ describe("parseReadUrlArgs", () => {
 });
 
 describe("isPrivateHost", () => {
+	it("judges the IPv4-compatible and site-local IPv6 forms as private", () => {
+		// new URL("http://[::127.0.0.1]/").hostname === "[::7f00:1]"
+		expect(isPrivateHost("[::7f00:1]")).toBe(true);
+		expect(isPrivateHost("::7f00:1")).toBe(true);
+		expect(isPrivateHost("::10.0.0.1")).toBe(true);
+		expect(isPrivateHost("fec0::1")).toBe(true);
+		expect(isPrivateHost("2001:db8::1")).toBe(false);
+		expect(isPrivateHost("::808:808")).toBe(false); // ::8.8.8.8 is public
+	});
+
 	it("does not flag public neighbours of private ranges", () => {
 		expect(isPrivateHost("172.32.0.1")).toBe(false);
 		expect(isPrivateHost("11.0.0.1")).toBe(false);

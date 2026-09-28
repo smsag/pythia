@@ -5,6 +5,7 @@ import { replaceRange, targetState } from "../services/rewriteTarget";
 import { cleanOptimizedOutput } from "../services/promptOptimizerText";
 import { t } from "../i18n";
 import { SOURCE_ICONS } from "./icons";
+import { describeErrorForLog } from "../services/redact";
 
 export interface RewriteDeps {
 	plugin: PythiaPlugin;
@@ -35,6 +36,14 @@ export interface RewriteDeps {
  *    changed in the note, and *Replace in note* is a distinct press —
  *    engineering principle: a write that can destroy content is its own step.
  */
+/** The same passage: path, both ends and the captured text, exactly. */
+export function sameRewriteTarget(a: RewriteTarget | undefined, b: RewriteTarget | undefined): boolean {
+	if (!a || !b) return false;
+	return a.path === b.path && a.text === b.text &&
+		a.from.line === b.from.line && a.from.ch === b.from.ch &&
+		a.to.line === b.to.line && a.to.ch === b.to.ch;
+}
+
 export class RewriteController {
 	constructor(private readonly d: RewriteDeps) {}
 
@@ -108,9 +117,8 @@ export class RewriteController {
 
 		const discard = actions.createEl("button", { cls: "pb pb-quiet p-rewrite-btn p-rewrite-btn--quiet", text: t("rewriteDiscard") });
 		discard.addEventListener("click", () => {
-			msg.rewriteTarget = undefined;
 			card.remove();
-			void this.disarm();
+			void this.settle(msg);
 		});
 	}
 
@@ -140,10 +148,31 @@ export class RewriteController {
 		if (view) view.editor.replaceRange(replacement, target.from, target.to);
 		else await this.d.plugin.app.vault.modify(file, replaceRange(content, target.from, target.to, replacement));
 
-		msg.rewriteTarget = undefined;
 		card.remove();
-		await this.disarm();
+		await this.settle(msg);
 		new Notice(t("rewriteApplied", { note: target.path }));
+	}
+
+	/**
+	 * The proposal on `msg` was applied or discarded: clear it, and disarm only
+	 * when what is armed now is THIS proposal's passage — the user may have
+	 * armed another passage since, which a stale card must not take away. The
+	 * conversation is saved either way, so the cleared card stays cleared.
+	 */
+	private async settle(msg: Message): Promise<void> {
+		const conv = this.d.getConversation();
+		const target = msg.rewriteTarget;
+		msg.rewriteTarget = undefined;
+		if (!conv) return;
+		if (sameRewriteTarget(conv.pendingRewrite, target)) {
+			conv.pendingRewrite = undefined;
+			this.d.refreshPills();
+		}
+		try {
+			await this.d.plugin.conversationStore.save(conv);
+		} catch (err) {
+			console.warn("[Pythia] rewrite: save failed", describeErrorForLog(err));
+		}
 	}
 
 	/** The note's editor, opening it when it is not already on screen — an undo
