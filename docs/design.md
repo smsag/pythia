@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-28 — ADR-240: `.p-remote-media-load` (a `pb pb-link` placeholder naming the host of a deferred remote image), `.pythia-tool-call-path` (the whole path under a create-note confirm, mono 11px, `--text-muted`), a focus ring on the controls made keyboard-reachable (`makeKeyActivatable`).*
+*Last updated: 2026-09-28 — ADR-241: the settings tab's **Links and shortcuts** section; `.pythia-link-preview` shows each link whole under its description (`--font-monospace`, `user-select: all`, `word-break: break-all`), copied by a labelled **Copy link** button (`copyTextFromLabel` in `ui/clipboard.ts`: the word reads "Copied" for a moment, then returns — an icon alone was easy to miss). Three rows: open · new conversation · ask (ends in `&text=`).*
+
+*Previously: 2026-09-28 — ADR-240: `.p-remote-media-load` (a `pb pb-link` placeholder naming the host of a deferred remote image), `.pythia-tool-call-path` (the whole path under a create-note confirm, mono 11px, `--text-muted`), a focus ring on the controls made keyboard-reachable (`makeKeyActivatable`).*
 
 *Previously: 2026-09-26 — ADR-232: *What Pythia sends* — `.pythia-instructions-modal` on `.pythia-modal`; `.pythia-instructions-section` (h3 + text), `.pythia-instructions-text` (verbatim mono block, hairline border, 240px then scrolls), a `pb-icon` copy in the last heading; `.p-inspector-open` makes the context box's system-prompt line a link (`--text-muted`, underline on hover, never `--text-faint`). No new tokens.*
 

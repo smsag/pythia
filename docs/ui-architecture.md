@@ -18,7 +18,7 @@ The UI is one Obsidian `ItemView`, `PythiaSidebarView` in `sidebar.ts`, built im
 | `…Deps` / `…Host` | The interface a controller or module receives instead of the view: callbacks and getters, never `this` | `HeaderDeps`, `SelectionDeps`, `TermDiscussionHost`, `VaultWatcherHost` |
 | `…Modal` / `…Suggest` (`suggest/`) | Obsidian `Modal` or `SuggestModal` subclass. Every dialog lives here, never in `sidebar.ts` | `DeleteConversationModal`, `ConversationSettingsModal`, `ConversationCapModal`, `CommandHubModal`, `NoteSuggestModal`, `ModelSuggestModal` |
 | `…Setting` / `…Settings` (`ui/`) | A settings control too involved for one `Setting` row | `conversationCapSetting`, `vaultContextSettings`, `glossarySettings`, `pricingSettings` |
-| `ui/settings/*.ts` | One section of the settings tab; `settings.ts` only orders them | `connections`, `conversationDefaults`, `answering`, `optimizer`, `notes`, `storage`, `troubleshooting` |
+| `ui/settings/*.ts` | One section of the settings tab; `settings.ts` only orders them | `connections`, `conversationDefaults`, `answering`, `optimizer`, `notes`, `storage`, `links`, `troubleshooting` |
 | `…Painter` / `…Decorator` | Walks rendered markdown and marks or wraps parts of it | `HighlightPainter`, `citationPainter`, `CodeBlockDecorator`, `tableDecorator` |
 | lower-case module, no suffix | Pure logic, no DOM or DOM-light, unit-tested. The rule lives here; the controller only places it | `turnLabel`, `instructionState`, `composerKeys`, `composerTokens`, `markTap`, `keyboardInset`, `referenceEntries` |
 | shared interaction helper | The one implementation of a gesture or widget (ADR-161) | `longPress`, `outsideDismiss`, `clipboard`, `dragToPan`, `accordion`, `choicePicker`, `ActionSheet` |

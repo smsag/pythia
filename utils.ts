@@ -25,6 +25,21 @@ export function resumeDeepLink(conversationId: string, vaultName: string): strin
 	return `obsidian://pythia?vault=${encodeURIComponent(vaultName)}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
 }
 
+/** What a shortcut link does: open Pythia, start a conversation, or start one
+ *  with a question — `ask` ends in `&text=` so a Shortcut appends its input. */
+export type PythiaLinkKind = "open" | "new" | "ask";
+
+/**
+ * The shortcut link (ADR-241). What the settings tab's Copy link buttons put on
+ * the clipboard, for a macOS / iOS Shortcut's "Open URL" action. `&new` is a
+ * flag, not a verb, so the same link reads as "Pythia" with one switch added.
+ */
+export function pythiaLink(vaultName: string, kind: PythiaLinkKind = "open"): string {
+	const base = `obsidian://pythia?vault=${encodeURIComponent(vaultName)}`;
+	if (kind === "open") return base;
+	return kind === "new" ? `${base}&new=true` : `${base}&new=true&text=`;
+}
+
 /** Today's date as `YYYY-MM-DD` in the user's LOCAL time zone. `toISOString()`
  *  reports UTC, so a conversation started at 23:30 in Berlin used to be named
  *  and filed under the previous day. */

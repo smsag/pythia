@@ -177,7 +177,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the composer |
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
 | Settings: section | a `Setting` heading plus `.pythia-section-intro`, the one sentence naming the section's remit | `ui/settings/section.ts` | every section of the plugin settings tab (ADR-209) |
-| Settings: sections | Connections · New conversations · While answering · Prompt optimizer · Vault context · Notes Pythia writes (+ Glossary) · History and storage · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
+| Settings: sections | Connections · New conversations · While answering · Prompt optimizer · Vault context · Notes Pythia writes (+ Glossary) · History and storage · Links and shortcuts · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
 | Chart card | `.p-chart-card` → `-head`/`-actions`/`-body`/`-svg`/`-foot`, and `--error` for a spec it cannot draw | `ui/chart/card.ts` | a ```pythia-chart block, in an answer **or in any vault note** — the plugin's only markdown code-block processor (ADR-210) |
 | Settings: search by meaning | a `Setting` row whose description says whether Schreibstube's search by meaning is available | `ui/vaultContextSettings.ts` | the plugin settings tab, first row of the Vault context section (ADR-224) |
 

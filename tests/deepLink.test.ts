@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleDeepLink, type DeepLinkHost } from "../services/deepLink";
+import { handleDeepLink, linkText, wantsNewConversation, MAX_LINK_TEXT_CHARS, type DeepLinkHost } from "../services/deepLink";
+import { pythiaLink } from "../utils";
 import { t } from "../i18n";
 
 function host(over: Partial<DeepLinkHost> = {}) {
@@ -8,8 +9,9 @@ function host(over: Partial<DeepLinkHost> = {}) {
 	const h: DeepLinkHost & { calls: string[]; notices: string[] } = {
 		calls,
 		notices,
+		ready: async () => { calls.push("ready"); },
 		open: async () => { calls.push("open"); },
-		create: async () => { calls.push("create"); },
+		create: async (text) => { calls.push(text ? `create:${text}` : "create"); },
 		resume: async (id) => { calls.push(`resume:${id}`); return true; },
 		template: async (name) => { calls.push(`template:${name}`); return true; },
 		inject: async (text) => { calls.push(`inject:${text}`); return true; },
@@ -24,7 +26,7 @@ describe("obsidian://pythia — routing", () => {
 	it("a link with no cmd opens the view: the only useful verbless action", async () => {
 		const h = host();
 		await handleDeepLink({ vault: "Mein Vault" }, h);
-		expect(h.calls).toEqual(["open"]);
+		expect(h.calls).toEqual(["ready", "open"]);
 		expect(h.notices).toEqual([]);
 	});
 
@@ -38,7 +40,7 @@ describe("obsidian://pythia — routing", () => {
 		] as const) {
 			const h = host();
 			await handleDeepLink({ cmd, ...params }, h);
-			expect(h.calls).toEqual([expected]);
+			expect(h.calls).toEqual(["ready", expected]);
 			expect(h.notices).toEqual([]);
 		}
 	});
@@ -46,7 +48,7 @@ describe("obsidian://pythia — routing", () => {
 	it("an unknown cmd says so, naming it — a silent no-op is unreportable", async () => {
 		const h = host();
 		await handleDeepLink({ cmd: "summon" }, h);
-		expect(h.calls).toEqual([]);
+		expect(h.calls).toEqual(["ready"]);
 		expect(h.notices).toEqual([t("unknownAction", { action: "summon" })]);
 	});
 });
@@ -55,14 +57,14 @@ describe("obsidian://pythia — missing parameters", () => {
 	it("resume without an id never guesses a conversation", async () => {
 		const h = host();
 		await handleDeepLink({ cmd: "resume" }, h);
-		expect(h.calls).toEqual([]);
+		expect(h.calls).toEqual(["ready"]);
 		expect(h.notices).toEqual([t("uriMissingId")]);
 	});
 
 	it("template without a name says which parameter is missing", async () => {
 		const h = host();
 		await handleDeepLink({ cmd: "template" }, h);
-		expect(h.calls).toEqual([]);
+		expect(h.calls).toEqual(["ready"]);
 		expect(h.notices).toEqual([t("uriMissingName")]);
 	});
 
@@ -70,7 +72,7 @@ describe("obsidian://pythia — missing parameters", () => {
 		for (const params of [{ cmd: "inject" }, { cmd: "inject", text: "" }]) {
 			const h = host();
 			await handleDeepLink(params, h);
-			expect(h.calls).toEqual([]);
+			expect(h.calls).toEqual(["ready"]);
 			expect(h.notices).toEqual([t("uriMissingText")]);
 		}
 	});
@@ -107,7 +109,7 @@ describe("obsidian://pythia — text is used exactly as delivered", () => {
 		const h = host();
 		// Decoding again throws URIError on "50% off" — the bug this rule prevents.
 		await handleDeepLink({ cmd: "inject", text: "50% off & 100% sure" }, h);
-		expect(h.calls).toEqual(["inject:50% off & 100% sure"]);
+		expect(h.calls).toEqual(["ready", "inject:50% off & 100% sure"]);
 		expect(h.notices).toEqual([]);
 	});
 });
@@ -128,5 +130,97 @@ describe("obsidian://pythia — errors cannot escape", () => {
 		await handleDeepLink({ cmd: "open" }, h);
 		expect(h.notices).toEqual([t("deepLinkError", { error: "nope" })]);
 		err.mockRestore();
+	});
+});
+
+describe("obsidian://pythia — the shortcut link (ADR-241)", () => {
+	it("the new flag starts a conversation, whatever form Obsidian delivers it in", async () => {
+		for (const v of ["", "true", "1", "yes", "TRUE"]) {
+			const h = host();
+			await handleDeepLink({ vault: "V", new: v }, h);
+			expect(h.calls, `new=${JSON.stringify(v)}`).toEqual(["ready", "create"]);
+		}
+	});
+
+	it("new=0 / false / no is the explicit 'just open'", async () => {
+		for (const v of ["0", "false", "no", " False "]) {
+			const h = host();
+			await handleDeepLink({ vault: "V", new: v }, h);
+			expect(h.calls).toEqual(["ready", "open"]);
+		}
+	});
+
+	it("an explicit cmd wins over the flag", async () => {
+		const h = host();
+		await handleDeepLink({ cmd: "open", new: "true" }, h);
+		expect(h.calls).toEqual(["ready", "open"]);
+	});
+
+	it("text rides into a new conversation to be prefilled", async () => {
+		const h = host();
+		await handleDeepLink({ new: "true", text: "What changed this week?" }, h);
+		expect(h.calls).toEqual(["ready", "create:What changed this week?"]);
+		const c = host();
+		await handleDeepLink({ cmd: "new", text: "hi" }, c);
+		expect(c.calls).toEqual(["ready", "create:hi"]);
+	});
+
+	it("waits for the workspace before doing anything", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((r) => { release = r; });
+		const h = host({ ready: () => gate });
+		const done = handleDeepLink({ new: "true" }, h);
+		await Promise.resolve();
+		expect(h.calls).toEqual([]);
+		release();
+		await done;
+		expect(h.calls).toEqual(["create"]);
+	});
+});
+
+describe("obsidian://pythia — text from a link is untrusted (ADR-241)", () => {
+	it("text over the limit is refused whole, before anything opens, and says why", async () => {
+		const h = host();
+		await handleDeepLink({ new: "true", text: "x".repeat(MAX_LINK_TEXT_CHARS + 1) }, h);
+		expect(h.calls).toEqual([]);
+		expect(h.notices).toEqual([t("uriTextTooLong", { max: String(MAX_LINK_TEXT_CHARS) })]);
+	});
+
+	it("exactly the limit is accepted, never cut", () => {
+		expect(linkText("x".repeat(MAX_LINK_TEXT_CHARS))).toHaveLength(MAX_LINK_TEXT_CHARS);
+	});
+
+	it("the limit applies to inject too", async () => {
+		const h = host();
+		await handleDeepLink({ cmd: "inject", text: "y".repeat(MAX_LINK_TEXT_CHARS + 1) }, h);
+		expect(h.calls).toEqual([]);
+	});
+
+	it("invisible characters are removed, line breaks and tabs kept", () => {
+		expect(linkText("a\u0000b‮c​d\n\te")).toBe("abcd\n\te");
+		expect(linkText("  padded  ")).toBe("padded");
+		expect(linkText(undefined)).toBe("");
+	});
+
+	it("a text that is only invisible characters counts as no text", async () => {
+		const h = host();
+		await handleDeepLink({ cmd: "inject", text: "​\u0007" }, h);
+		expect(h.notices).toEqual([t("uriMissingText")]);
+	});
+
+	it("wantsNewConversation reads only the flag", () => {
+		expect(wantsNewConversation({})).toBe(false);
+		expect(wantsNewConversation({ cmd: "new" })).toBe(false);
+	});
+});
+
+describe("pythiaLink — the one shortcut-link builder", () => {
+	it("names the vault, encoded, and adds only the new flag", () => {
+		expect(pythiaLink("My Vault")).toBe("obsidian://pythia?vault=My%20Vault");
+		expect(pythiaLink("A&B", "new")).toBe("obsidian://pythia?vault=A%26B&new=true");
+	});
+
+	it("the ask link ends in text= so a Shortcut can append its input", () => {
+		expect(pythiaLink("V", "ask")).toBe("obsidian://pythia?vault=V&new=true&text=");
 	});
 });
