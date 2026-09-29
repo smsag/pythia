@@ -3,6 +3,7 @@ import type { Conversation, Favorite, Message } from "../models/types";
 import type { PythiaSettings } from "../settings";
 import { todayISO, resumeDeepLink } from "../utils";
 import { FootnoteNumbering, messageSourcesResolver } from "./noteFootnotes";
+import { answerResolver } from "./answerCitations";
 import { highlightMessageFavorites } from "./favoriteHighlights";
 import { normalizeVaultPath, safeNoteName, yamlString } from "./pathUtils";
 import { archiveNoteContent, archiveNotePath } from "./conversationArchive";
@@ -15,6 +16,10 @@ export class NoteWriter {
 		this.app = app;
 		this.settings = settings;
 	}
+
+	/** Told when a note Pythia wrote links to answers of a conversation, so its
+	 *  links are recorded at once (ADR-250). Set by the plugin after construction. */
+	onAnswersLinked: ((path: string) => void) | null = null;
 
 	updateSettings(settings: PythiaSettings): void {
 		this.settings = settings;
@@ -237,9 +242,11 @@ ${summary}
 		await this.writeNote(entry + currentContent, inboxPath);
 	}
 
-	/** `favorites` are the conversation's: each saved message's own become
-	 *  `==highlights==` (ADR-239). */
-	async appendConversationSlice(messages: Message[], filePath: string, conversationId?: string, favorites: Favorite[] = []): Promise<void> {
+	/** The conversation's favorites become `==highlights==` (ADR-239), and an
+	 *  answer a message cites becomes a footnote linking it (ADR-250). */
+	async appendConversationSlice(messages: Message[], filePath: string, conversationId?: string, favorites: Favorite[] = [], conv?: Conversation): Promise<void> {
+		const vault = this.app.vault.getName();
+		const answers = conv ? answerResolver(conv, (id, msg) => resumeDeepLink(id, vault, msg)) : undefined;
 		const now = new Date();
 		const dd = String(now.getDate()).padStart(2, "0");
 		const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -259,7 +266,7 @@ ${summary}
 		const lines: string[] = [heading, ""];
 		for (const msg of messages) {
 			const label = msg.role === "user" ? "**You:**" : "**Pythia:**";
-			const body = footnotes.apply(highlightMessageFavorites(msg, favorites), messageSourcesResolver(msg.sources));
+			const body = footnotes.apply(highlightMessageFavorites(msg, favorites), messageSourcesResolver(msg.sources, answers));
 			// The label goes on its own line whenever the message opens with a fenced
 			// block: `**Pythia:** ```pythia-chart` is not a fence at the start of a
 			// line, so it never opens, and the chart the note was saved for would be
@@ -276,6 +283,7 @@ ${summary}
 		} else {
 			await this.writeNote(current ? current + "\n\n" + block : block, filePath);
 		}
+		if (messages.some((m) => m.sources?.some((s) => s.kind === "answer"))) this.onAnswersLinked?.(normalized);
 	}
 
 	/** Create every missing folder in a file path. Public since ADR-150: the

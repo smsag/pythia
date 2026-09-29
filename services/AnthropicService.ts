@@ -5,7 +5,7 @@ import type { Conversation, EffortLevel } from "../models/types";
 import type { ToolCallHandler } from "./LLMProvider";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
+import { historyAnswerNumbers, historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
@@ -110,13 +110,14 @@ export class AnthropicService extends BaseProvider {
 		this.streamModel = this.resolveModel(conversation.model);
 		this.streamMaxTokens = conversation.maxTokens ?? this.settings.maxTokens ?? resolveDefaultMaxTokens(this.streamModel);
 
+		const answerLabels = historyAnswerNumbers(conversation);
 		const selected = selectHistoryForSend(
 			conversation.messages.slice(0, -1),
 			conversation.resumeMode,
 			resumeBoundary(conversation)
 		);
 		const historyMessages: ApiMessage[] = trimHistoryToBudget(
-			selected.map((m) => ({ role: m.role, content: historyContent(m) })),
+			selected.map((m) => ({ role: m.role, content: historyContent(m, answerLabels) })),
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),

@@ -29,6 +29,7 @@ export function armPendingTemplate(tpl: PythiaTemplate): PendingTemplate {
 		writeMode: tpl.writeMode,
 		outputFolder: tpl.outputFolder,
 		contextNotes: tpl.contextNotes.length > 0 ? [...tpl.contextNotes] : undefined,
+		...(tpl.citeAnswers ? { citeAnswers: true as const } : {}),
 	};
 }
 
@@ -64,5 +65,8 @@ export function applyPendingTemplate(conv: Conversation): Conversation {
 		writeMode: pending.writeMode ?? conv.writeMode,
 		outputFolder: pending.outputFolder ?? conv.outputFolder,
 		contextNotes: notes,
+		// A summarizing template applied at the end of a long conversation is
+		// the case answer citations exist for (ADR-250).
+		...(pending.citeAnswers || conv.citeAnswers ? { citeAnswers: true as const } : {}),
 	};
 }

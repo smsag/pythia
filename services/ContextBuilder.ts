@@ -18,6 +18,7 @@ import {
 	GROUNDING_INSTRUCTION,
 	WEB_CITATION_INSTRUCTION,
 	CHART_WHEN_INSTRUCTION,
+	CITE_ANSWERS_INSTRUCTION,
 	CHART_SOURCE_INSTRUCTION,
 	NO_SOLICITATION_INSTRUCTION,
 	CUSTOM_INSTRUCTIONS_TAG,
@@ -110,6 +111,9 @@ export function buildSystemPrompt(
 	// A standing rule about how to present numbers, like the one above it —
 	// not gated on research mode, because vault numbers deserve the same (ADR-210).
 	parts.push(CHART_WHEN_INSTRUCTION);
+
+	// The conversation's template asked for answers to be citable (ADR-250).
+	if (conversation.citeAnswers) parts.push(CITE_ANSWERS_INSTRUCTION);
 
 	// Prompt-injection guard — added whenever untrusted context (attached notes/
 	// PDFs, a prior summary, a forked excerpt, or web results in research mode)

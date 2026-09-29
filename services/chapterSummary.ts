@@ -14,17 +14,37 @@ import { fnv1a, type AnchorRef } from "./noteAnchors";
  * conversation's own summary, cut to its first two sentences.
  */
 
-/** A chapter: the user message a link names, and the answer after it. */
+/** A chapter: the user message that opens it, and the answer it got. */
 export interface Chapter {
 	user: Message;
-	answer?: Message;
+	answer?: Pick<Message, "id" | "content" | "timestamp">;
 }
 
-export function chapterOf(conv: Conversation, userMessageId: string): Chapter | null {
-	const i = conv.messages.findIndex((m) => m.id === userMessageId);
-	if (i < 0 || conv.messages[i].role !== "user") return null;
-	const next = conv.messages[i + 1];
-	return { user: conv.messages[i], ...(next?.role === "assistant" ? { answer: next } : {}) };
+/**
+ * The chapter a link names. A link names the question (ADR-249) or one answer
+ * (ADR-250) — the answer kept in `messages`, or a comparison tab on it, which
+ * is an answer by its own id (ADR-225). Null when nothing has that id.
+ */
+export function chapterOf(conv: Conversation, messageId: string): Chapter | null {
+	const msgs = conv.messages;
+	const questionBefore = (i: number): Message | undefined => {
+		for (let j = i - 1; j >= 0; j--) if (msgs[j].role === "user") return msgs[j];
+		return undefined;
+	};
+	const i = msgs.findIndex((m) => m.id === messageId);
+	if (i >= 0) {
+		if (msgs[i].role === "user") {
+			const next = msgs[i + 1];
+			return { user: msgs[i], ...(next?.role === "assistant" ? { answer: next } : {}) };
+		}
+		const user = questionBefore(i);
+		return user ? { user, answer: msgs[i] } : null;
+	}
+	const holder = msgs.findIndex((m) => m.alternatives?.some((a) => a.id === messageId));
+	if (holder < 0) return null;
+	const tab = msgs[holder].alternatives!.find((a) => a.id === messageId)!;
+	const user = questionBefore(holder);
+	return user ? { user, answer: tab } : null;
 }
 
 /** The ONE fingerprint of a chapter: what was asked and what was kept as the answer. */

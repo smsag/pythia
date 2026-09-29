@@ -230,6 +230,7 @@ const de: Strings = {
 	sourcesTemplate: "Vorlage",
 	sourcesWeb:   "Web",
 	sourcesVault: "Vault",
+	sourcesAnswers: "Antworten",
 
 	// ── Selection toolbar ─────────────────────────────────────────────────────
 	rewriteSelection:        "Auswahl mit Pythia überarbeiten",

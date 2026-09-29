@@ -118,6 +118,8 @@ export class TemplateLoader {
 				writeMode: validWriteMode,
 				researchMode: validResearchMode,
 				...(fm.rewrite_preset === true ? { rewritePreset: true } : {}),
+				// Only an explicit `true` numbers the answers (ADR-250).
+				...(fm.cite_answers === true ? { citeAnswers: true } : {}),
 				autoPrompt: validAutoPrompt,
 				systemPrompt: match[2].trim(),
 			};

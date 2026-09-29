@@ -5,7 +5,7 @@ import type { Conversation, EffortLevel } from "../models/types";
 import type { ToolCallHandler } from "./LLMProvider";
 import type { PythiaSettings } from "../settings";
 import { getToolDefinitions } from "./ToolHandler";
-import { historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
+import { historyAnswerNumbers, historyContent, normalizeMessages, selectHistoryForSend, resumeBoundary, omittedByResume, trimHistoryToBudget, estimateTokensFromText, debugLog, parseToolArguments } from "./messageUtils";
 import { BaseProvider, type RoundResult } from "./BaseProvider";
 import type { PdfAttachment } from "./ContextBuilder";
 import { RETRY_BACKOFF_MS, isRetryableError, sleep } from "./retry";
@@ -125,13 +125,14 @@ export class OpenAIProvider extends BaseProvider {
 		// again in history would duplicate it. A summary or hybrid resume leaves
 		// out what came before the resume point only (ADR-231, see
 		// selectHistoryForSend).
+		const answerLabels = historyAnswerNumbers(conversation);
 		const selected = selectHistoryForSend(
 			conversation.messages.slice(0, -1),
 			conversation.resumeMode,
 			resumeBoundary(conversation)
 		);
 		const historyMessages: OAIMessage[] = trimHistoryToBudget(
-			selected.map((m) => ({ role: m.role as "user" | "assistant", content: historyContent(m) })),
+			selected.map((m) => ({ role: m.role as "user" | "assistant", content: historyContent(m, answerLabels) })),
 			getContextWindow(this.streamModel),
 			this.streamMaxTokens,
 			estimateTokensFromText(systemPrompt),

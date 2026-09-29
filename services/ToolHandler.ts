@@ -2,7 +2,7 @@ import { parseChartSpec, CHART_TOOL_UNPLACED } from "./chartSpec";
 import { CHART_BLOCK_SCHEMA } from "./promptConstants";
 import { NoteWriter } from "./NoteWriter";
 import { noteWriteResult } from "./noteWrites";
-import { citationsToFootnotes } from "./noteFootnotes";
+import { citationsToFootnotes, type AnswerResolver } from "./noteFootnotes";
 import { highlightPassages } from "./favoriteHighlights";
 import type { WebSearchService, WebSource, WebToolResult } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
@@ -250,16 +250,19 @@ export class ToolHandler {
 	 *   these (ADR-238); without them a web marker is dropped, a vault one still
 	 *   becomes a footnote. `favorites`: the conversation's favorites as text
 	 *   (`favoritePassages`); where the content repeats one it is highlighted
-	 *   `==…==` (ADR-239).
+	 *   `==…==` (ADR-239). `answers`: resolves an `⟦cite:answer:n⟧` in the
+	 *   content to a footnote linking that answer (ADR-250); without it such a
+	 *   marker is dropped.
 	 */
 	async execute(
 		call: ToolCall,
 		allowedTools?: Set<string>,
 		contextNotes?: string[],
 		readScope?: WebReadScope,
-		note: { webSources?: WebSource[]; favorites?: string[] } = {},
+		note: { webSources?: WebSource[]; favorites?: string[]; answers?: AnswerResolver } = {},
 	): Promise<string> {
 		const webSources = note.webSources ?? [];
+		const answers = note.answers;
 		const favorites = (note.favorites ?? []).map((text) => ({ text }));
 		if (!KNOWN_TOOLS.has(call.name)) return `Error: unknown tool "${call.name}"`;
 		// The web tools are gated by research, not the write mode, and say so.
@@ -325,7 +328,7 @@ export class ToolHandler {
 				// create_note never overwrites: an existing note is an error the
 				// model can recover from by choosing another path (or rewrite_note on
 				// a context note, which the user confirms by name).
-				const withFootnotes = citationsToFootnotes(highlightPassages(content, favorites), webSources);
+				const withFootnotes = citationsToFootnotes(highlightPassages(content, favorites), webSources, "", answers);
 				const file = call.name === "create_note"
 					? await this.writer.createNote(withFootnotes, path)
 					: await this.writer.writeNote(withFootnotes, path);
@@ -340,7 +343,7 @@ export class ToolHandler {
 				// Footnotes are built against the note's current text, so a label the
 				// author already uses is never reused.
 				const file = await this.writer.prependWithSeparator(content, path,
-					(block, current) => citationsToFootnotes(highlightPassages(block, favorites), webSources, current));
+					(block, current) => citationsToFootnotes(highlightPassages(block, favorites), webSources, current, answers));
 				return noteWriteResult("prepended", file.path);
 			} catch (err) {
 				return `Error updating note: ${err instanceof Error ? err.message : String(err)}`;

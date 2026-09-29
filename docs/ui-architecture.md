@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-29 (ADR-249: note anchors — the anchor ink and card in any vault note, the chapter-link control, the footnote command)*
+*Last updated: 2026-09-29 (ADR-250: answer citations — the `Answers:` row, the answer-citation footnote's `.p-note-anchor-ref` link, the delete dialog's linked-notes line)*
+
+*Previously: 2026-09-29 (ADR-249: note anchors — the anchor ink and card in any vault note, the chapter-link control, the footnote command)*
 
 *Previously: 2026-09-26 (ADR-232: `InstructionsModal`, *What Pythia sends*; ADR-231: the context box's resume row; ADR-230: the web-search globe is `ResearchToggleController`)*
 
@@ -117,7 +119,8 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 | **note anchor** / **anchor card** | A passage in a vault NOTE linked to a conversation or chapter (`.p-note-anchor`), and the card its hover opens (`.p-anchor-card`) |
 | **chapter link** | `obsidian://pythia?…cmd=resume&id=…&msg=…` — a conversation opened at one user message; pasted into a note it is a note anchor |
 | **banner** | The "branched from" / "linked from" line at the top of a fork or link target |
-| **sources row** | `Template:` / `Vault:` / `Web:` under an answer |
+| **sources row** | `Template:` / `Vault:` / `Answers:` / `Web:` under an answer (`Answers:` — earlier answers this one cited, ADR-250) |
+| **answer citation** | `⟦cite:answer:n⟧` — a reply citing an earlier answer by the number Pythia gave it; in a note, a footnote linking that answer (`.p-note-anchor-ref`) |
 | **chip** | A small inline control: citation chip, tool-call chip, model hint, history chip |
 | **selection strip** | The action bar for selected chat text |
 | **composer** | The editable field plus its toolbar (`.p-input-area`); the field is `ComposerField` |

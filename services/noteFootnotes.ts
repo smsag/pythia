@@ -36,15 +36,20 @@ export interface FootnoteWebSource {
 	url: string;
 }
 
-/** What a marker points at, once resolved. */
+/** What a marker points at, once resolved. An answer (ADR-250) arrives with
+ *  its definition already written — `answerFootnoteText`, the one builder. */
 export type CitationTarget =
 	| { kind: "vault"; path: string }
-	| { kind: "web"; url: string; title?: string };
+	| { kind: "web"; url: string; title?: string }
+	| { kind: "answer"; id: string; text: string };
 
 /** Marker kind and ref → its target, or null to drop the marker. */
-export type CitationResolver = (kind: "note" | "web", ref: string) => CitationTarget | null;
+export type CitationResolver = (kind: "note" | "web" | "answer", ref: string) => CitationTarget | null;
 
-const MARKER_RE = /[ \t]*⟦cite:(note|web):([^⟧]+)⟧/g;
+/** An answer's id (or, in a tool's content, its number) → its footnote target. */
+export type AnswerResolver = (ref: string) => CitationTarget | null;
+
+const MARKER_RE = /[ \t]*⟦cite:(note|web|answer):([^⟧]+)⟧/g;
 const FENCE_RE = /^\s{0,3}(```|~~~)/;
 const LABEL_RE = /\[\^([^\]\s]+)\]/g;
 
@@ -61,6 +66,7 @@ function linkTarget(url: string): string {
 }
 
 function definitionOf(target: CitationTarget): string {
+	if (target.kind === "answer") return target.text;
 	if (target.kind === "vault") return noteWikilink(target.path.endsWith(".md") ? target.path : `${target.path}.md`);
 	const title = target.title?.trim() || webDomain(target.url);
 	return `[${linkText(title)}](${linkTarget(target.url)})`;
@@ -94,11 +100,11 @@ export class FootnoteNumbering {
 
 		const definitions: string[] = [];
 		const replaceMarkers = (line: string): string =>
-			line.replace(MARKER_RE, (_whole, kind: "note" | "web", rawRef: string) => {
+			line.replace(MARKER_RE, (_whole, kind: "note" | "web" | "answer", rawRef: string) => {
 				const ref = rawRef.trim();
 				const target = ref ? resolve(kind, ref) : null;
 				if (!target) return "";
-				const key = target.kind === "vault" ? `vault:${target.path}` : `web:${target.url}`;
+				const key = target.kind === "vault" ? `vault:${target.path}` : target.kind === "web" ? `web:${target.url}` : `answer:${target.id}`;
 				let label = this.labelByTarget.get(key);
 				if (!label) {
 					label = this.nextLabel();
@@ -132,8 +138,9 @@ export class FootnoteNumbering {
 /** The note tools' resolver: a web marker is the result this answer fetched
  *  with that number, else the first from that domain — the chat's rule
  *  (ADR-226). A vault marker names its path. */
-export function fetchedResultsResolver(results: FootnoteWebSource[]): CitationResolver {
+export function fetchedResultsResolver(results: FootnoteWebSource[], answer?: AnswerResolver): CitationResolver {
 	return (kind, ref) => {
+		if (kind === "answer") return answer?.(ref) ?? null;
 		if (kind === "note") return { kind: "vault", path: ref };
 		const hit = results.find((r) => String(r.n) === ref) ?? results.find((r) => webDomain(r.url) === webDomain(ref));
 		return hit ? { kind: "web", url: hit.url, title: hit.title } : null;
@@ -142,9 +149,14 @@ export function fetchedResultsResolver(results: FootnoteWebSource[]): CitationRe
 
 /** A stored message's resolver: its markers against its own `sources`, found
  *  the way the chat finds a chip (by what the marker said, else by ref). */
-export function messageSourcesResolver(sources: MessageSource[] | undefined): CitationResolver {
+export function messageSourcesResolver(sources: MessageSource[] | undefined, answer?: AnswerResolver): CitationResolver {
 	const list = sources ?? [];
 	return (kind, ref) => {
+		if (kind === "answer") {
+			// The stored source knows which answer the number meant when it was said.
+			const hit = list.find((s) => s.kind === "answer" && (s.cite ?? s.ref) === ref);
+			return hit ? answer?.(hit.ref) ?? null : null;
+		}
 		if (kind === "note") return { kind: "vault", path: ref };
 		const hit = list.find((s) => s.kind === "web" && (s.cite ?? s.ref) === ref)
 			?? list.find((s) => s.kind === "web" && webDomain(s.ref) === webDomain(ref));
@@ -158,6 +170,6 @@ export function messageSourcesResolver(sources: MessageSource[] | undefined): Ci
  * it uses. Content with no marker is returned unchanged except for foreign
  * citation noise.
  */
-export function citationsToFootnotes(content: string, webSources: FootnoteWebSource[] = [], existing = ""): string {
-	return new FootnoteNumbering([content, existing]).apply(content, fetchedResultsResolver(webSources));
+export function citationsToFootnotes(content: string, webSources: FootnoteWebSource[] = [], existing = "", answer?: AnswerResolver): string {
+	return new FootnoteNumbering([content, existing]).apply(content, fetchedResultsResolver(webSources, answer));
 }

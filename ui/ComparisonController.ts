@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { estimateCost, formatCost } from "../models/modelPricing";
 import { formatClockTime } from "../services/messageUtils";
 import { parseCitations, resolveWebCitations } from "../services/citations";
+import { resolveAnswerCitations } from "../services/answerCitations";
 import { researchForSend, wantsWeb } from "../services/sendPolicy";
 import type { WebSource } from "../services/WebSearchService";
 import { describeErrorForLog } from "../services/redact";
@@ -184,7 +185,9 @@ export class ComparisonController {
 					if (tokenUsage) candidate.tokenUsage = tokenUsage;
 					// The same resolver as the send, so a kept candidate keeps the
 					// pages it read, not only what it cited (ADR-226).
-					const { sources } = resolveWebCitations(parseCitations(fullText), webSources);
+					const web = resolveWebCitations(parseCitations(fullText), webSources).sources;
+					// Answer numbers name answers of this conversation, as in the send (ADR-250).
+					const { sources } = resolveAnswerCitations(web, conv.messages);
 					if (sources.length) candidate.sources = sources;
 				},
 				(error) => {

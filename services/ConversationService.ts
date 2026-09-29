@@ -83,6 +83,7 @@ export class ConversationService {
 		temperature?: number;
 		effort?: EffortLevel;
 		researchMode?: boolean;
+		citeAnswers?: boolean;
 	}): Promise<Conversation> {
 		const p = this.plugin;
 		const resolvedProvider = opts.provider ?? p.settings.defaultProvider;
@@ -107,6 +108,7 @@ export class ConversationService {
 			researchMode: opts.researchMode ?? p.settings.webSearchDefault,
 			...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
 			...(opts.effort !== undefined ? { effort: opts.effort } : {}),
+			...(opts.citeAnswers ? { citeAnswers: true as const } : {}),
 			messages: [],
 		};
 		p.conversations.push(conv);
@@ -137,6 +139,7 @@ export class ConversationService {
 			researchMode: tpl.researchMode,
 			temperature: tpl.temperature,
 			effort: tpl.effort,
+			citeAnswers: tpl.citeAnswers,
 		});
 	}
 

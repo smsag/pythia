@@ -96,6 +96,10 @@ export interface Conversation {
 	 *  recorded when Pythia writes one, or sees one in a note it opens. What the
 	 *  history limit protects, and what an answer's footnote update writes to. */
 	noteAnchors?: NoteAnchor[];
+	/** Earlier answers are numbered for the model, which may cite them as
+	 *  ⟦cite:answer:n⟧ (ADR-250). Set by a template's `cite_answers: true`;
+	 *  only ever `true`. */
+	citeAnswers?: true;
 }
 
 /**
@@ -148,6 +152,8 @@ export interface PendingTemplate {
 	writeMode?: Conversation["writeMode"];
 	outputFolder?: string;
 	contextNotes?: string[];
+	/** The template's `cite_answers` (ADR-250), for this one answer. */
+	citeAnswers?: true;
 }
 
 /**
@@ -213,8 +219,9 @@ export interface RewriteTarget {
  *  Shape matches services/citations.ts CitationSource. */
 export interface MessageSource {
 	n: number;                // 1-based, in order of first appearance
-	kind: "vault" | "web";
-	ref: string;              // vault path, or a web page's full URL (a bare domain in messages before ADR-226)
+	/** `answer`: an earlier answer of this conversation the model cited (ADR-250). */
+	kind: "vault" | "web" | "answer";
+	ref: string;              // vault path, a web page's full URL (a bare domain before ADR-226), or an answer's message id
 	title: string;            // display label
 	/** What the ⟦cite:web:…⟧ marker in the text said — a result number or a
 	 *  domain — when it differs from `ref`. The chip is found by it (ADR-226). */
@@ -340,6 +347,7 @@ export interface PythiaTemplate {
 	writeMode?: WriteMode;
 	researchMode?: boolean;   // preset the web_search research toggle for new conversations
 	rewritePreset?: boolean;  // `rewrite_preset: true` — offered in "Rewrite with Pythia as…" (ADR-247)
+	citeAnswers?: boolean;    // `cite_answers: true` — earlier answers are numbered and citable (ADR-250)
 	autoPrompt?: string;      // message auto-sent when the conversation opens
 	systemPrompt: string;
 }

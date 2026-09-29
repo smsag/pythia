@@ -60,6 +60,8 @@ export const SOURCE_ICONS = {
 	output: VAULT_NOTE_ICON,
 	/** The passage a rewrite will replace. */
 	rewrite: "pencil-line",
+	/** An earlier answer of this conversation, cited (ADR-250). */
+	answer: "message-square",
 } as const;
 
 export type SourceKind = keyof typeof SOURCE_ICONS;

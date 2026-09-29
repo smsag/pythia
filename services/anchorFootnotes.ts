@@ -79,11 +79,41 @@ export function footnoteText(info: AnchorSummary, fallbackLanguage = "en"): stri
 	return `${head} — ${body}`;
 }
 
+/**
+ * The footnote an answer citation becomes (ADR-250): name, date and a link to
+ * the answer — no summary, so writing the note costs no model call. The link
+ * carries `msg=`, so it is itself a note anchor: the card opens on it, and the
+ * conversation is kept from the history limit.
+ *
+ *   [„Rent cap scenarios › Index clause“](obsidian://pythia?…&msg=a7) (Pythia, 29 Sep 2026)
+ */
+export function answerFootnoteText(
+	info: { conversationName: string; chapterName?: string; date?: string; language?: string },
+	/** null: the name without a link — in an archive, whose conversation is gone. */
+	url: string | null,
+): string {
+	const [open, close] = quoteMarks(info.language);
+	const name = cleanName(info.conversationName, info.language, FOOTNOTE_NAME_CHARS);
+	const title = info.chapterName ? `${name} › ${cleanName(info.chapterName, info.language)}` : name;
+	const date = info.date ? formatDate(info.date) : "";
+	const named = `${open}${title}${close}`;
+	return `${url ? `[${named}](${url})` : named} (Pythia${date ? `, ${date}` : ""})`;
+}
+
 /** Resolves an anchor to what its footnote says. */
 export type AnchorResolver = (ref: AnchorRef) => AnchorSummary;
 
 const DEF_RE = /^ {0,3}\[\^([^\]\s]+)\]:/;
 const pythiaLabel = (label: string): boolean => label.startsWith(PYTHIA_FOOTNOTE_PREFIX);
+
+/** Whether offset `i` sits on a footnote definition's line — any label. An
+ *  anchor there is a footnote's own link (an answer citation, ADR-250): it
+ *  never gets a footnote of its own. */
+function onDefinitionLine(masked: string, i: number): boolean {
+	const start = masked.lastIndexOf("\n", i - 1) + 1;
+	const end = masked.indexOf("\n", i);
+	return DEF_RE.test(masked.slice(start, end < 0 ? masked.length : end));
+}
 
 /** `markdown` without Pythia's definitions and without any Pythia reference
  *  that no longer follows an anchor — the parts Pythia owns and rewrites. */
@@ -166,7 +196,7 @@ export function noteFootnoteEdits(markdown: string, resolve: AnchorResolver, fal
 	const labels = new Map<string, AnchorRef>();
 	const owned = new Set<number>();
 	for (const a of anchors) {
-		if (inDefLine(a.start)) continue;
+		if (inDefLine(a.start) || onDefinitionLine(masked, a.start)) continue;
 		const label = anchorLabel(a.ref);
 		if (!labels.has(label)) labels.set(label, a.ref);
 		const ref = `[^${label}]`;
@@ -246,10 +276,17 @@ export function uniqueRefs(markdown: string): AnchorRef[] {
 export function withExportFootnotes(markdown: string, resolve: AnchorResolver, fallbackLanguage = "en"): string {
 	// Pythia's own footnotes out first — what stays is the author's and the anchors.
 	const clean = stripStrayReferences(stripPythiaFootnotes(markdown));
+	const masked = maskCode(clean);
 	let body = "";
 	let last = 0;
 	const labels = new Map<string, AnchorRef>();
 	for (const a of findAnchors(clean)) {
+		// A footnote's own link prints as its text: the address is useless on paper.
+		if (onDefinitionLine(masked, a.start)) {
+			body += clean.slice(last, a.start) + a.text;
+			last = a.end;
+			continue;
+		}
 		const label = anchorLabel(a.ref);
 		if (!labels.has(label)) labels.set(label, a.ref);
 		body += clean.slice(last, a.start) + `==${a.text}==[^${label}]`;

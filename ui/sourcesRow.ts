@@ -11,11 +11,21 @@ import { makeKeyActivatable } from "./keyActivate";
  * decomposition). `openCitationSource` handles a click on a citation chip or a
  * sources-row entry: a web source opens in the browser (http(s) only, via
  * noopener,noreferrer — see urlSafety), a vault source opens the note.
- * `renderSourcesRow` paints the Template / Vault / Web rows under an assistant
+ * `renderSourcesRow` paints the Template / Vault / Answers / Web rows under an assistant
  * message. Free functions taking `app` so the view stays thin and both the
  * inline chips and the row share one code path.
  */
+/** Jump to an answer in the Pythia view showing it; false when none does.
+ *  Set once by the plugin (a seam, so this module never imports the view). */
+let answerOpener: ((answerId: string) => boolean) | null = null;
+export function setAnswerOpener(open: ((answerId: string) => boolean) | null): void { answerOpener = open; }
+
 export async function openCitationSource(app: App, src: MessageSource): Promise<void> {
+	// An earlier answer of the conversation on screen (ADR-250): jump to it.
+	if (src.kind === "answer") {
+		if (!answerOpener?.(src.ref)) new Notice(t("chapterNotFound"));
+		return;
+	}
 	if (src.kind === "web") {
 		const url = safeHttpUrl(src.ref); // http(s) only; noopener,noreferrer stops leakage
 		if (!url) { new Notice(t("invalidUrl", { url: src.ref })); return; }
@@ -91,6 +101,7 @@ export function renderSourcesRow(
 	if (!sources.length && !templatePath) return;
 	const web = sources.filter((s) => s.kind === "web");
 	const vault = sources.filter((s) => s.kind === "vault");
+	const answers = sources.filter((s) => s.kind === "answer");
 	const container = row.createDiv({ cls: "p-sources" });
 
 	const makeRow = (label: string, items: MessageSource[], numbered = true, tip?: (s: MessageSource) => string, kindOf: SourceKind = "note") => {
@@ -131,5 +142,8 @@ export function renderSourcesRow(
 	// different ways depending on what else was on screen — invisible in isolation
 	// and confusing side by side.
 	if (vault.length) makeRow(t("sourcesVault"), vault);
+	// Earlier answers of this conversation (ADR-250): the user's own
+	// conversation, so ahead of the web, the only row from outside.
+	if (answers.length) makeRow(t("sourcesAnswers"), answers, true, undefined, "answer");
 	if (web.length) makeRow(t("sourcesWeb"), web);
 }

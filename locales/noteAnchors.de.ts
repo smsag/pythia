@@ -28,6 +28,8 @@ const noteAnchorsDe: typeof noteAnchorsEn = {
 	noteAnchorUnanswered:         "Noch keine Antwort, also nichts zusammenzufassen.",
 	noteAnchorDeleted:            "Diese Unterhaltung wurde gelöscht.",
 	noteAnchorRefresh:            "Zusammenfassung neu schreiben",
+	deleteConvLinkedNotes:        "{{count}} Notiz(en) verlinken auf diese Unterhaltung – ihre Links funktionieren danach nicht mehr: {{notes}}. Archivieren behält eine Kopie.",
+	deleteExchangeCited:          "Eine Notiz zitiert diese Antwort – entferne das Zitat dort zuerst, sonst funktioniert ihr Link nicht mehr.",
 	anchorFootnotesName:          "Zusammenfassungs-Fußnoten an Notizankern",
 	anchorFootnotesDesc:          "Kommt in einem Kapitel, auf das ein Notizanker zeigt, eine Antwort an, wird die Zusammenfassung des Kapitels als Fußnote in diese Notiz geschrieben – so übersteht sie den Druck. Die Zusammenfassung wandert dann mit der Notiz: synchronisiert, geteilt oder veröffentlicht. Aus: Fußnoten entstehen nur mit „Pythia-Fußnoten in dieser Notiz aktualisieren“, und beim Drucken über Schreibstube stehen sie nur im Ausdruck.",
 };
