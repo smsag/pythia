@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-	anchorLabel, anchorMarkup, findAnchors, maskCode, normalizeNoteAnchors, parseAnchorUrl,
+	anchorLabel, anchorMarkup, findAnchors, isNoteAnchor, maskCode, normalizeNoteAnchors, parseAnchorUrl,
 	reconcileNoteAnchors, recordNoteAnchor, selectionProblem,
 } from "../services/noteAnchors";
 import { resumeDeepLink } from "../utils";
@@ -25,27 +25,38 @@ describe("a note anchor is recognised by its address (ADR-249)", () => {
 	});
 
 	it("finds a wrapped anchor, a pasted plain link and its footnote label", () => {
-		const md = `A ==[capped](${url("c1", "m1")})==[^pythia-0a1b2c3d] and [see](${url("c2")}) here.`;
+		const md = `A ==[capped](${url("c1", "m1")})==[^pythia-0a1b2c3d] and [see](${url("c2", "m2")}) here.`;
 		const [a, b] = findAnchors(md);
 		expect(a).toMatchObject({ ref: { id: "c1", msg: "m1" }, text: "capped", highlighted: true, footnoteLabel: "pythia-0a1b2c3d" });
 		expect(md.slice(a.start, a.end)).toBe(`==[capped](${url("c1", "m1")})==[^pythia-0a1b2c3d]`);
 		expect(md.slice(a.start, a.markupEnd)).toBe(`==[capped](${url("c1", "m1")})==`);
-		expect(b).toMatchObject({ ref: { id: "c2" }, text: "see", highlighted: false });
-		expect(md.slice(b.start, b.end)).toBe(`[see](${url("c2")})`);
+		expect(b).toMatchObject({ ref: { id: "c2", msg: "m2" }, text: "see", highlighted: false });
+		expect(md.slice(b.start, b.end)).toBe(`[see](${url("c2", "m2")})`);
+	});
+
+	it("a plain link to a whole conversation is an ordinary link — the old backlink (ADR-249 addendum)", () => {
+		const backlink = `Saved text\n\n[↗ Rent cap](${url("c1")})`;
+		expect(findAnchors(backlink)).toEqual([]);
+		expect(findAnchors(`==[Rent cap](${url("c1")})==`)).toHaveLength(1);
+		expect(findAnchors(`[chapter](${url("c1", "m1")})`)).toHaveLength(1);
+		expect([isNoteAnchor({ id: "c" }, false), isNoteAnchor({ id: "c" }, true), isNoteAnchor({ id: "c", msg: "m" }, false)])
+			.toEqual([false, true, true]);
 	});
 
 	it("a highlight around more than the link is the user's, and so is a footnote after it", () => {
-		const md = `==more [x](${url("c1")}) text==[^pythia-0a1b2c3d]`;
+		const md = `==more [x](${url("c1", "m")}) text==[^pythia-0a1b2c3d]`;
 		const [a] = findAnchors(md);
 		expect(a.highlighted).toBe(false);
 		expect(a.footnoteLabel).toBeUndefined();
-		const lone = `==[x](${url("c1")}) and more==`;
+		const lone = `==[x](${url("c1", "m")}) and more==`;
 		expect(findAnchors(lone)[0]).toMatchObject({ highlighted: false });
-		expect(lone.slice(findAnchors(lone)[0].start, findAnchors(lone)[0].end)).toBe(`[x](${url("c1")})`);
+		expect(lone.slice(findAnchors(lone)[0].start, findAnchors(lone)[0].end)).toBe(`[x](${url("c1", "m")})`);
+		// …and a conversation link inside such a highlight is not wrapped by it.
+		expect(findAnchors(`==more [x](${url("c1")}) text==`)).toEqual([]);
 	});
 
 	it("a link inside code is text", () => {
-		const md = "```\n[x](" + url("c1") + ")\n```\n`[y](" + url("c2") + ")` and [z](" + url("c3") + ")";
+		const md = "```\n[x](" + url("c1", "m") + ")\n```\n`[y](" + url("c2", "m") + ")` and [z](" + url("c3", "m") + ")";
 		expect(findAnchors(md).map((a) => a.ref.id)).toEqual(["c3"]);
 	});
 

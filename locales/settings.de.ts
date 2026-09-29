@@ -129,7 +129,7 @@ const settingsDe = {
 	capConfirmBody:          "Ein Limit von {{cap}} löscht {{count}} Gespräch(e) aus dem Speicher. Das lässt sich nicht rückgängig machen.",
 	capConfirmBodyArchive:   "Ein Limit von {{cap}} entfernt {{count}} Gespräch(e) aus dem Speicher. Jedes wird zuvor als Notiz in {{folder}} gespeichert.",
 	capConfirmArchiveBtn:    "{{count}} archivieren",
-	capConfirmKept:          "Erhalten bleiben: Gespräche mit Favoriten oder Angeheftetem, das in einem Pythia-Panel geöffnete, jedes, auf das eine Verknüpfung zeigt, und jedes, auf das eine Notiz verweist.",
+	capConfirmKept:          "Erhalten bleiben: Gespräche mit Favoriten oder Angeheftetem, das in einem Pythia-Panel geöffnete, jedes, auf das eine Verknüpfung zeigt, und jedes, auf das ein Notizanker zeigt.",
 	capConfirmRemove:        "{{count}} löschen",
 
 	// ── Fehlersuche ───────────────────────────────────────────────────────────

@@ -83,7 +83,7 @@ describe("updateNoteFootnotes — only Pythia's parts of a note", () => {
 	});
 
 	it("is idempotent: a second run changes nothing", () => {
-		const md = `A ${anchorMarkup("x", url("c1", "m1"))} b [y](${url("c1")}).`;
+		const md = `A ${anchorMarkup("x", url("c1", "m1"))} b ${anchorMarkup("y", url("c1"))}.`;
 		const once = updateNoteFootnotes(md, r);
 		expect(updateNoteFootnotes(once, r)).toBe(once);
 		expect(noteFootnoteEdits(once, r)).toEqual([]);
@@ -140,11 +140,11 @@ describe("renumberFootnotes — one sequence, by first reference", () => {
 
 describe("withExportFootnotes — a copy for print, never a write", () => {
 	it("prints the anchor as highlighted text with its footnote, and renumbers everything", () => {
-		const md = `Smith[^smith] said ${anchorMarkup("capped", url("c1", "m1"), L("c1", "m1"))} and [plain](${url("c1")}).\n\n[^smith]: Smith (2020).\n[^${L("c1", "m1")}]: stale\n`;
+		const md = `Smith[^smith] said ${anchorMarkup("capped", url("c1", "m1"), L("c1", "m1"))} and ==[plain](${url("c1")})== [back](${url("c9")}).\n\n[^smith]: Smith (2020).\n[^${L("c1", "m1")}]: stale\n`;
 		const out = withExportFootnotes(md, resolver({ "c1#m1": ok(), "c1#": ok({ chapterName: undefined, summary: "Whole." }) }));
-		expect(out).not.toContain("obsidian://");
 		expect(out).not.toContain("pythia-");
-		expect(out).toContain("Smith[^1] said ==capped==[^2] and ==plain==[^3].");
+		// An old backlink is an ordinary link, and prints as one.
+		expect(out).toContain(`Smith[^1] said ==capped==[^2] and ==plain==[^3] [back](${url("c9")}).`);
 		expect(out).toContain("[^1]: Smith (2020).");
 		expect(out).toContain(`[^2]: ${footnoteText(ok())}`);
 		expect(out).toContain("[^3]: “Rent cap scenarios” (Pythia, 29 Sep 2026) — Whole.");
@@ -158,7 +158,7 @@ describe("withExportFootnotes — a copy for print, never a write", () => {
 
 describe("inspectAnchors — what a print preview shows", () => {
 	it("counts anchors, and targets that are outdated or will say no summary", () => {
-		const md = `${anchorMarkup("a", url("c1", "m1"))} ${anchorMarkup("b", url("c1", "m1"))} [c](${url("c2")}) [d](${url("c3")})`;
+		const md = `${anchorMarkup("a", url("c1", "m1"))} ${anchorMarkup("b", url("c1", "m1"))} [c](${url("c2", "m")}) [d](${url("c3", "m")}) [old](${url("c4")})`;
 		const states: Record<string, "ok" | "outdated" | "missing"> = { c1: "outdated", c2: "missing", c3: "ok" };
 		expect(inspectAnchors(md, (ref) => states[ref.id])).toEqual({ links: 4, outdated: 1, missing: 1 });
 	});

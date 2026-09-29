@@ -140,6 +140,23 @@ describe("the API a print plugin reads", () => {
 	});
 });
 
+describe("an old backlink protects nothing (ADR-249 addendum)", () => {
+	it("opening an inbox full of conversation backlinks records no anchor", async () => {
+		const inbox = `Saved.\n\n[↗ Rent cap](${url("c1")})\n\nMore.\n\n[↗ Rent cap](${url("c1")})\n`;
+		const { service, convs, saved } = setup();
+		await service.recordFromText("Inbox.md", inbox);
+		expect(convs.get("c1")!.noteAnchors).toBeUndefined();
+		expect(saved).toEqual([]);
+	});
+
+	it("and a record the old rule made is dropped the next time the note is read", async () => {
+		const { service, convs } = setup();
+		convs.get("c1")!.noteAnchors = [{ path: "Inbox.md", createdAt: "t" }];
+		await service.recordFromText("Inbox.md", `[↗ Rent cap](${url("c1")})`);
+		expect(convs.get("c1")!.noteAnchors).toBeUndefined();
+	});
+});
+
 describe("after an answer in an anchored chapter", () => {
 	it("writes the chapter's summary, and with the setting on the note's footnote", async () => {
 		const note = `x ${anchorMarkup("y", url("c1", "u1"))}\n`;

@@ -1,7 +1,7 @@
 import { HoverPopover, setIcon, type HoverParent } from "obsidian";
 import { Decoration, MatchDecorator, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
 import type { AnchorRef } from "../services/noteAnchors";
-import { parseAnchorUrl } from "../services/noteAnchors";
+import { isNoteAnchor, parseAnchorUrl } from "../services/noteAnchors";
 import type { AnchorStatus, AnchorSummary } from "../services/chapterSummary";
 import { formatSummaryTimestamp } from "../services/messageUtils";
 import { NOTE_ANCHOR_ICON, REGENERATE_ICON } from "./icons";
@@ -11,30 +11,39 @@ import { t } from "../i18n";
  * How a note anchor looks and what it shows in a note (ADR-249) — in Reading
  * view, in Live Preview and source mode, and in the card a hover opens.
  *
- * Recognised by the link's ADDRESS, never by its markup: a copied chapter link
- * pasted by hand is an anchor like one Pythia wrapped. Both views paint it with
+ * Which links count is `isNoteAnchor`'s rule alone: a chapter link, or one
+ * wrapped in `==` — a copied chapter link pasted by hand is an anchor like one
+ * Pythia wrapped; the old backlink *Save to inbox* writes to a whole
+ * conversation is not. Both views paint it with
  * the fork origin's accent ink (`styles.css`, "Note anchors"), and `==` around
  * it loses its yellow — the highlight is there for a reader without Pythia.
  */
 
-/** Reading view: mark every Pythia resume link, and the `==` highlight that is
- *  exactly its wrapper. Idempotent. */
+/** Reading view: mark every note anchor — a chapter link, or a link that is
+ *  exactly its `==` highlight (`isNoteAnchor`) — and that highlight. Idempotent. */
 export function decorateAnchorLinks(root: HTMLElement): void {
 	for (const a of Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://pythia"]'))) {
-		if (!parseAnchorUrl(a.getAttribute("href") ?? "")) continue;
-		a.addClass("p-note-anchor");
+		const ref = parseAnchorUrl(a.getAttribute("href") ?? "");
 		const parent = a.parentElement;
-		if (parent?.tagName === "MARK" && parent.childNodes.length === 1) parent.addClass("p-note-anchor-mark");
+		const wrapped = parent?.tagName === "MARK" && parent.childNodes.length === 1;
+		if (!ref || !isNoteAnchor(ref, wrapped)) continue;
+		a.addClass("p-note-anchor");
+		if (wrapped) parent.addClass("p-note-anchor-mark");
 	}
 }
 
-const LINK_RE = /\[(?:\\.|[^\]\\\n])+\]\((obsidian:\/\/pythia\?[^)\s]+)\)/g;
+/** The link, with the `==` on each side captured so the rule can see it. */
+const LINK_RE = /(==)?\[(?:\\.|[^\]\\\n])+\]\((obsidian:\/\/pythia\?[^)\s]+)\)(==)?/g;
 
 const matcher = new MatchDecorator({
 	regexp: LINK_RE,
-	decoration: (m) => parseAnchorUrl(m[1])
-		? Decoration.mark({ class: "p-note-anchor-lp", attributes: { "data-pythia-anchor": m[1] } })
-		: null,
+	decorate: (add, from, to, m) => {
+		const ref = parseAnchorUrl(m[2]);
+		if (!ref || !isNoteAnchor(ref, m[1] === "==" && m[3] === "==")) return;
+		// The link only: a `==` is part of the match to be seen, not to be painted.
+		add(from + (m[1] ? 2 : 0), to - (m[3] ? 2 : 0),
+			Decoration.mark({ class: "p-note-anchor-lp", attributes: { "data-pythia-anchor": m[2] } }));
+	},
 });
 
 /** Live Preview and source mode: the same links, found in the text itself. */
