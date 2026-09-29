@@ -1,6 +1,6 @@
 import { Editor, Notice } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { EditorPos } from "../models/types";
+import type { EditorPos, RewriteTarget } from "../models/types";
 import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { RewritePresetModal, type RewriteChoice } from "../suggest/RewritePresetModal";
 import { armPendingTemplate } from "../services/pendingTemplate";
@@ -58,16 +58,26 @@ export function registerEditorSelectionEntries(plugin: PythiaPlugin): void {
 		}),
 	});
 
-	// Selection → the target of a rewrite in the conversation already open.
-	const armRewrite = async (editor: Editor, selection: string, path: string | undefined): Promise<void> => {
-		if (!path) return;
+	/**
+	 * The passage as it is NOW: its text and its range, read together. Read
+	 * apart — the text before a picker, the range after — they can disagree (a
+	 * modal can collapse the editor's selection, on a phone above all), and the
+	 * target would then be refused as stale at Replace in note.
+	 */
+	const captureTarget = (editor: Editor, path: string | undefined): RewriteTarget | null => {
+		const text = editor.getSelection();
 		const [range] = editor.listSelections();
-		if (!range) return;
+		if (!path || !text || !range) return null;
 		// Selections are reported anchor-first, which is backwards when dragged
 		// upward; the range must be ordered before it can be verified or replaced.
 		const [from, to] = orderPositions(range.anchor, range.head);
+		return { path, from, to, text };
+	};
+
+	// Selection → the target of a rewrite in the conversation already open.
+	const armRewrite = async (target: RewriteTarget): Promise<void> => {
 		const view = await plugin.activateView();
-		await view.rewrite.arm({ path, from, to, text: selection });
+		await view.rewrite.arm(target);
 	};
 
 	/**
@@ -75,31 +85,29 @@ export function registerEditorSelectionEntries(plugin: PythiaPlugin): void {
 	 * preset's, a template preset rides as a one-send layer (ADR-177). The answer
 	 * is still a proposal — Replace in note stays its own press, one undo step.
 	 * With no conversation open, one is made: a preset has nothing to discuss.
+	 * Refused, before anything is armed, while the view cannot send; sent with
+	 * `sendText`, which leaves the user's draft in the composer.
 	 */
-	const rewriteWith = async (editor: Editor, selection: string, path: string | undefined, choice: RewriteChoice): Promise<void> => {
-		if (choice.kind === "own") { await armRewrite(editor, selection, path); return; }
-		if (!path) return;
-		const [range] = editor.listSelections();
-		if (!range) return;
-		const [from, to] = orderPositions(range.anchor, range.head);
+	const rewriteWith = async (target: RewriteTarget, choice: RewriteChoice): Promise<void> => {
+		if (choice.kind === "own") { await armRewrite(target); return; }
 		const view = await plugin.activateView();
+		if (view.sendBlocked) { new Notice(t("rewritePresetBusy")); return; }
 		let conv = view.getActiveConversation();
 		if (!conv) {
 			conv = await plugin.createConversation({ name: `Conversation ${todayISO()}` });
 			await view.setActiveConversation(conv);
 		}
 		if (choice.kind === "template") conv.pendingTemplate = armPendingTemplate(choice.template);
-		await view.rewrite.arm({ path, from, to, text: selection }); // saves the conversation
-		view.triggerAutoPrompt(choice.kind === "preset"
+		await view.rewrite.arm(target, { sending: true }); // saves the conversation
+		view.refreshInstructions();
+		await view.sendText(choice.kind === "preset"
 			? choice.preset.instruction()
 			: choice.template.autoPrompt ?? t("rewritePresetTemplateDo"));
 	};
 
-	const pickRewrite = async (editor: Editor, path: string | undefined): Promise<void> => {
-		const selection = editor.getSelection();
-		if (!selection) return;
+	const pickRewrite = async (target: RewriteTarget): Promise<void> => {
 		const templates = await plugin.templateLoader.loadTemplates();
-		new RewritePresetModal(plugin.app, templates, (choice) => void rewriteWith(editor, selection, path, choice)).open();
+		new RewritePresetModal(plugin.app, templates, (choice) => void rewriteWith(target, choice)).open();
 	};
 
 	plugin.addCommand({
@@ -107,7 +115,8 @@ export function registerEditorSelectionEntries(plugin: PythiaPlugin): void {
 		name: t("rewriteSelectionAs"),
 		icon: PYTHIA_ICON_ID,
 		editorCallback: (editor, ctx) => {
-			if (editor.getSelection()) void pickRewrite(editor, ctx.file?.path);
+			const target = captureTarget(editor, ctx.file?.path);
+			if (target) void pickRewrite(target);
 		},
 	});
 
@@ -116,23 +125,24 @@ export function registerEditorSelectionEntries(plugin: PythiaPlugin): void {
 		name: t("rewriteSelection"),
 		icon: PYTHIA_ICON_ID,
 		editorCallback: (editor, ctx) => {
-			const selection = editor.getSelection();
-			if (selection) void armRewrite(editor, selection, ctx.file?.path);
+			const target = captureTarget(editor, ctx.file?.path);
+			if (target) void armRewrite(target);
 		},
 	});
 
 	plugin.registerEvent(
 		plugin.app.workspace.on("editor-menu", (menu, editor, ctx) => {
-			const selection = editor.getSelection();
-			if (!selection) return;
+			// Captured as the menu opens, while the selection is certainly there.
+			const target = captureTarget(editor, ctx.file?.path);
+			if (!target) return;
 			menu.addItem((item) => item
 				.setTitle(t("rewriteSelection"))
 				.setIcon(PYTHIA_ICON_ID)
-				.onClick(() => void armRewrite(editor, selection, ctx.file?.path)));
+				.onClick(() => void armRewrite(target)));
 			menu.addItem((item) => item
 				.setTitle(t("rewriteSelectionAs"))
 				.setIcon(PYTHIA_ICON_ID)
-				.onClick(() => void pickRewrite(editor, ctx.file?.path)));
+				.onClick(() => void pickRewrite(target)));
 		})
 	);
 }

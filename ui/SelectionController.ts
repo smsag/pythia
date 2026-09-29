@@ -1,4 +1,5 @@
 import { MarkdownView, Notice } from "obsidian";
+import { ABLAGE_MAX_CHARS } from "../services/ablage";
 import type PythiaPlugin from "../main";
 import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
@@ -539,7 +540,7 @@ export class SelectionController {
 		const entry = withConversationBacklink(text, conv, this.d.plugin.app.vault.getName());
 		const put = await this.d.plugin.ablage.put(entry, conv ? { conversationId: conv.id } : {});
 		this.selectionToolbar.style.display = "none";
-		new Notice(put === "ok" ? t("ablageStagedNotice") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong"));
+		new Notice(put === "ok" ? t("ablageStagedNotice") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong", { max: ABLAGE_MAX_CHARS }));
 	}
 
 	private async onSaveToInbox(): Promise<void> {
