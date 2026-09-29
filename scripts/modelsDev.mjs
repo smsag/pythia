@@ -9,16 +9,20 @@ export const UPSTREAM_PROVIDERS = { anthropic: "anthropic", openai: "openai", mi
 
 /** Catalog model id → models.dev model id, where they differ. A model that is
  *  not listed here is looked up under its own id. */
-export const UPSTREAM_IDS = {
-	"magistral-small-latest": "magistral-small",
-};
+export const UPSTREAM_IDS = {};
 
 /** Catalog models models.dev does not list. Their committed values are kept as
  *  they are and the run says so — the built-in value is an assumption (Opus-tier
  *  for the hidden Mythos entry), which the disclaimer already covers. A model
  *  belongs here only after a run has shown it missing upstream; it is never
  *  a way to silence a renamed id. */
-export const NO_UPSTREAM = new Set(["claude-mythos-5"]);
+export const NO_UPSTREAM = new Set([
+	"claude-mythos-5",
+	// Dropped from models.dev by 2026-09-29 (it lists only Magistral Medium);
+	// the committed price is kept by the user's decision, not remapped to
+	// Mistral Small 4, which may bill differently.
+	"magistral-small-latest",
+]);
 
 /** The catalog: `{ id, provider }` per model — hidden ones included, since a
  *  conversation can still be on one — read from the source of truth so the
