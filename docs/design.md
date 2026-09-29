@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-29 — ADR-244: `--p-diag-floor` is 0.9 (Vizardry's floor): readability before fit, a wider diagram scrolls.*
+*Last updated: 2026-09-29 — ADR-248: a diagram container is `display: block` at (0,3,0), so a theme's flex centring cannot push its left edge out of reach; `--p-diag-floor` is set per drawing so its smallest label renders at 11px (0.9 fallback).*
+
+*Previously: 2026-09-29 — ADR-244: `--p-diag-floor` is 0.9 (Vizardry's floor): readability before fit, a wider diagram scrolls.*
 
 *Previously: 2026-09-29 — ADR-243: a diagram SVG fills the column and shrinks to `--p-diag-floor` (0.625) of its natural width `--p-diag-w`, then scrolls in its frame; height follows the aspect ratio; never enlarged past natural size. The decorator no longer pins pixel width and height.*
 

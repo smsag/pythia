@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import "./helpers/viewHarness";
-import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
+import { decorateCodeBlocks, labelFloor, MIN_DIAGRAM_LABEL_PX } from "../ui/CodeBlockDecorator";
 
 function html(markup: string): HTMLElement {
 	const el = document.createElement("div");
@@ -81,11 +81,36 @@ describe("a canvas that lays itself out (Vizardry)", () => {
 	});
 });
 
-describe("the readability floor (ADR-244)", () => {
-	it("never lets a diagram shrink below Vizardry's 90%", () => {
+describe("the readability floor (ADR-248, revising ADR-244)", () => {
+	const drawn = (labels: string) =>
+		`<div class="mermaid"><svg viewBox="0 0 1000 600">${labels}</svg></div>`;
+
+	it("shrinks until the smallest label reaches 11px, no further", () => {
+		const root = html(drawn('<foreignObject><div class="nodeLabel" style="font-size: 16px">Mail</div><div class="nodeLabel" style="font-size: 14px">Heute</div></foreignObject>'));
+		decorateCodeBlocks(root, new WeakMap());
+		const svg = root.querySelector<SVGElement>("svg")!;
+		expect(svg.style.getPropertyValue("--p-diag-floor")).toBe((MIN_DIAGRAM_LABEL_PX / 14).toFixed(3));
+	});
+
+	it("never enlarges a drawing whose labels are already small", () => {
+		const root = html(drawn('<text style="font-size: 9px">tiny</text>'));
+		expect(labelFloor(root.querySelector("svg")!)).toBe(1);
+	});
+
+	it("falls back to the stylesheet's 0.9 when no label can be measured", () => {
+		const root = html(drawn("<g></g>"));
+		decorateCodeBlocks(root, new WeakMap());
+		expect(root.querySelector<SVGElement>("svg")!.style.getPropertyValue("--p-diag-floor")).toBe("");
 		const css = readFileSync(join(__dirname, "..", "styles.css"), "utf8");
-		const floor = Number(css.match(/--p-diag-floor:\s*([\d.]+)/)?.[1]);
-		expect(floor).toBeGreaterThanOrEqual(0.9);
+		expect(Number(css.match(/--p-diag-floor:\s*([\d.]+)/)?.[1])).toBeGreaterThanOrEqual(0.9);
+	});
+});
+
+describe("a theme that centres diagrams (Klartext)", () => {
+	it("styles.css makes the container a block, above the theme's (0,2,1) flex rule", () => {
+		const css = readFileSync(join(__dirname, "..", "styles.css"), "utf8");
+		// A centred flex item wider than its scroller overflows to the left, out of reach.
+		expect(css).toMatch(/\.pythia-view \.p-ai-body :is\(\.mermaid, \[class\*='block-language-'\]:not\(\.vizardry-canvas\)\) \{\s*display: block;/);
 	});
 });
 

@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-246/247 addendum (review of #269: a rewrite target's text and range are read together; a preset keeps the draft and waits for a free view; stage_text honours Stop and the offered write mode; a model-written Ablage item says so).*
+*Last updated: 2026-09-29 — ADR-248 (a diagram container is a block, so a theme that centres it cannot cut its left edge off; the floor comes from the drawing's smallest label, 11px).*
+
+*Previously: 2026-09-29 — ADR-246/247 addendum (review of #269: a rewrite target's text and range are read together; a preset keeps the draft and waits for a free view; stage_text honours Stop and the offered write mode; a model-written Ablage item says so).*
 
 *Previously: 2026-09-29 — ADR-246 (the Ablage: one item, filled by a selection or the `stage_text` tool, inserted by the user from the editor's context menu) and ADR-247 (rewrite presets on a selection in a note).*
 
@@ -5274,3 +5276,14 @@ Notable decisions inside the fixes:
 - **Not changed, deliberately:** a failed `data.json` write already raises its own Notice (the put still holds in memory); a stage-only turn with no words is still dropped (the Notice says the item is there); and each put/take writes the whole file, as every other state change does — a separate store is not worth it for one item.
 
 **Guards.** `tests/toolCallStage.test.ts`: the item is the model's; a Stop stores nothing; the offered write mode decides; `byModel` is validated.
+
+## ADR-248 — A diagram's left edge is always reachable, and its floor is a label size
+
+**Context.** After 3.7.0 a wide Mermaid diagram in an answer showed its middle, with the left part cut off and no way to scroll to it. The Klartext theme's *center diagrams* setting makes `.mermaid` `display: flex; justify-content: center` at (0,2,1), which outranked Pythia's (0,2,0) rules. A centred flex item wider than its scroller overflows to the left as well as the right, and a scroller never reaches negative overflow. Measured in Chromium with Mermaid 11 and Klartext's rules at a 376px column: the drawing started **214px left of the box**; scroll width 590 for an 803px drawing. The user also asked for the diagram to be a little smaller.
+
+**Decision.**
+- **The container is a block**, at (0,3,0) — `.pythia-view .p-ai-body :is(.mermaid, …) { display: block }`. The svg's own auto margins still centre a drawing that fits; one that does not starts at the left edge and scrolls. Measured after: left edge 0, scroll width = drawing width.
+- **The floor is a label size, not a share** (revising ADR-244's fixed 0.9). `labelFloor` reads the drawing's smallest label's computed font size and sets `--p-diag-floor` on that svg so it never renders below **11px** (`MIN_DIAGRAM_LABEL_PX`, Pythia's `--font-smaller`), and never above 1. A theme decides the label size — Klartext draws them at 0.9 of the body font (14.4px) — so a fixed share was too large there and would be too small elsewhere. Measured: the reported diagram 803 → **682px** wide, smallest label exactly 11px.
+- **0.9 stays as the stylesheet fallback** for a drawing whose labels cannot be measured (no label text, or not yet laid out).
+
+**Guards.** `tests/diagramDecorator.test.ts`: the floor follows the smallest label, never enlarges, falls back to ≥ 0.9; the block rule outranks the theme's flex rule.
