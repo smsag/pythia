@@ -24,7 +24,7 @@ export function renderVaultContextSettings(
 
 	new Setting(containerEl)
 		.setName(t("vaultContextSourceName"))
-		.setDesc(plugin.schreibstube.available() ? t("vaultContextSourceReady") : t("vaultContextSourceMissing"));
+		.setDesc(sourceDescription(plugin.schreibstube));
 
 	new Setting(containerEl)
 		.setName(t("vaultContextEnabledName"))
@@ -68,4 +68,11 @@ export function renderVaultContextSettings(
 				},
 			}));
 		});
+}
+
+/** Ready, waiting for the person's yes in Schreibstube, or not there at all. */
+function sourceDescription(link: { available(): boolean; consent(): string | null }): string {
+	const consent = link.consent();
+	if (consent === "pending" || consent === "denied") return t("vaultContextSourcePending");
+	return link.available() ? t("vaultContextSourceReady") : t("vaultContextSourceMissing");
 }
