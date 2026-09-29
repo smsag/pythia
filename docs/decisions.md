@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-243 (a diagram fills the column and shrinks to a readability floor instead of being pinned to its natural size: `--p-diag-w` / `--p-diag-floor`, Vizardry's SVG rule).*
+*Last updated: 2026-09-29 — ADR-244 (the diagram floor is 0.9, Vizardry's: readability before fit, a wider diagram scrolls).*
+
+*Previously: 2026-09-29 — ADR-243 (a diagram fills the column and shrinks to a readability floor instead of being pinned to its natural size: `--p-diag-w` / `--p-diag-floor`, Vizardry's SVG rule).*
 
 *Previously: 2026-09-28 — ADR-242 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
 
@@ -5202,3 +5204,13 @@ Notable decisions inside the fixes:
 **Not verified.** Obsidian itself and iOS WebKit (`height:auto` on an SVG with a `viewBox`); the harness was Chromium. Whether 0.625 is the right floor for real answers is a judgement to tune with the property.
 
 **Guards.** `tests/diagramDecorator.test.ts` — the drawn and swapped-in Mermaid get `--p-diag-w` and `p-diag-svg` and no pinned height; an icon ahead of the drawing is never the one sized.
+
+## ADR-244 — Readability before fit: the diagram floor is Vizardry's 0.9
+
+**Context.** ADR-243 set `--p-diag-floor` to 0.625 so a wide Mermaid diagram scrolled less, at the cost of 16px labels shrinking to about 10px. The user's stated priority is the other way round: sideways scrolling is fine, readability comes first.
+
+**Decision.** `--p-diag-floor` is **0.9** — the floor Vizardry's SVG canvases already use (`min-width` = 90% of the design width), so Mermaid, PlantUML and Vizardry share one rule and labels stay at about 14px. A diagram wider than that scrolls in its frame. Measured at 376px with Mermaid 11: the reported flowchart draws at 946 × 693 (was 657 × 481 at 0.625).
+
+**Consequence.** Whitespace from Mermaid's sparse layout is not a sizing problem and is no longer traded against legibility; making a diagram more compact belongs to Mermaid's own spacing (`nodeSpacing`, `rankSpacing`), explored separately.
+
+**Guards.** `tests/diagramDecorator.test.ts` fails if the floor drops below 0.9.

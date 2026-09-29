@@ -81,6 +81,14 @@ describe("a canvas that lays itself out (Vizardry)", () => {
 	});
 });
 
+describe("the readability floor (ADR-244)", () => {
+	it("never lets a diagram shrink below Vizardry's 90%", () => {
+		const css = readFileSync(join(__dirname, "..", "styles.css"), "utf8");
+		const floor = Number(css.match(/--p-diag-floor:\s*([\d.]+)/)?.[1]);
+		expect(floor).toBeGreaterThanOrEqual(0.9);
+	});
+});
+
 describe("the diagram's own SVG", () => {
 	it("an icon ahead of the drawing is never the one sized", () => {
 		const root = html('<div class="block-language-plantuml"><span class="tools"><svg class="svg-icon" viewBox="0 0 24 24"></svg></span><svg viewBox="0 0 1200 300"></svg></div>');

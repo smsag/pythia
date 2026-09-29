@@ -1641,8 +1641,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    fills the column, shrinks to a readability floor and scrolls below it, and
    is never enlarged past its natural size — Vizardry's SVG rule. Height follows
    the aspect ratio. --p-diag-floor is the share of natural size it may shrink
-   to (Mermaid's 16px labels read at ~10px at 0.625); a CSS snippet may tune it. */
-.p-ai-body { --p-diag-floor: 0.625; }
+   to: 0.9, Vizardry's floor, so Mermaid's 16px labels stay ~14px. Readability
+   before fit — a wider diagram scrolls (ADR-244); a CSS snippet may tune it. */
+.p-ai-body { --p-diag-floor: 0.9; }
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) svg {
   max-width: none !important;
   display: block;
