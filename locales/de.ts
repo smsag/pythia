@@ -1,3 +1,4 @@
+import noteAnchorsDe from "./noteAnchors.de";
 import pinsDe from "./pins.de";
 import chartDe from "./chart.de";
 import type { Strings } from "./en";
@@ -5,6 +6,8 @@ import vaultContextDe from "./vaultContext.de";
 import settingsDe from "./settings.de";
 
 const de: Strings = {
+	// Notizanker und ihre Fußnoten (ADR-249).
+	...noteAnchorsDe,
 	// Vault context lives in its own module (ADR-199, ADR-224, review #301).
 	...vaultContextDe,
 	// The settings tab's strings likewise (ADR-209).

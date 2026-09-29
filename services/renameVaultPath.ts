@@ -188,6 +188,7 @@ export function renameVaultPaths(
 			for (const c of m.alternatives ?? []) candidate(c);
 		}
 		for (const c of conv.comparison?.candidates ?? []) candidate(c);
+		for (const a of conv.noteAnchors ?? []) field(a, "path");
 		if (dirty) changed.push(conv.id);
 	}
 	return changed;

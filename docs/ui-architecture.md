@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-26 (ADR-232: `InstructionsModal`, *What Pythia sends*; ADR-231: the context box's resume row; ADR-230: the web-search globe is `ResearchToggleController`)*
+*Last updated: 2026-09-29 (ADR-249: note anchors — the anchor ink and card in any vault note, the chapter-link control, the footnote command)*
+
+*Previously: 2026-09-26 (ADR-232: `InstructionsModal`, *What Pythia sends*; ADR-231: the context box's resume row; ADR-230: the web-search globe is `ResearchToggleController`)*
 
 *Previously: 2026-09-26 (ADR-224: the Vault context settings section replaces the embedding section and its index-status row)*
 
@@ -8,7 +10,7 @@
 
 How the UI is put together and what its parts are called, so changes can be asked for (and found) by name. The words match `README.md` where the user sees them. The full class-by-class map lives in `docs/pythia-spec.md` → *UI architecture*; this file is the orientation that makes that map readable.
 
-The UI is one Obsidian `ItemView`, `PythiaSidebarView` in `sidebar.ts`, built imperatively into `containerEl.children[1]` — no framework, no shadow DOM. The view builds the skeleton and hands each surface to a controller. Around it sit the **conversation panel** (an overlay inside the view), the **modals** in `suggest/`, the **settings tab**, the **editor context menus**, and one surface that lives in any vault note: the **chart card**.
+The UI is one Obsidian `ItemView`, `PythiaSidebarView` in `sidebar.ts`, built imperatively into `containerEl.children[1]` — no framework, no shadow DOM. The view builds the skeleton and hands each surface to a controller. Around it sit the **conversation panel** (an overlay inside the view), the **modals** in `suggest/`, the **settings tab**, the **editor context menus**, and two surfaces that live in any vault note: the **chart card** and the **note anchor**.
 
 ## 1. Naming conventions
 
@@ -83,7 +85,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 
 - **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (titles via `services/conversationFinder.ts`, meaning via Schreibstube — ADR-223), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
 - **Pin strip:** `.p-pins`, `PinController`. One pin shown at a time — collapsed to one line (‹ n/m › · ↗), open for the content, copy and ✕. Pinned from the selection strip's *Pin* or a block's pin icon. Every jump in the chat lands below it (`scrollChatTo`).
-- **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts.
+- **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts. Each chapter row carries `.p-nav-copy`, which copies a link to that chapter (ADR-249).
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Add to Ablage (ADR-246) · Star · Fork · Merge · Define · Person.
 - **Send menu:** `.p-send-menu`, built in `sidebar.ts` (an `ActionSheet` on mobile). Summarize conversation · Summarize favorites · Optimize prompt (`OptimizationController`).
 - **Rewrite:** `RewriteController` + `editorSelectionEntries`. A passage selected in the **editor** is armed as a target; the answer becomes a proposal card with *Replace in note*.
@@ -91,6 +93,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
   - Dialogs: `DeleteConversationModal` (Archive · Delete · Cancel), `DeleteFileModal`, `ConversationSettingsModal`, `InstructionsModal` (*What Pythia sends*: template, instructions, custom instructions, history, the whole system prompt — read-only; header menu and the context box's system-prompt line), `ConversationCapModal` (history-limit confirm), `ResumeModeModal`, `CommandHubModal` (`Pythia: Commands…`), `InputModal`, `PromptInputModal`.
   - Pickers, mostly for command-palette entry points that can run with no view open: `ConversationSuggestModal`, `FavoritesSuggestModal`, `NoteSuggestModal`, `TemplateSuggestModal`, `FileSuggestModal`, `FolderSuggestModal`, `ModelSuggestModal` (the comparison's model choice), `RewritePresetModal` (a selection's "Rewrite with Pythia as…": presets, `rewrite_preset` templates, own instruction — ADR-247).
 - **Settings tab:** `settings.ts` orders eight sections — seven in `ui/settings/`, and **Vault context** in `ui/vaultContextSettings.ts`, which opens with a *Search by meaning* row saying whether Schreibstube can find notes (ADR-224) — each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
+- **Note anchor:** a passage in a vault note linked to a conversation or a chapter by its `obsidian://pythia` address (ADR-249). Painted with the fork's accent ink — `.p-note-anchor` in Reading view (`decorateAnchorLinks`, a Markdown post-processor), `.p-note-anchor-lp` in the editor (`noteAnchorEditorExtension`) — both in `ui/noteAnchorMarks.ts`, which also draws the **anchor card** (`.p-anchor-card`) in Obsidian's hover popover. The copy control above a user message is `.p-chapter-link` (`ui/chapterLink.ts`). The editor commands and menu entries — *Start a linked conversation from selection*, *Link selection to …*, *Update Pythia footnotes in this note* — are `ui/noteAnchorEntries.ts`.
 - **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note.
 
 ## 4. Vocabulary
@@ -111,6 +114,8 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 | **bubble** / **answer body** | A user message / an assistant message (`.p-bubble` / `.p-ai-body`) |
 | **mark** | A painted span in an answer: favorite (yellow), fork (accent), merge (dashed), term (dotted), person (solid faint) |
 | **anchor** | The card a tapped mark opens inline — one component for fork, merge and term |
+| **note anchor** / **anchor card** | A passage in a vault NOTE linked to a conversation or chapter (`.p-note-anchor`), and the card its hover opens (`.p-anchor-card`) |
+| **chapter link** | `obsidian://pythia?…cmd=resume&id=…&msg=…` — a conversation opened at one user message; pasted into a note it is a note anchor |
 | **banner** | The "branched from" / "linked from" line at the top of a fork or link target |
 | **sources row** | `Template:` / `Vault:` / `Web:` under an answer |
 | **chip** | A small inline control: citation chip, tool-call chip, model hint, history chip |

@@ -20,9 +20,13 @@ export function getFilesInFolder(folder: TFolder): TFile[] {
  * because the header's copy-link action, the inbox/insert backlinks and the
  * summary-note frontmatter each had their own — and the header's had dropped
  * the `vault` parameter, so its link opened whichever vault was active.
+ *
+ * `messageId` makes it a chapter link (ADR-249): the conversation opens at that
+ * user message. A note that holds such a link is a note anchor.
  */
-export function resumeDeepLink(conversationId: string, vaultName: string): string {
-	return `obsidian://pythia?vault=${encodeURIComponent(vaultName)}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
+export function resumeDeepLink(conversationId: string, vaultName: string, messageId?: string): string {
+	const base = `obsidian://pythia?vault=${encodeURIComponent(vaultName)}&cmd=resume&id=${encodeURIComponent(conversationId)}`;
+	return messageId ? `${base}&msg=${encodeURIComponent(messageId)}` : base;
 }
 
 /** What a shortcut link does: open Pythia, start a conversation, or start one

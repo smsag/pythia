@@ -34,6 +34,11 @@ import { handleDeepLink } from "./services/deepLink";
 import { SOURCE_ICONS } from "./ui/icons";
 import { noticeFailure } from "./ui/failureNotice";
 import { removeLeftoverEngineFiles } from "./services/leftoverEngineFiles";
+import { NoteAnchorService, type PythiaApi } from "./services/NoteAnchorService";
+import { chapterOf } from "./services/chapterSummary";
+import type { ResumeResult } from "./services/deepLink";
+import { decorateAnchorLinks, noteAnchorEditorExtension, NoteAnchorHover } from "./ui/noteAnchorMarks";
+import { describeFailures, registerNoteAnchorEntries } from "./ui/noteAnchorEntries";
 
 export default class PythiaPlugin extends Plugin {
 	override settings!: PythiaSettings;
@@ -81,6 +86,13 @@ export default class PythiaPlugin extends Plugin {
 	/** The notes each turn draws from the vault, found by Schreibstube (ADR-224). */
 	vaultContext!: VaultContextService;
 
+	/** Note anchors: the links from notes into conversations (ADR-249). */
+	noteAnchors!: NoteAnchorService;
+
+	/** What a print or export plugin reads (ADR-249): feature-detected by
+	 *  `version`, exactly as Pythia reads Schreibstube's `api`. Null until loaded. */
+	api: PythiaApi | null = null;
+
 	/** Vault paths auto-retrieved for `conversationId` on its most recent turn. */
 	getAutoContext(conversationId: string): string[] { return this.vaultContext.getAutoContext(conversationId); }
 
@@ -123,6 +135,18 @@ export default class PythiaPlugin extends Plugin {
 			this.vaultContext.getRelevantNotes(conv, query, exclude)
 		);
 
+		this.noteAnchors = new NoteAnchorService({
+			app: this.app,
+			conversations: () => this.conversations,
+			getById: (id) => this.conversationStore.getById(id),
+			save: (conv) => this.conversationStore.save(conv),
+			llm: () => this.llmRouter,
+			settings: () => this.settings,
+			notice: (message) => new Notice(message),
+			log: (message, data) => debugLog(this.settings, message, data),
+		});
+		this.api = this.noteAnchors.api();
+
 		// Before the view is registered: a leaf restored from workspace.json asks
 		// for its icon during layout-ready, and the ribbon and commands name it.
 		registerPythiaIcon();
@@ -141,6 +165,27 @@ export default class PythiaPlugin extends Plugin {
 			CHART_BLOCK_LANG,
 			(src, el) => renderChartCard(src, el)
 		);
+
+		// A note anchor — a Pythia chapter link in any note — is painted and
+		// previewed wherever the note is read (ADR-249). Wiring only; the rules
+		// live in services/noteAnchors.ts and ui/noteAnchorMarks.ts.
+		this.registerMarkdownPostProcessor((el) => decorateAnchorLinks(el));
+		this.registerEditorExtension(noteAnchorEditorExtension);
+		const anchorHover = new NoteAnchorHover({
+			summary: (ref) => this.noteAnchors.summary(ref),
+			status: (ref) => this.noteAnchors.status(ref),
+			messageCount: (ref) => this.conversationStore.getById(ref.id)?.messages.length ?? null,
+			refresh: async (ref) => {
+				const result = await this.noteAnchors.refresh([ref], { onProgress: () => {} });
+				if (result.failed.length > 0) new Notice(describeFailures(result));
+			},
+			open: async (ref) => {
+				const found = await this.openConversationAt(ref.id, ref.msg);
+				if (found === "no-message") new Notice(t("chapterNotFound"));
+				else if (found === "no-conversation") new Notice(t("convNotFound", { id: ref.id }));
+			},
+		});
+		this.registerDomEvent(document, "mouseover", (e) => anchorHover.onMouseOver(e));
 
 		// One pending flush at a time (the follower batches), cleared on unload.
 		let renameTimer: number | null = null;
@@ -291,6 +336,7 @@ export default class PythiaPlugin extends Plugin {
 
 		registerEditorSelectionEntries(this);
 		registerAblageEntries(this);
+		registerNoteAnchorEntries(this);
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
 				if (file instanceof TFile) {
@@ -347,12 +393,7 @@ export default class PythiaPlugin extends Plugin {
 				// Prefilled, never sent — same reason as inject below.
 				if (text) view.prefillInput(text);
 			},
-			resume: async (id) => {
-				const conv = this.conversationStore.getById(id);
-				if (!conv) return false;
-				await (await this.activateView()).setActiveConversation(conv, true, "top");
-				return true;
-			},
+			resume: (id, messageId) => this.openConversationAt(id, messageId),
 			template: async (name) => {
 				const tpl = (await this.templateLoader.loadTemplates()).find((x) => x.name === name);
 				if (!tpl) return false;
@@ -416,6 +457,19 @@ export default class PythiaPlugin extends Plugin {
 	pendingEvictionCount(cap: number): number { return this.pluginDataStore.pendingEvictionCount(cap); }
 
 	activateView(): Promise<PythiaSidebarView> { return this.viewManager.activateView(); }
+
+	/** Open a conversation — at the chapter `messageId` names, when given and
+	 *  still there (ADR-249). The deep link and the anchor card both come here. */
+	async openConversationAt(id: string, messageId?: string): Promise<ResumeResult> {
+		const conv = this.conversationStore.getById(id);
+		if (!conv) return "no-conversation";
+		const view = await this.activateView();
+		await view.setActiveConversation(conv, true, "top");
+		if (!messageId) return "ok";
+		if (!chapterOf(conv, messageId)) return "no-message";
+		view.scrollToMessage(messageId);
+		return "ok";
+	}
 
 	createConversation(opts: Parameters<ConversationService["createConversation"]>[0]): Promise<Conversation> {
 		return this.conversationService.createConversation(opts);

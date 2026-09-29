@@ -52,6 +52,18 @@ describe("partitionEvictions — kept", () => {
 		expect(kept).not.toContain("mid");
 	});
 
+	it("protects a conversation a note links to (ADR-249)", () => {
+		// The link lives in the note, where the cap cannot see it; the record on
+		// the conversation is what keeps the note from pointing at nothing.
+		const old = makeConv("old", "2020-01-01T00:00:00.000Z");
+		old.noteAnchors = [{ path: "Notes/Rent.md", messageId: "u1", createdAt: "2026-03-01T00:00:00.000Z" }];
+		const mid = makeConv("mid", "2026-02-01T00:00:00.000Z");
+		const recent = makeConv("recent", "2026-03-01T00:00:00.000Z");
+		const kept = keptBy([old, mid, recent], 2, []).map((c) => c.id);
+		expect(kept).toEqual(["old", "recent"]);
+		expect(countEvictions([old, mid, recent], 2, [])).toBe(1);
+	});
+
 	it("returns the input unchanged when at exactly the cap", () => {
 		const convs = [makeConv("a"), makeConv("b"), makeConv("c")];
 		expect(keptBy(convs, 3, [])).toHaveLength(3);

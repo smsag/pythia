@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renameSettingsPaths, renameVaultPaths, SETTINGS_PATH_KEYS, SETTINGS_PATH_LIST_KEYS } from "../services/renameVaultPath";
 import { DEFAULT_SETTINGS, type PythiaSettings } from "../models/settings";
-import type { Comparison, ComparisonCandidate, Conversation, Message, NoteWrite, PendingTemplate, RewriteTarget } from "../models/types";
+import type { Comparison, ComparisonCandidate, Conversation, Message, NoteAnchor, NoteWrite, PendingTemplate, RewriteTarget } from "../models/types";
 
 /**
  * Every field of every stored record, classified (ADR-218 addendum, principle 3).
@@ -29,6 +29,7 @@ const CONVERSATION: Record<keyof Conversation, Kind> = {
 	glossaryTerm: "other", // a term, not a path
 	outputLanguage: "other", researchMode: "other", vaultContext: "other",
 	comparison: "nested", pendingRewrite: "nested", pendingTemplate: "nested",
+	noteAnchors: "nested", // the notes that link here (ADR-249)
 };
 
 const MESSAGE: Record<keyof Message, Kind> = {
@@ -38,6 +39,7 @@ const MESSAGE: Record<keyof Message, Kind> = {
 	sources: "nested", chapterName: "other", templateId: "path", rewriteTarget: "nested",
 	truncated: "other", cost: "other", noteWrites: "nested",
 	alternatives: "nested", // other answers kept as tabs (ADR-219)
+	chapterSummary: "other", // a snapshot of prose (ADR-249)
 };
 
 const PENDING_TEMPLATE: Record<keyof PendingTemplate, Kind> = {
@@ -48,6 +50,7 @@ const PENDING_TEMPLATE: Record<keyof PendingTemplate, Kind> = {
 
 const REWRITE_TARGET: Record<keyof RewriteTarget, Kind> = { path: "path", from: "other", to: "other", text: "other" };
 const NOTE_WRITE: Record<keyof NoteWrite, Kind> = { path: "path", action: "other" };
+const NOTE_ANCHOR: Record<keyof NoteAnchor, Kind> = { path: "path", messageId: "other", createdAt: "other" };
 const COMPARISON: Record<keyof Comparison, Kind> = { id: "other", userMessageId: "other", candidates: "nested", createdAt: "other", priorAlternativeIds: "other" };
 const CANDIDATE: Record<keyof ComparisonCandidate, Kind> = {
 	id: "other", provider: "other", model: "other", content: "other", timestamp: "other",
@@ -62,7 +65,7 @@ const SETTINGS: Record<keyof PythiaSettings, Kind> = {
 	defaultResumeMode: "other", maxMessagesPerSession: "other", maxConversations: "other",
 	archiveBeforeEviction: "other", archiveFolder: "path", injectActiveNoteOnTemplate: "other",
 	inboxNote: "path", glossaryNote: "path", glossaryFolder: "path",
-	outputLanguage: "other", debugMode: "other", showCost: "other",
+	outputLanguage: "other", debugMode: "other", showCost: "other", anchorFootnotes: "other",
 	promptOptimizerTemplateId: "path", defaultPromptFramework: "other", optimizerSuggestsModel: "other",
 	maxTokens: "other", temperature: "other", effort: "other", maxAttachedNotesTokens: "other",
 	customInstructions: "other", webSearchDefault: "other", webSearchAutoArm: "other", webSearchMaxResults: "other",
@@ -105,6 +108,7 @@ function fixture(): Conversation {
 		comparison: put({ id: "q", userMessageId: "m", createdAt: "t", candidates: [candidate] } as Comparison, COMPARISON, "cmp"),
 		pendingRewrite: put({ from: { line: 0, ch: 0 }, to: { line: 0, ch: 1 }, text: "x" } as unknown as RewriteTarget, REWRITE_TARGET, "conv.rewrite"),
 		pendingTemplate: put({ name: "T", systemPrompt: "" } as unknown as PendingTemplate, PENDING_TEMPLATE, "conv.template"),
+		noteAnchors: [put({ messageId: "m", createdAt: "t" } as unknown as NoteAnchor, NOTE_ANCHOR, "conv.anchor")],
 	} as unknown as Conversation, CONVERSATION, "conv");
 }
 

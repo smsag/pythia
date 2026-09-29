@@ -92,6 +92,39 @@ export interface Conversation {
 	 *  answer only and then cleared (ADR-177). Nothing here is ever written onto
 	 *  the conversation itself — see `services/pendingTemplate.ts`. */
 	pendingTemplate?: PendingTemplate;
+	/** The notes that link to this conversation through a note anchor (ADR-249):
+	 *  recorded when Pythia writes one, or sees one in a note it opens. What the
+	 *  history limit protects, and what an answer's footnote update writes to. */
+	noteAnchors?: NoteAnchor[];
+}
+
+/**
+ * One note that links to a conversation, or to one chapter of it, through an
+ * `obsidian://pythia?cmd=resume&id=…[&msg=…]` link (ADR-249). A record of what
+ * Pythia saw in the note, reconciled whenever it reads the note again — never
+ * the link itself, which lives in the note.
+ */
+export interface NoteAnchor {
+	/** Vault path of the note holding the link — follows a rename. */
+	path: string;
+	/** The chapter (a user message) the link points at; absent = the conversation. */
+	messageId?: string;
+	createdAt: string;        // ISO 8601
+}
+
+/**
+ * A short summary of one chapter — a user message and the answer it got —
+ * written for the note anchors that point at it (ADR-249). A SNAPSHOT, like a
+ * message's cost: `fingerprint` is the chapter it was written from, so a retry
+ * or an edit makes it outdated rather than silently wrong.
+ */
+export interface ChapterSummary {
+	text: string;
+	/** `chapterFingerprint` of the chapter when the summary was written. */
+	fingerprint: string;
+	/** ISO 639-1 code of the summary's language, when it could be detected. */
+	language?: string;
+	createdAt: string;        // ISO 8601
 }
 
 /**
@@ -198,6 +231,8 @@ export interface Message {
 	tokenUsage?: TokenUsage;  // token counts for assistant messages
 	sources?: MessageSource[]; // parsed citation sources (assistant messages, from ⟦cite:…⟧ markers)
 	chapterName?: string;     // 3-5 word LLM-generated title for user messages
+	/** User messages only: the chapter's summary for note anchors (ADR-249). */
+	chapterSummary?: ChapterSummary;
 	templateId?: string;      // vault path of the template active when this answer was produced
 	/** Set when this answer is a proposed rewrite of a passage (ADR-178): the
 	 *  card under it can apply the answer over that range, verifying first. */

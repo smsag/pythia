@@ -6,6 +6,7 @@ import { applyAccentContrast } from "./ui/accentContrast";
 import { PYTHIA_ICON_ID } from "./ui/pluginIcon";
 import { safeNoteName } from "./services/pathUtils";
 import { renderTurnLabel, appendTokensToTurnLabel, turnTemplateCaption } from "./ui/turnLabel";
+import { appendChapterLinkButton, copyChapterLink } from "./ui/chapterLink";
 import { parseCitations, stripForeignCitations } from "./services/citations";
 import { renderSourcesRow } from "./ui/sourcesRow";
 import { researchForSend, webCue } from "./services/sendPolicy";
@@ -964,6 +965,7 @@ export class PythiaSidebarView extends ItemView {
 				attr: { "data-msg-id": msg.id },
 			});
 			renderTurnLabel(row, msg, this.activeConversation);
+			appendChapterLinkButton(row, (btn) => { if (this.activeConversation) void copyChapterLink(this.plugin, this.activeConversation, msg, btn); });
 			const bubble = row.createDiv({ cls: "p-bubble" });
 			const isLong = msg.content.length > LONG_BUBBLE_CHARS;
 			if (isLong) bubble.addClass("p-bubble-collapsed");

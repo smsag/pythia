@@ -51,6 +51,10 @@ export interface PythiaSettings {
 	/** Show the estimated USD cost on every assistant turn label and a total per
 	 *  conversation in the history panel (ADR-163). */
 	showCost: boolean;
+	/** Write a chapter's summary into the notes that link to it, as a footnote,
+	 *  when an answer arrives there (ADR-249). Off by default: the summary would
+	 *  then travel with the note — synced, shared, published. */
+	anchorFootnotes: boolean;
 	/** Vault path of the Pythia template used by the "New conversation from prompt" command. */
 	promptOptimizerTemplateId: string;
 	/** Prompt framework applied by the inline optimizer. */
@@ -110,6 +114,7 @@ export const DEFAULT_SETTINGS: PythiaSettings = {
 	outputLanguage: "auto",
 	debugMode: false,
 	showCost: false,
+	anchorFootnotes: false,
 	promptOptimizerTemplateId: "",
 	defaultPromptFramework: "none",
 	optimizerSuggestsModel: true,

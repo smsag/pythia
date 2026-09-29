@@ -26,17 +26,30 @@ export function flashCopied(btn: HTMLElement, restoreIcon = "copy"): void {
 }
 
 /** Copy `text`; a denied clipboard says so rather than surfacing as an unhandled
- *  rejection or, worse, as nothing at all. */
+ *  rejection or, worse, as nothing at all. True when it was copied. */
 export async function copyTextWithFeedback(
 	btn: HTMLElement, text: string, restoreIcon = "copy",
-): Promise<void> {
+): Promise<boolean> {
 	try {
 		await navigator.clipboard.writeText(text);
 	} catch {
 		new Notice(t("copyFailed"));
-		return;
+		return false;
 	}
 	flashCopied(btn, restoreIcon);
+	return true;
+}
+
+/** Copy `text` with no button to flash (the navigator's chapter row, ADR-249).
+ *  False — and said — when the clipboard refused it. */
+export async function copyText(text: string): Promise<boolean> {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch {
+		new Notice(t("copyFailed"));
+		return false;
+	}
 }
 
 /** Copy `text` from a button that carries a WORD, not an icon (the settings

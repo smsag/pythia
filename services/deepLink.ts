@@ -70,8 +70,10 @@ export interface DeepLinkHost {
 	/** `cmd=new` or `new` — create a conversation and show it; a non-empty `text`
 	 *  is PREFILLED in the composer, never sent. */
 	create(text: string): Promise<void>;
-	/** `cmd=resume&id=…` — false when no conversation has that id. */
-	resume(id: string): Promise<boolean>;
+	/** `cmd=resume&id=…[&msg=…]` — the conversation, opened at the chapter
+	 *  `messageId` names when it is given (ADR-249). Says which part is missing;
+	 *  a chapter that is gone still opens its conversation. */
+	resume(id: string, messageId?: string): Promise<ResumeResult>;
 	/** `cmd=template&name=…` — false when no template has that name. */
 	template(name: string): Promise<boolean>;
 	/** `cmd=inject&text=…` — pick a template, then PREFILL the composer with `text`
@@ -82,6 +84,9 @@ export interface DeepLinkHost {
 	templatesFolder(): string;
 	notice(message: string): void;
 }
+
+/** What a resume link found: everything, the conversation only, or nothing. */
+export type ResumeResult = "ok" | "no-message" | "no-conversation";
 
 /** Deep-link parameters as Obsidian delivers them: already decoded, all optional. */
 export type DeepLinkParams = Record<string, string | undefined>;
@@ -108,7 +113,9 @@ export async function handleDeepLink(params: DeepLinkParams, host: DeepLinkHost)
 
 		if (action === "resume") {
 			if (!params.id) return host.notice(t("uriMissingId"));
-			if (!(await host.resume(params.id))) host.notice(t("convNotFound", { id: params.id }));
+			const found = await host.resume(params.id, params.msg?.trim() || undefined);
+			if (found === "no-conversation") host.notice(t("convNotFound", { id: params.id }));
+			else if (found === "no-message") host.notice(t("chapterNotFound"));
 			return;
 		}
 

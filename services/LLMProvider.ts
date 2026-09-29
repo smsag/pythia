@@ -31,6 +31,8 @@ export interface LLMProvider {
 	generateSummaryWithTitle(conversation: Conversation): Promise<{ title: string; summary: string }>;
 	generateFavoritesSummary(conversation: Conversation): Promise<string>;
 	generateChapterName(content: string, conversation?: Conversation): Promise<string>;
+	/** One or two sentences on what a chapter settled, for a note link's footnote (ADR-249). "" = no text. */
+	generateChapterSummary(question: string, answer: string, conversation?: Conversation): Promise<string>;
 	/** Define `term` as used in `passage` (ADR-136); `senseHint` corrects the sense (ADR-208). */
 	defineTerm(term: string, passage: string, conversation?: Conversation, senseHint?: string): Promise<string>;
 	/** Distil a conversation forked from `term` back into its note (ADR-208). */
