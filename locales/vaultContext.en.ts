@@ -11,6 +11,8 @@ const vaultContextEn = {
 	vaultContextSourcePending:    "Schreibstube is there, but has not yet been allowed to read Pythia's conversations. Allow Pythia under Settings → Schreibstube → Search by meaning → Other plugins' sources; until then, related conversations and the search by meaning stay empty.",
 	schreibstubeSourceLabel:      "Conversation in Pythia",
 	schreibstubeSourcePlural:     "Pythia conversations",
+	vaultContextSourceLoading:    "Schreibstube is reading or building its index. Vault context and related conversations start as soon as it can answer; nothing to do here.",
+	vaultContextSourceUnavailable: "Schreibstube's search by meaning cannot answer until you look at it: its index build failed or is paused, or this phone waits for the index from your desktop. Settings → Schreibstube → Search by meaning says which.",
 	vaultContextSourceMissing:    "Not available. Vault context and related conversations need Schreibstube with Search by meaning switched on; without it, messages go out with the notes you attach, and the conversation search looks at titles.",
 	vaultContextEnabledName:      "Enable by default",
 	vaultContextEnabledDesc:      "Add relevant vault notes to new conversations. Also toggle per conversation from the input toolbar (library icon).",

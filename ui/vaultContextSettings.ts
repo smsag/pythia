@@ -2,6 +2,11 @@ import { Setting } from "obsidian";
 import { bindNumberSetting } from "./numberSetting";
 import type PythiaPlugin from "../main";
 import { t } from "../i18n";
+import {
+	schreibstubeState,
+	type SchreibstubeConsent,
+	type SchreibstubeStatus,
+} from "../services/schreibstubeLink";
 import { section } from "./settings/section";
 
 /**
@@ -70,9 +75,21 @@ export function renderVaultContextSettings(
 		});
 }
 
-/** Ready, waiting for the person's yes in Schreibstube, or not there at all. */
-function sourceDescription(link: { available(): boolean; consent(): string | null }): string {
-	const consent = link.consent();
-	if (consent === "pending" || consent === "denied") return t("vaultContextSourcePending");
-	return link.available() ? t("vaultContextSourceReady") : t("vaultContextSourceMissing");
+/** Ready, waiting for the person's yes, waiting on Schreibstube, or not there at all. */
+function sourceDescription(link: {
+	consent(): SchreibstubeConsent | null;
+	status(): SchreibstubeStatus | null;
+}): string {
+	switch (schreibstubeState(link.consent(), link.status())) {
+		case "ready":
+			return t("vaultContextSourceReady");
+		case "pending":
+			return t("vaultContextSourcePending");
+		case "unavailable":
+			return t("vaultContextSourceUnavailable");
+		case "loading":
+			return t("vaultContextSourceLoading");
+		case "missing":
+			return t("vaultContextSourceMissing");
+	}
 }

@@ -4,6 +4,7 @@ import type { Conversation } from "../models/types";
 import {
 	MAX_SOURCE_ITEMS,
 	readSchreibstubeApi,
+	schreibstubeState,
 	SchreibstubeLink,
 	sourceChanges,
 	toSourceItem,
@@ -266,5 +267,38 @@ describe("sourceChanges", () => {
 		expect(first.changed.map((i) => i.id)).not.toContain(list[0]!.id);
 		expect(first.cursor.length).toBeLessThan(256 * 1024);
 		expect(sourceChanges(list, first.cursor).changed).toEqual([]);
+	});
+});
+
+describe("schreibstubeState", () => {
+	it("asks for the person's yes before anything else", () => {
+		expect(schreibstubeState("pending", "ready")).toBe("pending");
+		expect(schreibstubeState("denied", "unavailable")).toBe("pending");
+	});
+
+	it("tells waiting from what only the person can fix", () => {
+		expect(schreibstubeState("allowed", "loading")).toBe("loading");
+		expect(schreibstubeState("allowed", "unavailable")).toBe("unavailable");
+		expect(schreibstubeState("allowed", "partial")).toBe("ready");
+		expect(schreibstubeState("allowed", "ready")).toBe("ready");
+	});
+
+	it("reads Schreibstube switched off, or not there, as missing", () => {
+		expect(schreibstubeState("allowed", "off")).toBe("missing");
+		expect(schreibstubeState(null, null)).toBe("missing");
+	});
+});
+
+describe("Schreibstube's status, as the link reads it", () => {
+	it("is Schreibstube's own answer, and null when it is not there or fails", () => {
+		expect(link(fakeApi({ status: vi.fn(() => "unavailable") })).status()).toBe("unavailable");
+		expect(link(null).status()).toBeNull();
+		const failing = fakeApi({ status: vi.fn(() => { throw new Error("gone"); }) });
+		expect(link(failing).status()).toBeNull();
+	});
+
+	it("is not available while Schreibstube cannot answer", () => {
+		expect(link(fakeApi({ status: vi.fn(() => "unavailable") })).available()).toBe(false);
+		expect(link(fakeApi({ status: vi.fn(() => "loading") })).available()).toBe(false);
 	});
 });
