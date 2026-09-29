@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-28 — ADR-241: the shortcut link. `services/deepLink.ts` gains `linkText` (the one check of a link's `text`), `wantsNewConversation` (the `new` flag) and `host.ready()`, awaited before any action; `utils.ts` gains `pythiaLink`; new settings section `ui/settings/links.ts`.*
+*Last updated: 2026-09-29 — ADR-245: new `ui/mermaidSpacing.ts` (`compactMermaid`), applied inside `renderAnswerMarkdown` after `deferRemoteMedia`; the stored message is unchanged.*
+
+*Previously: 2026-09-28 — ADR-241: the shortcut link. `services/deepLink.ts` gains `linkText` (the one check of a link's `text`), `wantsNewConversation` (the `new` flag) and `host.ready()`, awaited before any action; `utils.ts` gains `pythiaLink`; new settings section `ui/settings/links.ts`.*
 
 *Previously: 2026-09-28 — `ViewManager.openInSidebar()` behind the new `open-in-sidebar` command: reuses the Pythia leaf whose root is `workspace.rightSplit`, else opens one with `getRightLeaf(false)`; a Pythia tab in the main area is left alone. It awaits the reveal, then focuses the composer on desktop (`view.focusComposer()`), not on mobile (ADR-152). `tests/viewManagerOpenInSidebar.test.ts`.*
 

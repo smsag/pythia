@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-244 (the diagram floor is 0.9, Vizardry's: readability before fit, a wider diagram scrolls).*
+*Last updated: 2026-09-29 — ADR-245 (a Mermaid diagram is laid out with tighter spacing: less whitespace, same text size; display only).*
+
+*Previously: 2026-09-29 — ADR-244 (the diagram floor is 0.9, Vizardry's: readability before fit, a wider diagram scrolls).*
 
 *Previously: 2026-09-29 — ADR-243 (a diagram fills the column and shrinks to a readability floor instead of being pinned to its natural size: `--p-diag-w` / `--p-diag-floor`, Vizardry's SVG rule).*
 
@@ -5214,3 +5216,18 @@ Notable decisions inside the fixes:
 **Consequence.** Whitespace from Mermaid's sparse layout is not a sizing problem and is no longer traded against legibility; making a diagram more compact belongs to Mermaid's own spacing (`nodeSpacing`, `rankSpacing`), explored separately.
 
 **Guards.** `tests/diagramDecorator.test.ts` fails if the floor drops below 0.9.
+
+## ADR-245 — A Mermaid diagram is laid out compactly, not drawn smaller
+
+**Context.** With readability first (ADR-244), a diagram is not shrunk to fit, so the whitespace in a sidebar comes from Mermaid's own layout: 50px between nodes and between ranks. Scaling cannot remove it without shrinking the text.
+
+**Decision.**
+- `compactMermaid` (`ui/mermaidSpacing.ts`) puts one `%%{init}%%` line at the top of every ```` ```mermaid ```` / `~~~mermaid` block: flowchart `nodeSpacing 30 · rankSpacing 35 · padding 8`, sequence `actorMargin 20 · messageMargin 20 · boxMargin 5 · diagramMargin 10/5`.
+- **Measured** with Mermaid 11: the reported flowchart 1051 × 770 → **783 × 611**; a four-participant sequence diagram 878 × 363 → **708 × 323**. Labels unchanged, no overlaps. A tighter setting (20/25) reached 685 × 537 but crowds edge labels, so the moderate one ships.
+- **Display only.** Applied inside `renderAnswerMarkdown` on the way into the renderer, never to `Message.content`: Copy, Save to note and the archive keep the source as the model wrote it, so a diagram in a vault note draws with Obsidian's default spacing.
+- **The author wins.** A block whose first line is `%%{` or frontmatter `---` is left alone.
+- An `init` directive rather than frontmatter `config:` because it works across the Mermaid versions Obsidian has shipped.
+
+**Not verified.** Inside Obsidian (that its Mermaid honours the directive); measured in a Chromium harness with Mermaid 11.
+
+**Guards.** `tests/mermaidSpacing.test.ts`: the line is added, a configured block and other fences are untouched.
