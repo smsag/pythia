@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-28 — ADR-242 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
+*Last updated: 2026-09-29 — ADR-243 (a diagram fills the column and shrinks to a readability floor instead of being pinned to its natural size: `--p-diag-w` / `--p-diag-floor`, Vizardry's SVG rule).*
+
+*Previously: 2026-09-28 — ADR-242 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
 
 *Previously: 2026-09-28 — ADR-241 (the shortcut link: `obsidian://pythia?vault=…&new=true`, a checked and bounded `text`, waiting for the workspace, and a Links and shortcuts settings section).*
 
@@ -5186,3 +5188,17 @@ Notable decisions inside the fixes:
 
 **Guards.** `tests/diagramDecorator.test.ts` — Obsidian's real Mermaid markup is sized, a pending block is not framed and is sized on swap, the guard is left alone, a Vizardry canvas gets no stamp and no diagram rule, and an icon ahead of the drawing is never the SVG sized. All six fail against the previous decorator.
 
+## ADR-243 — A diagram fills the column and shrinks to a floor, instead of being pinned to its natural size
+
+**Context.** ADR-242 fixed Mermaid being shrunk to unreadable by pinning the drawing's `width` and `height` to its `viewBox`. In a narrow sidebar that trades one problem for another: measured in Chromium with Mermaid 11 in a 376px column, a flowchart drew at 1051 × 770 px and a sequence diagram at 893 × 363 px. Mermaid lays out sparsely, so at 1:1 most of what is visible is the gap between nodes, the block is tall, and the reader sees the left third. The report was "too much whitespace" after 3.6.1.
+
+**Decision.**
+- **`stampSvgSize` states a fact, CSS decides the layout.** The decorator stamps only the natural width as `--p-diag-w` (and adds `p-diag-svg`; a missing `viewBox` is synthesised from a known width and height). It pins no width or height.
+- **The rule is Vizardry's SVG rule** (`.vzd-wardley-svg`, `.vzd-cmap-svg`): `width: 100%; min-width: calc(var(--p-diag-w) * var(--p-diag-floor)); max-width: var(--p-diag-w); height: auto; margin: 0 auto`. It fills the column, shrinks to a floor, scrolls in the existing frame below it, is never enlarged past its natural size, and its height follows the aspect ratio.
+- **`--p-diag-floor` is 0.625**, set on `.p-ai-body`: Mermaid's 16px labels read at about 10px, the size Vizardry accepts at its own floor. It is a custom property so a CSS snippet can tune it without a release. Measured at 376px: floor 1.0 → 770px tall, 0.75 → 577, **0.625 → 481**, 0.5 → 385 (labels ~8px).
+- **A drawing whose height is unknown** (no `viewBox`, a width only) keeps the old pinned pixel size: with no aspect ratio, `height:auto` would collapse it.
+- A Vizardry canvas is still left alone (ADR-242); this changes only what Pythia does to Mermaid, PlantUML and other `block-language-*` SVGs.
+
+**Not verified.** Obsidian itself and iOS WebKit (`height:auto` on an SVG with a `viewBox`); the harness was Chromium. Whether 0.625 is the right floor for real answers is a judgement to tune with the property.
+
+**Guards.** `tests/diagramDecorator.test.ts` — the drawn and swapped-in Mermaid get `--p-diag-w` and `p-diag-svg` and no pinned height; an icon ahead of the drawing is never the one sized.

@@ -45,59 +45,48 @@ function wrapInScrollFrame(scrollEl: HTMLElement): HTMLElement {
 	return frame;
 }
 
-function stampSvgSize(svg: SVGElement): boolean {
+/** The drawing's natural size: its viewBox, else its pixel attributes or
+ *  inline size, else what it measures. `h` is 0 when only a width is known. */
+function naturalSize(svg: SVGElement): { w: number; h: number } | null {
 	const vb = svg.getAttribute("viewBox");
 	if (vb) {
 		const parts = vb.trim().split(/[\s,]+/).map(Number);
-		if (parts.length >= 4 && parts[2] > 0) {
-			const [, , w, h] = parts;
-			svg.style.setProperty("width",     `${w}px`, "important");
-			svg.style.setProperty("height",    `${h}px`, "important");
-			svg.style.setProperty("max-width", "none",   "important");
-			svg.style.display = "block";
-			return true;
-		}
+		if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) return { w: parts[2], h: parts[3] };
 	}
-	const rawW = svg.getAttribute("width") ?? "";
-	const rawH = svg.getAttribute("height") ?? "";
-	const attrW = rawW.includes("%") ? NaN : parseFloat(rawW);
-	const attrH = rawH.includes("%") ? NaN : parseFloat(rawH);
-	if (attrW > 0) {
-		svg.style.setProperty("width",     `${attrW}px`, "important");
-		svg.style.setProperty("max-width", "none",       "important");
-		svg.style.display = "block";
-		if (attrH > 0) svg.style.setProperty("height", `${attrH}px`, "important");
-		return true;
-	}
-	const styleW = parseFloat(svg.style.width);
-	if (styleW > 0) {
-		svg.style.setProperty("width",     `${styleW}px`, "important");
-		svg.style.setProperty("max-width", "none",        "important");
-		svg.style.display = "block";
-		const styleH = parseFloat(svg.style.height);
-		if (styleH > 0) svg.style.setProperty("height", `${styleH}px`, "important");
-		return true;
-	}
-	const styleMaxW = parseFloat(svg.style.maxWidth);
-	if (styleMaxW > 0) {
-		svg.style.setProperty("width",     `${styleMaxW}px`, "important");
-		svg.style.setProperty("max-width", "none",           "important");
-		svg.style.display = "block";
-		return true;
-	}
+	const px = (raw: string): number => (raw.includes("%") ? NaN : parseFloat(raw));
+	const w = [px(svg.getAttribute("width") ?? ""), parseFloat(svg.style.width), parseFloat(svg.style.maxWidth)]
+		.find((n) => n > 0);
+	const h = [px(svg.getAttribute("height") ?? ""), parseFloat(svg.style.height)].find((n) => n > 0);
+	if (w) return { w, h: h ?? 0 };
 	try {
 		const bbox = (svg as unknown as SVGGraphicsElement).getBBox();
-		const bboxW = bbox.width + Math.max(0, bbox.x);
-		const bboxH = bbox.height + Math.max(0, bbox.y);
-		if (bboxW > 0) {
-			svg.style.setProperty("width",     `${bboxW}px`, "important");
-			svg.style.setProperty("height",    `${bboxH}px`, "important");
-			svg.style.setProperty("max-width", "none",       "important");
-			svg.style.display = "block";
-			return true;
-		}
+		const bw = bbox.width + Math.max(0, bbox.x);
+		if (bw > 0) return { w: bw, h: bbox.height + Math.max(0, bbox.y) };
 	} catch { /* SVG not yet painted — keep observing */ }
-	return false;
+	return null;
+}
+
+/**
+ * Give the drawing its natural size as a custom property and let styles.css lay
+ * it out: fill the column, shrink to a readability floor, scroll below it,
+ * never upscale — the rule Vizardry's SVG canvases follow. The height comes
+ * from the aspect ratio, so a narrow column no longer keeps the full natural
+ * height as empty space. A drawing whose height is unknown keeps the old
+ * pinned pixel size.
+ */
+function stampSvgSize(svg: SVGElement): boolean {
+	const size = naturalSize(svg);
+	if (!size) return false;
+	if (size.h > 0) {
+		if (!svg.getAttribute("viewBox")) svg.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`);
+		svg.style.setProperty("--p-diag-w", `${size.w}px`);
+		svg.classList.add("p-diag-svg");
+	} else {
+		svg.style.setProperty("width",     `${size.w}px`, "important");
+		svg.style.setProperty("max-width", "none",        "important");
+		svg.style.display = "block";
+	}
+	return true;
 }
 
 function fixDiagramSvgSize(
