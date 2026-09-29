@@ -1,9 +1,12 @@
+import noteAnchorsEn from "./noteAnchors.en";
 import pinsEn from "./pins.en";
 import chartEn from "./chart.en";
 import vaultContextEn from "./vaultContext.en";
 import settingsEn from "./settings.en";
 
 const en = {
+	// Note anchors and their footnotes (ADR-249).
+	...noteAnchorsEn,
 	// Vault context lives in its own module (ADR-199, ADR-224, review #301).
 	...vaultContextEn,
 	// The settings tab's strings likewise (ADR-209).

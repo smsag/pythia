@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import { renderGlossarySettings } from "../glossarySettings";
-import { folderRow, section, type SettingsContext } from "./context";
+import { folderRow, section, toggleRow, type SettingsContext } from "./context";
 import { t } from "../../i18n";
 
 /**
@@ -34,6 +34,9 @@ export function renderNotesSection(containerEl: HTMLElement, ctx: SettingsContex
 					ctx.saveSoon();
 				})
 		);
+
+	// A note link's footnote writes a summary into a note (ADR-249).
+	toggleRow(ctx, containerEl, t("anchorFootnotesName"), t("anchorFootnotesDesc"), "anchorFootnotes");
 
 	// The glossary is its own heading now; it used to be three unlabelled rows at
 	// the end of the folder section.

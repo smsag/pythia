@@ -14,6 +14,12 @@ export const REGENERATE_ICON = "refresh-cw";
 /** The ONE glyph for pinning answer content to the top of the chat (ADR-216). */
 export const PIN_ICON = "pin";
 
+/** Copy a link to a chapter (ADR-249) — the header's conversation link uses it too. */
+export const CHAPTER_LINK_ICON = "link";
+
+/** A note anchor's card: a passage in a note tied to a conversation (ADR-249). */
+export const NOTE_ANCHOR_ICON = "anchor";
+
 /**
  * The ONE icon for a Markdown note from the vault, however it got into the
  * conversation (ADR-212). Attached with `#` or the paperclip, pulled in by vault

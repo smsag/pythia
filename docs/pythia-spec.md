@@ -79,7 +79,7 @@ One person, precisely: **someone who already keeps their thinking in Obsidian.**
 
 ## Commands
 
-The palette carries seven entries; everything else lives inside `Pythia: Commands…`. The full table is in the README (single source, so it cannot drift twice). The sidebar opens from the ribbon icon or an `obsidian://pythia` link — there is deliberately **no** `Open sidebar` command.
+The palette carries fifteen entries (three of them the note-anchor commands of ADR-249); everything else lives inside `Pythia: Commands…`. The full table is in the README (single source, so it cannot drift twice). The sidebar opens from the ribbon icon or an `obsidian://pythia` link — there is deliberately **no** `Open sidebar` command.
 
 ---
 
@@ -206,6 +206,18 @@ The term anchor's meta row carries five controls (ADR-208): regenerate · `.p-te
 
 Marks nest; the innermost owns the tap (`ui/markTap.ts`).
 
+### Note anchors (ADR-249) — surfaces in the NOTE, not the panel
+
+A passage in a vault note linked to a conversation or a chapter by its `obsidian://pythia?…cmd=resume&id=…[&msg=…]` address. The only Pythia marks that live outside the view, so their classes sit outside `.pythia-view`.
+
+| Surface | Class | Owner | Opened by |
+|---|---|---|---|
+| Anchor, Reading view | `a.external-link.p-note-anchor` (+ `mark.p-note-anchor-mark` when `==` wraps exactly it) | `ui/noteAnchorMarks.ts` (`decorateAnchorLinks`, a Markdown post-processor) | any resume link in a note |
+| Anchor, Live Preview / source | `.p-note-anchor-lp` (`data-pythia-anchor` = the address) | `ui/noteAnchorMarks.ts` (`noteAnchorEditorExtension`) | the same link in the editor |
+| Anchor card | `.pythia-modal.p-anchor-card` → `-head`/`-icon`/`-label`/`-title`/`-body`/`-empty`/`-meta`/`-refresh`/`-open`, inside Obsidian's `.popover.hover-popover` | `ui/noteAnchorMarks.ts` (`NoteAnchorHover`, `renderAnchorCard`) | hovering an anchor (desktop; D-72) |
+| Copy chapter link | `.p-chapter-link` (`pb pb-icon is-inline`) in a user turn's `.p-turn-label`; `.p-nav-copy` on a navigator chapter row | `ui/chapterLink.ts`; `ui/NavigatorController.ts` | hover over the turn / the row (always shown on touch) |
+| Footnote | `[^pythia-<8 hex>]: „Conversation › Chapter“ (Pythia, date) — summary` | `services/anchorFootnotes.ts` (`footnoteText`) | the setting after an answer, or *Update Pythia footnotes in this note*; in a print copy through `plugin.api` |
+
 ### Asking for a change
 
 Name the surface and the class: *"`.p-history-sub` should show the archive state"*, *"the `.p-inst` group wraps on a narrow phone"*, *"`.p-trunc` should offer X"*. That is unambiguous down to one file.
@@ -217,7 +229,8 @@ Name the surface and the class: *"`.p-history-sub` should show the archive state
 `models/types.ts` is the source of truth. The shape, briefly:
 
 - **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode` (+ `resumedAfterId`, the point it reduces up to — ADR-231), optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
-- **`Message`** — `id`, `role`, `content`, `timestamp`, plus what that turn used and cost: `model`, `tokenUsage`, `cost` (snapshotted, ADR-163), `attachedNotes`, `sources`, `truncated`.
+- **`Message`** — `id`, `role`, `content`, `timestamp`, plus what that turn used and cost: `model`, `tokenUsage`, `cost` (snapshotted, ADR-163), `attachedNotes`, `sources`, `truncated`. A user message may carry `chapterName` and `chapterSummary` (a snapshot with the chapter's fingerprint, ADR-249).
+- **`Conversation.noteAnchors`** — the notes that link to the conversation or one of its chapters (ADR-249): a record of what Pythia last read in each note, never the link itself, which lives in the note.
 - **An optional field that is `undefined` means *inherit*** — never a copy of the resolved default (engineering principle 6). A control may show the default; it must not store it.
 
 Everything else — templates, glossary entries, archives, summaries — is **a vault note**, not a record in `data.json`. That is the product position, not an implementation detail: notes survive the plugin.
@@ -283,6 +296,9 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-67 | **A favorite that cannot be found in the source is left unmarked, silently.** Save to note, the archive and the note tools highlight favorites (ADR-239); one whose message changed, a legacy favorite without text, or a multi-block selection (D-23) is skipped. | ADR-239 | The note is still written, and the missing mark is visible in it; a Notice per save would fire on every legacy favorite. | A user reports a favorite missing from a saved note that was not legacy or multi-block. |
 | D-68 | **One provider instance serves every open view.** A send in a second Pythia leaf aborts the first leaf's stream on the same provider, and closing any leaf stops every stream. | ADR-240 | Found in the 2026-09-28 review and left: the fix is per-call loop state and a per-call abort handle through `BaseProvider`, the three providers and `LLMRouter` — a refactor of the loop all three share, for a two-leaf setup nobody has reported using. | A user works in two Pythia leaves at once, or a second concurrent caller of the router appears. |
 | D-69 | **A note Pythia writes keeps remote-image syntax**, and Obsidian's reading view fetches it. The panel defers remote media (ADR-240); the vault note is written as the model wrote it. | ADR-240 | The note is the user's document once written; rewriting its images would change content they may want. The confirm chip names every write. | An exfiltration through a written note is shown to be practical, or a user asks for images to be stripped from written notes. |
+| D-72 | **No anchor card on a phone.** The card opens on hover; a touch screen has none, and a tap on the link opens the chapter. | ADR-249 | The chapter shows the same content one tap away; a long-press on a link in a note competes with Obsidian's and iOS's own link menus. | A phone user asks to read the summary without leaving the note. |
+| D-73 | **A pasted anchor is known once its note is read.** The records are reconciled on `file-open`, the footnote command and a print caller's `sourcePath` — a link pasted into a note that is never opened again protects nothing until it is. | ADR-249 | Scanning the vault for links (the metadata cache does not index `obsidian://` links) would cost a read of every note to answer a question the history limit asks rarely. | A conversation is evicted that a note linked to, or a vault-wide scan becomes cheap. |
+| D-74 | **No "Linked from" banner in the conversation.** `noteAnchors` records which notes link where, but the conversation does not show them the way a merge target shows its banner. | ADR-249 | Kept out of the first build to keep it to the confirmed scope. | A user wants to go from a conversation back to the notes that cite it. |
 | D-70 | **No Copy or Pin on a Mermaid diagram.** Obsidian replaces the `<pre>` with `div.mermaid` and keeps the source only in its own internal map, so there is nothing in the DOM to copy. | ADR-242 | Recovering it means matching the n-th Mermaid fence in the message's Markdown to the n-th `div.mermaid` in the rendered answer — a second source of truth for what a block is, done to restore a feature that never worked. | A user asks to copy or pin a Mermaid diagram, or Obsidian exposes the source on the element. |
 | D-64 | **A running conversation's instructions are shown, not edited.** *What Pythia sends* is read-only. | ADR-232 | Editing in place would duplicate a template armed for one answer (ADR-177), and would replace the user's own instructions with no undo. | A user wants to change a conversation's standing instructions mid-way and a one-answer template is the workaround more than once. |
 
@@ -308,6 +324,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-41 | **The model load is the phone's tightest moment.** With the Latin-script variant a build never warned, but the load itself touched WebKit's warning line (1 640 MB, ~400 MB under the kill) once per process. **Closed by ADR-224 (2026-09-26):** Pythia loads no model on a phone. | ADR-200 | Transient: the downloaded bytes, the Cache API copy and the tokenizer parse coexist for a moment inside the Worker. Survived every load on the reporter's phone (three). Candidates if it ever bites: release the fetched buffer before session creation, or skip the cache write when the file came from cache. | A crash report at model load on a phone, or a phone with less memory than an iPhone 15 Pro Max. |
 | D-42 | **The related-conversations sync has no crash-loop marker.** The vault build leaves a `BuildGuard` marker so a build the OS killed pauses the next one (ADR-199); the related sync, which also loads the model and embeds in a loop, leaves nothing. **Closed by ADR-224 (2026-09-26):** Pythia has no related-conversations sync any more. | ADR-203 (#362) | Not done. The related sync only runs when the user opens "Show similar", so a kill there is attributable and not a loop the user cannot escape — unlike the vault build, which the send path started on its own. Giving it a second marker would also mean a second pause to explain in the settings. | A report of Obsidian dying while "Show similar" is open, or the related index gaining an automatic trigger of its own. |
 | D-43 | **`deserializeIndex` copies every vector out of the file it just read.** At the note cap both the buffer and the copies are alive at once — the peak lands exactly where the phone is tightest, next to the model load (D-41). Views into the buffer would halve it. **Closed by ADR-224 (2026-09-26):** Pythia reads no index file. | ADR-203 | Not done, because the trade is two-sided: views keep the whole buffer alive as long as ANY row survives, so a rebuild that replaces almost every row retains a buffer for the few it kept. Copies are independently freeable. Neither side is measured. | A memory measurement of an index load on the device, or a report of a kill while an index loads. |
+| D-75 | **Note anchors in Live Preview are unverified in Obsidian.** The accent ink over `.cm-highlight`, the link colour of the inner spans, and the hover card's position were written from Obsidian's documented classes and tested in happy-dom only. | ADR-249 | Open a note with an anchor in Live Preview, Reading view and on a phone, light and dark; check the `==` loses its yellow and the card sits under the link. | Before the release that ships ADR-249. |
 
 ### Deliberately out of scope
 
@@ -361,6 +378,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-26 | ADR-225: D-60 now enforced in the selection toolbar (no Branch from a tab). |
 | 2026-09-29 | ADR-246/247: the Ablage and the rewrite presets added to the UI map; D-71 (the Ablage is one device-synced slot, not a history). |
+| 2026-09-29 | ADR-249: note anchors added to the UI map (the first Pythia surfaces that live in a note) and to the data model; D-72 (no card on a phone), D-73 (a pasted anchor is known once its note is read), D-74 (no "Linked from" banner), D-75 (Live Preview unverified in Obsidian). |
 | 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). ADR-233: D-63 closed — the resume setting preselects the dialog. |
 | 2026-09-27 | ADR-236: D-65 (a chart the model writes as a block is not checked for being worth drawing) recorded; D-66 (category labels thinned, not shortened) recorded and closed in the same ADR. |
 | 2026-09-27 | ADR-236 addendum: D-65 closed — a chart block the model writes is checked at commit and, when refused, becomes a table. |

@@ -154,6 +154,10 @@ export class LLMRouter {
 		return this.byProvider(provider).generateChapterName(content, conversation);
 	}
 
+	generateChapterSummary(question: string, answer: string, provider: Provider, conversation?: Conversation): Promise<string> {
+		return this.byProvider(provider).generateChapterSummary(question, answer, conversation);
+	}
+
 	generateConversationTitle(
 		userMessage: string,
 		assistantMessage: string,

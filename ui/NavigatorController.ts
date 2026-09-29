@@ -3,6 +3,9 @@ import type { Conversation, Favorite } from "../models/types";
 import { t } from "../i18n";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { makeKeyActivatable } from "./keyActivate";
+import { setIcon } from "obsidian";
+import { copyChapterLink } from "./chapterLink";
+import { CHAPTER_LINK_ICON } from "./icons";
 
 /**
  * A navigator row or control: mousedown (so the chat's selection and focus are
@@ -230,7 +233,11 @@ export class NavigatorController {
 					const label = msg.chapterName ?? msg.content.slice(0, 60).replace(/\s+/g, " ").trim();
 					const item = body.createDiv({ cls: "p-nav-item" });
 					item.createEl("span", { cls: "p-nav-label", text: label });
+					// Every chapter can be linked from a note (ADR-249).
+					const copy = item.createEl("span", { cls: "p-nav-copy", attr: { title: t("copyChapterLink") } });
+					setIcon(copy, CHAPTER_LINK_ICON);
 					onActivate(item, () => { this.d.scrollToMessage(msg.id); this.close(); });
+					onActivate(copy, () => { if (conv) void copyChapterLink(this.d.plugin, conv, msg); }, t("copyChapterLink"));
 				}
 			}
 		});

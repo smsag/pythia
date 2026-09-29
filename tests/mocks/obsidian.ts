@@ -86,6 +86,8 @@ export class Plugin extends Component {
 	addSettingTab(): void {}
 	registerObsidianProtocolHandler(): void {}
 	registerMarkdownCodeBlockProcessor(): void {}
+	registerMarkdownPostProcessor(): void {}
+	registerEditorExtension(): void {}
 	addStatusBarItem(): Element { return document.createElement("div"); }
 }
 
@@ -95,6 +97,15 @@ export class Notice {
 	constructor(msg?: string, _timeout?: number) { if (typeof msg === "string") Notice.shown.push(msg); }
 	setMessage(): void {}
 	hide(): void {}
+}
+
+/** Obsidian's hover card: records its target; `hoverEl` is where content goes. */
+export class HoverPopover extends Component {
+	hoverEl: HTMLElement = document.createElement("div");
+	constructor(public parent: { hoverPopover: unknown }, public targetEl: HTMLElement | null, public waitTime?: number) {
+		super();
+		parent.hoverPopover = this;
+	}
 }
 
 export const Modal = cls();

@@ -19,6 +19,10 @@ export interface NamingDeps {
  * answer SAID, not from the chart blocks spliced into what it stored.
  */
 export function nameAfterCommit(d: NamingDeps, conv: Conversation, userMsg: Message, fullText: string): void {
+	// A note anchored to this chapter gets its summary, and its footnote (ADR-249).
+	d.plugin.noteAnchors?.afterAnswer(conv.id, userMsg.id)
+		.catch((e) => console.warn("[Pythia] note anchor update failed:", e));
+
 	if (shouldGenerateTitle(conv)) {
 		const convId = conv.id;
 		const nameBefore = conv.name;

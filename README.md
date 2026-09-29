@@ -9,7 +9,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Streaming chat** — responses rendered token-by-token in the sidebar panel
 - **Turn labels** — a compact meta line above every turn: the model that answered, the time, and the token counts. When a conversation runs on a template, the template name appears on the answer it first shaped — and again if a different template takes over later — so you can see which prompt produced which response
 - **Conversation storage** — full history saved in `data.json`; conversations are automatically given a short AI-generated title after the first exchange; optional summary notes written to your vault
-- **History limit, without losing anything** — Pythia keeps up to 450 conversations by default (leave the field empty for no limit). When the limit is reached the oldest are removed — but **archived to a vault note first**, with the whole transcript and queryable frontmatter, and a conversation whose note cannot be written is kept rather than deleted. Conversations with a starred passage, the one you have open, and any a merge link points at are never removed. The delete dialog offers the same **Archive** beside **Delete**, and the settings show how large `data.json` has grown
+- **History limit, without losing anything** — Pythia keeps up to 450 conversations by default (leave the field empty for no limit). When the limit is reached the oldest are removed — but **archived to a vault note first**, with the whole transcript and queryable frontmatter, and a conversation whose note cannot be written is kept rather than deleted. Conversations with a starred passage, the one you have open, any a merge link points at, and any a note links to are never removed. The delete dialog offers the same **Archive** beside **Delete**, and the settings show how large `data.json` has grown
 - **Summaries** — press and hold the **Send** button for the summary menu: *Summarize conversation* writes an AI summary and a new title in one step, *Summarize favorites* distils the starred passages into key learnings. Summaries appear as collapsible cards at the top of the message list, each with the time it was generated, and scroll with the conversation
 - **Resume modes** — continue past conversations with the full message history, an AI-generated summary, or a hybrid of summary plus recent messages (controls token cost)
 - **Favorites** — star any assistant response; a short AI-generated title is assigned automatically; starred messages are accessible via the `#` chapter navigator
@@ -26,6 +26,7 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 - **Wide content pans** — code blocks, Mermaid diagrams and markdown tables are clipped to the chat width instead of squeezing; click-and-drag (macOS mouse) or swipe (iOS touch / trackpad) to pan horizontally. Table cells wrap between words and are never broken mid-word
 - **Save output** — write any response directly to a new vault note
 - **Selection action strip** — select any text in the chat to reveal a fixed action bar above the input: **Copy**, **Insert into note**, **Save to inbox**, **Fork**
+- **Note anchors — link a passage in a note to a conversation** — select text in a note and choose **Start a linked conversation from selection**: the conversation starts with that text, and the passage stays marked in the note in the fork's accent ink. Hover it to read the summary, open the conversation from there. Every chapter of a conversation has a **copy link** icon (above each message you sent, and in the `#` navigator): paste the link into any note, or select text and choose **Link selection to …**, so one document can point at many conversations and at the exact chapter that settled a point. For print, **Update Pythia footnotes in this note** writes each chapter's summary as a footnote — `„Rent cap scenarios › Index clause“ (Pythia, 29 Sep 2026) — …` — in the summary's language; switch on *Summary footnotes on note anchors* to keep them current as answers arrive. A conversation a note links to is never removed by the history limit. A print or export plugin can ask Pythia to refresh the summaries and add them to its printout without changing the note (see *For print and export plugins*); Schreibstube's print preview is the first to use it
 - **Pin to the top** — keep a passage, a code block, a diagram or chart, or a table in view while the conversation moves on: select text and press **Pin**, or use the pin icon beside a block's Copy. Pins sit in a slim strip at the top of the chat — tap it to open, ‹ › to step through several, ↗ to jump back to where it came from. Pins are saved with the conversation (up to 5, each a copy of what you pinned) and are never sent to the model
 - **Inbox** — "Save to inbox" prepends the selection with a timestamp to a configurable inbox note
 - **AI note creation** — ask Pythia to create, update, or rewrite a vault note; a confirm chip appears before any write so you can approve or cancel, and a clickable link confirms the result
@@ -57,6 +58,9 @@ An [Obsidian](https://obsidian.md) plugin that brings AI conversations (Anthropi
 | `Pythia: Summarize favorites` | Synthesize the conversation's starred passages into key learnings |
 | `Pythia: Send selection to Pythia` | Editor selection → new conversation, pre-filled |
 | `Pythia: Send selection to Pythia with template` | The same, choosing a template first |
+| `Pythia: Start a linked conversation from selection` | Editor selection → new conversation about it; the selection becomes a note anchor to it |
+| `Pythia: Link selection to the copied chapter` | Wrap the editor selection in the chapter link you copied in the panel |
+| `Pythia: Update Pythia footnotes in this note` | Refresh the summaries the note's anchors point at, and write them as footnotes |
 | `Pythia: Toggle vault context default (semantic RAG)` | Turn the vault-context **default** on/off for new conversations (the per-conversation toggle lives on the input toolbar) |
 
 The sidebar is opened from the ribbon icon (or any `obsidian://pythia` link) — there is no separate command for it.
@@ -67,7 +71,7 @@ One palette entry rather than ten: *New conversation from template · with curre
 
 ### Context menus
 
-- **Editor** — select any text in a note, right-click → **Send to Pythia**: opens a new conversation with the selected text pre-filled in the input.
+- **Editor** — select any text in a note, right-click → **Send to Pythia**: opens a new conversation with the selected text pre-filled in the input. The same menu offers **Start a linked conversation from selection**, and — once you have copied a chapter link in Pythia — **Link selection to *Conversation › Chapter***.
 - **File Explorer (file)** — right-click any `.md` file → **Chat about this note**: opens a new conversation with the file injected as context and an auto-generated summary of its content.
 - **File Explorer (folder)** — right-click any folder → **Chat about folder**: combines all markdown files in the folder as context (up to 20,000 characters).
 
@@ -144,9 +148,20 @@ Use `obsidian://pythia` links to open Pythia from browsers, Shortcuts automation
 | `obsidian://pythia?new=true&text=<text>` | New conversation with `text` waiting in the composer — never sent until you press Send |
 | `obsidian://pythia?cmd=new` | Create a new blank conversation (same as `new=true`) |
 | `obsidian://pythia?cmd=resume&id=<uuid>` | Open a specific conversation by ID |
+| `obsidian://pythia?cmd=resume&id=<uuid>&msg=<id>` | Open it at one chapter — what the copy-link icon copies; in a note, such a link is a note anchor |
 | `obsidian://pythia?cmd=template&name=<name>` | Create a conversation from a named template |
 
 Add `vault=<name>` to target a vault; without it Obsidian uses the last one opened. A link works when Obsidian is closed too: Pythia waits for the workspace before acting. `text` is capped at 4000 characters (a longer one is refused, not cut) and is only ever prefilled — any web page can open an `obsidian://` link.
+
+### For print and export plugins
+
+Pythia publishes `app.plugins.getPlugin("pythia").api` — check `api?.version === 1` before use. Nothing in it writes to a note:
+
+| Call | Does |
+|---|---|
+| `inspectForExport(markdown, sourcePath?)` | `{ links, outdated, missing }` for a preview — no model call, no write |
+| `refreshSummaries(markdown, { signal?, onProgress? })` | Writes the missing and outdated chapter summaries (model calls; at most 20, three at a time; stops on `signal`). Never throws: `{ refreshed, failed: [{ id, msg?, reason }] }` |
+| `withExportFootnotes(markdown)` | A copy for print: each note anchor becomes `==text==` with its summary as a footnote, and every footnote — yours and Pythia's — is renumbered 1…n in reading order |
 
 ### macOS / iOS Shortcut
 
@@ -256,6 +271,7 @@ vault/
 | Conversations folder | `Pythia/Conversations` | Where summary notes are saved |
 | Scratch folder | `Pythia/Scratch` | For ad-hoc conversations |
 | Inbox note | `Pythia/Inbox.md` | Target for "Save to inbox" — selections are prepended with a timestamp |
+| Summary footnotes on note anchors | off | When an answer arrives in a chapter a note anchor points at, write the chapter's summary into that note as a footnote. Off: only the footnote command writes them, and a Schreibstube printout adds them to the printout alone |
 | Glossary folder | `Glossary` | `Terms/`, `People/` and `Themes/` live under it |
 | Max attached-note tokens | `8000` | Attached notes beyond this are excerpted to their most relevant sections |
 

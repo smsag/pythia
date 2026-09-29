@@ -135,7 +135,7 @@ const settingsEn = {
 	capConfirmBody:          "A limit of {{cap}} deletes {{count}} conversation(s) from storage. This cannot be undone.",
 	capConfirmBodyArchive:   "A limit of {{cap}} removes {{count}} conversation(s) from storage. Each is written to a note in {{folder}} first.",
 	capConfirmArchiveBtn:    "Archive {{count}}",
-	capConfirmKept:          "Kept: conversations with a starred passage or a pin, the one open in a Pythia panel, and any a merge link points at.",
+	capConfirmKept:          "Kept: conversations with a starred passage or a pin, the one open in a Pythia panel, any a merge link points at, and any a note links to.",
 	capConfirmRemove:        "Delete {{count}}",
 
 	// ── Troubleshooting ───────────────────────────────────────────────────────

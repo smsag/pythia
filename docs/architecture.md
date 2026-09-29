@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-29 — ADR-246/247: `services/ablage.ts` (one slot in data.json, owned by `PluginDataStore`, exposed as `plugin.ablage`); `stage_text` intercepted in `ToolCallController.runStage`; `ui/ablageEntries.ts` (editor menu + command); `WRITE_MODES`/`WriteMode` in `models/types.ts`; `ui/rewritePresets.ts` + `suggest/RewritePresetModal.ts` behind `rewrite-selection-as`.*
+*Last updated: 2026-09-29 — ADR-249 (note anchors): pure `services/noteAnchors.ts` (the address, `findAnchors`, labels, the selection rule, `reconcileNoteAnchors`), `services/chapterSummary.ts` (chapter, fingerprint, the five states, the prompt), `services/anchorFootnotes.ts` (`footnoteText`, `noteFootnoteEdits`, `withExportFootnotes`, `renumberFootnotes`); `services/NoteAnchorService.ts` (records, refresh, note writes, `plugin.api`); `ui/noteAnchorMarks.ts` (post-processor, editor extension, hover card), `ui/noteAnchorEntries.ts` (commands, editor menu, `file-open` reconcile), `ui/chapterLink.ts`; `Conversation.noteAnchors`, `Message.chapterSummary`, `settings.anchorFootnotes`; `resumeDeepLink(…, messageId?)` and `msg=` in the deep link; `generateChapterSummary` on the providers.*
+
+*Previously: 2026-09-29 — ADR-246/247: `services/ablage.ts` (one slot in data.json, owned by `PluginDataStore`, exposed as `plugin.ablage`); `stage_text` intercepted in `ToolCallController.runStage`; `ui/ablageEntries.ts` (editor menu + command); `WRITE_MODES`/`WriteMode` in `models/types.ts`; `ui/rewritePresets.ts` + `suggest/RewritePresetModal.ts` behind `rewrite-selection-as`.*
 
 *Previously: 2026-09-29 — ADR-245: new `ui/mermaidSpacing.ts` (`compactMermaid`), applied inside `renderAnswerMarkdown` after `deferRemoteMedia`; the stored message is unchanged.*
 
@@ -378,6 +380,10 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `services/tavilyArgs.ts` | 155 | Pure: the ONE validator for the web tools' arguments — `parseSearchArgs` (topic · time_range · domains, each rejection naming its field), `parseReadUrlArgs` (http(s) + `isPrivateHost` refusal), `describeSearchFilters` for the chip and the no-results message (ADR-217) |
 | `services/webReadScope.ts` | 113 | Pure: `WebReadScope` — which pages `read_url` may read in one answer (links from user messages, plus links a web result of this answer returned, matched exactly) and how many (`MAX_READS_PER_TURN` = 5). The exfiltration guard (ADR-217 addendum) Since ADR-226 it also caps searches at five per answer (`admitSearch`) |
 | `services/favoriteHighlights.ts` | 335 | Pure: a favorite (rendered text + occurrence) found in the Markdown source by projecting it onto what it renders to, and wrapped in `==…==` — whole when its markup balances, piece by piece when not; code spans and wikilinks atomic, fences untouched — for Save to note, the archive and the note tools (ADR-239) |
+| `services/noteAnchors.ts` | 218 | Pure (ADR-249): a note anchor is any `obsidian://pythia?…cmd=resume&id=…[&msg=…]` link — `parseAnchorUrl`, `findAnchors` (code masked by `maskCode`, the `==` wrapper and an attached `[^pythia-…]` reference recognised), `anchorLabel` (one `pythia-<fnv>` label per target), `anchorMarkup`, `selectionProblem` (inline, one line, no markup), `reconcileNoteAnchors` / `recordNoteAnchor` / `normalizeNoteAnchors` for `Conversation.noteAnchors` |
+| `services/chapterSummary.ts` | 135 | Pure (ADR-249): `chapterOf`, `chapterFingerprint` (question + kept answer), `anchorStatus` (ok · outdated · missing · unanswered · deleted), `anchorSummary` (what a footnote and the card say), `chapterSummaryPrompt`, `cleanChapterSummary`, `normalizeChapterSummary` |
+| `services/anchorFootnotes.ts` | 299 | Pure (ADR-249): `footnoteText` — the ONE footnote format, quote marks by the summary's language; `noteFootnoteEdits` / `updateNoteFootnotes` — only Pythia's `pythia-` parts of a note, as edits, idempotent; `withExportFootnotes` + `renumberFootnotes` — the print copy, every footnote 1…n by first reference; `inspectAnchors` |
+| `services/NoteAnchorService.ts` | 259 | ADR-249: the records against the vault (`recordFromFile` on `file-open`), `refresh` (three at a time, ≤ 20, abortable, re-reads the chapter after the reply), `updateNote` (an open editor's transaction, else `vault.process`), `afterAnswer` (from `nameAfterCommit`), and `api()` → `plugin.api` (`PythiaApi` v1: `inspectForExport` · `refreshSummaries` · `withExportFootnotes`) |
 | `services/noteFootnotes.ts` | 163 | Pure: `FootnoteNumbering` (one numbering per note), `fetchedResultsResolver` / `messageSourcesResolver`, `citationsToFootnotes` — a note write's, a Save to note's and an archive's `⟦cite:…⟧` markers become Markdown footnotes (vault → `[[path\|name]]`, web → the fetched page by number/domain), labels skip those the content or the prepended note already use, fenced markers left alone — ADR-238 |
 | `services/noteWrites.ts` | 65 | Pure: `noteWriteResult` (the write tool's result, naming the note as a `[[path\|name]]` link), `parseNoteWrite` (the record a result yields), `normalizeNoteWrites` (load validation) — ADR-218 |
 | `services/renameVaultPath.ts` | 243 | Pure: `essentialRenames` + `compileRenames` (a burst → one mover; chains and swaps in order), `renameVaultPaths` (THE list of conversation path fields), `renameSettingsPaths` + `SETTINGS_PATH_KEYS` (the nine path settings) — ADR-218 + addendum |
@@ -420,7 +426,10 @@ An Obsidian sidebar plugin providing a streaming LLM chat interface tightly inte
 | `models/modelGuidance.ts` | 50 | `MODEL_GOOD_FOR` — plain-language "good for" example line per model id (`{ en, de }`), shown in the picker (ADR-102); `goodForModel(id, lang)`; every catalog model must have an entry (test-enforced) |
 | `models/settings.ts` | 63 | `PythiaSettings` interface + `DEFAULT_SETTINGS` — no Obsidian dependency; importable in tests |
 | `ui/OptimizationController.ts` | 182 | Inline prompt optimizer UI state + flow (extracted from sidebar); generation-counter guard against stale responses |
-| `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar) |
+| `ui/NavigatorController.ts` | 163 | `#` navigator popover logic (extracted from sidebar); each chapter row copies its chapter link (ADR-249) |
+| `ui/chapterLink.ts` | 48 | ADR-249: `copyChapterLink` (the link on the clipboard and in `noteAnchors.copied`) and the `.p-chapter-link` control in a user turn's label |
+| `ui/noteAnchorMarks.ts` | 137 | ADR-249: `decorateAnchorLinks` (Reading view post-processor), `noteAnchorEditorExtension` (CodeMirror `MatchDecorator`), `renderAnchorCard` + `NoteAnchorHover` (one delegated `mouseover`, Obsidian's `HoverPopover`) |
+| `ui/noteAnchorEntries.ts` | 170 | ADR-249: *Start a linked conversation from selection*, *Link selection to the copied chapter*, *Update Pythia footnotes in this note* — commands and editor-menu entries; every write through the editor after an exact check; the `file-open` reconcile |
 | `ui/ActionSheet.ts` | 175 | Reusable mobile bottom action sheet (scrim + sheet, drag/swipe/scrim/Escape dismiss, safe-area padding); replaces the `.p-send-menu` popover on touch (ADR-114) |
 | `ui/HistoryController.ts` | ~300 | The single in-view conversation-search surface (ADR-107): a full-panel `.p-history` overlay that browses (date-grouped) or searches (TF-IDF ranked + snippets) with search focused on open and ↑/↓/Enter nav, plus delete-with-confirm. `Deps`-driven; closed by the view on rebuild/unload. (Quick switcher removed — folded in here.) |
 | `ui/SummaryController.ts` | 236 | Summary "Speisekarte" cards (render/build/open/reveal/save) and the LLM summary-generation flows (`generateConversationSummary`/`summarizeFavorites`/`runFavoritesSummary`) — extracted from sidebar (ADR-103 / #120). `Deps`-driven; owns the auto-collapse `IntersectionObserver` (disposed by the view). The view creates the cards container (for DOM position) and renders markdown via a callback; the Send menu + context-inspector button call into it |
@@ -533,6 +542,8 @@ Conversation
     attachedNotes[]?             ← per-message note attachments
     tokenUsage?                  ← inputTokens, outputTokens
     chapterName?                 ← 3-5 word LLM title for user turns
+    chapterSummary?              ← user turns: { text, fingerprint, language?, createdAt } — a snapshot for
+                                    note anchors (ADR-249); outdated when the chapter's fingerprint moves
   favorites[]                    ← starred assistant messages
     messageId, name              ← name reused from preceding chapterName
   summaryText?, summaryUpdatedAt?, summaryNote?
@@ -544,6 +555,9 @@ Conversation
     id, conversationId, messageId, text, occurrenceIndex?, createdAt
                                     Display-only — never enters the system prompt. Stored on the
                                     conversation holding the passage; the target is unaware.
+  noteAnchors[]?                 ← notes that link here (ADR-249): { path, messageId?, createdAt }.
+                                    Reconciled whenever Pythia reads the note; protects from eviction;
+                                    `path` follows renames.
 
 PythiaSettings
   defaultProvider, defaultAnthropicModel, defaultOpenAIModel, defaultMistralModel
@@ -770,6 +784,7 @@ See ADR-042 for why summary resolution is awaited synchronously rather than fire
 | *(none)* + `new` flag | Same as `new` — the shortcut link, `?vault=…&new=true` (ADR-241); `new=0`/`false`/`no` means open |
 | `new` | Create a new conversation and open it; a `text` is prefilled in the composer, never sent |
 | `resume?id=<id>` | Open a specific conversation, scroll to **top** |
+| `resume?id=<id>&msg=<messageId>` | A chapter link (ADR-249): the conversation, scrolled to that user message. A chapter that is gone still opens the conversation and says so (`ResumeResult`); `plugin.openConversationAt` is shared with the anchor card |
 | `template?name=<name>` | Create a new conversation from a named template |
 | `inject?text=<text>` | Pick a template, then prefill the composer with `text` — never sent (ADR-240). Not decoded again: Obsidian has already decoded it, and decoding again throws on a bare `%` |
 
@@ -778,6 +793,21 @@ See ADR-042 for why summary resolution is awaited synchronously rather than fire
 Every failure says something: a missing parameter, an id or name that matches nothing, an unknown `cmd`, or a thrown error all produce a `Notice`. `handleDeepLink` never rejects — Obsidian does not await an async protocol handler, so a rejection would be swallowed by the platform.
 
 All conversation switches scroll to the top. New messages during a live session scroll to the bottom via `scrollToBottom()`.
+
+### Note anchors (ADR-249)
+
+```
+note (Reading view) ── post-processor ─┐
+note (Live Preview) ── MatchDecorator ─┼─ .p-note-anchor(-lp) ── mouseover ── NoteAnchorHover ── HoverPopover ── renderAnchorCard
+                                       │                                                        ↻ refresh · Open → openConversationAt
+editor selection ── Start linked conversation / Link selection to … ── exact check ── editor write ── recordNoteAnchor
+file-open / footnote command / api.inspectForExport(md, path) ── reconcileNoteAnchors ── Conversation.noteAnchors
+answer commits ── nameAfterCommit ── NoteAnchorService.afterAnswer ── generateChapterSummary ── Message.chapterSummary
+                                                                   └─ (setting on) updateNote ── noteFootnoteEdits
+print plugin ── plugin.api ── inspectForExport · refreshSummaries · withExportFootnotes (a copy; never a write)
+```
+
+Pure rules in `noteAnchors.ts` / `chapterSummary.ts` / `anchorFootnotes.ts`; `NoteAnchorService` only reads, asks and writes. `partitionEvictions` keeps every conversation with a `noteAnchors` record.
 
 ### Cross-device sync (`watchDataJson`)
 

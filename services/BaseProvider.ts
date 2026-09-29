@@ -27,6 +27,7 @@ import { buildSystemPrompt, buildAttachedNotesContent, buildAttachedPdfs } from 
 import type { PdfAttachment } from "./ContextBuilder";
 import { isAbortError } from "./retry";
 import { buildRetitleDigest, chapterNamePrompt, conversationTitlePrompt, retitlePrompt } from "./titlePrompts";
+import { chapterSummaryPrompt } from "./chapterSummary";
 
 /** Safety net against a confused model looping on tool calls indefinitely. */
 const MAX_TOOL_ROUNDS = 25;
@@ -503,6 +504,12 @@ export abstract class BaseProvider implements LLMProvider {
 
 	async generateChapterName(content: string, conversation?: Conversation): Promise<string> {
 		return cleanGeneratedTitle(await this.callUtility(this.fastModel, chapterNamePrompt(content, this.languageLabel(conversation)), 15));
+	}
+
+	/** A chapter's footnote summary (ADR-249): the fast model, a small budget —
+	 *  two sentences, not an essay. The prompt is `chapterSummaryPrompt`'s. */
+	async generateChapterSummary(question: string, answer: string, conversation?: Conversation): Promise<string> {
+		return this.callUtility(this.fastModel, chapterSummaryPrompt(question, answer, this.languageLabel(conversation)), 200);
 	}
 
 	async generateConversationTitle(userMessage: string, assistantMessage: string, conversation?: Conversation): Promise<string> {

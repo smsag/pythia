@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-29 — ADR-248: a diagram container is `display: block` at (0,3,0), so a theme's flex centring cannot push its left edge out of reach; `--p-diag-floor` is set per drawing so its smallest label renders at 11px (0.9 fallback).*
+*Last updated: 2026-09-29 — ADR-249: note anchors — a Pythia chapter link in a vault note is painted with the fork origin's accent ink (`.p-note-anchor` / `.p-note-anchor-lp`, the `==` wrapper's yellow removed), previews in `.p-anchor-card` inside Obsidian's hover popover (the fork anchor's grammar), and is copied from `.p-chapter-link` / `.p-nav-copy`.*
+
+*Previously: 2026-09-29 — ADR-248: a diagram container is `display: block` at (0,3,0), so a theme's flex centring cannot push its left edge out of reach; `--p-diag-floor` is set per drawing so its smallest label renders at 11px (0.9 fallback).*
 
 *Previously: 2026-09-29 — ADR-244: `--p-diag-floor` is 0.9 (Vizardry's floor): readability before fit, a wider diagram scrolls.*
 
@@ -531,6 +533,13 @@ Any text selection **inside an assistant message** can be favorited via the **Fa
 **Highlighter marker style (ADR-090):** both highlights render as a **"highlighter marker"** — the effect ported from smsag.de's `a:hover` rule: an asymmetric `border-radius: 1em 0 1em 0` (hand-drawn corners), a diagonal, uneven `linear-gradient(-100deg, …)` ink sweep, and `text-shadow: 1px 1px 1px var(--background-primary)` for legibility over the ink. **Colors are unchanged:** the favorite sweep is built from `--text-highlight-bg` (yellow, with its full value as the gradient's peak stop) and the fork sweep from `--color-accent` (peak ≈ 30% — matching the prior 25% accent tint). Each keeps a plain `background: …` line *before* the gradient as the no-`color-mix` fallback (an unsupported gradient falls back to the original solid). The text-shadow is **theme-adaptive** by using `--background-primary`: a white halo in light themes (as on smsag.de), a dark halo in dark themes. The marker is **always visible** (persistent), not hover-gated — favorited/forked spans must stay findable in the transcript. `box-decoration-break: clone` keeps the ink and corners clean across line wraps. The `p-highlight-flash` navigator-jump pulse still momentarily fills solid accent → `--text-highlight-bg` before settling back to the marker.
 
 **Unfavorite:** *tapping* a highlight (no drag) selects its whole span (`rangeForHighlight`) and opens the toolbar with the Favorite button relabeled **Unfavorite**; pressing it removes exactly that highlight (`removeHighlightById` — surgical, never touches other highlights). A *dragged* selection always creates a new favorite, even overlapping an existing highlight — dragging never removes one. A brief `p-highlight-flash` animation plays when the navigator jumps to a highlight.
+
+### Note anchors (`.p-note-anchor`, `.p-anchor-card`, ADR-249)
+
+- **The mark is the fork origin's pen**: the same 104deg felt-tip stroke, `--hl-ink: color-mix(in srgb, var(--color-accent) 34%, var(--background-primary))`, text in `--text-normal`, no underline, `cursor: pointer`. It is the fork turned around — the passage in a note where a conversation branched off — so it reads as one. Never the favorite's yellow: the `==` Pythia writes around the link is only the fallback for a reader without Pythia and for print, and its fill is removed (`mark.p-note-anchor-mark`, `.cm-highlight`) wherever the anchor is painted.
+- **Outside `.pythia-view` by necessity** — these rules paint notes. They name `.markdown-rendered a.external-link.p-note-anchor` (0,3,1) and `.markdown-source-view .p-note-anchor-lp`, and replace the external-link icon Obsidian draws as a background image.
+- **The card** is the fork anchor's grammar in Obsidian's own hover popover: 2px accent left rule, `anchor` icon + mono caps `NOTE ANCHOR`, 11.5px 600 title *Conversation › Chapter*, the summary in full at 11px, the meta line `N messages · date · outdated · ↻ · Open →`. Its root carries `pythia-modal` so the button roles apply (ADR-188); `.pythia-modal.p-anchor-card` sets its own padding and a 360px measure. No shadow of ours — the popover's is Obsidian's.
+- **Copy chapter link**: `.p-chapter-link` is `pb pb-icon is-inline` in the user turn's label, seated on the caps line (ADR-139's `top: -0.09em`); `.p-nav-copy` sits at the end of a navigator chapter row. Both show on hover under `@media (hover: hover)` and always on touch.
 
 ### Chapter navigator (`#`)
 

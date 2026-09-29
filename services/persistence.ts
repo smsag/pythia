@@ -2,6 +2,8 @@ import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Messa
 import { OUTPUT_LANGUAGES, WRITE_MODES } from "../models/types";
 import { DEFAULT_SETTINGS, NUMBER_SETTING_BOUNDS, isNumberInBounds, type PythiaSettings } from "../models/settings";
 import { isRewriteTarget, normalizeAlternatives, normalizeAnswerFields, normalizeComparison } from "./comparison";
+import { normalizeNoteAnchors } from "./noteAnchors";
+import { normalizeChapterSummary } from "./chapterSummary";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
@@ -183,6 +185,7 @@ export function sanitizeMessages(conv: Conversation): void {
 		// Cost, note writes, the truncated flag, a rewrite target and token usage:
 		// the same guard a kept tab and a comparison candidate get.
 		normalizeAnswerFields(m);
+		normalizeChapterSummary(m);
 		// The other answers kept as tabs are drawn and switched to (ADR-219).
 		if (m.alternatives !== undefined) {
 			const tabs = normalizeAlternatives(m.alternatives);
@@ -289,6 +292,7 @@ export function parseConversations(raw: unknown[]): {
 		normalizeMerges(conv);
 		normalizePins(conv);
 		normalizeComparison(conv);
+		normalizeNoteAnchors(conv);
 	}
 	return { conversations, dropped: raw.length - conversations.length };
 }
@@ -402,8 +406,10 @@ export function partitionEvictions(
 	const mergeTargetIds = new Set(
 		conversations.flatMap((c) => (c.merges ?? []).map((m) => m.conversationId))
 	);
+	// A note that links here (ADR-249) must not end up pointing at nothing.
 	const isProtected = (c: Conversation) =>
-		(c.favorites?.length ?? 0) > 0 || (c.pins?.length ?? 0) > 0 || activeIdSet.has(c.id) || mergeTargetIds.has(c.id);
+		(c.favorites?.length ?? 0) > 0 || (c.pins?.length ?? 0) > 0 || activeIdSet.has(c.id) || mergeTargetIds.has(c.id)
+		|| (c.noteAnchors?.length ?? 0) > 0;
 
 	// Choose which plain (unprotected) conversations survive: the newest `slots`
 	// by updatedAt. Selection is by date; the result order is not.

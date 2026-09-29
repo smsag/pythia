@@ -64,6 +64,10 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs (query ≤ 400 chars), parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217/228)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ≤ 5 searches per answer (admitSearch); ToolHandler fails closed without one (ADR-217 addendum/226)
     favoriteHighlights.ts     ← pure: highlightPassages · highlightMessageFavorites · favoritePassages — a favorite becomes `==…==` in every note Pythia writes, found by the text it RENDERS to and nested properly with the markup (ADR-239)
+    noteAnchors.ts            ← pure: a note anchor is any obsidian://pythia?…cmd=resume&id=…[&msg=…] link in a note — parseAnchorUrl, findAnchors (code masked), anchorLabel (one `pythia-` footnote label per target), selectionProblem, reconcileNoteAnchors (ADR-249)
+    chapterSummary.ts         ← pure: chapterOf, chapterFingerprint, anchorStatus (ok · outdated · missing · unanswered · deleted), anchorSummary, the chapter-summary prompt (ADR-249)
+    anchorFootnotes.ts        ← pure: footnoteText — the ONE footnote format; noteFootnoteEdits (only Pythia's `pythia-` parts of a note, as edits); withExportFootnotes + renumberFootnotes — the print copy (ADR-249)
+    NoteAnchorService.ts      ← the records against the vault, refresh (≤ 20, abortable, re-read after the reply), updateNote, afterAnswer, and plugin.api — PythiaApi v1 for print/export plugins; never writes on a print (ADR-249)
     noteFootnotes.ts          ← pure: FootnoteNumbering + citationsToFootnotes — ⟦cite:…⟧ markers in every note Pythia writes (note tools · Save to note · archive) become Markdown footnotes (vault → [[wikilink]], web → the page), labels never reused (ADR-238)
     noteWrites.ts             ← pure: the write tools' result (naming the note as a [[path|name]] link), parseNoteWrite, normalizeNoteWrites — what the ✓ chip is drawn from (ADR-218)
     renameVaultPath.ts        ← pure: THE list of stored vault-path fields — conversations AND the nine path settings — and compileRenames, one mover per rename burst (ADR-218 + addendum)
@@ -125,6 +129,9 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175) + ComposerSend: the shortcut via the view's Scope, ahead of Obsidian's Mod+Enter hotkey (ADR-187)
+    chapterLink.ts            ← copyChapterLink + the `.p-chapter-link` control above each user message (ADR-249)
+    noteAnchorMarks.ts        ← a note anchor in a NOTE: decorateAnchorLinks (Reading view), noteAnchorEditorExtension (Live Preview), NoteAnchorHover + renderAnchorCard (Obsidian's HoverPopover) — ADR-249
+    noteAnchorEntries.ts      ← Start a linked conversation · Link selection to … · Update Pythia footnotes: commands + editor menu; the file-open reconcile (ADR-249)
     ablageEntries.ts          ← Insert from Ablage: the editor context-menu entry + command; one replaceSelection, footnotes numbered around the note's (ADR-246)
     rewritePresets.ts         ← the built-in rewrite presets (shorter · clearer · formal · English) for "Rewrite with Pythia as…" (ADR-247)
     RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
@@ -733,6 +740,17 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **A favorite is a highlight in every note Pythia writes** (ADR-239): Save to note, the archive and the note tools wrap it in `==…==` through `services/favoriteHighlights.ts`, before citations become footnotes. A favorite stores RENDERED text, so it is found by projecting the source onto what it shows — never by a raw `indexOf` in the Markdown, and never wrap `==` so it half-overlaps `**`/links (Obsidian then renders neither)
 - **A note Pythia writes cites as footnotes** (ADR-238): `create_note` / `rewrite_note` / `prepend_note` content goes through `citationsToFootnotes` in `ToolHandler`, web markers resolved against the answer's fetched results (`execute`'s fifth argument). Save to note and the archive footnote each message against its own `sources` (`messageSourcesResolver`), one numbering per note. Never leave a raw marker in the vault, never strip one (the source is lost), and never let the model write its own sources list
 - **Five searches and five page reads per answer** (`WebReadScope`). A rejected key (`auth`) or used-up plan (`quota`) is a Notice once per send — the model's paraphrase is not a report
+
+### Note anchors (ADR-249)
+
+- **An anchor is recognised by its ADDRESS, never its markup**: any `obsidian://pythia?…cmd=resume&id=…[&msg=…]` link in a note, including a pasted chapter link and the older `[↗ Name](…)` backlinks. `==…==` around it is the print fallback; Pythia paints it with the fork's accent ink instead. Never add a second way to tell an anchor from a link
+- **A chapter link points at the USER message** that opens the chapter (`resumeDeepLink(id, vault, msgId)`, the one builder). A chapter that is gone opens its conversation and says so
+- **Every write into a note goes through the editor after an exact check**, as one undo step (ADR-178). An await between reading the selection and writing re-checks the range (`startLinkedConversation`). A selection that is not inline plain text on one line is refused, never repaired
+- **`[^pythia-…]` labels are reserved**: Pythia rewrites or removes every footnote with that prefix and nothing else — the author's footnotes, orphans included, are never touched. One label per target (`anchorLabel`); `footnoteText` is the ONE place the format is written (a test fails on `(Pythia` elsewhere)
+- **A chapter summary is a snapshot with a fingerprint** (`Message.chapterSummary`); a retry makes it outdated, never silently wrong. After an await, re-read the chapter by id and compare the fingerprint before storing (principle 7). An empty reply is a failure
+- **A print never writes the note.** `plugin.api` (`PythiaApi` v1) returns a copy; refresh changes Pythia's store only. Keep the API free of anything specific to one caller
+- **A conversation a note links to is never evicted** (`partitionEvictions` reads `noteAnchors`), and `noteAnchors[].path` follows renames (`tests/pathFields.test.ts`)
+- **Summary footnotes in the note are opt-in** (`anchorFootnotes`, off): the summary would travel wherever the note goes
 
 ### Notes an answer wrote (ADR-218)
 

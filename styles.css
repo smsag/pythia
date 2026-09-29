@@ -3508,3 +3508,113 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 .p-chart-line.p-chart-c5 { stroke: var(--p-chart-c5); }
 .p-chart-line.p-chart-c6 { stroke: var(--p-chart-c6); }
 .p-chart-line.p-chart-c7 { stroke: var(--p-chart-c7); }
+
+/* ── Note anchors (ADR-249) ─────────────────────────────────── */
+/* A passage in a NOTE linked to a conversation or a chapter of it. It is drawn
+   with the fork origin's pen — the accent ink, same stroke — because it is the
+   same idea turned around: the passage is where a conversation branched off.
+   Recognised by its address (`obsidian://pythia?…cmd=resume`), so these rules
+   sit outside `.pythia-view`: they paint notes. The `==` highlight Pythia puts
+   around the link is the fallback for a reader without Pythia; here its yellow
+   gives way to the accent ink. */
+.markdown-rendered a.external-link.p-note-anchor,
+.markdown-source-view .p-note-anchor-lp {
+  --hl-angle: 104deg;
+  --hl-land-0: 0.2em;
+  --hl-land-1: 0.7em;
+  --hl-lift-1: 88%;
+  --hl-lift-0: calc(100% - 0.28em);
+  --hl-pad-y: 0.14em;
+  --hl-pad-x: 0.42em;
+  --hl-ink: color-mix(in srgb, var(--color-accent) 34%, var(--background-primary));
+  background-color: transparent;
+  background-image: linear-gradient(
+    var(--hl-angle),
+    transparent var(--hl-land-0),
+    var(--hl-ink) var(--hl-land-1),
+    var(--hl-ink) var(--hl-lift-1),
+    transparent var(--hl-lift-0)
+  );
+  background-size: auto;
+  background-position: 0 0;
+  color: var(--text-normal);
+  text-decoration: none;
+  padding: var(--hl-pad-y) var(--hl-pad-x);
+  margin: 0 calc(-1 * var(--hl-pad-x));
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  cursor: pointer;
+}
+/* Live Preview draws a link's text in link colour with an underline, on inner
+   spans; the anchor's text reads as prose, like a fork origin's. */
+.markdown-source-view .p-note-anchor-lp .cm-underline,
+.markdown-source-view .p-note-anchor-lp.cm-underline {
+  color: var(--text-normal);
+  text-decoration: none;
+}
+/* The `==` wrapper: no yellow under the accent ink, in either view. */
+.markdown-rendered mark.p-note-anchor-mark,
+.markdown-source-view .cm-highlight:has(.p-note-anchor-lp),
+.markdown-source-view .p-note-anchor-lp .cm-highlight,
+.markdown-source-view .p-note-anchor-lp.cm-highlight {
+  background-color: transparent;
+}
+
+/* The anchor's card, in Obsidian's own hover popover: the fork anchor's
+   grammar — accent rule, mono caps label, title, summary in full, meta line. */
+.pythia-modal.p-anchor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 360px;
+  margin: var(--s3);
+  padding: 2px 0 2px var(--s3);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+.p-anchor-card-head { display: flex; align-items: center; gap: 5px; }
+.p-anchor-card-icon { display: flex; color: var(--color-accent); flex-shrink: 0; }
+.p-anchor-card-icon svg { width: 11px; height: 11px; }
+.p-anchor-card-label {
+  font-family: var(--font-monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.p-anchor-card-title { font-size: 11.5px; font-weight: 600; color: var(--text-normal); }
+.p-anchor-card-body { font-size: 11px; line-height: 1.55; color: var(--text-muted); }
+.p-anchor-card-empty { font-size: 11px; line-height: 1.55; color: var(--text-muted); font-style: italic; }
+.p-anchor-card-meta { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.p-anchor-card-refresh {
+  vertical-align: middle;
+  position: relative;
+  top: -0.09em;
+}
+
+/* Copy a chapter's link (ADR-249): beside the user turn's label, and in the
+   navigator's chapter rows. Shown on hover where there is hover; always
+   there on a touch screen, where hover never comes. */
+.p-chapter-link {
+  margin-left: var(--s1);
+  vertical-align: middle;
+  position: relative;
+  top: -0.09em;
+}
+.p-nav-copy {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.p-nav-copy svg { width: 11px; height: 11px; }
+@media (hover: hover) {
+  .p-msg-user .p-chapter-link,
+  .p-nav-copy { visibility: hidden; }
+  .p-msg-user:hover .p-chapter-link,
+  .p-chapter-link:focus-visible,
+  .p-nav-item:hover .p-nav-copy,
+  .p-nav-copy:focus-visible { visibility: visible; }
+  .p-nav-copy:hover { color: var(--text-normal); }
+}

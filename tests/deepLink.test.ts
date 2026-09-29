@@ -12,7 +12,7 @@ function host(over: Partial<DeepLinkHost> = {}) {
 		ready: async () => { calls.push("ready"); },
 		open: async () => { calls.push("open"); },
 		create: async (text) => { calls.push(text ? `create:${text}` : "create"); },
-		resume: async (id) => { calls.push(`resume:${id}`); return true; },
+		resume: async (id, msg) => { calls.push(msg ? `resume:${id}#${msg}` : `resume:${id}`); return "ok"; },
 		template: async (name) => { calls.push(`template:${name}`); return true; },
 		inject: async (text) => { calls.push(`inject:${text}`); return true; },
 		templatesFolder: () => "Templates",
@@ -80,9 +80,28 @@ describe("obsidian://pythia — missing parameters", () => {
 
 describe("obsidian://pythia — the thing named is not there", () => {
 	it("an unknown conversation id is reported with the id", async () => {
-		const h = host({ resume: async () => false });
+		const h = host({ resume: async () => "no-conversation" });
 		await handleDeepLink({ cmd: "resume", id: "gone" }, h);
 		expect(h.notices).toEqual([t("convNotFound", { id: "gone" })]);
+	});
+
+	it("a chapter link opens its chapter (ADR-249)", async () => {
+		const h = host();
+		await handleDeepLink({ cmd: "resume", id: "c1", msg: "m7" }, h);
+		expect(h.calls).toEqual(["ready", "resume:c1#m7"]);
+		expect(h.notices).toEqual([]);
+	});
+
+	it("a chapter that is gone still opens its conversation, and says the chapter is gone", async () => {
+		const h = host({ resume: async () => "no-message" });
+		await handleDeepLink({ cmd: "resume", id: "c1", msg: "gone" }, h);
+		expect(h.notices).toEqual([t("chapterNotFound")]);
+	});
+
+	it("an empty msg is no chapter at all", async () => {
+		const h = host();
+		await handleDeepLink({ cmd: "resume", id: "c1", msg: " " }, h);
+		expect(h.calls).toEqual(["ready", "resume:c1"]);
 	});
 
 	it("an unknown template is reported with the name", async () => {
