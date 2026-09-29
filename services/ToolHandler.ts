@@ -7,7 +7,7 @@ import { highlightPassages } from "./favoriteHighlights";
 import type { WebSearchService, WebSource, WebToolResult } from "./WebSearchService";
 import type { WebReadScope } from "./webReadScope";
 import { parseReadUrlArgs, parseSearchArgs, MAX_FILTER_DOMAINS, SEARCH_TIME_RANGES, SEARCH_TOPICS } from "./tavilyArgs";
-import type { ToolCall, ToolDefinition } from "../models/types";
+import type { ToolCall, ToolDefinition, WriteMode } from "../models/types";
 import { ATTACHED_NOTE_TAG, ATTACHED_NOTE_PATH_ATTR, NOTE_CITATION_INSTRUCTION } from "./promptConstants";
 
 const WEB_SEARCH_TOOL: ToolDefinition = {
@@ -172,9 +172,33 @@ const REWRITE_NOTE_TOOL: ToolDefinition = {
 	},
 };
 
+export const STAGE_TEXT_UNPLACED = "Error: the Ablage is not available here. Output the text in the conversation instead.";
+
+/** Fills the Ablage — Pythia's one-item clipboard — which the USER inserts into
+ *  a note of their choosing, later, from the editor's context menu (ADR-246).
+ *  No note is written, so no confirmation card: the insert is the gesture. */
+export const STAGE_TEXT_TOOL: ToolDefinition = {
+	name: "stage_text",
+	description:
+		`Put text in the user's Ablage — Pythia's clipboard — so they can insert it into a note of their choice later, where their cursor is. ` +
+		`Use this when the user asks for text to paste or insert later, "for the Ablage", "in die Ablage", or to hold something until they pick where it goes. ` +
+		`The Ablage holds ONE item: this replaces whatever is in it. Nothing is written to the vault. ` +
+		NOTE_CITATION_INSTRUCTION,
+	inputSchema: {
+		type: "object",
+		properties: {
+			content: {
+				type: "string",
+				description: "The markdown text to hold, exactly as it should appear in the note.",
+			},
+		},
+		required: ["content"],
+	},
+};
+
 export function getToolDefinitions(
 	defaultFolder: string,
-	writeMode: "update" | "create" | "none" | "rewrite" | "all" = "all",
+	writeMode: WriteMode = "all",
 	researchEnabled = false
 ): ToolDefinition[] {
 	const tools: ToolDefinition[] = [];
@@ -183,9 +207,10 @@ export function getToolDefinitions(
 	if (writeMode === "rewrite") tools.push(REWRITE_NOTE_TOOL);
 	else if (writeMode === "update") tools.push(PREPEND_NOTE_TOOL);
 	else if (writeMode === "create") tools.push(CREATE_NOTE_TOOL(defaultFolder));
+	else if (writeMode === "stage") tools.push(STAGE_TEXT_TOOL);
 	else if (writeMode !== "none") {
-		// "all" — inject all three; descriptions guide the LLM to pick the right one
-		tools.push(CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL);
+		// "all" — inject every write tool; descriptions guide the LLM to pick the right one
+		tools.push(CREATE_NOTE_TOOL(defaultFolder), PREPEND_NOTE_TOOL, REWRITE_NOTE_TOOL, STAGE_TEXT_TOOL);
 	}
 
 	// web_search and read_url are read-only, so they are gated on the research
@@ -201,7 +226,7 @@ export function getToolDefinitions(
 	return tools;
 }
 
-const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "web_search", "read_url", "render_chart"]);
+const KNOWN_TOOLS = new Set(["create_note", "rewrite_note", "prepend_note", "stage_text", "web_search", "read_url", "render_chart"]);
 
 export class ToolHandler {
 	constructor(
@@ -258,6 +283,9 @@ export class ToolHandler {
 			const parsed = parseChartSpec(call.input);
 			return parsed.ok ? CHART_TOOL_UNPLACED : `Error: ${parsed.error}`;
 		}
+		// stage_text is filled by the send path (ToolCallController), which holds
+		// the Ablage; reaching here means nobody could, and it says so.
+		if (call.name === "stage_text") return STAGE_TEXT_UNPLACED;
 
 		const path = call.input["path"];
 		const content = call.input["content"];
@@ -355,10 +383,12 @@ export class ToolHandler {
 		if (writeMode === "rewrite") names.add("rewrite_note");
 		else if (writeMode === "update") names.add("prepend_note");
 		else if (writeMode === "create") names.add("create_note");
+		else if (writeMode === "stage") names.add("stage_text");
 		else if (writeMode !== "none") {
 			names.add("create_note");
 			names.add("rewrite_note");
 			names.add("prepend_note");
+			names.add("stage_text");
 		}
 		if (researchEnabled) {
 			names.add("web_search");

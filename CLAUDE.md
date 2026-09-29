@@ -60,6 +60,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     titlePrompts.ts           ← pure: the three title prompts (chapter · first-turn · retitle) + buildRetitleDigest (summary + last exchange) for the menu's ↻ (ADR-186)
     languageDetect.ts         ← pure: detectLanguage(text) by function words, null when unsure (ADR-166)
     WebSearchService.ts       ← Tavily /search (optional topic · time_range · domain filters) + /extract for read_url; one post() for both, never throws; returns WebToolResult — numbered results as DATA, never re-read from the text (ADR-062/217/226)
+    ablage.ts                 ← pure + Ablage: Pythia's ONE-item clipboard (put · take-only-what-was-shown), normalizeAblage / mergeAblage for data.json (the newer write wins) — ADR-246
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs (query ≤ 400 chars), parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217/228)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ≤ 5 searches per answer (admitSearch); ToolHandler fails closed without one (ADR-217 addendum/226)
     favoriteHighlights.ts     ← pure: highlightPassages · highlightMessageFavorites · favoritePassages — a favorite becomes `==…==` in every note Pythia writes, found by the text it RENDERS to and nested properly with the markup (ADR-239)
@@ -124,6 +125,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     instructionState.ts       ← pure: what the header's effort and language segments show — resolved value, pinned vs inherited, supported (ADR-165)
     choicePicker.ts           ← the one header picker: anchored popover on desktop, ActionSheet on mobile; placeBelow shared with the model popover (ADR-165)
     composerKeys.ts           ← pure: composerKeyAction (Enter = line break, Cmd/Ctrl+Enter = send, never while an IME composes) + composerPlaceholder (ADR-175) + ComposerSend: the shortcut via the view's Scope, ahead of Obsidian's Mod+Enter hotkey (ADR-187)
+    ablageEntries.ts          ← Insert from Ablage: the editor context-menu entry + command; one replaceSelection, footnotes numbered around the note's (ADR-246)
+    rewritePresets.ts         ← the built-in rewrite presets (shorter · clearer · formal · English) for "Rewrite with Pythia as…" (ADR-247)
     RewriteController.ts      ← rewriting a passage of a note: arm · decorate the send · proposal card · verified apply (ADR-178)
     referenceEntries.ts       ← pure: which pills the reference row shows and in what order (ADR-178)
     editorSelectionEntries.ts ← the three things a selection in the editor can do (ADR-178)

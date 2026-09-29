@@ -175,6 +175,8 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Mobile sheet | `.p-sheet` → `.p-sheet-scrim`, `-list`, `-item-*` | `ui/ActionSheet.ts` | the same, on touch |
 | Send menu | `.p-send-menu` → `-icon`, `-label` | `sidebar.ts` | long-press on Send |
 | Note picker | `.pythia-inline-suggest` → `.pythia-suggest-*` | `ui/InlineSuggest.ts` | `#` in the composer |
+| Editor menu: Ablage | "Insert from Ablage: <preview>" — Obsidian's own editor context menu, plus the `insert-from-ablage` command | `ui/ablageEntries.ts` | right-click in a note, when the Ablage holds an item (ADR-246) |
+| Editor menu: rewrite | "Rewrite selection with Pythia" · "Rewrite with Pythia as…" → `RewritePresetModal` | `ui/editorSelectionEntries.ts` | right-click on a selection in a note (ADR-178/247) |
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
 | Settings: section | a `Setting` heading plus `.pythia-section-intro`, the one sentence naming the section's remit | `ui/settings/section.ts` | every section of the plugin settings tab (ADR-209) |
 | Settings: sections | Connections · New conversations · While answering · Prompt optimizer · Vault context · Notes Pythia writes (+ Glossary) · History and storage · Links and shortcuts · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
@@ -326,6 +328,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-45 | **Web search is spread across three sections** — the key in Connections, "research mode on" in New conversations, auto-arm and results-per-query in While answering. | ADR-209 | The cost of one consistent axis: those three rows genuinely differ in scope. Re-grouping them by topic is the arrangement ADR-209 removed. The descriptions cross-reference. | Someone looks for the Tavily key and does not find it, or a second feature ends up split the same way and the pattern reads as arbitrary. |
 | D-27 | **`sidebar.ts` is excluded from coverage.** | #98 | Its logic is extracted into tested controllers instead; the view file is the thin coordinator. |
 | D-30 | **A discussion never revises the definition.** | ADR-208 | The most valuable thing a forked discussion could produce is a better definition — but that field is protected from model writes on purpose, and rewriting it automatically would need the proposal card this flow deliberately does without. Worth revisiting once the discussion section has been used enough to say whether the definitions beside it actually go stale. |
+| D-71 | **The Ablage holds one item, and inserting empties it** — no history, no list of recent items (user decision, ADR-246). | ADR-246 | A clipboard history was offered and declined as more than the gesture needs; revisit if users ask for the item before last, or to insert the same text twice. |
 
 ### Closed by a decision, kept here so it is not re-litigated
 
@@ -357,6 +360,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-22 | ADR-199: the settings index-status row added to the UI map; D-39 (the related index outside the build guard) and D-40 (a multilingual model a phone can hold). |
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-26 | ADR-225: D-60 now enforced in the selection toolbar (no Branch from a tab). |
+| 2026-09-29 | ADR-246/247: the Ablage and the rewrite presets added to the UI map; D-71 (the Ablage is one device-synced slot, not a history). |
 | 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). ADR-233: D-63 closed — the resume setting preselects the dialog. |
 | 2026-09-27 | ADR-236: D-65 (a chart the model writes as a block is not checked for being worth drawing) recorded; D-66 (category labels thinned, not shortened) recorded and closed in the same ADR. |
 | 2026-09-27 | ADR-236 addendum: D-65 closed — a chart block the model writes is checked at commit and, when refused, becomes a table. |

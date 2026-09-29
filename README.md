@@ -105,16 +105,19 @@ You are helping write job applications for senior roles…
 | `context_notes` | no | Vault paths of notes always attached as context |
 | `resume_mode` | no | `full` (entire history), `summary` (condensed) or `hybrid` (summary + recent messages) — controls token cost on long conversations |
 | `output_folder` | no | Default folder for AI-created notes. Use `"."` to resolve to the same folder as the currently active note |
-| `write_mode` | no | `create` (default) — LLM writes a new note. `update` — LLM prepends above the source note. `rewrite` — LLM replaces the full content of a context note. `none` — no write tool injected. |
+| `write_mode` | no | `all` (default) — every write tool below. `create` — LLM writes a new note. `update` — LLM prepends above the source note. `rewrite` — LLM replaces the full content of a context note. `stage` — LLM puts text in the Ablage for you to insert later. `none` — no write tool injected. |
+| `rewrite_preset` | no | `true` — offered in **Rewrite with Pythia as…** on a selection in a note; its prompt shapes the rewrite, its `auto_prompt` (if any) is the instruction |
 | `auto_prompt` | no | Message sent automatically the moment the conversation opens — no manual typing required |
 
 ### write_mode
 
-Controls what tool the LLM is given. A confirm chip always appears before any write executes — you can approve or cancel each operation.
+Controls what tool the LLM is given. Every note write shows a confirm chip first — you approve or cancel each one.
 
-- **`create`** (default) — exposes `create_note`. The LLM writes output to a new or specified vault note.
-- **`update`** — exposes `prepend_note`. The LLM prepends its output to the top of the source note, separated by `---`.
+- **`all`** (default, also when a conversation has no template) — every tool below; the model picks from what you ask.
+- **`create`** — exposes `create_note`. The LLM writes a new note; it can never overwrite an existing one.
+- **`update`** — exposes `prepend_note`. The LLM prepends its output to the top of a context note, separated by `---`.
 - **`rewrite`** — exposes `rewrite_note`. The LLM replaces the full content of a note that was provided as context. The path must match an attached context note — the LLM cannot invent a target.
+- **`stage`** — exposes `stage_text`. The LLM puts text in the **Ablage**, Pythia's one-item clipboard. Nothing is written to the vault, so there is no confirm chip: you insert it yourself, later, by right-clicking in any note → **Insert from Ablage** (or the `Insert from Ablage` command). Inserting empties the Ablage; a new item replaces the old one.
 - **`none`** — no write tool; the LLM responds in chat only.
 
 Use `rewrite` for editing workflows where Pythia should revise an existing document in place — e.g. "restructure this as a MECE outline" or "make this more concise". Use `update` for processing workflows where the AI result should live alongside the source material.

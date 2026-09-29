@@ -1,6 +1,6 @@
 import { App, TFile, parseYaml } from "obsidian";
-import type { PythiaTemplate, Provider, EffortLevel } from "../models/types";
-import { EFFORT_LEVELS } from "../models/types";
+import type { PythiaTemplate, Provider, EffortLevel, WriteMode } from "../models/types";
+import { EFFORT_LEVELS, WRITE_MODES } from "../models/types";
 import type { PythiaSettings } from "../settings";
 
 export class TemplateLoader {
@@ -73,10 +73,8 @@ export class TemplateLoader {
 				: [];
 
 			const rawWriteMode = fm.write_mode;
-			const validWriteMode: "update" | "create" | "none" | "rewrite" | "all" | undefined =
-				rawWriteMode === "update" || rawWriteMode === "create" || rawWriteMode === "none" || rawWriteMode === "rewrite" || rawWriteMode === "all"
-					? rawWriteMode
-					: undefined;
+			const validWriteMode: WriteMode | undefined =
+				(WRITE_MODES as readonly unknown[]).includes(rawWriteMode) ? rawWriteMode as WriteMode : undefined;
 
 			// Validate researchMode — must be a boolean if present.
 			const rawResearchMode = fm.research_mode;
@@ -119,6 +117,7 @@ export class TemplateLoader {
 				outputFolder: validOutputFolder,
 				writeMode: validWriteMode,
 				researchMode: validResearchMode,
+				...(fm.rewrite_preset === true ? { rewritePreset: true } : {}),
 				autoPrompt: validAutoPrompt,
 				systemPrompt: match[2].trim(),
 			};

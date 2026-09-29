@@ -8,6 +8,7 @@ import { describeErrorForLog } from "./redact";
 import { archiveFolderOf } from "./conversationArchive";
 import { formatBytes, storageLevel } from "./storageSize";
 import { mergeRenameLogs, normalizeRenameLog, type RenameLogEntry } from "./renameFollower";
+import { Ablage, mergeAblage, normalizeAblage, type AblageSlot } from "./ablage";
 import {
 	mergeSettings,
 	parseConversations,
@@ -42,6 +43,14 @@ export class PluginDataStore {
 	 *  another device can be put right after a sync (ADR-218 addendum). */
 	renameLog: RenameLogEntry[] = [];
 
+	/** The Ablage's one slot (ADR-246), kept in data.json beside the rename log. */
+	private ablageSlot: AblageSlot | undefined;
+	readonly ablage = new Ablage({
+		slot: () => this.ablageSlot,
+		setSlot: (slot) => { this.ablageSlot = slot; },
+		persist: () => this.persist(),
+	});
+
 	constructor(private readonly plugin: PythiaPlugin) {}
 
 	async loadPluginData(): Promise<void> {
@@ -52,6 +61,8 @@ export class PluginDataStore {
 		p.settings = mergeSettings(saved);
 		// Union, not replace: a sync must not drop the renames this device logged.
 		this.renameLog = mergeRenameLogs(this.renameLog, normalizeRenameLog(data.renameLog));
+		// The newer write wins, so an insert here is not undone by a stale sync.
+		this.ablageSlot = mergeAblage(this.ablageSlot, normalizeAblage(data.ablage));
 
 		const rawConversations = (data.conversations ?? []) as unknown[];
 		const { conversations: loaded, dropped } = parseConversations(rawConversations);
@@ -254,6 +265,7 @@ export class PluginDataStore {
 				settings: p.settings,
 				conversations: p.conversations,
 				renameLog: this.renameLog,
+				...(this.ablageSlot ? { ablage: this.ablageSlot } : {}),
 			});
 			// Stamp again on completion: saveData can take seconds on mobile, and the
 			// watcher's own-write window is measured from the stamp. Without this a

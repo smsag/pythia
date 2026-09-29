@@ -1,6 +1,6 @@
 import { Notice, TFile } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, EffortLevel, Provider, PythiaTemplate } from "../models/types";
+import type { Conversation, EffortLevel, Provider, PythiaTemplate, WriteMode } from "../models/types";
 import { resolveDefaultModelForProvider } from "../models/knownModels";
 import { todayISO } from "../utils";
 import { safeNoteName } from "./pathUtils";
@@ -79,7 +79,7 @@ export class ConversationService {
 		maxTokens?: number;
 		outputFolder?: string;
 		resumeMode?: "full" | "summary" | "hybrid";
-		writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+		writeMode?: WriteMode;
 		temperature?: number;
 		effort?: EffortLevel;
 		researchMode?: boolean;
