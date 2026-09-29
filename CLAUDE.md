@@ -743,7 +743,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Note anchors (ADR-249)
 
-- **An anchor is recognised by its ADDRESS, never its markup**: any `obsidian://pythia?…cmd=resume&id=…[&msg=…]` link in a note, including a pasted chapter link and the older `[↗ Name](…)` backlinks. `==…==` around it is the print fallback; Pythia paints it with the fork's accent ink instead. Never add a second way to tell an anchor from a link
+- **Which links are anchors is ONE rule, `isNoteAnchor`** (ADR-249 addendum): a Pythia resume link (`obsidian://pythia?…cmd=resume&id=…`) that points at a chapter (`msg=`) or is wrapped in `==` exactly. A plain `[↗ Name](…)` backlink to a whole conversation — what *Save to inbox* writes — is an ordinary link: no ink, no footnote, and it protects nothing from the history limit. Reading view, Live Preview and `findAnchors` all read the same rule; never add a second one
 - **A chapter link points at the USER message** that opens the chapter (`resumeDeepLink(id, vault, msgId)`, the one builder). A chapter that is gone opens its conversation and says so
 - **Every write into a note goes through the editor after an exact check**, as one undo step (ADR-178). An await between reading the selection and writing re-checks the range (`startLinkedConversation`). A selection that is not inline plain text on one line is refused, never repaired
 - **`[^pythia-…]` labels are reserved**: Pythia rewrites or removes every footnote with that prefix and nothing else — the author's footnotes, orphans included, are never touched. One label per target (`anchorLabel`); `footnoteText` is the ONE place the format is written (a test fails on `(Pythia` elsewhere)

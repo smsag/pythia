@@ -208,11 +208,11 @@ Marks nest; the innermost owns the tap (`ui/markTap.ts`).
 
 ### Note anchors (ADR-249) — surfaces in the NOTE, not the panel
 
-A passage in a vault note linked to a conversation or a chapter by its `obsidian://pythia?…cmd=resume&id=…[&msg=…]` address. The only Pythia marks that live outside the view, so their classes sit outside `.pythia-view`.
+A passage in a vault note linked to a conversation or a chapter: a Pythia resume link that points at a chapter (`msg=`) or is wrapped in `==` (`isNoteAnchor`, ADR-249 addendum). A plain backlink to a whole conversation is not one. The only Pythia marks that live outside the view, so their classes sit outside `.pythia-view`.
 
 | Surface | Class | Owner | Opened by |
 |---|---|---|---|
-| Anchor, Reading view | `a.external-link.p-note-anchor` (+ `mark.p-note-anchor-mark` when `==` wraps exactly it) | `ui/noteAnchorMarks.ts` (`decorateAnchorLinks`, a Markdown post-processor) | any resume link in a note |
+| Anchor, Reading view | `a.external-link.p-note-anchor` (+ `mark.p-note-anchor-mark` when `==` wraps exactly it) | `ui/noteAnchorMarks.ts` (`decorateAnchorLinks`, a Markdown post-processor) | a chapter link, or a resume link wrapped in `==` |
 | Anchor, Live Preview / source | `.p-note-anchor-lp` (`data-pythia-anchor` = the address) | `ui/noteAnchorMarks.ts` (`noteAnchorEditorExtension`) | the same link in the editor |
 | Anchor card | `.pythia-modal.p-anchor-card` → `-head`/`-icon`/`-label`/`-title`/`-body`/`-empty`/`-meta`/`-refresh`/`-open`, inside Obsidian's `.popover.hover-popover` | `ui/noteAnchorMarks.ts` (`NoteAnchorHover`, `renderAnchorCard`) | hovering an anchor (desktop; D-72) |
 | Copy chapter link | `.p-chapter-link` (`pb pb-icon is-inline`) in a user turn's `.p-turn-label`; `.p-nav-copy` on a navigator chapter row | `ui/chapterLink.ts`; `ui/NavigatorController.ts` | hover over the turn / the row (always shown on touch) |
@@ -378,6 +378,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-18 | `.p-model-hint` added to the UI map; D-28–D-30 (the optimizer's model suggestion, ADR-181). |
 | 2026-09-26 | ADR-225: D-60 now enforced in the selection toolbar (no Branch from a tab). |
 | 2026-09-29 | ADR-246/247: the Ablage and the rewrite presets added to the UI map; D-71 (the Ablage is one device-synced slot, not a history). |
+| 2026-09-29 | ADR-249 addendum: a note anchor is a chapter link or a `==`-wrapped link; the inbox's old conversation backlinks are not. |
 | 2026-09-29 | ADR-249: note anchors added to the UI map (the first Pythia surfaces that live in a note) and to the data model; D-72 (no card on a phone), D-73 (a pasted anchor is known once its note is read), D-74 (no "Linked from" banner), D-75 (Live Preview unverified in Obsidian). |
 | 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). ADR-233: D-63 closed — the resume setting preselects the dialog. |
 | 2026-09-27 | ADR-236: D-65 (a chart the model writes as a block is not checked for being worth drawing) recorded; D-66 (category labels thinned, not shortened) recorded and closed in the same ADR. |

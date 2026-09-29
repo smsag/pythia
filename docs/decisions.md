@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-249 (note anchors: a passage in a note linked to a conversation or a chapter by its `obsidian://pythia` address, painted with the fork's accent ink, previewed on hover, kept from eviction, and footnoted with the chapter's summary — in the note on request, in a print copy through `plugin.api`).*
+*Last updated: 2026-09-29 — ADR-249 addendum (a link counts as a note anchor only when it points at a chapter or is wrapped in `==`: the inbox's old backlinks stay ordinary links and protect nothing — `isNoteAnchor`).*
+
+*Previously: 2026-09-29 — ADR-249 (note anchors: a passage in a note linked to a conversation or a chapter by its `obsidian://pythia` address, painted with the fork's accent ink, previewed on hover, kept from eviction, and footnoted with the chapter's summary — in the note on request, in a print copy through `plugin.api`).*
 
 *Previously: 2026-09-29 — ADR-248 (a diagram container is a block, so a theme that centres it cannot cut its left edge off; the floor comes from the drawing's smallest label, 11px).*
 
@@ -5329,6 +5331,19 @@ Notable decisions inside the fixes:
 - *The copied chapter is not put in the Ablage* (the discussion said it would be). The Ablage holds one item (ADR-246), and copying a link would silently replace text the user or the model had staged there. It is held in memory for the session instead (`NoteAnchorService.copied`); the system clipboard gets the link as well.
 - *No long-press card on a phone* (D-72): a tap opens the chapter, which shows the same content.
 
-**Consequences.** Backlinks that *Save to inbox* and *Insert into note* wrote before this ADR are anchors too: once such a note is opened, the conversations it links to are protected from the history limit, show the accent ink, and are footnoted in print. That is the address rule working as decided — a link that points at nothing is what the protection prevents — and it is named in the cap dialog.
+**Consequences** (as first built; narrowed by the addendum below). Backlinks that *Save to inbox* and *Insert into note* wrote before this ADR are anchors too: once such a note is opened, the conversations it links to are protected from the history limit, show the accent ink, and are footnoted in print. That is the address rule working as decided — a link that points at nothing is what the protection prevents — and it is named in the cap dialog.
 
 **Guards.** `tests/noteAnchors.test.ts` (address, code masking, labels, selection rule, reconcile, data.json) · `tests/chapterSummary.test.ts` (fingerprint, the five states, prompt, empty reply) · `tests/anchorFootnotes.test.ts` (the format and its one builder, quote marks, hostile names, idempotent note edits, author footnotes untouched, renumbering, the print copy) · `tests/noteAnchorService.test.ts` (refresh outcomes incl. a chapter changed mid-call, the limit, abort, progress; the API is frozen and never writes; the setting) · `tests/noteAnchorUi.test.ts` (the copy controls, Reading-view marking, the card, the hover, both editor writes incl. a changed note) · `tests/deepLink.test.ts` (`msg=`) · `tests/conversationCap.test.ts` (an anchored conversation survives) · `tests/pathFields.test.ts` (the record follows a rename).
+
+### Addendum — which links count (2026-09-29, user decision)
+
+**Context.** Recognising every resume link made the `[↗ Name](obsidian://pythia?…cmd=resume&id=…)` backlink that *Save to inbox* and *Insert into note* have always written an anchor too. An inbox note collects one per save, so opening it once protected every conversation ever saved there from the history limit — and the limit is what keeps `data.json` small (ADR-174). It also painted those backlinks in accent and footnoted them in print.
+
+**Decision.** A Pythia resume link is a note anchor when it **points at a chapter (`msg=`) or is wrapped in `==` exactly** — `isNoteAnchor` in `services/noteAnchors.ts`, the one rule. `findAnchors` applies it (so the records, the footnotes and the print copy follow it), Reading view reads the `<mark>` that is exactly the link's parent, and the Live Preview decorator captures the `==` on each side of the match and paints only the link.
+- Everything the anchor feature writes still counts: *Start a linked conversation* and *Link selection* write `==[…](…)==`, and a copied chapter link carries `msg=` wherever it is pasted.
+- A plain link to a whole conversation is an ordinary link again: no ink, no card, no footnote, no protection. In a print copy it stays a link.
+- A record the first build made from such a link is dropped the next time its note is read (`reconcileNoteAnchors`), so an inbox opened under the old rule releases its conversations on the next open.
+
+**Consequence.** A conversation behind an old backlink can be evicted again, as before ADR-249 — archived to a note first (ADR-172); its backlink then opens nothing, and the deep link says so.
+
+**Guards.** `tests/noteAnchors.test.ts` (the rule's truth table; a backlink finds nothing; a conversation link inside a larger highlight is not wrapped) · `tests/noteAnchorUi.test.ts` (Reading view marks a pasted chapter link and a wrapped conversation link, not a backlink) · `tests/noteAnchorService.test.ts` (an inbox of backlinks records nothing, and an old record is dropped) · `tests/anchorFootnotes.test.ts` (a backlink prints as a link).

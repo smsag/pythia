@@ -64,16 +64,18 @@ describe("copy a chapter's link from the panel (ADR-249)", () => {
 });
 
 describe("a note anchor in Reading view", () => {
-	it("is marked by its address, with its == wrapper, and nothing else is", () => {
+	it("marks a chapter link or a wrapped link, with its == wrapper — and not an old backlink", () => {
 		const root = document.createElement("div");
 		root.innerHTML = `<p><mark><a class="external-link" href="${url("c1", "m1")}">cap</a></mark>`
-			+ ` <a class="external-link" href="${url("c2")}">plain</a>`
+			+ ` <a class="external-link" href="${url("c2", "m2")}">pasted chapter</a>`
+			+ ` <mark><a class="external-link" href="${url("c4")}">wrapped conversation</a></mark>`
+			+ ` <a class="external-link" href="${url("c2")}">↗ old backlink</a>`
 			+ ` <mark>more <a class="external-link" href="${url("c3")}">x</a></mark>`
 			+ ` <a class="external-link" href="obsidian://pythia?vault=v">open</a></p>`;
 		decorateAnchorLinks(root);
 		const links = root.querySelectorAll("a");
-		expect([...links].map((a) => a.classList.contains("p-note-anchor"))).toEqual([true, true, true, false]);
-		expect([...root.querySelectorAll("mark")].map((m) => m.classList.contains("p-note-anchor-mark"))).toEqual([true, false]);
+		expect([...links].map((a) => a.classList.contains("p-note-anchor"))).toEqual([true, true, true, false, false, false]);
+		expect([...root.querySelectorAll("mark")].map((m) => m.classList.contains("p-note-anchor-mark"))).toEqual([true, true, false]);
 	});
 });
 

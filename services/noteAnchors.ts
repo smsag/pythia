@@ -6,10 +6,11 @@ import type { Conversation, NoteAnchor } from "../models/types";
  *
  *   ==[the passage](obsidian://pythia?vault=V&cmd=resume&id=C&msg=M)==[^pythia-1a2b3c4d]
  *
- * A note anchor is RECOGNISED BY ITS ADDRESS, never by its markup: any
- * `obsidian://pythia?…cmd=resume&id=…` link is one, whether Pythia wrote it or
- * the user pasted a copied chapter link by hand. The `==` is the print fallback
- * for a reader without Pythia; the footnote carries the summary onto paper.
+ * A note anchor is a Pythia resume link (`obsidian://pythia?…cmd=resume&id=…`)
+ * that points at a chapter or is wrapped in `==` — `isNoteAnchor`, the one
+ * rule. Whether Pythia wrote it or the user pasted a copied chapter link by
+ * hand makes no difference. The `==` is also the print fallback for a reader
+ * without Pythia; the footnote carries the summary onto paper.
  *
  * Everything here is pure and works on a string, so the rules can be tested
  * without a vault: where the links are (never inside code), which label a
@@ -84,6 +85,19 @@ export function parseAnchorUrl(url: string): AnchorRef | null {
 	return msg ? { id, msg } : { id };
 }
 
+/**
+ * THE rule for which Pythia resume link is a note anchor (ADR-249 addendum): a
+ * link to a CHAPTER, or one wrapped in `==` exactly. A plain link to a whole
+ * conversation stays an ordinary link — that is the `[↗ Name](…)` backlink
+ * *Save to inbox* and *Insert into note* have always written, and counting it
+ * would protect every conversation ever saved to the inbox from the history
+ * limit. Everything the anchor feature itself writes passes: a copied chapter
+ * link carries `msg=`, and Pythia wraps what it links in `==`.
+ */
+export function isNoteAnchor(ref: AnchorRef, highlighted: boolean): boolean {
+	return !!ref.msg || highlighted;
+}
+
 /** Every anchor in `markdown`, in order. Links inside code are text. */
 export function findAnchors(markdown: string): AnchorMatch[] {
 	const masked = maskCode(markdown);
@@ -100,6 +114,7 @@ export function findAnchors(markdown: string): AnchorMatch[] {
 		// link — the user's, not part of this anchor, and neither is a footnote
 		// reference after it.
 		const highlighted = m[1] === "==" && m[4] === "==";
+		if (!isNoteAnchor(ref, highlighted)) continue;
 		const markupEnd = highlighted ? linkEnd + 2 : linkEnd;
 		const label = m[5] && (highlighted || !m[4]) ? m[5] : undefined;
 		out.push({
