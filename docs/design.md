@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-29 — ADR-243: a diagram SVG fills the column and shrinks to `--p-diag-floor` (0.625) of its natural width `--p-diag-w`, then scrolls in its frame; height follows the aspect ratio; never enlarged past natural size. The decorator no longer pins pixel width and height.*
+*Last updated: 2026-09-29 — ADR-244: `--p-diag-floor` is 0.9 (Vizardry's floor): readability before fit, a wider diagram scrolls.*
+
+*Previously: 2026-09-29 — ADR-243: a diagram SVG fills the column and shrinks to `--p-diag-floor` (0.625) of its natural width `--p-diag-w`, then scrolls in its frame; height follows the aspect ratio; never enlarged past natural size. The decorator no longer pins pixel width and height.*
 
 *Previously: 2026-09-28 — ADR-242: diagram rules target `div.mermaid` (what Obsidian draws) and exclude `.vizardry-canvas`.*
 
