@@ -40,7 +40,9 @@ export interface SchreibstubeHit {
 	item?: string;
 }
 
-export type SchreibstubeStatus = "off" | "loading" | "partial" | "ready";
+/** "unavailable": nothing changes until the person acts in Schreibstube — its
+ *  build failed or is paused, or a phone waits for the desktop's index. */
+export type SchreibstubeStatus = "off" | "loading" | "unavailable" | "partial" | "ready";
 export type SchreibstubeConsent = "pending" | "allowed" | "denied";
 
 interface QueryOptions {
@@ -162,6 +164,21 @@ export function sourceChanges(
 	return { changed, removed, cursor: JSON.stringify(now) };
 }
 
+/** What the vault-context settings say about Schreibstube, in the order a
+ *  person can act on it: allow Pythia, fix Schreibstube, wait, or install it. */
+export type SchreibstubeState = "ready" | "pending" | "unavailable" | "loading" | "missing";
+
+export function schreibstubeState(
+	consent: SchreibstubeConsent | null,
+	status: SchreibstubeStatus | null
+): SchreibstubeState {
+	if (consent === "pending" || consent === "denied") return "pending";
+	if (status === "partial" || status === "ready") return "ready";
+	if (status === "unavailable") return "unavailable";
+	if (status === "loading") return "loading";
+	return "missing";
+}
+
 export interface SchreibstubeLinkHost {
 	app: App;
 	conversations(): Conversation[];
@@ -196,17 +213,27 @@ export class SchreibstubeLink {
 		return api;
 	}
 
-	/** Schreibstube's API if search by meaning can answer here and now. */
-	private api(): SchreibstubeApi | null {
+	/** How much Schreibstube's search by meaning can answer; null when it is
+	 *  not there to ask. */
+	status(): SchreibstubeStatus | null {
 		const api = this.reach();
-		if (!api) return null;
+		return api ? this.statusOf(api) : null;
+	}
+
+	private statusOf(api: SchreibstubeApi): SchreibstubeStatus | null {
 		try {
-			const status = api.status();
-			return status === "partial" || status === "ready" ? api : null;
+			return api.status();
 		} catch (e) {
 			this.host.log("schreibstube: could not ask its status", e);
 			return null;
 		}
+	}
+
+	/** Schreibstube's API if search by meaning can answer here and now. */
+	private api(): SchreibstubeApi | null {
+		const api = this.reach();
+		const status = api ? this.statusOf(api) : null;
+		return status === "partial" || status === "ready" ? api : null;
 	}
 
 	/** Whether search by meaning is available — the check the search view makes. */

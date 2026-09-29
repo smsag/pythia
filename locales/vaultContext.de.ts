@@ -11,6 +11,8 @@ const vaultContextDe: typeof vaultContextEn = {
 	vaultContextSourcePending:    "Schreibstube ist da, darf Pythias Unterhaltungen aber noch nicht lesen. Erlaube Pythia unter Einstellungen → Schreibstube → Suche nach Bedeutung → Quellen anderer Plugins; bis dahin bleiben verwandte Unterhaltungen und die Suche nach Bedeutung leer.",
 	schreibstubeSourceLabel:      "Unterhaltung in Pythia",
 	schreibstubeSourcePlural:     "Pythia-Unterhaltungen",
+	vaultContextSourceLoading:    "Schreibstube liest oder baut gerade ihren Index. Vault-Kontext und verwandte Unterhaltungen beginnen, sobald sie antworten kann; hier ist nichts zu tun.",
+	vaultContextSourceUnavailable: "Schreibstubes Suche nach Bedeutung kann erst antworten, wenn du dort nachsiehst: Der Aufbau des Index ist fehlgeschlagen oder pausiert, oder dieses Telefon wartet auf den Index vom Desktop. Einstellungen → Schreibstube → Suche nach Bedeutung sagt, was davon.",
 	vaultContextSourceMissing:    "Nicht verfügbar. Vault-Kontext und verwandte Unterhaltungen brauchen Schreibstube mit eingeschalteter Suche nach Bedeutung; ohne sie gehen Nachrichten mit den angehängten Notizen hinaus, und die Gesprächssuche schaut auf die Titel.",
 	vaultContextEnabledName:      "Standardmäßig aktivieren",
 	vaultContextEnabledDesc:      "Relevante Vault-Notizen in neue Unterhaltungen holen. Pro Unterhaltung auch über die Eingabe-Toolbar umschaltbar (Bibliothek-Symbol).",
