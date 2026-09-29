@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import type { App } from "obsidian";
 import type { Conversation } from "../models/types";
-import { readSchreibstubeApi, SchreibstubeLink, toSourceItem } from "../services/schreibstubeLink";
+import {
+	MAX_SOURCE_ITEMS,
+	readSchreibstubeApi,
+	SchreibstubeLink,
+	sourceChanges,
+	toSourceItem,
+} from "../services/schreibstubeLink";
 
 function fakeApi(over: Record<string, unknown> = {}) {
 	return {
@@ -25,8 +31,7 @@ type Registered = {
 	label: string;
 	icon: string;
 	list(): unknown[];
-	ids(): unknown[];
-	changedSince(since: number): unknown[];
+	changes(cursor: string | null): { changed: unknown[]; removed: string[]; cursor: string };
 	open(id: string): void;
 	link(id: string): string;
 };
@@ -129,13 +134,31 @@ describe("SchreibstubeLink", () => {
 		expect(source.link("c1")).toBe("obsidian://pythia?vault=Tresor&cmd=resume&id=c1");
 	});
 
-	it("hands over only what changed since a moment, and every id", () => {
+	it("hands over only what changed since its cursor", () => {
 		const api = fakeApi();
 		link(api).available();
 		const source = registered(api);
-		expect(source.ids()).toEqual(["c1"]);
-		expect(source.changedSince(Date.parse("2026-01-01T00:00:00.000Z"))).toEqual([toSourceItem(conversation)]);
-		expect(source.changedSince(Date.parse("2026-03-01T00:00:00.000Z"))).toEqual([]);
+		const first = source.changes(null);
+		expect(first.changed).toEqual([toSourceItem(conversation)]);
+		expect(first.removed).toEqual([]);
+		expect(source.changes(first.cursor)).toEqual({ changed: [], removed: [], cursor: first.cursor });
+	});
+
+	it("does not register again with an API object that refused it", () => {
+		const log = vi.fn();
+		const api = fakeApi({ registerSource: vi.fn(() => { throw new Error("no"); }) });
+		const l = new SchreibstubeLink({
+			app: appWith(api),
+			conversations: () => [conversation],
+			onConversationsChanged: () => () => undefined,
+			openConversation,
+			log,
+		});
+		l.available();
+		l.available();
+		expect(api.registerSource).toHaveBeenCalledTimes(1);
+		expect(log).toHaveBeenCalledTimes(1);
+		expect(l.consent()).toBeNull();
 	});
 
 	it("lets the old registration go when Schreibstube is loaded again", () => {
@@ -203,5 +226,45 @@ describe("SchreibstubeLink", () => {
 		link(api).available();
 		registered(api).open("c7");
 		expect(openConversation).toHaveBeenCalledWith("c7");
+	});
+});
+
+describe("sourceChanges", () => {
+	const conv = (id: string, updatedAt: string, over: Record<string, unknown> = {}) =>
+		({ id, name: id, updatedAt, summaryText: "", messages: [{ content: id }], ...over }) as unknown as Conversation;
+
+	it("reports a conversation dated before, or far after, everything read so far", () => {
+		const list = [conv("a", "2026-05-01T00:00:00.000Z"), conv("future", "2999-01-01T00:00:00.000Z")];
+		const { cursor } = sourceChanges(list, null);
+		list.push(conv("old", "2001-01-01T00:00:00.000Z"));
+		const next = sourceChanges(list, cursor);
+		expect(next.changed.map((i) => i.id)).toEqual(["old"]);
+	});
+
+	it("reports a renamed, answered or re-summarised conversation, and one that went", () => {
+		const list = [conv("a", "2026-05-01T00:00:00.000Z"), conv("b", "2026-05-02T00:00:00.000Z")];
+		const { cursor } = sourceChanges(list, null);
+		const edited = [conv("a", "2026-05-01T00:00:00.000Z", { name: "Neu" })];
+		expect(sourceChanges(edited, cursor)).toMatchObject({ changed: [{ id: "a" }], removed: ["b"] });
+		const noted = [conv("a", "2026-05-01T00:00:00.000Z", { contextNotes: ["x.md"] }), list[1]!];
+		expect(sourceChanges(noted, cursor).changed.map((i) => i.id)).toEqual(["a"]);
+	});
+
+	it("takes a cursor it cannot read as a first listing", () => {
+		const list = [conv("a", "2026-05-01T00:00:00.000Z")];
+		for (const cursor of ["nicht json", "[1]", "null", 42]) {
+			expect(sourceChanges(list, cursor).changed.map((i) => i.id)).toEqual(["a"]);
+		}
+	});
+
+	it("hands over the newest conversations only, with a bounded cursor", () => {
+		const list = Array.from({ length: MAX_SOURCE_ITEMS + 5 }, (_, i) =>
+			conv(`c-${String(i).padStart(4, "0")}-${"x".repeat(30)}`, new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString())
+		);
+		const first = sourceChanges(list, null);
+		expect(first.changed).toHaveLength(MAX_SOURCE_ITEMS);
+		expect(first.changed.map((i) => i.id)).not.toContain(list[0]!.id);
+		expect(first.cursor.length).toBeLessThan(256 * 1024);
+		expect(sourceChanges(list, first.cursor).changed).toEqual([]);
 	});
 });
