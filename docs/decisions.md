@@ -1,6 +1,6 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-251 (Schreibstube's API version 2: Pythia registers its conversations as one source among others, with a kind, labels, an icon, a link and incremental listing, and is read only once the person allows it in Schreibstube; hits carry `source` and `item`, and a score that is relevance against the kind's floor).*
+*Last updated: 2026-09-29 — ADR-251 (Schreibstube's API version 2: Pythia registers its conversations as one source among others, with a kind, labels, an icon, a link and incremental listing by a cursor of its own, and is read only once the person allows it in Schreibstube; hits carry `source` and `item`, and a score that is relevance against the kind's floor).*
 
 *Previously: 2026-09-29 — ADR-250 (answer citations: a template with `cite_answers: true` numbers the conversation's answers; the model cites `⟦cite:answer:n⟧`, Pythia resolves it, and a note gets a footnote linking the answer; records are made when a note is written and dropped when it is deleted; Retry and delete withheld on a cited answer; the delete dialog names linking notes).*
 
@@ -5394,7 +5394,8 @@ Notable decisions inside the fixes:
 **Decision.** `SchreibstubeLink` speaks version 2 and nothing else.
 
 - Pythia registers as source `pythia` with `kind: "conversation"`, the labels a Schreibstube row and section show (in Pythia's language), the `pythia` icon of Schreibstube's set, `open(id)` and `link(id)` — the same resume link as everywhere else (`resumeDeepLink`).
-- It also gives `ids()` and `changedSince(since)`, so after the first listing Schreibstube asks for the conversations changed since its newest `updatedAt` instead of every message of every conversation again.
+- It also gives `changes(cursor)`, so after the first listing Schreibstube asks for the conversations changed since the cursor Pythia gave last instead of every message of every conversation again. The cursor is Pythia's own — each conversation's fingerprint of what Schreibstube reads (title, summary, message count, attached notes, `updatedAt`) — not a time, so a conversation synced in from another device with an older date, or one dated in the future, is still reported (`sourceChanges`). A cursor Pythia cannot read counts as a first listing. It covers the newest 1 000 conversations (`MAX_SOURCE_ITEMS`), as many as Schreibstube indexes of one source, which keeps it far below Schreibstube's 256 KB bound.
+- A registration Schreibstube refuses is not retried with the same API object: each search would only log the refusal again. The next Schreibstube load is asked afresh.
 - It registers whenever Schreibstube is there, even while search by meaning is still loading, so the person is asked once, early, and not after a first empty search.
 - `available()` is `status()` being `partial` or `ready`: a partly built index answers. `consent()` says whether the person allowed Pythia; the vault-context settings row says *waiting for your permission in Schreibstube* while it is `pending` or `denied`.
 - Every question names `sources: ["pythia"]` and reads a hit's `item`, since another source may use the same ids and the `id` of a hit is now `pythia:<id>`.
@@ -5402,4 +5403,4 @@ Notable decisions inside the fixes:
 **Consequence.** A hit's `score` is relevance read against the floor Schreibstube measured for its kind, 0 to 1, not a raw cosine; Pythia only sorts by it, so nothing changes on screen. The first desktop sync after the update embeds Pythia's conversations once more, into Schreibstube's new per-source file.
 
 
-**Guards.** `tests/schreibstubeLink.test.ts` (version 2 only; available on `partial` and `ready`; registers while Schreibstube still loads; `consent()`; the kind, icon and resume link registered; `ids` and `changedSince`; the old registration released when Schreibstube reloads; only `pythia` items kept from a search and from related, by `item`).
+**Guards.** `tests/schreibstubeLink.test.ts` (version 2 only; available on `partial` and `ready`; registers while Schreibstube still loads; `consent()`; the kind, icon and resume link registered; `changes` by cursor — an older or future-dated conversation reported, an edit, a new note and a removal reported, an unreadable cursor read as a first listing, the newest 1 000 only; a refused registration not retried; the old registration released when Schreibstube reloads; only `pythia` items kept from a search and from related, by `item`).

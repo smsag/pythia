@@ -25,6 +25,10 @@ export const RELATED_RESULT_LIMIT = 20;
 /** The name Pythia registers under, which Schreibstube holds to the plugin id. */
 const SOURCE_ID = "pythia";
 
+/** Conversations handed over at most, newest first: Schreibstube indexes no
+ *  more of one source, and the cursor stays far below its 256 KB bound. */
+export const MAX_SOURCE_ITEMS = 1000;
+
 export interface SchreibstubeHit {
 	kind: string;
 	id: string;
@@ -102,6 +106,62 @@ function updatedAtOf(conv: Conversation): number {
 	return Number.isFinite(updated) ? updated : 0;
 }
 
+/** The conversations Schreibstube is given, newest first. */
+function handedOver(conversations: Conversation[]): Conversation[] {
+	return [...conversations].sort((a, b) => updatedAtOf(b) - updatedAtOf(a)).slice(0, MAX_SOURCE_ITEMS);
+}
+
+/** A short fingerprint of what Schreibstube reads of a conversation. It is
+ *  compared, never trusted, so a collision costs one missed re-embed at worst;
+ *  the message count stands in for the texts, which change only with it or
+ *  with `updatedAt`. */
+function fingerprint(conv: Conversation): string {
+	const item = toSourceItem(conv);
+	const text = [item.updatedAt, item.title, item.messages.length, item.summary, item.notes.join("\n")].join("\u0000");
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) {
+		hash ^= text.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+function readCursor(cursor: unknown): Map<string, string> {
+	const seen = new Map<string, string>();
+	if (typeof cursor !== "string") return seen;
+	try {
+		const parsed: unknown = JSON.parse(cursor);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return seen;
+		for (const [id, print] of Object.entries(parsed)) if (typeof print === "string") seen.set(id, print);
+	} catch {
+		// A cursor Pythia cannot read is a first listing: everything is new.
+	}
+	return seen;
+}
+
+/**
+ * What changed since `cursor`, Schreibstube's incremental listing. The cursor
+ * is Pythia's own: each conversation's fingerprint, so a conversation synced
+ * in from another device, or with a clock ahead, is reported all the same —
+ * a timestamp would have hidden both.
+ */
+export function sourceChanges(
+	conversations: Conversation[],
+	cursor: unknown
+): { changed: ReturnType<typeof toSourceItem>[]; removed: string[]; cursor: string } {
+	const before = readCursor(cursor);
+	const now: Record<string, string> = {};
+	const changed: ReturnType<typeof toSourceItem>[] = [];
+	for (const conv of handedOver(conversations)) {
+		if (typeof conv.id !== "string" || conv.id.length === 0) continue;
+		const print = fingerprint(conv);
+		now[conv.id] = print;
+		if (before.get(conv.id) !== print) changed.push(toSourceItem(conv));
+	}
+	const removed = [...before.keys()].filter((id) => !Object.hasOwn(now, id));
+	return { changed, removed, cursor: JSON.stringify(now) };
+}
+
 export interface SchreibstubeLinkHost {
 	app: App;
 	conversations(): Conversation[];
@@ -176,20 +236,20 @@ export class SchreibstubeLink {
 				label: t("schreibstubeSourceLabel"),
 				plural: t("schreibstubeSourcePlural"),
 				icon: "pythia",
-				list: () => host.conversations().map(toSourceItem),
-				// Asked after the first listing: which conversations exist, and
-				// the ones changed since — not every message of every one again.
-				ids: () => host.conversations().map((conv) => conv.id),
-				changedSince: (since: number) =>
-					host.conversations().filter((conv) => updatedAtOf(conv) > since).map(toSourceItem),
+				list: () => handedOver(host.conversations()).map(toSourceItem),
+				// Asked instead of list() once Schreibstube holds a cursor: the
+				// conversations changed since, not every message of every one.
+				changes: (cursor: string | null) => sourceChanges(host.conversations(), cursor),
 				onChanged: (cb: () => void) => host.onConversationsChanged(cb),
 				open: (id: string) => host.openConversation(id),
 				link: (id: string) => resumeDeepLink(id, host.app.vault.getName()),
 			});
-			this.registeredWith = api;
 		} catch (e) {
 			host.log("schreibstube: could not register the conversations", e);
 		}
+		// A refusal is this API object's answer, not a hiccup: asked again on
+		// every search it would only log again, until Schreibstube reloads.
+		this.registeredWith = api;
 	}
 
 	private release(): void {
