@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-28 — ADR-242: diagram rules target `div.mermaid` (what Obsidian draws) and exclude `.vizardry-canvas`.*
+*Last updated: 2026-09-29 — ADR-243: a diagram SVG fills the column and shrinks to `--p-diag-floor` (0.625) of its natural width `--p-diag-w`, then scrolls in its frame; height follows the aspect ratio; never enlarged past natural size. The decorator no longer pins pixel width and height.*
+
+*Previously: 2026-09-28 — ADR-242: diagram rules target `div.mermaid` (what Obsidian draws) and exclude `.vizardry-canvas`.*
 
 *Previously: 2026-09-28 — ADR-241: the settings tab's **Links and shortcuts** section; `.pythia-link-preview` shows each link whole under its description (`--font-monospace`, `user-select: all`, `word-break: break-all`), copied by a labelled **Copy link** button (`copyTextFromLabel` in `ui/clipboard.ts`: the word reads "Copied" for a moment, then returns — an icon alone was easy to miss). Three rows: open · new conversation · ask (ends in `&text=`).*
 

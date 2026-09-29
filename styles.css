@@ -1637,13 +1637,22 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas))::-webkit-scrollbar-track { background: transparent; }
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas))::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 2px; }
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)).p-panning                { cursor: grabbing; user-select: none; }
-/* JS stamps explicit pixel width from viewBox/attributes onto the SVG.
-   Override any renderer-set width:100% so the SVG uses its natural size
-   and the container scrolls rather than squashing the diagram. */
+/* The decorator stamps the drawing's natural width as --p-diag-w. The drawing
+   fills the column, shrinks to a readability floor and scrolls below it, and
+   is never enlarged past its natural size — Vizardry's SVG rule. Height follows
+   the aspect ratio. --p-diag-floor is the share of natural size it may shrink
+   to (Mermaid's 16px labels read at ~10px at 0.625); a CSS snippet may tune it. */
+.p-ai-body { --p-diag-floor: 0.625; }
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) svg {
-  width: auto !important;
   max-width: none !important;
   display: block;
+}
+.p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) svg.p-diag-svg {
+  width: 100% !important;
+  min-width: calc(var(--p-diag-w) * var(--p-diag-floor));
+  max-width: var(--p-diag-w) !important;
+  height: auto !important;
+  margin: 0 auto;
 }
 
 /* ── Wide table scroll containers ───────────────────────────────── */

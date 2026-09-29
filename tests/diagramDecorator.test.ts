@@ -39,8 +39,9 @@ describe("Obsidian's Mermaid", () => {
 		decorateCodeBlocks(root, new WeakMap());
 		const svg = root.querySelector<SVGElement>(".mermaid > svg")!;
 		expect(root.querySelector<HTMLElement>(".mermaid")!.dataset.decorated).toBe("1");
-		expect(svg.style.getPropertyValue("width")).toBe("2400px");
-		expect(svg.style.getPropertyValue("max-width")).toBe("none");
+		expect(svg.style.getPropertyValue("--p-diag-w")).toBe("2400px");
+		expect(svg.classList.contains("p-diag-svg")).toBe(true);
+		expect(svg.style.getPropertyValue("height")).toBe("");
 	});
 
 	it("a pending block is not framed as code, and is sized when Obsidian swaps it in", async () => {
@@ -50,7 +51,7 @@ describe("Obsidian's Mermaid", () => {
 
 		root.querySelector("pre")!.replaceWith(html(DRAWN_MERMAID).firstElementChild!);
 		await flush();
-		expect(root.querySelector<SVGElement>(".mermaid > svg")!.style.getPropertyValue("width")).toBe("2400px");
+		expect(root.querySelector<SVGElement>(".mermaid > svg")!.style.getPropertyValue("--p-diag-w")).toBe("2400px");
 	});
 
 	it("an untrusted vault's guard keeps its source block as Obsidian drew it", () => {
@@ -86,6 +87,6 @@ describe("the diagram's own SVG", () => {
 		decorateCodeBlocks(root, new WeakMap());
 		const [icon, drawing] = Array.from(root.querySelectorAll<SVGElement>("svg"));
 		expect(icon.getAttribute("style")).toBeNull();
-		expect(drawing.style.getPropertyValue("width")).toBe("1200px");
+		expect(drawing.style.getPropertyValue("--p-diag-w")).toBe("1200px");
 	});
 });
