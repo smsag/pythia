@@ -1,16 +1,18 @@
 import { type App, Component, MarkdownRenderer } from "obsidian";
 import { blockRemoteMedia, deferRemoteMedia } from "./remoteMedia";
+import { compactMermaid } from "./mermaidSpacing";
 import { decorateTables } from "./tableDecorator";
 
 /**
  * Render MODEL-PRODUCED markdown: the one door every answer, summary, anchor
  * and pin goes through, so no remote image or media loads until the user asks
- * (ui/remoteMedia.ts). Rejects as `MarkdownRenderer.render` does; the caller
+ * (ui/remoteMedia.ts), and a Mermaid diagram is laid out compactly
+ * (ui/mermaidSpacing.ts). Rejects as `MarkdownRenderer.render` does; the caller
  * decides what a failed render says.
  */
 export async function renderAnswerMarkdown(app: App, md: string, el: HTMLElement, component: Component): Promise<void> {
 	try {
-		await MarkdownRenderer.render(app, deferRemoteMedia(md), el, "", component);
+		await MarkdownRenderer.render(app, compactMermaid(deferRemoteMedia(md)), el, "", component);
 	} finally {
 		blockRemoteMedia(el);
 	}

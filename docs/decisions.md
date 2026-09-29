@@ -1,6 +1,12 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-28 — ADR-242 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
+*Last updated: 2026-09-29 — ADR-245 (a Mermaid diagram is laid out with tighter spacing: less whitespace, same text size; display only).*
+
+*Previously: 2026-09-29 — ADR-244 (the diagram floor is 0.9, Vizardry's: readability before fit, a wider diagram scrolls).*
+
+*Previously: 2026-09-29 — ADR-243 (a diagram fills the column and shrinks to a readability floor instead of being pinned to its natural size: `--p-diag-w` / `--p-diag-floor`, Vizardry's SVG rule).*
+
+*Previously: 2026-09-28 — ADR-242 (a Mermaid diagram in an answer is drawn at its natural size and scrolls: Pythia now targets the `div.mermaid` Obsidian actually produces, and leaves a Vizardry canvas to lay itself out).*
 
 *Previously: 2026-09-28 — ADR-241 (the shortcut link: `obsidian://pythia?vault=…&new=true`, a checked and bounded `text`, waiting for the workspace, and a Links and shortcuts settings section).*
 
@@ -5186,3 +5192,42 @@ Notable decisions inside the fixes:
 
 **Guards.** `tests/diagramDecorator.test.ts` — Obsidian's real Mermaid markup is sized, a pending block is not framed and is sized on swap, the guard is left alone, a Vizardry canvas gets no stamp and no diagram rule, and an icon ahead of the drawing is never the SVG sized. All six fail against the previous decorator.
 
+## ADR-243 — A diagram fills the column and shrinks to a floor, instead of being pinned to its natural size
+
+**Context.** ADR-242 fixed Mermaid being shrunk to unreadable by pinning the drawing's `width` and `height` to its `viewBox`. In a narrow sidebar that trades one problem for another: measured in Chromium with Mermaid 11 in a 376px column, a flowchart drew at 1051 × 770 px and a sequence diagram at 893 × 363 px. Mermaid lays out sparsely, so at 1:1 most of what is visible is the gap between nodes, the block is tall, and the reader sees the left third. The report was "too much whitespace" after 3.6.1.
+
+**Decision.**
+- **`stampSvgSize` states a fact, CSS decides the layout.** The decorator stamps only the natural width as `--p-diag-w` (and adds `p-diag-svg`; a missing `viewBox` is synthesised from a known width and height). It pins no width or height.
+- **The rule is Vizardry's SVG rule** (`.vzd-wardley-svg`, `.vzd-cmap-svg`): `width: 100%; min-width: calc(var(--p-diag-w) * var(--p-diag-floor)); max-width: var(--p-diag-w); height: auto; margin: 0 auto`. It fills the column, shrinks to a floor, scrolls in the existing frame below it, is never enlarged past its natural size, and its height follows the aspect ratio.
+- **`--p-diag-floor` is 0.625**, set on `.p-ai-body`: Mermaid's 16px labels read at about 10px, the size Vizardry accepts at its own floor. It is a custom property so a CSS snippet can tune it without a release. Measured at 376px: floor 1.0 → 770px tall, 0.75 → 577, **0.625 → 481**, 0.5 → 385 (labels ~8px).
+- **A drawing whose height is unknown** (no `viewBox`, a width only) keeps the old pinned pixel size: with no aspect ratio, `height:auto` would collapse it.
+- A Vizardry canvas is still left alone (ADR-242); this changes only what Pythia does to Mermaid, PlantUML and other `block-language-*` SVGs.
+
+**Not verified.** Obsidian itself and iOS WebKit (`height:auto` on an SVG with a `viewBox`); the harness was Chromium. Whether 0.625 is the right floor for real answers is a judgement to tune with the property.
+
+**Guards.** `tests/diagramDecorator.test.ts` — the drawn and swapped-in Mermaid get `--p-diag-w` and `p-diag-svg` and no pinned height; an icon ahead of the drawing is never the one sized.
+
+## ADR-244 — Readability before fit: the diagram floor is Vizardry's 0.9
+
+**Context.** ADR-243 set `--p-diag-floor` to 0.625 so a wide Mermaid diagram scrolled less, at the cost of 16px labels shrinking to about 10px. The user's stated priority is the other way round: sideways scrolling is fine, readability comes first.
+
+**Decision.** `--p-diag-floor` is **0.9** — the floor Vizardry's SVG canvases already use (`min-width` = 90% of the design width), so Mermaid, PlantUML and Vizardry share one rule and labels stay at about 14px. A diagram wider than that scrolls in its frame. Measured at 376px with Mermaid 11: the reported flowchart draws at 946 × 693 (was 657 × 481 at 0.625).
+
+**Consequence.** Whitespace from Mermaid's sparse layout is not a sizing problem and is no longer traded against legibility; making a diagram more compact belongs to Mermaid's own spacing (`nodeSpacing`, `rankSpacing`), explored separately.
+
+**Guards.** `tests/diagramDecorator.test.ts` fails if the floor drops below 0.9.
+
+## ADR-245 — A Mermaid diagram is laid out compactly, not drawn smaller
+
+**Context.** With readability first (ADR-244), a diagram is not shrunk to fit, so the whitespace in a sidebar comes from Mermaid's own layout: 50px between nodes and between ranks. Scaling cannot remove it without shrinking the text.
+
+**Decision.**
+- `compactMermaid` (`ui/mermaidSpacing.ts`) puts one `%%{init}%%` line at the top of every ```` ```mermaid ```` / `~~~mermaid` block: flowchart `nodeSpacing 30 · rankSpacing 35 · padding 8`, sequence `actorMargin 20 · messageMargin 20 · boxMargin 5 · diagramMargin 10/5`.
+- **Measured** with Mermaid 11: the reported flowchart 1051 × 770 → **783 × 611**; a four-participant sequence diagram 878 × 363 → **708 × 323**. Labels unchanged, no overlaps. A tighter setting (20/25) reached 685 × 537 but crowds edge labels, so the moderate one ships.
+- **Display only.** Applied inside `renderAnswerMarkdown` on the way into the renderer, never to `Message.content`: Copy, Save to note and the archive keep the source as the model wrote it, so a diagram in a vault note draws with Obsidian's default spacing.
+- **The author wins.** A block whose first line is `%%{` or frontmatter `---` is left alone.
+- An `init` directive rather than frontmatter `config:` because it works across the Mermaid versions Obsidian has shipped.
+
+**Not verified.** Inside Obsidian (that its Mermaid honours the directive); measured in a Chromium harness with Mermaid 11.
+
+**Guards.** `tests/mermaidSpacing.test.ts`: the line is added, a configured block and other fences are untouched.
