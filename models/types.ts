@@ -17,6 +17,12 @@ export type OutputLanguage = "obsidian" | "auto" | "de" | "en" | "it" | "es";
  *  the per-conversation override so the two lists cannot drift apart. */
 export const OUTPUT_LANGUAGES: OutputLanguage[] = ["obsidian", "auto", "de", "en", "it", "es"];
 
+/** Which write tool the model gets (README → write_mode). `stage` writes no
+ *  note: it fills the Ablage, Pythia's one-item clipboard (ADR-246). The ONE
+ *  list — the template reader and data.json validation read it. */
+export const WRITE_MODES = ["update", "create", "none", "rewrite", "stage", "all"] as const;
+export type WriteMode = typeof WRITE_MODES[number];
+
 export interface Conversation {
 	id: string;
 	name: string;
@@ -50,7 +56,7 @@ export interface Conversation {
 	forkedFromOccurrenceIndex?: number; // which occurrence of the selection within the source message
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
-	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	writeMode?: WriteMode;
 	/**
 	 * The theme this conversation files its terms under (ADR-150).
 	 *
@@ -296,8 +302,9 @@ export interface PythiaTemplate {
 	contextNotes: string[];
 	resumeMode?: "full" | "summary" | "hybrid";
 	outputFolder?: string;    // "." = same folder as the active note at creation time
-	writeMode?: "update" | "create" | "none" | "rewrite" | "all";
+	writeMode?: WriteMode;
 	researchMode?: boolean;   // preset the web_search research toggle for new conversations
+	rewritePreset?: boolean;  // `rewrite_preset: true` — offered in "Rewrite with Pythia as…" (ADR-247)
 	autoPrompt?: string;      // message auto-sent when the conversation opens
 	systemPrompt: string;
 }

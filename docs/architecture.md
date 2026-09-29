@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-29 — ADR-245: new `ui/mermaidSpacing.ts` (`compactMermaid`), applied inside `renderAnswerMarkdown` after `deferRemoteMedia`; the stored message is unchanged.*
+*Last updated: 2026-09-29 — ADR-246/247: `services/ablage.ts` (one slot in data.json, owned by `PluginDataStore`, exposed as `plugin.ablage`); `stage_text` intercepted in `ToolCallController.runStage`; `ui/ablageEntries.ts` (editor menu + command); `WRITE_MODES`/`WriteMode` in `models/types.ts`; `ui/rewritePresets.ts` + `suggest/RewritePresetModal.ts` behind `rewrite-selection-as`.*
+
+*Previously: 2026-09-29 — ADR-245: new `ui/mermaidSpacing.ts` (`compactMermaid`), applied inside `renderAnswerMarkdown` after `deferRemoteMedia`; the stored message is unchanged.*
 
 *Previously: 2026-09-28 — ADR-241: the shortcut link. `services/deepLink.ts` gains `linkText` (the one check of a link's `text`), `wantsNewConversation` (the `new` flag) and `host.ready()`, awaited before any action; `utils.ts` gains `pythiaLink`; new settings section `ui/settings/links.ts`.*
 

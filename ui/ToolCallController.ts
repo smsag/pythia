@@ -2,7 +2,7 @@ import { Notice, type App } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message, NoteWrite, ToolCall } from "../models/types";
 import { t } from "../i18n";
-import { ToolHandler } from "../services/ToolHandler";
+import { declaresPythiaTemplate, ToolHandler } from "../services/ToolHandler";
 import type { WebErrorKind, WebSource } from "../services/WebSearchService";
 import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
 import { parseCitations, resolveWebCitations, webDomain, type CitationSource } from "../services/citations";
@@ -13,6 +13,7 @@ import { fillNoteWriteChip } from "./noteLinks";
 import { noteBasename } from "../services/pathUtils";
 import { acceptChartCall, type PendingChartBlock } from "../services/chartSpec";
 import { favoritePassages } from "../services/favoriteHighlights";
+import { ABLAGE_MAX_CHARS } from "../services/ablage";
 import type { ToolCallHandler } from "../services/LLMProvider";
 
 export interface ToolCallDeps {
@@ -143,6 +144,7 @@ export class ToolCallController {
 				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
 			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope, autoCue);
+			if (call.name === "stage_text") return this.runStage(call, conv, researchActive);
 			return this.runWrite(call, conv, researchActive, signal);
 		};
 	}
@@ -176,6 +178,38 @@ export class ToolCallController {
 			searchChip.addClass(failed ? "pythia-tool-call--error" : "pythia-tool-call--done");
 			searchChip.createSpan({ cls: "pythia-tool-call-label", text: failed ? labels.failed : labels.done });
 		}
+	}
+
+	/**
+	 * stage_text fills the Ablage (ADR-246). No note is written, so there is
+	 * nothing to confirm: the user's insert, later, is the gesture. The web
+	 * results so far travel with the text, so its citations become footnotes
+	 * numbered around the target note's own when it is inserted.
+	 */
+	private async runStage(call: ToolCall, conv: Conversation, researchActive: boolean): Promise<string> {
+		if (!ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive).has("stage_text")) {
+			return `Error: tool "stage_text" is not allowed in the current write mode.`;
+		}
+		const content = call.input["content"];
+		if (typeof content !== "string") return "Error: 'content' must be a string.";
+		if (declaresPythiaTemplate(content)) {
+			return "Error: text for the Ablage cannot be a Pythia prompt template. Remove the template frontmatter.";
+		}
+		const chipEl = this.d.messagesEl().createDiv({ cls: "pythia-tool-call" });
+		const sources = this.webSources.map(({ n, title, url }) => ({ n, title, url }));
+		const put = await this.d.plugin.ablage.put(content, { conversationId: conv.id, ...(sources.length > 0 ? { sources } : {}) });
+		const ok = put === "ok";
+		chipEl.addClass(ok ? "pythia-tool-call--done" : "pythia-tool-call--error");
+		const label = ok ? t("ablageStaged") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong");
+		chipEl.createSpan({ cls: "pythia-tool-call-label", text: label });
+		this.d.reveal(chipEl, false);
+		if (!ok) {
+			return put === "empty" ? "Error: 'content' is empty." : `Error: the text is too long for the Ablage (over ${ABLAGE_MAX_CHARS} characters). Shorten it, or write a note instead.`;
+		}
+		// Said once here, not only in the chip: a turn with no words is dropped at
+		// commit, and the chip with it — the item is still in the Ablage.
+		new Notice(t("ablageStagedNotice"));
+		return "Placed in the Ablage. The user inserts it into a note from the editor's context menu (Insert from Ablage). Do not repeat the full text in your answer unless asked.";
 	}
 
 	/** A rejected key or a used-up plan is fixed by the user, in settings or at

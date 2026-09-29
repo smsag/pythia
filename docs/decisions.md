@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-245 (a Mermaid diagram is laid out with tighter spacing: less whitespace, same text size; display only).*
+*Last updated: 2026-09-29 — ADR-246 (the Ablage: one item, filled by a selection or the `stage_text` tool, inserted by the user from the editor's context menu) and ADR-247 (rewrite presets on a selection in a note).*
+
+*Previously: 2026-09-29 — ADR-245 (a Mermaid diagram is laid out with tighter spacing: less whitespace, same text size; display only).*
 
 *Previously: 2026-09-29 — ADR-244 (the diagram floor is 0.9, Vizardry's: readability before fit, a wider diagram scrolls).*
 
@@ -5231,3 +5233,30 @@ Notable decisions inside the fixes:
 **Not verified.** Inside Obsidian (that its Mermaid honours the directive); measured in a Chromium harness with Mermaid 11.
 
 **Guards.** `tests/mermaidSpacing.test.ts`: the line is added, a configured block and other fences are untouched.
+
+## ADR-246 — The Ablage: text held until the user picks where it goes
+
+**Context.** Getting text from an answer into a note meant choosing the place first: *Insert into note* writes at the last cursor at once, the note tools write a note the model names. The user asked for the other order — put the text aside, then insert it "at the time of execution", where they are standing. The system clipboard does not serve: the next copy overwrites it, it cannot carry the answer's web sources, and iOS guards it.
+
+**Decision.**
+- **One slot** (`services/ablage.ts`), kept in `data.json` beside the rename log. **A new item replaces the last, and inserting empties it** — both the user's decisions; a history was offered and declined (D-71).
+- **Filled two ways.** The chat's selection toolbar gets **Add to Ablage** (the deferred twin of *Insert into note*: same text, same conversation backlink). And a new `write_mode: stage` gives the model `stage_text`; `all` offers it beside the three note tools. `WRITE_MODES` / `WriteMode` in `models/types.ts` is now the one list — it had five hand-written copies.
+- **No confirmation card for `stage_text`.** It writes nothing to the vault; the user's insert, later, is the gesture (principle 9: the model may fill the Ablage, never insert from it). A template declaration is refused, as for a note.
+- **Emptied from the editor**: Obsidian's context menu shows *Insert from Ablage: <first line>* whenever it holds an item, and the `insert-from-ablage` command serves a hotkey and a phone. The text replaces the selection or goes in at the cursor as **one** `replaceSelection` — one undo step.
+- **The item the user saw, or nothing.** The menu captures the item's `createdAt`; if another put or an insert elsewhere changed it before the click, nothing is inserted and a Notice says so. The text goes in first, synchronously, and the slot is emptied after (principle 7).
+- **Citations travel.** `stage_text` keeps the answer's fetched web results with the text; at insert, `citationsToFootnotes` numbers the footnotes around the target note's own labels (ADR-238), so an insert never collides with a `[^1]` already there.
+- **Sync.** The slot carries `updatedAt` even when empty, and a load keeps the newer write (`mergeAblage`, a tie keeps memory, ADR-133) — an insert on one device is not undone by a stale copy from another.
+- **Limits** are a pin's: 20 000 characters, refused with a Notice, never truncated. An empty text is refused too.
+
+**Guards.** `tests/ablage.test.ts` (one slot, replace, refusals, take-only-what-was-shown, the data.json boundary, http-only sources, the merge); `tests/ablageInsert.test.ts` (one edit, stale menu inserts nothing, footnotes numbered around the note's); `tests/ToolHandler.test.ts` (`stage` offers only `stage_text`; `all` includes it).
+
+## ADR-247 — Rewrite presets on a selection in a note
+
+**Context.** Rewriting a passage (ADR-178) always meant: select, *Rewrite selection with Pythia*, go to the sidebar, type the instruction. The common instructions are the same few every time.
+
+**Decision.**
+- A second entry beside it, **Rewrite with Pythia as…** (context menu and the `rewrite-selection-as` command), opens `RewritePresetModal`: four built-in presets (shorter · clearer · more formal · in English, `ui/rewritePresets.ts`, instructions in the UI's language), every template with `rewrite_preset: true`, and *Own instruction…* — which is the ADR-178 arm, unchanged.
+- **A preset arms and sends at once.** A template preset rides as a one-send layer (ADR-177); its `auto_prompt` is the instruction, else "Rewrite the passage below". With no conversation open, one is created — a preset has nothing to discuss first.
+- **The answer is still a proposal** (user decision): *Replace in note* stays its own press, verified exactly and applied as one undo step. A preset saves typing, never the look before the write.
+
+**Guards.** The ADR-178 rules and tests are unchanged and cover the apply; `tests/uiArchitectureDoc.test.ts` names the new modal.

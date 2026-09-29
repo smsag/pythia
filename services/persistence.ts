@@ -1,11 +1,10 @@
 import { PIN_KINDS, type Conversation, type Favorite, type MergeLink, type Message, type Pin, type Provider } from "../models/types";
-import { OUTPUT_LANGUAGES } from "../models/types";
+import { OUTPUT_LANGUAGES, WRITE_MODES } from "../models/types";
 import { DEFAULT_SETTINGS, NUMBER_SETTING_BOUNDS, isNumberInBounds, type PythiaSettings } from "../models/settings";
 import { isRewriteTarget, normalizeAlternatives, normalizeAnswerFields, normalizeComparison } from "./comparison";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
-const WRITE_MODES = ["update", "create", "none", "rewrite", "all"] as const;
 const PROMPT_FRAMEWORKS = ["none", "CO-STAR", "RACE", "RISEN"] as const;
 const EFFORTS = ["low", "medium", "high"] as const;
 

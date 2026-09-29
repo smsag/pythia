@@ -112,7 +112,7 @@ export class SelectionController {
 		};
 
 		// Toolbar order (left → right): Copy, Favorite/Unfavorite, Branch (Fork),
-		// Merge, Pin, Define, Person, Insert into note, Save to inbox. Merge sits next
+		// Merge, Pin, Define, Person, Insert into note, Save to inbox, Ablage. Merge sits next
 		// to Branch because the two are inverses of each other (ADR-130).
 		addBtn(t("copyBtn"), () => this.onCopySelection());
 		this.favBtn = addBtn(t("favoriteBtn"), () => void this.onFavoriteSelection());
@@ -123,6 +123,7 @@ export class SelectionController {
 		this.personBtn = addBtn(t("personBtn"), () => this.onEntityAction("person"));
 		addBtn(t("insertBtn"), () => this.onInsertIntoNote());
 		addBtn(t("inboxBtn"), () => void this.onSaveToInbox());
+		addBtn(t("ablageBtn"), () => void this.onAddToAblage());
 
 		let selDebounce: ReturnType<typeof setTimeout> | null = null;
 		const onSelectionChange = () => {
@@ -528,6 +529,17 @@ export class SelectionController {
 		const { text, passage } = result.selection;
 		if (kind === "person") this.d.describePerson(text, passage);
 		else this.d.defineTerm(text, passage);
+	}
+
+	/** Insert into note, deferred: held until the user picks the place (ADR-246). */
+	private async onAddToAblage(): Promise<void> {
+		const text = window.getSelection()?.toString() ?? "";
+		if (!text) return;
+		const conv = this.d.getConversation();
+		const entry = withConversationBacklink(text, conv, this.d.plugin.app.vault.getName());
+		const put = await this.d.plugin.ablage.put(entry, conv ? { conversationId: conv.id } : {});
+		this.selectionToolbar.style.display = "none";
+		new Notice(put === "ok" ? t("ablageStagedNotice") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong"));
 	}
 
 	private async onSaveToInbox(): Promise<void> {

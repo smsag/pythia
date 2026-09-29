@@ -60,8 +60,8 @@ describe("getToolDefinitions", () => {
 		expect(noteTools("Scratch", "rewrite")).toEqual(["rewrite_note"]);
 	});
 
-	it("returns all three note tools for write mode 'all' (default)", () => {
-		expect(noteTools("Scratch")).toEqual(["create_note", "prepend_note", "rewrite_note"]);
+	it("returns every write tool for write mode 'all' (default)", () => {
+		expect(noteTools("Scratch")).toEqual(["create_note", "prepend_note", "rewrite_note", "stage_text"]);
 	});
 
 	it("embeds the default folder in the create_note description", () => {
@@ -72,6 +72,7 @@ describe("getToolDefinitions", () => {
 	it("each note definition has required path and content in its input schema", () => {
 		for (const def of getToolDefinitions("Scratch")) {
 			if (def.name === "render_chart" || def.name === "web_search") continue;
+			if (def.name === "stage_text") continue; // no note, no path (tests/stageText.test.ts)
 			expect((def.inputSchema as { required: string[] }).required).toContain("path");
 			expect((def.inputSchema as { required: string[] }).required).toContain("content");
 		}

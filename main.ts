@@ -9,6 +9,7 @@ import { getFilesInFolder, todayISO } from "./utils";
 import { PythiaSidebarView, PYTHIA_VIEW_TYPE } from "./sidebar";
 import { PYTHIA_ICON_ID, registerPythiaIcon } from "./ui/pluginIcon";
 import { registerEditorSelectionEntries } from "./ui/editorSelectionEntries";
+import { registerAblageEntries } from "./ui/ablageEntries";
 import { CommandHubModal } from "./suggest/CommandHubModal";
 import { TemplateSuggestModal } from "./suggest/TemplateSuggest";
 import { ConversationStore } from "./services/ConversationStore";
@@ -18,6 +19,7 @@ import type { TemplateLoader } from "./services/TemplateLoader";
 import type { NoteWriter } from "./services/NoteWriter";
 import type { GlossaryService } from "./services/GlossaryService";
 import type { ToolHandler } from "./services/ToolHandler";
+import type { Ablage } from "./services/ablage";
 import type { WebSearchService } from "./services/WebSearchService";
 import type { PromptOptimizerService } from "./services/PromptOptimizerService";
 import type { KeyKind, SecretStore } from "./services/SecretStore";
@@ -64,6 +66,8 @@ export default class PythiaPlugin extends Plugin {
 	get glossaryService(): GlossaryService { return this.container?.glossaryService as GlossaryService; }
 	get webSearchService(): WebSearchService { return this.container?.webSearchService as WebSearchService; }
 	get toolHandler(): ToolHandler { return this.container?.toolHandler as ToolHandler; }
+	/** Pythia's one-item clipboard (ADR-246). */
+	get ablage(): Ablage { return this.pluginDataStore.ablage; }
 	get promptOptimizerService(): PromptOptimizerService { return this.container?.promptOptimizerService as PromptOptimizerService; }
 
 	/** Pythia loads no language model of its own (ADR-224): Schreibstube runs
@@ -286,6 +290,7 @@ export default class PythiaPlugin extends Plugin {
 		});
 
 		registerEditorSelectionEntries(this);
+		registerAblageEntries(this);
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu: Menu, file) => {
 				if (file instanceof TFile) {
