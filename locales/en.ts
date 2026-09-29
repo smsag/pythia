@@ -221,6 +221,7 @@ const en = {
 	sourcesTemplate:   "Template",
 	sourcesWeb:        "Web",
 	sourcesVault:      "Vault",
+	sourcesAnswers:    "Answers",
 	rewriteSelection:        "Rewrite selection with Pythia",
 	rewriteSelectionAs:      "Rewrite with Pythia as…",
 	rewritePresetPlaceholder: "Rewrite the selection as…",

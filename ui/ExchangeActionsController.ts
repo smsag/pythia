@@ -2,6 +2,7 @@ import { Notice } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
+import { isAnswerCited } from "../services/answerCitations";
 import { attachLongPress } from "./longPress";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
 import { spliceExchange } from "../services/conversationEdits";
@@ -85,6 +86,9 @@ export class ExchangeActionsController {
 			btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
 		};
 		on(confirmBtn, () => void this.confirmDelete(userRow, assistantRow));
+		// A note cites this answer: deleting it would break the note's link (ADR-250).
+		const cited = this.citedAnswer(assistantRow);
+		if (cited) { confirmBtn.disabled = true; confirmBtn.setAttribute("title", t("deleteExchangeCited")); }
 		on(compareBtn, () => this.compare(userRow, assistantRow));
 		on(cancelBtn, () => this.hidePreview());
 
@@ -122,12 +126,20 @@ export class ExchangeActionsController {
 		this.d.startComparison(userId, assistantId);
 	}
 
+	/** Whether a note cites the answer in `assistantRow` (ADR-250). */
+	private citedAnswer(assistantRow: HTMLElement): boolean {
+		const conv = this.d.getConversation();
+		const id = assistantRow.getAttribute("data-msg-id");
+		return !!conv && !!id && isAnswerCited(conv, id);
+	}
+
 	private async confirmDelete(userRow: HTMLElement, assistantRow: HTMLElement): Promise<void> {
 		const conv = this.d.getConversation();
 		if (!conv) return;
 		const userId      = userRow.getAttribute("data-msg-id");
 		const assistantId = assistantRow.getAttribute("data-msg-id");
 		if (!userId) return;
+		if (this.citedAnswer(assistantRow)) { new Notice(t("deleteExchangeCited")); return; }
 		// Shared with the raise-and-retry action under a cut-off answer (ADR-162):
 		// one splice keeps the save boundary, favorites and merge links consistent.
 		if (!spliceExchange(conv, userId, assistantId)) return;

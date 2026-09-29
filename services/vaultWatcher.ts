@@ -25,6 +25,9 @@ export interface VaultWatcherDeps {
 	invalidateGlossary(path: string): void;
 	/** A note or folder moved: stored paths follow it (ADR-218). */
 	followRename(oldPath: string, newPath: string): void;
+	/** A note or folder was deleted: the note-anchor records at or under it go,
+	 *  or a deleted document would protect its conversations forever (ADR-250). */
+	forgetPath(path: string): void;
 }
 
 /** Only a note can be a glossary note, so nothing else is worth asking about. */
@@ -44,6 +47,7 @@ export function registerVaultWatcher(host: VaultWatcherHost, deps: VaultWatcherD
 	host.registerEvent(vault.on("create", onEdit));
 	host.registerEvent(vault.on("delete", (f) => {
 		if (f instanceof TFile) deps.invalidateGlossary(f.path);
+		deps.forgetPath(f.path);
 	}));
 	host.registerEvent(vault.on("rename", (f, oldPath) => {
 		deps.followRename(oldPath, f.path);

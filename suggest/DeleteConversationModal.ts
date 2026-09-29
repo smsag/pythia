@@ -1,6 +1,7 @@
 import { App, Modal } from "obsidian";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
+import { noteBasename } from "../services/pathUtils";
 
 export interface DeleteConversationActions {
 	/** Remove the conversation. */
@@ -43,6 +44,14 @@ export class DeleteConversationModal extends Modal {
 			text: t("deleteConvConfirm", { name: this.conversation.name }),
 			cls: "pythia-modal-desc",
 		});
+		// Notes that link here lose their links with it (ADR-250): said, never blocked.
+		const linked = [...new Set((this.conversation.noteAnchors ?? []).map((a) => a.path))];
+		if (linked.length > 0) {
+			contentEl.createEl("p", {
+				text: t("deleteConvLinkedNotes", { count: String(linked.length), notes: linked.map(noteBasename).join(", ") }),
+				cls: "pythia-modal-desc p-delete-linked",
+			});
+		}
 		contentEl.createEl("p", {
 			text: t("archiveConvHint", { folder: this.actions.archiveFolder }),
 			cls: "pythia-modal-hint",

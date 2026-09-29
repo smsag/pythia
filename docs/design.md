@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-29 — ADR-249: note anchors — a Pythia chapter link in a vault note is painted with the fork origin's accent ink (`.p-note-anchor` / `.p-note-anchor-lp`, the `==` wrapper's yellow removed), previews in `.p-anchor-card` inside Obsidian's hover popover (the fork anchor's grammar), and is copied from `.p-chapter-link` / `.p-nav-copy`.*
+*Last updated: 2026-09-29 — ADR-250: the sources row gains `Answers:` between `Vault:` and `Web:` (icon `message-square`); an answer-citation footnote's link is `.p-note-anchor-ref` — Obsidian's link look, no ink — and opens the anchor card on hover; the delete dialog's `.p-delete-linked` line names the notes that link to the conversation.*
+
+*Previously: 2026-09-29 — ADR-249: note anchors — a Pythia chapter link in a vault note is painted with the fork origin's accent ink (`.p-note-anchor` / `.p-note-anchor-lp`, the `==` wrapper's yellow removed), previews in `.p-anchor-card` inside Obsidian's hover popover (the fork anchor's grammar), and is copied from `.p-chapter-link` / `.p-nav-copy`.*
 
 *Previously: 2026-09-29 — ADR-248: a diagram container is `display: block` at (0,3,0), so a theme's flex centring cannot push its left edge out of reach; `--p-diag-floor` is set per drawing so its smallest label renders at 11px (0.9 fallback).*
 
@@ -540,6 +542,7 @@ Any text selection **inside an assistant message** can be favorited via the **Fa
 - **Only a real anchor is painted** (ADR-249 addendum): a chapter link or a `==`-wrapped link. A plain backlink to a conversation keeps Obsidian's link look.
 - **Outside `.pythia-view` by necessity** — these rules paint notes. They name `.markdown-rendered a.external-link.p-note-anchor` (0,3,1) and `.markdown-source-view .p-note-anchor-lp`, and replace the external-link icon Obsidian draws as a background image.
 - **The card** is the fork anchor's grammar in Obsidian's own hover popover: 2px accent left rule, `anchor` icon + mono caps `NOTE ANCHOR`, 11.5px 600 title *Conversation › Chapter*, the summary in full at 11px, the meta line `N messages · date · outdated · ↻ · Open →`. Its root carries `pythia-modal` so the button roles apply (ADR-188); `.pythia-modal.p-anchor-card` sets its own padding and a 360px measure. No shadow of ours — the popover's is Obsidian's.
+- **A footnote's own link is a reference, not a passage** (ADR-250): `.p-note-anchor-ref` keeps Obsidian's link colour and underline and only hooks the hover card. Painting the ink on a footnote line would make the footnote section look like a second highlighted text.
 - **Copy chapter link**: `.p-chapter-link` is `pb pb-icon is-inline` in the user turn's label, seated on the caps line (ADR-139's `top: -0.09em`); `.p-nav-copy` sits at the end of a navigator chapter row. Both show on hover under `@media (hover: hover)` and always on touch.
 
 ### Chapter navigator (`#`)

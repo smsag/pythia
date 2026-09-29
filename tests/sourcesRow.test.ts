@@ -70,6 +70,16 @@ describe("renderSourcesRow — template row (ADR-140)", () => {
 		expect(labels(row)).toEqual(["Template:", "Vault:", "Web:"]);
 	});
 
+	it("an earlier answer the reply cited sits between the vault and the web (ADR-250)", () => {
+		const answer: MessageSource = { n: 2, kind: "answer", ref: "a7", title: "Index clause", cite: "7" };
+		const row = render([web(1, "a.com"), answer, vault(3, "Notes/B.md", "B")]);
+		expect(labels(row)).toEqual(["Vault:", "Answers:", "Web:"]);
+		const item = row.querySelectorAll(".p-sources-row")[1];
+		expect(item.querySelector(".p-source-num")?.textContent).toBe("2");
+		expect(item.querySelector(".p-source-icon")?.getAttribute("data-icon")).toBe("message-square");
+		expect(item.querySelector(".p-wikilink-name")?.textContent).toBe("Index clause");
+	});
+
 	it("renders the template by basename, with no wikilink brackets", () => {
 		// ADR-153: the run-in `Template:` already says it is a note, so the
 		// brackets repeat it and cost four characters of a narrow row.

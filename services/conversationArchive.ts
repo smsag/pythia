@@ -2,6 +2,7 @@ import type { Conversation } from "../models/types";
 import type { PythiaSettings } from "../models/settings";
 import { DEFAULT_SETTINGS } from "../models/settings";
 import { FootnoteNumbering, messageSourcesResolver } from "./noteFootnotes";
+import { answerResolver } from "./answerCitations";
 import { highlightMessageFavorites } from "./favoriteHighlights";
 import { formatDate, formatClockTime } from "./messageUtils";
 import { safeNoteName, yamlString } from "./pathUtils";
@@ -81,12 +82,14 @@ export function archiveNoteContent(conv: Conversation, resumeUri: string): strin
 	// Citations become footnotes and favorites highlights: the conversation is
 	// being removed, so the note is the only place either survives (ADR-238/239).
 	const footnotes = new FootnoteNumbering(conv.messages.map((m) => m.content));
+	// The conversation is being removed, so a cited answer is named, not linked (ADR-250).
+	const answers = answerResolver(conv, null);
 	for (const msg of conv.messages) {
 		const who = msg.role === "user" ? "You" : "Pythia";
 		const when = msg.timestamp
 			? `${formatDate(msg.timestamp)} · ${formatClockTime(msg.timestamp)}`
 			: "";
-		body.push(`## ${who}${when ? ` — ${when}` : ""}`, "", footnotes.apply(highlightMessageFavorites(msg, conv.favorites), messageSourcesResolver(msg.sources)).trim(), "");
+		body.push(`## ${who}${when ? ` — ${when}` : ""}`, "", footnotes.apply(highlightMessageFavorites(msg, conv.favorites), messageSourcesResolver(msg.sources, answers)).trim(), "");
 	}
 
 	return `${front}\n${body.join("\n").replace(/\n{3,}$/, "\n")}`;

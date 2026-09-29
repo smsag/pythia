@@ -152,6 +152,19 @@ export const WEB_CITATION_INSTRUCTION =
 	"When a statement draws on a web result or page, append a citation marker immediately after it: ⟦cite:web:<n>⟧, where n is the number shown before that result (e.g. ⟦cite:web:3⟧ for \"### 3.\"). " +
 	"Cite only numbers that were shown to you, one marker per source, and do not add a separate sources list — Pythia renders the markers and lists the web sources for the user automatically.";
 
+/**
+ * Answer citations (ADR-250), added to the system prompt only when the
+ * conversation's template says `cite_answers: true`. The numbers are Pythia's:
+ * the model cites a label it was shown, never an id it made up, and a number
+ * nothing answers for is dropped. "Where a claim rests on it, not every
+ * sentence": a vision document with a footnote per line is noise.
+ */
+export const CITE_ANSWERS_INSTRUCTION =
+	"Your earlier answers in this conversation are numbered: each one starts with a label such as ⟦answer:3⟧. " +
+	"When a statement in your reply rests on a specific earlier answer — a decision, a number, a definition, an argument that was settled there — append ⟦cite:answer:<n>⟧ immediately after the statement, n being that answer's number. " +
+	"Cite where a claim rests on one answer, not every sentence, and only numbers you were shown. The same markers work in notes you write with a tool. " +
+	"Never write an ⟦answer:n⟧ label yourself, and do not add a separate list of sources.";
+
 /** What the note-writing tools tell the model about sources (ADR-238). The
  *  markers are the chat's own, so the model has one way to cite; Pythia turns
  *  them into Markdown footnotes when it writes the note. A sources list the

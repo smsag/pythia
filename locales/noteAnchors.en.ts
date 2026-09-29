@@ -31,6 +31,8 @@ const noteAnchorsEn = {
 	noteAnchorUnanswered:         "No answer yet, so nothing to summarize.",
 	noteAnchorDeleted:            "This conversation was deleted.",
 	noteAnchorRefresh:            "Write the summary again",
+	deleteConvLinkedNotes:        "{{count}} note(s) link to this conversation — their links will stop working: {{notes}}. Archive keeps a copy.",
+	deleteExchangeCited:          "A note cites this answer — delete it there first, or its link stops working.",
 	anchorFootnotesName:          "Summary footnotes on note anchors",
 	anchorFootnotesDesc:          "When an answer arrives in a chapter a note anchor points at, write the chapter's summary into that note as a footnote, so it survives printing. The summary then travels with the note — synced, shared or published. Off: footnotes are written only when you run “Update Pythia footnotes in this note”, and printing through Schreibstube adds them to the printout alone.",
 };

@@ -225,6 +225,8 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	}
 	sanitizeOverrides(c);
 	if (c.researchMode !== undefined && typeof c.researchMode !== "boolean") delete c.researchMode;
+	// Only ever `true` (ADR-250): anything else is no flag.
+	if (c.citeAnswers !== undefined && c.citeAnswers !== true) delete c.citeAnswers;
 	if (c.vaultContext !== undefined && typeof c.vaultContext !== "boolean") delete c.vaultContext;
 	// A pending rewrite drives a write into a note (ADR-178): verified shape or nothing.
 	if (c.pendingRewrite !== undefined && !isRewriteTarget(c.pendingRewrite)) delete c.pendingRewrite;
@@ -268,6 +270,7 @@ function sanitizePendingTemplate(c: Record<string, unknown>): void {
 		? t.contextNotes.filter((n): n is string => typeof n === "string" && n.length > 0)
 		: undefined;
 	if (!(t.contextNotes as string[] | undefined)?.length) delete t.contextNotes;
+	if (t.citeAnswers !== undefined && t.citeAnswers !== true) delete t.citeAnswers;
 }
 
 /**

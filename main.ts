@@ -39,6 +39,7 @@ import { chapterOf } from "./services/chapterSummary";
 import type { ResumeResult } from "./services/deepLink";
 import { decorateAnchorLinks, noteAnchorEditorExtension, NoteAnchorHover } from "./ui/noteAnchorMarks";
 import { describeFailures, registerNoteAnchorEntries } from "./ui/noteAnchorEntries";
+import { setAnswerOpener } from "./ui/sourcesRow";
 
 export default class PythiaPlugin extends Plugin {
 	override settings!: PythiaSettings;
@@ -146,6 +147,8 @@ export default class PythiaPlugin extends Plugin {
 			log: (message, data) => debugLog(this.settings, message, data),
 		});
 		this.api = this.noteAnchors.api();
+		// A saved conversation that cites its own answers links them (ADR-250).
+		this.noteWriter.onAnswersLinked = (path) => void this.noteAnchors.recordFromPath(path);
 
 		// Before the view is registered: a leaf restored from workspace.json asks
 		// for its icon during layout-ready, and the ribbon and commands name it.
@@ -186,6 +189,16 @@ export default class PythiaPlugin extends Plugin {
 			},
 		});
 		this.registerDomEvent(document, "mouseover", (e) => anchorHover.onMouseOver(e));
+		// An answer citation's chip jumps to that answer in the view showing it (ADR-250).
+		setAnswerOpener((id) => {
+			const view = loadedPythiaViews(this.app.workspace).find((v) => {
+				const conv = v.getActiveConversation();
+				return !!conv && !!chapterOf(conv, id);
+			});
+			view?.scrollToMessage(id);
+			return !!view;
+		});
+		this.register(() => setAnswerOpener(null));
 
 		// One pending flush at a time (the follower batches), cleared on unload.
 		let renameTimer: number | null = null;
@@ -332,6 +345,7 @@ export default class PythiaPlugin extends Plugin {
 				if (this.glossaryService?.isGlossaryNote(path)) this.glossaryService.invalidate();
 			},
 			followRename: (oldPath, newPath) => this.renameFollower.queue(oldPath, newPath),
+			forgetPath: (path) => void this.noteAnchors.forget(path),
 		});
 
 		registerEditorSelectionEntries(this);

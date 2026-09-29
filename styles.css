@@ -3560,6 +3560,12 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   background-color: transparent;
 }
 
+/* A footnote's own link to an answer (ADR-250): `.p-note-anchor-ref` keeps
+   Obsidian's link look — a reference, not a passage — and only opens the card
+   on hover. No rule of ours paints it; the class is a hook for the hover. */
+.markdown-rendered a.p-note-anchor-ref,
+.markdown-source-view .p-note-anchor-ref { cursor: pointer; }
+
 /* The anchor's card, in Obsidian's own hover popover: the fork anchor's
    grammar — accent rule, mono caps label, title, summary in full, meta line. */
 .pythia-modal.p-anchor-card {

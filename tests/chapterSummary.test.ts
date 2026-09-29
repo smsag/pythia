@@ -17,11 +17,18 @@ function conv(over: Partial<Conversation> = {}): Conversation {
 }
 
 describe("a chapter is a question and the answer it got (ADR-249)", () => {
-	it("finds the answer after the user message, and nothing for an answer id", () => {
+	it("finds the answer after the user message, and nothing for an unknown id", () => {
 		const c = conv();
 		expect(chapterOf(c, "u1")).toMatchObject({ user: { id: "u1" }, answer: { id: "a1" } });
-		expect(chapterOf(c, "a1")).toBeNull();
 		expect(chapterOf(c, "nope")).toBeNull();
+	});
+
+	it("an answer id names its own chapter — a comparison tab too (ADR-250)", () => {
+		const c = conv();
+		expect(chapterOf(c, "a1")).toMatchObject({ user: { id: "u1" }, answer: { id: "a1" } });
+		c.messages[1].alternatives = [{ id: "t1", provider: "openai", model: "m", content: "Tab.", timestamp: "t" }];
+		expect(chapterOf(c, "t1")).toMatchObject({ user: { id: "u1" }, answer: { id: "t1", content: "Tab." } });
+		expect(anchorSummary(c, { id: "c1", msg: "a1" })).toMatchObject({ state: "none", chapterName: "Index clause" });
 	});
 
 	it("its fingerprint changes with the answer, so a retry makes a summary outdated", () => {

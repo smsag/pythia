@@ -58,7 +58,9 @@ describe("copy a chapter's link from the panel (ADR-249)", () => {
 		const scroll = vi.spyOn(view, "scrollToMessage");
 		expect(await plugin.openConversationAt(conv.id, "u1")).toBe("ok");
 		expect(scroll).toHaveBeenCalledWith("u1");
-		expect(await plugin.openConversationAt(conv.id, "a1")).toBe("no-message");
+		expect(await plugin.openConversationAt(conv.id, "a1")).toBe("ok"); // an answer link (ADR-250)
+		expect(scroll).toHaveBeenLastCalledWith("a1");
+		expect(await plugin.openConversationAt(conv.id, "gone")).toBe("no-message");
 		expect(await plugin.openConversationAt("nope")).toBe("no-conversation");
 	});
 });

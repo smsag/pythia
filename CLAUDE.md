@@ -64,6 +64,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     tavilyArgs.ts             ← pure: the ONE validator for the web tools' arguments — parseSearchArgs (query ≤ 400 chars), parseReadUrlArgs (refuses private hosts), describeSearchFilters (ADR-217/228)
     webReadScope.ts           ← pure: WebReadScope — read_url reads ONLY a link the user gave or a result of this answer returned, exactly as written, ≤ 5 per answer; ≤ 5 searches per answer (admitSearch); ToolHandler fails closed without one (ADR-217 addendum/226)
     favoriteHighlights.ts     ← pure: highlightPassages · highlightMessageFavorites · favoritePassages — a favorite becomes `==…==` in every note Pythia writes, found by the text it RENDERS to and nested properly with the markup (ADR-239)
+    answerCitations.ts        ← pure: Pythia numbers the answers (answerNumbers, labelledAnswer), resolves ⟦cite:answer:n⟧ (resolveAnswerCitations — a number naming nothing is dropped), answerResolver (the footnote target), isAnswerCited (ADR-250)
     noteAnchors.ts            ← pure: a note anchor is any obsidian://pythia?…cmd=resume&id=…[&msg=…] link in a note — parseAnchorUrl, findAnchors (code masked), anchorLabel (one `pythia-` footnote label per target), selectionProblem, reconcileNoteAnchors (ADR-249)
     chapterSummary.ts         ← pure: chapterOf, chapterFingerprint, anchorStatus (ok · outdated · missing · unanswered · deleted), anchorSummary, the chapter-summary prompt (ADR-249)
     anchorFootnotes.ts        ← pure: footnoteText — the ONE footnote format; noteFootnoteEdits (only Pythia's `pythia-` parts of a note, as edits); withExportFootnotes + renumberFootnotes — the print copy (ADR-249)
@@ -485,7 +486,7 @@ Template: Podcast Summary
 Vault: 1 Some Note
 Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `globe` icon, not an emoji)
 ```
-- Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
+- Rows always in that order — **from the user outwards**: the template is theirs and framed the answer, the vault notes are their own knowledge, `Answers:` (earlier answers of this conversation it cited, ADR-250) is their own conversation, the web is the outside and the only part that can rot. Also the order in which to trust them, and it puts the longest row last
 - The vault row is **always** labelled `VAULT`; it is never relabelled when there is no web row. One label per row type
 - **The template carries no number.** The numbers are citation indices matching the superscript chips in the prose, and nothing cites the template
 - **Every reference leads with its source icon** (ADR-193, superseding ADR-153's `↗` and bracket rules): `SOURCE_ICONS` in `ui/icons.ts` — **every vault note is `VAULT_NOTE_ICON` (`library`)**, attached, auto-retrieved, cited or saved alike (ADR-212: what a reference *is* outranks how it arrived; an auto-retrieved pill stays distinct by `.p-wikilink--auto` and the missing ×, never by a second glyph) · `layout-template` template · `globe` web · `pencil-line` rewrite target — drawn by `appendSourceIcon`. A `[[Name]]` in a sent user message keeps its text and gains the same icon (`decorateNoteLinks`). **No `[[ ]]`, no `↗`**, in the reference row, the context box and here. The citation number stays first. Name colours are Obsidian's `--link-color` / `--link-external-color`. `tests/linkIcons.test.ts` fails on a bracket, an arrow or a literal icon id outside `ui/icons.ts`
@@ -751,6 +752,13 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **A print never writes the note.** `plugin.api` (`PythiaApi` v1) returns a copy; refresh changes Pythia's store only. Keep the API free of anything specific to one caller
 - **A conversation a note links to is never evicted** (`partitionEvictions` reads `noteAnchors`), and `noteAnchors[].path` follows renames (`tests/pathFields.test.ts`)
 - **Summary footnotes in the note are opt-in** (`anchorFootnotes`, off): the summary would travel wherever the note goes
+
+### Answer citations (ADR-250)
+
+- **Pythia numbers the answers, never the model.** Only with `citeAnswers` (a template's `cite_answers: true`; for one send when the template is armed) does each answer go out labelled `⟦answer:n⟧` — its place among the conversation's answers, stable across sends so the prompt cache holds. A cited `⟦cite:answer:n⟧` is resolved by `resolveAnswerCitations` (send commit AND every comparison run) against the messages the model saw; a number naming nothing is dropped. Never trust an id or a number the model wrote
+- **A copied label is noise**: `stripAnswerLabels`, through `stripForeignCitations` — never render or write one
+- **The footnote is `answerFootnoteText`'s, the one builder**, beside `footnoteText`: name, date, link — no model call. An archive names the answer without a link. Its link has `msg=`, so it is a note anchor; a footnote's own link never gets a footnote and prints as its text
+- **Record when written, forget when deleted.** A note Pythia writes with answer citations is recorded at once (`recordFromPath`); a deleted note or folder drops its records (`forget`). A cited answer is not removed from under its note: Retry and deleting its exchange are withheld (`isAnswerCited`). A manual conversation delete stays the user's, and the dialog names the linking notes
 
 ### Notes an answer wrote (ADR-218)
 

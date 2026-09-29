@@ -206,6 +206,34 @@ export class NoteAnchorService {
 		}
 	}
 
+	/** A note Pythia just wrote (ADR-250): read fresh from disk, so the records
+	 *  hold what the whole note says, not only the block written into it. */
+	async recordFromPath(path: string): Promise<void> {
+		const file = this.h.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile) || file.extension !== "md") return;
+		try {
+			await this.recordFromText(path, await this.h.app.vault.read(file));
+		} catch (err) {
+			this.h.log("could not read a written note for its Pythia links", describeErrorForLog(err));
+		}
+	}
+
+	/**
+	 * A note or folder was deleted: every record at or under `path` goes. A
+	 * deleted document must not keep protecting its conversations from the
+	 * history limit forever (ADR-250).
+	 */
+	async forget(path: string): Promise<void> {
+		const gone = (p: string): boolean => p === path || p.startsWith(`${path}/`);
+		for (const conv of this.h.conversations()) {
+			const list = conv.noteAnchors ?? [];
+			const kept = list.filter((a) => !gone(a.path));
+			if (kept.length === list.length) continue;
+			if (kept.length > 0) conv.noteAnchors = kept; else delete conv.noteAnchors;
+			await this.h.save(conv);
+		}
+	}
+
 	async recordFromFile(file: TFile): Promise<void> {
 		if (file.extension !== "md") return;
 		try {

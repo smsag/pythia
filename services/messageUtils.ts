@@ -7,6 +7,7 @@ import { TITLE_MARKER, SUMMARY_MARKER } from "./promptConstants";
 import type { PythiaSettings } from "../models/settings";
 import type { Conversation } from "../models/types";
 import { redactSecrets } from "./redact";
+import { answerNumbers, labelledAnswer } from "./answerCitations";
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 
@@ -129,11 +130,24 @@ export function normalizeMessages<T extends { role: string; content: string }>(
  * markers and no address, and a follow-up about a source had nothing to open.
  * A bare-domain source (an answer before ADR-226) is left out: it is not a page.
  */
-export function historyContent(m: { role: string; content: string; sources?: { n: number; kind: string; ref: string }[] }): string {
-	if (m.role !== "assistant" || !Array.isArray(m.sources)) return m.content;
+export function historyContent(
+	m: { id?: string; role: string; content: string; sources?: { n: number; kind: string; ref: string }[] },
+	/** The answers' numbers, when the conversation cites answers (ADR-250):
+	 *  an answer then goes out led by its `⟦answer:n⟧` label. */
+	answerNumbers?: Map<string, number>,
+): string {
+	const n = m.role === "assistant" && m.id ? answerNumbers?.get(m.id) : undefined;
+	const text = n ? labelledAnswer(m.content, n) : m.content;
+	if (m.role !== "assistant" || !Array.isArray(m.sources)) return text;
 	const pages = m.sources.filter((s) => s && s.kind === "web" && typeof s.ref === "string" && /^https?:\/\//i.test(s.ref));
-	if (pages.length === 0) return m.content;
-	return `${m.content}\n\n[Web sources of this answer: ${pages.map((s) => `${s.n}. ${s.ref}`).join(" · ")}]`;
+	if (pages.length === 0) return text;
+	return `${text}\n\n[Web sources of this answer: ${pages.map((s) => `${s.n}. ${s.ref}`).join(" · ")}]`;
+}
+
+/** The numbers `historyContent` labels answers with — only for a conversation
+ *  that cites answers (ADR-250); undefined sends the history unlabelled. */
+export function historyAnswerNumbers(conv: { citeAnswers?: true; messages: { id: string; role: string }[] }): Map<string, number> | undefined {
+	return conv.citeAnswers ? answerNumbers(conv.messages as { id: string; role: "user" | "assistant" }[]) : undefined;
 }
 
 // ── History selection ─────────────────────────────────────────────────────────

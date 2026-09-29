@@ -2,6 +2,7 @@ import { Notice, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation, Message, StreamFinish } from "../models/types";
 import { t } from "../i18n";
+import { isAnswerCited } from "../services/answerCitations";
 import { effectiveMaxTokens, isThinkingModel, raisedMaxTokens } from "../services/settingsAdvice";
 import { spliceExchange } from "../services/conversationEdits";
 import { ModelSuggestModal } from "../suggest/ModelSuggest";
@@ -20,15 +21,16 @@ export interface TruncationDeps {
 
 /**
  * Retry removes the answer, so it is withheld while anything points at it: its
- * comparison tabs (ADR-225), a star or a merge link on it — or a comparison is
- * pending on the conversation (ADR-160). Read when the card is painted AND when
- * the button is pressed.
+ * comparison tabs (ADR-225), a star or a merge link on it, a note that cites it
+ * (ADR-250) — or a comparison is pending on the conversation (ADR-160). Read
+ * when the card is painted AND when the button is pressed.
  */
 export function isRetryWithheld(conv: Conversation, msg: Message): boolean {
 	return !!conv.comparison ||
 		!!msg.alternatives?.length ||
 		(conv.favorites ?? []).some((f) => f.messageId === msg.id) ||
-		(conv.merges ?? []).some((l) => l.messageId === msg.id);
+		(conv.merges ?? []).some((l) => l.messageId === msg.id) ||
+		isAnswerCited(conv, msg.id);
 }
 
 /**

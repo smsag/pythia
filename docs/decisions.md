@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-249 addendum (a link counts as a note anchor only when it points at a chapter or is wrapped in `==`: the inbox's old backlinks stay ordinary links and protect nothing — `isNoteAnchor`).*
+*Last updated: 2026-09-29 — ADR-250 (answer citations: a template with `cite_answers: true` numbers the conversation's answers; the model cites `⟦cite:answer:n⟧`, Pythia resolves it, and a note gets a footnote linking the answer; records are made when a note is written and dropped when it is deleted; Retry and delete withheld on a cited answer; the delete dialog names linking notes).*
+
+*Previously: 2026-09-29 — ADR-249 addendum (a link counts as a note anchor only when it points at a chapter or is wrapped in `==`: the inbox's old backlinks stay ordinary links and protect nothing — `isNoteAnchor`).*
 
 *Previously: 2026-09-29 — ADR-249 (note anchors: a passage in a note linked to a conversation or a chapter by its `obsidian://pythia` address, painted with the fork's accent ink, previewed on hover, kept from eviction, and footnoted with the chapter's summary — in the note on request, in a print copy through `plugin.api`).*
 
@@ -5347,3 +5349,38 @@ Notable decisions inside the fixes:
 **Consequence.** A conversation behind an old backlink can be evicted again, as before ADR-249 — archived to a note first (ADR-172); its backlink then opens nothing, and the deep link says so.
 
 **Guards.** `tests/noteAnchors.test.ts` (the rule's truth table; a backlink finds nothing; a conversation link inside a larger highlight is not wrapped) · `tests/noteAnchorUi.test.ts` (Reading view marks a pasted chapter link and a wrapped conversation link, not a backlink) · `tests/noteAnchorService.test.ts` (an inbox of backlinks records nothing, and an old record is dropped) · `tests/anchorFootnotes.test.ts` (a backlink prints as a link).
+
+## ADR-250 — Answer citations: a document written from a conversation cites the answers it rests on
+
+**Context.** A long conversation often ends with a template that turns it into a document — a summary, a product vision. The document then says things the conversation settled, with no way back to where they were settled. The user asked for the document to reference the conversation's messages, and confirmed three choices (2026-09-29): **opt in per template** (a frontmatter flag), **link the answer**, not the chapter, and a footnote that carries **name, date and link only**. They also asked whether the conversation is safe from deletion while the document exists, which showed two gaps in ADR-249: a deleted document kept protecting its conversations forever, and a manual delete said nothing about the notes that link to the conversation.
+
+**Decision.**
+
+*Numbering and citing.*
+- **Pythia numbers the answers, never the model.** With `citeAnswers` set, each earlier answer goes out in the history led by `⟦answer:n⟧` — n is its place among the conversation's answers (`answerNumbers`), the same in every send, so the provider's prompt cache is not broken. `CITE_ANSWERS_INSTRUCTION` joins the system prompt: cite `⟦cite:answer:n⟧` where a claim rests on a specific answer, not every sentence, only numbers shown, and never write a label yourself.
+- **A number is resolved, never trusted** (`resolveAnswerCitations`, principle 9): n → that answer's message id, titled by its chapter; a number that names no answer is dropped and logged. It runs at the send's commit (before the new answer joins `messages`, so n means what the model saw) and in every comparison run. `MessageSource.kind` gains `"answer"`; `cite` keeps the number, so the chip finds its source.
+- **A label the model copies into its own reply is removed** (`stripAnswerLabels`, through `stripForeignCitations`, which every render and every note write already runs).
+- **The flag:** `cite_answers: true` in a template's frontmatter (only an explicit `true`). A conversation created from that template carries `Conversation.citeAnswers`; a template armed on a running conversation carries it for its one send (`PendingTemplate.citeAnswers`, ADR-177) — which is the case the feature exists for: the summarizing template applied at the end.
+
+*In the chat.* The marker becomes a numbered chip; a click jumps to the answer through a seam `main.ts` fills (`setAnswerOpener`, so the sources row never imports the view). The sources row gains **`Answers:`** between `Vault:` and `Web:` — the user's own conversation, ahead of the one row from outside — with the `message-square` icon (`SOURCE_ICONS.answer`).
+
+*In a note.* Everywhere Pythia writes a note — the note tools (by number, resolved against the conversation), Save to note and the archive (by the stored source) — the marker becomes a footnote, built by `answerFootnoteText`, the one builder, beside `footnoteText`:
+
+    [^3]: [„Rent cap scenarios › Index clause“](obsidian://pythia?…&msg=a7) (Pythia, 29 Sep 2026)
+
+- The date is the answer's; the quote marks follow the cited answer's language (`detectLanguage`), else Obsidian's.
+- **No model call** when the note is written.
+- **The archive names the answer without a link**: its conversation is the one being removed.
+- **The link carries `msg=`, so it is a note anchor** (ADR-249): the hover card opens on it, and the conversation is kept from the history limit. It keeps Obsidian's link look (`.p-note-anchor-ref`) — it is a reference, not a passage — and a footnote's own link never gets a footnote of its own, in the note or in the print copy, where it prints as its text.
+
+*Links to answers.* `chapterOf` accepts an answer's id — the one in `messages`, or a comparison tab, which is an answer by its own id (ADR-225) — and names the chapter by the question before it. The deep link opens the conversation at that answer; the card and the chapter summary work unchanged.
+
+*Keeping the link true.*
+- **Recorded when written:** the note tools and Save to note record the note's links right after the write (`recordFromPath`, reading the whole note), so a document protects its conversation from the moment it exists — not only once it is opened (D-73).
+- **Forgotten when deleted:** a deleted note — or folder — drops every record at or under its path (`vaultWatcher` → `NoteAnchorService.forget`). Before this, a deleted document protected its conversations forever.
+- **A cited answer is not removed from under its note:** Retry is withheld on it (`isRetryWithheld` → `isAnswerCited`), and so is deleting its exchange — the bar's Delete is disabled with the reason, and a press says it.
+- **A manual delete stays the user's**, but the dialog names the notes whose links will stop working, each once; Archive stays the first choice.
+
+**Consequences.** A conversation is kept from the automatic limit exactly as long as a note records a link to it — written, pasted and opened, or printed through the API — and released when that note is deleted or its links removed. Nothing stops a deliberate delete; the dialog says what it breaks. A document from a summary-mode resume cites fewer answers: only the answers that were sent carry a label.
+
+**Guards.** `tests/answerCitations.test.ts` (numbering; labels once; the flag gates the history labels and the instruction; copied labels stripped; resolution and the dropped number; chips found by number; footnotes in a tool's content, Save to note and the archive; quote marks by language; the footnote's link is an anchor that never gets a footnote and prints as text; the armed template's one send; data.json; Retry withheld) · `tests/answerCitationUi.test.ts` (the delete dialog's warning; `forget` for a note and a folder; a footnote's link keeps the link look and opens the card) · `tests/sourcesRow.test.ts` (the `Answers:` row and its place) · `tests/chapterSummary.test.ts` (an answer id and a tab name their chapter) · `tests/vaultWatcher.test.ts` (a delete forgets) · `tests/toolCallNoteWrites.test.ts` (a written note is recorded) · `tests/TemplateLoader.test.ts` (`cite_answers`) · `tests/noteAnchorUi.test.ts` (an answer link opens the answer).

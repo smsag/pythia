@@ -119,6 +119,14 @@ describe("TemplateLoader", () => {
 			expect(tpl!.systemPrompt).toBe("You are a helpful assistant.");
 		});
 
+		it("cite_answers: true numbers the answers; anything else does not (ADR-250)", async () => {
+			const with_ = (v: string) => `---\ntype: Pythia Prompt Template\nname: V\ncite_answers: ${v}\n---\nBody`;
+			app.vault.read.mockResolvedValueOnce(with_("true"));
+			expect((await loader.loadTemplate({ path: "templates/v.md", basename: "v" } as never))!.citeAnswers).toBe(true);
+			app.vault.read.mockResolvedValueOnce(with_("yes"));
+			expect((await loader.loadTemplate({ path: "templates/v.md", basename: "v" } as never))!.citeAnswers).toBeUndefined();
+		});
+
 		it("returns null for a file without frontmatter", async () => {
 			app.vault.read.mockResolvedValueOnce("Just text, no frontmatter.");
 			const tpl = await loader.loadTemplate({ path: "templates/no-fm.md", basename: "no-fm" } as never);

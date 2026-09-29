@@ -12,6 +12,7 @@ function watcher() {
 	const handlers: Record<string, Handler> = {};
 	const invalidated: string[] = [];
 	const renamed: [string, string][] = [];
+	const forgotten: string[] = [];
 	let registered = 0;
 	const host = {
 		app: {
@@ -23,10 +24,11 @@ function watcher() {
 	registerVaultWatcher(host as never, {
 		invalidateGlossary: (path) => invalidated.push(path),
 		followRename: (oldPath, newPath) => renamed.push([oldPath, newPath]),
+		forgetPath: (path) => forgotten.push(path),
 	});
 	const file = (path: string, extension = "md"): TFile =>
 		Object.assign(new TFile(), { path, extension }) as TFile;
-	return { handlers, invalidated, renamed, file, registered: () => registered };
+	return { handlers, invalidated, renamed, forgotten, file, registered: () => registered };
 }
 
 describe("registerVaultWatcher (ADR-136, ADR-218, ADR-224)", () => {
@@ -73,6 +75,14 @@ describe("registerVaultWatcher (ADR-136, ADR-218, ADR-224)", () => {
 		const w = watcher();
 		w.handlers.modify(w.file("img.png", "png"));
 		expect(w.invalidated).toEqual([]);
+	});
+
+	it("a deleted note or folder drops its note-anchor records — a folder too (ADR-250)", () => {
+		const w = watcher();
+		w.handlers.delete(w.file("Docs/Vision.md"));
+		w.handlers.delete({ path: "Docs/Old", children: [] });
+		w.handlers.modify(w.file("Docs/Other.md"));
+		expect(w.forgotten).toEqual(["Docs/Vision.md", "Docs/Old"]);
 	});
 
 	it("a folder event is not a file event", () => {

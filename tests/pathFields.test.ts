@@ -30,6 +30,7 @@ const CONVERSATION: Record<keyof Conversation, Kind> = {
 	outputLanguage: "other", researchMode: "other", vaultContext: "other",
 	comparison: "nested", pendingRewrite: "nested", pendingTemplate: "nested",
 	noteAnchors: "nested", // the notes that link here (ADR-249)
+	citeAnswers: "other",
 };
 
 const MESSAGE: Record<keyof Message, Kind> = {
@@ -45,7 +46,7 @@ const MESSAGE: Record<keyof Message, Kind> = {
 const PENDING_TEMPLATE: Record<keyof PendingTemplate, Kind> = {
 	id: "path", name: "other", systemPrompt: "other", provider: "other", model: "other",
 	maxTokens: "other", temperature: "other", effort: "other", writeMode: "other",
-	outputFolder: "path", contextNotes: "paths",
+	outputFolder: "path", contextNotes: "paths", citeAnswers: "other",
 };
 
 const REWRITE_TARGET: Record<keyof RewriteTarget, Kind> = { path: "path", from: "other", to: "other", text: "other" };

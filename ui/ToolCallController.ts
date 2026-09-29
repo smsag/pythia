@@ -6,6 +6,8 @@ import { declaresPythiaTemplate, ToolHandler } from "../services/ToolHandler";
 import type { WebErrorKind, WebSource } from "../services/WebSearchService";
 import { describeSearchFilters, parseSearchArgs, type FilterWords } from "../services/tavilyArgs";
 import { parseCitations, resolveWebCitations, webDomain, type CitationSource } from "../services/citations";
+import { answerResolver, resolveAnswerCitations } from "../services/answerCitations";
+import { resumeDeepLink } from "../utils";
 import { debugLog } from "../services/messageUtils";
 import { WebReadScope } from "../services/webReadScope";
 import { parseNoteWrite, writesOnlyContent } from "../services/noteWrites";
@@ -49,6 +51,9 @@ export class ToolCallController {
 	private chartBlocks: PendingChartBlock[] = [];
 	private noteWrites: NoteWrite[] = [];
 	private streamedChars = 0;
+	/** The conversation this send belongs to — what an answer citation's number
+	 *  is resolved against (ADR-250). Set by `handler`, once per send. */
+	private conv: Conversation | null = null;
 
 	constructor(private readonly d: ToolCallDeps) {}
 
@@ -81,7 +86,11 @@ export class ToolCallController {
 	resolveSources(text: string): CitationSource[] {
 		const { sources, dropped } = resolveWebCitations(parseCitations(text), this.webSources);
 		if (dropped.length > 0) debugLog(this.d.plugin.settings, "dropped web citations with no fetched result:", dropped);
-		return sources;
+		// Answer numbers name answers of this conversation (ADR-250); resolved
+		// before the new answer joins `messages`, so they mean what the model saw.
+		const answers = resolveAnswerCitations(sources, this.conv?.messages ?? []);
+		if (answers.dropped.length > 0) debugLog(this.d.plugin.settings, "dropped answer citations naming no answer:", answers.dropped);
+		return answers.sources;
 	}
 
 
@@ -137,6 +146,7 @@ export class ToolCallController {
 		// Built here, once per send, after the outgoing message joined `messages`:
 		// the links read_url may read in this answer (ADR-217 addendum).
 		const readScope = WebReadScope.forConversation(conv);
+		this.conv = conv;
 		return async (call: ToolCall, signal?: AbortSignal): Promise<string> => {
 			// A chart writes nothing, so there is nothing to confirm and no chip to
 			// show — the chart itself is the feedback, and it appears the moment the
@@ -318,9 +328,12 @@ export class ToolCallController {
 		// The results fetched so far, so the note's web citations become footnotes
 		// that name those pages (ADR-238), and the favorites, so a passage the user
 		// starred stays marked in the note (ADR-239).
+		const vault = this.d.plugin.app.vault.getName();
 		const result = await this.d.plugin.toolHandler.execute(call, allowed, conv.contextNotes, undefined, {
 			webSources: this.webSources,
 			favorites: favoritePassages(conv),
+			// An answer the content cites by number becomes a footnote linking it (ADR-250).
+			answers: answerResolver(conv, (id, msg) => resumeDeepLink(id, vault, msg), this.d.plugin.noteAnchors.fallbackLanguage(), true),
 		});
 
 		if (result.startsWith("Error")) {
@@ -335,6 +348,9 @@ export class ToolCallController {
 			?? { path: rawPath, action: isRewrite ? "rewritten" : isPrepend ? "prepended" : "created" };
 		this.noteWrites.push(write);
 		fillNoteWriteChip(this.d.app, chipEl, write);
+		// The note now links to answers of this conversation: known at once, so
+		// the history limit keeps them from the moment of writing (ADR-250).
+		void this.d.plugin.noteAnchors.recordFromPath(write.path);
 		return result;
 	}
 }

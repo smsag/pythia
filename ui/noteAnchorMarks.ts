@@ -27,6 +27,8 @@ export function decorateAnchorLinks(root: HTMLElement): void {
 		const parent = a.parentElement;
 		const wrapped = parent?.tagName === "MARK" && parent.childNodes.length === 1;
 		if (!ref || !isNoteAnchor(ref, wrapped)) continue;
+		// A footnote's own link (ADR-250) keeps the link look; the card still opens.
+		if (a.closest(".footnotes, .footnote-backref, li[id^='fn']")) { a.addClass("p-note-anchor-ref"); continue; }
 		a.addClass("p-note-anchor");
 		if (wrapped) parent.addClass("p-note-anchor-mark");
 	}
@@ -37,9 +39,16 @@ const LINK_RE = /(==)?\[(?:\\.|[^\]\\\n])+\]\((obsidian:\/\/pythia\?[^)\s]+)\)(=
 
 const matcher = new MatchDecorator({
 	regexp: LINK_RE,
-	decorate: (add, from, to, m) => {
+	decorate: (add, from, to, m, view) => {
 		const ref = parseAnchorUrl(m[2]);
 		if (!ref || !isNoteAnchor(ref, m[1] === "==" && m[3] === "==")) return;
+		// A footnote's own link (an answer citation, ADR-250) keeps the link look:
+		// it is a reference, not a passage. The card still opens on it.
+		if (/^ {0,3}\[\^[^\]\s]+\]:/.test(view.state.doc.lineAt(from).text)) {
+			add(from + (m[1] ? 2 : 0), to - (m[3] ? 2 : 0),
+				Decoration.mark({ class: "p-note-anchor-ref", attributes: { "data-pythia-anchor": m[2] } }));
+			return;
+		}
 		// The link only: a `==` is part of the match to be seen, not to be painted.
 		add(from + (m[1] ? 2 : 0), to - (m[3] ? 2 : 0),
 			Decoration.mark({ class: "p-note-anchor-lp", attributes: { "data-pythia-anchor": m[2] } }));
@@ -134,7 +143,7 @@ export class NoteAnchorHover {
 	constructor(private readonly host: AnchorCardHost) {}
 
 	onMouseOver(e: MouseEvent): void {
-		const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".p-note-anchor, .p-note-anchor-lp");
+		const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".p-note-anchor, .p-note-anchor-lp, .p-note-anchor-ref");
 		if (!el) return;
 		if (el === this.target && this.parent.hoverPopover) return;
 		const ref = parseAnchorUrl(el.getAttribute("href") ?? el.getAttribute("data-pythia-anchor") ?? "");

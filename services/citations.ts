@@ -19,7 +19,7 @@
 
 import { noteBasename } from "./pathUtils";
 
-export type CitationKind = "vault" | "web";
+export type CitationKind = "vault" | "web" | "answer";
 
 export interface CitationSource {
 	n: number;            // 1-based, in order of first appearance
@@ -31,7 +31,10 @@ export interface CitationSource {
 
 /** Global, kind-prefixed marker pattern. `[^⟧]+` never crosses a closing
  *  bracket, so refs containing `:` (paths, domains) parse correctly. */
-const MARKER_SOURCE = "⟦cite:(note|web):([^⟧]+)⟧";
+const MARKER_SOURCE = "⟦cite:(note|web|answer):([^⟧]+)⟧";
+
+/** The marker's kind word → the source kind. */
+const kindOf = (word: string): CitationKind => (word === "web" ? "web" : word === "answer" ? "answer" : "vault");
 
 function markerRegExp(): RegExp {
 	return new RegExp(MARKER_SOURCE, "g");
@@ -39,6 +42,7 @@ function markerRegExp(): RegExp {
 
 function titleFor(kind: CitationKind, ref: string): string {
 	if (kind === "web") return ref.replace(/^www\./, "");
+	if (kind === "answer") return ref;
 	return noteBasename(ref);
 }
 
@@ -50,7 +54,7 @@ export function parseCitations(content: string): CitationSource[] {
 	const re = markerRegExp();
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(content)) !== null) {
-		const kind: CitationKind = m[1] === "web" ? "web" : "vault";
+		const kind = kindOf(m[1]);
 		const ref = m[2].trim();
 		if (!ref) continue;
 		const key = `${kind}:${ref}`;
@@ -68,11 +72,21 @@ export function parseCitations(content: string): CitationSource[] {
  *  literal noise. Only brackets containing a `†` are removed, so ordinary CJK
  *  text in `【…】` is left alone. */
 export function stripForeignCitations(content: string): string {
+	// An `⟦answer:n⟧` label is how Pythia numbers an answer for the model
+	// (ADR-250); one the model copied into its own reply is noise, never a mark.
+	content = stripAnswerLabels(content);
 	if (!content || content.indexOf("【") === -1) return content;
 	return content
 		.replace(/[ \t]*【[^】]*†[^】]*】/gu, "")
 		.replace(/ +([.,;:!?])/g, "$1")
 		.replace(/[ \t]{2,}/g, " ");
+}
+
+/** `⟦answer:n⟧` labels removed: one opening a line with the space and line
+ *  break after it, one inside a line with the space before it (ADR-250). */
+export function stripAnswerLabels(content: string): string {
+	if (!content || content.indexOf("⟦answer:") === -1) return content;
+	return content.replace(/^[ \t]*⟦answer:\d+⟧[ \t]*\n?/gm, "").replace(/[ \t]*⟦answer:\d+⟧/g, "");
 }
 
 /** Normalize a web ref (a bare domain from a model marker, or a full URL from a
@@ -112,6 +126,7 @@ export function resolveWebCitations(
 	const used = new Set<string>();
 	for (const s of cited) {
 		if (s.kind !== "web") { out.push({ ...s, n: out.length + 1 }); continue; }
+
 		const hit = byNumber.get(s.ref) ?? results.find((r) => webDomain(r.url) === webDomain(s.ref));
 		if (!hit) { dropped.push(s.ref); continue; }
 		used.add(hit.url);
@@ -143,7 +158,7 @@ export function eachCitationSegment(
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(content)) !== null) {
 		if (m.index > last) onText(content.slice(last, m.index));
-		const kind: CitationKind = m[1] === "web" ? "web" : "vault";
+		const kind = kindOf(m[1]);
 		const ref = m[2].trim();
 		onMarker(byKey.get(`${kind}:${ref}`) ?? null);
 		last = m.index + m[0].length;
