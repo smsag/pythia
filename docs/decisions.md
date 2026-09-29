@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-250 (answer citations: a template with `cite_answers: true` numbers the conversation's answers; the model cites `⟦cite:answer:n⟧`, Pythia resolves it, and a note gets a footnote linking the answer; records are made when a note is written and dropped when it is deleted; Retry and delete withheld on a cited answer; the delete dialog names linking notes).*
+*Last updated: 2026-09-29 — ADR-251 (Schreibstube's API version 2: Pythia registers its conversations as one source among others, with a kind, labels, an icon, a link and incremental listing, and is read only once the person allows it in Schreibstube; hits carry `source` and `item`, and a score that is relevance against the kind's floor).*
+
+*Previously: 2026-09-29 — ADR-250 (answer citations: a template with `cite_answers: true` numbers the conversation's answers; the model cites `⟦cite:answer:n⟧`, Pythia resolves it, and a note gets a footnote linking the answer; records are made when a note is written and dropped when it is deleted; Retry and delete withheld on a cited answer; the delete dialog names linking notes).*
 
 *Previously: 2026-09-29 — ADR-249 addendum (a link counts as a note anchor only when it points at a chapter or is wrapped in `==`: the inbox's old backlinks stay ordinary links and protect nothing — `isNoteAnchor`).*
 
@@ -5384,3 +5386,20 @@ Notable decisions inside the fixes:
 **Consequences.** A conversation is kept from the automatic limit exactly as long as a note records a link to it — written, pasted and opened, or printed through the API — and released when that note is deleted or its links removed. Nothing stops a deliberate delete; the dialog says what it breaks. A document from a summary-mode resume cites fewer answers: only the answers that were sent carry a label.
 
 **Guards.** `tests/answerCitations.test.ts` (numbering; labels once; the flag gates the history labels and the instruction; copied labels stripped; resolution and the dropped number; chips found by number; footnotes in a tool's content, Save to note and the archive; quote marks by language; the footnote's link is an anchor that never gets a footnote and prints as text; the armed template's one send; data.json; Retry withheld) · `tests/answerCitationUi.test.ts` (the delete dialog's warning; `forget` for a note and a folder; a footnote's link keeps the link look and opens the card) · `tests/sourcesRow.test.ts` (the `Answers:` row and its place) · `tests/chapterSummary.test.ts` (an answer id and a tab name their chapter) · `tests/vaultWatcher.test.ts` (a delete forgets) · `tests/toolCallNoteWrites.test.ts` (a written note is recorded) · `tests/TemplateLoader.test.ts` (`cite_answers`) · `tests/noteAnchorUi.test.ts` (an answer link opens the answer).
+
+## ADR-251 — Schreibstube's API version 2: Pythia as one source among others
+
+**Context.** Schreibstube's search-by-meaning API (ADR-223/224) took one conversation source and let it in by the name `"pythia"`, which any plugin could have given. Schreibstube opened the API to every plugin (its 1.65): several sources at once, each with its own index file, items named `<source>:<id>`, and a source read only once the person allows it. Version 1 is gone; a Pythia that asks for it finds nothing.
+
+**Decision.** `SchreibstubeLink` speaks version 2 and nothing else.
+
+- Pythia registers as source `pythia` with `kind: "conversation"`, the labels a Schreibstube row and section show (in Pythia's language), the `pythia` icon of Schreibstube's set, `open(id)` and `link(id)` — the same resume link as everywhere else (`resumeDeepLink`).
+- It also gives `ids()` and `changedSince(since)`, so after the first listing Schreibstube asks for the conversations changed since its newest `updatedAt` instead of every message of every conversation again.
+- It registers whenever Schreibstube is there, even while search by meaning is still loading, so the person is asked once, early, and not after a first empty search.
+- `available()` is `status()` being `partial` or `ready`: a partly built index answers. `consent()` says whether the person allowed Pythia; the vault-context settings row says *waiting for your permission in Schreibstube* while it is `pending` or `denied`.
+- Every question names `sources: ["pythia"]` and reads a hit's `item`, since another source may use the same ids and the `id` of a hit is now `pythia:<id>`.
+
+**Consequence.** A hit's `score` is relevance read against the floor Schreibstube measured for its kind, 0 to 1, not a raw cosine; Pythia only sorts by it, so nothing changes on screen. The first desktop sync after the update embeds Pythia's conversations once more, into Schreibstube's new per-source file.
+
+
+**Guards.** `tests/schreibstubeLink.test.ts` (version 2 only; available on `partial` and `ready`; registers while Schreibstube still loads; `consent()`; the kind, icon and resume link registered; `ids` and `changedSince`; the old registration released when Schreibstube reloads; only `pythia` items kept from a search and from related, by `item`).
