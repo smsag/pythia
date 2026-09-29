@@ -74,12 +74,36 @@ function naturalSize(svg: SVGElement): { w: number; h: number } | null {
  * height as empty space. A drawing whose height is unknown keeps the old
  * pinned pixel size.
  */
+/** The smallest a label may render: Pythia's own smallest UI text. */
+export const MIN_DIAGRAM_LABEL_PX = 11;
+const LABELS = ".nodeLabel, .edgeLabel, text";
+
+/**
+ * How far this drawing may shrink: until its SMALLEST label reaches
+ * MIN_DIAGRAM_LABEL_PX, never further, never above 1 (ADR-248). A theme sets
+ * the label size (Klartext draws them at 0.9 of the body font), so a fixed
+ * share of natural size is either too timid or too small depending on it.
+ * Null when no label has a size yet — styles.css's fallback then applies.
+ */
+export function labelFloor(svg: SVGElement): number | null {
+	let smallest = Infinity;
+	const labels = Array.from(svg.querySelectorAll<Element>(LABELS)).slice(0, 60);
+	for (const label of labels) {
+		if (!label.textContent?.trim()) continue;
+		const px = parseFloat(getComputedStyle(label).fontSize);
+		if (px > 0 && px < smallest) smallest = px;
+	}
+	return Number.isFinite(smallest) ? Math.min(1, MIN_DIAGRAM_LABEL_PX / smallest) : null;
+}
+
 function stampSvgSize(svg: SVGElement): boolean {
 	const size = naturalSize(svg);
 	if (!size) return false;
 	if (size.h > 0) {
 		if (!svg.getAttribute("viewBox")) svg.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`);
 		svg.style.setProperty("--p-diag-w", `${size.w}px`);
+		const floor = labelFloor(svg);
+		if (floor !== null) svg.style.setProperty("--p-diag-floor", floor.toFixed(3));
 		svg.classList.add("p-diag-svg");
 	} else {
 		svg.style.setProperty("width",     `${size.w}px`, "important");

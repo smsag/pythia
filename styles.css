@@ -1641,9 +1641,18 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    fills the column, shrinks to a readability floor and scrolls below it, and
    is never enlarged past its natural size — Vizardry's SVG rule. Height follows
    the aspect ratio. --p-diag-floor is the share of natural size it may shrink
-   to: 0.9, Vizardry's floor, so Mermaid's 16px labels stay ~14px. Readability
-   before fit — a wider diagram scrolls (ADR-244); a CSS snippet may tune it. */
+   to. The decorator sets it per drawing from its smallest label, so that label
+   never renders below 11px (ADR-248); 0.9 here is the fallback for a drawing
+   whose labels cannot be measured. A CSS snippet may tune both. */
 .p-ai-body { --p-diag-floor: 0.9; }
+/* A diagram container is a BLOCK, never a flex box. A theme may centre it
+   (Klartext's "center diagrams": display:flex; justify-content:center at
+   (0,2,1)); a centred item wider than its scroller overflows to the LEFT too,
+   where no scroll reaches, and the diagram's left edge is cut off. (0,3,0)
+   outranks it; the svg's auto margins still centre a drawing that fits. */
+.pythia-view .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) {
+  display: block;
+}
 .p-ai-body :is(.mermaid, [class*='block-language-']:not(.vizardry-canvas)) svg {
   max-width: none !important;
   display: block;
