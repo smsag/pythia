@@ -100,6 +100,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     chart/export.ts           ← SVG → resolved-colour clone → canvas → PNG; a CSS custom property does not cross the <img> boundary
     renderMarkdown.ts         ← renderAnswerMarkdown: the ONE MarkdownRenderer entry point for model output (remote media deferred, ADR-240) + renderRichMarkdown + RenderSlot (one child Component per rebuild, released on the next); tests/remoteMedia.test.ts fails on another call site
     remoteMedia.ts            ← deferRemoteMedia (markdown, before render) + blockRemoteMedia (DOM, after): a remote image/iframe/media loads only when the user presses the placeholder naming its host (ADR-240)
+    mermaidSpacing.ts         ← compactMermaid: a Mermaid block without its own config gets tighter node/rank spacing on the way into the renderer — display only, never the stored message (ADR-245)
     keyActivate.ts            ← makeKeyActivatable: role, tabindex and Enter/Space for a control that is not a <button> (ADR-240)
     failureNotice.ts          ← noticeFailure: the Notice + describeErrorForLog for a failed async click handler (ADR-240)
     keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
