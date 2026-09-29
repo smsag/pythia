@@ -1,6 +1,6 @@
 import { Notice, type App } from "obsidian";
 import type PythiaPlugin from "../main";
-import type { Conversation, Message, NoteWrite, ToolCall } from "../models/types";
+import type { Conversation, Message, NoteWrite, ToolCall, WriteMode } from "../models/types";
 import { t } from "../i18n";
 import { declaresPythiaTemplate, ToolHandler } from "../services/ToolHandler";
 import type { WebErrorKind, WebSource } from "../services/WebSearchService";
@@ -131,7 +131,9 @@ export class ToolCallController {
 	 * `autoCue` is the word that armed it, named on every search chip of this
 	 * answer so an unasked search is never anonymous (ADR-230).
 	 */
-	handler(conv: Conversation, researchActive: boolean, autoCue: string | null = null): ToolCallHandler {
+	handler(conv: Conversation, researchActive: boolean, autoCue: string | null = null, writeMode: WriteMode = conv.writeMode ?? "all"): ToolCallHandler {
+		// `writeMode` is the one the tools were OFFERED with — the send's, a template
+		// armed for one answer included (ADR-177) — so a tool offered is never refused.
 		// Built here, once per send, after the outgoing message joined `messages`:
 		// the links read_url may read in this answer (ADR-217 addendum).
 		const readScope = WebReadScope.forConversation(conv);
@@ -143,22 +145,22 @@ export class ToolCallController {
 			if (call.name === "render_chart") {
 				return acceptChartCall(call.input, this.streamedChars, this.chartBlocks);
 			}
-			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, conv, researchActive, readScope, autoCue);
-			if (call.name === "stage_text") return this.runStage(call, conv, researchActive);
-			return this.runWrite(call, conv, researchActive, signal);
+			if (call.name === "web_search" || call.name === "read_url") return this.runSearch(call, writeMode, researchActive, readScope, autoCue);
+			if (call.name === "stage_text") return this.runStage(call, conv, writeMode, researchActive, signal);
+			return this.runWrite(call, conv, writeMode, researchActive, signal);
 		};
 	}
 
 	/** web_search and read_url are read-only — run directly with a live status
 	 *  chip, no write-confirmation prompt (that would make research unusable). */
-	private async runSearch(call: ToolCall, conv: Conversation, researchActive: boolean, readScope: WebReadScope, autoCue: string | null): Promise<string> {
+	private async runSearch(call: ToolCall, writeMode: WriteMode, researchActive: boolean, readScope: WebReadScope, autoCue: string | null): Promise<string> {
 		const messagesEl = this.d.messagesEl();
 		const labels = chipLabels(call, autoCue);
 		const searchChip = messagesEl.createDiv({ cls: "pythia-tool-call" });
 		searchChip.createSpan({ cls: "pythia-tool-call-label", text: labels.running });
 		this.d.reveal(searchChip, false); // a status: follow it only if following the answer
 
-		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
+		const allowed = ToolHandler.allowedToolNames(writeMode, researchActive);
 		let failed = true;
 		try {
 			// Numbered on from the results already in this answer, so every number
@@ -186,8 +188,8 @@ export class ToolCallController {
 	 * results so far travel with the text, so its citations become footnotes
 	 * numbered around the target note's own when it is inserted.
 	 */
-	private async runStage(call: ToolCall, conv: Conversation, researchActive: boolean): Promise<string> {
-		if (!ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive).has("stage_text")) {
+	private async runStage(call: ToolCall, conv: Conversation, writeMode: WriteMode, researchActive: boolean, signal?: AbortSignal): Promise<string> {
+		if (!ToolHandler.allowedToolNames(writeMode, researchActive).has("stage_text")) {
 			return `Error: tool "stage_text" is not allowed in the current write mode.`;
 		}
 		const content = call.input["content"];
@@ -195,12 +197,14 @@ export class ToolCallController {
 		if (declaresPythiaTemplate(content)) {
 			return "Error: text for the Ablage cannot be a Pythia prompt template. Remove the template frontmatter.";
 		}
+		// Stop means nothing more happens, the Ablage included (principle 8).
+		if (signal?.aborted) return "User stopped the answer. Nothing was put in the Ablage.";
 		const chipEl = this.d.messagesEl().createDiv({ cls: "pythia-tool-call" });
 		const sources = this.webSources.map(({ n, title, url }) => ({ n, title, url }));
-		const put = await this.d.plugin.ablage.put(content, { conversationId: conv.id, ...(sources.length > 0 ? { sources } : {}) });
+		const put = await this.d.plugin.ablage.put(content, { conversationId: conv.id, byModel: true, ...(sources.length > 0 ? { sources } : {}) });
 		const ok = put === "ok";
 		chipEl.addClass(ok ? "pythia-tool-call--done" : "pythia-tool-call--error");
-		const label = ok ? t("ablageStaged") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong");
+		const label = ok ? t("ablageStaged") : put === "empty" ? t("ablageEmptyText") : t("ablageTooLong", { max: ABLAGE_MAX_CHARS });
 		chipEl.createSpan({ cls: "pythia-tool-call-label", text: label });
 		this.d.reveal(chipEl, false);
 		if (!ok) {
@@ -222,7 +226,7 @@ export class ToolCallController {
 		new Notice(kind === "auth" ? t("webSearchKeyRejected") : t("webSearchQuotaReached"), 10000);
 	}
 
-	private async runWrite(call: ToolCall, conv: Conversation, researchActive: boolean, signal?: AbortSignal): Promise<string> {
+	private async runWrite(call: ToolCall, conv: Conversation, writeMode: WriteMode, researchActive: boolean, signal?: AbortSignal): Promise<string> {
 		const messagesEl = this.d.messagesEl();
 		const rawPath = typeof call.input["path"] === "string" ? call.input["path"] : call.name;
 		const noteName = noteBasename(rawPath);
@@ -310,7 +314,7 @@ export class ToolCallController {
 			return "User stopped the answer. Nothing was written.";
 		}
 
-		const allowed = ToolHandler.allowedToolNames(conv.writeMode ?? "all", researchActive);
+		const allowed = ToolHandler.allowedToolNames(writeMode, researchActive);
 		// The results fetched so far, so the note's web citations become footnotes
 		// that name those pages (ADR-238), and the favorites, so a passage the user
 		// starred stays marked in the note (ADR-239).

@@ -1242,6 +1242,9 @@ export class PythiaSidebarView extends ItemView {
 		return sent;
 	}
 
+	/** Whether a send would be refused now: streaming, optimizing, a comparison pending. */
+	get sendBlocked(): boolean { return this.isStreaming || this.optimizationController.isActive || !!this.activeConversation?.comparison; }
+
 	async sendMessage(): Promise<void> {
 		if (this.isStreaming || this.optimizationController.isActive) return;
 		if (!this.activeConversation) {
@@ -1310,7 +1313,7 @@ export class PythiaSidebarView extends ItemView {
 		// Lit, and saying why, for the whole answer — the chip names it too (ADR-230).
 		if (research.autoArmed && cue) this.research.arm(cue);
 		if (research.missingKey) new Notice(t("researchNoKeyNotice"));
-		const onToolCall = this.toolCalls.handler(conv, research.active, research.autoArmed ? cue : null);
+		const onToolCall = this.toolCalls.handler(conv, research.active, research.autoArmed ? cue : null, turnConv.writeMode ?? "all");
 
 		try {
 		await this.plugin.llmRouter.streamMessage(

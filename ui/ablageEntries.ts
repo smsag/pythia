@@ -28,7 +28,9 @@ export function registerAblageEntries(plugin: PythiaPlugin): void {
 			if (!item) return;
 			// The menu names what it will insert, so a stale Ablage is never a surprise.
 			menu.addItem((entry) => entry
-				.setTitle(t("ablageInsertNamed", { preview: ablagePreview(item.text) }))
+				.setTitle(item.byModel
+					? t("ablageInsertNamedByModel", { preview: ablagePreview(item.text) })
+					: t("ablageInsertNamed", { preview: ablagePreview(item.text) }))
 				.setIcon("clipboard-paste")
 				.onClick(() => void insertFromAblage(plugin, editor, item.createdAt)));
 		})

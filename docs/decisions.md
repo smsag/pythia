@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-29 — ADR-246 (the Ablage: one item, filled by a selection or the `stage_text` tool, inserted by the user from the editor's context menu) and ADR-247 (rewrite presets on a selection in a note).*
+*Last updated: 2026-09-29 — ADR-246/247 addendum (review of #269: a rewrite target's text and range are read together; a preset keeps the draft and waits for a free view; stage_text honours Stop and the offered write mode; a model-written Ablage item says so).*
+
+*Previously: 2026-09-29 — ADR-246 (the Ablage: one item, filled by a selection or the `stage_text` tool, inserted by the user from the editor's context menu) and ADR-247 (rewrite presets on a selection in a note).*
 
 *Previously: 2026-09-29 — ADR-245 (a Mermaid diagram is laid out with tighter spacing: less whitespace, same text size; display only).*
 
@@ -5260,3 +5262,15 @@ Notable decisions inside the fixes:
 - **The answer is still a proposal** (user decision): *Replace in note* stays its own press, verified exactly and applied as one undo step. A preset saves typing, never the look before the write.
 
 **Guards.** The ADR-178 rules and tests are unchanged and cover the apply; `tests/uiArchitectureDoc.test.ts` names the new modal.
+
+### Addendum — review of #269 (2026-09-29)
+
+- **A rewrite target's text and range are read in one place** (`captureTarget`), and the context menu captures it as it opens. The preset picker read the text before the modal and the range after it; a modal that collapsed the selection (a phone) produced a target that Replace in note refused as stale.
+- **A preset never touches the user's draft and never arms a send that cannot happen.** It is refused while the view streams, optimizes or holds a comparison (`view.sendBlocked`), and sends with `sendText`, which restores the composer. `arm(target, { sending: true })` skips the "say what to change" Notice and the focus; the header repaints for a template preset.
+- **`stage_text` honours Stop**: an aborted signal puts nothing in the Ablage (principle 8).
+- **A tool offered is never refused.** `ToolCallController.handler` takes the write mode the tools were offered with — the send's `turnConv`, a template armed for one answer included — and every allow-check reads it. The note tools had the same mismatch.
+- **A model-written item says so** (`byModel`): the menu reads *Insert from Ablage (written by Pythia): …*, so the model's text, which may replace the user's own item, is never mistaken for it (principle 9).
+- The size limit in the Notice comes from `ABLAGE_MAX_CHARS`.
+- **Not changed, deliberately:** a failed `data.json` write already raises its own Notice (the put still holds in memory); a stage-only turn with no words is still dropped (the Notice says the item is there); and each put/take writes the whole file, as every other state change does — a separate store is not worth it for one item.
+
+**Guards.** `tests/toolCallStage.test.ts`: the item is the model's; a Stop stores nothing; the offered write mode decides; `byModel` is validated.

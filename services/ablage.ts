@@ -18,6 +18,9 @@ export interface AblageItem {
 	 *  footnotes at insert time, numbered around the target note's own. */
 	sources?: FootnoteWebSource[];
 	conversationId?: string;
+	/** Put there by the model's stage_text, not by the user: the menu says so,
+	 *  so model text is never mistaken for the user's own (principle 9). */
+	byModel?: boolean;
 	createdAt: string;        // ISO 8601; also what an insert checks it still holds
 }
 
@@ -69,6 +72,7 @@ export function normalizeAblage(value: unknown): AblageSlot | undefined {
 			createdAt: raw.createdAt,
 			...(sources ? { sources } : {}),
 			...(typeof raw.conversationId === "string" ? { conversationId: raw.conversationId } : {}),
+			...(raw.byModel === true ? { byModel: true } : {}),
 		},
 	};
 }

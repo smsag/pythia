@@ -47,12 +47,15 @@ export function sameRewriteTarget(a: RewriteTarget | undefined, b: RewriteTarget
 export class RewriteController {
 	constructor(private readonly d: RewriteDeps) {}
 
-	async arm(target: RewriteTarget): Promise<void> {
+	/** `sending`: a preset sends at once (ADR-247), so the "say what to change"
+	 *  prompt and the composer focus would be wrong — it says nothing here. */
+	async arm(target: RewriteTarget, { sending = false }: { sending?: boolean } = {}): Promise<void> {
 		const conv = this.d.getConversation();
 		if (!conv) { new Notice(t("noActiveConvToSend")); return; }
 		conv.pendingRewrite = target;
 		await this.d.plugin.conversationStore.save(conv);
 		this.d.refreshPills();
+		if (sending) return;
 		this.d.focusInput();
 		new Notice(t("rewriteArmed", { note: target.path }));
 	}
