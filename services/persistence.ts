@@ -336,9 +336,9 @@ export interface MergeOutcome {
  * A conversation present in only one side is KEPT rather than treated as deleted.
  * Without tombstones, "deleted elsewhere" and "created here and not yet saved"
  * look identical, and resurrecting a deleted conversation is a far smaller harm
- * than destroying one the user is still writing in. Deletes on this device are
- * unaffected: `ConversationStore.delete` removes the conversation from memory and
- * persists immediately, so neither side still holds it.
+ * than destroying one the user is still writing in. The deletion records of
+ * ADR-252 are what tell the two apart: `loadPluginData` applies them to this
+ * function's result, so a delete on any device stays a delete here.
  *
  * Ordering follows disk, with memory-only conversations appended. The rest of the
  * app treats the array as insertion-ordered (`conversations[length - 1]` is "most

@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-242).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
+*Updated: 2026-09-30 — **A deleted conversation came back from another device (ADR-252).** Deletions are now recorded in data.json, so a device still holding a deleted conversation no longer writes it back.*
+
+*Previously: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-242).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
 
 *Previously: 2026-09-28 — **Third whole-codebase review (ADR-240): 75 defects fixed** across security, providers, persistence, UI and tooling; three new principles (7–9) in CLAUDE.md. Two items deferred (D-68, D-69).*
 
@@ -2158,3 +2160,12 @@ Six parallel reviews; every finding verified against the code before it was fixe
 
 **Open.** Copy and Pin are still missing on a Mermaid diagram — Obsidian leaves no source in the DOM (D-70).
 
+## Bug — a deleted conversation came back, again and again (ADR-252), 2026-09-30
+
+**Symptom.** A conversation started from a note anchor was deleted (its link removed from the note first) and reappeared in Pythia several times.
+
+**Cause.** Not the anchor code. The user runs Pythia on two devices on one synced vault. `mergeConversations` (ADR-133) keeps a conversation only one side holds, since nothing recorded a delete: the other device, still holding it in memory, kept its copy on reload and wrote it back, and this device's watcher took it in again — once per write from the other device. A known, accepted cost of ADR-133, which named tombstones as the fix.
+
+**Fix.** `deletedConversations` in data.json (`services/deletions.ts`): every delete and eviction records id → deletedAt; the load drops any copy not edited after its record, on either side; records merge by union, expire after 180 days and are capped at 5 000. Guard: `tests/deletions.test.ts`, which reproduces the report and fails without the change.
+
+**Open.** Every device must run the new version; a device offline for more than 180 days can still bring one back (D-77). Not verified across two real devices.

@@ -107,6 +107,9 @@ export class ConversationStore {
 	}
 
 	async delete(id: string): Promise<void> {
+		// Recorded before the write, so the file that drops it also says why:
+		// another device that still holds it must not write it back (ADR-252).
+		this.plugin.pluginDataStore?.recordDeletions([id]);
 		this._conversations = this._conversations.filter((c) => c.id !== id);
 		this.dirtyIds.delete(id);
 		this.cancelPersist();
