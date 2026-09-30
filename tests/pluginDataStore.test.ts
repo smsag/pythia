@@ -69,6 +69,8 @@ describe("PluginDataStore.persist", () => {
 			settings: plugin.settings,
 			conversations: plugin.conversations,
 			renameLog: [],
+			// The two the cap removed, so another device cannot write them back (ADR-252).
+			deletedConversations: { a: expect.any(String), b: expect.any(String) },
 		});
 	});
 

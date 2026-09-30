@@ -8,6 +8,7 @@ import { describeErrorForLog } from "./redact";
 import { archiveFolderOf } from "./conversationArchive";
 import { formatBytes, storageLevel } from "./storageSize";
 import { mergeRenameLogs, normalizeRenameLog, type RenameLogEntry } from "./renameFollower";
+import { applyDeletions, mergeDeletionLogs, normalizeDeletionLog, recordDeletions, type DeletionLog } from "./deletions";
 import { Ablage, mergeAblage, normalizeAblage, type AblageSlot } from "./ablage";
 import {
 	mergeSettings,
@@ -43,6 +44,15 @@ export class PluginDataStore {
 	 *  another device can be put right after a sync (ADR-218 addendum). */
 	renameLog: RenameLogEntry[] = [];
 
+	/** Conversations deleted recently, by id (ADR-252), kept in data.json so a
+	 *  device that still holds one cannot write it back into this one. */
+	deletionLog: DeletionLog = {};
+
+	/** Record conversations as deleted. Call before the write that drops them. */
+	recordDeletions(ids: string[]): void {
+		if (ids.length > 0) this.deletionLog = recordDeletions(this.deletionLog, ids, new Date().toISOString());
+	}
+
 	/** The Ablage's one slot (ADR-246), kept in data.json beside the rename log. */
 	private ablageSlot: AblageSlot | undefined;
 	readonly ablage = new Ablage({
@@ -63,6 +73,10 @@ export class PluginDataStore {
 		this.renameLog = mergeRenameLogs(this.renameLog, normalizeRenameLog(data.renameLog));
 		// The newer write wins, so an insert here is not undone by a stale sync.
 		this.ablageSlot = mergeAblage(this.ablageSlot, normalizeAblage(data.ablage));
+		// Union too: an older Pythia that does not know the field writes the file
+		// without it, and this device's records must survive that (ADR-252).
+		const now = new Date().toISOString();
+		this.deletionLog = mergeDeletionLogs(this.deletionLog, normalizeDeletionLog(data.deletedConversations, now), now);
 
 		const rawConversations = (data.conversations ?? []) as unknown[];
 		const { conversations: loaded, dropped } = parseConversations(rawConversations);
@@ -93,7 +107,16 @@ export class PluginDataStore {
 		// a sync delivering another device's state, or a write that has not landed
 		// yet — must never roll back a conversation the user is still writing in.
 		const merged = mergeConversations(existing, loaded);
-		p.conversations = merged.conversations;
+		// A conversation deleted on either device stays deleted, whichever side
+		// still holds it (ADR-252) — unless it was edited after the delete.
+		const { kept, removed } = applyDeletions(merged.conversations, this.deletionLog);
+		p.conversations = kept;
+		if (removed.length > 0) {
+			const gone = new Set(removed);
+			merged.newerInMemory = merged.newerInMemory.filter((id) => !gone.has(id));
+			merged.keptFromMemory = merged.newerInMemory.length;
+			debugLog(p.settings, "loadPluginData dropped deleted conversations", { removed: removed.length });
+		}
 		if (merged.keptFromMemory > 0) {
 			// Disk is behind for THESE — not for every conversation (#356). Marking all
 			// of them rewrote the whole file on every reload, which the watcher then
@@ -210,6 +233,7 @@ export class PluginDataStore {
 		this.evicting = true;
 		try {
 			if (!p.settings.archiveBeforeEviction) {
+				this.recordDeletions(removed.map((c) => c.id));
 				new Notice(t("evictedNotice", { count: String(removed.length) }), 8000);
 				return kept;
 			}
@@ -236,6 +260,7 @@ export class PluginDataStore {
 			// by a list computed before them.
 			const failedIds = new Set(failed.map((c) => c.id));
 			const droppedIds = new Set(removed.filter((c) => !failedIds.has(c.id)).map((c) => c.id));
+			this.recordDeletions([...droppedIds]);
 			return p.conversations.filter((c) => !droppedIds.has(c.id));
 		} finally {
 			this.evicting = false;
@@ -266,6 +291,7 @@ export class PluginDataStore {
 				conversations: p.conversations,
 				renameLog: this.renameLog,
 				...(this.ablageSlot ? { ablage: this.ablageSlot } : {}),
+				...(Object.keys(this.deletionLog).length > 0 ? { deletedConversations: this.deletionLog } : {}),
 			});
 			// Stamp again on completion: saveData can take seconds on mobile, and the
 			// watcher's own-write window is measured from the stamp. Without this a

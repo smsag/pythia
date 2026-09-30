@@ -164,7 +164,7 @@ describe("after an answer in an anchored chapter", () => {
 		convs.get("c1")!.noteAnchors = [{ path: "N.md", messageId: "u1", createdAt: "t" }];
 		await service.afterAnswer("c1", "u1");
 		expect(convs.get("c1")!.messages[0].chapterSummary?.text).toBe("Summary of Index clause?");
-		expect(files.get("N.md")).toMatch(/==\[\^pythia-[0-9a-f]{8}\]\n\n\[\^pythia-[0-9a-f]{8}\]: “Rent cap › Index clause\?” \(Pythia, .+\) — Summary of Index clause\?\n$/);
+		expect(files.get("N.md")).toMatch(/\)\[\^pythia-[0-9a-f]{8}\]\n\n\[\^pythia-[0-9a-f]{8}\]: “Rent cap › Index clause\?” \(Pythia, .+\) — Summary of Index clause\?\n$/);
 	});
 
 	it("with the setting off, the note is left alone", async () => {

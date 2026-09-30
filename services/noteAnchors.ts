@@ -4,13 +4,14 @@ import type { Conversation, NoteAnchor } from "../models/types";
  * Note anchors (ADR-249): a passage in a vault note that links to a Pythia
  * conversation, or to one chapter of it —
  *
- *   ==[the passage](obsidian://pythia?vault=V&cmd=resume&id=C&msg=M)==[^pythia-1a2b3c4d]
+ *   [the passage](obsidian://pythia?vault=V&cmd=resume&id=C&msg=M)[^pythia-1a2b3c4d]
  *
  * A note anchor is a Pythia resume link (`obsidian://pythia?…cmd=resume&id=…`)
- * that points at a chapter or is wrapped in `==` — `isNoteAnchor`, the one
- * rule. Whether Pythia wrote it or the user pasted a copied chapter link by
- * hand makes no difference. The `==` is also the print fallback for a reader
- * without Pythia; the footnote carries the summary onto paper.
+ * that points at a chapter, carries `anchor=1`, or is wrapped in `==` —
+ * `isNoteAnchor`, the one rule. Whether Pythia wrote it or the user pasted a
+ * copied chapter link by hand makes no difference. Pythia writes no `==` any
+ * more (ADR-253): the ink comes from the link; an older `==` still counts, and
+ * the print copy highlights the passage, where no link colour reaches paper.
  *
  * Everything here is pure and works on a string, so the rules can be tested
  * without a vault: where the links are (never inside code), which label a
@@ -22,6 +23,9 @@ import type { Conversation, NoteAnchor } from "../models/types";
 export interface AnchorRef {
 	id: string;
 	msg?: string;
+	/** The link says `anchor=1`: a whole-conversation link written as an anchor
+	 *  (ADR-253). Not part of what it points at — labels and records ignore it. */
+	anchor?: true;
 }
 
 /** One anchor found in a note. Offsets are into the note's text. */
@@ -82,20 +86,22 @@ export function parseAnchorUrl(url: string): AnchorRef | null {
 	const id = params.get("id")?.trim();
 	if (params.get("cmd") !== "resume" || !id) return null;
 	const msg = params.get("msg")?.trim();
-	return msg ? { id, msg } : { id };
+	if (msg) return { id, msg };
+	return params.get("anchor") === "1" ? { id, anchor: true } : { id };
 }
 
 /**
- * THE rule for which Pythia resume link is a note anchor (ADR-249 addendum): a
- * link to a CHAPTER, or one wrapped in `==` exactly. A plain link to a whole
- * conversation stays an ordinary link — that is the `[↗ Name](…)` backlink
- * *Save to inbox* and *Insert into note* have always written, and counting it
- * would protect every conversation ever saved to the inbox from the history
- * limit. Everything the anchor feature itself writes passes: a copied chapter
- * link carries `msg=`, and Pythia wraps what it links in `==`.
+ * THE rule for which Pythia resume link is a note anchor (ADR-249 addendum,
+ * ADR-253): a link to a CHAPTER, one flagged `anchor=1`, or one wrapped in
+ * `==` exactly. A plain link to a whole conversation stays an ordinary link —
+ * that is the `[↗ Name](…)` backlink *Save to inbox* and *Insert into note*
+ * have always written, and counting it would protect every conversation ever
+ * saved to the inbox from the history limit. Everything the anchor feature
+ * writes passes: a copied chapter link carries `msg=`, a started conversation's
+ * link carries `anchor=1`, and anchors written before ADR-253 carry `==`.
  */
 export function isNoteAnchor(ref: AnchorRef, highlighted: boolean): boolean {
-	return !!ref.msg || highlighted;
+	return !!ref.msg || !!ref.anchor || highlighted;
 }
 
 /** Every anchor in `markdown`, in order. Links inside code are text. */
@@ -146,9 +152,10 @@ export function anchorLabel(ref: AnchorRef): string {
 	return `${PYTHIA_FOOTNOTE_PREFIX}${fnv1a(`${ref.id}\u0000${ref.msg ?? ""}`)}`;
 }
 
-/** The markup Pythia writes over a selection. */
+/** The markup Pythia writes over a selection: the link, and nothing around it
+ *  — the ink comes from the link (ADR-253), never from a `==` in the note. */
 export function anchorMarkup(text: string, url: string, label?: string): string {
-	return `==[${text}](${url})==${label ? `[^${label}]` : ""}`;
+	return `[${text}](${url})${label ? `[^${label}]` : ""}`;
 }
 
 export type SelectionProblem = "empty" | "multiline" | "markup";

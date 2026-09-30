@@ -26,6 +26,10 @@ export const REFRESH_LIMIT = 20;
 /** Summaries written at once. */
 const REFRESH_CONCURRENCY = 3;
 
+/** What a failure names: the conversation and chapter, never how the link was
+ *  written (`anchor=1`, ADR-253) — the API's shape stays `{ id, msg? }`. */
+const target = (ref: AnchorRef): AnchorRef => (ref.msg ? { id: ref.id, msg: ref.msg } : { id: ref.id });
+
 export type RefreshFailure = "limit" | "empty" | "changed" | "unanswered" | "deleted" | "error";
 
 export interface RefreshResult {
@@ -108,7 +112,7 @@ export class NoteAnchorService {
 	async refresh(refs: AnchorRef[], { signal, onProgress }: RefreshOptions = {}): Promise<RefreshResult> {
 		const result: RefreshResult = { refreshed: 0, failed: [] };
 		const work = refs.slice(0, REFRESH_LIMIT);
-		for (const ref of refs.slice(REFRESH_LIMIT)) result.failed.push({ ...ref, reason: "limit" });
+		for (const ref of refs.slice(REFRESH_LIMIT)) result.failed.push({ ...target(ref), reason: "limit" });
 		if (work.length === 0) return result;
 		if (!onProgress) this.h.notice(t("refreshingForExport", { count: String(work.length) }));
 		let done = 0;
@@ -118,7 +122,7 @@ export class NoteAnchorService {
 				const ref = work[next++];
 				const outcome = await this.refreshOne(ref);
 				if (outcome === "ok") result.refreshed++;
-				else result.failed.push({ ...ref, reason: outcome });
+				else result.failed.push({ ...target(ref), reason: outcome });
 				onProgress?.(++done, work.length);
 			}
 		};

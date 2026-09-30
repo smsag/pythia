@@ -29,6 +29,16 @@ export function resumeDeepLink(conversationId: string, vaultName: string, messag
 	return messageId ? `${base}&msg=${encodeURIComponent(messageId)}` : base;
 }
 
+/**
+ * The link a passage in a note gets when it starts a conversation (ADR-253):
+ * the resume link plus `&anchor=1`, which is what makes a link to a WHOLE
+ * conversation a note anchor without `==` around it. The deep-link handler
+ * ignores the flag, so the link opens the conversation like any resume link.
+ */
+export function anchorDeepLink(conversationId: string, vaultName: string): string {
+	return `${resumeDeepLink(conversationId, vaultName)}&anchor=1`;
+}
+
 /** What a shortcut link does: open Pythia, start a conversation, or start one
  *  with a question — `ask` ends in `&text=` so a Shortcut appends its input. */
 export type PythiaLinkKind = "open" | "new" | "ask";

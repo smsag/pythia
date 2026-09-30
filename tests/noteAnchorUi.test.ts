@@ -66,6 +66,14 @@ describe("copy a chapter's link from the panel (ADR-249)", () => {
 });
 
 describe("a note anchor in Reading view", () => {
+	it("marks a started conversation's flagged link without any == around it (ADR-253)", () => {
+		const root = document.createElement("div");
+		root.innerHTML = `<p><a class="external-link" href="${url("c1")}&amp;anchor=1">started</a>`
+			+ ` <a class="external-link" href="${url("c2")}">↗ backlink</a></p>`;
+		decorateAnchorLinks(root);
+		expect([...root.querySelectorAll("a")].map((a) => a.classList.contains("p-note-anchor"))).toEqual([true, false]);
+	});
+
 	it("marks a chapter link or a wrapped link, with its == wrapper — and not an old backlink", () => {
 		const root = document.createElement("div");
 		root.innerHTML = `<p><mark><a class="external-link" href="${url("c1", "m1")}">cap</a></mark>`
@@ -173,7 +181,7 @@ describe("writing an anchor into a note", () => {
 		const ed = editor("The index is capped for now.", 13, 19);
 		await startLinkedConversation(plugin, ed as never, "N.md");
 		const conv = plugin.conversations.find((c) => c.noteAnchors?.length)!;
-		expect(ed.doc.text).toBe(`The index is ${anchorMarkup("capped", url(conv.id))} for now.`);
+		expect(ed.doc.text).toBe(`The index is ${anchorMarkup("capped", `${url(conv.id)}&anchor=1`)} for now.`);
 		expect(conv.noteAnchors).toEqual([{ path: "N.md", createdAt: expect.any(String) }]);
 		expect(send).toHaveBeenCalledWith("capped");
 
