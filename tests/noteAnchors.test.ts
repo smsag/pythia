@@ -3,7 +3,7 @@ import {
 	anchorLabel, anchorMarkup, findAnchors, isNoteAnchor, maskCode, normalizeNoteAnchors, parseAnchorUrl,
 	reconcileNoteAnchors, recordNoteAnchor, selectionProblem,
 } from "../services/noteAnchors";
-import { resumeDeepLink } from "../utils";
+import { anchorDeepLink, resumeDeepLink } from "../utils";
 import type { Conversation } from "../models/types";
 
 const url = (id: string, msg?: string) => resumeDeepLink(id, "My Vault", msg);
@@ -78,7 +78,7 @@ describe("one footnote label per target", () => {
 
 	it("the markup Pythia writes is found again as what it wrote", () => {
 		const md = `x ${anchorMarkup("the cap", url("c1", "m1"), anchorLabel({ id: "c1", msg: "m1" }))} y`;
-		expect(findAnchors(md)[0]).toMatchObject({ text: "the cap", highlighted: true, footnoteLabel: anchorLabel({ id: "c1", msg: "m1" }) });
+		expect(findAnchors(md)[0]).toMatchObject({ text: "the cap", highlighted: false, footnoteLabel: anchorLabel({ id: "c1", msg: "m1" }) });
 	});
 });
 
@@ -137,5 +137,35 @@ describe("the records follow what the note holds", () => {
 		const b = conv("b", { noteAnchors: "junk" as unknown as Conversation["noteAnchors"] });
 		normalizeNoteAnchors(b);
 		expect(b.noteAnchors).toBeUndefined();
+	});
+});
+
+describe("the ink comes from the link, never from a highlight (ADR-253)", () => {
+	it("Pythia writes no == around what it links", () => {
+		expect(anchorMarkup("the cap", url("c1", "m1"))).toBe(`[the cap](${url("c1", "m1")})`);
+		expect(anchorMarkup("the cap", url("c1", "m1"), "pythia-1")).toBe(`[the cap](${url("c1", "m1")})[^pythia-1]`);
+		expect(anchorMarkup("x", anchorDeepLink("c1", "V"))).not.toContain("==");
+	});
+
+	it("a started conversation's link is an anchor by its flag; a plain backlink is still not one", () => {
+		const flagged = anchorDeepLink("c1", "My Vault");
+		expect(flagged).toBe(`${url("c1")}&anchor=1`);
+		expect(parseAnchorUrl(flagged)).toEqual({ id: "c1", anchor: true });
+		expect(parseAnchorUrl(`${url("c1")}&anchor=0`)).toEqual({ id: "c1" });
+		// With a chapter the flag says nothing more: the chapter is what it points at.
+		expect(parseAnchorUrl(`${url("c1", "m1")}&anchor=1`)).toEqual({ id: "c1", msg: "m1" });
+		expect(findAnchors(`a [x](${flagged}) b [↗ Back](${url("c2")}) c`).map((a) => a.ref.id)).toEqual(["c1"]);
+	});
+
+	it("the flag is how the link was written, not what it points at: same label, same record", () => {
+		expect(anchorLabel({ id: "c1", anchor: true })).toBe(anchorLabel({ id: "c1" }));
+		const c = conv("c1");
+		reconcileNoteAnchors([c], "N.md", [{ id: "c1", anchor: true }], "t");
+		expect(c.noteAnchors).toEqual([{ path: "N.md", createdAt: "t" }]);
+	});
+
+	it("an anchor written before ADR-253, wrapped in ==, still counts", () => {
+		const old = `x ==[the cap](${url("c1")})== y`;
+		expect(findAnchors(old)).toMatchObject([{ ref: { id: "c1" }, highlighted: true }]);
 	});
 });

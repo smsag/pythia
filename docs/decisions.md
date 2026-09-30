@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-09-30 — ADR-252 (a deleted conversation stays deleted: `deletedConversations` in data.json records id → deletedAt for every delete and eviction; applied after the ADR-133 merge to memory and disk alike, a copy edited after the delete kept; union-merged, 180 days, 5 000 records).*
+*Last updated: 2026-09-30 — ADR-253 (a note anchor is marked by its link, never by `==`: `anchorMarkup` writes the link alone, a started conversation's link carries `anchor=1` via `anchorDeepLink`; old `==` anchors still count and are not rewritten; the print copy still highlights).*
+
+*Previously: 2026-09-30 — ADR-252 (a deleted conversation stays deleted: `deletedConversations` in data.json records id → deletedAt for every delete and eviction; applied after the ADR-133 merge to memory and disk alike, a copy edited after the delete kept; union-merged, 180 days, 5 000 records).*
 
 *Previously: 2026-09-29 — ADR-251 (Schreibstube's API version 2: Pythia registers its conversations as one source among others, with a kind, labels, an icon, a link and incremental listing by a cursor of its own, and is read only once the person allows it in Schreibstube; hits carry `source` and `item`, and a score that is relevance against the kind's floor; the vault-context settings tell a Schreibstube that is loading from one that waits on the person).*
 
@@ -5424,3 +5426,21 @@ Notable decisions inside the fixes:
 **Consequence.** A delete on one device stays a delete on every device that runs this version. Every device must be updated: an older Pythia does not know the field, keeps bringing the conversation back and drops the field when it writes — the updated devices then remove it again on their next load. A device offline for more than 180 days can still bring a conversation back (D-77). Not runtime-verified across two devices; the report's sequence is reproduced in `tests/deletions.test.ts` against the real `PluginDataStore` and `ConversationStore`, and fails without the change.
 
 **Guards.** `tests/deletions.test.ts`: the record against copies older, equal, newer and without a date; read-back validation (expired, not a date, from the future, too long, wrong shape); union with the later delete winning and the 5 000 bound; the report (delete here → the other device drops its copy on load and does not mark it dirty); an old writer without the field; a later edit kept; the history limit recording what it evicted; no field written when nothing was deleted. `tests/pluginDataStore.test.ts` now expects the evicted ids in the written file.
+
+## ADR-253 — A note anchor is marked by its link, never by `==` in the note
+
+**Context.** ADR-249 wrapped every passage Pythia linked in `==…==`: a highlight for a reader without Pythia, and — after the addendum — the one thing that told a link to a *whole* conversation (*Start a linked conversation*) from the plain backlink *Save to inbox* writes. The user asked (2026-09-30) that Pythia stop writing highlight markers: the passage's colour should come from the link alone. Decided with the user: **(1a)** a flag in the link replaces `==` as the signal, **(2a)** anchors already in notes are left as they are, **(3a)** the print copy still highlights the passage.
+
+**Decision.**
+- **`anchorMarkup` writes the link and nothing around it**: `[text](url)[^pythia-…]`. Both writers use it — *Start a linked conversation* and *Link selection to …*.
+- **A started conversation's link carries `&anchor=1`**, built by `anchorDeepLink` in `utils.ts`, the one builder of the flag. `parseAnchorUrl` reads it into `AnchorRef.anchor` (only without `msg=`: with a chapter the flag says nothing more). `isNoteAnchor` = chapter link, flagged link, or `==`-wrapped link. The deep-link handler ignores the flag, so the link opens like any resume link.
+- **The flag is how the link was written, not what it points at.** Footnote labels and the records on the conversation ignore it; a refresh failure reported through `plugin.api` names `{ id, msg? }` only, so the API's shape is unchanged.
+- **Existing notes are not touched.** A `==[…](…)==` anchor still counts (`highlighted`), keeps its footnote, and its `==` loses the yellow under the ink as before. Nothing rewrites it.
+- **The print copy is unchanged**: `withExportFootnotes` prints every anchor as `==text==[^n]`, flagged or not — on paper there is no link colour, so the highlight is the only visible mark.
+- A `[↗ Name](…)` backlink without the flag stays an ordinary link, as the addendum decided.
+
+**Alternatives rejected.** *Point the link at the first chapter once asked* — a second write into the note after an await, and a link that changes under the user. *Every resume link is an anchor* — reverses the addendum: inbox backlinks would be inked, footnoted and protected from the history limit. *Strip `==` from existing anchors on open* — a write into the user's notes nobody asked for.
+
+**Consequence.** A note Pythia links reads as the note plus a coloured link — no `==` in the source, no highlight in a reader without Pythia (there it is an ordinary link; the footnote, when enabled, still carries the summary). Two spellings of an anchor now exist in vaults; both are read by the one rule. Not verified in Obsidian (D-75 still open).
+
+**Guards.** `tests/noteAnchors.test.ts` (no `==` in the markup; the flag parsed, ignored beside `msg=`, not part of the label or the record; a plain backlink still not an anchor; an old `==` anchor still found); `tests/anchorFootnotes.test.ts` (the print copy highlights a flagged and a chapter anchor); `tests/noteAnchorUi.test.ts` (Reading view inks a flagged link; *Start a linked conversation* writes the flagged link without `==`).

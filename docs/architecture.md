@@ -1,6 +1,8 @@
 # Pythia — Architecture
 
-*Last updated: 2026-09-30 — ADR-252: new pure `services/deletions.ts` (`normalizeDeletionLog`, `mergeDeletionLogs`, `recordDeletions`, `isDeleted`, `applyDeletions`); `PluginDataStore.deletionLog` + `recordDeletions`, merged on load, applied after `mergeConversations`, written as `deletedConversations`; `ConversationStore.delete` and `applyCap` record what they drop.*
+*Last updated: 2026-09-30 — ADR-253: `anchorMarkup` writes no `==`; `anchorDeepLink` (utils.ts) = resume link + `&anchor=1`; `parseAnchorUrl` reads the flag into `AnchorRef.anchor` and `isNoteAnchor` accepts it; refresh failures name `{ id, msg? }` only.*
+
+*Previously: 2026-09-30 — ADR-252: new pure `services/deletions.ts` (`normalizeDeletionLog`, `mergeDeletionLogs`, `recordDeletions`, `isDeleted`, `applyDeletions`); `PluginDataStore.deletionLog` + `recordDeletions`, merged on load, applied after `mergeConversations`, written as `deletedConversations`; `ConversationStore.delete` and `applyCap` record what they drop.*
 
 *Previously: 2026-09-29 — ADR-250 (answer citations): pure `services/answerCitations.ts` (`answerNumbers`, `labelledAnswer`, `resolveAnswerCitations`, `answerResolver`, `isAnswerCited`); `⟦cite:answer:n⟧` in `citations.ts` (+ `stripAnswerLabels`); `historyContent(m, answerNumbers)` in all three providers via `historyAnswerNumbers`; `CITE_ANSWERS_INSTRUCTION` in `ContextBuilder`; `answerFootnoteText` beside `footnoteText`; answer targets in `noteFootnotes.ts` (tools, Save to note, archive); `chapterOf` accepts answer ids and tabs; `NoteAnchorService.recordFromPath` / `forget`; `vaultWatcher` delete → `forgetPath`; `NoteWriter.onAnswersLinked`; `setAnswerOpener` seam in `ui/sourcesRow.ts`; `cite_answers` in `TemplateLoader` → `Conversation`/`PendingTemplate.citeAnswers`.*
 

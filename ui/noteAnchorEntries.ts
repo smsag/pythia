@@ -4,7 +4,7 @@ import type { EditorPos } from "../models/types";
 import { anchorMarkup, findAnchors, recordNoteAnchor, selectionProblem, type AnchorRef, type SelectionProblem } from "../services/noteAnchors";
 import { needsRefresh } from "../services/chapterSummary";
 import { REFRESH_LIMIT, type RefreshResult } from "../services/NoteAnchorService";
-import { resumeDeepLink, todayISO } from "../utils";
+import { anchorDeepLink, todayISO } from "../utils";
 import { PYTHIA_ICON_ID } from "./pluginIcon";
 import { CHAPTER_LINK_ICON } from "./icons";
 import { noticeFailure } from "./failureNotice";
@@ -116,7 +116,7 @@ export async function startLinkedConversation(plugin: PythiaPlugin, editor: Edit
 
 	const conv = await plugin.createConversation({ name: `Conversation ${todayISO()}` });
 	if (editor.getRange(sel.from, sel.to) === sel.text) {
-		editor.replaceRange(anchorMarkup(sel.text, resumeDeepLink(conv.id, plugin.app.vault.getName())), sel.from, sel.to);
+		editor.replaceRange(anchorMarkup(sel.text, anchorDeepLink(conv.id, plugin.app.vault.getName())), sel.from, sel.to);
 		recordNoteAnchor(conv, path, undefined, new Date().toISOString());
 		await plugin.conversationStore.save(conv);
 	} else {

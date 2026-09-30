@@ -17,6 +17,14 @@ const resolver = (map: Record<string, AnchorSummary>): AnchorResolver => (ref: A
 	map[`${ref.id}#${ref.msg ?? ""}`] ?? { state: "deleted" };
 const L = (id: string, msg?: string) => anchorLabel({ id, msg });
 
+describe("the print copy still highlights the passage (ADR-253)", () => {
+	it("an anchor without == in the note prints as ==text== with its footnote", () => {
+		const out = withExportFootnotes(`The index is ${anchorMarkup("capped", url("c1", "m1"))} and ${anchorMarkup("whole", `${url("c1")}&anchor=1`)}.`,
+			resolver({ "c1#m1": ok(), "c1#": ok({ chapterName: undefined }) }));
+		expect(out).toMatch(/^The index is ==capped==\[\^1\] and ==whole==\[\^2\]\./);
+	});
+});
+
 describe("the footnote text (ADR-249)", () => {
 	it("is the agreed format: „Conversation › Chapter“ (Pythia, date) — summary", () => {
 		expect(footnoteText(ok({ language: "de", summary: "Die Kappung gilt nur für neue Verträge." })))
@@ -79,11 +87,11 @@ describe("updateNoteFootnotes — only Pythia's parts of a note", () => {
 	it("adds the reference after the anchor and the definition as the last block", () => {
 		const md = `# Note\n\nThe index is ${anchorMarkup("capped", url("c1", "m1"))} for now.\n`;
 		const out = updateNoteFootnotes(md, r);
-		expect(out).toBe(`# Note\n\nThe index is ==[capped](${url("c1", "m1")})==[^${L("c1", "m1")}] for now.\n\n[^${L("c1", "m1")}]: ${footnoteText(ok())}\n`);
+		expect(out).toBe(`# Note\n\nThe index is [capped](${url("c1", "m1")})[^${L("c1", "m1")}] for now.\n\n[^${L("c1", "m1")}]: ${footnoteText(ok())}\n`);
 	});
 
 	it("is idempotent: a second run changes nothing", () => {
-		const md = `A ${anchorMarkup("x", url("c1", "m1"))} b ${anchorMarkup("y", url("c1"))}.`;
+		const md = `A ${anchorMarkup("x", url("c1", "m1"))} b ${anchorMarkup("y", `${url("c1")}&anchor=1`)}.`;
 		const once = updateNoteFootnotes(md, r);
 		expect(updateNoteFootnotes(once, r)).toBe(once);
 		expect(noteFootnoteEdits(once, r)).toEqual([]);
@@ -113,7 +121,7 @@ describe("updateNoteFootnotes — only Pythia's parts of a note", () => {
 
 	it("drops a Pythia reference no anchor owns any more", () => {
 		const md = `text[^pythia-deadbeef] and ${anchorMarkup("a", url("c1", "m1"))}`;
-		expect(updateNoteFootnotes(md, r)).toMatch(/^text and ==/);
+		expect(updateNoteFootnotes(md, r)).toMatch(/^text and \[a\]/);
 	});
 
 	it("leaves a note Pythia has nothing in byte for byte — code included", () => {

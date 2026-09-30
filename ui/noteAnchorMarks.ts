@@ -11,12 +11,12 @@ import { t } from "../i18n";
  * How a note anchor looks and what it shows in a note (ADR-249) — in Reading
  * view, in Live Preview and source mode, and in the card a hover opens.
  *
- * Which links count is `isNoteAnchor`'s rule alone: a chapter link, or one
- * wrapped in `==` — a copied chapter link pasted by hand is an anchor like one
- * Pythia wrapped; the old backlink *Save to inbox* writes to a whole
- * conversation is not. Both views paint it with
- * the fork origin's accent ink (`styles.css`, "Note anchors"), and `==` around
- * it loses its yellow — the highlight is there for a reader without Pythia.
+ * Which links count is `isNoteAnchor`'s rule alone: a chapter link, a link
+ * flagged `anchor=1`, or one wrapped in `==` — a copied chapter link pasted by
+ * hand is an anchor like one Pythia wrote; the old backlink *Save to inbox*
+ * writes to a whole conversation is not. Both views paint it with the fork
+ * origin's accent ink (`styles.css`, "Note anchors"). Pythia writes no `==`
+ * (ADR-253); one around an older anchor loses its yellow under the ink.
  */
 
 /** Reading view: mark every note anchor — a chapter link, or a link that is

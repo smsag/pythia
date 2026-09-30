@@ -208,7 +208,7 @@ Marks nest; the innermost owns the tap (`ui/markTap.ts`).
 
 ### Note anchors (ADR-249) — surfaces in the NOTE, not the panel
 
-A passage in a vault note linked to a conversation or a chapter: a Pythia resume link that points at a chapter (`msg=`) or is wrapped in `==` (`isNoteAnchor`, ADR-249 addendum). A plain backlink to a whole conversation is not one. The only Pythia marks that live outside the view, so their classes sit outside `.pythia-view`.
+A passage in a vault note linked to a conversation or a chapter: a Pythia resume link that points at a chapter (`msg=`), carries `anchor=1` (a conversation started from the passage) or is wrapped in `==` (`isNoteAnchor`, ADR-249 addendum, ADR-253). Pythia writes no `==`: the ink comes from the link; an anchor written before ADR-253 keeps its `==` and still counts. A plain backlink to a whole conversation is not one. The only Pythia marks that live outside the view, so their classes sit outside `.pythia-view`.
 
 | Surface | Class | Owner | Opened by |
 |---|---|---|---|
@@ -384,6 +384,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-29 | ADR-246/247: the Ablage and the rewrite presets added to the UI map; D-71 (the Ablage is one device-synced slot, not a history). |
 | 2026-09-30 | ADR-252: `deletedConversations` added to the data model; D-77 (a deletion record expires after 180 days). |
 | 2026-09-29 | ADR-250: answer citations — the answer-citation footnote added to the UI map, `citeAnswers` to the data model; D-76 (a citation may point at the wrong answer). |
+| 2026-09-30 | ADR-253: Pythia writes a note anchor without `==`; a started conversation's link carries `anchor=1`. |
 | 2026-09-29 | ADR-249 addendum: a note anchor is a chapter link or a `==`-wrapped link; the inbox's old conversation backlinks are not. |
 | 2026-09-29 | ADR-249: note anchors added to the UI map (the first Pythia surfaces that live in a note) and to the data model; D-72 (no card on a phone), D-73 (a pasted anchor is known once its note is read), D-74 (no "Linked from" banner), D-75 (Live Preview unverified in Obsidian). |
 | 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). ADR-233: D-63 closed — the resume setting preselects the dialog. |
