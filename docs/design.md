@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-09-30 — ADR-253: a note anchor is painted from its link alone; Pythia writes no `==` around it.*
+*Last updated: 2026-10-01 — ADR-254: the chart card's table view — a switch first in `.p-chart-actions`, the head icon showing the view on screen, `.p-chart-table` restating the answer table's hairline grid with right-aligned tabular figures.*
+
+*Previously: 2026-09-30 — ADR-253: a note anchor is painted from its link alone; Pythia writes no `==` around it.*
 
 *Previously: 2026-09-29 — ADR-250: the sources row gains `Answers:` between `Vault:` and `Web:` (icon `message-square`); an answer-citation footnote's link is `.p-note-anchor-ref` — Obsidian's link look, no ink — and opens the anchor card on hover; the delete dialog's `.p-delete-linked` line names the notes that link to the conversation.*
 
@@ -507,6 +509,8 @@ What a ```pythia-chart fenced block becomes, drawn by `ui/chart/card.ts` — in 
 **Two controls, two flavours.** Copy image (`image`) puts a PNG on the clipboard — the point of the feature, since that is what pastes into Word, Docs, Slides or Notion. Copy source (`copy`) gives the fenced block, which pastes back into a note and renders there. A refused image write falls back to the source block and says so; it is never hidden on mobile, because a control that quietly does nothing is worse than one that says what it did instead.
 
 **Colour.** Axes, gridlines and labels are classes over `--text-faint`, `--background-modifier-border` and `--text-muted`. A series swatch is the one thing on screen with no Obsidian token behind it, so `ui/chart/palette.ts` derives it against the live theme ground and publishes it as `--p-chart-cN` on the `<svg>` root; the eight `.p-chart-cN` rules are the only place they are read, so a theme change repaints the chart and no colour appears in the markup. Every swatch clears **3:1** against the ground (WCAG 2.2 §1.4.11 — ADR-198's number), and the hue order is interleaved against a luminance ladder so any two series differ in brightness, in hue, or in both. **Series 1 is deliberately not `var(--color-accent)`**: hard rule 6 is about accent-*coloured surfaces*, and the accent is user-chosen and could collide with any neighbour.
+
+**Two views, one card** (ADR-254). The first action is a switch between the chart and the table of the same numbers. It shows the icon of where it goes (`table` / `bar-chart-3`), and the head glyph shows what is on screen, so the state reads while the actions are hover-hidden. Only `.p-chart-body` changes; the head, note and footer do not move. The table sits in the card's own `.p-scroll-frame` and is `.p-chart-table`: the answer table's hairline grid (ADR-145) restated under `.p-chart-card`, because the answer rules are scoped to `.pythia-view` and a card also draws in notes. Row headers are the categories — 1px rule, normal weight; values are right-aligned in `tabular-nums`. In table view the image copy becomes *Copy table* (`clipboard-list`, Markdown); Copy source stays. No transition on the switch (ADR-155).
 
 **A chart it cannot draw is still a card.** `.p-chart-card--error` shows the parser's reason and the original source, and keeps the copy control — the data is still the user's even when Pythia cannot draw it.
 

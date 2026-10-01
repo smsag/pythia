@@ -132,8 +132,9 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │       │   ├── .p-cite                             numbered citation chips
 │       │   ├── .p-scroll-frame                     wraps wide tables/code (ADR-131)
 │       │   ├── .p-chart-card                       a ```pythia-chart block, drawn   ui/chart/card.ts
-│       │   │   ├── .p-chart-head                   icon · title · .p-chart-actions (copy image · copy source)
+│       │   │   ├── .p-chart-head                   icon of the view · title · .p-chart-actions (switch · copy image or table · copy source)
 │       │   │   ├── .p-chart-body > .p-chart-svg    responsive, re-laid out on resize — NOT pan-scrolled (ADR-210)
+│       │   │   │   or > .p-chart-table-frame > .p-chart-table   the same data as a table, `data-view="table"` (ADR-254)
 │       │   │   └── .p-chart-foot                   run-in "Sources:" + one entry per series source
 │       │   └── marks: pythia-favorite · pythia-fork · pythia-merge · pythia-term · pythia-person
 │       ├── .p-sources > .p-sources-row             Template: / Vault: / Web: (.p-sources-label)
@@ -180,14 +181,14 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | Modals | `.pythia-modal` → `-desc`, `-hint`, `-buttons` | `suggest/*.ts` | various |
 | Settings: section | a `Setting` heading plus `.pythia-section-intro`, the one sentence naming the section's remit | `ui/settings/section.ts` | every section of the plugin settings tab (ADR-209) |
 | Settings: sections | Connections · New conversations · While answering · Prompt optimizer · Vault context · Notes Pythia writes (+ Glossary) · History and storage · Links and shortcuts · Troubleshooting | `ui/settings/*.ts`, ordered by `settings.ts` | the plugin settings tab; **only "New conversations" holds values a conversation can override**, and every row there says so |
-| Chart card | `.p-chart-card` → `-head`/`-actions`/`-body`/`-svg`/`-foot`, and `--error` for a spec it cannot draw | `ui/chart/card.ts` | a ```pythia-chart block, in an answer **or in any vault note** — the plugin's only markdown code-block processor (ADR-210) |
+| Chart card | `.p-chart-card` → `-head`/`-actions`/`-body`/`-svg`/`-foot`, and `--error` for a spec it cannot draw; `data-view` = `chart` or `table`, switched by `.p-chart-view-btn`, the table drawn as `.p-chart-table` (ADR-254) | `ui/chart/card.ts` | a ```pythia-chart block, in an answer **or in any vault note** — the plugin's only markdown code-block processor (ADR-210) |
 | Settings: search by meaning | a `Setting` row whose description says whether Schreibstube's search by meaning is available | `ui/vaultContextSettings.ts` | the plugin settings tab, first row of the Vault context section (ADR-224) |
 
 ### Pinned content (ADR-216)
 
 | Surface | Class | Owner | Opened by |
 |---|---|---|---|
-| Pin strip | `.p-pins` > `.p-pin` (a `.p-acc`) → `.p-pin-count`, `.p-pin-action` (`--open`: only while open), `.p-pin-text` / `.p-pin-rendered` | `ui/PinController.ts` | any pin; absolute at the top of `.pythia-messages-wrapper`, which carries `.has-pins` and `--p-pin-strip-h` |
+| Pin strip | `.p-pins` > `.p-pin` (a `.p-acc`) → `.p-pin-count`, `.p-pin-action` (`--open`: only while open), `.p-pin-text` / `.p-pin-rendered` | `ui/PinController.ts` | any pin; absolute at the top of `.pythia-messages-wrapper`, which carries `.has-pins` and `--p-pin-strip-h`. A pinned chart is the whole card, its view switch included, opening in the view it was pinned from (ADR-254) |
 | Pin button | `.p-pin-btn` beside Copy on `.p-code-actions`, `.p-diag-copy`, `.p-chart-actions`, `.p-table-actions` | `ui/pinSources.ts` (`appendPinButton`) | `decorateCodeBlocks(…, onPin)` — answers only |
 | Table actions | `.p-table-block` > `.p-table-actions` (Copy · Pin) | `ui/tableDecorator.ts` | a table in an answer |
 
@@ -303,6 +304,8 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-74 | **No "Linked from" banner in the conversation.** `noteAnchors` records which notes link where, but the conversation does not show them the way a merge target shows its banner. | ADR-249 | Kept out of the first build to keep it to the confirmed scope. | A user wants to go from a conversation back to the notes that cite it. |
 | D-76 | **Nothing checks that a cited answer says what the sentence claims.** The number is resolved, so a citation always points at a real answer — but the model may point at the wrong one. | ADR-250 | The footnote names the chapter, so a reader can check; an automatic check would ask a model to grade a model. | A manual spot check of 20 written documents finds more than one wrong answer in 20 citations. |
 | D-77 | **A deletion record expires after 180 days.** A device that stays offline longer, or an older Pythia that does not know the records, can still bring a deleted conversation back. | ADR-252 | Records that never expire grow data.json with every delete, and every device rewrites the whole file per turn (ADR-174). | Someone reports a conversation returning after a long-offline device came back, or the store moves to per-conversation files (#3). |
+| D-78 | **A chart's view is forgotten on restart.** The table switch is remembered for the session — per chart in answers and notes, per pin in the strip — and every chart opens as a chart after Obsidian restarts. | ADR-254 | Nothing is written: the block is the artifact and a view is not data. Built on the recommendation; not separately confirmed by the user. The smallest persisted form would be `Pin.view?: "table"`, validated on load and classified in `tests/pathFields.test.ts`. | A user asks for a pinned table to stay a table, or for a note to open a chart as its table — then a `view` key in the block, through `parseChartSpec`. |
+| D-79 | **Copy table copies Markdown, not a rich table.** Pasted into Word, Docs or a spreadsheet, a chart's table arrives as pipe text. | ADR-254 | The same as Copy on an answer's table (ADR-216). The fix is a `text/html` plus tab-separated write through `ui/clipboard.ts`. | A user pastes a chart's table into a document or spreadsheet and has to clean it up. |
 | D-70 | **No Copy or Pin on a Mermaid diagram.** Obsidian replaces the `<pre>` with `div.mermaid` and keeps the source only in its own internal map, so there is nothing in the DOM to copy. | ADR-242 | Recovering it means matching the n-th Mermaid fence in the message's Markdown to the n-th `div.mermaid` in the rendered answer — a second source of truth for what a block is, done to restore a feature that never worked. | A user asks to copy or pin a Mermaid diagram, or Obsidian exposes the source on the element. |
 | D-64 | **A running conversation's instructions are shown, not edited.** *What Pythia sends* is read-only. | ADR-232 | Editing in place would duplicate a template armed for one answer (ADR-177), and would replace the user's own instructions with no undo. | A user wants to change a conversation's standing instructions mid-way and a one-answer template is the workaround more than once. |
 
@@ -385,6 +388,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | 2026-09-30 | ADR-252: `deletedConversations` added to the data model; D-77 (a deletion record expires after 180 days). |
 | 2026-09-29 | ADR-250: answer citations — the answer-citation footnote added to the UI map, `citeAnswers` to the data model; D-76 (a citation may point at the wrong answer). |
 | 2026-09-30 | ADR-253: Pythia writes a note anchor without `==`; a started conversation's link carries `anchor=1`. |
+| 2026-10-01 | ADR-254: the chart card's table view added to the UI map (`data-view`, `.p-chart-view-btn`, `.p-chart-table`), and a pinned chart's own view; D-78 (a chart's view is forgotten on restart), D-79 (Copy table copies Markdown). |
 | 2026-09-29 | ADR-249 addendum: a note anchor is a chapter link or a `==`-wrapped link; the inbox's old conversation backlinks are not. |
 | 2026-09-29 | ADR-249: note anchors added to the UI map (the first Pythia surfaces that live in a note) and to the data model; D-72 (no card on a phone), D-73 (a pasted anchor is known once its note is read), D-74 (no "Linked from" banner), D-75 (Live Preview unverified in Obsidian). |
 | 2026-09-26 | ADR-230: D-5 built (the globe's four states). ADR-231: D-63 (the settings' resume-mode default is inert); `.p-inspector-resume` added to the UI map. ADR-232: `InstructionsModal` added to the UI map; D-64 (a running conversation's instructions are not editable). ADR-233: D-63 closed — the resume setting preselects the dialog. |

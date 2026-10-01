@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-	chartAsTable, commitAnswerCharts, demoteUnworthyCharts, formatChartBlock, parseChartSpec,
-	CHART_BLOCK_LANG, type ChartSpec,
+	chartAsTable, chartBlockAsTable, chartTableRows, commitAnswerCharts, demoteUnworthyCharts,
+	formatChartBlock, parseChartSpec, parseFencedChartBlock, CHART_BLOCK_LANG, CHART_GAP, type ChartSpec,
 } from "../services/chartSpec";
 
 /**
@@ -49,6 +49,39 @@ describe("chartAsTable", () => {
 		expect(table).toContain("|   | x | y |");
 		expect(table).toContain("| a\\|b | 1 | 4 |");
 		expect(table.startsWith("|")).toBe(true);
+	});
+});
+
+// ADR-254: the one reading of a chart as a table — the card's table view draws
+// these cells and chartAsTable writes them, so the two cannot disagree.
+describe("chartTableRows", () => {
+	it("one row per category, one column per series, the unit in the header, a gap as –", () => {
+		expect(chartTableRows(PRICES)).toEqual({
+			header: ["", "Preis ($)"],
+			rows: [["SpaceJump", "9.99"], ["AirSpace", CHART_GAP], ["FlashSpace", "9.99"], ["AltTab", "0"]],
+		});
+	});
+
+	it("writes a value exactly as a bar's label does, and never a title, note or source", () => {
+		const table = chartTableRows(spec({
+			type: "bar", title: "T", note: "N", categories: ["a", "b", "c"],
+			series: [{ name: "x", values: [1e6, 0.1, -3], source: "s.example" }, { name: "y", values: [1, 2, 3] }],
+		}));
+		expect(table.header).toEqual(["", "x", "y"]);
+		expect(table.rows).toEqual([["a", "1000000", "1"], ["b", "0.1", "2"], ["c", "-3", "3"]]);
+		expect(JSON.stringify(table)).not.toMatch(/"T"|"N"|s\.example/);
+	});
+});
+
+describe("a fenced chart block (what a pin stores)", () => {
+	it("parses back to the spec it was written from", () => {
+		const parsed = parseFencedChartBlock(formatChartBlock(PRICES));
+		expect(parsed.ok && parsed.spec).toEqual(PRICES);
+	});
+
+	it("is copied as the table of its data, or not at all when it does not parse", () => {
+		expect(chartBlockAsTable(formatChartBlock(PRICES))).toBe(chartAsTable(PRICES));
+		expect(chartBlockAsTable("```" + CHART_BLOCK_LANG + "\n{ nope\n```")).toBeNull();
 	});
 });
 

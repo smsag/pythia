@@ -5,7 +5,8 @@ import { t } from "../i18n";
 import { addPin, isRefusal, pinExcerpt, removePin, type PinDraft } from "../services/pins";
 import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
-import { chartSourceOf } from "./chart/card";
+import { chartBlockAsTable } from "../services/chartSpec";
+import { CHART_VIEW_EVENT, chartSourceOf, chartViewOf, setChartView, type ChartView, type ChartViewDetail } from "./chart/card";
 import { copyTextWithFeedback } from "./clipboard";
 import { decorateCodeBlocks } from "./CodeBlockDecorator";
 import { describeErrorForLog } from "../services/redact";
@@ -59,8 +60,9 @@ function kindLabel(kind: PinKind): string {
  * of `.p-chat` so nothing is hidden under the strip at scroll 0; an EXPANDED pin
  * floats over the chat on purpose, and `scrollChatTo` measures it when jumping.
  *
- * Pins are data on the conversation; which one is shown and whether it is open
- * are view state, kept here for the session and never written.
+ * Pins are data on the conversation; which one is shown, whether it is open and
+ * which way a pinned chart shows its data are view state, kept here for the
+ * session and never written.
  */
 export class PinController {
 	private overlay: HTMLElement | null = null;
@@ -70,6 +72,11 @@ export class PinController {
 	 *  for the session only: view state, never written (ADR-216 addendum). */
 	private readonly opened = new Set<string>();
 	private readonly shown = new Map<string, string>(); // conversation id → pin id shown
+	/** A chart pin shown as its table (ADR-254): pinned from the table view, or
+	 *  switched to it in the strip. Only "table" is kept — "chart" is the default.
+	 *  The pin's own: a switch in the strip never reaches the answer, nor one in
+	 *  the answer the strip. For the session only, like `opened`. */
+	private readonly chartViews = new Map<string, ChartView>(); // pin id → view
 	/** Owns what the open pin's body rendered; replaced — and unloaded — with it. */
 	private bodyComponent: Component | null = null;
 	private readonly diagObservers = new WeakMap<HTMLElement, { mo: MutationObserver; ro: ResizeObserver }>();
@@ -100,10 +107,13 @@ export class PinController {
 			return;
 		}
 		if (row.classList.contains("p-msg-user")) return;
-		this.add({ messageId: row.getAttribute("data-msg-id") ?? "", kind, source });
+		// A chart is pinned in the view it was showing: the pin is the whole card,
+		// both views, and it opens as what the user was looking at (ADR-254).
+		const view = kind === "chart" ? chartViewOf(from.closest(".p-chart-card")) : "chart";
+		this.add({ messageId: row.getAttribute("data-msg-id") ?? "", kind, source }, view);
 	};
 
-	private add(draft: PinDraft): void {
+	private add(draft: PinDraft, chartView: ChartView = "chart"): void {
 		const conv = this.d.getConversation();
 		if (!conv || !draft.messageId) return;
 		const result = addPin(conv, draft, crypto.randomUUID(), new Date().toISOString());
@@ -112,6 +122,9 @@ export class PinController {
 			else if (result.reason === "tooLong") new Notice(t("pinTooLong", { chars: result.chars, max: result.max }));
 			return; // "empty": nothing was selected — the idle case, nothing to say
 		}
+		// Pinning a chart already pinned returns that pin; it now opens in the view
+		// it was pinned from again, so its body must be redrawn even if it is shown.
+		if (draft.kind === "chart" && this.setChartPinView(result.id, chartView)) this.signature = "";
 		this.shown.set(conv.id, result.id);
 		void this.d.plugin.conversationStore.save(conv);
 		this.render();
@@ -163,7 +176,7 @@ export class PinController {
 		// so the title keeps its room in a 300px sidebar (measured: all six squeezed
 		// it to "Text · the …"). Copy and ✕ act on what you can see, so they come
 		// with the open pin (`.p-pin-action--open`, hidden by CSS while collapsed).
-		const copy = this.iconButton(acc.actions, "copy", t("pinCopyTooltip"), () => void copyTextWithFeedback(copy, pin.source), true);
+		const copy = this.iconButton(acc.actions, "copy", t("pinCopyTooltip"), () => void copyTextWithFeedback(copy, this.copyText(pin)), true);
 		this.iconButton(acc.actions, "arrow-up-right", t("pinJumpTooltip"), () => this.jump(conv, pin, acc.root));
 		this.iconButton(acc.actions, "x", t("pinRemoveTooltip"), () => this.unpin(conv, pin), true);
 
@@ -179,11 +192,27 @@ export class PinController {
 			return;
 		}
 		const inner = body.createDiv({ cls: "p-pin-rendered p-ai-body" });
+		if (pin.kind === "chart") {
+			// The card's own switch, pressed in the strip: this pin keeps the view, and
+			// cancelling tells the card not to put it in the session's memory, which
+			// the answer the chart came from would read on its next draw (ADR-254).
+			// The listener lives and dies with `inner`, drawn anew for every pin shown.
+			inner.addEventListener(CHART_VIEW_EVENT, (e) => {
+				e.preventDefault();
+				this.setChartPinView(pin.id, (e as CustomEvent<ChartViewDetail>).detail.view);
+			});
+		}
 		// A snapshot of model output: remote media waits for a press (ui/remoteMedia.ts).
 		renderAnswerMarkdown(this.d.app, pin.source, inner, this.freshBodyComponent()).then(
 			// The same decorations as in the answer — header, copy, pan, sizing — and
-			// deliberately NO pin: a pin's body is not a place to pin from.
-			() => decorateCodeBlocks(inner, this.diagObservers),
+			// deliberately NO pin: a pin's body is not a place to pin from. A chart
+			// is then shown in this pin's view, read now rather than before the
+			// render: the strip may have been switched while it ran (principle 7).
+			() => {
+				decorateCodeBlocks(inner, this.diagObservers);
+				const card = pin.kind === "chart" ? inner.querySelector<HTMLElement>(".p-chart-card") : null;
+				if (card) setChartView(card, this.chartPinView(pin.id));
+			},
 			(e: unknown) => {
 				// Never an empty pin and nothing said (principle 2): log what a report
 				// can quote, and show the snapshot as the text it is.
@@ -213,6 +242,27 @@ export class PinController {
 		this.bodyComponent = null;
 	}
 
+	/** The view a chart pin opens in. */
+	private chartPinView(pinId: string): ChartView {
+		return this.chartViews.get(pinId) ?? "chart";
+	}
+
+	/** Record a chart pin's view; true when that changed it. */
+	private setChartPinView(pinId: string, view: ChartView): boolean {
+		const changed = this.chartPinView(pinId) !== view;
+		if (view === "table") this.chartViews.set(pinId, view);
+		else this.chartViews.delete(pinId);
+		return changed;
+	}
+
+	/** What the strip's Copy copies: what the open pin shows (ADR-216). A chart
+	 *  shown as its table copies the table as Markdown (ADR-254) — the same text
+	 *  as the card's own *Copy table*; anything else, the snapshot. */
+	private copyText(pin: Pin): string {
+		if (pin.kind === "chart" && this.chartPinView(pin.id) === "table") return chartBlockAsTable(pin.source) ?? pin.source;
+		return pin.source;
+	}
+
 	private iconButton(parent: HTMLElement, icon: string, title: string, onClick: () => void, whenOpen = false): HTMLButtonElement {
 		const btn = parent.createEl("button", { cls: `pb pb-icon p-pin-action${whenOpen ? " p-pin-action--open" : ""}`, attr: { title, "aria-label": title } });
 		setIcon(btn, icon);
@@ -222,6 +272,7 @@ export class PinController {
 
 	private unpin(conv: Conversation, pin: Pin): void {
 		removePin(conv, pin.id);
+		this.chartViews.delete(pin.id);
 		void this.d.plugin.conversationStore.save(conv);
 		this.render();
 	}

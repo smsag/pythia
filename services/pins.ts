@@ -1,5 +1,5 @@
 import type { Conversation, Pin, PinKind } from "../models/types";
-import { chartLabel, parseChartBlock } from "./chartSpec";
+import { chartLabel, parseFencedChartBlock } from "./chartSpec";
 
 /**
  * The rules for pinning answer content (ADR-216). Pure: the view decides where a
@@ -60,7 +60,7 @@ export function pinExcerpt(kind: PinKind, source: string, max = 80): string {
 	} else if (kind === "chart") {
 		// What the card itself is headed: the chart's title, or its kind. Parsed with
 		// the one chart parser — a regex beside it cut a title at an escaped quote.
-		const parsed = parseChartBlock(lines.slice(1, -1).join("\n"));
+		const parsed = parseFencedChartBlock(source);
 		line = parsed.ok ? chartLabel(parsed.spec) : "";
 	} else if (kind === "table") {
 		// Cells are split on UNESCAPED pipes and shown unescaped: `tableMarkdown`

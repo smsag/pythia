@@ -3445,6 +3445,37 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 .p-chart-body { width: 100%; min-width: 0; }
 .p-chart-svg  { display: block; width: 100%; height: auto; }
 
+/* The table view (ADR-254): the answer table's scroll frame and hairline grid
+   (ADR-131/145), restated for the card because those rules are scoped to
+   .pythia-view and a card is also drawn in vault notes. In the panel both apply;
+   these come later and override where they differ: row headers are the
+   categories, not a header row, so they keep the 1px rule and normal weight.
+   Values are right-aligned in tabular figures, so a column lines up by digit. */
+.p-chart-card .p-chart-table-frame { margin: 0; }
+.p-chart-card .p-chart-table {
+  width: max-content;
+  max-width: none;
+  border-collapse: collapse;
+  border: 1px solid var(--background-modifier-border);
+}
+.p-chart-card .p-chart-table th,
+.p-chart-card .p-chart-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 3px var(--s2);
+  vertical-align: top;
+  max-width: 32ch;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: left;
+}
+.p-chart-card .p-chart-table thead th { border-bottom-width: 2px; font-weight: 600; }
+.p-chart-card .p-chart-table tbody th { border-bottom-width: 1px; font-weight: normal; }
+.p-chart-card .p-chart-table .p-chart-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .p-chart-title  { fill: var(--text-normal); font-weight: 600; }
 .p-chart-legend { fill: var(--text-muted); }
 .p-chart-axis   { fill: var(--text-muted); }

@@ -267,8 +267,10 @@ export function repaintMergeLinks(
 // So this walks the body once against a single alternation rather than re-finding
 // specific text.
 
-/** Elements whose text must never be marked. */
-const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row";
+/** Elements whose text must never be marked. A chart card redraws itself (a
+ *  resize, the table switch of ADR-254), so a mark in it would not last — and in
+ *  its SVG an HTML mark inside `<text>` is not drawn, so the label vanished. */
+const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row, .p-chart-card";
 
 /**
  * The character a skipped node's text is replaced with while matching.

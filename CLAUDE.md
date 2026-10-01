@@ -103,7 +103,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     chart/palette.ts          ← the ONE module allowed to name a colour: series swatches derived per theme ground on a WCAG shifted-luminance ladder, floored at 3:1 (ADR-198's number)
     chart/layout.ts           ← pure chart geometry, no DOM — a bar's axis ALWAYS includes zero, a line keeps its own range, a gap breaks the line (ADR-210)
     chart/render.ts           ← geometry → SVG via createElementNS; never createEl("svg"), which renders nothing and reports nothing
-    chart/card.ts             ← renderChartCard: what a ```pythia-chart block becomes, in the panel AND in any vault note
+    chart/card.ts             ← renderChartCard: what a ```pythia-chart block becomes, in the panel AND in any vault note — the chart or its table, one switch in the head (ADR-254); chartViewOf · setChartView · CHART_VIEW_EVENT
     chart/export.ts           ← SVG → resolved-colour clone → canvas → PNG; a CSS custom property does not cross the <img> boundary
     renderMarkdown.ts         ← renderAnswerMarkdown: the ONE MarkdownRenderer entry point for model output (remote media deferred, ADR-240) + renderRichMarkdown + RenderSlot (one child Component per rebuild, released on the next); tests/remoteMedia.test.ts fails on another call site
     remoteMedia.ts            ← deferRemoteMedia (markdown, before render) + blockRemoteMedia (DOM, after): a remote image/iframe/media loads only when the user presses the placeholder naming its host (ADR-240)
@@ -718,6 +718,8 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Colour lives in `ui/chart/palette.ts` and nowhere else.** Swatches are derived against the live theme ground and published as `--p-chart-cN` on the `<svg>` root; `tests/chartRules.test.ts` fails on a colour literal anywhere else under `ui/chart/`. **Series 1 is not `var(--color-accent)`** — hard rule 6 is about accent-*coloured surfaces*, and a user-chosen accent would collide with whichever neighbour shares its hue
 - **The PNG exists because a CSS custom property does not cross the `<img>` boundary.** The export clone is painted by attribute, taking each swatch off the root's inline style rather than through the CSSOM. `ClipboardItem` gets an **unresolved promise** — awaiting the blob first spends the user gesture and the write fails on iOS alone. The text fallback ships and is never hidden on mobile
 - **One clipboard helper**: `ui/clipboard.ts`. Four legacy sites are grandfathered in `tests/chartRules.test.ts` and that list may only shrink
+- **A card shows its data as a chart or as a table, and the switch writes nothing** (ADR-254). The table is `chartTableRows` — the ONE reading of a spec as a table, which `chartAsTable` is built on — drawn as text, never Markdown, and marked `data-decorated` before `decorateTables` can wrap it again. The session remembers a switch by the block; a surface that keeps views itself cancels `CHART_VIEW_EVENT` and applies its own with `setChartView`. Never store the view in the block or on the message
+- **The glossary painter never enters a chart card** (`TERM_SKIP`): an HTML mark inside SVG `<text>` is not drawn, and the card redraws itself
 
 ### Pins (ADR-216)
 
@@ -730,6 +732,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Open/closed is per conversation, for the session — never written**; a new pin does not open the strip (user decisions, ADR-216 addendum 2)
 - **A chart is named by `chartLabel`** (`services/chartSpec.ts`) — the card and the strip; never read a chart field with a regex beside the parser
 - **A pin body renders into its own child `Component`**, released on the next render — never straight into the view
+- **A pinned chart is the whole card, both views** (ADR-254): it stores the block, opens in the view it was pinned from, keeps its own view per pin for the session, and its switch never reaches the answer (the strip cancels `CHART_VIEW_EVENT`). The strip's Copy copies what the pin shows
 
 ### Web citations (ADR-226)
 

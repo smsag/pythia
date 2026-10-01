@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-09-30 (ADR-253: Pythia writes a note anchor without `==` — a started conversation's link carries `anchor=1`; an older `==` still counts).*
+*Last updated: 2026-10-01 (ADR-254: the chart card shows its data as a chart or as a `.p-chart-table`, switched in its head; a pinned chart keeps its own view).*
+
+*Previously: 2026-09-30 (ADR-253: Pythia writes a note anchor without `==` — a started conversation's link carries `anchor=1`; an older `==` still counts).*
 
 *Previously: 2026-09-29 (ADR-250: answer citations — the `Answers:` row, the answer-citation footnote's `.p-note-anchor-ref` link, the delete dialog's linked-notes line)*
 
@@ -61,7 +63,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
 │     │  │                               fork (ForkController) · merge (MergeController) · term/person (GlossaryController)
 │     │  ├─ .p-cite                      citation chips (citationPainter)
 │     │  ├─ .p-scroll-frame              wide tables and code, panned sideways
-│     │  ├─ .p-chart-card                ui/chart/card.ts
+│     │  ├─ .p-chart-card                ui/chart/card.ts — the chart, or its .p-chart-table (switched in its head)
 │     │  └─ pin icon                     beside Copy on code · diagram · chart · table (pinSources)
 │     ├─ .p-sources                      Template: · Vault: · Web: (sourcesRow)
 │     ├─ .pythia-tool-call               write-confirmation chip (ToolCallController)
@@ -98,7 +100,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
   - Pickers, mostly for command-palette entry points that can run with no view open: `ConversationSuggestModal`, `FavoritesSuggestModal`, `NoteSuggestModal`, `TemplateSuggestModal`, `FileSuggestModal`, `FolderSuggestModal`, `ModelSuggestModal` (the comparison's model choice), `RewritePresetModal` (a selection's "Rewrite with Pythia as…": presets, `rewrite_preset` templates, own instruction — ADR-247).
 - **Settings tab:** `settings.ts` orders eight sections — seven in `ui/settings/`, and **Vault context** in `ui/vaultContextSettings.ts`, which opens with a *Search by meaning* row saying whether Schreibstube can find notes (ADR-224) — each opened by `section()` with one sentence naming its remit. Only **New conversations** holds values a conversation can override.
 - **Note anchor:** a passage in a vault note linked to a conversation or a chapter — a Pythia resume link that points at a chapter, carries `anchor=1`, or is wrapped in `==` (`isNoteAnchor`, ADR-249, its addendum and ADR-253; Pythia itself writes no `==` any more). Painted with the fork's accent ink — `.p-note-anchor` in Reading view (`decorateAnchorLinks`, a Markdown post-processor), `.p-note-anchor-lp` in the editor (`noteAnchorEditorExtension`) — both in `ui/noteAnchorMarks.ts`, which also draws the **anchor card** (`.p-anchor-card`) in Obsidian's hover popover. The copy control above a user message is `.p-chapter-link` (`ui/chapterLink.ts`). The editor commands and menu entries — *Start a linked conversation from selection*, *Link selection to …*, *Update Pythia footnotes in this note* — are `ui/noteAnchorEntries.ts`.
-- **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note.
+- **Chart card:** `ui/chart/` — `layout` (geometry) → `render` (SVG) → `card` (the card) → `export` (PNG). Registered as the `pythia-chart` code-block processor in `main.ts`, so it draws in the panel *and* in any vault note. The card's head switches it between the chart and the table of the same data (ADR-254); the session remembers the switch, and a pinned chart keeps its own.
 
 ## 4. Vocabulary
 

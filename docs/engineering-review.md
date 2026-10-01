@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-09-30 — **A deleted conversation came back from another device (ADR-252).** Deletions are now recorded in data.json, so a device still holding a deleted conversation no longer writes it back.*
+*Updated: 2026-10-01 — **A glossary term vanished from a chart label (found with ADR-254).** The term painter no longer reaches into a chart card.*
+
+*Previously: 2026-09-30 — **A deleted conversation came back from another device (ADR-252).** Deletions are now recorded in data.json, so a device still holding a deleted conversation no longer writes it back.*
 
 *Previously: 2026-09-28 — **A Mermaid diagram shrank to the chat's width (ADR-242).** Pythia looked for a `block-language-mermaid` container Obsidian never makes; it now sizes `div.mermaid`, and leaves a Vizardry canvas alone.*
 
@@ -2169,3 +2171,13 @@ Six parallel reviews; every finding verified against the code before it was fixe
 **Fix.** `deletedConversations` in data.json (`services/deletions.ts`): every delete and eviction records id → deletedAt; the load drops any copy not edited after its record, on either side; records merge by union, expire after 180 days and are capped at 5 000. Guard: `tests/deletions.test.ts`, which reproduces the report and fails without the change.
 
 **Open.** Every device must run the new version; a device offline for more than 180 days can still bring one back (D-77). Not verified across two real devices.
+
+## Bug — a chart label that was also a glossary term vanished (found with ADR-254), 2026-10-01
+
+**Symptom.** Not reported; found while building the chart's table view. A test reproduced it: a chart whose category or legend label matched a glossary term lost that label.
+
+**Cause.** `repaintTerms` walks every text node of the answer body, and `TERM_SKIP` did not name the chart card. Its tree walker therefore reached the SVG's `<text>` nodes and wrapped the match in an HTML `<pythia-term>`, which SVG does not draw. The card also redraws itself on resize, so a mark in it would not have lasted anyway.
+
+**Fix.** `TERM_SKIP` includes `.p-chart-card` (`ui/HighlightPainter.ts`), which also keeps marks out of the new table view. Guard: `tests/termPainter.test.ts` — it failed before the fix with a mark inside the SVG label.
+
+**Open.** Not seen in Obsidian; happy-dom walks SVG text the way the DOM specification says browsers do.
