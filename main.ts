@@ -1,5 +1,5 @@
 import { CHART_BLOCK_LANG } from "./services/chartSpec";
-import { renderChartCard } from "./ui/chart/card";
+import { forgetChartViews, renderChartCard } from "./ui/chart/card";
 import { Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 import { PythiaSettings, PythiaSettingTab } from "./settings";
 import { t } from "./i18n";
@@ -166,7 +166,7 @@ export default class PythiaPlugin extends Plugin {
 		// Wiring only; what to draw lives in ui/chart/card.ts (ADR-205).
 		this.registerMarkdownCodeBlockProcessor(
 			CHART_BLOCK_LANG,
-			(src, el) => renderChartCard(src, el)
+			(src, el, ctx) => renderChartCard(src, el, ctx.sourcePath)
 		);
 
 		// A note anchor — a Pythia chapter link in any note — is painted and
@@ -446,6 +446,7 @@ export default class PythiaPlugin extends Plugin {
 		this.renameFollower?.flush();
 		this.llmRouter?.abort();
 		this.schreibstube?.dispose();
+		forgetChartViews();
 	}
 
 	// ── Facades delegating to the extracted services (ADR-103 / #121) ──────────

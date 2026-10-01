@@ -414,26 +414,65 @@ function cell(text: string): string {
 	return text.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim() || " ";
 }
 
+/** How a table writes a gap — a `null` value, which is not 0. */
+export const CHART_GAP = "–";
+
+/** A chart's data as table cells: a header row and one row per category. */
+export interface ChartTable {
+	/** An empty corner, then each series' name with the unit in brackets. */
+	header: string[];
+	/** The category, then each series' value: as the bar labels write it, a gap as `CHART_GAP`. */
+	rows: string[][];
+}
+
 /**
- * A chart's data as the Markdown table it should have been (ADR-236, D-65).
+ * The ONE reading of a chart as a table (ADR-254): one row per category, one
+ * column per series, the unit in the column header. The card's table view draws
+ * it and `chartAsTable` writes it as Markdown, so the table on screen and the
+ * table copied cannot disagree — and a value is `String(value)`, exactly what a
+ * bar's label shows, so the chart and its table cannot either.
+ */
+export function chartTableRows(spec: ChartSpec): ChartTable {
+	const unit = spec.unit ? ` (${spec.unit})` : "";
+	return {
+		header: ["", ...spec.series.map((s) => s.name + unit)],
+		rows: spec.categories.map((category, i) => [
+			category,
+			...spec.series.map((s) => (s.values[i] === null ? CHART_GAP : String(s.values[i]))),
+		]),
+	};
+}
+
+/**
+ * A chart's data as the Markdown table it should have been (ADR-236, D-65), and
+ * what *Copy table* copies (ADR-254).
  *
- * Everything the block held survives: the title as a bold line, one row per
- * category and one column per series with the unit in its header, a gap as
- * "–", the note and the series' sources under it. No word is added in any
- * language, because the answer's language is the model's.
+ * Everything the block held survives: the title as a bold line, the cells of
+ * `chartTableRows`, the note and the series' sources under it. No word is added
+ * in any language, because the answer's language is the model's.
  */
 export function chartAsTable(spec: ChartSpec): string {
-	const unit = spec.unit ? ` (${spec.unit})` : "";
-	const head = `| ${cell("")} | ${spec.series.map((s) => cell(s.name + unit)).join(" | ")} |`;
-	const rule = `|${" --- |".repeat(spec.series.length + 1)}`;
-	const rows = spec.categories.map((category, i) =>
-		`| ${cell(category)} | ${spec.series.map((s) => (s.values[i] === null ? "–" : String(s.values[i]))).join(" | ")} |`
-	);
+	const { header, rows } = chartTableRows(spec);
+	const line = (cells: string[]): string => `| ${cells.map(cell).join(" | ")} |`;
+	const rule = `|${" --- |".repeat(header.length)}`;
 	const sources = [...new Set(spec.series.map((s) => s.source).filter((s): s is string => !!s))];
 	const foot = [spec.note, sources.length > 0 ? `(${sources.join(", ")})` : ""].filter(Boolean).join(" ");
-	return [spec.title ? `**${spec.title}**\n` : "", [head, rule, ...rows].join("\n"), foot ? `\n${foot}` : ""]
+	return [spec.title ? `**${spec.title}**\n` : "", [line(header), rule, ...rows.map(line)].join("\n"), foot ? `\n${foot}` : ""]
 		.filter(Boolean)
 		.join("\n");
+}
+
+/** A whole fenced block — what `formatChartBlock` writes and a chart pin stores
+ *  — parsed: the fence lines dropped, the JSON between them validated. */
+export function parseFencedChartBlock(fenced: string): ChartParse {
+	return parseChartBlock(fenced.trim().split("\n").slice(1, -1).join("\n"));
+}
+
+/** A fenced chart block as the Markdown table of its data, or null when the
+ *  block does not parse — the caller then copies the block as it is. */
+export function chartBlockAsTable(fenced: string): string | null {
+	const parsed = parseFencedChartBlock(fenced);
+	return parsed.ok ? chartAsTable(parsed.spec) : null;
 }
 
 /**

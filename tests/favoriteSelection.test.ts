@@ -11,6 +11,10 @@ const CHAT = `
 		<div class="p-msg-user" data-msg-id="u1"><div class="p-bubble"><span id="prompt">A question</span></div></div>
 		<div class="p-msg-ai" data-msg-id="a1"><div class="p-ai-body"><p id="one">First answer text</p><p id="two">More of it</p></div></div>
 		<div class="p-msg-ai" data-msg-id="a2"><div class="p-ai-body"><p id="three">Second answer</p></div></div>
+		<div class="p-msg-ai" data-msg-id="a3"><div class="p-ai-body"><p id="before">Before the chart</p>
+			<div class="p-chart-card"><div class="p-chart-head"><span id="title">Revenue</span></div>
+			<div class="p-chart-body"><table><tr><td id="cell">12.4</td></tr></table></div></div>
+			<p id="after">After the chart</p></div></div>
 	</div>
 	<p id="outside">Not the chat</p>`;
 
@@ -55,5 +59,19 @@ describe("selectedAnswer", () => {
 		window.getSelection()!.removeAllRanges();
 		expect(selectedAnswer(window.getSelection(), messages)).toBeNull();
 		expect(selectedAnswer(null, messages)).toBeNull();
+	});
+
+	// ADR-254: the chart's body is the SVG or the table, whichever view is shown,
+	// and the painter neither finds nor counts it — an anchor there is lost.
+	it("is nothing when the selection touches a chart's body — inside it or across it", () => {
+		const messages = chat();
+		expect(selectedAnswer(select("cell"), messages)).toBeNull();
+		expect(selectedAnswer(select("before", "after"), messages)).toBeNull();
+	});
+
+	it("is the answer for a chart's title, or for text beside the chart", () => {
+		const messages = chat();
+		expect(selectedAnswer(select("title"), messages)?.dataset.msgId).toBe("a3");
+		expect(selectedAnswer(select("before"), messages)?.dataset.msgId).toBe("a3");
 	});
 });

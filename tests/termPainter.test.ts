@@ -41,6 +41,23 @@ describe("repaintTerms", () => {
 		expect(marks(root)).toEqual(["neuron"]);
 	});
 
+	// A chart's body redraws itself (resize, the table switch of ADR-254): a mark
+	// painted into it is lost on the next draw. And inside the SVG it is worse —
+	// an HTML element in an SVG <text> is not drawn, so a label that is also a
+	// glossary term vanished from the chart. The head is stable and stays marked.
+	it("never marks inside a chart's body — its SVG labels nor its table — but marks its title", () => {
+		const root = render(
+			'<div class="p-chart-card"><div class="p-chart-head"><span class="p-chart-head-label">neuron</span></div>\n' +
+			'<div class="p-chart-body"><svg xmlns="http://www.w3.org/2000/svg"><text>neuron</text></svg>\n' +
+			"<table><tr><th>neuron</th></tr></table></div>\n</div>\n<p>neuron</p>"
+		);
+		repaintTerms(root, idx(["neuron"]));
+		expect(marks(root)).toEqual(["neuron", "neuron"]);
+		expect(root.querySelector(".p-chart-body .p-term")).toBeNull();
+		expect(root.querySelector(".p-chart-head-label .p-term")).not.toBeNull();
+		expect(root.querySelector("svg text")?.childNodes).toHaveLength(1);
+	});
+
 	it("marks a term INSIDE a favorite (ADR-157 reverses the old exclusion)", () => {
 		// This used to assert the opposite. The exclusion meant favoriting a passage
 		// silently un-marked every term in it — the passage a reader is most likely

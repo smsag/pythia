@@ -15,6 +15,10 @@ const chartEn = {
 	chartCopyImageTooltip:   "Copy the chart as an image — paste it into a document",
 	chartCopySourceTooltip:  "Copy the chart's source block",
 	chartImageCopyFallback:  "This device would not take an image. The chart's source block was copied instead.",
+	chartShowTableTooltip:   "Show the numbers as a table",
+	chartShowChartTooltip:   "Show as a chart",
+	chartTableViewLabel:     "Table view",
+	chartCopyTableTooltip:   "Copy the table as Markdown",
 	chartInvalidTitle:       "This chart could not be drawn",
 };
 

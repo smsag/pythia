@@ -1697,8 +1697,13 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    min-width is the floor that keeps a short column ("gut", "mittel") from being
    crushed to one character per line by a wide neighbour. It is in ch so it
    tracks the cell's own font rather than assuming a pixel size, and it is a
-   floor only — a column whose longest word is wider still gets that width. */
-.pythia-view .p-scroll-frame > table {
+   floor only — a column whose longest word is wider still gets that width.
+
+   A chart card's table view (ADR-254) shares these rules by selector rather than
+   restating them: a card is also drawn in vault notes, outside .pythia-view, and
+   must look the same there. Its differences are with the card's own rules. */
+.pythia-view .p-scroll-frame > table,
+.p-chart-card .p-chart-table {
   /* max-content, not the frame's width (ADR-134). ADR-131 only lifted the cap
      with `max-width: none`, which was not enough: a table still sizes itself to
      its containing block, so it kept fitting the panel and paid for it by
@@ -1716,7 +1721,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   border: 1px solid var(--background-modifier-border);
 }
 .pythia-view .p-scroll-frame > table th,
-.pythia-view .p-scroll-frame > table td {
+.pythia-view .p-scroll-frame > table td,
+.p-chart-card .p-chart-table th,
+.p-chart-card .p-chart-table td {
   border: 1px solid var(--background-modifier-border);
   /* Breathing room inside the rule, or the border reads as crowding the text.
      Vertical padding stays tight: rows are already tall when cells wrap. */
@@ -1737,7 +1744,8 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 /* The header's only distinction is a heavier bottom rule — same token, 2px. No
    fill: the design system keeps these surfaces flat, and a tinted header row in
    a transcript reads as a card (hard rule 3/4). */
-.pythia-view .p-scroll-frame > table th {
+.pythia-view .p-scroll-frame > table th,
+.p-chart-card .p-chart-table th {
   border-bottom-width: 2px;
   font-weight: 600;
   text-align: left;
@@ -3444,6 +3452,19 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 
 .p-chart-body { width: 100%; min-width: 0; }
 .p-chart-svg  { display: block; width: 100%; height: auto; }
+
+/* The table view (ADR-254) takes the answer table's frame and hairline grid by
+   selector (see "The frame alone does nothing" above). Only what differs is
+   here. Row headers are the categories, not a header row: the 1px rule and
+   normal weight, at (0,3,2) so they beat the shared th rule wherever it comes
+   from. Values are right-aligned in tabular figures, so a column lines up by
+   digit; (0,3,0) beats the shared rule's left alignment. */
+.p-chart-card .p-scroll-frame { margin: 0; }
+.p-chart-card .p-chart-table tbody th[scope="row"] { border-bottom-width: 1px; font-weight: normal; }
+.p-chart-card .p-chart-table .p-chart-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 .p-chart-title  { fill: var(--text-normal); font-weight: 600; }
 .p-chart-legend { fill: var(--text-muted); }

@@ -4,7 +4,7 @@
 // shows, how it cycles and unpins, that it follows the conversation, that the
 // selection strip and a code block pin into it, and that ↗ says so when the
 // source is gone.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { MarkdownRenderer, Notice } from "obsidian";
 import { makePlugin, mountView, seedConversation, userMsg, aiMsg } from "./helpers/viewHarness";
 import type PythiaPlugin from "../main";
@@ -12,7 +12,8 @@ import type { PythiaSidebarView } from "../sidebar";
 import type { Conversation, Pin } from "../models/types";
 import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
 import { codeBlockSource, diagramSource, tableMarkdown } from "../ui/pinSources";
-import { chartSourceOf, renderChartCard } from "../ui/chart/card";
+import { chartSourceOf, chartViewOf, forgetChartViews, renderChartCard } from "../ui/chart/card";
+import { chartBlockAsTable, CHART_BLOCK_LANG } from "../services/chartSpec";
 import type { PinController } from "../ui/PinController";
 import { t } from "../i18n";
 
@@ -296,5 +297,154 @@ describe("a pin's body is owned by one child component (ADR-216 addendum)", () =
 		expect(new Set(removed).size).toBe(removed.length);
 		add.mockRestore();
 		remove.mockRestore();
+	});
+});
+
+describe("a pinned chart keeps its own view (ADR-254)", () => {
+	const SPEC = '{"type":"bar","title":"R","categories":["Q1","Q2","Q3"],"series":[{"name":"R","values":[1,2,3]}]}';
+	const fence = new RegExp("^```" + CHART_BLOCK_LANG + "\\n([\\s\\S]*)\\n```$");
+	const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+	const pinCard = (): HTMLElement => overlay().querySelector<HTMLElement>(".p-chart-card")!;
+	const toggle = (card: HTMLElement): void => card.querySelector<HTMLButtonElement>(".p-chart-view-btn")!.click();
+	let copied: string[];
+	/** The view each chart card was in at the moment it was drawn. */
+	let drawnAs: string[];
+
+	/** A chart in the answer a1, drawn and decorated as the panel does: the
+	 *  processor draws the card, then the decorator hangs this view's pin on it. */
+	function chartInAnswer(): HTMLElement {
+		const body = pane().querySelector<HTMLElement>('[data-msg-id="a1"] .p-ai-body')!;
+		const block = body.createDiv({ cls: "block-language-pythia-chart" });
+		renderChartCard(SPEC, block);
+		decorateCodeBlocks(body, new WeakMap(), pins(view).pinBlock);
+		return block.querySelector<HTMLElement>(".p-chart-card")!;
+	}
+
+	beforeEach(() => {
+		forgetChartViews();
+		copied = [];
+		drawnAs = [];
+		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (s: string) => { copied.push(s); } } });
+		// The mock renderer writes text; a pin body here must be drawn as Obsidian
+		// draws it — a ```pythia-chart block through the chart processor.
+		vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (_app: unknown, md: string, el: HTMLElement) => {
+			const m = fence.exec(md.trim());
+			if (!m) { el.appendChild(document.createTextNode(md)); return; }
+			const block = el.createDiv({ cls: "block-language-pythia-chart" });
+			renderChartCard(m[1], block);
+			drawnAs.push(chartViewOf(block.querySelector(".p-chart-card")));
+		});
+	});
+	afterEach(() => vi.restoreAllMocks());
+
+	it("the pin carries the card's switch", async () => {
+		await open({});
+		chartInAnswer().querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		expect(pinCard().querySelector(".p-chart-view-btn")).not.toBeNull();
+		expect(pinCard().querySelector(".p-pin-btn")).toBeNull(); // no pinning from a pin
+	});
+
+	it("pinned from the table view, the pin opens as the table", async () => {
+		await open({});
+		const card = chartInAnswer();
+		toggle(card);
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		expect(chartViewOf(pinCard())).toBe("table");
+		expect(pinCard().querySelector("table")).not.toBeNull();
+	});
+
+	it("a switch in the pin stays in the pin: not the answer, not the session's memory", async () => {
+		await open({});
+		const card = chartInAnswer();
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		toggle(pinCard());
+		expect(chartViewOf(pinCard())).toBe("table");
+		expect(chartViewOf(card)).toBe("chart");
+		// The answer drawn again, where it is: still the answer's own view.
+		expect(chartViewOf(chartInAnswer())).toBe("chart");
+	});
+
+	// No draw in the answer's view to be corrected after (review of ADR-254): the
+	// pin's body says its view before the card is drawn.
+	it("the pin's card is drawn in the pin's view from the start, whatever the answer shows", async () => {
+		await open({});
+		const card = chartInAnswer();
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();   // pinned as a chart
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		toggle(card);                                                 // the answer: table
+		drawnAs = [];
+		action(t("pinPrevTooltip")).click();                           // the chart pin drawn again
+		await settle();
+		expect(drawnAs).toEqual(["chart"]);
+		expect(pinCard().querySelectorAll("svg")).toHaveLength(1);
+	});
+
+	it("a pin pinned as a table is drawn as one at once — never a chart first", async () => {
+		await open({});
+		const card = chartInAnswer();
+		toggle(card);
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();   // pinned as a table
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		drawnAs = [];
+		action(t("pinPrevTooltip")).click();
+		await settle();
+		expect(drawnAs).toEqual(["table"]);
+		expect(pinCard().querySelector("svg")).toBeNull();
+	});
+
+	it("a switch in the answer does not change the pin, even when the pin is drawn again", async () => {
+		await open({});
+		const card = chartInAnswer();
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		toggle(card);                               // the session now remembers "table" for this chart
+		action(t("pinPrevTooltip")).click();        // the chart pin's body is drawn anew
+		await settle();
+		expect(chartViewOf(pinCard())).toBe("chart");
+	});
+
+	it("keeps each pin's view while ‹ › cycles away and back", async () => {
+		await open({});
+		chartInAnswer().querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		action(t("pinPrevTooltip")).click();       // back to the chart
+		await settle();
+		toggle(pinCard());
+		action(t("pinNextTooltip")).click();
+		action(t("pinPrevTooltip")).click();
+		await settle();
+		expect(chartViewOf(pinCard())).toBe("table");
+	});
+
+	it("pinning the same chart again from the other view reopens it in that view", async () => {
+		const conv = await open({});
+		const card = chartInAnswer();
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		toggle(card);
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		expect(conv.pins).toHaveLength(1);
+		expect(chartViewOf(pinCard())).toBe("table");
+	});
+
+	it("the strip's Copy copies what the pin shows: the table as Markdown, or the block", async () => {
+		await open({});
+		const card = chartInAnswer();
+		const source = chartSourceOf(card)!;
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();
+		await settle();
+		action(t("pinCopyTooltip")).click();
+		toggle(pinCard());
+		action(t("pinCopyTooltip")).click();
+		await settle();
+		expect(copied).toEqual([source, chartBlockAsTable(source)]);
 	});
 });
