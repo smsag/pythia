@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-	renderChartCard, chartViewOf, setChartView, forgetChartViews, CHART_VIEW_EVENT, type ChartViewDetail,
+	renderChartCard, chartViewOf, setChartView, forgetChartViews, CHART_VIEW_EVENT, CHART_VIEW_OWNER, type ChartViewDetail,
 } from "../ui/chart/card";
 import { decorateCodeBlocks } from "../ui/CodeBlockDecorator";
 import { chartAsTable, formatChartBlock, parseChartSpec, CHART_BLOCK_LANG } from "../services/chartSpec";
@@ -301,18 +301,56 @@ describe("the table view (ADR-254)", () => {
 		expect(host.querySelectorAll(".p-chart-actions button")).toHaveLength(3);
 	});
 
-	it("a switch is remembered for the session by the chart's data, and forgotten on unload", () => {
-		renderChartCard(BAR, host);
-		viewBtn().click();
-		const again = fresh();
+	/** A place for a card inside answer `msgId`, as the panel draws one. */
+	const inAnswer = (msgId: string): HTMLElement => {
+		const row = fresh();
+		row.setAttribute("data-msg-id", msgId);
+		return row.appendChild(document.createElement("div"));
+	};
+
+	it("a switch is remembered for the session where it was made, and forgotten on unload", () => {
+		const first = inAnswer("a1");
+		renderChartCard(BAR, first);
+		viewBtn(first).click();
+		const again = inAnswer("a1");
 		renderChartCard(BAR, again);
 		expect(chartViewOf(card(again))).toBe("table");
 		expect(again.querySelector("table")).not.toBeNull();
 
 		forgetChartViews();
-		const afterUnload = fresh();
+		const afterUnload = inAnswer("a1");
 		renderChartCard(BAR, afterUnload);
 		expect(chartViewOf(card(afterUnload))).toBe("chart");
+	});
+
+	// The same chart elsewhere — another conversation's answer, a note it was
+	// saved to — keeps its own view: the memory is keyed by place and data.
+	it("the same chart in another answer or in a note keeps its own view", () => {
+		const first = inAnswer("a1");
+		renderChartCard(BAR, first);
+		viewBtn(first).click();
+		const otherAnswer = inAnswer("b7");
+		renderChartCard(BAR, otherAnswer);
+		expect(chartViewOf(card(otherAnswer))).toBe("chart");
+		const note = fresh();
+		renderChartCard(BAR, note, "Notes/Revenue.md");
+		expect(chartViewOf(card(note))).toBe("chart");
+
+		viewBtn(note).click();
+		const noteAgain = fresh();
+		renderChartCard(BAR, noteAgain, "Notes/Revenue.md");
+		expect(chartViewOf(card(noteAgain))).toBe("table");
+		const otherNote = fresh();
+		renderChartCard(BAR, otherNote, "Notes/Other.md");
+		expect(chartViewOf(card(otherNote))).toBe("chart");
+	});
+
+	it("a chart drawn where no place is known is not remembered", () => {
+		renderChartCard(BAR, host);
+		viewBtn().click();
+		const again = fresh();
+		renderChartCard(BAR, again);
+		expect(chartViewOf(card(again))).toBe("chart");
 	});
 
 	it("tells the surface which view the user chose, in an event that bubbles", () => {
@@ -324,29 +362,59 @@ describe("the table view (ADR-254)", () => {
 		expect(seen).toEqual(["table", "chart"]);
 	});
 
-	// The pin strip keeps each pin's view itself; its switches must not reach the
-	// answer the chart came from.
-	it("a surface that cancels the event keeps the switch out of the session's memory", () => {
-		host.addEventListener(CHART_VIEW_EVENT, (e) => e.preventDefault());
-		renderChartCard(BAR, host);
-		viewBtn().click();
-		expect(chartViewOf(card())).toBe("table");
-		const elsewhere = fresh();
-		renderChartCard(BAR, elsewhere);
-		expect(chartViewOf(card(elsewhere))).toBe("chart");
+	// The pin strip: the card is DRAWN in the owner's view — no draw in another
+	// view to be corrected after — keeps the owner's attribute current, and
+	// stays out of the session's memory, which the answer reads.
+	it("a card inside an owner starts in the owner's view, keeps it current, and leaves the memory alone", () => {
+		const answerHost = inAnswer("a1");
+		renderChartCard(BAR, answerHost);
+		viewBtn(answerHost).click();                  // the answer: table
+
+		const owner = inAnswer("a1");                 // even inside the same answer
+		owner.setAttribute(CHART_VIEW_OWNER, "chart");
+		const inner = owner.appendChild(document.createElement("div"));
+		renderChartCard(BAR, inner);
+		expect(chartViewOf(card(inner))).toBe("chart");
+		expect(inner.querySelector("svg")).not.toBeNull();
+
+		viewBtn(inner).click();
+		viewBtn(inner).click();                       // back to chart: the owner's, not the memory's
+		expect(owner.getAttribute(CHART_VIEW_OWNER)).toBe("chart");
+		viewBtn(inner).click();
+		expect(owner.getAttribute(CHART_VIEW_OWNER)).toBe("table");
+
+		const answerAgain = inAnswer("a1");
+		renderChartCard(BAR, answerAgain);
+		expect(chartViewOf(card(answerAgain))).toBe("table"); // the answer's own, untouched
+		viewBtn(answerAgain).click();                         // the answer back to chart
+		const ownedAgain = owner.appendChild(document.createElement("div"));
+		renderChartCard(BAR, ownedAgain);
+		expect(chartViewOf(card(ownedAgain))).toBe("table");  // the owner's, untouched
 	});
 
 	it("setChartView switches a card silently: no event, no memory", () => {
 		const seen: string[] = [];
-		host.addEventListener(CHART_VIEW_EVENT, () => seen.push("event"));
-		renderChartCard(BAR, host);
-		setChartView(card(), "table");
-		expect(chartViewOf(card())).toBe("table");
-		expect(host.querySelector("table")).not.toBeNull();
+		const place = inAnswer("a1");
+		place.addEventListener(CHART_VIEW_EVENT, () => seen.push("event"));
+		renderChartCard(BAR, place);
+		setChartView(card(place), "table");
+		expect(chartViewOf(card(place))).toBe("table");
+		expect(place.querySelector("table")).not.toBeNull();
 		expect(seen).toEqual([]);
-		const elsewhere = fresh();
-		renderChartCard(BAR, elsewhere);
-		expect(chartViewOf(card(elsewhere))).toBe("chart");
+		const again = inAnswer("a1");
+		renderChartCard(BAR, again);
+		expect(chartViewOf(card(again))).toBe("chart");
+	});
+
+	// A toggle has one name that never changes; its state is aria-pressed.
+	it("the switch has a stable name and says whether the table is shown", () => {
+		renderChartCard(BAR, host);
+		const name = viewBtn().getAttribute("aria-label");
+		expect(name).toBe(t("chartTableViewLabel"));
+		expect(viewBtn().getAttribute("aria-pressed")).toBe("false");
+		viewBtn().click();
+		expect(viewBtn().getAttribute("aria-label")).toBe(name);
+		expect(viewBtn().getAttribute("aria-pressed")).toBe("true");
 	});
 
 	it("an error card has no view to switch", () => {
@@ -357,16 +425,18 @@ describe("the table view (ADR-254)", () => {
 	});
 
 	// decorateTables takes every undecorated <table> in an answer; the card's own
-	// would get a second frame and a second Copy and Pin.
-	it("the answer's decorators leave the card's table alone, pin or no pin", () => {
-		renderChartCard(BAR, host);
-		viewBtn().click();               // remembered: the next draw opens as a table
-		const container = fresh();
+	// is framed by it once, without a pin, and the answer's sweep leaves it alone.
+	it("the card's table is framed once — scroll frame, no Copy or Pin — pin or no pin", () => {
+		const first = inAnswer("a1");
+		renderChartCard(BAR, first);
+		viewBtn(first).click();               // remembered: the next draw opens as a table
+		const container = inAnswer("a1");
 		const block = container.appendChild(document.createElement("div"));
 		block.className = "block-language-pythia-chart";
 		renderChartCard(BAR, block);
 		decorateCodeBlocks(container, new WeakMap(), () => undefined);
 		expect(container.querySelectorAll("table")).toHaveLength(1);
+		expect(container.querySelector(".p-chart-body > .p-scroll-frame > table.p-chart-table")).not.toBeNull();
 		expect(container.querySelectorAll(".p-scroll-frame")).toHaveLength(1);
 		expect(container.querySelector(".p-table-actions")).toBeNull();
 		expect(container.querySelectorAll(".p-chart-actions .p-pin-btn")).toHaveLength(1);

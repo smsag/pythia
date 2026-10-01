@@ -134,7 +134,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │       │   ├── .p-chart-card                       a ```pythia-chart block, drawn   ui/chart/card.ts
 │       │   │   ├── .p-chart-head                   icon of the view · title · .p-chart-actions (switch · copy image or table · copy source)
 │       │   │   ├── .p-chart-body > .p-chart-svg    responsive, re-laid out on resize — NOT pan-scrolled (ADR-210)
-│       │   │   │   or > .p-chart-table-frame > .p-chart-table   the same data as a table, `data-view="table"` (ADR-254)
+│       │   │   │   or > .p-scroll-frame > .p-chart-table   the same data as a table, `data-view="table"` (ADR-254)
 │       │   │   └── .p-chart-foot                   run-in "Sources:" + one entry per series source
 │       │   └── marks: pythia-favorite · pythia-fork · pythia-merge · pythia-term · pythia-person
 │       ├── .p-sources > .p-sources-row             Template: / Vault: / Web: (.p-sources-label)

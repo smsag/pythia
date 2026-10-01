@@ -166,7 +166,7 @@ export default class PythiaPlugin extends Plugin {
 		// Wiring only; what to draw lives in ui/chart/card.ts (ADR-205).
 		this.registerMarkdownCodeBlockProcessor(
 			CHART_BLOCK_LANG,
-			(src, el) => renderChartCard(src, el)
+			(src, el, ctx) => renderChartCard(src, el, ctx.sourcePath)
 		);
 
 		// A note anchor — a Pythia chapter link in any note — is painted and

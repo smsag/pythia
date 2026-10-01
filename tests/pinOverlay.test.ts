@@ -307,6 +307,8 @@ describe("a pinned chart keeps its own view (ADR-254)", () => {
 	const pinCard = (): HTMLElement => overlay().querySelector<HTMLElement>(".p-chart-card")!;
 	const toggle = (card: HTMLElement): void => card.querySelector<HTMLButtonElement>(".p-chart-view-btn")!.click();
 	let copied: string[];
+	/** The view each chart card was in at the moment it was drawn. */
+	let drawnAs: string[];
 
 	/** A chart in the answer a1, drawn and decorated as the panel does: the
 	 *  processor draws the card, then the decorator hangs this view's pin on it. */
@@ -321,13 +323,16 @@ describe("a pinned chart keeps its own view (ADR-254)", () => {
 	beforeEach(() => {
 		forgetChartViews();
 		copied = [];
+		drawnAs = [];
 		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (s: string) => { copied.push(s); } } });
 		// The mock renderer writes text; a pin body here must be drawn as Obsidian
 		// draws it — a ```pythia-chart block through the chart processor.
 		vi.spyOn(MarkdownRenderer, "render").mockImplementation(async (_app: unknown, md: string, el: HTMLElement) => {
 			const m = fence.exec(md.trim());
 			if (!m) { el.appendChild(document.createTextNode(md)); return; }
-			renderChartCard(m[1], el.createDiv({ cls: "block-language-pythia-chart" }));
+			const block = el.createDiv({ cls: "block-language-pythia-chart" });
+			renderChartCard(m[1], block);
+			drawnAs.push(chartViewOf(block.querySelector(".p-chart-card")));
 		});
 	});
 	afterEach(() => vi.restoreAllMocks());
@@ -358,9 +363,38 @@ describe("a pinned chart keeps its own view (ADR-254)", () => {
 		toggle(pinCard());
 		expect(chartViewOf(pinCard())).toBe("table");
 		expect(chartViewOf(card)).toBe("chart");
-		const redrawn = document.body.appendChild(document.createElement("div"));
-		renderChartCard(SPEC, redrawn);
-		expect(chartViewOf(redrawn.querySelector(".p-chart-card"))).toBe("chart");
+		// The answer drawn again, where it is: still the answer's own view.
+		expect(chartViewOf(chartInAnswer())).toBe("chart");
+	});
+
+	// No draw in the answer's view to be corrected after (review of ADR-254): the
+	// pin's body says its view before the card is drawn.
+	it("the pin's card is drawn in the pin's view from the start, whatever the answer shows", async () => {
+		await open({});
+		const card = chartInAnswer();
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();   // pinned as a chart
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		toggle(card);                                                 // the answer: table
+		drawnAs = [];
+		action(t("pinPrevTooltip")).click();                           // the chart pin drawn again
+		await settle();
+		expect(drawnAs).toEqual(["chart"]);
+		expect(pinCard().querySelectorAll("svg")).toHaveLength(1);
+	});
+
+	it("a pin pinned as a table is drawn as one at once — never a chart first", async () => {
+		await open({});
+		const card = chartInAnswer();
+		toggle(card);
+		card.querySelector<HTMLButtonElement>(".p-pin-btn")!.click();   // pinned as a table
+		pins(view).pinText("a passage", "a1", 0);
+		await settle();
+		drawnAs = [];
+		action(t("pinPrevTooltip")).click();
+		await settle();
+		expect(drawnAs).toEqual(["table"]);
+		expect(pinCard().querySelector("svg")).toBeNull();
 	});
 
 	it("a switch in the answer does not change the pin, even when the pin is drawn again", async () => {

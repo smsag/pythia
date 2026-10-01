@@ -30,7 +30,7 @@ import { chartAsTable, chartLabel, chartTableRows, parseChartBlock, formatChartB
 import { parseRgb, type Rgb } from "../../services/color";
 import { appendSourceIcon } from "../icons";
 import { copyBlobWithFeedback, copyTextWithFeedback } from "../clipboard";
-import { attachDragToPan } from "../dragToPan";
+import { decorateTables } from "../tableDecorator";
 import { chartPalette, rgbCss } from "./palette";
 import { renderChartSvg, swatchCount } from "./render";
 import { chartPngBlob } from "./export";
@@ -143,28 +143,56 @@ const COPY_TABLE_ICON = "clipboard-list";
 
 /**
  * Fired on the card, bubbling, when the USER switches its view — never by
- * `setChartView`. Cancelable: a surface that remembers the view of its own
- * cards (the pin strip remembers each pin's) cancels it, and the card then
- * leaves the session's memory below alone, so a pin's view never leaks into the
- * answer it came from (ADR-254).
+ * `setChartView`. It informs; it decides nothing: a surface that owns the view
+ * of the cards inside it (see `CHART_VIEW_OWNER`) listens to remember it.
  */
 export const CHART_VIEW_EVENT = "pythia-chart-view";
 export interface ChartViewDetail { view: ChartView }
 
+declare global {
+	interface HTMLElementEventMap {
+		[CHART_VIEW_EVENT]: CustomEvent<ChartViewDetail>;
+	}
+}
+
 /**
- * The view a chart was last switched to, by its canonical block, for this
- * session: an answer is redrawn on every send and every conversation switch, and
- * a table the user asked for must not turn back into a chart under them. Only
- * "table" is stored — "chart" is the default and costs nothing. Never written to
- * disk (ADR-254); bounded, oldest out first; cleared on unload (principle 8).
+ * An ancestor carrying this attribute owns the view of every card drawn inside
+ * it (ADR-254) — the pin strip, which keeps each pin's own. The card STARTS in
+ * the owner's view, read at draw time, so it is never drawn in another view and
+ * then corrected; it keeps the attribute current on a switch; and it never reads
+ * or writes the session's memory below, so a pin's view never reaches the answer
+ * it came from, nor the answer's the pin.
+ */
+export const CHART_VIEW_OWNER = "data-chart-view";
+
+function ownerOf(el: HTMLElement): HTMLElement | null {
+	return el.closest<HTMLElement>(`[${CHART_VIEW_OWNER}]`);
+}
+
+/**
+ * The view a chart was last switched to, for this session: an answer is redrawn
+ * on every send and every conversation switch, and a table the user asked for
+ * must not turn back into a chart under them. Keyed by WHERE the chart is as
+ * well as what it holds — the answer's message id, or the note's path — so the
+ * same chart in another conversation or a saved note keeps its own view. A card
+ * drawn where neither is known is not remembered. Only "table" is stored —
+ * "chart" is the default. Never written to disk; bounded, oldest out first;
+ * cleared on unload (principle 8).
  */
 const rememberedViews = new Map<string, ChartView>();
 const MAX_REMEMBERED_VIEWS = 200;
 
-function rememberView(block: string, view: ChartView): void {
-	rememberedViews.delete(block);
+/** The memory's key for a chart drawn at `el`, or null when the place is unknown. */
+function memoryKey(el: HTMLElement, sourcePath: string, block: string): string | null {
+	const msgId = el.closest("[data-msg-id]")?.getAttribute("data-msg-id");
+	const scope = sourcePath ? `note:${sourcePath}` : msgId ? `msg:${msgId}` : null;
+	return scope ? `${scope}\n${block}` : null;
+}
+
+function rememberView(key: string, view: ChartView): void {
+	rememberedViews.delete(key);
 	if (view === "chart") return;
-	rememberedViews.set(block, view);
+	rememberedViews.set(key, view);
 	if (rememberedViews.size > MAX_REMEMBERED_VIEWS) {
 		rememberedViews.delete(rememberedViews.keys().next().value as string);
 	}
@@ -179,11 +207,16 @@ export function forgetChartViews(): void {
  *  has none, and `setChartView` on it does nothing. */
 const viewSwitches = new WeakMap<HTMLElement, (view: ChartView) => void>();
 
+/** A view read from an attribute: "table", or the default. */
+function viewFrom(value: string | null | undefined): ChartView {
+	return value === "table" ? "table" : "chart";
+}
+
 /** The view a card shows now. Anything that is not a drawn card reads "chart".
  *  The attribute, not `instanceof HTMLElement`: a card in a popout window
  *  belongs to that window's realm, and `instanceof` would call it a chart. */
 export function chartViewOf(card: Element | null | undefined): ChartView {
-	return card?.getAttribute("data-view") === "table" ? "table" : "chart";
+	return viewFrom(card?.getAttribute("data-view"));
 }
 
 /** Show `view` on a drawn card — what its own switch does, minus the event and
@@ -198,16 +231,14 @@ export function setChartView(card: HTMLElement, view: ChartView): void {
  *
  * Every cell is `text`, never Markdown: a category label is model output, and a
  * `[link](…)` or `![](…)` in it must stay the characters it is (principle 9).
- * The table is marked decorated BEFORE anything can see it — `decorateTables`
- * takes every undecorated table in an answer and would wrap this one a second
- * time and hang a second Copy and Pin on it (the trap ADR-210's addendum found
- * with the error card's `<pre>`).
+ * Framed by `decorateTables` itself — the answer table's scroll frame and drag
+ * to pan, one implementation — and without a pin, which marks the table
+ * decorated so the answer's own sweep never frames it again or hangs a second
+ * Copy and Pin on it (the trap ADR-210's addendum found with the error card).
  */
 function renderTable(parent: HTMLElement, spec: ChartSpec): void {
 	const { header, rows } = chartTableRows(spec);
-	const frame = parent.createDiv({ cls: "p-scroll-frame p-chart-table-frame" });
-	const table = frame.createEl("table", { cls: "p-chart-table" });
-	table.dataset.decorated = "1";
+	const table = parent.createEl("table", { cls: "p-chart-table" });
 	const headRow = table.createEl("thead").createEl("tr");
 	header.forEach((text, i) => {
 		if (i === 0) headRow.createEl("td", { text });
@@ -219,14 +250,15 @@ function renderTable(parent: HTMLElement, spec: ChartSpec): void {
 		tr.createEl("th", { text: category, attr: { scope: "row" } });
 		for (const value of values) tr.createEl("td", { cls: "p-chart-num", text: value });
 	}
-	attachDragToPan(frame);
+	decorateTables(parent);
 }
 
 /**
  * Draw the block at `el`. Idempotent: every call empties and rebuilds, which is
- * also what a width change does.
+ * also what a width change does. `sourcePath` is the note the block is in, when
+ * it is in one — what the session's memory of its view is kept by there.
  */
-export function renderChartCard(source: string, el: HTMLElement): void {
+export function renderChartCard(source: string, el: HTMLElement, sourcePath = ""): void {
 	el.dataset.decorated = "1";
 	el.empty();
 
@@ -245,7 +277,11 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 	const body = card.createDiv({ cls: "p-chart-body" });
 	renderSources(card, spec);
 
-	let view: ChartView = rememberedViews.get(block) ?? "chart";
+	const owner = ownerOf(el);
+	const drawnKey = owner ? null : memoryKey(el, sourcePath, block);
+	let view: ChartView = owner
+		? viewFrom(owner.getAttribute(CHART_VIEW_OWNER))
+		: (drawnKey && rememberedViews.get(drawnKey)) || "chart";
 	let svg: SVGSVGElement | null = null;
 	let ground = chartGround();
 
@@ -301,7 +337,11 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 		return btn;
 	};
 
-	const viewBtn = actions.createEl("button", { cls: "pb pb-icon p-chart-btn p-chart-view-btn" });
+	// A toggle: one name that never changes, its state in aria-pressed. The
+	// tooltip says what a press does, which is what a sighted user asks.
+	const viewBtn = actions.createEl("button", {
+		cls: "pb pb-icon p-chart-btn p-chart-view-btn", attr: { "aria-label": t("chartTableViewLabel") },
+	});
 	let copyViewBtn = actions.appendChild(copyViewButton(view));
 	const sourceBtn = actions.createEl("button", {
 		cls: "pb pb-icon p-chart-btn", attr: { title: t("chartCopySourceTooltip") },
@@ -320,6 +360,7 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 		const other: ChartView = next === "chart" ? "table" : "chart";
 		setIcon(viewBtn, VIEW_ICON[other]);
 		viewBtn.setAttribute("title", other === "table" ? t("chartShowTableTooltip") : t("chartShowChartTooltip"));
+		viewBtn.setAttribute("aria-pressed", String(next === "table"));
 		if (changed) {
 			const fresh = copyViewButton(next);
 			copyViewBtn.replaceWith(fresh);
@@ -333,9 +374,16 @@ export function renderChartCard(source: string, el: HTMLElement): void {
 		e.stopPropagation();
 		const next: ChartView = view === "chart" ? "table" : "chart";
 		show(next);
+		// Read again now: the card is on screen, which it may not have been when
+		// it was drawn. An owner keeps the view; otherwise the session does.
+		const switchOwner = ownerOf(card);
+		if (switchOwner) switchOwner.setAttribute(CHART_VIEW_OWNER, next);
+		else {
+			const key = memoryKey(card, sourcePath, block);
+			if (key) rememberView(key, next);
+		}
 		const detail: ChartViewDetail = { view: next };
-		const claimed = !card.dispatchEvent(new CustomEvent(CHART_VIEW_EVENT, { bubbles: true, cancelable: true, detail }));
-		if (!claimed) rememberView(block, next);
+		card.dispatchEvent(new CustomEvent(CHART_VIEW_EVENT, { bubbles: true, detail }));
 	});
 
 	show(view);

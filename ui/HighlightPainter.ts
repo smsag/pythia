@@ -38,7 +38,29 @@ interface TextPos {
 	start: number;
 }
 
-/** Collect every text node under `root` with its running offset in the concatenated text. */
+/**
+ * Text a widget redraws on its own, which no anchor or mark may rely on: a chart
+ * card's body is the SVG or the table of the same numbers, whichever view is
+ * shown (ADR-254). Counted in, a favorite's occurrence would depend on the view
+ * it was made in; painted into, an HTML mark inside SVG `<text>` is not drawn.
+ * The card's head and footer are stable text and stay in.
+ */
+const REDRAWN = ".p-chart-body";
+
+/**
+ * The character a text node is replaced with in the concatenated text when it
+ * must not match (see `REDRAWN`, and `maskedText` for terms).
+ *
+ * Masking rather than omitting is what lets a match cross an element boundary
+ * safely: offsets stay true to the real text, so a range built from them lands
+ * where it should, and no term can span a skipped region because no term
+ * contains a Unicode noncharacter.
+ */
+const MASK = "\uFFFF";
+
+/** Collect every text node under `root` with its running offset in the
+ *  concatenated text. Redrawn text is masked in `full`, so nothing is found in
+ *  it and nothing is counted from it — whichever view a chart shows. */
 function collectTextNodes(root: HTMLElement): { nodes: TextPos[]; full: string } {
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	const nodes: TextPos[] = [];
@@ -46,7 +68,7 @@ function collectTextNodes(root: HTMLElement): { nodes: TextPos[]; full: string }
 	let node = walker.nextNode() as Text | null;
 	while (node) {
 		nodes.push({ node, start: full.length });
-		full += node.data;
+		full += node.parentElement?.closest(REDRAWN) ? MASK.repeat(node.data.length) : node.data;
 		node = walker.nextNode() as Text | null;
 	}
 	return { nodes, full };
@@ -267,20 +289,10 @@ export function repaintMergeLinks(
 // So this walks the body once against a single alternation rather than re-finding
 // specific text.
 
-/** Elements whose text must never be marked. A chart card redraws itself (a
- *  resize, the table switch of ADR-254), so a mark in it would not last — and in
- *  its SVG an HTML mark inside `<text>` is not drawn, so the label vanished. */
-const TERM_SKIP = "code, pre, a, .p-cite, .p-sources-row, .p-chart-card";
-
-/**
- * The character a skipped node's text is replaced with while matching.
- *
- * Masking rather than omitting is what lets a match cross an element boundary
- * safely: offsets stay true to the real text, so a range built from them lands
- * where it should, and no term can span a skipped region because no term
- * contains a Unicode noncharacter.
- */
-const MASK = "￿";
+/** Elements whose text must never be marked — redrawn text among them: a mark in
+ *  a chart's body would not survive a resize or a switch, and in its SVG an HTML
+ *  mark inside `<text>` is not drawn, so the label vanished (ADR-254). */
+const TERM_SKIP = `code, pre, a, .p-cite, .p-sources-row, ${REDRAWN}`;
 
 /** The concatenated body text with every skipped node blanked out, same length. */
 function maskedText(nodes: TextPos[]): string {

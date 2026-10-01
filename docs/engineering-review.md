@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-01 — **A glossary term vanished from a chart label (found with ADR-254).** The term painter no longer reaches into a chart card.*
+*Updated: 2026-10-01 — **Review of PR #284 (ADR-254 addendum): eight findings fixed.** A favorite's place no longer depends on a chart's view; a pin is drawn in its own view at once; the remembered view is kept per place.*
+
+*Previously: 2026-10-01 — **A glossary term vanished from a chart label (found with ADR-254).** The term painter no longer reaches into a chart card.*
 
 *Previously: 2026-09-30 — **A deleted conversation came back from another device (ADR-252).** Deletions are now recorded in data.json, so a device still holding a deleted conversation no longer writes it back.*
 
@@ -2178,6 +2180,22 @@ Six parallel reviews; every finding verified against the code before it was fixe
 
 **Cause.** `repaintTerms` walks every text node of the answer body, and `TERM_SKIP` did not name the chart card. Its tree walker therefore reached the SVG's `<text>` nodes and wrapped the match in an HTML `<pythia-term>`, which SVG does not draw. The card also redraws itself on resize, so a mark in it would not have lasted anyway.
 
-**Fix.** `TERM_SKIP` includes `.p-chart-card` (`ui/HighlightPainter.ts`), which also keeps marks out of the new table view. Guard: `tests/termPainter.test.ts` — it failed before the fix with a mark inside the SVG label.
+**Fix.** `TERM_SKIP` includes the chart's body (`ui/HighlightPainter.ts`, narrowed from the whole card in the review below), which also keeps marks out of the new table view. Guard: `tests/termPainter.test.ts` — it failed before the fix with a mark inside the SVG label.
 
 **Open.** Not seen in Obsidian; happy-dom walks SVG text the way the DOM specification says browsers do.
+
+## Review — PR #284, the chart's table view (ADR-254 addendum), 2026-10-01
+
+Eight findings from a code review of the PR, all fixed in the same PR; the detail is in the ADR-254 addendum.
+
+1. **A favorite's place depended on the chart's view** (correctness). Occurrences were counted across the whole answer, chart body included, so a favorite, fork origin, merge link or text pin made in one view moved or vanished in the other, and a `<mark>` could land inside SVG `<text>`. Fixed: the chart's body is masked in the painter's text model and refused by `selectedAnswer`.
+2. **A pin drew the answer's view first, then corrected it.** Fixed: the pin body owns its cards' view (`data-chart-view`), read at draw time.
+3. **The term skip covered the whole card**, unmarking stable titles and notes. Narrowed to the body.
+4. **A raw `addEventListener` in `PinController`** (hard rule 10). Registered on the pin body's component.
+5. **The table's CSS was restated, and had drifted.** Joined to the answer table's selectors.
+6. **The table built its own frame.** Framed by `decorateTables`.
+7. **The remembered view was keyed by the block alone.** Keyed by place (message id or note path) and block.
+8. **The switch had no accessible state.** Stable `aria-label`, `aria-pressed`.
+
+**Open.** Not verified in Obsidian: that a code-block processor's element is inside the pin body when it runs (if not, the after-render correction still puts the pin in its view, with one extra draw).
+

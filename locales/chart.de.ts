@@ -10,6 +10,7 @@ const chartDe = {
 	chartImageCopyFallback:  "Dieses Gerät hat das Bild nicht angenommen. Stattdessen wurde der Quellblock des Diagramms kopiert.",
 	chartShowTableTooltip:   "Zahlen als Tabelle zeigen",
 	chartShowChartTooltip:   "Als Diagramm zeigen",
+	chartTableViewLabel:     "Tabellenansicht",
 	chartCopyTableTooltip:   "Tabelle als Markdown kopieren",
 	chartInvalidTitle:       "Dieses Diagramm konnte nicht gezeichnet werden",
 };

@@ -6,7 +6,7 @@ import { addPin, isRefusal, pinExcerpt, removePin, type PinDraft } from "../serv
 import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
 import { chartBlockAsTable } from "../services/chartSpec";
-import { CHART_VIEW_EVENT, chartSourceOf, chartViewOf, setChartView, type ChartView, type ChartViewDetail } from "./chart/card";
+import { CHART_VIEW_EVENT, CHART_VIEW_OWNER, chartSourceOf, chartViewOf, setChartView, type ChartView } from "./chart/card";
 import { copyTextWithFeedback } from "./clipboard";
 import { decorateCodeBlocks } from "./CodeBlockDecorator";
 import { describeErrorForLog } from "../services/redact";
@@ -192,22 +192,21 @@ export class PinController {
 			return;
 		}
 		const inner = body.createDiv({ cls: "p-pin-rendered p-ai-body" });
+		const owner = this.freshBodyComponent();
 		if (pin.kind === "chart") {
-			// The card's own switch, pressed in the strip: this pin keeps the view, and
-			// cancelling tells the card not to put it in the session's memory, which
-			// the answer the chart came from would read on its next draw (ADR-254).
-			// The listener lives and dies with `inner`, drawn anew for every pin shown.
-			inner.addEventListener(CHART_VIEW_EVENT, (e) => {
-				e.preventDefault();
-				this.setChartPinView(pin.id, (e as CustomEvent<ChartViewDetail>).detail.view);
-			});
+			// This body owns its chart's view (ADR-254): the card is drawn in the
+			// pin's view from the start and keeps the session's memory — the answer's
+			// — out of it. A switch in the strip is recorded for the pin; the
+			// listener belongs to this body's component and goes with it.
+			inner.setAttribute(CHART_VIEW_OWNER, this.chartPinView(pin.id));
+			owner.registerDomEvent(inner, CHART_VIEW_EVENT, (e) => this.setChartPinView(pin.id, e.detail.view));
 		}
 		// A snapshot of model output: remote media waits for a press (ui/remoteMedia.ts).
-		renderAnswerMarkdown(this.d.app, pin.source, inner, this.freshBodyComponent()).then(
+		renderAnswerMarkdown(this.d.app, pin.source, inner, owner).then(
 			// The same decorations as in the answer — header, copy, pan, sizing — and
-			// deliberately NO pin: a pin's body is not a place to pin from. A chart
-			// is then shown in this pin's view, read now rather than before the
-			// render: the strip may have been switched while it ran (principle 7).
+			// deliberately NO pin: a pin's body is not a place to pin from. Should the
+			// card have been drawn before `inner` was in place to be read, it is put
+			// in the pin's view now — a no-op whenever it already is.
 			() => {
 				decorateCodeBlocks(inner, this.diagObservers);
 				const card = pin.kind === "chart" ? inner.querySelector<HTMLElement>(".p-chart-card") : null;

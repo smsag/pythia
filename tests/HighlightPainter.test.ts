@@ -423,3 +423,55 @@ describe("repaintTerms inside favorites, forks and merge links", () => {
 		expect(el.querySelector(".p-highlight")?.textContent).toBe("Der Zähler läuft.");
 	});
 });
+
+// ADR-254: a chart's body is the SVG or the table of the same numbers, whichever
+// view is shown. A favorite, fork, link or pin counted against it would depend on
+// the view it was made in; a mark painted into its SVG is not drawn.
+describe("a chart's body is neither counted nor painted", () => {
+	beforeEach(() => { document.body.innerHTML = ""; });
+
+	const answer = (chartBody: string): HTMLElement => makeBody(
+		"<p>In 2024 revenue rose.</p>\n" +
+		'<div class="p-chart-card"><div class="p-chart-head"><span class="p-chart-head-label">Revenue 2024</span></div>\n' +
+		`<div class="p-chart-body">${chartBody}</div>\n</div>\n` +
+		"<p>Again in 2024, and once more in 2024.</p>"
+	);
+	const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><text>2024</text></svg>';
+	const TABLE = "<table><tr><th>2024</th><td>2024</td></tr></table>";
+	const lastProse = (body: HTMLElement): Range => {
+		const p = body.querySelectorAll("p")[1];
+		const node = p.firstChild as Text;
+		const at = node.data.lastIndexOf("2024");
+		const r = document.createRange();
+		r.setStart(node, at);
+		r.setEnd(node, at + 4);
+		return r;
+	};
+
+	it("counts an occurrence the same whichever view the chart shows", () => {
+		const asChart = answer(SVG);
+		const index = computeOccurrenceIndex(asChart, lastProse(asChart));
+		document.body.innerHTML = "";
+		const asTable = answer(TABLE);
+		expect(computeOccurrenceIndex(asTable, lastProse(asTable))).toBe(index);
+		expect(index).toBe(3); // the prose, the head's title, the prose — never the body
+	});
+
+	it("finds that occurrence in the prose in either view, and paints nothing in the body", () => {
+		for (const chartBody of [SVG, TABLE]) {
+			document.body.innerHTML = "";
+			const body = answer(chartBody);
+			const range = findRange(body, "2024", 3);
+			expect(range?.startContainer.parentElement?.tagName).toBe("P");
+			repaintBody(body, [{ id: "f", text: "2024", occurrenceIndex: 0 }, { id: "g", text: "2024", occurrenceIndex: 2 }]);
+			expect(body.querySelector(".p-chart-body .p-highlight")).toBeNull();
+		}
+	});
+
+	it("still finds and marks the chart's title, which a switch never redraws", () => {
+		const body = answer(SVG);
+		expect(findRange(body, "Revenue 2024")).not.toBeNull();
+		repaintTerms(body, buildTermIndex([{ term: "Revenue" }]));
+		expect(body.querySelector(".p-chart-head-label .p-term")?.textContent).toBe("Revenue");
+	});
+});
