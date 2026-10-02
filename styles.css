@@ -2778,7 +2778,23 @@ body.is-phone .workspace-drawer .p-input-area {
   min-width: 0;
 }
 
-/* Custom-instructions textarea in the settings tab: full width, monospace. */
+/* A text area in the settings tab takes at least half the row. Obsidian sizes
+   the control to its content, which left the custom instructions a column of
+   one or two words a line beside a description that took the rest. On a phone
+   the row is too narrow to share, and the field goes under its name. */
+.pythia-settings .setting-item-control:has(> textarea) {
+  flex: 0 0 50%;
+  min-width: 50%;
+}
+.is-phone .pythia-settings .setting-item:has(> .setting-item-control > textarea) {
+  flex-wrap: wrap;
+}
+.is-phone .pythia-settings .setting-item-control:has(> textarea) {
+  flex-basis: 100%;
+  margin-top: 8px;
+}
+
+/* Custom-instructions textarea in the settings tab: the whole control, monospace. */
 .pythia-settings-textarea {
   width: 100%;
   min-height: 72px;

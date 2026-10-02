@@ -59,6 +59,8 @@ export class PythiaSettingTab extends PluginSettingTab {
 	override display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		// Scopes the tab's own layout rules, such as the width of a text area.
+		containerEl.addClass("pythia-settings");
 		this.numberCommits = [];
 
 		const ctx: SettingsContext = {
