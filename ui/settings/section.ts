@@ -21,9 +21,10 @@ import { t } from "../../i18n";
  */
 export function section(containerEl: HTMLElement, name: string, intro: string): void {
 	new Setting(containerEl).setName(name).setHeading();
-	// A Setting with no name: `.pythia-section-intro` drops the empty name column
-	// and mutes the text, so the row reads as a paragraph rather than a blank row.
-	new Setting(containerEl).setDesc(intro).setClass("pythia-section-intro");
+	// Plain text, not a Setting: Obsidian draws a row with only a description in
+	// a box like the settings under it, so the sentence about the section read
+	// as one more of its rows.
+	containerEl.createDiv({ cls: "setting-item-description pythia-section-intro", text: intro });
 }
 
 /**
