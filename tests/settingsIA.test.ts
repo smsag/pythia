@@ -32,7 +32,7 @@ function installDomHelpers(): void {
 installDomHelpers();
 
 /** One rendered row, in creation order. */
-interface Row { name: string; desc: string; heading: boolean; cls: string[]; disabled: boolean }
+interface Row { name: string; desc: string; heading: boolean; cls: string[]; disabled: boolean; el: HTMLElement }
 const rows: Row[] = [];
 
 vi.mock("obsidian", () => {
@@ -55,7 +55,7 @@ vi.mock("obsidian", () => {
 			this.descEl = document.createElement("div");
 			this.settingEl.append(this.descEl, this.controlEl);
 			parent.appendChild(this.settingEl);
-			this.row = { name: "", desc: "", heading: false, cls: [], disabled: false };
+			this.row = { name: "", desc: "", heading: false, cls: [], disabled: false, el: this.settingEl };
 			rows.push(this.row);
 		}
 		setName(n: string): this { this.row.name = n; return this; }
@@ -158,14 +158,17 @@ function makeCtx(over: Partial<typeof DEFAULT_SETTINGS> = {}): { ctx: SettingsCo
 /** The rows of one section: its heading, its intro, and the settings under them. */
 interface Section { heading: string; intro: string; controls: Row[] }
 
-function sectionsOf(): Section[] {
+/** The rows and the intros, in the order they stand on the page. */
+function sectionsOf(host: HTMLElement): Section[] {
+	const byEl = new Map(rows.map((row) => [row.el, row]));
 	const out: Section[] = [];
-	for (const row of rows) {
-		if (row.heading) { out.push({ heading: row.name, intro: "", controls: [] }); continue; }
+	for (const el of Array.from(host.querySelectorAll<HTMLElement>("*"))) {
 		const current = out[out.length - 1];
-		if (!current) continue;
-		if (row.cls.includes("pythia-section-intro")) { current.intro = row.desc; continue; }
-		current.controls.push(row);
+		if (el.classList.contains("pythia-section-intro")) { if (current) current.intro = el.textContent ?? ""; continue; }
+		const row = byEl.get(el);
+		if (!row) continue;
+		if (row.heading) { out.push({ heading: row.name, intro: "", controls: [] }); continue; }
+		current?.controls.push(row);
 	}
 	return out;
 }
@@ -185,7 +188,7 @@ const RENDERERS = [
 function renderAll(over: Partial<typeof DEFAULT_SETTINGS> = {}): Section[] {
 	const { ctx, host } = makeCtx(over);
 	for (const render of RENDERERS) render(host, ctx);
-	return sectionsOf();
+	return sectionsOf(host);
 }
 
 beforeEach(() => { rows.length = 0; document.body.innerHTML = ""; });

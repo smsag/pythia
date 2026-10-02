@@ -2973,33 +2973,16 @@ body.is-phone .workspace-drawer .p-input-area {
 .p-sheet-item-trailing:active { color: var(--color-accent); background: var(--background-modifier-hover); }
 
 /* ── Settings — section intro (ADR-209) ─────────────────────── */
-/* Every section opens with one sentence naming its remit. It is a Setting row
-   with no name, so the empty name column is dropped and the whole width is the
-   sentence; the top rule is Obsidian's own between-rows border, kept, so the
-   intro reads as belonging to the heading above it rather than to the first row
-   below. Muted, because it is orientation and not a value. */
+/* Every section opens with one sentence naming its remit, as plain text under
+   the heading: not a Setting row, which Obsidian boxes like the settings below
+   it, so the sentence read as a row of its own. Muted, because it is
+   orientation and not a value. */
 .pythia-section-intro {
-  border-top: none;
-  padding-top: 0;
-}
-.pythia-section-intro .setting-item-info {
-  margin-right: 0;
-}
-.pythia-section-intro .setting-item-description {
-  color: var(--text-muted);
-  font-size: var(--font-small, 13px);
-  line-height: 1.45;
-  max-width: 62ch;
-}
-/* The shortcut links (ADR-241): shown whole so they can be read and selected,
-   broken anywhere because a link has no word boundaries to wrap at. */
-.pythia-link-preview {
-  margin-top: var(--s1, 4px);
-}
-.pythia-link-preview code {
-  font-family: var(--font-monospace);
-  user-select: all;
-  word-break: break-all;
+	color: var(--text-muted);
+	font-size: var(--font-small, 13px);
+	line-height: 1.45;
+	max-width: 62ch;
+	padding: 4px 0 12px;
 }
 /* The free-text model id, shown only when "Custom…" is chosen. A class rather
    than an inline style so the row has no visual rules of its own in TypeScript. */
