@@ -124,7 +124,8 @@ export function buildSystemPrompt(
 	// content as data rather than commands. Placed high in the system prompt so
 	// it frames every context block that follows.
 	const priorSummaryRaw = conversation.summaryText ?? conversation.forkedFromSummary;
-	const forkedFavorites = conversation.forkedFromFavorites?.text?.trim();
+	// Not when the user switched it off on the pill (kept, not sent).
+	const forkedFavorites = conversation.forkedFromFavorites?.off ? undefined : conversation.forkedFromFavorites?.text?.trim();
 	const hasUntrustedContext =
 		conversation.contextNotes.length > 0 ||
 		hasAttachedNotes ||

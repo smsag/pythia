@@ -486,6 +486,10 @@ export default class PythiaPlugin extends Plugin {
 	pendingEvictionCount(cap: number): number { return this.pluginDataStore.pendingEvictionCount(cap); }
 
 	activateView(): Promise<PythiaSidebarView> { return this.viewManager.activateView(); }
+	/** The view showing this conversation, else activateView (ADR-255 review). */
+	viewShowing(convId: string): Promise<PythiaSidebarView> { return this.viewManager.viewShowing(convId); }
+	/** The view a command about "this conversation" acts on: the focused one first. */
+	commandView(): Promise<PythiaSidebarView> { return this.viewManager.commandView(); }
 
 	/** Open a conversation — at the chapter `messageId` names, when given and
 	 *  still there (ADR-249). The deep link and the anchor card both come here. */
@@ -524,6 +528,9 @@ export default class PythiaPlugin extends Plugin {
 	}
 	updateForkedFavorites(forkId: string): Promise<boolean> {
 		return this.forkService.updateForkedFavorites(forkId);
+	}
+	setForkedFavoritesSent(forkId: string, sent: boolean): Promise<void> {
+		return this.forkService.setForkedFavoritesSent(forkId, sent);
 	}
 	cmdMergeConversation(convId: string, selectedText: string, messageId: string, occurrenceIndex?: number): Promise<void> {
 		return this.conversationService.cmdMergeConversation(convId, selectedText, messageId, occurrenceIndex);

@@ -929,6 +929,12 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-wikilink-update {
   flex-shrink: 0;
 }
+/* Switched off on the pill: kept, not sent — read like an auto pill, which is
+   also context the next answer will not carry as the user's own. */
+.p-wikilink--favorites.is-off .p-wikilink-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {

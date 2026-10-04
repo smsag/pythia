@@ -20,6 +20,11 @@ import { preselectedResumeMode, ResumeModeModal } from "../suggest/ResumeModeMod
  * command flows. Behaviour is identical to the inline plugin methods it
  * replaced; cross-service calls go through the plugin's facades.
  */
+/** The fields that make a conversation a fork, set at creation (ForkService). */
+export type ForkFields = Partial<Pick<Conversation,
+	| "forkedFromId" | "forkedFromMessageId" | "forkedFromSelection" | "forkedFromOccurrenceIndex"
+	| "forkedFromSummary" | "forkedFromFavorites" | "theme">>;
+
 export class ConversationService {
 	constructor(private readonly plugin: PythiaPlugin) {}
 
@@ -83,6 +88,9 @@ export class ConversationService {
 		effort?: EffortLevel;
 		researchMode?: boolean;
 		citeAnswers?: boolean;
+		/** What makes it a fork (ForkService): in the conversation from its first
+		 *  write, never assigned after it (ADR-255 review). */
+		fork?: ForkFields;
 	}): Promise<Conversation> {
 		const p = this.plugin;
 		const resolvedProvider = opts.provider ?? p.settings.defaultProvider;
@@ -108,6 +116,7 @@ export class ConversationService {
 			...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
 			...(opts.effort !== undefined ? { effort: opts.effort } : {}),
 			...(opts.citeAnswers ? { citeAnswers: true as const } : {}),
+			...opts.fork,
 			messages: [],
 		};
 		p.conversations.push(conv);
@@ -444,14 +453,15 @@ export class ConversationService {
 	}
 
 	async cmdSummarizeFavorites(): Promise<void> {
-		const view = await this.plugin.activateView();
+		const view = await this.plugin.commandView();
 		await view.summaryController.summarizeFavorites();
 	}
 
 	/** The `Fork from favorites` command: the active conversation's summary card's
 	 *  action, run from the palette (ADR-255). */
 	async cmdForkFromFavoritesOfActive(): Promise<void> {
-		const view = await this.plugin.activateView();
+		// The leaf the user is in, not the first one (ADR-255 review).
+		const view = await this.plugin.commandView();
 		await view.summaryController.forkFromFavorites();
 	}
 

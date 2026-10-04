@@ -5,6 +5,7 @@ import { makePlugin, mountView, seedConversation, aiMsg } from "./helpers/viewHa
 import { previewSystemPrompt } from "../services/sendPreview";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
+import { forkKind } from "../services/favoritesFork";
 
 // Fork from favorites, end to end through the view (ADR-255): the card's
 // action, the fork it opens, the pill, and the explicit ↻.
@@ -22,6 +23,7 @@ async function setup(over: Partial<Conversation>) {
 	} as Partial<Conversation>);
 	const { view, pane } = await mountView(plugin);
 	(plugin as unknown as { activateView: () => Promise<unknown> }).activateView = async () => view;
+	(plugin as unknown as { viewShowing: () => Promise<unknown> }).viewShowing = async () => view;
 	return { plugin, source, view, pane };
 }
 
@@ -49,8 +51,8 @@ describe("Fork from favorites (ADR-255)", () => {
 		expect(prompt).toContain("Rents follow wages.");
 		expect(prompt).not.toContain("The whole conversation.");
 
-		// The fork says what it carries: banner line and pill.
-		expect(pane().querySelector(".pythia-fork-favorites")!.textContent).toContain("1");
+		// The fork says what it carries: banner line (singular for one) and pill.
+		expect(pane().querySelector(".pythia-fork-favorites")!.textContent).toContain(t("forkedFromFavoritesLineOne", { date: "" }).split("·")[0].trim());
 		const pill = pane().querySelector(".p-wikilink--favorites")!;
 		expect(pill.textContent).toContain(t("favoritesSeedPill", { name: "Rent research" }));
 		expect(pill.querySelector(".p-wikilink-update")).toBeNull();
@@ -102,17 +104,133 @@ describe("Fork from favorites (ADR-255)", () => {
 		expect(pane().querySelector(".p-wikilink--favorites .p-wikilink-update")).toBeNull();
 	});
 
-	it("× stops sending it", async () => {
+	it("× switches it off — kept, not sent, the fork still a fork from favorites — and it can be sent again", async () => {
 		const { plugin, source, pane } = await setup({
 			favoritesSummary: { text: "First.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
 		});
 		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
 		await flush(); await flush();
 		const [fork] = forks(plugin, source.id);
+
 		pane().querySelector<HTMLElement>(".p-wikilink--favorites .p-wikilink-x")!.click();
-		await flush();
-		expect(plugin.conversationStore.getById(fork.id)!.forkedFromFavorites).toBeUndefined();
-		expect(previewSystemPrompt(fork, plugin.settings)).not.toContain("First.");
+		await flush(); await flush();
+		const live = plugin.conversationStore.getById(fork.id)!;
+		expect(live.forkedFromFavorites).toMatchObject({ text: "First.", off: true });
+		expect(previewSystemPrompt(live, plugin.settings)).not.toContain("First.");
+		expect(forkKind(live)).toBe("favorites");
+		// The pill and the banner both say so at once — no rebuild needed.
+		expect(pane().querySelector(".p-wikilink--favorites")!.classList.contains("is-off")).toBe(true);
+		expect(pane().querySelector(".pythia-fork-favorites")!.textContent).toContain(t("favoritesSeedOff"));
+
+		pane().querySelector<HTMLElement>(".p-wikilink--favorites .p-wikilink-x")!.click();
+		await flush(); await flush();
+		expect(plugin.conversationStore.getById(fork.id)!.forkedFromFavorites?.off).toBeUndefined();
+		expect(previewSystemPrompt(plugin.conversationStore.getById(fork.id)!, plugin.settings)).toContain("First.");
+		expect(pane().querySelector(".pythia-fork-favorites")!.textContent).not.toContain(t("favoritesSeedOff"));
+	});
+
+	it("↻ repaints the banner line with the new count and date", async () => {
+		const { plugin, source, view, pane } = await setup({
+			favoritesSummary: { text: "First.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		});
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		const [fork] = forks(plugin, source.id);
+		source.favorites!.push({ id: "f2", messageId: "a1", name: "More", text: "follow" });
+		source.favoritesSummary = { text: "Second.", updatedAt: "2026-10-02T10:00:00.000Z", favoriteIds: "f1,f2" };
+		await view.setActiveConversation(fork);
+		pane().querySelector<HTMLElement>(".p-wikilink-update")!.click();
+		await flush(); await flush();
+		expect(pane().querySelector(".pythia-fork-favorites")!.textContent).toContain("2");
+	});
+
+	it("↻ with nothing newer to take says so", async () => {
+		const { plugin, source, pane, view } = await setup({
+			favoritesSummary: { text: "First.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		});
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		const [fork] = forks(plugin, source.id);
+		source.favoritesSummary = { text: "Second.", updatedAt: "2026-10-02T10:00:00.000Z", favoriteIds: "f1" };
+		await view.setActiveConversation(fork);
+		// The source loses its summary between the drawing and the tap.
+		delete source.favoritesSummary;
+		pane().querySelector<HTMLElement>(".p-wikilink-update")!.click();
+		await flush(); await flush();
+		expect((Notice as unknown as { shown: string[] }).shown).toContain(t("favoritesSummaryMissing"));
+	});
+
+	it("the fork's first write already holds everything that makes it a fork", async () => {
+		const { plugin, source, pane } = await setup({
+			favoritesSummary: { text: "First.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+			temperature: 0.3,
+		});
+		const writes: Conversation[][] = [];
+		const save = plugin.saveConversations.bind(plugin);
+		(plugin as unknown as { saveConversations: () => Promise<void> }).saveConversations = async () => {
+			writes.push(JSON.parse(JSON.stringify(plugin.conversations)));
+			return save();
+		};
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		const first = writes[0].find((c) => c.forkedFromId === source.id)!;
+		expect(first.forkedFromFavorites?.text).toBe("First.");
+		expect(first.theme).toBeTruthy();
+		expect(first.temperature).toBe(0.3);
+	});
+
+	it("a summary without a fingerprint is regenerated before forking — it cannot say a favorite was removed", async () => {
+		const { plugin, source, pane } = await setup({
+			favoritesSummary: { text: "Old, covers an unstarred passage.", updatedAt: "2026-10-01T10:00:00.000Z" },
+		});
+		(plugin.llmRouter as unknown as { generateFavoritesSummary: () => Promise<string> }).generateFavoritesSummary = async () => "Fresh.";
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush(); await flush();
+		expect(forks(plugin, source.id)[0].forkedFromFavorites?.text).toBe("Fresh.");
+	});
+
+	it("a failure after the summary is a Notice, not a silent rejection", async () => {
+		const { plugin, pane } = await setup({
+			favoritesSummary: { text: "First.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		});
+		(plugin as unknown as { viewShowing: () => Promise<unknown> }).viewShowing = async () => { throw new Error("leaf gone"); };
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		expect((Notice as unknown as { shown: string[] }).shown.some((m) => m.includes("leaf gone"))).toBe(true);
+	});
+});
+
+describe("a fork opens in the leaf showing its source (ADR-255 review)", () => {
+	it("with two Pythia leaves, not in the first one", async () => {
+		const plugin = await makePlugin();
+		const other = await seedConversation(plugin, { name: "Other" });
+		const source = await seedConversation(plugin, {
+			name: "Source",
+			messages: [aiMsg("a1", "x")],
+			favorites: [{ id: "f1", messageId: "a1", name: "x", text: "x" }],
+			favoritesSummary: { text: "S.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		} as Partial<Conversation>);
+		const a = (await mountView(plugin)).view;
+		const b = (await mountView(plugin)).view;
+		await a.setActiveConversation(other);
+		await b.setActiveConversation(source);
+		const ws = (plugin as unknown as { app: { workspace: Record<string, unknown> } }).app.workspace;
+		ws.getLeavesOfType = () => [{ view: a }, { view: b }];
+
+		await b.summaryController.forkFromFavorites();
+		const fork = forks(plugin, source.id)[0];
+		expect(b.activeConversationId).toBe(fork.id);
+		expect(a.activeConversationId).toBe(other.id);
+	});
+
+	it("the command acts on the focused leaf", async () => {
+		const plugin = await makePlugin();
+		const a = (await mountView(plugin)).view;
+		const b = (await mountView(plugin)).view;
+		const ws = (plugin as unknown as { app: { workspace: Record<string, unknown> } }).app.workspace;
+		ws.getLeavesOfType = () => [{ view: a }, { view: b }];
+		ws.getActiveViewOfType = () => b;
+		expect(await plugin.commandView()).toBe(b);
 	});
 });
 
@@ -141,5 +259,27 @@ describe("the fork tree marks a fork from favorites (ADR-255, S6)", () => {
 		expect(row("Fav fork").querySelector(".p-nav-fork-kind")?.getAttribute("title")).toBe(t("forkedFromFavoritesTag"));
 		expect(row("Passage fork").querySelector(".p-nav-fork-kind")).toBeNull();
 		nav.close();
+	});
+});
+
+describe("a passage fork's generated summary lands on the live source (ADR-255 review, principle 7)", () => {
+	it("survives the source object being replaced during the call, and is saved through the store", async () => {
+		const plugin = await makePlugin();
+		const source = await seedConversation(plugin, { name: "Src", messages: [aiMsg("a1", "x")] });
+		const { view } = await mountView(plugin);
+		(plugin as unknown as { viewShowing: () => Promise<unknown> }).viewShowing = async () => view;
+		(plugin.llmRouter as unknown as { generateSummary: () => Promise<string> }).generateSummary = async () => {
+			// A reload swaps the object while the summary is being written.
+			const i = plugin.conversations.findIndex((c) => c.id === source.id);
+			plugin.conversations[i] = { ...plugin.conversations[i] };
+			return "Sum.";
+		};
+		const before = source.updatedAt;
+		await plugin.cmdForkConversation(source.id, "x", "a1", 0);
+		const live = plugin.conversationStore.getById(source.id)!;
+		expect(live).not.toBe(source);
+		expect(live.summaryText).toBe("Sum.");
+		expect(live.updatedAt >= before).toBe(true);
+		expect(forks(plugin, source.id)[0].forkedFromSummary).toBe("Sum.");
 	});
 });

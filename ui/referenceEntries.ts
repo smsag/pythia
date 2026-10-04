@@ -19,8 +19,9 @@ export type RefEntry =
 	/** The passage a rewrite will replace. */
 	| { kind: "rewrite"; path: string; label: string }
 	/** The source's favorites summary this fork carries (ADR-255); no path — it
-	 *  is not a note. Its × drops it; ↻ while `outdated` takes the newer one. */
-	| { kind: "favorites"; label: string; state: SeedState; sourceId?: string }
+	 *  is not a note. × switches it `off` (kept, not sent) and back; ↻ while
+	 *  `outdated` takes the newer one. */
+	| { kind: "favorites"; label: string; state: SeedState; off: boolean; sourceId?: string }
 	/** A note the user attached; removable. */
 	| { kind: "context"; path: string }
 	/** A note this conversation wrote; its ✕ deletes the file. */
@@ -61,6 +62,7 @@ export function referenceEntries(
 			kind: "favorites",
 			label: forkSource ? t("favoritesSeedPill", { name: forkSource.name }) : t("favoritesSeedPillOrphaned"),
 			state,
+			off: seed.off === true,
 			sourceId: forkSource?.id,
 		});
 	}

@@ -34,6 +34,28 @@ export interface ForkDeps {
  * operates on the selection toolbar and moves with the Selection cluster.
  * Behaviour is identical to the inline methods this replaced.
  */
+/**
+ * The banner's favorites line (ADR-255): count, summary date, and whether it is
+ * still sent. The ONE painter — the banner draws it, and the reference pill
+ * repaints it after ↻ or ×/send again, so the two never disagree.
+ */
+export function paintFavoritesLine(banner: HTMLElement, conv: Conversation): void {
+	banner.querySelector(".pythia-fork-favorites")?.remove();
+	const seed = conv.forkedFromFavorites;
+	if (!seed) return;
+	const line = createDiv({ cls: "pythia-fork-favorites" });
+	// Directly after the header, where the passage excerpt sits on a passage fork.
+	const header = banner.querySelector(".pythia-fork-header");
+	if (header) header.after(line);
+	else banner.appendChild(line);
+	setIcon(line.createSpan({ cls: "pythia-fork-favorites-icon" }), SOURCE_ICONS.favorites);
+	const date = formatSummaryTimestamp(seed.sourceUpdatedAt);
+	line.appendText(seed.favoriteCount === 1
+		? t("forkedFromFavoritesLineOne", { date })
+		: t("forkedFromFavoritesLine", { count: String(seed.favoriteCount), date }));
+	if (seed.off) line.appendText(` · ${t("favoritesSeedOff")}`);
+}
+
 export class ForkController {
 	private openForkAnchor: HTMLElement | null = null;
 	private forkMenuCleanup: (() => void) | null = null;
@@ -87,15 +109,7 @@ export class ForkController {
 		}
 
 		// A fork from favorites has no passage; it names what it carries (ADR-255).
-		const seed = conv.forkedFromFavorites;
-		if (seed) {
-			const line = banner.createDiv({ cls: "pythia-fork-favorites" });
-			setIcon(line.createSpan({ cls: "pythia-fork-favorites-icon" }), SOURCE_ICONS.favorites);
-			line.appendText(t("forkedFromFavoritesLine", {
-				count: String(seed.favoriteCount),
-				date: formatSummaryTimestamp(seed.sourceUpdatedAt),
-			}));
-		}
+		paintFavoritesLine(banner, conv);
 
 		// Show the selected text that triggered the fork, truncated to a readable excerpt.
 		const selection = conv.forkedFromSelection?.trim();

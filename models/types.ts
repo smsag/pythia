@@ -59,8 +59,9 @@ export interface Conversation {
 	forkedFromOccurrenceIndex?: number; // which occurrence of the selection within the source message
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
 	/** A fork started from its source's favorites (ADR-255): a snapshot of the
-	 *  source's favorites summary, sent with every turn. Never shadowed by this
-	 *  conversation's own summary, and changed only by the user (↻ or ×). */
+	 *  source's favorites summary, sent with every turn unless switched `off`.
+	 *  Never shadowed by this conversation's own summary, never removed, and
+	 *  changed only by the user (↻, or × / send again). */
 	forkedFromFavorites?: ForkedFavorites;
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: WriteMode;
@@ -296,6 +297,10 @@ export interface ForkedFavorites {
 	sourceUpdatedAt: string;
 	/** How many favorites the source held when taken (the banner's count). */
 	favoriteCount: number;
+	/** The pill's × switched it off: kept, not sent (ADR-255 review). Removing
+	 *  it would destroy the only copy once the source is gone, and would turn
+	 *  the fork into one that looks like a passage fork. */
+	off?: true;
 }
 
 export interface Favorite {

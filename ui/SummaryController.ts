@@ -6,7 +6,8 @@ import { formatSummaryTimestamp } from "../services/messageUtils";
 import { REGENERATE_ICON, SOURCE_ICONS } from "./icons";
 import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
-import { favoritesFingerprint, favoritesSummaryStale } from "../services/favoritesFork";
+import { favoritesFingerprint, favoritesSummaryStale, needsFreshSummaryToFork } from "../services/favoritesFork";
+import { noticeFailure } from "./failureNotice";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -53,10 +54,13 @@ export class SummaryController {
 		const cards: HTMLElement[] = [];
 		if (conv?.summaryText?.trim()) {
 			const last = conv.messages.length ? conv.messages[conv.messages.length - 1].timestamp : undefined;
-			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, last));
+			// Outdated when a message is newer than the summary — the fork and merge
+			// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
+			const stale = !!(conv.summaryUpdatedAt && last && last > conv.summaryUpdatedAt);
+			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, stale));
 		}
 		if (conv?.favoritesSummary?.text?.trim()) {
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, undefined, favoritesSummaryStale(conv)));
+			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, favoritesSummaryStale(conv)));
 		}
 		cardsEl.style.display = cards.length ? "" : "none";
 
@@ -80,15 +84,10 @@ export class SummaryController {
 	private buildSummaryCard(
 		kind: "conversation" | "favorites",
 		text: string,
-		updatedAt?: string,
-		/** The newest thing the summary covers (the last message). */
-		latestSource?: string,
-		/** Decided by the caller instead — the favorites card's rule (ADR-255). */
-		staleOverride?: boolean,
+		updatedAt: string | undefined,
+		/** Something newer than the summary exists — each card's own rule, decided by the caller. */
+		stale: boolean,
 	): HTMLElement {
-		// Outdated when something newer than the summary exists — the fork and merge
-		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
-		const stale = staleOverride ?? !!(updatedAt && latestSource && latestSource > updatedAt);
 		// The shared accordion (ADR-192): same box as the context inspector.
 		const acc = buildAccordion(this.d.getCardsEl()!, {
 			cls: "p-summary-card",
@@ -124,7 +123,7 @@ export class SummaryController {
 			setIcon(fork, "git-branch");
 			fork.addEventListener("click", (e) => {
 				e.stopPropagation();
-				void this.forkFromFavorites();
+				void this.forkFromFavorites(); // never rejects: it reports its own failure
 			});
 		}
 		const body = acc.body;
@@ -231,9 +230,12 @@ export class SummaryController {
 
 	/**
 	 * Fork from favorites (ADR-255): the card's action, the navigator's and the
-	 * command's. A missing or outdated summary is generated first — forking from
-	 * one that leaves out the newest favorites would seed the fork with less than
-	 * the user starred, silently. An empty reply stops here; it has said why.
+	 * command's. A summary that may not cover exactly the current favorites is
+	 * generated first (`needsFreshSummaryToFork` — stricter than the card's
+	 * "outdated"): forking from one would seed the fork with something other
+	 * than what the user starred, on every turn. An empty reply stops here; it
+	 * has said why. Never rejects — every failure is a Notice (principle 2), so
+	 * the three callers can fire and forget.
 	 */
 	async forkFromFavorites(): Promise<void> {
 		const conv = this.d.getConversation();
@@ -241,11 +243,15 @@ export class SummaryController {
 			new Notice(t("noFavoritesToSummarize"));
 			return;
 		}
-		if (!conv.favoritesSummary?.text?.trim() || favoritesSummaryStale(conv)) {
-			const text = await this.runFavoritesSummary(conv);
-			if (!text) return;
+		try {
+			if (needsFreshSummaryToFork(conv)) {
+				const text = await this.runFavoritesSummary(conv);
+				if (!text) return;
+			}
+			await this.d.plugin.cmdForkFromFavorites(conv.id);
+		} catch (err) {
+			noticeFailure("fork from favorites failed", err);
 		}
-		await this.d.plugin.cmdForkFromFavorites(conv.id);
 	}
 
 	/** Run the LLM favorites-summary call, persist the result, and return it.

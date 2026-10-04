@@ -661,9 +661,11 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 
 ### Fork from favorites (ADR-255)
 - **A snapshot, never a live link.** `Conversation.forkedFromFavorites` holds the source's favorites summary as it was; a newer one in the source is OFFERED on the fork's pill (↻, `seedState === "outdated"`) and taken only on the tap (user decision, D-81). Never make the fork follow on its own
+- **Never deleted.** The pill's × sets `off` (kept, not sent) and + sends it again: once the source is gone the snapshot is the only copy, and it is what `forkKind` reads. A fork's fields go into `createConversation({ fork })` — complete in the first write, never assigned after it
+- **The leaf that shows it.** A fork opens in `viewShowing(sourceId)`, a command acts on `commandView()` — never "the first Pythia leaf" (`activateView`) when a conversation names the leaf
 - **Its own prompt block, never `forkedFromSummary`.** `ContextBuilder` reads `summaryText ?? forkedFromSummary`, so a carried summary vanishes once the fork is summarized; `<forked_from_favorites>` does not. The fork carries the favorites summary ONLY — not the source's conversation summary, not a passage
 - **Action items are optional** (ADR-141): the instruction says "if the block lists action items", and calls them open points, never instructions. Never write a rule that assumes the section
-- **Forked from a current summary.** `favoritesSummaryStale` (the favorite-id fingerprint stored on `favoritesSummary.favoriteIds`) is the ONE outdated rule — the card and the fork both read it; a stale or missing summary is regenerated first, an empty reply stops the fork
+- **Forked from a current summary.** `favoritesSummaryStale` (the favorite-id fingerprint stored on `favoritesSummary.favoriteIds`) is the card's outdated rule; `needsFreshSummaryToFork` is the fork's, stricter: a summary without a fingerprint is regenerated too, because it cannot show a removed favorite. An empty reply stops the fork
 - **`forkKind` is the one "is this a fork from favorites?" rule** — the navigator's fork tree (★) and the conversation panel read it
 
 ### # Navigator

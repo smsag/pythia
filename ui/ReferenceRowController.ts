@@ -10,6 +10,7 @@ import { DeleteFileModal } from "../suggest/DeleteFileModal";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { makeKeyActivatable } from "./keyActivate";
 import { noticeFailure } from "./failureNotice";
+import { paintFavoritesLine } from "./ForkController";
 
 export interface ReferenceRowDeps {
 	app: App;
@@ -156,12 +157,16 @@ export class ReferenceRowController {
 	}
 
 	/**
-	 * The favorites summary a fork carries (ADR-255): the name opens the source,
-	 * ↻ appears only while the source holds a newer summary and takes it on the
-	 * tap — never on its own — and × drops it from this conversation's context.
+	 * The favorites summary a fork carries (ADR-255): the name opens the source
+	 * in this leaf, ↻ appears only while the source holds a newer summary and
+	 * takes it on the tap — never on its own — and × switches it off: kept and
+	 * no longer sent, with a control to send it again. Never deleted — once the
+	 * source is gone it is the only copy (ADR-255 review). After either change
+	 * the fork banner's line is repainted by the same painter that drew it.
 	 */
 	private renderFavoritesPill(conv: Conversation, entry: Extract<RefEntry, { kind: "favorites" }>): void {
 		const ref = this.pillsEl.createEl("span", { cls: "p-wikilink p-wikilink--favorites" });
+		if (entry.off) ref.addClass("is-off");
 		appendSourceIcon(ref, "favorites");
 		const label = ref.createEl("span", {
 			text: entry.label,
@@ -172,14 +177,16 @@ export class ReferenceRowController {
 		if (sourceId) {
 			const openSource = (): void => {
 				const source = this.d.plugin.conversationStore.getById(sourceId);
-				if (!source) return;
-				this.d.plugin.activateView()
+				if (!source) { new Notice(t("forkSourceGone")); return; }
+				// The leaf showing this fork, not the first Pythia leaf.
+				this.d.plugin.viewShowing(conv.id)
 					.then((view) => view.setActiveConversation(source))
 					.catch((err: unknown) => noticeFailure("favorites pill: open source failed", err));
 			};
 			label.addEventListener("click", openSource);
 			makeKeyActivatable(label, openSource, "link");
 		}
+		if (entry.off) ref.createEl("span", { cls: "p-wikilink-tokens", text: t("favoritesSeedOff") });
 		if (entry.state === "outdated") {
 			ref.createEl("span", { cls: "p-wikilink-tokens", text: t("forkSummaryStale") });
 			const update = ref.createEl("button", {
@@ -187,24 +194,32 @@ export class ReferenceRowController {
 				attr: { title: t("favoritesSeedUpdate"), "aria-label": t("favoritesSeedUpdate") },
 			});
 			setIcon(update, REGENERATE_ICON);
-			update.addEventListener("click", () => {
-				this.d.plugin.updateForkedFavorites(conv.id)
-					.then(() => this.render())
-					.catch((err: unknown) => noticeFailure("favorites pill: update failed", err, "saveFailed"));
-			});
+			update.addEventListener("click", () => this.changeSeed(conv.id, () => this.d.plugin.updateForkedFavorites(conv.id)));
 		}
-		const x = ref.createEl("button", {
+		const toggle = ref.createEl("button", {
 			cls: "pb pb-icon is-inline p-wikilink-x",
-			text: "×",
-			attr: { "aria-label": t("favoritesSeedRemoveAria") },
+			attr: { "aria-label": entry.off ? t("favoritesSeedResume") : t("favoritesSeedRemoveAria") },
 		});
-		x.addEventListener("click", () => {
-			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
-			live.forkedFromFavorites = undefined;
-			this.render();
-			this.d.plugin.conversationStore.save(live)
-				.catch((err: unknown) => noticeFailure("reference row: save failed", err, "saveFailed"));
-		});
+		if (entry.off) {
+			toggle.setAttribute("title", t("favoritesSeedResume"));
+			setIcon(toggle, "plus");
+		} else {
+			toggle.setText("×");
+		}
+		toggle.addEventListener("click", () => this.changeSeed(conv.id, () => this.d.plugin.setForkedFavoritesSent(conv.id, entry.off)));
+	}
+
+	/** Run one change to a fork's favorites snapshot, then repaint the row and
+	 *  the banner line; a failure is a Notice, never a silent rejection. */
+	private changeSeed(convId: string, change: () => Promise<unknown>): void {
+		change()
+			.then(() => {
+				this.render();
+				const live = this.d.plugin.conversationStore.getById(convId);
+				const banner = this.sectionEl.closest(".pythia-view")?.querySelector<HTMLElement>(".pythia-fork-banner");
+				if (live && banner && this.d.getConversation()?.id === convId) paintFavoritesLine(banner, live);
+			})
+			.catch((err: unknown) => noticeFailure("favorites pill: change failed", err, "saveFailed"));
 	}
 
 	private renderAddButton(conv: Conversation): void {

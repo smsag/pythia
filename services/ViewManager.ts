@@ -79,6 +79,27 @@ export class ViewManager {
 		return this.viewOf(leaf);
 	}
 
+	/**
+	 * The view showing `convId` — where a fork of it opens, and where the fork's
+	 * pill opens its source (ADR-255 review). With two Pythia leaves the first
+	 * one is not necessarily the one the user is in. Falls back to activateView.
+	 */
+	async viewShowing(convId: string): Promise<PythiaSidebarView> {
+		const shown = loadedPythiaViews(this.plugin.app.workspace).find((v) => v.activeConversationId === convId);
+		return shown ?? this.activateView();
+	}
+
+	/**
+	 * The view a palette command about "this conversation" acts on: the focused
+	 * Pythia leaf, else the first loaded one, else the one activateView opens.
+	 */
+	async commandView(): Promise<PythiaSidebarView> {
+		const { workspace } = this.plugin.app;
+		return workspace.getActiveViewOfType(PythiaSidebarView)
+			?? loadedPythiaViews(workspace)[0]
+			?? this.activateView();
+	}
+
 	/** Pythia in the RIGHT SIDEBAR, whatever else is open: the command for a user
 	 *  whose only Pythia leaf sits in the main area (or who closed the sidebar
 	 *  one). An existing sidebar leaf is reused, never a second one beside it;

@@ -44,7 +44,7 @@ export interface NavigatorDeps {
 	revealMergeLink(mergeId: string): void;
 	removeMergeLink(mergeId: string): Promise<void>;
 	goToFavoritesSummary(): void;
-	/** Fork from this conversation's favorites (ADR-255). */
+	/** Fork from this conversation's favorites (ADR-255). Never rejects. */
 	forkFromFavorites(): Promise<void>;
 }
 
@@ -236,6 +236,7 @@ export class NavigatorController {
 				const forkItem = body.createDiv({ cls: "p-nav-item p-nav-action" });
 				forkItem.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
 				forkItem.createEl("span", { cls: "p-nav-label", text: t("forkFromFavorites") });
+				// forkFromFavorites never rejects: it reports its own failure.
 				onActivate(forkItem, () => { this.close(); void this.d.forkFromFavorites(); });
 			}
 		}, favLabelLink);

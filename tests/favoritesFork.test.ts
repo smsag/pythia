@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	favoritesFingerprint, favoritesSummaryStale, favoritesSeed, seedState, forkKind, sanitizeForkedFavorites,
+	needsFreshSummaryToFork,
 } from "../services/favoritesFork";
 import { sanitizeConversationFields } from "../services/persistence";
 import type { Conversation, Favorite } from "../models/types";
@@ -45,6 +46,20 @@ describe("favoritesSummaryStale", () => {
 	});
 });
 
+describe("needsFreshSummaryToFork — stricter than the card's outdated (ADR-255 review)", () => {
+	it("needs one when there is none, or when it has no fingerprint to vouch for removals", () => {
+		expect(needsFreshSummaryToFork(conv({ favorites: [fav("a")] }))).toBe(true);
+		const old = conv({ favorites: [fav("a", "2026-09-30T00:00:00.000Z")], favoritesSummary: { text: "S", updatedAt: "2026-10-01T00:00:00.000Z" } });
+		expect(favoritesSummaryStale(old)).toBe(false); // the card stays quiet
+		expect(needsFreshSummaryToFork(old)).toBe(true);  // the fork does not take the risk
+	});
+
+	it("takes a fingerprinted summary that still matches as it is", () => {
+		expect(needsFreshSummaryToFork(conv({ favorites: [fav("a")], favoritesSummary: { text: "S", updatedAt: "T", favoriteIds: "a" } }))).toBe(false);
+		expect(needsFreshSummaryToFork(conv({ favorites: [fav("b")], favoritesSummary: { text: "S", updatedAt: "T", favoriteIds: "a" } }))).toBe(true);
+	});
+});
+
 describe("favoritesSeed", () => {
 	it("snapshots the summary, its date and the favorite count", () => {
 		const source = conv({ favorites: [fav("a"), fav("b")], favoritesSummary: { text: "  S  ", updatedAt: "T1" } });
@@ -83,6 +98,8 @@ describe("forkKind — the one rule the navigator and the conversation panel rea
 		expect(forkKind(conv())).toBe("none");
 		expect(forkKind(conv({ forkedFromId: "src" }))).toBe("passage");
 		expect(forkKind(conv({ forkedFromId: "src", forkedFromFavorites: seed }))).toBe("favorites");
+		// Switched off on the pill, it is still that kind of fork.
+		expect(forkKind(conv({ forkedFromId: "src", forkedFromFavorites: { ...seed, off: true } }))).toBe("favorites");
 	});
 });
 
@@ -91,6 +108,11 @@ describe("a snapshot read back from data.json (principle 1)", () => {
 		expect(sanitizeForkedFavorites({ text: "S", sourceUpdatedAt: "T", favoriteCount: 3 }))
 			.toEqual({ text: "S", sourceUpdatedAt: "T", favoriteCount: 3 });
 		expect(sanitizeForkedFavorites({ text: "S", sourceUpdatedAt: "T", favoriteCount: -1 })?.favoriteCount).toBe(0);
+	});
+
+	it("keeps the off switch only as true", () => {
+		expect(sanitizeForkedFavorites({ text: "S", sourceUpdatedAt: "T", favoriteCount: 1, off: true })?.off).toBe(true);
+		expect(sanitizeForkedFavorites({ text: "S", sourceUpdatedAt: "T", favoriteCount: 1, off: "yes" })).not.toHaveProperty("off");
 	});
 
 	it("drops one that cannot go into a prompt", () => {

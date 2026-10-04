@@ -38,6 +38,21 @@ export function favoritesSummaryStale(conv: Pick<Conversation, "favorites" | "fa
 	return !!(newest && summary.updatedAt && newest > summary.updatedAt);
 }
 
+/**
+ * Whether a fork must regenerate the summary before taking it. Stricter than
+ * `favoritesSummaryStale`, which the card reads: a summary without a
+ * fingerprint (generated before ADR-255) cannot say whether a favorite was
+ * REMOVED since, and a fork would then carry an unstarred passage on every
+ * turn. The card keeps the softer rule — marking every old summary outdated
+ * would be noise; seeding a fork from one is not.
+ */
+export function needsFreshSummaryToFork(conv: Pick<Conversation, "favorites" | "favoritesSummary">): boolean {
+	const summary = conv.favoritesSummary;
+	if (!summary?.text?.trim()) return true;
+	if (typeof summary.favoriteIds !== "string") return true;
+	return favoritesSummaryStale(conv);
+}
+
 /** The snapshot a fork takes of its source's favorites summary, or null when
  *  there is none to take. */
 export function favoritesSeed(source: Pick<Conversation, "favorites" | "favoritesSummary">): ForkedFavorites | null {
@@ -66,7 +81,8 @@ export function seedState(seed: ForkedFavorites, source: Conversation | undefine
 /**
  * What kind of fork a conversation is — the ONE rule the navigator's fork tree
  * and the conversation panel read for their marker.
- * - `favorites`: started from the source's favorites summary.
+ * - `favorites`: started from the source's favorites summary — still so when
+ *   the user switched the snapshot off, which keeps it (`ForkedFavorites.off`).
  * - `passage`: started from a passage in an answer (or any other fork).
  * - `none`: not a fork.
  */
@@ -90,5 +106,8 @@ export function sanitizeForkedFavorites(raw: unknown): ForkedFavorites | undefin
 	const count = typeof r.favoriteCount === "number" && Number.isInteger(r.favoriteCount) && r.favoriteCount >= 0
 		? r.favoriteCount
 		: 0;
-	return { text: r.text, sourceUpdatedAt: r.sourceUpdatedAt, favoriteCount: count };
+	return {
+		text: r.text, sourceUpdatedAt: r.sourceUpdatedAt, favoriteCount: count,
+		...(r.off === true ? { off: true as const } : {}),
+	};
 }
