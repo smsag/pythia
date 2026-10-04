@@ -13,18 +13,19 @@ import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
 import { preselectedResumeMode, ResumeModeModal } from "../suggest/ResumeModeModal";
 
-/**
- * Conversation creation + the conversation-oriented commands extracted from
- * `PythiaPlugin` (ADR-103, engineering-review #121): create (plain, from
- * template, forked), rename the saved note, and the new/browse/resume/summarize
- * command flows. Behaviour is identical to the inline plugin methods it
- * replaced; cross-service calls go through the plugin's facades.
- */
 /** The fields that make a conversation a fork, set at creation (ForkService). */
 export type ForkFields = Partial<Pick<Conversation,
 	| "forkedFromId" | "forkedFromMessageId" | "forkedFromSelection" | "forkedFromOccurrenceIndex"
-	| "forkedFromSummary" | "forkedFromFavorites" | "theme">>;
+	| "forkedFromSummary" | "forkedFromFavorites" | "theme" | "outputLanguage">>;
 
+/**
+ * Conversation creation + the conversation-oriented commands extracted from
+ * `PythiaPlugin` (ADR-103, engineering-review #121): create (plain, from
+ * template, or with the fields of a fork that `ForkService` decides), rename
+ * the saved note, and the new/browse/resume/summarize command flows. Forks
+ * themselves live in `ForkService` (ADR-255). Cross-service calls go through
+ * the plugin's facades.
+ */
 export class ConversationService {
 	constructor(private readonly plugin: PythiaPlugin) {}
 

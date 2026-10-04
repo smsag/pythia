@@ -55,11 +55,21 @@ export function needsFreshSummaryToFork(conv: Pick<Conversation, "favorites" | "
 
 /** The snapshot a fork takes of its source's favorites summary, or null when
  *  there is none to take. */
-export function favoritesSeed(source: Pick<Conversation, "favorites" | "favoritesSummary">): ForkedFavorites | null {
+export function favoritesSeed(source: Pick<Conversation, "id" | "favorites" | "favoritesSummary">): ForkedFavorites | null {
 	const summary = source.favoritesSummary;
 	const text = summary?.text?.trim();
 	if (!summary || !text) return null;
-	return { text, sourceUpdatedAt: summary.updatedAt, favoriteCount: source.favorites?.length ?? 0 };
+	return { text, sourceUpdatedAt: summary.updatedAt, favoriteCount: source.favorites?.length ?? 0, fromId: source.id };
+}
+
+/**
+ * The conversation a fork's snapshot came from — what its pill names, opens
+ * and offers ↻ against. A passage fork made from a fork from favorites
+ * inherits the snapshot, so this is the snapshot's own `fromId`, not the
+ * fork's parent; a snapshot from before `fromId` falls back to the parent.
+ */
+export function seedSourceId(conv: Pick<Conversation, "forkedFromId" | "forkedFromFavorites">): string | undefined {
+	return conv.forkedFromFavorites?.fromId ?? conv.forkedFromId;
 }
 
 /**
@@ -83,14 +93,17 @@ export function seedState(seed: ForkedFavorites, source: Conversation | undefine
  * and the conversation panel read for their marker.
  * - `favorites`: started from the source's favorites summary — still so when
  *   the user switched the snapshot off, which keeps it (`ForkedFavorites.off`).
+ *   A passage fork that inherited the snapshot from its parent is a `passage`
+ *   fork: it started from a passage, and carries the summary as well.
  * - `passage`: started from a passage in an answer (or any other fork).
  * - `none`: not a fork.
  */
 export type ForkKind = "favorites" | "passage" | "none";
 
-export function forkKind(conv: Pick<Conversation, "forkedFromId" | "forkedFromFavorites">): ForkKind {
+export function forkKind(conv: Pick<Conversation, "forkedFromId" | "forkedFromFavorites" | "forkedFromMessageId" | "forkedFromSelection">): ForkKind {
 	if (!conv.forkedFromId) return "none";
-	return conv.forkedFromFavorites ? "favorites" : "passage";
+	const fromPassage = !!conv.forkedFromMessageId || !!conv.forkedFromSelection;
+	return conv.forkedFromFavorites && !fromPassage ? "favorites" : "passage";
 }
 
 /**
@@ -108,6 +121,7 @@ export function sanitizeForkedFavorites(raw: unknown): ForkedFavorites | undefin
 		: 0;
 	return {
 		text: r.text, sourceUpdatedAt: r.sourceUpdatedAt, favoriteCount: count,
+		...(typeof r.fromId === "string" && r.fromId ? { fromId: r.fromId } : {}),
 		...(r.off === true ? { off: true as const } : {}),
 	};
 }

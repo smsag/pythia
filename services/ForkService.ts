@@ -3,7 +3,7 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { effectiveTheme } from "./glossaryNotes";
-import { favoritesSeed, seedState } from "./favoritesFork";
+import { favoritesSeed, seedSourceId, seedState } from "./favoritesFork";
 import type { ConversationService, ForkFields } from "./ConversationService";
 
 /**
@@ -46,6 +46,9 @@ export class ForkService {
 					await p.conversationStore.save(live);
 				}
 				if (live) source = live;
+				// "" is how a utility call reports both "no text" and "failed" (ADR-158):
+				// the fork still opens, but the user is told it lacks the source's topic.
+				if (!summary) new Notice(t("forkSummaryEmpty"));
 			} catch (e) {
 				new Notice(t("forkSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
 			} finally {
@@ -61,6 +64,10 @@ export class ForkService {
 			// (its own summaryText/favoritesSummary stay empty until the user summarizes
 			// the fork, so the source can surface a genuine fork summary at the origin).
 			...(summary ? { forkedFromSummary: summary } : {}),
+			// A branch of a fork from favorites keeps the ground every answer it
+			// branched from was built on (ADR-255 review 2) — the snapshot as it is,
+			// its source and its on/off state included. It is still a passage fork.
+			...(source.forkedFromFavorites ? { forkedFromFavorites: { ...source.forkedFromFavorites } } : {}),
 		});
 		// Opened where the source is shown — with two Pythia leaves, not the first one.
 		const view = await p.viewShowing(sourceConvId);
@@ -95,6 +102,9 @@ export class ForkService {
 				// inheriting anything. Pinning it also means renaming the fork leaves
 				// the theme alone — "inherited, but changeable" (ADR-150).
 				theme: effectiveTheme(source),
+				// The source's pinned answer language, so a fork answers as it did
+				// (undefined stays undefined: inherited stays inherited, principle 6).
+				...(source.outputLanguage ? { outputLanguage: source.outputLanguage } : {}),
 				...carries,
 			},
 		});
@@ -139,10 +149,15 @@ export class ForkService {
 		const p = this.plugin;
 		const fork = p.conversationStore.getById(forkId);
 		if (!fork?.forkedFromFavorites) return false; // the pill is gone with it: nothing was offered
-		const source = fork.forkedFromId ? p.conversationStore.getById(fork.forkedFromId) : undefined;
+		const fromId = seedSourceId(fork);
+		const source = fromId ? p.conversationStore.getById(fromId) : undefined;
 		const seed = source ? favoritesSeed(source) : null;
-		if (!source || !seed) {
-			new Notice(t(source ? "favoritesSummaryMissing" : "forkSourceGone"));
+		if (!source) {
+			new Notice(t("forkSourceGone"));
+			return false;
+		}
+		if (!seed) {
+			new Notice(t("favoritesSummaryMissing"));
 			return false;
 		}
 		if (seedState(fork.forkedFromFavorites, source) !== "outdated") {

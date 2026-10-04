@@ -42,7 +42,7 @@ describe("Fork from favorites (ADR-255)", () => {
 
 		const [fork] = forks(plugin, source.id);
 		expect(fork.messages).toEqual([]);
-		expect(fork.forkedFromFavorites).toEqual({ text: "## Key learnings\n- Rents follow wages.", sourceUpdatedAt: "2026-10-01T10:00:00.000Z", favoriteCount: 1 });
+		expect(fork.forkedFromFavorites).toEqual({ text: "## Key learnings\n- Rents follow wages.", sourceUpdatedAt: "2026-10-01T10:00:00.000Z", favoriteCount: 1, fromId: source.id });
 		expect(fork.forkedFromSummary).toBeUndefined();
 		expect(fork.forkedFromSelection).toBeUndefined();
 
@@ -281,5 +281,117 @@ describe("a passage fork's generated summary lands on the live source (ADR-255 r
 		expect(live.summaryText).toBe("Sum.");
 		expect(live.updatedAt >= before).toBe(true);
 		expect(forks(plugin, source.id)[0].forkedFromSummary).toBe("Sum.");
+	});
+});
+
+describe("second review of PR #290 (ADR-255 addendum 2)", () => {
+	beforeEach(() => { document.body.innerHTML = ""; (Notice as unknown as { shown: string[] }).shown = []; });
+	const shown = () => (Notice as unknown as { shown: string[] }).shown;
+	const stale = { favoritesSummary: { text: "Old.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f0" } };
+
+	it("a command's view and a fork's view are revealed, as activateView does", async () => {
+		const plugin = await makePlugin();
+		const shownConv = await seedConversation(plugin, { name: "Shown" });
+		const a = (await mountView(plugin)).view;
+		await a.setActiveConversation(shownConv);
+		const ws = (plugin as unknown as { app: { workspace: Record<string, unknown> } }).app.workspace;
+		const revealed: unknown[] = [];
+		ws.getLeavesOfType = () => [{ view: a }];
+		ws.revealLeaf = async (leaf: unknown) => { revealed.push(leaf); };
+		await plugin.commandView();
+		await plugin.viewShowing(shownConv.id);
+		expect(revealed).toHaveLength(2);
+		expect(revealed.every((l) => l === a.leaf)).toBe(true);
+	});
+
+	it("switching the leaf during the regenerate: no fork, and the conversation moved to stays", async () => {
+		const { plugin, source, view, pane } = await setup(stale);
+		const other = await seedConversation(plugin, { name: "Elsewhere" });
+		(plugin.llmRouter as unknown as { generateFavoritesSummary: () => Promise<string> }).generateFavoritesSummary = async () => {
+			await view.setActiveConversation(other);
+			return "New.";
+		};
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush(); await flush();
+		expect(forks(plugin, source.id)).toEqual([]);
+		expect(view.activeConversationId).toBe(other.id);
+		expect(shown()).toContain(t("forkSourceLeft"));
+	});
+
+	it("a favorite removed during the regenerate: no fork from a summary that still covers it", async () => {
+		const { plugin, source, pane } = await setup(stale);
+		(plugin.llmRouter as unknown as { generateFavoritesSummary: () => Promise<string> }).generateFavoritesSummary = async () => {
+			source.favorites = [];
+			return "New.";
+		};
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush(); await flush();
+		expect(forks(plugin, source.id)).toEqual([]);
+		expect(shown()).toContain(t("favoritesChangedWhileSummarizing"));
+	});
+
+	it("a second tap while a fork is being made makes no second fork and no second call", async () => {
+		const { plugin, source, pane } = await setup(stale);
+		let calls = 0;
+		let release!: () => void;
+		const gate = new Promise<void>((r) => { release = r; });
+		(plugin.llmRouter as unknown as { generateFavoritesSummary: () => Promise<string> }).generateFavoritesSummary = async () => {
+			calls++;
+			await gate;
+			return "New.";
+		};
+		const btn = () => pane().querySelector<HTMLElement>(".p-summary-card-fork")!;
+		btn().click();
+		btn().click();
+		release();
+		await flush(); await flush(); await flush();
+		expect(calls).toBe(1);
+		expect(forks(plugin, source.id)).toHaveLength(1);
+		expect(shown()).toContain(t("forkInProgress"));
+	});
+
+	it("a fork keeps the source's pinned answer language; an inherited one stays inherited", async () => {
+		const { plugin, source, pane } = await setup({
+			outputLanguage: "de",
+			favoritesSummary: { text: "S.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		} as Partial<Conversation>);
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		expect(forks(plugin, source.id)[0].outputLanguage).toBe("de");
+
+		const plain = await setup({ favoritesSummary: { text: "S.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" } });
+		plain.pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		expect(forks(plain.plugin, plain.source.id)[0].outputLanguage).toBeUndefined();
+	});
+
+	it("an empty summary for a passage fork says so; the fork still opens", async () => {
+		const plugin = await makePlugin();
+		const source = await seedConversation(plugin, { name: "Src", messages: [aiMsg("a1", "x")] });
+		const { view } = await mountView(plugin);
+		(plugin as unknown as { viewShowing: () => Promise<unknown> }).viewShowing = async () => view;
+		(plugin.llmRouter as unknown as { generateSummary: () => Promise<string> }).generateSummary = async () => "";
+		await plugin.cmdForkConversation(source.id, "x", "a1", 0);
+		expect(forks(plugin, source.id)).toHaveLength(1);
+		expect(shown()).toContain(t("forkSummaryEmpty"));
+	});
+
+	it("a passage fork of a fork from favorites keeps the favorites — as a passage fork naming the original source", async () => {
+		const { plugin, source, view, pane } = await setup({
+			favoritesSummary: { text: "Ground.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		});
+		pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+		await flush(); await flush();
+		const parent = forks(plugin, source.id)[0];
+		parent.messages.push(aiMsg("p1", "an answer in the fork"));
+		parent.summaryText = "Parent summary.";
+		await plugin.cmdForkConversation(parent.id, "an answer", "p1", 0);
+		const child = forks(plugin, parent.id)[0];
+
+		expect(child.forkedFromFavorites).toMatchObject({ text: "Ground.", fromId: source.id });
+		expect(forkKind(child)).toBe("passage");
+		expect(previewSystemPrompt(child, plugin.settings)).toContain("Ground.");
+		await view.setActiveConversation(child);
+		expect(pane().querySelector(".p-wikilink--favorites")!.textContent).toContain(t("favoritesSeedPill", { name: "Rent research" }));
 	});
 });

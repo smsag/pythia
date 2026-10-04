@@ -23,11 +23,11 @@ const CEILINGS = {
 	// wiring; → 1465 in its addendum: ui/postCommitNaming.ts moved out to pay for
 	// keeping a note-only turn; → 1463 in ADR-219: scrollToTop moved into ChatScroll
 	// to pay for the answer tabs; → 1458 in ADR-255: the summarize-favorites facade
-	// went, its command reaches the now-public summaryController. 1716 before ADR-210, which extracted ui/ToolCallController.ts (-120) and
+	// went, its command reaches the now-public summaryController; → 1457 in its second review: a stale onClose comment went, the fork banner callback and the reference row's dispose came. 1716 before ADR-210, which extracted ui/ToolCallController.ts (-120) and
 	// then spent 7 lines back wiring the chart splice into the commit path. The
 	// number is set once, against the finished state: a ceiling lowered halfway
 	// through a change and breached by the rest of it guards nothing.
-	"sidebar.ts": 1458,
+	"sidebar.ts": 1457,
 	// main.ts dropped under DEFAULT_MAX after the #121 service split — no ceiling needed.
 	// settings.ts dropped from 528 to a ~90-line shell once each section moved to
 	// ui/settings/ (ADR-209) — the split this comment used to ask for. No ceiling

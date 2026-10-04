@@ -59,6 +59,10 @@ const de: Strings = {
 	favoritesSeedResume:        "Favoriten-Zusammenfassung wieder mit diesem Gespräch senden",
 	favoritesSeedAlreadyCurrent:"Die Quelle hat keine neuere Favoriten-Zusammenfassung.",
 	favoritesSummaryMissing:    "Das Quellgespräch hat keine Favoriten-Zusammenfassung mehr.",
+	forkSummaryEmpty:           "Die Zusammenfassung der Quelle kam leer zurück — die Abzweigung beginnt ohne sie.",
+	forkInProgress:             "Eine Abzweigung aus diesen Favoriten wird bereits erstellt.",
+	favoritesChangedWhileSummarizing: "Die Favoriten haben sich während der Zusammenfassung geändert — bitte erneut versuchen.",
+	forkSourceLeft:             "Die Zusammenfassung ist fertig, aber dieses Panel zeigt jetzt ein anderes Gespräch — bitte erneut aus der Quelle verzweigen.",
 	forkSourceGone:             "Das Quellgespräch existiert nicht mehr.",
 
 	// ── Merge-Verknüpfungen (ADR-130) ─────────────────────────────────────────

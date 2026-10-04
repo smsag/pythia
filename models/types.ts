@@ -297,6 +297,10 @@ export interface ForkedFavorites {
 	sourceUpdatedAt: string;
 	/** How many favorites the source held when taken (the banner's count). */
 	favoriteCount: number;
+	/** The conversation whose favorites summary this is. Differs from
+	 *  `forkedFromId` when a passage fork inherited it from a fork from
+	 *  favorites (ADR-255 review 2); absent on a snapshot taken before that. */
+	fromId?: string;
 	/** The pill's × switched it off: kept, not sent (ADR-255 review). Removing
 	 *  it would destroy the only copy once the source is gone, and would turn
 	 *  the fork into one that looks like a passage fork. */

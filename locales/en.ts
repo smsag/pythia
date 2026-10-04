@@ -58,6 +58,10 @@ const en = {
 	favoritesSeedResume:        "Send the favorites summary with this conversation again",
 	favoritesSeedAlreadyCurrent:"The source has no newer favorites summary.",
 	favoritesSummaryMissing:    "The source conversation has no favorites summary any more.",
+	forkSummaryEmpty:           "The source's summary came back empty — the fork starts without it.",
+	forkInProgress:             "A fork from these favorites is already being made.",
+	favoritesChangedWhileSummarizing: "The favorites changed while they were being summarized — try again.",
+	forkSourceLeft:             "The summary is ready, but this panel shows another conversation now — fork again from the source.",
 	forkSourceGone:             "The source conversation no longer exists.",
 
 	// ── Merge links (ADR-130) ─────────────────────────────────────────────────

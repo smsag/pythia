@@ -63,7 +63,7 @@ describe("needsFreshSummaryToFork — stricter than the card's outdated (ADR-255
 describe("favoritesSeed", () => {
 	it("snapshots the summary, its date and the favorite count", () => {
 		const source = conv({ favorites: [fav("a"), fav("b")], favoritesSummary: { text: "  S  ", updatedAt: "T1" } });
-		expect(favoritesSeed(source)).toEqual({ text: "S", sourceUpdatedAt: "T1", favoriteCount: 2 });
+		expect(favoritesSeed(source)).toEqual({ text: "S", sourceUpdatedAt: "T1", favoriteCount: 2, fromId: "c1" });
 	});
 
 	it("is null when there is no summary to take", () => {

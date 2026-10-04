@@ -86,7 +86,7 @@ export class ViewManager {
 	 */
 	async viewShowing(convId: string): Promise<PythiaSidebarView> {
 		const shown = loadedPythiaViews(this.plugin.app.workspace).find((v) => v.activeConversationId === convId);
-		return shown ?? this.activateView();
+		return shown ? this.revealed(shown) : this.activateView();
 	}
 
 	/**
@@ -95,9 +95,16 @@ export class ViewManager {
 	 */
 	async commandView(): Promise<PythiaSidebarView> {
 		const { workspace } = this.plugin.app;
-		return workspace.getActiveViewOfType(PythiaSidebarView)
-			?? loadedPythiaViews(workspace)[0]
-			?? this.activateView();
+		const view = workspace.getActiveViewOfType(PythiaSidebarView) ?? loadedPythiaViews(workspace)[0];
+		return view ? this.revealed(view) : this.activateView();
+	}
+
+	/** A loaded view the user may not see — a collapsed sidebar, a background tab,
+	 *  a closed phone drawer — is brought forward first, as activateView does
+	 *  (ADR-255 review 2: what a command does must happen where it can be seen). */
+	private async revealed(view: PythiaSidebarView): Promise<PythiaSidebarView> {
+		await this.plugin.app.workspace.revealLeaf(view.leaf);
+		return view;
 	}
 
 	/** Pythia in the RIGHT SIDEBAR, whatever else is open: the command for a user

@@ -8,6 +8,7 @@ import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
 import { favoritesFingerprint, favoritesSummaryStale, needsFreshSummaryToFork } from "../services/favoritesFork";
 import { noticeFailure } from "./failureNotice";
+import { RenderSlot } from "./renderMarkdown";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -34,6 +35,11 @@ export interface SummaryDeps {
  */
 export class SummaryController {
 	private summaryCardObserver: IntersectionObserver | null = null;
+	/** Owns the listeners of the cards' new controls, one render at a time —
+	 *  released on the next render and on dispose (principle 8, hard rule 10). */
+	private readonly cardEvents = new RenderSlot(() => undefined);
+	/** A fork from favorites in flight: a second tap waits for it (ADR-255 review 2). */
+	private forking = false;
 
 	constructor(private readonly d: SummaryDeps) {}
 
@@ -41,6 +47,7 @@ export class SummaryController {
 	dispose(): void {
 		this.summaryCardObserver?.disconnect();
 		this.summaryCardObserver = null;
+		this.cardEvents.release();
 	}
 
 	renderSummaryCards(): void {
@@ -49,6 +56,7 @@ export class SummaryController {
 		cardsEl.empty();
 		this.summaryCardObserver?.disconnect();
 		this.summaryCardObserver = null;
+		this.cardEvents.renew();
 
 		const conv = this.d.getConversation();
 		const cards: HTMLElement[] = [];
@@ -121,7 +129,7 @@ export class SummaryController {
 				attr: { title: forkLabel, "aria-label": forkLabel },
 			});
 			setIcon(fork, "git-branch");
-			fork.addEventListener("click", (e) => {
+			this.cardEvents.current?.registerDomEvent(fork, "click", (e) => {
 				e.stopPropagation();
 				void this.forkFromFavorites(); // never rejects: it reports its own failure
 			});
@@ -243,14 +251,39 @@ export class SummaryController {
 			new Notice(t("noFavoritesToSummarize"));
 			return;
 		}
+		// One at a time: a second tap during a slow regenerate would pay for a
+		// second summary and make a second fork (ADR-255 review 2).
+		if (this.forking) {
+			new Notice(t("forkInProgress"));
+			return;
+		}
+		this.forking = true;
 		try {
 			if (needsFreshSummaryToFork(conv)) {
 				const text = await this.runFavoritesSummary(conv);
 				if (!text) return;
+				// An await is a boundary in time (principle 7). The user may have moved
+				// this leaf to another conversation — opening the fork would replace it —
+				// or changed the favorites, which the summary just taken no longer covers.
+				if (this.d.getConversation()?.id !== conv.id) {
+					new Notice(t("forkSourceLeft"));
+					return;
+				}
+				const live = this.d.plugin.conversationStore.getById(conv.id);
+				if (!live) {
+					new Notice(t("forkSourceGone"));
+					return;
+				}
+				if (needsFreshSummaryToFork(live)) {
+					new Notice(t("favoritesChangedWhileSummarizing"));
+					return;
+				}
 			}
 			await this.d.plugin.cmdForkFromFavorites(conv.id);
 		} catch (err) {
 			noticeFailure("fork from favorites failed", err);
+		} finally {
+			this.forking = false;
 		}
 	}
 

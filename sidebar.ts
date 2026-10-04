@@ -224,10 +224,8 @@ export class PythiaSidebarView extends ItemView {
 
 	override async onClose(): Promise<void> {
 		this.plugin.llmRouter.abort();
-
-		// Summaries are generated only via the Send-button menu — no auto-save on close.
-
 		this.summaryController?.dispose();
+		this.referenceRow?.dispose();
 		this.sendLongPressCleanup?.();
 		this.sendLongPressCleanup = null;
 		this.closeSummaryMenu();
@@ -405,6 +403,7 @@ export class PythiaSidebarView extends ItemView {
 			refreshToolbarToggles: () => this.updateToolbarToggles(),
 			refreshContextInspector: () => this.contextInspector.refresh(),
 			onContextNoteRemoved: (path) => this.composerAttachments.forget(path),
+			onForkedFavoritesChanged: () => this.forkController.repaintFavoritesLine(),
 		});
 		this.referenceRow.mount(container);
 

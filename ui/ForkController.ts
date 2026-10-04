@@ -25,19 +25,9 @@ export interface ForkDeps {
 }
 
 /**
- * The fork-origin display surfaces extracted from `PythiaSidebarView` (ADR-103,
- * engineering-review #120): the "branched from…" banner on a fork, the painted
- * fork-origin marks in a source message, and the inline anchor those marks open
- * (fork summary + Open-fork control + a long-press (re)generate menu).
- *
- * Creating a fork from a selection (`onForkConversation`) stays in the view — it
- * operates on the selection toolbar and moves with the Selection cluster.
- * Behaviour is identical to the inline methods this replaced.
- */
-/**
  * The banner's favorites line (ADR-255): count, summary date, and whether it is
- * still sent. The ONE painter — the banner draws it, and the reference pill
- * repaints it after ↻ or ×/send again, so the two never disagree.
+ * still sent. The ONE painter — the banner draws it, and `repaintFavoritesLine`
+ * redraws it after the pill's ↻, × or +, so the two never disagree.
  */
 export function paintFavoritesLine(banner: HTMLElement, conv: Conversation): void {
 	banner.querySelector(".pythia-fork-favorites")?.remove();
@@ -56,10 +46,22 @@ export function paintFavoritesLine(banner: HTMLElement, conv: Conversation): voi
 	if (seed.off) line.appendText(` · ${t("favoritesSeedOff")}`);
 }
 
+/**
+ * The fork-origin display surfaces extracted from `PythiaSidebarView` (ADR-103,
+ * engineering-review #120): the "branched from…" banner on a fork, the painted
+ * fork-origin marks in a source message, and the inline anchor those marks open
+ * (fork summary + Open-fork control + a long-press (re)generate menu).
+ *
+ * Creating a fork from a selection (`onForkConversation`) stays in the view — it
+ * operates on the selection toolbar and moves with the Selection cluster.
+ * Behaviour is identical to the inline methods this replaced.
+ */
 export class ForkController {
 	private openForkAnchor: HTMLElement | null = null;
 	private forkMenuCleanup: (() => void) | null = null;
 	private suppressNextForkOpen = false;
+	/** The banner this controller drew for the open conversation, if any. */
+	private bannerEl: HTMLElement | null = null;
 
 	constructor(private readonly d: ForkDeps) {}
 
@@ -71,11 +73,13 @@ export class ForkController {
 	}
 
 	renderForkBanner(): void {
+		this.bannerEl = null;
 		const conv = this.d.getConversation();
 		if (!conv?.forkedFromId) return;
 		const source = this.d.plugin.conversationStore.getById(conv.forkedFromId);
 
 		const banner = this.d.getMessagesEl().createDiv({ cls: "pythia-fork-banner" });
+		this.bannerEl = banner;
 		const header = banner.createDiv({ cls: "pythia-fork-header" });
 		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
 		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
@@ -120,6 +124,14 @@ export class ForkController {
 				: selection;
 			banner.createDiv({ cls: "pythia-fork-selection", text: excerpt });
 		}
+	}
+
+	/** The favorites line of the banner on screen, after the pill changed the
+	 *  snapshot (ADR-255) — read from the store, the banner's own painter. */
+	repaintFavoritesLine(): void {
+		const conv = this.d.getConversation();
+		const live = conv ? this.d.plugin.conversationStore.getById(conv.id) : undefined;
+		if (this.bannerEl?.isConnected && live) paintFavoritesLine(this.bannerEl, live);
 	}
 
 	repaintForkOrigins(body: HTMLElement, messageId: string): void {

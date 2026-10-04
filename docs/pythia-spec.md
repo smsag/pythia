@@ -375,6 +375,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-10-04 | ADR-255 addendum 2: a passage fork of a fork from favorites inherits the snapshot (user decision), without the ★. |
 | 2026-10-04 | ADR-255: fork from favorites — the pill, the banner line and the card action in the UI map; `forkedFromFavorites` and `favoriteIds` in the data model; D-80…D-82. |
 | 2026-09-26 | ADR-229: auto-search fires on time-sensitive questions again (ADR-226 misread the decision). |
 | 2026-09-26 | ADR-228: D-62 narrowed to one item, parallel web calls in a round; everything else closed. |
