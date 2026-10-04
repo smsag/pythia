@@ -3,9 +3,10 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
-import { REGENERATE_ICON } from "./icons";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./icons";
 import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
+import { favoritesFingerprint, favoritesSummaryStale } from "../services/favoritesFork";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -55,8 +56,7 @@ export class SummaryController {
 			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, last));
 		}
 		if (conv?.favoritesSummary?.text?.trim()) {
-			const newest = (conv.favorites ?? []).map((f) => f.createdAt ?? "").sort().pop() || undefined;
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, newest));
+			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, undefined, favoritesSummaryStale(conv)));
 		}
 		cardsEl.style.display = cards.length ? "" : "none";
 
@@ -81,16 +81,18 @@ export class SummaryController {
 		kind: "conversation" | "favorites",
 		text: string,
 		updatedAt?: string,
-		/** The newest thing the summary covers (last message, newest favorite). */
+		/** The newest thing the summary covers (the last message). */
 		latestSource?: string,
+		/** Decided by the caller instead — the favorites card's rule (ADR-255). */
+		staleOverride?: boolean,
 	): HTMLElement {
 		// Outdated when something newer than the summary exists — the fork and merge
 		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
-		const stale = !!(updatedAt && latestSource && latestSource > updatedAt);
+		const stale = staleOverride ?? !!(updatedAt && latestSource && latestSource > updatedAt);
 		// The shared accordion (ADR-192): same box as the context inspector.
 		const acc = buildAccordion(this.d.getCardsEl()!, {
 			cls: "p-summary-card",
-			icon: kind === "favorites" ? "star" : "align-left",
+			icon: kind === "favorites" ? SOURCE_ICONS.favorites : "align-left",
 			title: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
 		const card = acc.root;
@@ -112,6 +114,19 @@ export class SummaryController {
 			if (kind === "favorites") void this.summarizeFavorites();
 			else void this.generateConversationSummary();
 		});
+		// Fork from favorites (ADR-255) — beside ↻, never inside the toggle.
+		if (kind === "favorites") {
+			const forkLabel = t("forkFromFavorites");
+			const fork = acc.actions.createEl("button", {
+				cls: "pb pb-icon p-summary-card-fork",
+				attr: { title: forkLabel, "aria-label": forkLabel },
+			});
+			setIcon(fork, "git-branch");
+			fork.addEventListener("click", (e) => {
+				e.stopPropagation();
+				void this.forkFromFavorites();
+			});
+		}
 		const body = acc.body;
 		body.addClass("p-summary-card-body");
 		const md = body.createDiv({ cls: "p-summary-card-md" });
@@ -214,10 +229,30 @@ export class SummaryController {
 		}
 	}
 
+	/**
+	 * Fork from favorites (ADR-255): the card's action, the navigator's and the
+	 * command's. A missing or outdated summary is generated first — forking from
+	 * one that leaves out the newest favorites would seed the fork with less than
+	 * the user starred, silently. An empty reply stops here; it has said why.
+	 */
+	async forkFromFavorites(): Promise<void> {
+		const conv = this.d.getConversation();
+		if (!conv || (conv.favorites?.length ?? 0) === 0) {
+			new Notice(t("noFavoritesToSummarize"));
+			return;
+		}
+		if (!conv.favoritesSummary?.text?.trim() || favoritesSummaryStale(conv)) {
+			const text = await this.runFavoritesSummary(conv);
+			if (!text) return;
+		}
+		await this.d.plugin.cmdForkFromFavorites(conv.id);
+	}
+
 	/** Run the LLM favorites-summary call, persist the result, and return it.
 	 *  Public because the fork flow reuses it to summarize a source conversation. */
 	async runFavoritesSummary(conv: Conversation): Promise<string> {
 		const notice = new Notice(t("generatingFavoritesSummary"), 0);
+		const favoriteIds = favoritesFingerprint(conv);
 		try {
 			const text = await this.d.plugin.llmRouter.generateFavoritesSummary(conv);
 			if (!text) {
@@ -234,7 +269,9 @@ export class SummaryController {
 			// `getConversation()`, and a card can only appear if the object it reads
 			// is the one that got the summary.
 			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
-			live.favoritesSummary = { text, updatedAt: new Date().toISOString() };
+			// The fingerprint is of the favorites the digest was built from, taken
+			// before the await — a favorite added meanwhile leaves it outdated (ADR-255).
+			live.favoritesSummary = { text, updatedAt: new Date().toISOString(), favoriteIds };
 			await this.d.plugin.conversationStore.save(live);
 			return text;
 		} catch (e) {

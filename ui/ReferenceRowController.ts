@@ -1,11 +1,11 @@
-import { App, Notice, TFile } from "obsidian";
+import { App, Notice, TFile, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { estimateTokensFromBytes } from "../services/messageUtils";
 import { noteBasename } from "../services/pathUtils";
-import { referenceEntries } from "./referenceEntries";
-import { appendSourceIcon } from "./icons";
+import { referenceEntries, type RefEntry } from "./referenceEntries";
+import { appendSourceIcon, REGENERATE_ICON } from "./icons";
 import { DeleteFileModal } from "../suggest/DeleteFileModal";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { makeKeyActivatable } from "./keyActivate";
@@ -67,7 +67,8 @@ export class ReferenceRowController {
 			return;
 		}
 
-		const entries = referenceEntries(conv, this.d.plugin.getAutoContext(conv.id));
+		const forkSource = conv.forkedFromId ? this.d.plugin.conversationStore.getById(conv.forkedFromId) : undefined;
+		const entries = referenceEntries(conv, this.d.plugin.getAutoContext(conv.id), forkSource);
 
 		this.hasEntries = entries.length > 0;
 		this.updateVisibility();
@@ -75,11 +76,14 @@ export class ReferenceRowController {
 		this.d.refreshContextInspector();
 		if (entries.length === 0) return;
 
-		for (const entry of entries) this.renderPill(conv, entry);
+		for (const entry of entries) {
+			if (entry.kind === "favorites") this.renderFavoritesPill(conv, entry);
+			else this.renderPill(conv, entry);
+		}
 		this.renderAddButton(conv);
 	}
 
-	private renderPill(conv: Conversation, entry: ReturnType<typeof referenceEntries>[number]): void {
+	private renderPill(conv: Conversation, entry: Exclude<RefEntry, { kind: "favorites" }>): void {
 		const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
 		const displayName = "label" in entry ? entry.label : noteBasename(entry.path);
 		const file = this.d.app.vault.getAbstractFileByPath(entry.path);
@@ -148,6 +152,58 @@ export class ReferenceRowController {
 					noticeFailure("reference row: save failed", err, "saveFailed");
 				}
 			}).open();
+		});
+	}
+
+	/**
+	 * The favorites summary a fork carries (ADR-255): the name opens the source,
+	 * ↻ appears only while the source holds a newer summary and takes it on the
+	 * tap — never on its own — and × drops it from this conversation's context.
+	 */
+	private renderFavoritesPill(conv: Conversation, entry: Extract<RefEntry, { kind: "favorites" }>): void {
+		const ref = this.pillsEl.createEl("span", { cls: "p-wikilink p-wikilink--favorites" });
+		appendSourceIcon(ref, "favorites");
+		const label = ref.createEl("span", {
+			text: entry.label,
+			cls: "p-wikilink-name",
+			attr: { title: t("favoritesSeedTooltip") },
+		});
+		const sourceId = entry.sourceId;
+		if (sourceId) {
+			const openSource = (): void => {
+				const source = this.d.plugin.conversationStore.getById(sourceId);
+				if (!source) return;
+				this.d.plugin.activateView()
+					.then((view) => view.setActiveConversation(source))
+					.catch((err: unknown) => noticeFailure("favorites pill: open source failed", err));
+			};
+			label.addEventListener("click", openSource);
+			makeKeyActivatable(label, openSource, "link");
+		}
+		if (entry.state === "outdated") {
+			ref.createEl("span", { cls: "p-wikilink-tokens", text: t("forkSummaryStale") });
+			const update = ref.createEl("button", {
+				cls: "pb pb-icon is-inline is-stale p-wikilink-update",
+				attr: { title: t("favoritesSeedUpdate"), "aria-label": t("favoritesSeedUpdate") },
+			});
+			setIcon(update, REGENERATE_ICON);
+			update.addEventListener("click", () => {
+				this.d.plugin.updateForkedFavorites(conv.id)
+					.then(() => this.render())
+					.catch((err: unknown) => noticeFailure("favorites pill: update failed", err, "saveFailed"));
+			});
+		}
+		const x = ref.createEl("button", {
+			cls: "pb pb-icon is-inline p-wikilink-x",
+			text: "×",
+			attr: { "aria-label": t("favoritesSeedRemoveAria") },
+		});
+		x.addEventListener("click", () => {
+			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
+			live.forkedFromFavorites = undefined;
+			this.render();
+			this.d.plugin.conversationStore.save(live)
+				.catch((err: unknown) => noticeFailure("reference row: save failed", err, "saveFailed"));
 		});
 	}
 

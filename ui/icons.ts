@@ -62,6 +62,8 @@ export const SOURCE_ICONS = {
 	rewrite: "pencil-line",
 	/** An earlier answer of this conversation, cited (ADR-250). */
 	answer: "message-square",
+	/** The favorites summary a fork from favorites carries (ADR-255). */
+	favorites: "star",
 } as const;
 
 export type SourceKind = keyof typeof SOURCE_ICONS;

@@ -12,6 +12,7 @@ import { PromptOptimizerService } from "./services/PromptOptimizerService";
 import { SecretStore } from "./services/SecretStore";
 import { PluginDataStore } from "./services/PluginDataStore";
 import { ConversationService } from "./services/ConversationService";
+import { ForkService } from "./services/ForkService";
 import { ViewManager } from "./services/ViewManager";
 
 /**
@@ -38,6 +39,7 @@ export class AppContainer {
 		readonly promptOptimizerService: PromptOptimizerService,
 		readonly secretStore: SecretStore,
 		readonly conversationService: ConversationService,
+		readonly forkService: ForkService,
 		readonly viewManager: ViewManager,
 	) {}
 
@@ -60,6 +62,7 @@ export class AppContainer {
 		const promptOptimizerService = new PromptOptimizerService(plugin.app, plugin, plugin.settings, llmRouter);
 		const secretStore = new SecretStore(plugin);
 		const conversationService = new ConversationService(plugin);
+		const forkService = new ForkService(plugin, conversationService);
 		const viewManager = new ViewManager(plugin);
 
 		return new AppContainer(
@@ -73,6 +76,7 @@ export class AppContainer {
 			promptOptimizerService,
 			secretStore,
 			conversationService,
+			forkService,
 			viewManager,
 		);
 	}

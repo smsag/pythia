@@ -79,7 +79,7 @@ One person, precisely: **someone who already keeps their thinking in Obsidian.**
 
 ## Commands
 
-The palette carries fifteen entries (three of them the note-anchor commands of ADR-249); everything else lives inside `Pythia: Commands…`. The full table is in the README (single source, so it cannot drift twice). The sidebar opens from the ribbon icon or an `obsidian://pythia` link — there is deliberately **no** `Open sidebar` command.
+The palette carries sixteen entries (three of them the note-anchor commands of ADR-249); everything else lives inside `Pythia: Commands…`. The full table is in the README (single source, so it cannot drift twice). The sidebar opens from the ribbon icon or an `obsidian://pythia` link — there is deliberately **no** `Open sidebar` command.
 
 ---
 
@@ -109,19 +109,21 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 │   └── .p-hdr-btn            (plus)                new conversation — always the last child
 │
 ├── .p-ref-row                                      sidebar.ts — hidden when empty
-│   └── .p-pills > .p-wikilink                      one per reference (template · rewrite · note · saved note · vault search)
+│   └── .p-pills > .p-wikilink                      one per reference (template · rewrite · favorites · note · saved note · vault search)
 │       ├── .p-source-icon · .p-wikilink-name · .p-wikilink-tokens   icon per source type (ADR-193)
+│       ├── .p-wikilink--favorites                  a fork's favorites summary (ADR-255); ↻ .p-wikilink-update while the source's is newer
 │       └── .p-wikilink-x                           remove from context
 │
 ├── .p-chat                                         sidebar.ts — the scroll area, flex: 1
 │   ├── .p-inspector-wrap                           context inspector (what is in the prompt)  — a .p-acc like the summary cards (ADR-192)
 │   │   └── .p-inspector-resume                     history a resume mode leaves out + Send full history (ADR-231)
 │   ├── .pythia-fork-banner                         on a fork: "branched from …"   ui/ForkController.ts
+│   │   └── .pythia-fork-favorites                  a fork from favorites: count + summary date (ADR-255)
 │   ├── .pythia-merge-banner                        inbound merge links             ui/MergeController.ts
 │   ├── .p-summary-cards                            ui/SummaryController.ts
 │   │   └── .p-summary-card
 │   │       ├── .p-acc-head > .p-acc-toggle         <button aria-expanded>: .p-acc-chevron · -icon · -title · -meta (ADR-192)
-│   │       ├── .p-acc-actions                      ↻ .p-summary-card-regen (beside the toggle, never inside)
+│   │       ├── .p-acc-actions                      ↻ .p-summary-card-regen · favorites card: .p-summary-card-fork (Fork from favorites, ADR-255) — beside the toggle, never inside
 │   │       ├── .p-summary-card-body > .p-summary-card-md
 │   │       └── .p-summary-card-footer              Kopieren · In Notiz speichern (pb-quiet); the timestamp is .p-summary-ts in .p-acc-meta
 │   └── .pythia-messages-wrapper
@@ -170,7 +172,7 @@ The view is one `ItemView` (`PYTHIA_VIEW_TYPE = "pythia"`), built imperatively i
 | ↳ badges | `.p-history-fork-count` (⑂) · `-fav-count` (★) · `-cost` · `.p-history-active` | " | " |
 | ↳ paging | `.p-history-more` | " | past 50 rows (ADR-174) |
 | ↳ chip | `.p-history-chip-wrap` | `ui/historyChip.ts` | related mode · auto-widened search |
-| Navigator | `.p-navigator` → `.p-nav-section`, `.p-nav-item`, `.p-nav-tree-*` | `ui/NavigatorController.ts` | `#` button |
+| Navigator | `.p-navigator` → `.p-nav-section`, `.p-nav-item`, `.p-nav-tree-*`; a fork from favorites carries `.p-nav-fork-kind` (★) in the fork tree, and Starred ends in `.p-nav-action` *Fork from favorites* (ADR-255) | `ui/NavigatorController.ts` | `#` button |
 | Model picker | `.p-model-pop` → `.p-model-pop-row`, `-name`, `-good`, `-ctx` | `ui/HeaderController.ts` | `.p-inst-model` |
 | Choice picker | `.p-choice-pop` → `.p-choice-row`, `-label`, `-detail` | `ui/choicePicker.ts` | effort / language segments |
 | Mobile sheet | `.p-sheet` → `.p-sheet-scrim`, `-list`, `-item-*` | `ui/ActionSheet.ts` | the same, on touch |
@@ -230,7 +232,7 @@ Name the surface and the class: *"`.p-history-sub` should show the archive state
 
 `models/types.ts` is the source of truth. The shape, briefly:
 
-- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode` (+ `resumedAfterId`, the point it reduces up to — ADR-231), optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary`, `savedNotePath`), and how it relates to others (`forkedFrom*`, `merges`, `templateId`, `theme`, `comparison`).
+- **`Conversation`** — identity (`id`, `name`, `createdAt`, `updatedAt`), what it sends (`systemPrompt`, `contextNotes`, `provider`, `model`, `resumeMode` (+ `resumedAfterId`, the point it reduces up to — ADR-231), optional `maxTokens`/`temperature`/`effort`/`outputLanguage`/`writeMode`/`researchMode`/`vaultContext`), what it produced (`messages`, `summaryText`, `favoritesSummary` (+ `favoriteIds`, the fingerprint of the favorites it covered — ADR-255), `savedNotePath`), and how it relates to others (`forkedFrom*` — a fork from favorites carries `forkedFromFavorites`, a snapshot of the source's favorites summary, ADR-255 — `merges`, `templateId`, `theme`, `comparison`).
 - **`Message`** — `id`, `role`, `content`, `timestamp`, plus what that turn used and cost: `model`, `tokenUsage`, `cost` (snapshotted, ADR-163), `attachedNotes`, `sources`, `truncated`. A user message may carry `chapterName` and `chapterSummary` (a snapshot with the chapter's fingerprint, ADR-249).
 - **`Conversation.citeAnswers`** / **`PendingTemplate.citeAnswers`** — the template's `cite_answers: true`: earlier answers are numbered for the model, which may cite them (ADR-250). A `MessageSource` of kind `answer` names the cited answer by id.
 - **`Conversation.noteAnchors`** — the notes that link to the conversation or one of its chapters (ADR-249): a record of what Pythia last read in each note, never the link itself, which lives in the note.
@@ -306,6 +308,9 @@ Everything consciously *not* done, with the reason and what would make it worth 
 | D-77 | **A deletion record expires after 180 days.** A device that stays offline longer, or an older Pythia that does not know the records, can still bring a deleted conversation back. | ADR-252 | Records that never expire grow data.json with every delete, and every device rewrites the whole file per turn (ADR-174). | Someone reports a conversation returning after a long-offline device came back, or the store moves to per-conversation files (#3). |
 | D-78 | **A chart's view is forgotten on restart.** The table switch is remembered for the session — per chart in answers and notes, per pin in the strip — and every chart opens as a chart after Obsidian restarts. | ADR-254 | Nothing is written: the block is the artifact and a view is not data. Built on the recommendation; not separately confirmed by the user. The smallest persisted form would be `Pin.view?: "table"`, validated on load and classified in `tests/pathFields.test.ts`. | A user asks for a pinned table to stay a table, or for a note to open a chart as its table — then a `view` key in the block, through `parseChartSpec`. |
 | D-79 | **Copy table copies Markdown, not a rich table.** Pasted into Word, Docs or a spreadsheet, a chart's table arrives as pipe text. | ADR-254 | The same as Copy on an answer's table (ADR-216). The fix is a `text/html` plus tab-separated write through `ui/clipboard.ts`. | A user pastes a chart's table into a document or spreadsheet and has to clean it up. |
+| D-80 | **The favorites summary cannot be edited before forking from it.** The fork takes the summary as generated; dropping a line means × on the pill and saying it instead. | ADR-255 | Editing would add a modal to a one-tap action, and the snapshot would then be text neither the source nor a model produced. | Users remove the pill and retype what they wanted, or ask to leave out an action item. |
+| D-81 | **A fork from favorites does not follow its source on its own.** A newer summary is offered on the pill and taken on ↻ (user decision). | ADR-255 | Following silently changes what the fork's answers stand on, in a conversation the user is not looking at, and invalidates the prompt cache unannounced. The smallest form would be a per-fork *Follow source* toggle. | Users regularly press ↻ right after regenerating the source's summary. |
+| D-82 | **No composer prefill from the action items, and no fork from a subset of favorites.** | ADR-255 | Both were offered as follow-ups and kept out of the first build. A prefill is only possible when the summary has action items (ADR-141). | A user asks to start the fork on an action item, or to fork from some favorites only. |
 | D-70 | **No Copy or Pin on a Mermaid diagram.** Obsidian replaces the `<pre>` with `div.mermaid` and keeps the source only in its own internal map, so there is nothing in the DOM to copy. | ADR-242 | Recovering it means matching the n-th Mermaid fence in the message's Markdown to the n-th `div.mermaid` in the rendered answer — a second source of truth for what a block is, done to restore a feature that never worked. | A user asks to copy or pin a Mermaid diagram, or Obsidian exposes the source on the element. |
 | D-64 | **A running conversation's instructions are shown, not edited.** *What Pythia sends* is read-only. | ADR-232 | Editing in place would duplicate a template armed for one answer (ADR-177), and would replace the user's own instructions with no undo. | A user wants to change a conversation's standing instructions mid-way and a one-answer template is the workaround more than once. |
 
@@ -370,6 +375,7 @@ Everything consciously *not* done, with the reason and what would make it worth 
 
 | Date | Change |
 |---|---|
+| 2026-10-04 | ADR-255: fork from favorites — the pill, the banner line and the card action in the UI map; `forkedFromFavorites` and `favoriteIds` in the data model; D-80…D-82. |
 | 2026-09-26 | ADR-229: auto-search fires on time-sensitive questions again (ADR-226 misread the decision). |
 | 2026-09-26 | ADR-228: D-62 narrowed to one item, parallel web calls in a round; everything else closed. |
 | 2026-09-26 | ADR-227: three rows of D-62 closed (parentheses, earlier sources, timeout). |

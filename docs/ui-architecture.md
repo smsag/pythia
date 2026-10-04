@@ -1,6 +1,6 @@
 # UI architecture and naming
 
-*Last updated: 2026-10-01 (ADR-254: the chart card shows its data as a chart or as a `.p-chart-table`, switched in its head; a pinned chart keeps its own view).*
+*Last updated: 2026-10-04 (ADR-255: fork from favorites — the favorites card's fork button, the fork's favorites pill and `.pythia-fork-favorites` banner line, the ★ in the navigator's fork tree and its `.p-nav-action`).*
 
 *Previously: 2026-09-30 (ADR-253: Pythia writes a note anchor without `==` — a started conversation's link carries `anchor=1`; an older `==` still counts).*
 
@@ -91,7 +91,7 @@ Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…
 
 - **Conversation panel:** `.p-history`, `HistoryController`. Covers the whole view (`inset: 0`). Browse by date, search (titles via `services/conversationFinder.ts`, meaning via Schreibstube — ADR-223), **related mode** (`RelatedMode`, with the dismissible `historyChip`), and **pick mode** — the same panel opened by `view.pickConversation()` to choose a merge target. Never a modal for that.
 - **Pin strip:** `.p-pins`, `PinController`. One pin shown at a time — collapsed to one line (‹ n/m › · ↗), open for the content, copy and ✕. Pinned from the selection strip's *Pin* or a block's pin icon. Every jump in the chat lands below it (`scrollChatTo`).
-- **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts. Each chapter row carries `.p-nav-copy`, which copies a link to that chapter (ADR-249).
+- **Navigator:** `.p-navigator`, `NavigatorController`. Forks · Merged · Starred · All prompts. Each chapter row carries `.p-nav-copy`, which copies a link to that chapter (ADR-249). In the fork tree a fork from favorites carries `.p-nav-fork-kind` (★); Starred ends in `.p-nav-action`, *Fork from favorites* (ADR-255).
 - **Selection strip:** `.pythia-sel-toolbar`, `SelectionController`. Appears for a selection in the chat: Copy · Insert into note · Save to inbox · Add to Ablage (ADR-246) · Star · Fork · Merge · Define · Person.
 - **Send menu:** `.p-send-menu`, built in `sidebar.ts` (an `ActionSheet` on mobile). Summarize conversation · Summarize favorites · Optimize prompt (`OptimizationController`).
 - **Rewrite:** `RewriteController` + `editorSelectionEntries`. A passage selected in the **editor** is armed as a target; the answer becomes a proposal card with *Replace in note*.

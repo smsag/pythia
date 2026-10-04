@@ -923,6 +923,13 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    name. Which of the two it is, is the icon's job (ADR-193). */
 .p-wikilink--template .p-wikilink-name { font-weight: 600; }
 
+/* The favorites summary a fork carries (ADR-255): sent with every answer, like an
+   attached note, so it looks like one. Its ↻ appears only while the source holds a
+   newer summary; the accent comes from the shared `.is-stale` role rule (ADR-191). */
+.p-wikilink-update {
+  flex-shrink: 0;
+}
+
 /* ── Add-note text link (replaces the dashed pill-add button) ── */
 .pythia-view .pythia-pill-add {
   flex-shrink: 0;
@@ -997,6 +1004,17 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--text-faint);
   font-style: italic;
 }
+/* A fork from favorites has no passage; this line names what it carries (ADR-255). */
+.pythia-fork-favorites {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s1);
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+.pythia-fork-favorites-icon { display: inline-flex; color: var(--color-yellow); }
+.pythia-fork-favorites-icon svg { width: 11px; height: 11px; stroke-width: 1.5; }
 .pythia-fork-selection {
   margin-top: 5px;
   font-size: var(--font-small);
@@ -2589,6 +2607,15 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   color: var(--color-accent);
   flex-shrink: 0;
 }
+/* A fork from favorites in the fork tree (ADR-255): the Starred section's ★, after
+   the name — the dot before it still says active or not. */
+.p-nav-fork-kind { margin-inline-start: var(--s1); }
+/* A section's own action (Fork from favorites): a row like the entries above it,
+   set apart by a hairline so it does not read as one more favorite. */
+.p-nav-action {
+  border-top: 1px solid var(--background-modifier-border);
+}
+.p-nav-action .p-nav-label { color: var(--text-muted); }
 
 /* ── Fork tree (F5) ─────────────────────────────────────────────── */
 .p-nav-tree-source {

@@ -8,7 +8,7 @@ import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
 import { makeKeyActivatable } from "./keyActivate";
 import { attachOutsideDismiss } from "./outsideDismiss";
-import { REGENERATE_ICON } from "./icons";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./icons";
 import { scrollChatTo } from "./chatScroll";
 
 export interface ForkDeps {
@@ -84,6 +84,17 @@ export class ForkController {
 				cls: "pythia-fork-source-deleted",
 				text: t("deletedConversation"),
 			});
+		}
+
+		// A fork from favorites has no passage; it names what it carries (ADR-255).
+		const seed = conv.forkedFromFavorites;
+		if (seed) {
+			const line = banner.createDiv({ cls: "pythia-fork-favorites" });
+			setIcon(line.createSpan({ cls: "pythia-fork-favorites-icon" }), SOURCE_ICONS.favorites);
+			line.appendText(t("forkedFromFavoritesLine", {
+				count: String(seed.favoriteCount),
+				date: formatSummaryTimestamp(seed.sourceUpdatedAt),
+			}));
 		}
 
 		// Show the selected text that triggered the fork, truncated to a readable excerpt.
@@ -285,7 +296,7 @@ export class ForkController {
 		addItem(t("menuSummarizeConversation"), "align-left", fork.messages.length === 0,
 			() => void this.generateForkSummary(anchor, fork, "conversation"));
 		if (hasFavorites) {
-			addItem(t("menuSummarizeFavorites"), "star", false,
+			addItem(t("menuSummarizeFavorites"), SOURCE_ICONS.favorites, false,
 				() => void this.generateForkSummary(anchor, fork, "favorites"));
 		}
 

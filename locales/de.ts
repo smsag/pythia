@@ -44,6 +44,16 @@ const de: Strings = {
 	forkedFromLabel:            "Verzweigt von",
 	deletedConversation:        "Gelöschtes Gespräch",
 	forkSummaryFailed:          "Zusammenfassung konnte nicht generiert werden: {{error}}",
+	// ── Fork from favorites (ADR-255) ─────────────────────────────────────────
+	forkFromFavorites:          "Aus Favoriten verzweigen",
+	forkedFromFavoritesTag:     "aus Favoriten",
+	forkedFromFavoritesLine:    "Beginnt mit {{count}} Favoriten · Zusammenfassung vom {{date}}",
+	favoritesSeedPill:          "Favoriten aus {{name}}",
+	favoritesSeedPillOrphaned:  "Favoriten eines gelöschten Gesprächs",
+	favoritesSeedTooltip:       "Die Favoriten-Zusammenfassung, mit der dieses Gespräch begann — wird mit jeder Antwort gesendet",
+	favoritesSeedUpdate:        "Neuere Favoriten-Zusammenfassung der Quelle übernehmen",
+	favoritesSeedUpdated:       "Favoriten-Zusammenfassung aus {{name}} übernommen.",
+	favoritesSeedRemoveAria:    "Favoriten-Zusammenfassung nicht mehr mit diesem Gespräch senden",
 
 	// ── Merge-Verknüpfungen (ADR-130) ─────────────────────────────────────────
 	mergeBtn:                   "Zusammenführen",
@@ -357,6 +367,7 @@ const de: Strings = {
 	cmdBrowseConversations:            "Gespräche durchsuchen",
 	cmdBrowseFavorites:                "Favoriten durchsuchen",
 	cmdSummarizeFavorites:             "Favoriten zusammenfassen",
+	cmdForkFromFavorites:              "Aus Favoriten verzweigen",
 	cmdFavoriteSelection:              "Favorisieren",
 	cmdToggleVaultContext:             "Vault-Kontext-Standard umschalten (semantisches RAG)",
 	vaultContextOn:                    "Vault-Kontext an – relevante Notizen werden dieser Unterhaltung automatisch hinzugefügt.",
@@ -376,6 +387,7 @@ const de: Strings = {
 	cmdNewConversationFromClipboardDesc:     "Gespräch mit Zwischenablage-Inhalt als erste Nachricht starten",
 	cmdNewConversationFromPromptDesc:        "Prompt mit KI optimieren, bevor das Gespräch beginnt",
 	cmdBrowseConversationsDesc:              "Alle gespeicherten Gespräche suchen und öffnen",
+	cmdForkFromFavoritesDesc:                "Ein neues Gespräch mit der Favoriten-Zusammenfassung dieses Gesprächs beginnen",
 	cmdSummarizeFavoritesDesc:              "Die Favoriten dieses Gesprächs zu Kernerkenntnissen und To-dos verdichten",
 	cmdBrowseFavoritesDesc:                  "Zu markierten Nachrichten aus allen Gesprächen springen",
 	cmdReloadConversationsDesc:              "Neu synchronisieren, falls Gespräche extern bearbeitet wurden",

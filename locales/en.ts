@@ -43,6 +43,16 @@ const en = {
 	forkedFromLabel:            "Forked from",
 	deletedConversation:        "Deleted conversation",
 	forkSummaryFailed:          "Could not generate fork summary: {{error}}",
+	// ── Fork from favorites (ADR-255) ─────────────────────────────────────────
+	forkFromFavorites:          "Fork from favorites",
+	forkedFromFavoritesTag:     "from favorites",
+	forkedFromFavoritesLine:    "Starts from {{count}} favorites · summary of {{date}}",
+	favoritesSeedPill:          "Favorites of {{name}}",
+	favoritesSeedPillOrphaned:  "Favorites of a deleted conversation",
+	favoritesSeedTooltip:       "The favorites summary this conversation started from — sent with every answer",
+	favoritesSeedUpdate:        "Take the source's newer favorites summary",
+	favoritesSeedUpdated:       "Favorites summary updated from {{name}}.",
+	favoritesSeedRemoveAria:    "Stop sending the favorites summary with this conversation",
 
 	// ── Merge links (ADR-130) ─────────────────────────────────────────────────
 	mergeBtn:                   "Merge",
@@ -347,6 +357,7 @@ const en = {
 	cmdBrowseConversations:            "Browse conversations",
 	cmdBrowseFavorites:                "Browse favorites",
 	cmdSummarizeFavorites:             "Summarize favorites",
+	cmdForkFromFavorites:              "Fork from favorites",
 	cmdFavoriteSelection:              "Favorite selection",
 	cmdToggleVaultContext:             "Toggle vault context default (semantic RAG)",
 	vaultContextOn:                    "Vault context on — relevant notes are auto-added to this conversation.",
@@ -367,6 +378,7 @@ const en = {
 	cmdNewConversationFromPromptDesc:        "Optimize a prompt with AI before starting a conversation",
 	cmdBrowseConversationsDesc:              "Search and open any saved conversation",
 	cmdSummarizeFavoritesDesc:              "Synthesize this conversation's favorites into key learnings and action items",
+	cmdForkFromFavoritesDesc:                "Start a new conversation from this conversation's favorites summary",
 	cmdBrowseFavoritesDesc:                  "Jump to starred messages across conversations",
 	cmdReloadConversationsDesc:              "Force-sync if conversations were edited externally",
 

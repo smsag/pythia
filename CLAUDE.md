@@ -32,6 +32,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
+    ForkService.ts            ← forks: cmdForkConversation (a passage) · cmdForkFromFavorites · updateForkedFavorites (the pill's ↻), through one createForkOf (ADR-255)
+    favoritesFork.ts          ← pure: favoritesFingerprint + favoritesSummaryStale (the ONE outdated rule for a favorites summary), favoritesSeed (the snapshot), seedState (current · outdated · orphaned), forkKind (the ONE "fork from favorites?" rule), sanitizeForkedFavorites (ADR-255)
     ContextBuilder.ts         ← builds system prompt, attaches vault notes
     sendPreview.ts            ← previewSystemPrompt: the ONE preview of the system prompt (context box estimate + What Pythia sends) · sendFullHistory (ADR-231/232)
     NoteWriter.ts             ← vault write operations
@@ -656,6 +658,13 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 - **Cost as a tier, never dollars** (ADR-163) — the chip carries `tierDots`, not `≈ $`
 - **No suggestion** when a template pins the model, a PDF meets Mistral, the current model is adequate and not dearer, or a downgrade's cold send costs more than staying on the cached model (`sendCost`) — measured from the price table, not guessed
 - **The answer names the model that answered**: `turnConv.model`, never `conv.model`, for the message, its cost snapshot and a stream error (#305)
+
+### Fork from favorites (ADR-255)
+- **A snapshot, never a live link.** `Conversation.forkedFromFavorites` holds the source's favorites summary as it was; a newer one in the source is OFFERED on the fork's pill (↻, `seedState === "outdated"`) and taken only on the tap (user decision, D-81). Never make the fork follow on its own
+- **Its own prompt block, never `forkedFromSummary`.** `ContextBuilder` reads `summaryText ?? forkedFromSummary`, so a carried summary vanishes once the fork is summarized; `<forked_from_favorites>` does not. The fork carries the favorites summary ONLY — not the source's conversation summary, not a passage
+- **Action items are optional** (ADR-141): the instruction says "if the block lists action items", and calls them open points, never instructions. Never write a rule that assumes the section
+- **Forked from a current summary.** `favoritesSummaryStale` (the favorite-id fingerprint stored on `favoritesSummary.favoriteIds`) is the ONE outdated rule — the card and the fork both read it; a stale or missing summary is regenerated first, an empty reply stops the fork
+- **`forkKind` is the one "is this a fork from favorites?" rule** — the navigator's fork tree (★) and the conversation panel read it
 
 ### # Navigator
 - Trigger: `#` button, bottom-right, floating above input

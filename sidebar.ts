@@ -123,7 +123,8 @@ export class PythiaSidebarView extends ItemView {
 	// created here (for DOM position); the SummaryController (ADR-103) owns the
 	// cards, their auto-collapse observer, and the generate/reveal/save flows.
 	private summaryCardsEl: HTMLElement | null = null;
-	private summaryController!: SummaryController;
+	/** Public for the summarize / fork-from-favorites commands (ConversationService). */
+	summaryController!: SummaryController;
 	// Context inspector card (F2/F3) — lives just under the summary cards. The
 	// container is created here (for DOM position); the ContextInspectorController
 	// (ADR-103) owns the card, the budget bar/chip logic, and the open state.
@@ -436,6 +437,7 @@ export class PythiaSidebarView extends ItemView {
 			revealMergeLink: (mergeId) => this.mergeController.revealMergeLink(mergeId),
 			removeMergeLink: (mergeId) => this.mergeController.removeMergeLink(mergeId),
 			goToFavoritesSummary: () => this.summaryController.goToFavoritesSummary(),
+			forkFromFavorites: () => this.summaryController.forkFromFavorites(),
 		});
 
 		this.historyController = new HistoryController({
@@ -759,7 +761,7 @@ export class PythiaSidebarView extends ItemView {
 				onSelect: () => void this.summaryController.generateConversationSummary(),
 			},
 			{
-				label: t("menuSummarizeFavorites"), icon: "star",
+				label: t("menuSummarizeFavorites"), icon: SOURCE_ICONS.favorites,
 				disabled: (conv.favorites?.length ?? 0) === 0,
 				onSelect: () => void this.summaryController.summarizeFavorites(),
 			},
@@ -1162,11 +1164,6 @@ export class PythiaSidebarView extends ItemView {
 				this.prefillInput(tpl.autoPrompt);
 			}
 		}).open();
-	}
-
-	/** Facade for the `Pythia: Summarize favorites` command (main.ts). */
-	summarizeFavorites(): Promise<void> {
-		return this.summaryController.summarizeFavorites();
 	}
 
 	private async onSaveResponse(): Promise<void> {
