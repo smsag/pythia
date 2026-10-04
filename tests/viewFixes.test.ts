@@ -7,6 +7,7 @@ import { ActionSheet } from "../ui/ActionSheet";
 import { NavigatorController, type NavigatorDeps } from "../ui/NavigatorController";
 import { nameAfterCommit } from "../ui/postCommitNaming";
 import type { Conversation, Message } from "../models/types";
+import { t } from "../i18n";
 
 function pointer(type: string, x: number, y: number): Event {
 	const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
@@ -61,10 +62,11 @@ describe("NavigatorController — removing the last favorite says so", () => {
 			revealMergeLink: vi.fn(),
 			removeMergeLink: vi.fn(),
 			goToFavoritesSummary: vi.fn(),
+			forkFromFavorites: vi.fn(async () => {}),
 		} as unknown as NavigatorDeps;
 		const nav = new NavigatorController(deps);
 		nav.toggle();
-		return { navigatorEl, nav };
+		return { navigatorEl, nav, deps };
 	}
 	const flush = () => new Promise((r) => setTimeout(r, 0));
 	const del = (el: HTMLElement, i: number) => el.querySelectorAll<HTMLElement>(".p-nav-del")[i];
@@ -74,11 +76,24 @@ describe("NavigatorController — removing the last favorite says so", () => {
 		const section = del(navigatorEl, 0).closest<HTMLElement>(".p-nav-section-body")!;
 		del(navigatorEl, 0).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
 		await flush();
-		expect(section.querySelectorAll(".p-nav-item")).toHaveLength(1);
+		expect(section.querySelectorAll(".p-nav-item:not(.p-nav-action)")).toHaveLength(1);
 		expect(section.querySelector(".p-nav-empty")).toBeNull();
 		del(navigatorEl, 0).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
 		await flush();
 		expect(section.querySelectorAll(".p-nav-empty")).toHaveLength(1);
+		// The section's fork action leaves with the last favorite (ADR-255).
+		expect(section.querySelector(".p-nav-action")).toBeNull();
+		nav.close();
+	});
+
+	it("offers Fork from favorites as the section's last row, and runs it on a tap (ADR-255)", async () => {
+		const { navigatorEl, nav, deps } = mount([{ id: "a", name: "A" }]);
+		const action = navigatorEl.querySelector<HTMLElement>(".p-nav-action")!;
+		expect(action.textContent).toContain(t("forkFromFavorites"));
+		expect(action.closest(".p-nav-section-body")?.lastElementChild).toBe(action);
+		action.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+		await flush();
+		expect(deps.forkFromFavorites).toHaveBeenCalledTimes(1);
 		nav.close();
 	});
 

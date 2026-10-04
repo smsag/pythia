@@ -23,7 +23,7 @@ const CONVERSATION: Record<keyof Conversation, Kind> = {
 	messages: "nested", favorites: "other", savedNotePath: "path", lastSavedMessageCount: "other",
 	merges: "other", pins: "other",
 	forkedFromId: "other", forkedFromMessageId: "other", forkedFromSelection: "other",
-	forkedFromOccurrenceIndex: "other", forkedFromSummary: "other",
+	forkedFromOccurrenceIndex: "other", forkedFromSummary: "other", forkedFromFavorites: "other",
 	outputFolder: "path", writeMode: "other",
 	theme: "other",        // a theme note's NAME; the glossary moves it by name (ADR-150)
 	glossaryTerm: "other", // a term, not a path

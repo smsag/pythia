@@ -25,6 +25,7 @@ import type { PromptOptimizerService } from "./services/PromptOptimizerService";
 import type { KeyKind, SecretStore } from "./services/SecretStore";
 import type { PluginDataStore } from "./services/PluginDataStore";
 import type { ConversationService } from "./services/ConversationService";
+import type { ForkService } from "./services/ForkService";
 import { loadedPythiaViews, type ViewManager } from "./services/ViewManager";
 import { RELATED_RESULT_LIMIT, SchreibstubeLink } from "./services/schreibstubeLink";
 import { VaultContextService } from "./services/VaultContextService";
@@ -65,6 +66,7 @@ export default class PythiaPlugin extends Plugin {
 	get pluginDataStore(): PluginDataStore { return this.container?.pluginDataStore as PluginDataStore; }
 	get secretStore(): SecretStore { return this.container?.secretStore as SecretStore; }
 	get conversationService(): ConversationService { return this.container?.conversationService as ConversationService; }
+	get forkService(): ForkService { return this.container?.forkService as ForkService; }
 	get viewManager(): ViewManager { return this.container?.viewManager as ViewManager; }
 	get llmRouter(): LLMRouter { return this.container?.llmRouter as LLMRouter; }
 	get templateLoader(): TemplateLoader { return this.container?.templateLoader as TemplateLoader; }
@@ -300,6 +302,11 @@ export default class PythiaPlugin extends Plugin {
 					action: () => this.conversationService.cmdSummarizeFavorites(),
 				},
 				{
+					label: t("cmdForkFromFavorites"),
+					desc:   t("cmdForkFromFavoritesDesc"),
+					action: () => this.conversationService.cmdForkFromFavoritesOfActive(),
+				},
+				{
 					label: t("cmdReloadConversations"),
 					desc:   t("cmdReloadConversationsDesc"),
 					action: () => this.pluginDataStore.reloadFromDisk(),
@@ -312,7 +319,7 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "favorite-selection",
 			name: t("cmdFavoriteSelection"),
-			icon: "star",
+			icon: SOURCE_ICONS.favorites,
 			checkCallback: (checking) => {
 				const view = loadedPythiaViews(this.app.workspace).find((v) => v.canFavoriteSelection());
 				if (!view) return false;
@@ -324,8 +331,15 @@ export default class PythiaPlugin extends Plugin {
 		this.addCommand({
 			id: "summarize-favorites",
 			name: t("cmdSummarizeFavorites"),
-			icon: "star",
+			icon: SOURCE_ICONS.favorites,
 			callback: () => this.conversationService.cmdSummarizeFavorites(),
+		});
+
+		this.addCommand({
+			id: "fork-from-favorites",
+			name: t("cmdForkFromFavorites"),
+			icon: "git-branch",
+			callback: () => this.conversationService.cmdForkFromFavoritesOfActive(),
 		});
 
 		this.addCommand({
@@ -472,6 +486,10 @@ export default class PythiaPlugin extends Plugin {
 	pendingEvictionCount(cap: number): number { return this.pluginDataStore.pendingEvictionCount(cap); }
 
 	activateView(): Promise<PythiaSidebarView> { return this.viewManager.activateView(); }
+	/** The view showing this conversation, else activateView (ADR-255 review). */
+	viewShowing(convId: string): Promise<PythiaSidebarView> { return this.viewManager.viewShowing(convId); }
+	/** The view a command about "this conversation" acts on: the focused one first. */
+	commandView(): Promise<PythiaSidebarView> { return this.viewManager.commandView(); }
 
 	/** Open a conversation — at the chapter `messageId` names, when given and
 	 *  still there (ADR-249). The deep link and the anchor card both come here. */
@@ -503,7 +521,16 @@ export default class PythiaPlugin extends Plugin {
 		return this.conversationService.cmdNewConversation();
 	}
 	cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string, forkedFromOccurrenceIndex?: number): Promise<void> {
-		return this.conversationService.cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId, forkedFromOccurrenceIndex);
+		return this.forkService.cmdForkConversation(sourceConvId, selectedText, forkedFromMessageId, forkedFromOccurrenceIndex);
+	}
+	cmdForkFromFavorites(sourceConvId: string): Promise<Conversation | null> {
+		return this.forkService.cmdForkFromFavorites(sourceConvId);
+	}
+	updateForkedFavorites(forkId: string): Promise<boolean> {
+		return this.forkService.updateForkedFavorites(forkId);
+	}
+	setForkedFavoritesSent(forkId: string, sent: boolean): Promise<void> {
+		return this.forkService.setForkedFavoritesSent(forkId, sent);
 	}
 	cmdMergeConversation(convId: string, selectedText: string, messageId: string, occurrenceIndex?: number): Promise<void> {
 		return this.conversationService.cmdMergeConversation(convId, selectedText, messageId, occurrenceIndex);

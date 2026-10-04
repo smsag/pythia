@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, NUMBER_SETTING_BOUNDS, isNumberInBounds, type PythiaS
 import { isRewriteTarget, normalizeAlternatives, normalizeAnswerFields, normalizeComparison } from "./comparison";
 import { normalizeNoteAnchors } from "./noteAnchors";
 import { normalizeChapterSummary } from "./chapterSummary";
+import { sanitizeForkedFavorites } from "./favoritesFork";
 
 const PROVIDERS: readonly Provider[] = ["anthropic", "openai", "mistral"];
 const RESUME_MODES = ["full", "summary", "hybrid"] as const;
@@ -218,6 +219,13 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	if (c.writeMode !== undefined && !(WRITE_MODES as readonly unknown[]).includes(c.writeMode)) delete c.writeMode;
 	if (c.outputLanguage !== undefined && !(OUTPUT_LANGUAGES as readonly unknown[]).includes(c.outputLanguage)) delete c.outputLanguage;
 	if (c.favorites !== undefined && !Array.isArray(c.favorites)) delete c.favorites;
+	sanitizeFavoritesSummary(c);
+	// A fork's favorites snapshot goes into every system prompt (ADR-255).
+	if (c.forkedFromFavorites !== undefined) {
+		const seed = sanitizeForkedFavorites(c.forkedFromFavorites);
+		if (seed) c.forkedFromFavorites = seed;
+		else delete c.forkedFromFavorites;
+	}
 	// A term read back from disk decides whether the header offers to write into a
 	// vault note, and which one (ADR-208) — so it is validated where it enters.
 	if (c.glossaryTerm !== undefined && (typeof c.glossaryTerm !== "string" || !c.glossaryTerm.trim())) {
@@ -231,6 +239,19 @@ export function sanitizeConversationFields(conv: Conversation): void {
 	// A pending rewrite drives a write into a note (ADR-178): verified shape or nothing.
 	if (c.pendingRewrite !== undefined && !isRewriteTarget(c.pendingRewrite)) delete c.pendingRewrite;
 	sanitizePendingTemplate(c);
+}
+
+/** The favorites summary decides whether a fork from it is offered as outdated
+ *  (ADR-255): a wrong shape is dropped, a wrong fingerprint is forgotten. */
+function sanitizeFavoritesSummary(c: Record<string, unknown>): void {
+	const raw = c.favoritesSummary;
+	if (raw === undefined) return;
+	const s = raw as Record<string, unknown> | null;
+	if (!s || typeof s !== "object" || typeof s.text !== "string" || typeof s.updatedAt !== "string") {
+		delete c.favoritesSummary;
+		return;
+	}
+	if (s.favoriteIds !== undefined && typeof s.favoriteIds !== "string") delete s.favoriteIds;
 }
 
 /**

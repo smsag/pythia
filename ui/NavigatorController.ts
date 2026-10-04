@@ -6,6 +6,7 @@ import { makeKeyActivatable } from "./keyActivate";
 import { setIcon } from "obsidian";
 import { copyChapterLink } from "./chapterLink";
 import { CHAPTER_LINK_ICON } from "./icons";
+import { forkKind } from "../services/favoritesFork";
 
 /**
  * A navigator row or control: mousedown (so the chat's selection and focus are
@@ -23,7 +24,11 @@ function onActivate(el: HTMLElement, run: () => void, label?: string): void {
 
 /** After a row was removed: the section's empty line when none is left. */
 function showEmptyIfNone(body: HTMLElement, text: string): void {
-	if (!body.querySelector(".p-nav-item")) body.createDiv({ cls: "p-nav-empty", text });
+	// A section's own action (`.p-nav-action`) is not an entry, and it goes with
+	// the last one: there is nothing left to fork from (ADR-255).
+	if (body.querySelector(".p-nav-item:not(.p-nav-action)")) return;
+	body.querySelectorAll(".p-nav-action").forEach((el) => el.remove());
+	body.createDiv({ cls: "p-nav-empty", text });
 }
 
 export interface NavigatorDeps {
@@ -39,6 +44,8 @@ export interface NavigatorDeps {
 	revealMergeLink(mergeId: string): void;
 	removeMergeLink(mergeId: string): Promise<void>;
 	goToFavoritesSummary(): void;
+	/** Fork from this conversation's favorites (ADR-255). Never rejects. */
+	forkFromFavorites(): Promise<void>;
 }
 
 export class NavigatorController {
@@ -144,6 +151,11 @@ export class NavigatorController {
 				const dot = row.createEl("span", { cls: "p-nav-dot" });
 				if (isActive) dot.addClass("active");
 				row.createEl("span", { cls: "p-nav-label", text: child.name });
+				// A fork from favorites has no origin mark in the source's text, so
+				// this tree is where it is found from the source (ADR-255).
+				if (forkKind(child) === "favorites") {
+					row.createEl("span", { cls: "p-nav-star p-nav-fork-kind", text: "★", attr: { title: t("forkedFromFavoritesTag") } });
+				}
 				if (isActive) {
 					row.createEl("span", { cls: "p-nav-tag", text: t("navActiveTag") });
 				} else {
@@ -220,6 +232,12 @@ export class NavigatorController {
 						showEmptyIfNone(body, t("navNoFavorites"));
 					}), t("removeHighlight"));
 				}
+				// The section's own action: a fork that starts from these (ADR-255).
+				const forkItem = body.createDiv({ cls: "p-nav-item p-nav-action" });
+				forkItem.createEl("span", { cls: "p-nav-fork-icon", text: "⎇" });
+				forkItem.createEl("span", { cls: "p-nav-label", text: t("forkFromFavorites") });
+				// forkFromFavorites never rejects: it reports its own failure.
+				onActivate(forkItem, () => { this.close(); void this.d.forkFromFavorites(); });
 			}
 		}, favLabelLink);
 

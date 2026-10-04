@@ -9,6 +9,8 @@ import {
 	PRIOR_SUMMARY_INSTRUCTION,
 	FORKED_EXCERPT_TAG,
 	FORKED_EXCERPT_INSTRUCTION,
+	FORKED_FAVORITES_TAG,
+	FORKED_FAVORITES_INSTRUCTION,
 	ATTACHED_NOTE_TAG,
 	ATTACHED_NOTE_PATH_ATTR,
 	ATTACHED_NOTE_EXCERPT_ATTR,
@@ -35,6 +37,7 @@ const CONTROL_TAGS = [
 	ATTACHED_NOTE_TAG,
 	PREVIOUS_SUMMARY_TAG,
 	FORKED_EXCERPT_TAG,
+	FORKED_FAVORITES_TAG,
 	RECENT_CONTEXT_TAG,
 ];
 const CONTROL_TAG_RX = new RegExp(`</?\\s*(?:${CONTROL_TAGS.join("|")})\\b`, "gi");
@@ -121,11 +124,14 @@ export function buildSystemPrompt(
 	// content as data rather than commands. Placed high in the system prompt so
 	// it frames every context block that follows.
 	const priorSummaryRaw = conversation.summaryText ?? conversation.forkedFromSummary;
+	// Not when the user switched it off on the pill (kept, not sent).
+	const forkedFavorites = conversation.forkedFromFavorites?.off ? undefined : conversation.forkedFromFavorites?.text?.trim();
 	const hasUntrustedContext =
 		conversation.contextNotes.length > 0 ||
 		hasAttachedNotes ||
 		conversation.researchMode === true ||
 		!!priorSummaryRaw ||
+		!!forkedFavorites ||
 		!!conversation.forkedFromSelection?.trim();
 	if (hasUntrustedContext) {
 		parts.push(UNTRUSTED_CONTENT_INSTRUCTION);
@@ -159,6 +165,16 @@ export function buildSystemPrompt(
 	if (priorSummary) {
 		parts.push(
 			`${PRIOR_SUMMARY_INSTRUCTION}\n\n<${PREVIOUS_SUMMARY_TAG}>\n${priorSummary}\n</${PREVIOUS_SUMMARY_TAG}>`
+		);
+	}
+
+	// A fork from favorites carries the source's favorites summary (ADR-255). Its
+	// own block, read from its own field: `summaryText ?? forkedFromSummary`
+	// above is shadowed once this conversation is summarized, and the user's
+	// curated ground must not drop out of the prompt when that happens.
+	if (forkedFavorites) {
+		parts.push(
+			`${FORKED_FAVORITES_INSTRUCTION}\n\n<${FORKED_FAVORITES_TAG}>\n${neutralizeControlTags(forkedFavorites)}\n</${FORKED_FAVORITES_TAG}>`
 		);
 	}
 

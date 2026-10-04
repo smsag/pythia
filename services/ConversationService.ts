@@ -6,7 +6,6 @@ import { todayISO } from "../utils";
 import { safeNoteName } from "./pathUtils";
 import { omittedByResume } from "./messageUtils";
 import { t } from "../i18n";
-import { effectiveTheme } from "./glossaryNotes";
 import type { GlossaryEntry } from "./glossary";
 import { archiveFolderOf } from "./conversationArchive";
 import { describeErrorForLog } from "./redact";
@@ -14,12 +13,18 @@ import { TemplateSuggestModal } from "../suggest/TemplateSuggest";
 import { ConversationSuggestModal, FavoritesSuggestModal } from "../suggest/ConversationSuggest";
 import { preselectedResumeMode, ResumeModeModal } from "../suggest/ResumeModeModal";
 
+/** The fields that make a conversation a fork, set at creation (ForkService). */
+export type ForkFields = Partial<Pick<Conversation,
+	| "forkedFromId" | "forkedFromMessageId" | "forkedFromSelection" | "forkedFromOccurrenceIndex"
+	| "forkedFromSummary" | "forkedFromFavorites" | "theme" | "outputLanguage">>;
+
 /**
  * Conversation creation + the conversation-oriented commands extracted from
  * `PythiaPlugin` (ADR-103, engineering-review #121): create (plain, from
- * template, forked), rename the saved note, and the new/browse/resume/summarize
- * command flows. Behaviour is identical to the inline plugin methods it
- * replaced; cross-service calls go through the plugin's facades.
+ * template, or with the fields of a fork that `ForkService` decides), rename
+ * the saved note, and the new/browse/resume/summarize command flows. Forks
+ * themselves live in `ForkService` (ADR-255). Cross-service calls go through
+ * the plugin's facades.
  */
 export class ConversationService {
 	constructor(private readonly plugin: PythiaPlugin) {}
@@ -84,6 +89,9 @@ export class ConversationService {
 		effort?: EffortLevel;
 		researchMode?: boolean;
 		citeAnswers?: boolean;
+		/** What makes it a fork (ForkService): in the conversation from its first
+		 *  write, never assigned after it (ADR-255 review). */
+		fork?: ForkFields;
 	}): Promise<Conversation> {
 		const p = this.plugin;
 		const resolvedProvider = opts.provider ?? p.settings.defaultProvider;
@@ -109,6 +117,7 @@ export class ConversationService {
 			...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
 			...(opts.effort !== undefined ? { effort: opts.effort } : {}),
 			...(opts.citeAnswers ? { citeAnswers: true as const } : {}),
+			...opts.fork,
 			messages: [],
 		};
 		p.conversations.push(conv);
@@ -229,66 +238,6 @@ export class ConversationService {
 		const view = await this.plugin.activateView();
 		await view.setActiveConversation(conv);
 		view.prefillInput(text);
-	}
-
-	async cmdForkConversation(sourceConvId: string, selectedText: string, forkedFromMessageId?: string, forkedFromOccurrenceIndex?: number): Promise<void> {
-		const p = this.plugin;
-		const source = p.conversationStore.getById(sourceConvId);
-		if (!source) return;
-
-		// Resolve the summary before the fork is created so it's part of the
-		// new conversation's context from the moment it opens, rather than
-		// arriving asynchronously after the fact.
-		let summary = source.summaryText;
-		let summaryUpdatedAt = source.summaryUpdatedAt;
-		if (!summary && source.messages.length > 0) {
-			const notice = new Notice(t("generatingSummary"), 0);
-			try {
-				summary = await p.llmRouter.generateSummary(source);
-				if (summary) {
-					summaryUpdatedAt = new Date().toISOString();
-					source.summaryText = summary;
-					source.summaryUpdatedAt = summaryUpdatedAt;
-				}
-			} catch (e) {
-				new Notice(t("forkSummaryFailed", { error: e instanceof Error ? e.message : String(e) }));
-			} finally {
-				notice.hide();
-			}
-		}
-
-		const conv = await this.createConversation({
-			name: `Fork of ${source.name}`,
-			systemPrompt: source.systemPrompt,
-			templateId: source.templateId,
-			provider: source.provider,
-			model: source.model,
-			maxTokens: source.maxTokens,
-			contextNotes: source.contextNotes ? [...source.contextNotes] : undefined,
-			resumeMode: source.resumeMode,
-			outputFolder: source.outputFolder,
-			writeMode: source.writeMode,
-		});
-		conv.temperature = source.temperature;
-		conv.effort = source.effort;
-		conv.forkedFromId = sourceConvId;
-		if (forkedFromMessageId) conv.forkedFromMessageId = forkedFromMessageId;
-		if (selectedText) conv.forkedFromSelection = selectedText;
-		if (forkedFromOccurrenceIndex !== undefined) conv.forkedFromOccurrenceIndex = forkedFromOccurrenceIndex;
-		// Carry the source summary as context only — NOT as the fork's own summary
-		// (its own summaryText/favoritesSummary stay empty until the user summarizes
-		// the fork, so the source can surface a genuine fork summary at the origin).
-		if (summary) conv.forkedFromSummary = summary;
-		// Resolve the source's theme rather than copying `theme` verbatim: a source
-		// that is following its own name would otherwise hand the fork "undefined",
-		// and the fork would then follow its OWN name instead of inheriting
-		// anything. Pinning it also means renaming the fork leaves the theme alone,
-		// which is what "inherited, but changeable" has to mean (ADR-150).
-		conv.theme = effectiveTheme(source);
-		await p.saveConversations();
-
-		const view = await p.activateView();
-		await view.setActiveConversation(conv);
 	}
 
 	/**
@@ -505,8 +454,16 @@ export class ConversationService {
 	}
 
 	async cmdSummarizeFavorites(): Promise<void> {
-		const view = await this.plugin.activateView();
-		await view.summarizeFavorites();
+		const view = await this.plugin.commandView();
+		await view.summaryController.summarizeFavorites();
+	}
+
+	/** The `Fork from favorites` command: the active conversation's summary card's
+	 *  action, run from the palette (ADR-255). */
+	async cmdForkFromFavoritesOfActive(): Promise<void> {
+		// The leaf the user is in, not the first one (ADR-255 review).
+		const view = await this.plugin.commandView();
+		await view.summaryController.forkFromFavorites();
 	}
 
 	async cmdResumeConversation(): Promise<void> {

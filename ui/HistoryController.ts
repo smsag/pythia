@@ -24,6 +24,7 @@ import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { RelatedMode } from "./RelatedMode";
 import { makeKeyActivatable } from "./keyActivate";
+import { forkKind } from "../services/favoritesFork";
 
 /**
  * Conversation rows drawn per page of the browse listing (ADR-174). A source
@@ -341,7 +342,9 @@ export class HistoryController {
 		const rowSub = (conv: Conversation, isFork: boolean): HTMLElement => {
 			const sub = createDiv({ cls: "p-history-sub" });
 			if (isFork) {
-				sub.appendText(`${t("branchLabel")} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
+				// A fork from favorites says so — the one rule, `forkKind` (ADR-255).
+				const kind = forkKind(conv) === "favorites" ? ` · ★ ${t("forkedFromFavoritesTag")}` : "";
+				sub.appendText(`${t("branchLabel")}${kind} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
 			} else {
 				sub.appendText(`${abbreviateModel(conv.model)} · ${t("msgCountShort", { n: String(conv.messages.length) })}`);
 				const forkCount = forksBySource.get(conv.id)?.length ?? 0;

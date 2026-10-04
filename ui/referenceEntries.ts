@@ -1,5 +1,6 @@
 import type { Conversation } from "../models/types";
 import { targetLabel } from "../services/rewriteTarget";
+import { seedState, type SeedState } from "../services/favoritesFork";
 import { t } from "../i18n";
 
 /**
@@ -17,6 +18,10 @@ export type RefEntry =
 	| { kind: "template"; path: string; label: string }
 	/** The passage a rewrite will replace. */
 	| { kind: "rewrite"; path: string; label: string }
+	/** The source's favorites summary this fork carries (ADR-255); no path — it
+	 *  is not a note. × switches it `off` (kept, not sent) and back; ↻ while
+	 *  `outdated` takes the newer one. */
+	| { kind: "favorites"; label: string; state: SeedState; off: boolean; sourceId?: string }
 	/** A note the user attached; removable. */
 	| { kind: "context"; path: string }
 	/** A note this conversation wrote; its ✕ deletes the file. */
@@ -26,10 +31,15 @@ export type RefEntry =
 
 /**
  * Order is meaning, not taste: the two things that change what the **next**
- * answer does lead, then what the user attached, then what the conversation
+ * answer does lead, then the favorites a fork carries (ADR-255), then what the user attached, then what the conversation
  * produced, then what Pythia pulled in on its own.
  */
-export function referenceEntries(conv: Conversation, autoPaths: readonly string[]): RefEntry[] {
+export function referenceEntries(
+	conv: Conversation,
+	autoPaths: readonly string[],
+	/** The conversation this one was forked from, when it still exists. */
+	forkSource?: Conversation,
+): RefEntry[] {
 	const entries: RefEntry[] = [];
 
 	const tpl = conv.pendingTemplate;
@@ -41,6 +51,19 @@ export function referenceEntries(conv: Conversation, autoPaths: readonly string[
 			kind: "rewrite",
 			path: rewrite.path,
 			label: t("rewriteBarLabel", { passage: targetLabel(rewrite.text) }),
+		});
+	}
+
+	// Sent with every answer, like an attached note — so it sits just ahead of them.
+	const seed = conv.forkedFromFavorites;
+	if (seed) {
+		const state = seedState(seed, forkSource);
+		entries.push({
+			kind: "favorites",
+			label: forkSource ? t("favoritesSeedPill", { name: forkSource.name }) : t("favoritesSeedPillOrphaned"),
+			state,
+			off: seed.off === true,
+			sourceId: forkSource?.id,
 		});
 	}
 

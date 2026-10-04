@@ -43,7 +43,10 @@ export interface Conversation {
 	summaryText?: string;     // generated summary for resume-in-summary-mode
 	summaryUpdatedAt?: string; // ISO 8601 timestamp of last summary generation
 	summaryNote?: string;     // vault path to the human-readable summary note
-	favoritesSummary?: { text: string; updatedAt: string }; // last generated favorites synthesis
+	/** The last generated favorites synthesis. `favoriteIds` is the fingerprint of
+	 *  the favorites it covered (`favoritesFingerprint`, ADR-255); absent on one
+	 *  generated before it. */
+	favoritesSummary?: { text: string; updatedAt: string; favoriteIds?: string };
 	messages: Message[];
 	favorites?: Favorite[];   // starred assistant messages
 	savedNotePath?: string;           // vault path last saved to via save button
@@ -55,6 +58,11 @@ export interface Conversation {
 	forkedFromSelection?: string;     // The text selected when the fork was created
 	forkedFromOccurrenceIndex?: number; // which occurrence of the selection within the source message
 	forkedFromSummary?: string;       // the source conversation's summary, carried as context (not this fork's own)
+	/** A fork started from its source's favorites (ADR-255): a snapshot of the
+	 *  source's favorites summary, sent with every turn unless switched `off`.
+	 *  Never shadowed by this conversation's own summary, never removed, and
+	 *  changed only by the user (↻, or × / send again). */
+	forkedFromFavorites?: ForkedFavorites;
 	outputFolder?: string;            // default folder for AI-created notes (resolved from template)
 	writeMode?: WriteMode;
 	/**
@@ -279,6 +287,24 @@ export interface MessageCost {
  *  exactly like a finished one. */
 export interface StreamFinish {
 	truncated: boolean;
+}
+
+/** What a fork from favorites carries (ADR-255) — validated by `sanitizeForkedFavorites`. */
+export interface ForkedFavorites {
+	/** The source's favorites summary as it was when taken. */
+	text: string;
+	/** The source summary's `updatedAt` when taken — a newer one offers ↻. */
+	sourceUpdatedAt: string;
+	/** How many favorites the source held when taken (the banner's count). */
+	favoriteCount: number;
+	/** The conversation whose favorites summary this is. Differs from
+	 *  `forkedFromId` when a passage fork inherited it from a fork from
+	 *  favorites (ADR-255 review 2); absent on a snapshot taken before that. */
+	fromId?: string;
+	/** The pill's × switched it off: kept, not sent (ADR-255 review). Removing
+	 *  it would destroy the only copy once the source is gone, and would turn
+	 *  the fork into one that looks like a passage fork. */
+	off?: true;
 }
 
 export interface Favorite {

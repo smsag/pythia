@@ -39,7 +39,7 @@ describe("referenceEntries", () => {
 		expect(entries[0]).toMatchObject({ kind: "template", label: "Term Note", path: "T.md" });
 		// Whitespace flattened — the pill has one line.
 		expect((entries[1] as { label: string }).label).toContain("First line");
-		expect(entries[1].path).toBe("Doc.md");
+		expect(entries[1]).toMatchObject({ path: "Doc.md" });
 	});
 
 	it("names the field an output pill clears, so the ✕ needs no closure", () => {
@@ -56,5 +56,36 @@ describe("referenceEntries", () => {
 			{ kind: "context", path: "Shared.md" },
 			{ kind: "auto", path: "Other.md" },
 		]);
+	});
+
+	describe("the favorites a fork carries (ADR-255)", () => {
+		const seed = { text: "## Key learnings\n- A", sourceUpdatedAt: "2026-10-01T10:00:00.000Z", favoriteCount: 3 };
+		const source = conv({ id: "src", name: "Research", favoritesSummary: { text: "## Key learnings\n- A", updatedAt: "2026-10-01T10:00:00.000Z" } });
+
+		it("sits after what changes the next answer and before the attached notes", () => {
+			const entries = referenceEntries(conv({
+				forkedFromId: "src", forkedFromFavorites: seed,
+				contextNotes: ["Attached.md"],
+				pendingTemplate: { id: "T.md", name: "Term Note", systemPrompt: "x" },
+			}), [], source);
+			expect(entries.map((e) => e.kind)).toEqual(["template", "favorites", "context"]);
+		});
+
+		it("names the source, and is current while the source holds nothing newer", () => {
+			const [entry] = referenceEntries(conv({ forkedFromId: "src", forkedFromFavorites: seed }), [], source);
+			expect(entry).toMatchObject({ kind: "favorites", state: "current", sourceId: "src" });
+			expect((entry as { label: string }).label).toContain("Research");
+		});
+
+		it("is outdated once the source's summary was regenerated", () => {
+			const newer = conv({ ...source, favoritesSummary: { text: "B", updatedAt: "2026-10-02T10:00:00.000Z" } });
+			const [entry] = referenceEntries(conv({ forkedFromId: "src", forkedFromFavorites: seed }), [], newer);
+			expect(entry).toMatchObject({ kind: "favorites", state: "outdated" });
+		});
+
+		it("outlives its source: orphaned, no source to open", () => {
+			const [entry] = referenceEntries(conv({ forkedFromId: "gone", forkedFromFavorites: seed }), []);
+			expect(entry).toMatchObject({ kind: "favorites", state: "orphaned", sourceId: undefined });
+		});
 	});
 });

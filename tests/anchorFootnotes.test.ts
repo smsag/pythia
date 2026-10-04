@@ -75,7 +75,9 @@ describe("the footnote text (ADR-249)", () => {
 	it("is built in one place only", () => {
 		const root = process.cwd();
 		const files = ["main.ts", "sidebar.ts", ...["services", "ui"].flatMap((d) => readdirSync(resolve(root, d)).filter((f) => f.endsWith(".ts")).map((f) => join(d, f)))];
-		const offenders = files.filter((f) => f !== join("services", "anchorFootnotes.ts") && readFileSync(resolve(root, f), "utf8").includes("(Pythia"));
+		const offenders = files.filter((f) => f !== join("services", "anchorFootnotes.ts") && /\(Pythia(?![A-Za-z])/.test(readFileSync(resolve(root, f), "utf8")));
+		// "(Pythia" not followed by a letter: the footnote's "(Pythia, date)", never a
+		// call like getActiveViewOfType(PythiaSidebarView).
 		expect(offenders).toEqual([]);
 	});
 });

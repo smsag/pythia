@@ -8,7 +8,7 @@ import { repaintForkOrigins as paintForkOrigins } from "./HighlightPainter";
 import { attachLongPress } from "./longPress";
 import { makeKeyActivatable } from "./keyActivate";
 import { attachOutsideDismiss } from "./outsideDismiss";
-import { REGENERATE_ICON } from "./icons";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./icons";
 import { scrollChatTo } from "./chatScroll";
 
 export interface ForkDeps {
@@ -25,6 +25,28 @@ export interface ForkDeps {
 }
 
 /**
+ * The banner's favorites line (ADR-255): count, summary date, and whether it is
+ * still sent. The ONE painter — the banner draws it, and `repaintFavoritesLine`
+ * redraws it after the pill's ↻, × or +, so the two never disagree.
+ */
+export function paintFavoritesLine(banner: HTMLElement, conv: Conversation): void {
+	banner.querySelector(".pythia-fork-favorites")?.remove();
+	const seed = conv.forkedFromFavorites;
+	if (!seed) return;
+	const line = createDiv({ cls: "pythia-fork-favorites" });
+	// Directly after the header, where the passage excerpt sits on a passage fork.
+	const header = banner.querySelector(".pythia-fork-header");
+	if (header) header.after(line);
+	else banner.appendChild(line);
+	setIcon(line.createSpan({ cls: "pythia-fork-favorites-icon" }), SOURCE_ICONS.favorites);
+	const date = formatSummaryTimestamp(seed.sourceUpdatedAt);
+	line.appendText(seed.favoriteCount === 1
+		? t("forkedFromFavoritesLineOne", { date })
+		: t("forkedFromFavoritesLine", { count: String(seed.favoriteCount), date }));
+	if (seed.off) line.appendText(` · ${t("favoritesSeedOff")}`);
+}
+
+/**
  * The fork-origin display surfaces extracted from `PythiaSidebarView` (ADR-103,
  * engineering-review #120): the "branched from…" banner on a fork, the painted
  * fork-origin marks in a source message, and the inline anchor those marks open
@@ -38,6 +60,8 @@ export class ForkController {
 	private openForkAnchor: HTMLElement | null = null;
 	private forkMenuCleanup: (() => void) | null = null;
 	private suppressNextForkOpen = false;
+	/** The banner this controller drew for the open conversation, if any. */
+	private bannerEl: HTMLElement | null = null;
 
 	constructor(private readonly d: ForkDeps) {}
 
@@ -49,11 +73,13 @@ export class ForkController {
 	}
 
 	renderForkBanner(): void {
+		this.bannerEl = null;
 		const conv = this.d.getConversation();
 		if (!conv?.forkedFromId) return;
 		const source = this.d.plugin.conversationStore.getById(conv.forkedFromId);
 
 		const banner = this.d.getMessagesEl().createDiv({ cls: "pythia-fork-banner" });
+		this.bannerEl = banner;
 		const header = banner.createDiv({ cls: "pythia-fork-header" });
 		setIcon(header.createSpan({ cls: "pythia-fork-icon" }), "git-branch");
 		const label = header.createEl("span", { cls: "pythia-fork-label", text: `${t("forkedFromLabel")}: ` });
@@ -86,6 +112,9 @@ export class ForkController {
 			});
 		}
 
+		// A fork from favorites has no passage; it names what it carries (ADR-255).
+		paintFavoritesLine(banner, conv);
+
 		// Show the selected text that triggered the fork, truncated to a readable excerpt.
 		const selection = conv.forkedFromSelection?.trim();
 		if (selection) {
@@ -95,6 +124,14 @@ export class ForkController {
 				: selection;
 			banner.createDiv({ cls: "pythia-fork-selection", text: excerpt });
 		}
+	}
+
+	/** The favorites line of the banner on screen, after the pill changed the
+	 *  snapshot (ADR-255) — read from the store, the banner's own painter. */
+	repaintFavoritesLine(): void {
+		const conv = this.d.getConversation();
+		const live = conv ? this.d.plugin.conversationStore.getById(conv.id) : undefined;
+		if (this.bannerEl?.isConnected && live) paintFavoritesLine(this.bannerEl, live);
 	}
 
 	repaintForkOrigins(body: HTMLElement, messageId: string): void {
@@ -285,7 +322,7 @@ export class ForkController {
 		addItem(t("menuSummarizeConversation"), "align-left", fork.messages.length === 0,
 			() => void this.generateForkSummary(anchor, fork, "conversation"));
 		if (hasFavorites) {
-			addItem(t("menuSummarizeFavorites"), "star", false,
+			addItem(t("menuSummarizeFavorites"), SOURCE_ICONS.favorites, false,
 				() => void this.generateForkSummary(anchor, fork, "favorites"));
 		}
 

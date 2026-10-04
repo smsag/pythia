@@ -24,9 +24,10 @@ describe("one glyph for regenerate (ADR-191)", () => {
 		}
 		expect(offenders).toEqual([]);
 	});
-	it("the six regenerate controls name REGENERATE_ICON", () => {
+	it("the regenerate controls name REGENERATE_ICON", () => {
 		const uses = sources.filter((f) => readFileSync(resolve(root, f), "utf8").includes("REGENERATE_ICON")).sort();
-		expect(uses).toEqual(["ui/ForkController.ts", "ui/GlossaryController.ts", "ui/HeaderController.ts", "ui/MergeController.ts", "ui/SummaryController.ts", "ui/icons.ts", "ui/noteAnchorMarks.ts"].sort());
+		// ReferenceRowController: a fork's favorites pill takes the source's newer summary (ADR-255).
+		expect(uses).toEqual(["ui/ForkController.ts", "ui/GlossaryController.ts", "ui/HeaderController.ts", "ui/MergeController.ts", "ui/ReferenceRowController.ts", "ui/SummaryController.ts", "ui/icons.ts", "ui/noteAnchorMarks.ts"].sort());
 		expect(REGENERATE_ICON).toBe("refresh-cw");
 	});
 });

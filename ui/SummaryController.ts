@@ -3,9 +3,12 @@ import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { formatSummaryTimestamp } from "../services/messageUtils";
-import { REGENERATE_ICON } from "./icons";
+import { REGENERATE_ICON, SOURCE_ICONS } from "./icons";
 import { buildAccordion, setAccordionOpen } from "./accordion";
 import { scrollChatTo } from "./chatScroll";
+import { favoritesFingerprint, favoritesSummaryStale, needsFreshSummaryToFork } from "../services/favoritesFork";
+import { noticeFailure } from "./failureNotice";
+import { RenderSlot } from "./renderMarkdown";
 
 export interface SummaryDeps {
 	plugin: PythiaPlugin;
@@ -32,6 +35,11 @@ export interface SummaryDeps {
  */
 export class SummaryController {
 	private summaryCardObserver: IntersectionObserver | null = null;
+	/** Owns the listeners of the cards' new controls, one render at a time —
+	 *  released on the next render and on dispose (principle 8, hard rule 10). */
+	private readonly cardEvents = new RenderSlot(() => undefined);
+	/** A fork from favorites in flight: a second tap waits for it (ADR-255 review 2). */
+	private forking = false;
 
 	constructor(private readonly d: SummaryDeps) {}
 
@@ -39,6 +47,7 @@ export class SummaryController {
 	dispose(): void {
 		this.summaryCardObserver?.disconnect();
 		this.summaryCardObserver = null;
+		this.cardEvents.release();
 	}
 
 	renderSummaryCards(): void {
@@ -47,16 +56,19 @@ export class SummaryController {
 		cardsEl.empty();
 		this.summaryCardObserver?.disconnect();
 		this.summaryCardObserver = null;
+		this.cardEvents.renew();
 
 		const conv = this.d.getConversation();
 		const cards: HTMLElement[] = [];
 		if (conv?.summaryText?.trim()) {
 			const last = conv.messages.length ? conv.messages[conv.messages.length - 1].timestamp : undefined;
-			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, last));
+			// Outdated when a message is newer than the summary — the fork and merge
+			// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
+			const stale = !!(conv.summaryUpdatedAt && last && last > conv.summaryUpdatedAt);
+			cards.push(this.buildSummaryCard("conversation", conv.summaryText.trim(), conv.summaryUpdatedAt, stale));
 		}
 		if (conv?.favoritesSummary?.text?.trim()) {
-			const newest = (conv.favorites ?? []).map((f) => f.createdAt ?? "").sort().pop() || undefined;
-			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, newest));
+			cards.push(this.buildSummaryCard("favorites", conv.favoritesSummary.text.trim(), conv.favoritesSummary.updatedAt, favoritesSummaryStale(conv)));
 		}
 		cardsEl.style.display = cards.length ? "" : "none";
 
@@ -80,17 +92,14 @@ export class SummaryController {
 	private buildSummaryCard(
 		kind: "conversation" | "favorites",
 		text: string,
-		updatedAt?: string,
-		/** The newest thing the summary covers (last message, newest favorite). */
-		latestSource?: string,
+		updatedAt: string | undefined,
+		/** Something newer than the summary exists — each card's own rule, decided by the caller. */
+		stale: boolean,
 	): HTMLElement {
-		// Outdated when something newer than the summary exists — the fork and merge
-		// anchors' rule (ADR-128). ISO 8601 strings sort chronologically.
-		const stale = !!(updatedAt && latestSource && latestSource > updatedAt);
 		// The shared accordion (ADR-192): same box as the context inspector.
 		const acc = buildAccordion(this.d.getCardsEl()!, {
 			cls: "p-summary-card",
-			icon: kind === "favorites" ? "star" : "align-left",
+			icon: kind === "favorites" ? SOURCE_ICONS.favorites : "align-left",
 			title: kind === "favorites" ? t("favoritesSummaryTitle") : t("conversationSummaryTitle"),
 		});
 		const card = acc.root;
@@ -112,6 +121,19 @@ export class SummaryController {
 			if (kind === "favorites") void this.summarizeFavorites();
 			else void this.generateConversationSummary();
 		});
+		// Fork from favorites (ADR-255) — beside ↻, never inside the toggle.
+		if (kind === "favorites") {
+			const forkLabel = t("forkFromFavorites");
+			const fork = acc.actions.createEl("button", {
+				cls: "pb pb-icon p-summary-card-fork",
+				attr: { title: forkLabel, "aria-label": forkLabel },
+			});
+			setIcon(fork, "git-branch");
+			this.cardEvents.current?.registerDomEvent(fork, "click", (e) => {
+				e.stopPropagation();
+				void this.forkFromFavorites(); // never rejects: it reports its own failure
+			});
+		}
 		const body = acc.body;
 		body.addClass("p-summary-card-body");
 		const md = body.createDiv({ cls: "p-summary-card-md" });
@@ -214,10 +236,62 @@ export class SummaryController {
 		}
 	}
 
+	/**
+	 * Fork from favorites (ADR-255): the card's action, the navigator's and the
+	 * command's. A summary that may not cover exactly the current favorites is
+	 * generated first (`needsFreshSummaryToFork` — stricter than the card's
+	 * "outdated"): forking from one would seed the fork with something other
+	 * than what the user starred, on every turn. An empty reply stops here; it
+	 * has said why. Never rejects — every failure is a Notice (principle 2), so
+	 * the three callers can fire and forget.
+	 */
+	async forkFromFavorites(): Promise<void> {
+		const conv = this.d.getConversation();
+		if (!conv || (conv.favorites?.length ?? 0) === 0) {
+			new Notice(t("noFavoritesToSummarize"));
+			return;
+		}
+		// One at a time: a second tap during a slow regenerate would pay for a
+		// second summary and make a second fork (ADR-255 review 2).
+		if (this.forking) {
+			new Notice(t("forkInProgress"));
+			return;
+		}
+		this.forking = true;
+		try {
+			if (needsFreshSummaryToFork(conv)) {
+				const text = await this.runFavoritesSummary(conv);
+				if (!text) return;
+				// An await is a boundary in time (principle 7). The user may have moved
+				// this leaf to another conversation — opening the fork would replace it —
+				// or changed the favorites, which the summary just taken no longer covers.
+				if (this.d.getConversation()?.id !== conv.id) {
+					new Notice(t("forkSourceLeft"));
+					return;
+				}
+				const live = this.d.plugin.conversationStore.getById(conv.id);
+				if (!live) {
+					new Notice(t("forkSourceGone"));
+					return;
+				}
+				if (needsFreshSummaryToFork(live)) {
+					new Notice(t("favoritesChangedWhileSummarizing"));
+					return;
+				}
+			}
+			await this.d.plugin.cmdForkFromFavorites(conv.id);
+		} catch (err) {
+			noticeFailure("fork from favorites failed", err);
+		} finally {
+			this.forking = false;
+		}
+	}
+
 	/** Run the LLM favorites-summary call, persist the result, and return it.
 	 *  Public because the fork flow reuses it to summarize a source conversation. */
 	async runFavoritesSummary(conv: Conversation): Promise<string> {
 		const notice = new Notice(t("generatingFavoritesSummary"), 0);
+		const favoriteIds = favoritesFingerprint(conv);
 		try {
 			const text = await this.d.plugin.llmRouter.generateFavoritesSummary(conv);
 			if (!text) {
@@ -234,7 +308,9 @@ export class SummaryController {
 			// `getConversation()`, and a card can only appear if the object it reads
 			// is the one that got the summary.
 			const live = this.d.plugin.conversationStore.getById(conv.id) ?? conv;
-			live.favoritesSummary = { text, updatedAt: new Date().toISOString() };
+			// The fingerprint is of the favorites the digest was built from, taken
+			// before the await — a favorite added meanwhile leaves it outdated (ADR-255).
+			live.favoritesSummary = { text, updatedAt: new Date().toISOString(), favoriteIds };
 			await this.d.plugin.conversationStore.save(live);
 			return text;
 		} catch (e) {

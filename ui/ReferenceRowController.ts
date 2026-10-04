@@ -1,15 +1,17 @@
-import { App, Notice, TFile } from "obsidian";
+import { App, Notice, TFile, setIcon } from "obsidian";
 import type PythiaPlugin from "../main";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { estimateTokensFromBytes } from "../services/messageUtils";
 import { noteBasename } from "../services/pathUtils";
-import { referenceEntries } from "./referenceEntries";
-import { appendSourceIcon } from "./icons";
+import { referenceEntries, type RefEntry } from "./referenceEntries";
+import { appendSourceIcon, REGENERATE_ICON } from "./icons";
 import { DeleteFileModal } from "../suggest/DeleteFileModal";
 import { NoteSuggestModal } from "../suggest/NoteSuggest";
 import { makeKeyActivatable } from "./keyActivate";
 import { noticeFailure } from "./failureNotice";
+import { RenderSlot } from "./renderMarkdown";
+import { seedSourceId } from "../services/favoritesFork";
 
 export interface ReferenceRowDeps {
 	app: App;
@@ -25,6 +27,9 @@ export interface ReferenceRowDeps {
 	/** A note removed here may have been attached from the composer, where its
 	 *  `[[link]]` is still sitting (ADR-211). The two handles stay in step. */
 	onContextNoteRemoved(path: string): void;
+	/** A fork's favorites snapshot changed here (↻, ×, +): the fork banner's line
+	 *  follows (ADR-255). The banner is ForkController's; it repaints its own. */
+	onForkedFavoritesChanged(): void;
 }
 
 /**
@@ -40,6 +45,9 @@ export class ReferenceRowController {
 	private sectionEl!: HTMLElement;
 	private pillsEl!: HTMLElement;
 	private hasEntries = false;
+	/** Owns the favorites pill's listeners, one render at a time — released on the
+	 *  next render and on dispose (principle 8, hard rule 10). */
+	private readonly pillEvents = new RenderSlot(() => undefined);
 
 	constructor(private readonly d: ReferenceRowDeps) {}
 
@@ -48,6 +56,11 @@ export class ReferenceRowController {
 		this.sectionEl = container.createDiv({ cls: "p-ref-row" });
 		this.pillsEl = this.sectionEl.createDiv({ cls: "p-pills" });
 		this.sectionEl.style.display = "none";
+	}
+
+	/** View teardown: the pill's listeners end with the view. */
+	dispose(): void {
+		this.pillEvents.release();
 	}
 
 	/** Re-apply visibility without rebuilding — the input area collapsing. */
@@ -59,6 +72,7 @@ export class ReferenceRowController {
 	render(): void {
 		this.d.refreshToolbarToggles();
 		this.pillsEl.empty();
+		this.pillEvents.renew();
 		const conv = this.d.getConversation();
 
 		if (!conv) {
@@ -67,7 +81,11 @@ export class ReferenceRowController {
 			return;
 		}
 
-		const entries = referenceEntries(conv, this.d.plugin.getAutoContext(conv.id));
+		// The conversation the favorites came from — the parent, or further up when a
+		// passage fork inherited them (ADR-255 review 2).
+		const fromId = seedSourceId(conv);
+		const seedSource = fromId ? this.d.plugin.conversationStore.getById(fromId) : undefined;
+		const entries = referenceEntries(conv, this.d.plugin.getAutoContext(conv.id), seedSource);
 
 		this.hasEntries = entries.length > 0;
 		this.updateVisibility();
@@ -75,11 +93,14 @@ export class ReferenceRowController {
 		this.d.refreshContextInspector();
 		if (entries.length === 0) return;
 
-		for (const entry of entries) this.renderPill(conv, entry);
+		for (const entry of entries) {
+			if (entry.kind === "favorites") this.renderFavoritesPill(conv, entry);
+			else this.renderPill(conv, entry);
+		}
 		this.renderAddButton(conv);
 	}
 
-	private renderPill(conv: Conversation, entry: ReturnType<typeof referenceEntries>[number]): void {
+	private renderPill(conv: Conversation, entry: Exclude<RefEntry, { kind: "favorites" }>): void {
 		const fileName = entry.path.split("/").pop() ?? entry.path; // with extension, for the delete prompt
 		const displayName = "label" in entry ? entry.label : noteBasename(entry.path);
 		const file = this.d.app.vault.getAbstractFileByPath(entry.path);
@@ -149,6 +170,70 @@ export class ReferenceRowController {
 				}
 			}).open();
 		});
+	}
+
+	/**
+	 * The favorites summary a fork carries (ADR-255): the name opens the source
+	 * in this leaf, ↻ appears only while the source holds a newer summary and
+	 * takes it on the tap — never on its own — and × switches it off: kept and
+	 * no longer sent, with a control to send it again. Never deleted — once the
+	 * source is gone it is the only copy (ADR-255 review). After either change
+	 * the fork banner's line is repainted by its owner (`onForkedFavoritesChanged`).
+	 */
+	private renderFavoritesPill(conv: Conversation, entry: Extract<RefEntry, { kind: "favorites" }>): void {
+		const ref = this.pillsEl.createEl("span", { cls: "p-wikilink p-wikilink--favorites" });
+		if (entry.off) ref.addClass("is-off");
+		appendSourceIcon(ref, "favorites");
+		const label = ref.createEl("span", {
+			text: entry.label,
+			cls: "p-wikilink-name",
+			attr: { title: t("favoritesSeedTooltip") },
+		});
+		const sourceId = entry.sourceId;
+		if (sourceId) {
+			const openSource = (): void => {
+				const source = this.d.plugin.conversationStore.getById(sourceId);
+				if (!source) { new Notice(t("forkSourceGone")); return; }
+				// The leaf showing this fork, not the first Pythia leaf.
+				this.d.plugin.viewShowing(conv.id)
+					.then((view) => view.setActiveConversation(source))
+					.catch((err: unknown) => noticeFailure("favorites pill: open source failed", err));
+			};
+			this.pillEvents.current?.registerDomEvent(label, "click", openSource);
+			makeKeyActivatable(label, openSource, "link");
+		}
+		if (entry.off) ref.createEl("span", { cls: "p-wikilink-tokens", text: t("favoritesSeedOff") });
+		if (entry.state === "outdated") {
+			ref.createEl("span", { cls: "p-wikilink-tokens", text: t("forkSummaryStale") });
+			const update = ref.createEl("button", {
+				cls: "pb pb-icon is-inline is-stale p-wikilink-update",
+				attr: { title: t("favoritesSeedUpdate"), "aria-label": t("favoritesSeedUpdate") },
+			});
+			setIcon(update, REGENERATE_ICON);
+			this.pillEvents.current?.registerDomEvent(update, "click", () => this.changeSeed(() => this.d.plugin.updateForkedFavorites(conv.id)));
+		}
+		const toggle = ref.createEl("button", {
+			cls: "pb pb-icon is-inline p-wikilink-x",
+			attr: { "aria-label": entry.off ? t("favoritesSeedResume") : t("favoritesSeedRemoveAria") },
+		});
+		if (entry.off) {
+			toggle.setAttribute("title", t("favoritesSeedResume"));
+			setIcon(toggle, "plus");
+		} else {
+			toggle.setText("×");
+		}
+		this.pillEvents.current?.registerDomEvent(toggle, "click", () => this.changeSeed(() => this.d.plugin.setForkedFavoritesSent(conv.id, entry.off)));
+	}
+
+	/** Run one change to a fork's favorites snapshot, then repaint the row and
+	 *  the banner line; a failure is a Notice, never a silent rejection. */
+	private changeSeed(change: () => Promise<unknown>): void {
+		change()
+			.then(() => {
+				this.render();
+				this.d.onForkedFavoritesChanged();
+			})
+			.catch((err: unknown) => noticeFailure("favorites pill: change failed", err, "saveFailed"));
 	}
 
 	private renderAddButton(conv: Conversation): void {
