@@ -34,7 +34,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@mistralai/mistralai": "^2.7.0",
     "@opentelemetry/api": "^1.9.1",
-    "openai": "^7.23.0"
+    "openai": "^7.27.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
