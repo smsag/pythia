@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Notice } from "obsidian";
 import { makePlugin, mountView, seedConversation, aiMsg } from "./helpers/viewHarness";
 import { previewSystemPrompt } from "../services/sendPreview";
@@ -56,6 +56,31 @@ describe("Fork from favorites (ADR-255)", () => {
 		const pill = pane().querySelector(".p-wikilink--favorites")!;
 		expect(pill.textContent).toContain(t("favoritesSeedPill", { name: "Rent research" }));
 		expect(pill.querySelector(".p-wikilink-update")).toBeNull();
+	});
+
+	it("one source, 1 … n forks: every press makes another, each with its own copy, all marked", async () => {
+		const { plugin, source, view, pane } = await setup({
+			favoritesSummary: { text: "Ground.", updatedAt: "2026-10-01T10:00:00.000Z", favoriteIds: "f1" },
+		});
+		const generate = vi.fn(async () => "never asked");
+		(plugin.llmRouter as unknown as { generateFavoritesSummary: () => Promise<string> }).generateFavoritesSummary = generate;
+		for (let i = 0; i < 3; i++) {
+			await view.setActiveConversation(source);
+			pane().querySelector<HTMLElement>(".p-summary-card-fork")!.click();
+			await flush(); await flush();
+		}
+		const made = forks(plugin, source.id);
+		expect(made).toHaveLength(3);
+		expect(new Set(made.map((f) => f.id)).size).toBe(3);
+		for (const f of made) {
+			expect(f.forkedFromFavorites?.text).toBe("Ground.");
+			expect(forkKind(f)).toBe("favorites");
+		}
+		// A copy each: switching one off leaves the others sending.
+		await plugin.setForkedFavoritesSent(made[0].id, false);
+		expect(made.slice(1).every((f) => !f.forkedFromFavorites?.off)).toBe(true);
+		// The summary was current, so it was taken as it is — never summarized again.
+		expect(generate).not.toHaveBeenCalled();
 	});
 
 	it("an outdated summary is regenerated before the fork — never forked from as it was", async () => {

@@ -458,3 +458,32 @@ describe("BaseProvider — Stop while a tool call waits", () => {
 		expect(onComplete).toHaveBeenCalledWith("Let me write that. ", { inputTokens: 100, outputTokens: 20 }, { truncated: false });
 	});
 });
+
+// A fork from favorites carries the source's favorites summary as a snapshot in
+// its system prompt (ADR-255). It must never be summarized again: every summary
+// the fork makes of itself is built from its own messages (or favorites) only.
+describe("the forked favorites summary is never summarized again (ADR-255)", () => {
+	const SEED = "SEED-TEXT: rents follow wages";
+	const fork = {
+		id: "f", name: "Fork", createdAt: "", updatedAt: "", systemPrompt: "", contextNotes: [],
+		resumeMode: "summary", provider: "anthropic", model: "m",
+		forkedFromId: "src",
+		forkedFromFavorites: { text: SEED, sourceUpdatedAt: "T", favoriteCount: 2, fromId: "src" },
+		messages: [
+			{ id: "u1", role: "user", content: "a question", timestamp: "" },
+			{ id: "a1", role: "assistant", content: "an answer", timestamp: "" },
+		],
+		favorites: [{ id: "fv", messageId: "a1", name: "answer", text: "an answer" }],
+	} as unknown as Conversation;
+
+	it("not by the conversation summary, the summary with title, or the favorites summary", async () => {
+		const p = makeProvider();
+		p.reply = "TITLE: t\nSUMMARY:\ns";
+		await p.generateSummary(fork);
+		await p.generateSummaryWithTitle(fork);
+		await p.generateFavoritesSummary(fork);
+		expect(p.prompts).toHaveLength(3);
+		for (const prompt of p.prompts) expect(prompt).not.toContain(SEED);
+	});
+});
+
