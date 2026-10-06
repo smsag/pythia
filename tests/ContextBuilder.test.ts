@@ -183,6 +183,11 @@ describe("buildSystemPrompt", () => {
 			expect(result).toContain("Rents follow wages.");
 		});
 
+		it("goes out verbatim on every turn — a resume in summary mode reduces the messages, never this block", () => {
+			const result = buildSystemPrompt(baseConv({ forkedFromFavorites: seed, resumeMode: "summary", summaryText: "Own summary." }));
+			expect(result).toContain("\n<forked_from_favorites>\n## Key learnings\n- Rents follow wages.\n</forked_from_favorites>");
+		});
+
 		it("is not sent while switched off on the pill", () => {
 			const result = buildSystemPrompt(baseConv({ forkedFromFavorites: { ...seed, off: true } }));
 			expect(result).not.toContain("Rents follow wages.");

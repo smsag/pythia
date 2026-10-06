@@ -5532,3 +5532,10 @@ Notable decisions inside the fixes:
 - Doc comments moved back onto `ConversationService` and `ForkController`; `ConversationService`'s says forks live in `ForkService`.
 
 **Guards (addendum 2).** `tests/forkFromFavoritesView.test.ts`: both lookups reveal the leaf; a leaf switched during the regenerate makes no fork and keeps the conversation moved to; a favorite removed during it makes no fork; a double tap makes one call and one fork; `outputLanguage` carried and inherited-stays-inherited; an empty passage-fork summary says so; a passage fork of a fork from favorites carries the snapshot, is a passage fork, sends it, and its pill names the original source.
+
+**Addendum 3 (2026-10-06): two properties pinned by tests, no code change.**
+- **One source, 1 … n forks.** Every press makes another fork, each with its own copy of the summary (switching one off leaves the others sending), all marked ★; only a press while one is still being made is refused (addendum 2). A fork that combines the favorites of several sources was offered and not chosen.
+- **The carried summary is never summarized again.** It travels verbatim in `<forked_from_favorites>` on every turn. The fork's own conversation summary, its summary with title, and its favorites summary are built from its own messages and favorites only; a resume in summary mode reduces the messages, never the block; a passage fork of the fork copies the snapshot as it is. A current summary is taken without a model call.
+
+**Guards (addendum 3).** `tests/BaseProvider.test.ts` (none of the three summary prompts contains the snapshot); `tests/ContextBuilder.test.ts` (the block verbatim under `resumeMode: "summary"` with an own summary); `tests/forkFromFavoritesView.test.ts` (three forks from one source: three copies, all ★, one switched off leaves the others, no summary call).
+
