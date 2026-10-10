@@ -60,9 +60,9 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	// Mistral
 	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 262_144 },
 	{ id: "mistral-medium-latest",   provider: "mistral", abbreviation: "Mistral Medium",    contextWindow: 262_144, supportsEffort: true },
-	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 256_000, supportsEffort: true },
+	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 262_144, supportsEffort: true },
 	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
-	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 128_000, isMistralReasoning: true },
+	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 262_144, isMistralReasoning: true },
 	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",   contextWindow: 128_000, isMistralReasoning: true },
 	// GLM-5.3 reasons and takes an effort parameter, but NEITHER flag fits it, and
 	// both would be wrong on the wire (issue #194):
@@ -73,7 +73,7 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	//   it takes temperature.
 	// With neither, temperature works, no effort knob is offered, and nothing
 	// unsupported can reach the wire — which is what that function exists for.
-	{ id: "zai-glm-5-3",             provider: "mistral", abbreviation: "GLM-5.3",           contextWindow: 1_000_000 },
+	{ id: "zai-glm-5-3",             provider: "mistral", abbreviation: "GLM-5.3",           contextWindow: 1_048_576 },
 ];
 
 // ── Derived exports ───────────────────────────────────────────────────────
