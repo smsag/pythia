@@ -80,11 +80,19 @@ export function anchorStatus(conv: Conversation | undefined, ref: AnchorRef): An
 /** Whether a refresh would change anything — what `refreshSummaries` works on. */
 export const needsRefresh = (s: AnchorStatus): boolean => s === "missing" || s === "outdated";
 
-/** The first `n` sentences of prose, on one line. */
+/**
+ * The first `n` sentences of prose, on one line. A sentence ends at a stop
+ * followed by a space and a capital (or the end) — never at the dot inside
+ * "58.156 €", "§ 33.2" or "ca. 1.661", which cut a summary off mid-number.
+ */
 export function firstSentences(text: string, n = 2): string {
 	const flat = text.replace(/\s+/g, " ").trim();
-	const parts = flat.match(/[^.!?…]+(?:[.!?…]+["'”»)]*\s*|$)/g) ?? [flat];
-	return parts.slice(0, n).join("").trim();
+	const end = /[.!?…]+["'”»)]*(?= ["'„“«(]?\p{Lu}|$)/gu;
+	let count = 0;
+	for (let m = end.exec(flat); m; m = end.exec(flat)) {
+		if (++count === n) return flat.slice(0, m.index + m[0].length);
+	}
+	return flat;
 }
 
 /** What a footnote or the hover card needs to say about one anchor. */

@@ -112,6 +112,12 @@ describe("the chapter-summary prompt and its reply", () => {
 		expect(firstSentences("He said “yes.” Then left. Later more.")).toBe("He said “yes.” Then left.");
 		expect(firstSentences("No full stop")).toBe("No full stop");
 	});
+
+	it("firstSentences never ends a sentence inside a number or before a lowercase word", () => {
+		expect(firstSentences("Belastung (§ 33 EStG) gilt. Bei Einkünften von 58.156 € sind es ca. 1.661,54 €. Dann mehr."))
+			.toBe("Belastung (§ 33 EStG) gilt. Bei Einkünften von 58.156 € sind es ca. 1.661,54 €.");
+		expect(firstSentences("Rate 2.5 applies. Done?  Yes.")).toBe("Rate 2.5 applies. Done?");
+	});
 });
 
 describe("chapterSummary read back from data.json", () => {

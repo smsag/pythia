@@ -45,11 +45,17 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   display: none;
 }
 
-.pythia-view {
+/* The tokens live on every Pythia root, not only the view: a modal and the
+   note-anchor card (in Obsidian's hover popover) sit outside `.pythia-view`,
+   where an undefined `var(--s3)` silently drops the whole declaration. */
+.pythia-view,
+.pythia-modal {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
+}
+.pythia-view {
   /* Flush to the leaf on every side — hard rule 1 is about the same edges. */
   padding: 0;
-  --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
   position: relative;
   display: flex;
   flex-direction: column;

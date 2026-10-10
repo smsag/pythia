@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-01 — **Review of PR #284 (ADR-254 addendum): eight findings fixed.** A favorite's place no longer depends on a chart's view; a pin is drawn in its own view at once; the remembered view is kept per place.*
+*Updated: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
+
+*Previously: 2026-10-01 — **Review of PR #284 (ADR-254 addendum): eight findings fixed.** A favorite's place no longer depends on a chart's view; a pin is drawn in its own view at once; the remembered view is kept per place.*
 
 *Previously: 2026-10-01 — **A glossary term vanished from a chart label (found with ADR-254).** The term painter no longer reaches into a chart card.*
 
@@ -2199,3 +2201,12 @@ Eight findings from a code review of the PR, all fixed in the same PR; the detai
 
 **Open.** Not verified in Obsidian: that a code-block processor's element is inside the pin body when it runs (if not, the after-render correction still puts the pin in its view, with one extra draw).
 
+## Bug — the note-anchor card had no inset and cut its summary mid-number (ADR-249), 2026-10-10
+
+**Symptom.** Reported with a screenshot: the hover card over a note anchor drew its accent rule on the popover's edge, its text touching the border on every side, and the summary stopped at "Bei einem Gesamtbetrag der Einkünfte von 58." with the meta line straight after.
+
+**Cause.** Two, unrelated. (a) `--s1…--s4` and `--font-smaller`/`--font-small` were declared on `.pythia-view` only. The card sits in Obsidian's hover popover, outside the view, so `margin: var(--s3)` and `padding: 2px 0 2px var(--s3)` referenced undefined properties and were dropped whole: invalid at computed-value time, so margin and padding fell back to 0. Measured in a replica built from the installed Obsidian's `app.css` plus `styles.css`. (b) Not layout: `firstSentences` treated any `.` as a sentence end, so the conversation summary's second "sentence" ended at the thousands separator of "58.156 €".
+
+**Fix.** (a) The tokens are declared on `.pythia-view, .pythia-modal`. That covers every Pythia surface outside the view: modals and the card, which carries `pythia-modal`. (b) A sentence ends at a stop followed by a space and a capital, or by the end of the text (`services/chapterSummary.ts`). The same function writes the footnote text, so footnotes are fixed too. Guard: `tests/chapterSummary.test.ts` (number, `ca.`, a lowercase continuation).
+
+**Open.** An abbreviation before a capitalised word ("z.B. Berlin") still ends a sentence. German capitalises every noun, so no rule based on the next letter can tell the two apart; the cost is a summary one clause shorter.
