@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
+*Updated: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
+
+*Previously: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
 
 *Previously: 2026-10-01 — **Review of PR #284 (ADR-254 addendum): eight findings fixed.** A favorite's place no longer depends on a chart's view; a pin is drawn in its own view at once; the remembered view is kept per place.*
 
@@ -2210,3 +2212,19 @@ Eight findings from a code review of the PR, all fixed in the same PR; the detai
 **Fix.** (a) The tokens are declared on `.pythia-view, .pythia-modal`. That covers every Pythia surface outside the view: modals and the card, which carries `pythia-modal`. (b) A sentence ends at a stop followed by a space and a capital, or by the end of the text (`services/chapterSummary.ts`). The same function writes the footnote text, so footnotes are fixed too. Guard: `tests/chapterSummary.test.ts` (number, `ca.`, a lowercase continuation).
 
 **Open.** An abbreviation before a capitalised word ("z.B. Berlin") still ends a sentence. German capitalises every noun, so no rule based on the next letter can tell the two apart; the cost is a summary one clause shorter.
+
+## Review — PR #296, the note-anchor card fix, 2026-10-10
+
+An xhigh review after the merge. Nine findings, all addressed in one follow-up.
+
+| Finding | Fix |
+|---|---|
+| **The chart card in a vault note had the same bug.** `renderChartCard` draws a ```pythia-chart block in any note, outside `.pythia-view` and `.pythia-modal`, so its margin, padding and gaps were still dropped. PR #296 had added one root to a list instead of fixing the mechanism. | The tokens are declared on `body` (and again on the view and its modals, so a theme's same-named property on `body` cannot reach inside). Every Pythia surface has them, wherever it is drawn. |
+| **Pythia's type scale shadowed Obsidian's.** `--font-smaller` / `--font-small` are Obsidian's own tokens (0.875em / 0.933em). Declaring them on `.pythia-modal` resized core elements inside Pythia's modals, such as `.setting-item-description code`. | Renamed `--p-font-smaller` / `--p-font-small` throughout (69 uses). |
+| **No guard for the CSS half.** | `tests/cssTokens.test.ts`: every `--s*` / `--p-font-*` the stylesheet reads is declared on `body`, and Obsidian's two names appear nowhere. Confirmed to fail with the `body` declaration removed. |
+| **design.md not updated for a token change.** | Spacing and Typography sections say where the tokens are declared, and why. Same in CLAUDE.md and ui-architecture.md. |
+| **The card could clip in a narrow popover.** The popover is `max-width: 80vw; overflow: hidden`, and the card with its margin needs 384px. | `max-width: min(360px, calc(80vw - 2 * var(--s3)))`. |
+| **Spanish `¿` / `¡` never opened a sentence.** | Added to what may precede the capital, with `‘`, `»` and `[`. |
+| **German closing quotes `“` and `«` (and `’`, `]`) never closed one.** | Added to the closers. |
+| **A sentence opening with a number merged into the one before.** | A stop followed by a number is a boundary when the word before it cannot be an abbreviation: five or more letters, or a symbol such as `€`. `ca. 5`, `Abs. 2` and `inkl. 19` still do not split. **A lowercase start still never ends a sentence**, deliberately: `z.B. die` and `bzw. der` are far more common in a German summary than a sentence opening with `iPhone`. |
+| **`firstSentences(text, 0)` returned the whole text.** | It returns `""`, as before PR #296. |

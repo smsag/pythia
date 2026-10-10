@@ -371,9 +371,11 @@ This is an Obsidian sidebar plugin. The UI must feel native to Obsidian — not 
 ### Typography scale
 
 ```css
---font-smaller: 11px   /* labels, token counts, nav items */
---font-small:   12px   /* body text, pills, toolbar */
+--p-font-smaller: 11px   /* labels, token counts, nav items */
+--p-font-small:   12px   /* body text, pills, toolbar */
 ```
+
+Both scales are declared on `body`, so they reach every surface Pythia draws, in the view or not. Never read or declare Obsidian's own `--font-smaller` / `--font-small` — `tests/cssTokens.test.ts` fails on it.
 
 ---
 

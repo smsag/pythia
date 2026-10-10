@@ -1,6 +1,8 @@
 # Pythia — Design System
 
-*Last updated: 2026-10-04 — ADR-255: fork from favorites. `.p-summary-card-fork` (`pb pb-icon`, `git-branch`) beside ↻ on the favorites card; `.p-wikilink--favorites` pill (`SOURCE_ICONS.favorites` = `star`) with `.p-wikilink-update` (↻, `.is-stale` accent) while the source's summary is newer; `.pythia-fork-favorites` banner line (muted, yellow 11px star); `.p-nav-fork-kind` (the Starred ★ after a fork's name in the navigator tree) and `.p-nav-action` (a section's own row, hairline above, muted label). Review addendum: the pill's `.is-off` state (muted italic name, `not sent`, + to send again) and `· not sent` on the banner line.*
+*Last updated: 2026-10-10 — design tokens on `body`: `--s1…--s4` and the type scale reach every surface Pythia draws (the note-anchor card, a chart card in a note), and the type scale is renamed `--p-font-smaller` / `--p-font-small` so it never shadows Obsidian's own `--font-smaller` / `--font-small`. The note-anchor card stays inside a narrow popover (`max-width: min(360px, calc(80vw - 2 * var(--s3)))`).*
+
+*Previously: 2026-10-04 — ADR-255: fork from favorites. `.p-summary-card-fork` (`pb pb-icon`, `git-branch`) beside ↻ on the favorites card; `.p-wikilink--favorites` pill (`SOURCE_ICONS.favorites` = `star`) with `.p-wikilink-update` (↻, `.is-stale` accent) while the source's summary is newer; `.pythia-fork-favorites` banner line (muted, yellow 11px star); `.p-nav-fork-kind` (the Starred ★ after a fork's name in the navigator tree) and `.p-nav-action` (a section's own row, hairline above, muted label). Review addendum: the pill's `.is-off` state (muted italic name, `not sent`, + to send again) and `· not sent` on the banner line.*
 
 *Previously: 2026-10-01 — ADR-254 addendum: the chart table takes the answer table's own selectors (no restated grid); the view switch has a stable `aria-label` and `aria-pressed`.*
 
@@ -278,9 +280,11 @@ For a tinted border: `color-mix(in srgb, var(--color-accent) 60%, black)` with a
 ### Typography scale
 
 ```css
---font-smaller: 11px   /* labels, token counts, nav items */
---font-small:   12px   /* body text, pills, toolbar, composer */
+--p-font-smaller: 11px   /* labels, token counts, nav items */
+--p-font-small:   12px   /* body text, pills, toolbar, composer */
 ```
+
+Declared on `body` (and again on `.pythia-view` / `.pythia-modal`), so every surface Pythia draws has them — the view, its modals, the note-anchor card in Obsidian's hover popover, a chart card in a vault note. A token read where nothing declares it drops its whole declaration silently. The type scale is `--p-font-*`, never Obsidian's own `--font-smaller` / `--font-small`, which core and themes read. `tests/cssTokens.test.ts` fails on either.
 
 Font families: `var(--font-interface)` for UI text; `var(--font-monospace)` for labels, badges, token counts, the composer.
 
@@ -361,7 +365,7 @@ Every button Pythia creates carries `pb` plus **one** role class. The look lives
 | `pb-tab` | 2px underline slot, `--text-muted` | label → normal, faint rule | comparison tabs |
 | `pb-chip-warn` | orange tint + border, normal label | tint deepens | context-budget chip |
 
-- **One box:** mono `--font-smaller` (11px), weight 500, `3px 8px`, radius 3px, a 1px border slot on every role, 24px minimum height. **Touch:** 32px (the header holds seven controls on a 375px phone).
+- **One box:** mono `--p-font-smaller` (11px), weight 500, `3px 8px`, radius 3px, a 1px border slot on every role, 24px minimum height. **Touch:** 32px (the header holds seven controls on a 375px phone).
 - **States:** on = accent fill (`pb-icon.is-active`, `pb-secondary.is-accepted`); chosen = accent tint (`pb-seg.is-pinned` / `.active`); open tab = normal label, 600, accent underline.
 - **Never** `opacity` for hover or at rest, **never** `--text-faint` on a control (2.3:1), and **never** a property left for Obsidian's bare `button` rule to set (height, padding, radius, corner-shape — ADR-190). Its fills are (0,1,1), `.is-tablet` padding (0,2,1), a phone modal's Setting control (0,4,1); `tests/obsidianCascade.test.ts` fails if any of them reaches a role.
 
