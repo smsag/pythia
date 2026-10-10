@@ -45,13 +45,21 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   display: none;
 }
 
-/* The tokens live on every Pythia root, not only the view: a modal and the
-   note-anchor card (in Obsidian's hover popover) sit outside `.pythia-view`,
-   where an undefined `var(--s3)` silently drops the whole declaration. */
+/* The tokens are declared on `body`, so they reach every surface Pythia draws:
+   the view, its modals, the note-anchor card in Obsidian's hover popover and a
+   chart card in a vault note. An undefined `var(--s3)` silently drops the whole
+   declaration, and listing roots one at a time is how the card and the chart
+   lost their spacing. The view and its modals declare them again so a theme
+   that sets a same-named property on `body` cannot reach inside.
+   The type scale is `--p-font-*`, never Obsidian's own `--font-smaller` /
+   `--font-small` (0.875em / 0.933em), which core and themes read — shadowing
+   them resized Obsidian's own elements inside Pythia's modals.
+   tests/cssTokens.test.ts holds both rules. */
+body,
 .pythia-view,
 .pythia-modal {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
-  --font-smaller: var(--font-ui-smaller, 11px); --font-small: var(--font-ui-small, 12px);
+  --p-font-smaller: var(--font-ui-smaller, 11px); --p-font-small: var(--font-ui-small, 12px);
 }
 .pythia-view {
   /* Flush to the leaf on every side — hard rule 1 is about the same edges. */
@@ -151,7 +159,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   box-shadow: none;
   background: transparent;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller, 11px);
+  font-size: var(--p-font-smaller, 11px);
   font-weight: 500;
   line-height: 16px;
   white-space: nowrap;
@@ -400,7 +408,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   all: unset;
   cursor: default; /* plain, non-interactive title (ADR-107) */
   font-family: var(--font-interface);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   font-weight: 600;
   flex: 1;
   min-width: 0;
@@ -474,7 +482,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin-top: 2px;
   text-align: center;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   border-radius: 4px;
   cursor: pointer;
@@ -535,7 +543,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
   border-radius: 6px;
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-normal);
 }
 .p-history-chip-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -543,7 +551,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-history-chip-clear svg { width: 13px; height: 13px; }
 .p-history-chip-clear:hover { color: var(--text-normal); }
 .p-history-row-title {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   white-space: nowrap;
   overflow: hidden;
@@ -568,7 +576,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 /* Match-snippet line shown under a result during content search. */
 .p-history-snippet {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   margin-top: 2px;
   white-space: nowrap;
@@ -629,7 +637,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   all: unset;
   flex: 1;
   min-width: 0;
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   /* Inline field — no form-control chrome. Obsidian/themes style search
      inputs with a grey fill + border + radius that `all: unset` doesn't
@@ -690,7 +698,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   background: var(--background-primary);
   padding: 8px 12px 3px;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
@@ -708,7 +716,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   /* Transparent rail keeps every row on the same text baseline as the active one. */
   border-left: 2px solid transparent;
   padding-left: 10px;
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   cursor: pointer;
 }
@@ -732,7 +740,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-model-pop-good,
 .p-model-pop-taphint {
   display: none;
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   line-height: 1.35;
   white-space: normal;
 }
@@ -751,7 +759,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    label, and orange is this UI's warning colour (see .p-send-hint). */
 .p-model-pop-rtag {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   line-height: 1.2;
   padding: 1px 4px;
   border-radius: 3px;
@@ -763,7 +771,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
    jittering with the name and the reasoning chip beside them. */
 .p-model-pop-ctx {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   flex-shrink: 0;
   min-width: 32px;
@@ -778,7 +786,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   padding: 7px 12px 5px;
   margin-top: var(--s1);
   border-top: 1px solid var(--background-modifier-border);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -815,9 +823,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-choice-icon svg { width: 12px; height: 12px; }
 .p-choice-row.is-active .p-choice-icon { color: var(--color-accent); }
 .p-choice-text { display: flex; flex-direction: column; min-width: 0; }
-.p-choice-label { font-size: var(--font-small); line-height: 16px; color: var(--text-normal); }
+.p-choice-label { font-size: var(--p-font-small); line-height: 16px; color: var(--text-normal); }
 .p-choice-row.is-active .p-choice-label { color: var(--color-accent); font-weight: 500; }
-.p-choice-detail { font-size: var(--font-smaller); line-height: 1.4; color: var(--text-faint); }
+.p-choice-detail { font-size: var(--p-font-smaller); line-height: 1.4; color: var(--text-faint); }
 /* Trailing verb on a row (rename by hand · ↻ rename with AI): its own target at
    the row's end — the row's label stays the primary verb. Look: .pb-icon (ADR-188). */
 .pythia-view .p-choice-trailing {
@@ -964,7 +972,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 .pythia-merge-selection {
   margin-top: 5px;
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   font-style: italic;
   line-height: 1.5;
@@ -1022,14 +1030,14 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   align-items: center;
   gap: var(--s1);
   margin-top: var(--s1);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-muted);
 }
 .pythia-fork-favorites-icon { display: inline-flex; color: var(--color-yellow); }
 .pythia-fork-favorites-icon svg { width: 11px; height: 11px; stroke-width: 1.5; }
 .pythia-fork-selection {
   margin-top: 5px;
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   font-style: italic;
   line-height: 1.5;
@@ -1093,7 +1101,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   cursor: pointer;
   user-select: none;
   font-family: var(--font-interface);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   -webkit-text-fill-color: var(--text-normal);
 }
@@ -1179,7 +1187,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   min-width: 0;
   width: 100%;
   font-family: var(--font-interface);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   font-weight: 600;
   line-height: 18px;
   padding: 1px 2px;
@@ -1364,7 +1372,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller, 11px);
+  font-size: var(--p-font-smaller, 11px);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
@@ -1440,7 +1448,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   background: color-mix(in srgb, var(--color-accent) 12%, var(--background-primary));
   color: var(--text-normal);
   border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   line-height: 1.5;
   padding: var(--s1) var(--s2) var(--s1) var(--s3);
   border-radius: 10px 10px 2px 10px;
@@ -1483,7 +1491,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 
 .p-ai-body,
 .p-summary-card-md {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   line-height: 1.65;
   /* `overflow-wrap`, NOT `word-break: break-word` (ADR-144). Both keep a long URL
      from overflowing the panel, but `word-break: break-word` behaves like
@@ -1538,7 +1546,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin: 6px 0; /* match the paragraph rhythm so inter-block gaps are even */
 }
 .p-ai-body li,
-.p-summary-card-md li { font-size: var(--font-small); }
+.p-summary-card-md li { font-size: var(--p-font-small); }
 /* Task-list checkboxes (Action items): lay out inline so the checkbox sits
    inside the card padding — its default negative margin hangs it left where the
    card body's overflow (from max-height) clips it. */
@@ -1898,12 +1906,12 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-pin:not(.open) .p-pin-action--open { display: none; }
 .p-pin-count {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   padding: 0 var(--s1);
 }
 .p-pin-text {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2048,7 +2056,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin: var(--s1) 0;
   padding: 2px 0 2px var(--s3);
   border-left: 2px solid var(--color-accent);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
 }
 .p-fork-anchor-head,
@@ -2090,7 +2098,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-fork-anchor-body h4,
 .p-fork-anchor-body h5,
 .p-fork-anchor-body h6 {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   font-weight: 600;
   line-height: 1.3;
   margin: var(--s2) 0 var(--s1);
@@ -2098,7 +2106,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-fork-anchor-body p { margin: 0 0 var(--s1); }
 .p-fork-anchor-body ul,
 .p-fork-anchor-body ol { padding-left: var(--s4); margin: var(--s1) 0; }
-.p-fork-anchor-body li { font-size: var(--font-smaller); }
+.p-fork-anchor-body li { font-size: var(--p-font-smaller); }
 /* Task-list checkboxes: smaller and aligned with the first text line. */
 .p-fork-anchor-body .task-list-item {
   list-style: none;
@@ -2179,7 +2187,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
      tap, so it carries the same weight as the other two. The stroke pattern —
      solid fork, dashed merge, dotted term — is what tells them apart. */
   border-left: 2px dotted var(--color-accent);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
 }
 /* A person anchor IS a term anchor — every rule above applies. Only the stroke
@@ -2292,7 +2300,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-merge-anchor-body h4,
 .p-merge-anchor-body h5,
 .p-merge-anchor-body h6 {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   font-weight: 600;
   color: var(--text-normal);
   margin: var(--s2) 0 var(--s1);
@@ -2300,7 +2308,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-merge-anchor-body p { margin: 0 0 var(--s1); }
 .p-merge-anchor-body ul,
 .p-merge-anchor-body ol { padding-left: var(--s4); margin: var(--s1) 0; }
-.p-merge-anchor-body li { font-size: var(--font-smaller); }
+.p-merge-anchor-body li { font-size: var(--p-font-smaller); }
 
 /* ── Delete-exchange preview ─────────────────────────────────── */
 .p-msg-user.p-del-preview,
@@ -2334,7 +2342,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   margin: var(--s2) 0 var(--s1);
   padding: 2px 0 2px var(--s3);
   border-left: 2px solid var(--text-warning, var(--color-orange));
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
 }
 .pythia-view .p-trunc-head { display: flex; align-items: center; gap: 5px; }
@@ -2366,7 +2374,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   align-items: center;
   gap: var(--s1);
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -2404,7 +2412,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .pythia-view .p-answer-alt-meta { margin-top: var(--s1); }
 .pythia-view .p-answer-use { align-self: flex-start; }
 
-.pythia-view .p-compare-body { font-size: var(--font-small); }
+.pythia-view .p-compare-body { font-size: var(--p-font-small); }
 .pythia-view .p-compare-meta {
   font-family: var(--font-monospace);
   font-size: 9px;
@@ -2561,7 +2569,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   align-items: baseline;
   gap: var(--s2);
   padding: 5px var(--s3) 5px calc(var(--s3) + 10px);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-normal);
   line-height: 1.4;
   cursor: pointer;
@@ -2598,7 +2606,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 
 .p-nav-empty {
   padding: 4px var(--s3) 6px calc(var(--s3) + 10px);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   font-style: italic;
 }
@@ -2611,7 +2619,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 .p-nav-merge-icon {
   color: var(--color-accent);
   flex-shrink: 0;
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
 }
 
 .p-nav-fork-icon {
@@ -2635,7 +2643,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   align-items: baseline;
   gap: 6px;
   padding: 4px var(--s3) 4px calc(var(--s3) + 4px);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 3px;
@@ -2653,7 +2661,7 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   align-items: baseline;
   gap: 6px;
   padding: 4px var(--s3) 4px 10px;
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 0 3px 3px 0;
@@ -2723,13 +2731,13 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
   border: none;
   outline: none;
   font-family: var(--font-monospace);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   line-height: 1.55;
   width: 100%;
-  min-height: calc(var(--font-small) * 1.55 * 2);
+  min-height: calc(var(--p-font-small) * 1.55 * 2);
   /* 5 lines max: font-small (12px) × line-height (1.55) × 5 = 93px */
-  max-height: calc(var(--font-small) * 1.55 * 5);
+  max-height: calc(var(--p-font-small) * 1.55 * 5);
   overflow-y: auto;
   box-sizing: border-box;
   white-space: pre-wrap;
@@ -2740,9 +2748,9 @@ body.is-phone .workspace-drawer .workspace-leaf-content[data-type="pythia"] > .v
 }
 /* Mobile: smaller font so the placeholder fits without clipping */
 body.is-mobile .p-composer {
-  font-size: var(--font-smaller);
-  min-height: calc(var(--font-smaller) * 1.55 * 2);
-  max-height: calc(var(--font-smaller) * 1.55 * 5);
+  font-size: var(--p-font-smaller);
+  min-height: calc(var(--p-font-smaller) * 1.55 * 2);
+  max-height: calc(var(--p-font-smaller) * 1.55 * 5);
 }
 .p-composer:focus,
 .p-composer:focus-visible {
@@ -2839,7 +2847,7 @@ body.is-phone .workspace-drawer .p-input-area {
   min-height: 72px;
   resize: vertical;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller, 12px);
+  font-size: var(--p-font-smaller, 12px);
 }
 
 /* Auto-armed web search (ADR-099/230): pulse the globe, then keep it accent for
@@ -2900,7 +2908,7 @@ body.is-phone .workspace-drawer .p-input-area {
   align-items: center;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   white-space: nowrap;
   cursor: pointer;
@@ -2972,7 +2980,7 @@ body.is-phone .workspace-drawer .p-input-area {
 
 .p-sheet-title {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-faint);
@@ -2987,7 +2995,7 @@ body.is-phone .workspace-drawer .p-input-area {
   gap: var(--s3);
   min-height: 48px;
   padding: var(--s2) var(--s2);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   cursor: pointer;
   border-radius: 8px;
@@ -3008,7 +3016,7 @@ body.is-phone .workspace-drawer .p-input-area {
 .p-sheet-item-disabled .p-sheet-item-icon { color: var(--text-faint); }
 /* Choice rows (ADR-165): label with an optional explanation, a check on the current one. */
 .p-sheet-item-text { display: flex; flex-direction: column; min-width: 0; }
-.p-sheet-item-detail { font-size: var(--font-smaller); line-height: 1.4; color: var(--text-faint); }
+.p-sheet-item-detail { font-size: var(--p-font-smaller); line-height: 1.4; color: var(--text-faint); }
 .p-sheet-item-icon:empty { width: 18px; }
 .p-sheet-item.is-active .p-sheet-item-icon,
 .p-sheet-item.is-active .p-sheet-item-label { color: var(--color-accent); }
@@ -3034,7 +3042,7 @@ body.is-phone .workspace-drawer .p-input-area {
    orientation and not a value. */
 .pythia-section-intro {
 	color: var(--text-muted);
-	font-size: var(--font-small, 13px);
+	font-size: var(--p-font-small, 13px);
 	line-height: 1.45;
 	max-width: 62ch;
 	padding: 4px 0 12px;
@@ -3075,7 +3083,7 @@ body.is-phone .workspace-drawer .p-input-area {
 .pythia-storage-line {
   margin-top: 6px;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
 }
 .pythia-storage-line.mod-warning {
@@ -3103,7 +3111,7 @@ body.is-phone .workspace-drawer .p-input-area {
 }
 .p-rewrite-meta {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   margin-top: 2px;
   overflow-wrap: anywhere;
@@ -3132,7 +3140,7 @@ body.is-phone .workspace-drawer .p-input-area {
 .pythia-modal .p-param-readout {
   margin-left: var(--s2);
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -3147,7 +3155,7 @@ body.is-phone .workspace-drawer .p-input-area {
   align-items: center;
   gap: var(--s2);
   margin: calc(-1 * var(--s2)) 0 var(--s3);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   line-height: 1.4;
   color: var(--text-warning, var(--color-orange));
 }
@@ -3208,13 +3216,13 @@ body.is-phone .workspace-drawer .p-input-area {
 .pythia-tool-call-path {
   display: block;
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
 
 .pythia-tool-call-label {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
   line-height: 1.4;
 }
@@ -3235,7 +3243,7 @@ body.is-phone .workspace-drawer .p-input-area {
 }
 
 .pythia-tool-call--done .pythia-tool-call-link {
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   text-decoration: none;
 }
@@ -3258,7 +3266,7 @@ body.is-phone .workspace-drawer .p-input-area {
 }
 
 .pythia-tool-call-link {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--color-green);
   text-decoration: underline;
   cursor: pointer;
@@ -3284,7 +3292,7 @@ body.is-phone .workspace-drawer .p-input-area {
 }
 .pythia-conv-suggest-snippet {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -3400,11 +3408,11 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 
 /* ── Command hub modal ───────────────────────────────────────────────────── */
 .pythia-hub-label {
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   color: var(--text-normal);
 }
 .pythia-hub-desc {
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   margin-top: 1px;
 }
@@ -3413,7 +3421,7 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 .pythia-view .p-turn-cost { color: var(--text-faint); }
 
 /* ── Cost disclaimer in the settings tab (ADR-163) ─────────────── */
-.p-pricing-disclaimer { font-size: var(--font-small); line-height: 1.45; }
+.p-pricing-disclaimer { font-size: var(--p-font-small); line-height: 1.45; }
 
 /* ── Optimizer model suggestion beside Send (ADR-181) ──
    Reads as a pill: accent border and text, mono caps rhythm. Accepted = accent
@@ -3467,7 +3475,7 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 .p-chart-head-icon svg { width: 12px; height: 12px; }
 .p-chart-head-label {
   font-family: var(--font-interface);
-  font-size: var(--font-small);
+  font-size: var(--p-font-small);
   font-weight: 600;
   color: var(--text-normal);
   overflow: hidden;
@@ -3522,7 +3530,7 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   gap: var(--s1);
   margin-top: var(--s1);
   font-family: var(--font-interface);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
 }
 .p-chart-foot-label { font-weight: 600; }
@@ -3534,13 +3542,13 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
 .p-chart-card--error { border-color: var(--text-faint); }
 .p-chart-error-detail {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
   margin-bottom: var(--s1);
 }
 .p-chart-error-source {
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   background: var(--background-secondary);
   border-radius: 4px;
   padding: var(--s1);
@@ -3631,11 +3639,13 @@ body.is-desktop .pythia-conv-suggest-item:hover .pythia-conv-suggest-delete {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-width: 360px;
+  /* The popover is `max-width: 80vw; overflow: hidden`: the card and its margin
+     stay inside it, or a narrow window cuts off the meta line. */
+  max-width: min(360px, calc(80vw - 2 * var(--s3)));
   margin: var(--s3);
   padding: 2px 0 2px var(--s3);
   border-left: 2px solid var(--color-accent);
-  font-size: var(--font-smaller);
+  font-size: var(--p-font-smaller);
   color: var(--text-muted);
 }
 .p-anchor-card-head { display: flex; align-items: center; gap: 5px; }

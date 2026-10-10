@@ -49,7 +49,7 @@ function mount(cls: string, scope = "pythia-view"): HTMLButtonElement {
 		"--text-muted": T.muted, "--text-faint": T.faint, "--text-error": T.error, "--text-warning": T.warning,
 		"--color-orange": T.warning, "--background-modifier-hover": "rgb(236, 236, 236)",
 		"--background-modifier-border": "rgb(224, 224, 224)", "--background-secondary": "rgb(246, 246, 246)",
-		"--s1": "4px", "--s2": "8px", "--font-smaller": "11px",
+		"--s1": "4px", "--s2": "8px", "--p-font-smaller": "11px",
 	};
 	for (const [k, v] of Object.entries(vars)) document.body.style.setProperty(k, v);
 	for (const text of [CORE_LIKE, css]) {

@@ -31,7 +31,7 @@ const VARS: Record<string, string> = {
 	"--text-muted": "rgb(92, 92, 92)", "--text-faint": "rgb(171, 171, 171)", "--text-error": "rgb(200, 40, 40)",
 	"--text-warning": "rgb(200, 110, 0)", "--color-orange": "rgb(200, 110, 0)", "--background-modifier-hover": "rgb(236, 236, 236)",
 	"--background-modifier-border": "rgb(224, 224, 224)", "--background-secondary": "rgb(246, 246, 246)",
-	"--s1": "4px", "--s2": "8px", "--font-smaller": "11px",
+	"--s1": "4px", "--s2": "8px", "--p-font-smaller": "11px",
 };
 
 /** Mount `html` (one or more buttons) inside `wrap`, which is nested as Obsidian nests it. */

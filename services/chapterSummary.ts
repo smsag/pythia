@@ -80,17 +80,31 @@ export function anchorStatus(conv: Conversation | undefined, ref: AnchorRef): An
 /** Whether a refresh would change anything — what `refreshSummaries` works on. */
 export const needsRefresh = (s: AnchorStatus): boolean => s === "missing" || s === "outdated";
 
+/** A stop, with any closing quotes or brackets after it (German „…“ and »…« too). */
+const STOP = /[.!?…]+["'”“’»«)\]]*(?= |$)/gu;
+/** What may open the next sentence before its capital: quotes, brackets, Spanish ¿ ¡. */
+const CAPITAL_NEXT = /^["'„“‘«»(\[¿¡]?\p{Lu}/u;
+/** A word of five or more letters, or a symbol (€, %): never an abbreviation. */
+const NOT_ABBREVIATION = /(?:\p{Ll}{5}|[^\p{L}\p{N}\s])$/u;
+
 /**
  * The first `n` sentences of prose, on one line. A sentence ends at a stop
- * followed by a space and a capital (or the end) — never at the dot inside
- * "58.156 €", "§ 33.2" or "ca. 1.661", which cut a summary off mid-number.
+ * followed by a space and a capital, or by a number after a stop that cannot
+ * close an abbreviation ("Kosten sinken. 2026 …"), or at the end — never at
+ * the dot inside "58.156 €" or after "ca." / "Abs." / "inkl." before a number.
+ * A lowercase start never ends one: "z.B. die", "bzw. der" are far more common
+ * than a sentence opening with "iPhone".
  */
 export function firstSentences(text: string, n = 2): string {
+	if (n <= 0) return "";
 	const flat = text.replace(/\s+/g, " ").trim();
-	const end = /[.!?…]+["'”»)]*(?= ["'„“«(]?\p{Lu}|$)/gu;
 	let count = 0;
-	for (let m = end.exec(flat); m; m = end.exec(flat)) {
-		if (++count === n) return flat.slice(0, m.index + m[0].length);
+	for (const m of flat.matchAll(STOP)) {
+		const end = m.index + m[0].length;
+		const next = flat.slice(end + 1);
+		const boundary = end === flat.length || CAPITAL_NEXT.test(next)
+			|| (/^\p{N}/u.test(next) && NOT_ABBREVIATION.test(flat.slice(0, m.index)));
+		if (boundary && ++count === n) return flat.slice(0, end);
 	}
 	return flat;
 }

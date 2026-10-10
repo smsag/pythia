@@ -1,6 +1,8 @@
 # UI architecture and naming
 
-*Last updated: 2026-10-04 (ADR-255: fork from favorites — the favorites card's fork button, the fork's favorites pill and `.pythia-fork-favorites` banner line, the ★ in the navigator's fork tree and its `.p-nav-action`).*
+*Last updated: 2026-10-10 (the type scale is `--p-font-*`, and the tokens are declared on `body`)*
+
+*Previously: 2026-10-04 (ADR-255: fork from favorites — the favorites card's fork button, the fork's favorites pill and `.pythia-fork-favorites` banner line, the ★ in the navigator's fork tree and its `.p-nav-action`).*
 
 *Previously: 2026-09-30 (ADR-253: Pythia writes a note anchor without `==` — a started conversation's link carries `anchor=1`; an older `==` still counts).*
 
@@ -85,7 +87,7 @@ The work is split three ways everywhere: **a pure module decides** (what a label
       └─ .p-send                         long-press → .p-send-menu
 ```
 
-Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…`--s4`), type is `--font-smaller` / `--font-small`, every colour is an Obsidian variable, and chart colours come only from `ui/chart/palette.ts`. See `docs/design.md`.
+Sizes and colours are not in the controllers: spacing is the 4px grid (`--s1`…`--s4`), type is `--p-font-smaller` / `--p-font-small` (all declared on `body`), every colour is an Obsidian variable, and chart colours come only from `ui/chart/palette.ts`. See `docs/design.md`.
 
 ## 3. The other surfaces
 

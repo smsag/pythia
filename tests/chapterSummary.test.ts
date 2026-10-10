@@ -117,6 +117,20 @@ describe("the chapter-summary prompt and its reply", () => {
 		expect(firstSentences("Belastung (§ 33 EStG) gilt. Bei Einkünften von 58.156 € sind es ca. 1.661,54 €. Dann mehr."))
 			.toBe("Belastung (§ 33 EStG) gilt. Bei Einkünften von 58.156 € sind es ca. 1.661,54 €.");
 		expect(firstSentences("Rate 2.5 applies. Done?  Yes.")).toBe("Rate 2.5 applies. Done?");
+		expect(firstSentences("Gilt nach Abs. 2 EStG. inkl. 19 % MwSt. bleibt. Mehr. Noch."))
+			.toBe("Gilt nach Abs. 2 EStG. inkl. 19 % MwSt. bleibt. Mehr.");
+	});
+
+	it("firstSentences finds the boundaries of Spanish, German quotes and a number start", () => {
+		expect(firstSentences("Es así. ¿Por qué? Sigue. Más.")).toBe("Es así. ¿Por qué?");
+		expect(firstSentences("Er sagte „Ja.“ Dann ging er. Später mehr.")).toBe("Er sagte „Ja.“ Dann ging er.");
+		expect(firstSentences("Er sagte »Nein.« Dann ging er. Später.")).toBe("Er sagte »Nein.« Dann ging er.");
+		expect(firstSentences("Kosten sinken. 2026 steigen sie. Dann mehr.")).toBe("Kosten sinken. 2026 steigen sie.");
+		expect(firstSentences("Es kostet 5 €. 2026 mehr. Dann.")).toBe("Es kostet 5 €. 2026 mehr.");
+	});
+
+	it("firstSentences of zero sentences is empty", () => {
+		expect(firstSentences("A. B.", 0)).toBe("");
 	});
 });
 
