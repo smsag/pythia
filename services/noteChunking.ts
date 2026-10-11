@@ -4,6 +4,23 @@ import { scoreRelevanceTokensWeighted, tokenize } from "./noteRelevance";
  *  12,000 chars ≈ 3,000 tokens — a fraction of modern context windows (200K–1M). */
 export const NOTE_CHUNK_THRESHOLD_CHARS = 12000;
 
+/** The ceiling for a note that asks to be sent whole (`pythia_full: true`). Still
+ *  a ceiling: a note's own frontmatter widens the budget, it does not remove it.
+ *  60,000 chars ≈ 15,000 tokens. */
+export const FULL_NOTE_MAX_CHARS = 60000;
+
+/**
+ * True when a note's frontmatter says to send it whole rather than by the
+ * sections that match the question — for a reference note (an expertise list, a
+ * profile) that is read for its entirety every time, where "most relevant to
+ * this message" drops exactly the section the task needs. Explicit `true` only;
+ * a string, a number or a list is not a request (principle 1).
+ */
+export function wantsFullNote(frontmatter: unknown): boolean {
+	if (!frontmatter || typeof frontmatter !== "object") return false;
+	return (frontmatter as Record<string, unknown>).pythia_full === true;
+}
+
 interface Chunk {
 	heading: string;
 	text: string;

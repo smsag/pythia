@@ -508,6 +508,7 @@ const de: Strings = {
 	answerTabSwitched:     "{{model}} ist jetzt die Antwort in diesem Gespräch",
 	answerTabSwitchRefused: "Nur die letzte Antwort lässt sich wechseln — ein späterer Beitrag baut auf dieser auf",
 	webSearchKeyRejected: "Tavily hat den Schlüssel für die Websuche abgelehnt. Prüfe ihn unter Einstellungen → Pythia → Verbindungen.",
+	citationsDropped: "[Pythia] {{count}} Web-Zitat(e) in dieser Antwort passen zu keinem Suchergebnis dieser Antwort und zeigen keine Quelle. Prüfe die Zahlen, neben denen sie stehen.",
 	webSearchQuotaReached: "Dein Tavily-Konto hat sein Guthaben aufgebraucht, daher ist die Websuche gestoppt. Erhöhe das Limit auf tavily.com oder warte auf den nächsten Monat.",
 	favoriteGone: "Die markierte Stelle ist nicht mehr in diesem Gespräch",
 	forkFromTabRefused: "Abzweigen geht von der Antwort, die das Gespräch hält — ein Tab gehört nicht dazu",

@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import type { Conversation } from "../models/types";
 import { todayISO } from "../utils";
 import { estimateTokensFromText, arrayBufferToBase64, langDirective } from "./messageUtils";
-import { selectRelevantChunks } from "./noteChunking";
+import { FULL_NOTE_MAX_CHARS, selectRelevantChunks, wantsFullNote } from "./noteChunking";
 import {
 	SYSTEM_PROMPT_TAG,
 	PREVIOUS_SUMMARY_TAG,
@@ -226,7 +226,11 @@ export async function buildAttachedNotesContent(
 			const raw = await app.vault.read(file);
 			const { text, isExcerpt } = autoNotes.has(notePath)
 				? selectRelevantChunks(raw, query, AUTO_NOTE_BUDGET_CHARS)
-				: selectRelevantChunks(raw, query);
+				: wantsFullNote(app.metadataCache?.getFileCache(file)?.frontmatter)
+						// A note the user attached may ask to go whole (`pythia_full: true`);
+						// one a search picked never does (the branch above).
+						? selectRelevantChunks(raw, query, FULL_NOTE_MAX_CHARS)
+						: selectRelevantChunks(raw, query);
 			// Note bodies are untrusted: defang any Pythia control tags so a note
 			// cannot close its <attached_note> wrapper early and inject a forged
 			// <system_prompt> block (prompt-injection delimiter escape).
