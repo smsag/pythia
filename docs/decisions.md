@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-04 — ADR-255 (fork from favorites: a fork that carries a snapshot of the source's favorites summary in its own prompt block; the summary is regenerated first when its favorite fingerprint no longer matches; a newer source summary is offered on the fork's pill and taken only on ↻; marked in the navigator's fork tree and the conversation panel; addendum after the PR #290 review: × switches the snapshot off instead of deleting it, one painter for the banner line, a fork complete in its first write, the right leaf, no silent failures, a summary without fingerprint regenerated before forking; addendum 2: commands reveal their leaf, the world re-checked after the regenerate, one fork at a time, the answer language carried, a passage fork inherits the snapshot (`fromId`), the banner repainted by its owner, the new listeners owned by a RenderSlot).*
+*Last updated: 2026-10-11 — ADR-256 (a note can ask to be sent whole with `pythia_full: true`; a web citation that matches no result of its answer is said in a Notice, not only in the debug log).*
+
+*Previously: 2026-10-04 — ADR-255 (fork from favorites: a fork that carries a snapshot of the source's favorites summary in its own prompt block; the summary is regenerated first when its favorite fingerprint no longer matches; a newer source summary is offered on the fork's pill and taken only on ↻; marked in the navigator's fork tree and the conversation panel; addendum after the PR #290 review: × switches the snapshot off instead of deleting it, one painter for the banner line, a fork complete in its first write, the right leaf, no silent failures, a summary without fingerprint regenerated before forking; addendum 2: commands reveal their leaf, the world re-checked after the regenerate, one fork at a time, the answer language carried, a passage fork inherits the snapshot (`fromId`), the banner repainted by its owner, the new listeners owned by a RenderSlot).*
 
 *Previously: 2026-10-01 — ADR-254 addendum (review of PR #284: a chart's body is masked in every painter's text model and refused by the selection rule; the remembered view is keyed by place and data; an ancestor owns its cards' view (`data-chart-view`), so a pin draws in its own view at once; the term skip narrowed to the body; the table framed by `decorateTables` and styled by the answer table's own selectors; the switch has a stable name and `aria-pressed`).*
 
@@ -5539,3 +5541,16 @@ Notable decisions inside the fixes:
 
 **Guards (addendum 3).** `tests/BaseProvider.test.ts` (none of the three summary prompts contains the snapshot); `tests/ContextBuilder.test.ts` (the block verbatim under `resumeMode: "summary"` with an own summary); `tests/forkFromFavoritesView.test.ts` (three forks from one source: three copies, all ★, one switched off leaves the others, no summary call).
 
+
+
+## ADR-256 — A reference note can be sent whole; a dropped citation is announced
+
+**Context.** A career template attached 22 notes. Two of them, the briefing and the expertise & tools repository, arrived "shortened", and the answer's `### Expertise` and tools sections drew on what was left. The cause is not the size alone: `selectRelevantChunks` keeps the sections that match the *current message* (budget 12 000 chars), so for a message about a job posting the section the task needs was the one dropped. In the same run a web citation (`web:1`) matched no result of the answer. `resolveWebCitations` correctly drew no chip for it, but said so only in the debug log, so the answer showed a figure with no source and no explanation.
+
+**Decision.**
+- **`pythia_full: true` in a note's frontmatter** sends that note up to `FULL_NOTE_MAX_CHARS` (60 000 chars, ≈ 15 000 tokens) instead of the relevant sections up to 12 000. Explicit `true` only (`wantsFullNote`; a string, a number or a list is not a request). It is a ceiling, not an unlimited switch: a longer note is still an excerpt and still marked as one. A note a *search* picked never gets it (ADR-183: that budget is the plugin's choice). The flag lives in the note, not the template, so it needs no new field on `Conversation` or `PythiaTemplate`, no migration, and no entry in the stored-path lists; it applies wherever the note is attached.
+- **A dropped web citation is a Notice** (`citationsDropped`, with the count), once per commit, beside the debug-log line. Pythia cannot tell that a number points at the *wrong* result (a kununu page cited as StepStone); that stays the model's error and the template's job (name the site beside the number).
+
+**Not done.** A `full_notes:` list in the template (a second place that names a note, and a stored field to carry through a running conversation). A `read_note` tool for the model (a tool means the model chooses what to read at write time; ADR-178 refuses the same shape for the rewrite target). Linting the CV (a rule for one document type does not belong in the core).
+
+**Guards.** `tests/fullNote.test.ts` (the flag sends the note whole; only an explicit `true`; an app without a metadata cache behaves as before; an auto-retrieved note is never widened; the ceiling holds and the note is marked an excerpt); `tests/toolCallWeb.test.ts` (a Notice naming the count when a citation matches no result, none when all do).

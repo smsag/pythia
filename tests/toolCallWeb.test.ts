@@ -53,6 +53,15 @@ describe("ToolCallController — web results across one answer (ADR-226)", () =>
 		expect(sources.map((s) => s.ref)).toEqual(["https://b.com/1", "https://a.com/2", "https://a.com/1"]);
 	});
 
+	it("tells the user when a citation matches no result of the answer, and stays quiet otherwise", async () => {
+		const { calls, search } = controller([results("https://a.com/1")]);
+		await search("one");
+		calls.resolveSources("X⟦cite:web:1⟧");
+		expect(shown()).toEqual([]);
+		calls.resolveSources("X⟦cite:web:1⟧ Y⟦cite:web:9⟧ Z⟦cite:web:12⟧");
+		expect(shown()).toEqual([en.citationsDropped.replace("{{count}}", "2")]);
+	});
+
 	it("tells the user once per send when the key is rejected or the credits are gone", async () => {
 		const auth = (): WebToolResult => ({ text: "Error: key", sources: [], error: "auth" });
 		const quota = (): WebToolResult => ({ text: "Error: quota", sources: [], error: "quota" });

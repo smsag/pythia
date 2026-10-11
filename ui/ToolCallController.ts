@@ -85,7 +85,12 @@ export class ToolCallController {
 	 *  dropped, and said in the debug log so a report can quote it. */
 	resolveSources(text: string): CitationSource[] {
 		const { sources, dropped } = resolveWebCitations(parseCitations(text), this.webSources);
-		if (dropped.length > 0) debugLog(this.d.plugin.settings, "dropped web citations with no fetched result:", dropped);
+		if (dropped.length > 0) {
+			debugLog(this.d.plugin.settings, "dropped web citations with no fetched result:", dropped);
+			// No chip is drawn for it, so a reader sees a figure with no source and no
+			// explanation: say so (principle 2).
+			new Notice(t("citationsDropped", { count: dropped.length }));
+		}
 		// Answer numbers name answers of this conversation (ADR-250); resolved
 		// before the new answer joins `messages`, so they mean what the model saw.
 		const answers = resolveAnswerCitations(sources, this.conv?.messages ?? []);
