@@ -194,6 +194,27 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(pane().querySelector(".p-history-fork-count")?.textContent).toContain("2");
 	});
 
+	it("a touch on a row opens it and cancels the rest of the tap, so nothing underneath receives it (ADR-258)", async () => {
+		await seedThree();
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+		const row = historyRows(pane).find((r) => r.textContent?.includes("Tax filing"))!;
+		const at = (type: string): Event => {
+			const e = new Event(type, { bubbles: true, cancelable: true });
+			Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ clientX: 5, clientY: 5 }] });
+			Object.defineProperty(e, "changedTouches", { value: [{ clientX: 5, clientY: 5 }] });
+			row.dispatchEvent(e);
+			return e;
+		};
+		at("touchstart");
+		const end = at("touchend");
+		await tick();
+
+		expect(end.defaultPrevented).toBe(true);
+		expect(panelEl(pane)).toBeNull();
+		expect(view.getActiveConversation()?.name).toBe("Tax filing");
+	});
+
 	it("↑/↓ move the selection and Enter opens the selected conversation", async () => {
 		await seedThree();
 		const { view, pane } = await mountView(plugin);

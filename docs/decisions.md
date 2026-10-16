@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-16 — ADR-257 addendum (review of PR #305: the gate moved from the panel into `SchreibstubeLink`, so it holds for every caller and every leaf; a deadline frees it; the palette modal and related mode drop their questions; a rebuild for the same text reuses its question; the answer re-reads the store).*
+*Last updated: 2026-10-16 — ADR-258 (a conversation row in the panel opens on the end of a touch and cancels the rest of it, so the tap does not fall through onto the chat the closing panel uncovers).*
+
+*Previously: 2026-10-16 — ADR-257 addendum (review of PR #305: the gate moved from the panel into `SchreibstubeLink`, so it holds for every caller and every leaf; a deadline frees it; the palette modal and related mode drop their questions; a rebuild for the same text reuses its question; the answer re-reads the store).*
 
 *Previously: 2026-10-16 — ADR-257 (one search-by-meaning question to Schreibstube at a time from the conversation panel; a newer one replaces a waiting one, a closed panel asks nothing more).*
 
@@ -5587,3 +5589,15 @@ An xhigh review found the panel-level gate too narrow and too fragile:
 Schreibstube changed alongside it (smsag/schreibstube#364): a source's searches run one after another, and the same question shares one answer. The stored conversation index is read once for every waiter; a stalled read is given up at 20 s, a failed one is tried once more, and an undecodable one is logged. A phone reads the index again when sync replaced it. Re-registration waits for a read in progress.
 
 **Guards.** `tests/questionGate.test.ts` (one at a time; lane replacement; lanes do not cross; an aborted waiting question never runs; an aborted running one answers at once and holds the slot; the deadline frees the slot and logs; never rejects). `tests/schreibstubeLink.test.ts` (one question at a time across search, notes and related; only the latest of typed searches from any caller; a dropped question is never asked; an API that throws answers `[]`). `tests/historyPanel.test.ts` (close, a new text and related mode drop the question; a same-text rebuild reuses it and shows its answer; a conversation deleted meanwhile is not drawn). `tests/conversationSuggest.test.ts` (nothing asked after a close inside the pause; close and a newer query drop the question). Each of these fails against the code before the addendum.
+
+## ADR-258 — A row that closes the panel takes the tap where it ends
+
+**Context.** The iPhone reload of ADR-257 was not the search. The reporter opened the panel *without searching*, tapped a conversation, and got the same freeze and reload. The caret appeared where they had tapped, and only with Schreibstube enabled. The same conversation opened from the command palette, through the same `setActiveConversation`, worked. With an empty conversation under the panel, every row opened fine. So the cause was the tap, not the opening: the row closed the panel inside its click handler, and WebKit, which hit-tests again for its own tap handling after the synthesized click, applied the rest of the gesture to the chat text the panel had just uncovered. ADR-257's gate stays: it is correct on its own, but it did not touch this path.
+
+**Decision.**
+- **`attachTap` (`ui/tapActivate.ts`)** is the one way a control that removes its own surface is activated. On touch it acts on `touchend` and calls `preventDefault`, which cancels the synthesized mouse events, the click and WebKit's tap handling, so nothing of the gesture outlives the surface. A pointer and the keyboard keep the click. A touch that moved more than 10 px is a scroll. A click within 800 ms of a handled tap is that tap's echo.
+- **The conversation row uses it.** Its `allow` swallows the tap that ends a long-press (whose menu is open) and a tap that only stops the list's momentum (within 150 ms of a scroll).
+
+**Not known.** Which element under the finger Schreibstube makes fatal is not established. The device log would say; the fix does not depend on it, because no tap reaches the chat any more.
+
+**Guards.** `tests/tapActivate.test.ts` (a touch opens and is cancelled; the click echo does not open twice; a moved touch is a scroll and is not cancelled; a click opens; a refused tap is still cancelled; a cancelled touch does nothing). `tests/historyPanel.test.ts`: a touch on a row opens it and its `touchend` is cancelled, which fails against the click handler.

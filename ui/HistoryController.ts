@@ -24,6 +24,7 @@ import { attachLongPress } from "./longPress";
 import { attachOutsideDismiss } from "./outsideDismiss";
 import { RelatedMode } from "./RelatedMode";
 import { makeKeyActivatable } from "./keyActivate";
+import { attachTap } from "./tapActivate";
 import { forkKind } from "../services/favoritesFork";
 import { describeErrorForLog } from "../services/redact";
 
@@ -36,6 +37,9 @@ import { describeErrorForLog } from "../services/redact";
  * the cost is the corpus behind it, not the page.
  */
 const BROWSE_PAGE_ROWS = 50;
+
+/** How long after the list last scrolled a touch still only stops it (ADR-258). */
+const SCROLL_SETTLE_MS = 150;
 
 /** Newest first, tolerating a missing or malformed `updatedAt`. */
 const byUpdatedAtDesc = (a: Conversation, b: Conversation): number =>
@@ -227,6 +231,8 @@ export class HistoryController {
 		const chipEl = overlay.createDiv({ cls: "p-history-chip-wrap" });
 
 		const listEl = overlay.createDiv({ cls: "p-history-list" });
+		let listScrolledAt = -Infinity;
+		listEl.addEventListener("scroll", () => { listScrolledAt = Date.now(); }, { passive: true });
 
 		// The soft keyboard OVERLAYS the webview rather than resizing it, so the
 		// overlay keeps its full height and its last rows sit underneath. Pad the
@@ -422,7 +428,15 @@ export class HistoryController {
 			if (!pick) {
 				attachLongPress(row, ({ x, y }) => { lpFired = true; showRowMenu(conv, x, y); }, { delayMs: 500, touchOnly: true });
 			}
-			row.addEventListener("click", () => { if (lpFired) { lpFired = false; return; } openConv(conv); });
+			// A tap, not a click, on touch (ADR-258): the panel closes on it, and a
+			// click let the rest of the gesture through onto the chat underneath.
+			attachTap(row, () => openConv(conv), {
+				allow: () => {
+					if (lpFired) { lpFired = false; return false; }
+					// A tap that stops the list's momentum is not a choice of row.
+					return Date.now() - listScrolledAt > SCROLL_SETTLE_MS;
+				},
+			});
 			rows.push({ conv, el: row });
 		};
 

@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
+*Updated: 2026-10-16 — **The panel tap fell through onto the chat (ADR-258).** The reload on the iPhone came from the tap, not the search: a row now opens on the end of the touch and cancels the rest of it.*
+
+*Previously: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
 
 *Previously: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
 
@@ -2265,3 +2267,20 @@ An xhigh review of the first version. Twelve findings, all addressed in the same
 | **The spec's changelog had no entry for D-83.** | Added. |
 
 **Open.** Not verified on the iPhone.
+
+## Bug — the reload was the tap, not the search (ADR-258), 2026-10-16
+
+**What ADR-257 got wrong.** It took the reporter's scenario ("has searched") as the cause and fixed the questions Pythia asks Schreibstube. The release did not change the symptom. The reporter then found the reload without any search, by opening the panel and tapping a conversation.
+
+**How it was isolated, on the device, by the reporter:**
+1. The command palette opens the same conversation through the same `setActiveConversation`: no reload. So drawing and focusing a conversation are fine.
+2. Every conversation fails from the panel, and the caret appears where the finger was.
+3. With an empty conversation under the panel, every row opens: no reload.
+
+**Cause.** The row closed the panel inside its click handler, and the rest of the tap fell through onto the chat text below (WebKit hit-tests again for its own tap handling after the click). Only with Schreibstube enabled did that become a freeze and a reload. What in Schreibstube reacts is not established.
+
+**Fix.** `attachTap` opens on `touchend` with `preventDefault` (ADR-258).
+
+**Lesson.** A scenario's precondition ("has searched") is not its cause. The first question should have been the one that split the path: does it happen without the search? It was asked, and not answered before the fix shipped.
+
+**Open.** Not verified on the iPhone at the time of writing. A separate report in the same session, image descriptions rewritten and the vault re-indexed again and again, points at Schreibstube's `PictureArticleLinker` (a locale-dependent list order written from every device). Tracked in Schreibstube, not here.
