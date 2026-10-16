@@ -1,6 +1,10 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
+*Updated: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
+
+*Previously: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
+
+*Previously: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
 
 *Previously: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
 
@@ -2228,3 +2232,36 @@ An xhigh review after the merge. Nine findings, all addressed in one follow-up.
 | **German closing quotes `“` and `«` (and `’`, `]`) never closed one.** | Added to the closers. |
 | **A sentence opening with a number merged into the one before.** | A stop followed by a number is a boundary when the word before it cannot be an abbreviation: five or more letters, or a symbol such as `€`. `ca. 5`, `Abs. 2` and `inkl. 19` still do not split. **A lowercase start still never ends a sentence**, deliberately: `z.B. die` and `bzw. der` are far more common in a German summary than a sentence opening with `iPhone`. |
 | **`firstSentences(text, 0)` returned the whole text.** | It returns `""`, as before PR #296. |
+
+## Bug — a tap on a search result reloaded Obsidian on the iPhone (ADR-257), 2026-10-16
+
+**Symptom.** Reported as a scenario: in the sidebar, search for a conversation, tap a result. The conversation does not open, the caret keeps blinking as if the field still had focus, and a few seconds later Obsidian reloads.
+
+**Isolation.** Pythia's own path (search, tap, open) passes in the view harness on desktop and mobile settings. On the device, the reload stops when Schreibstube is disabled (confirmed by the reporter). So the trigger is search by meaning, which runs Schreibstube's model on the phone.
+
+**Cause (from reading both codebases; not measured on the device).** (a) The panel asked Schreibstube after every 300 ms pause in typing, with no limit on questions in flight, and a closed panel did not stop them. (b) In Schreibstube, `ConversationIndex.load` had no guard for a read already under way, so every question that arrived before the first read finished read and decoded the whole stored index again, several copies at once. A frozen main thread fits a tap that does nothing while the caret keeps blinking; the reload fits iOS ending the process at its memory limit, as in #344.
+
+**Fix.** Pythia: one question in flight, a newer one replacing a waiting one, nothing asked after close (ADR-257). Schreibstube: concurrent reads of the conversation index share one read.
+
+**Open.** Not verified on the iPhone. If it still reloads, the next step is to ask by meaning on a phone only when the person presses something, and to read Schreibstube's `semantic engine: search` debug line for the load and embed times.
+
+## Review — PR #305, one question to Schreibstube at a time, 2026-10-16
+
+An xhigh review of the first version. Twelve findings, all addressed in the same PR (ADR-257 addendum). A review of the companion Schreibstube PR (#364) raised four of them again from that side, and its own findings are fixed there.
+
+| Finding | Fix |
+|---|---|
+| **The gate held per view**, not across leaves, a rebuilt view, the palette modal, `related` or `searchNotes`. | `QuestionGate` in `SchreibstubeLink`: every question goes through it. |
+| **The palette modal asked unbounded**, and its timer still asked after it closed. | Its question is aborted and its timer cleared on the next query and on close. |
+| **A question that never settled shut meaning off for the view's life**, silently. | 30 s deadline in the gate: logged, answered `[]`, slot freed. |
+| **A closed panel's rebuild cleared a newer panel's waiting question** (the controller-wide `meaningNext`). | The controller-wide state is gone; each panel aborts only its own question. |
+| **A waiting question ran for text the box had moved past.** | The next text replaces it in the gate's lane, and the panel aborts it. |
+| **A rebuild for the same text dropped the answer and asked again.** | The panel reuses its question by text, asked or answered. |
+| **The answer drew from conversations captured before the await** (principle 7). | Re-read from the store before drawing. |
+| **An unhandled rejection on a throw while drawing.** | The gate never rejects; the drawing step logs with `describeErrorForLog`. |
+| **The "newer one replaces the waiting one" path never ran.** | Replacement is now the gate's lane rule, tested directly. |
+| **Untested: related mode, a hung question, several callers.** | Tests for each, and for the modal. |
+| **architecture.md not updated.** | Updated, with the new module. |
+| **The spec's changelog had no entry for D-83.** | Added. |
+
+**Open.** Not verified on the iPhone.

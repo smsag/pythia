@@ -2,6 +2,7 @@ import type { App } from "obsidian";
 import type { Conversation } from "../models/types";
 import { t } from "../i18n";
 import { resumeDeepLink } from "../utils";
+import { QuestionGate } from "./questionGate";
 
 /**
  * Schreibstube's search by meaning, reached from Pythia (ADR-223, ADR-251).
@@ -24,6 +25,8 @@ export const RELATED_RESULT_LIMIT = 20;
 
 /** The name Pythia registers under, which Schreibstube holds to the plugin id. */
 const SOURCE_ID = "pythia";
+/** Conversation searches replace each other while they wait (ADR-257). */
+const CONVERSATION_SEARCH_LANE = "conversations";
 
 /** Conversations handed over at most, newest first: Schreibstube indexes no
  *  more of one source, and the cursor stays far below its 256 KB bound. */
@@ -203,8 +206,12 @@ export interface SchreibstubeLinkHost {
 export class SchreibstubeLink {
 	private registeredWith: SchreibstubeApi | null = null;
 	private registration: ReturnType<SchreibstubeApi["registerSource"]> | null = null;
+	/** Every question goes through it: one runs at a time (ADR-257). */
+	private readonly gate: QuestionGate;
 
-	constructor(private readonly host: SchreibstubeLinkHost) {}
+	constructor(private readonly host: SchreibstubeLinkHost, deadlineMs?: number) {
+		this.gate = new QuestionGate((message, data) => host.log(message, data), deadlineMs);
+	}
 
 	/** Schreibstube's API, registered with, when it is there at all. */
 	private reach(): SchreibstubeApi | null {
@@ -289,46 +296,53 @@ export class SchreibstubeLink {
 		this.registeredWith = null;
 	}
 
-	/** Ids of the conversations that answer `text` by meaning, best first. */
-	async searchConversations(text: string, limit: number): Promise<string[]> {
-		const api = this.api();
-		if (!api) return [];
-		try {
-			const hits = await api.search(text, { kinds: ["conversation"], sources: [SOURCE_ID], limit });
-			return hits.flatMap((h) => (h.source === SOURCE_ID && h.item ? [h.item] : []));
-		} catch (e) {
-			this.host.log("schreibstube: search failed", e);
-			return [];
-		}
+	/**
+	 * Ids of the conversations that answer `text` by meaning, best first. A
+	 * newer conversation search replaces one still waiting, which is then
+	 * answered `[]`; so is one whose `signal` aborts.
+	 */
+	searchConversations(text: string, limit: number, signal?: AbortSignal): Promise<string[]> {
+		return this.gate.ask(
+			async () => {
+				const api = this.api();
+				if (!api) return [];
+				const hits = await api.search(text, { kinds: ["conversation"], sources: [SOURCE_ID], limit });
+				return hits.flatMap((h) => (h.source === SOURCE_ID && h.item ? [h.item] : []));
+			},
+			[],
+			{ what: "search", lane: CONVERSATION_SEARCH_LANE, signal }
+		);
 	}
 
 	/** Paths of the notes that answer `text` by meaning, best first. */
-	async searchNotes(text: string, limit: number, exclude: string[]): Promise<string[]> {
-		const api = this.api();
-		if (!api) return [];
-		try {
-			const hits = await api.search(text, { kinds: ["note"], limit, exclude });
-			return hits.filter((h) => h.kind === "note").map((h) => h.id);
-		} catch (e) {
-			this.host.log("schreibstube: note search failed", e);
-			return [];
-		}
+	searchNotes(text: string, limit: number, exclude: string[]): Promise<string[]> {
+		return this.gate.ask(
+			async () => {
+				const api = this.api();
+				if (!api) return [];
+				const hits = await api.search(text, { kinds: ["note"], limit, exclude });
+				return hits.filter((h) => h.kind === "note").map((h) => h.id);
+			},
+			[],
+			{ what: "note search" }
+		);
 	}
 
 	/** Conversations like `id`, most alike first. */
-	async related(id: string, limit: number): Promise<{ id: string; score: number }[]> {
-		const api = this.api();
-		if (!api) return [];
-		try {
-			const hits = await api.related(
-				{ source: SOURCE_ID, id },
-				{ kinds: ["conversation"], sources: [SOURCE_ID], limit }
-			);
-			return hits.flatMap((h) => (h.source === SOURCE_ID && h.item ? [{ id: h.item, score: h.score }] : []));
-		} catch (e) {
-			this.host.log("schreibstube: related failed", e);
-			return [];
-		}
+	related(id: string, limit: number, signal?: AbortSignal): Promise<{ id: string; score: number }[]> {
+		return this.gate.ask(
+			async () => {
+				const api = this.api();
+				if (!api) return [];
+				const hits = await api.related(
+					{ source: SOURCE_ID, id },
+					{ kinds: ["conversation"], sources: [SOURCE_ID], limit }
+				);
+				return hits.flatMap((h) => (h.source === SOURCE_ID && h.item ? [{ id: h.item, score: h.score }] : []));
+			},
+			[],
+			{ what: "related", signal }
+		);
 	}
 
 	dispose(): void {

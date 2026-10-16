@@ -428,7 +428,7 @@ export class ConversationService {
 				await view.setActiveConversation(conv);
 			},
 			undefined,
-			(text, limit) => p.searchConversationsByMeaning(text, limit)
+			(text, limit, signal) => p.searchConversationsByMeaning(text, limit, signal)
 		).open();
 	}
 
@@ -539,7 +539,7 @@ export class ConversationService {
 				}).open();
 			},
 			undefined,
-			(text, limit) => p.searchConversationsByMeaning(text, limit)
+			(text, limit, signal) => p.searchConversationsByMeaning(text, limit, signal)
 		).open();
 	}
 }

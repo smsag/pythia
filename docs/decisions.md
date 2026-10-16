@@ -1,6 +1,10 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-11 — ADR-256 (a note can ask to be sent whole with `pythia_full: true`; a web citation that matches no result of its answer is said in a Notice, not only in the debug log).*
+*Last updated: 2026-10-16 — ADR-257 addendum (review of PR #305: the gate moved from the panel into `SchreibstubeLink`, so it holds for every caller and every leaf; a deadline frees it; the palette modal and related mode drop their questions; a rebuild for the same text reuses its question; the answer re-reads the store).*
+
+*Previously: 2026-10-16 — ADR-257 (one search-by-meaning question to Schreibstube at a time from the conversation panel; a newer one replaces a waiting one, a closed panel asks nothing more).*
+
+*Previously: 2026-10-11 — ADR-256 (a note can ask to be sent whole with `pythia_full: true`; a web citation that matches no result of its answer is said in a Notice, not only in the debug log).*
 
 *Previously: 2026-10-04 — ADR-255 (fork from favorites: a fork that carries a snapshot of the source's favorites summary in its own prompt block; the summary is regenerated first when its favorite fingerprint no longer matches; a newer source summary is offered on the fork's pill and taken only on ↻; marked in the navigator's fork tree and the conversation panel; addendum after the PR #290 review: × switches the snapshot off instead of deleting it, one painter for the banner line, a fork complete in its first write, the right leaf, no silent failures, a summary without fingerprint regenerated before forking; addendum 2: commands reveal their leaf, the world re-checked after the regenerate, one fork at a time, the answer language carried, a passage fork inherits the snapshot (`fromId`), the banner repainted by its owner, the new listeners owned by a RenderSlot).*
 
@@ -5554,3 +5558,32 @@ Notable decisions inside the fixes:
 **Not done.** A `full_notes:` list in the template (a second place that names a note, and a stored field to carry through a running conversation). A `read_note` tool for the model (a tool means the model chooses what to read at write time; ADR-178 refuses the same shape for the rewrite target). Linting the CV (a rule for one document type does not belong in the core).
 
 **Guards.** `tests/fullNote.test.ts` (the flag sends the note whole; only an explicit `true`; an app without a metadata cache behaves as before; an auto-retrieved note is never widened; the ceiling holds and the note is marked an excerpt); `tests/toolCallWeb.test.ts` (a Notice naming the count when a citation matches no result, none when all do).
+
+## ADR-257 — One question to Schreibstube at a time from the conversation panel
+
+**Context.** Reported on an iPhone: search in the conversation panel, tap a result, and the conversation does not open; the caret keeps blinking in the field, and a few seconds later Obsidian reloads. With Schreibstube disabled the same search and tap work, so the reload comes from search by meaning (ADR-223). Pythia runs no model (ADR-224), but each question it asks makes Schreibstube run its model on the device. The panel asked after every 300 ms pause in typing, and nothing waited for the previous question, so typing with pauses sent several at once, and closing the panel stopped none of them. A conversation tapped meanwhile is drawn while that work still runs. On a phone, Schreibstube also read and decoded its whole conversation index once per question that arrived before the first read finished (fixed in Schreibstube in the same change).
+
+**Decision.**
+- **At most one question in flight**, held on `HistoryController` rather than per panel, because a question outlives the panel it was asked from. A question asked while one runs waits; a newer one replaces the waiting one, so after the running answer only the latest text is asked.
+- **A question that was waiting is dropped** when the panel closes, the list is rebuilt or related mode takes the list (the existing `listGen` and `stopMeaning`).
+- The debounce, the title rows and how answers are shown are unchanged. Desktop still finds by meaning as you type.
+
+**Not done.** Asking by meaning on a phone only when the person presses something. It may still be needed if the reload persists, and it would change what the panel offers on a phone. Cancelling a question already sent: Schreibstube's API takes no signal (D-83).
+
+**Guards.** `tests/historyPanel.test.ts`: one question at a time, and only the latest text afterwards; a reopened panel waits for a question the closed one left running; a closed panel asks nothing it was waiting to ask. All three fail against the code before this change.
+
+### Addendum — review of PR #305: one gate, in the link
+
+An xhigh review found the panel-level gate too narrow and too fragile:
+
+- **It held per view, not per device.** Two leaves, a view rebuilt while a question ran, the palette modal (Browse / Resume conversations) and the other questions (`related`, `searchNotes` on every send) each asked Schreibstube on their own. **The gate is now `QuestionGate` in `services/questionGate.ts`, owned by `SchreibstubeLink`**, the one reader of Schreibstube, so every question from Pythia goes through it. Conversation searches share a lane: a newer one replaces one still waiting there. Other questions wait in order and are never replaced.
+- **It had no owner that ended it** (principle 8). A question that never settled (Schreibstube reloaded mid-search, a hung model load) left the panel on titles only for the rest of the view's life, silently. **The gate gives a question up after `QUESTION_DEADLINE_MS` (30 s)**, logs it, answers `[]` and frees the slot. Its late answer is ignored.
+- **Questions carry an `AbortSignal`.** An aborted question is answered `[]` at once and never runs if it was waiting. The panel aborts its question on close, on a new text and when related mode takes the list. The palette modal aborts its question and clears its pause timer on the next query and on close, so a tap that closes it within the pause asks nothing. `getRelatedConversations` passes on the signal it was already given.
+- **A rebuild for the same text no longer runs the model twice.** The panel keeps its one question by text, asked or answered. A rebuild for the same text (a row deleted, related mode left) reuses it, and its answer is drawn into the rebuilt list.
+- **Principle 7.** The answer re-reads the conversations from the store before drawing, so a conversation deleted, evicted or merged away while the question waited is not drawn.
+- **Never silent, never unhandled.** The gate never rejects, including when reading Schreibstube's API throws. A throw while drawing the answer is logged with `describeErrorForLog`. The modal logs its failure too.
+- **Simpler.** The controller-wide `meaningBusy` / `meaningNext` are gone. That also removes a closed panel's rebuild clearing a newer panel's waiting question.
+
+Schreibstube changed alongside it (smsag/schreibstube#364): a source's searches run one after another, and the same question shares one answer. The stored conversation index is read once for every waiter; a stalled read is given up at 20 s, a failed one is tried once more, and an undecodable one is logged. A phone reads the index again when sync replaced it. Re-registration waits for a read in progress.
+
+**Guards.** `tests/questionGate.test.ts` (one at a time; lane replacement; lanes do not cross; an aborted waiting question never runs; an aborted running one answers at once and holds the slot; the deadline frees the slot and logs; never rejects). `tests/schreibstubeLink.test.ts` (one question at a time across search, notes and related; only the latest of typed searches from any caller; a dropped question is never asked; an API that throws answers `[]`). `tests/historyPanel.test.ts` (close, a new text and related mode drop the question; a same-text rebuild reuses it and shows its answer; a conversation deleted meanwhile is not drawn). `tests/conversationSuggest.test.ts` (nothing asked after a close inside the pause; close and a newer query drop the question). Each of these fails against the code before the addendum.

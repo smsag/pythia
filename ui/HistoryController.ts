@@ -25,6 +25,7 @@ import { attachOutsideDismiss } from "./outsideDismiss";
 import { RelatedMode } from "./RelatedMode";
 import { makeKeyActivatable } from "./keyActivate";
 import { forkKind } from "../services/favoritesFork";
+import { describeErrorForLog } from "../services/redact";
 
 /**
  * Conversation rows drawn per page of the browse listing (ADR-174). A source
@@ -273,9 +274,19 @@ export class HistoryController {
 		/** Bumped by every list build, by related mode taking the list and by
 		 *  close: a "by meaning" answer from an older generation is dropped. */
 		let listGen = 0;
-		const stopMeaning = (): void => {
+		// The question this panel asked by meaning. One at a time across Pythia
+		// is the link's rule (ADR-257); the panel's part is to ask nothing it no
+		// longer needs. A rebuild for the same text reuses the question — asked
+		// or answered — instead of running the model for it again.
+		let meaningAsked: { text: string; answer: Promise<string[]>; abort: AbortController } | null = null;
+		/** Drop the pending answer; abort the question unless it is for `keep`. */
+		const stopMeaning = (keep?: string | null): void => {
 			listGen++;
 			if (meaningTimer !== null) { clearTimeout(meaningTimer); meaningTimer = null; }
+			if (meaningAsked && meaningAsked.text !== keep) {
+				meaningAsked.abort.abort();
+				meaningAsked = null;
+			}
 		};
 		let selectedIdx = 0;
 		const paintSelection = () => {
@@ -429,9 +440,10 @@ export class HistoryController {
 			// answer, the conversations it finds by meaning join below them after
 			// a pause in typing; the title rows never wait for it. The date-grouped
 			// layout resumes when the box is empty.
-			stopMeaning();
-			const gen = listGen;
 			const search = q ? searchTitles(query, all) : null;
+			const text = search && search.queryTokens.length > 0 ? meaningQuery(query) : null;
+			stopMeaning(text);
+			const gen = listGen;
 			if (search && search.queryTokens.length > 0) {
 				const addRow = (conv: Conversation) => {
 					const isFork = !!conv.forkedFromId && byId.has(conv.forkedFromId);
@@ -442,25 +454,35 @@ export class HistoryController {
 				empty.hidden = search.hits.length > 0;
 				paintSelection();
 
-				const text = meaningQuery(query);
 				if (text) {
-					meaningTimer = setTimeout(() => {
-						meaningTimer = null;
-						// Null when Schreibstube is not there to ask (ADR-223).
-						const asked = this.d.plugin.searchConversationsByMeaning(text, SEARCH_RESULT_LIMIT);
-						if (!asked) return;
-						void asked.then((ids) => {
+					const ask = (): void => {
+						if (gen !== listGen || !overlay.isConnected) return;
+						let answer = meaningAsked?.text === text ? meaningAsked.answer : null;
+						if (!answer) {
+							const abort = new AbortController();
+							// Null when Schreibstube is not there to ask (ADR-223).
+							answer = this.d.plugin.searchConversationsByMeaning(text, SEARCH_RESULT_LIMIT, abort.signal);
+							if (!answer) return;
+							meaningAsked = { text, answer, abort };
+						}
+						answer.then((ids) => {
 							// The box moved on, related mode took the list, or the panel
 							// closed: this answer is stale.
 							if (gen !== listGen || !overlay.isConnected || input.value !== query) return;
-							const extra = meaningOnly(search.hits, ids, byId).filter(selectable);
+							// Re-read after the await (principle 7): a conversation deleted,
+							// evicted or merged away meanwhile is not drawn.
+							const live = new Map(this.d.plugin.conversations.map((c) => [c.id, c]));
+							const extra = meaningOnly(search.hits, ids, live).filter(selectable);
 							if (extra.length === 0) return;
 							empty.hidden = true;
 							listEl.createDiv({ cls: "p-history-group", text: t("histMeaningGroup") });
 							for (const conv of extra) addRow(conv);
 							paintSelection();
+						}).catch((e: unknown) => {
+							console.warn("[Pythia] search by meaning: could not show the answer", describeErrorForLog(e));
 						});
-					}, MEANING_DEBOUNCE_MS);
+					};
+					meaningTimer = setTimeout(() => { meaningTimer = null; ask(); }, MEANING_DEBOUNCE_MS);
 				}
 				return;
 			}

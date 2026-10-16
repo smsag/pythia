@@ -101,15 +101,15 @@ export default class PythiaPlugin extends Plugin {
 
 	/** Conversations semantically related to `sourceId`, most-similar first
 	 *  (ADR-109) — answered by Schreibstube, or not at all (ADR-224). */
-	getRelatedConversations(sourceId: string, _signal?: AbortSignal): Promise<{ id: string; score: number }[]> {
-		return this.schreibstube.related(sourceId, RELATED_RESULT_LIMIT);
+	getRelatedConversations(sourceId: string, signal?: AbortSignal): Promise<{ id: string; score: number }[]> {
+		return this.schreibstube.related(sourceId, RELATED_RESULT_LIMIT, signal);
 	}
 
 	/** Ids of conversations that answer `text` by meaning, or null when
 	 *  Schreibstube is not there to ask — the search then stays with titles. */
-	searchConversationsByMeaning(text: string, limit: number): Promise<string[]> | null {
+	searchConversationsByMeaning(text: string, limit: number, signal?: AbortSignal): Promise<string[]> | null {
 		if (!this.schreibstube.available()) return null;
-		return this.schreibstube.searchConversations(text, limit);
+		return this.schreibstube.searchConversations(text, limit, signal);
 	}
 
 	override async onload(): Promise<void> {
