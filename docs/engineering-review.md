@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-16 — **The panel tap fell through onto the chat (ADR-258).** The reload on the iPhone came from the tap, not the search: a row now opens on the end of the touch and cancels the rest of it.*
+*Updated: 2026-10-16 — **The iPhone freeze was a Vizardry canvas, not the tap (ADR-258 addendum).** It followed one conversation, a fork holding Vizardry blocks. In sketch mode, WebKit took 16–24 s to paint each one. Fixed in Vizardry. The tap and Schreibstube were wrong leads.*
+
+*Previously, 2026-10-16 — **The panel tap fell through onto the chat (ADR-258).** The reload on the iPhone came from the tap, not the search: a row now opens on the end of the touch and cancels the rest of it.*
 
 *Previously: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
 
@@ -2284,3 +2286,23 @@ An xhigh review of the first version. Twelve findings, all addressed in the same
 **Lesson.** A scenario's precondition ("has searched") is not its cause. The first question should have been the one that split the path: does it happen without the search? It was asked, and not answered before the fix shipped.
 
 **Open.** Not verified on the iPhone at the time of writing. A separate report in the same session, image descriptions rewritten and the vault re-indexed again and again, points at Schreibstube's `PictureArticleLinker` (a locale-dependent list order written from every device). Tracked in Schreibstube, not here.
+
+## Bug — the iPhone freeze was a Vizardry canvas, not the tap or Schreibstube (ADR-258 addendum), 2026-10-16
+
+**What ADR-257 and ADR-258 got wrong.** Both took the path the reporter used as the cause: first the search, then the tap. Neither release changed the symptom. Splitting by conversation settled it. One fork froze from the panel, from the command search and with no search typed, with Schreibstube disabled and with search by meaning off. Every other conversation opened, and the Mac opened that fork.
+
+**How it was isolated.**
+1. **Pythia's text processing:** every pattern the render path runs, timed under JavaScriptCore over the reporter's real `data.json`: at most 39 ms per conversation. The regex lead in the handoff is ruled out.
+2. **Pythia's view:** all 47 real conversations opened through the view harness, desktop and mobile settings: at most 18 ms each, the fork 4–5 ms. The fork structure and Pythia's panel are ruled out.
+3. **The fork's content:** the only content no other conversation had was three Vizardry framework types, `compass`, `ost` and `story`.
+4. **On the device:** a note holding only the fork's `ost` block froze the iPhone the same way, with Pythia not involved.
+5. **In WebKit:** Playwright WebKit at phone size with the vault's sketch mode on: 16–24 s to paint one canvas, 0.2 s in Chromium.
+
+**Cause.** Since Vizardry 0.74.0, sketch mode applied its wobble filter to every SVG shape with a fixed 200 000 × 200 000 region. WebKit computes the whole region for each shape.
+
+**Fix.** In Vizardry (branch `claude/sketch-filter-webkit-hang`, Vizardry ADR-029): each shape's own box as the region (0.2–0.6 s in WebKit). Flat strokes, which such a box hides, are left unfiltered. Nothing changes in Pythia: `attachTap` (ADR-258) and the single question to Schreibstube (ADR-257) are sound and stay.
+
+**Lesson.** For a freeze on one platform, first establish whether it follows the content, the path or the device. Here, *which conversation?* would have split it at once. A block another plugin renders is part of what Pythia draws.
+
+**Open.** The Vizardry fix has not been verified on the iPhone yet.
+

@@ -600,7 +600,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
 - **Auto-focus the input on desktop only.** On mobile the soft keyboard overlays the webview, so focusing on open hides the last conversations behind it. `Platform.isMobile` gates it
-- **A row opens through `attachTap`, never a bare click** (ADR-258). The row closes the panel; a click let the rest of an iOS tap fall through onto the chat, which with Schreibstube enabled froze and reloaded Obsidian
+- **A row opens through `attachTap`, never a bare click** (ADR-258). The row closes the panel, and a click would let the rest of an iOS tap act on the chat it uncovered. That was NOT the iPhone freeze and reload ADR-258 was written for: that was a Vizardry canvas in sketch mode, which WebKit took 16–24 s to paint (ADR-258 addendum). A code block that another plugin renders in an answer is part of what Pythia draws.
 - Pad `.p-history-list` with `keyboardOverlap()` from `ui/keyboardInset.ts` — **never re-derive that arithmetic locally**. The copy that did dropped `MIN_KEYBOARD_INSET` and padded the list at rest (ADR-152)
 
 ### Model comparison (ADR-160)
