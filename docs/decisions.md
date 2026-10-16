@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-16 — ADR-257 (one search-by-meaning question to Schreibstube at a time from the conversation panel; a newer one replaces a waiting one, a closed panel asks nothing more).*
+*Last updated: 2026-10-16 — ADR-257 addendum (review of PR #305: the gate moved from the panel into `SchreibstubeLink`, so it holds for every caller and every leaf; a deadline frees it; the palette modal and related mode drop their questions; a rebuild for the same text reuses its question; the answer re-reads the store).*
+
+*Previously: 2026-10-16 — ADR-257 (one search-by-meaning question to Schreibstube at a time from the conversation panel; a newer one replaces a waiting one, a closed panel asks nothing more).*
 
 *Previously: 2026-10-11 — ADR-256 (a note can ask to be sent whole with `pythia_full: true`; a web citation that matches no result of its answer is said in a Notice, not only in the debug log).*
 
@@ -5569,3 +5571,19 @@ Notable decisions inside the fixes:
 **Not done.** Asking by meaning on a phone only when the person presses something. It may still be needed if the reload persists, and it would change what the panel offers on a phone. Cancelling a question already sent: Schreibstube's API takes no signal (D-83).
 
 **Guards.** `tests/historyPanel.test.ts`: one question at a time, and only the latest text afterwards; a reopened panel waits for a question the closed one left running; a closed panel asks nothing it was waiting to ask. All three fail against the code before this change.
+
+### Addendum — review of PR #305: one gate, in the link
+
+An xhigh review found the panel-level gate too narrow and too fragile:
+
+- **It held per view, not per device.** Two leaves, a view rebuilt while a question ran, the palette modal (Browse / Resume conversations) and the other questions (`related`, `searchNotes` on every send) each asked Schreibstube on their own. **The gate is now `QuestionGate` in `services/questionGate.ts`, owned by `SchreibstubeLink`**, the one reader of Schreibstube, so every question from Pythia goes through it. Conversation searches share a lane: a newer one replaces one still waiting there. Other questions wait in order and are never replaced.
+- **It had no owner that ended it** (principle 8). A question that never settled (Schreibstube reloaded mid-search, a hung model load) left the panel on titles only for the rest of the view's life, silently. **The gate gives a question up after `QUESTION_DEADLINE_MS` (30 s)**, logs it, answers `[]` and frees the slot. Its late answer is ignored.
+- **Questions carry an `AbortSignal`.** An aborted question is answered `[]` at once and never runs if it was waiting. The panel aborts its question on close, on a new text and when related mode takes the list. The palette modal aborts its question and clears its pause timer on the next query and on close, so a tap that closes it within the pause asks nothing. `getRelatedConversations` passes on the signal it was already given.
+- **A rebuild for the same text no longer runs the model twice.** The panel keeps its one question by text, asked or answered. A rebuild for the same text (a row deleted, related mode left) reuses it, and its answer is drawn into the rebuilt list.
+- **Principle 7.** The answer re-reads the conversations from the store before drawing, so a conversation deleted, evicted or merged away while the question waited is not drawn.
+- **Never silent, never unhandled.** The gate never rejects, including when reading Schreibstube's API throws. A throw while drawing the answer is logged with `describeErrorForLog`. The modal logs its failure too.
+- **Simpler.** The controller-wide `meaningBusy` / `meaningNext` are gone. That also removes a closed panel's rebuild clearing a newer panel's waiting question.
+
+Schreibstube changed alongside it (smsag/schreibstube#364): a source's searches run one after another, and the same question shares one answer. The stored conversation index is read once for every waiter; a stalled read is given up at 20 s, a failed one is tried once more, and an undecodable one is logged. A phone reads the index again when sync replaced it. Re-registration waits for a read in progress.
+
+**Guards.** `tests/questionGate.test.ts` (one at a time; lane replacement; lanes do not cross; an aborted waiting question never runs; an aborted running one answers at once and holds the slot; the deadline frees the slot and logs; never rejects). `tests/schreibstubeLink.test.ts` (one question at a time across search, notes and related; only the latest of typed searches from any caller; a dropped question is never asked; an API that throws answers `[]`). `tests/historyPanel.test.ts` (close, a new text and related mode drop the question; a same-text rebuild reuses it and shows its answer; a conversation deleted meanwhile is not drawn). `tests/conversationSuggest.test.ts` (nothing asked after a close inside the pause; close and a newer query drop the question). Each of these fails against the code before the addendum.

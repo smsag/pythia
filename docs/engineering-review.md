@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
+*Updated: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
+
+*Previously: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
 
 *Previously: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
 
@@ -2242,3 +2244,24 @@ An xhigh review after the merge. Nine findings, all addressed in one follow-up.
 **Fix.** Pythia: one question in flight, a newer one replacing a waiting one, nothing asked after close (ADR-257). Schreibstube: concurrent reads of the conversation index share one read.
 
 **Open.** Not verified on the iPhone. If it still reloads, the next step is to ask by meaning on a phone only when the person presses something, and to read Schreibstube's `semantic engine: search` debug line for the load and embed times.
+
+## Review — PR #305, one question to Schreibstube at a time, 2026-10-16
+
+An xhigh review of the first version. Twelve findings, all addressed in the same PR (ADR-257 addendum). A review of the companion Schreibstube PR (#364) raised four of them again from that side, and its own findings are fixed there.
+
+| Finding | Fix |
+|---|---|
+| **The gate held per view**, not across leaves, a rebuilt view, the palette modal, `related` or `searchNotes`. | `QuestionGate` in `SchreibstubeLink`: every question goes through it. |
+| **The palette modal asked unbounded**, and its timer still asked after it closed. | Its question is aborted and its timer cleared on the next query and on close. |
+| **A question that never settled shut meaning off for the view's life**, silently. | 30 s deadline in the gate: logged, answered `[]`, slot freed. |
+| **A closed panel's rebuild cleared a newer panel's waiting question** (the controller-wide `meaningNext`). | The controller-wide state is gone; each panel aborts only its own question. |
+| **A waiting question ran for text the box had moved past.** | The next text replaces it in the gate's lane, and the panel aborts it. |
+| **A rebuild for the same text dropped the answer and asked again.** | The panel reuses its question by text, asked or answered. |
+| **The answer drew from conversations captured before the await** (principle 7). | Re-read from the store before drawing. |
+| **An unhandled rejection on a throw while drawing.** | The gate never rejects; the drawing step logs with `describeErrorForLog`. |
+| **The "newer one replaces the waiting one" path never ran.** | Replacement is now the gate's lane rule, tested directly. |
+| **Untested: related mode, a hung question, several callers.** | Tests for each, and for the modal. |
+| **architecture.md not updated.** | Updated, with the new module. |
+| **The spec's changelog had no entry for D-83.** | Added. |
+
+**Open.** Not verified on the iPhone.

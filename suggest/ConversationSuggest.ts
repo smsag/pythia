@@ -14,6 +14,7 @@ import {
 	SEARCH_RESULT_LIMIT,
 } from "../services/conversationFinder";
 import { formatDate } from "../services/messageUtils";
+import { describeErrorForLog } from "../services/redact";
 
 export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	private conversations: Conversation[];
@@ -21,7 +22,7 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	private onChoose: (conv: Conversation) => void;
 	private onDelete?: (conv: Conversation) => void;
 	/** Schreibstube's search by meaning, or null when it is not there (ADR-223). */
-	private searchByMeaning?: (text: string, limit: number) => Promise<string[]> | null;
+	private searchByMeaning?: (text: string, limit: number, signal?: AbortSignal) => Promise<string[]> | null;
 	/** Searchable fields by conversation id, built on first use: the snippet
 	 *  needs a conversation's tokenized lines, and most rows are never drawn. */
 	private fieldsById = new Map<string, ConversationFields>();
@@ -30,13 +31,17 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	private queryTokens: string[] = [];
 	/** The latest query, so an answer that arrives after the next keystroke is dropped. */
 	private latest = "";
+	/** The pause before asking by meaning, and the question asked (ADR-257):
+	 *  both end with the next query and with the modal. */
+	private meaningTimer: ReturnType<typeof setTimeout> | null = null;
+	private meaningAbort: AbortController | null = null;
 
 	constructor(
 		app: App,
 		conversations: Conversation[],
 		onChoose: (conv: Conversation) => void,
 		onDelete?: (conv: Conversation) => void,
-		searchByMeaning?: (text: string, limit: number) => Promise<string[]> | null
+		searchByMeaning?: (text: string, limit: number, signal?: AbortSignal) => Promise<string[]> | null
 	) {
 		super(app);
 		this.conversations = conversations;
@@ -56,6 +61,7 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 	 *  after a pause in typing, what it finds by meaning below them. */
 	getSuggestions(query: string): Conversation[] | Promise<Conversation[]> {
 		this.latest = query;
+		this.stopMeaning();
 		const { queryTokens, hits } = searchTitles(query, this.conversations);
 		this.queryTokens = queryTokens;
 		// Nothing typed: the newest, as the palette always opened.
@@ -67,16 +73,40 @@ export class ConversationSuggestModal extends SuggestModal<Conversation> {
 		const text = meaningQuery(query);
 		if (!text || !this.searchByMeaning) return hits;
 		return new Promise((resolve) => {
-			setTimeout(() => {
-				// Superseded: never settle, so an old list cannot land over a newer one.
-				if (this.latest !== query) return;
-				const asked = this.searchByMeaning?.(text, SEARCH_RESULT_LIMIT);
+			this.meaningTimer = setTimeout(() => {
+				this.meaningTimer = null;
+				const abort = new AbortController();
+				this.meaningAbort = abort;
+				const asked = this.searchByMeaning?.(text, SEARCH_RESULT_LIMIT, abort.signal);
 				if (!asked) return resolve(hits);
 				void asked
-					.then((ids) => resolve([...hits, ...meaningOnly(hits, ids, this.byId)]))
-					.catch(() => resolve(hits));
+					.then((ids) => {
+						// Superseded or closed: never settle, so an old list cannot
+						// land over a newer one.
+						if (abort.signal.aborted || this.latest !== query) return;
+						resolve([...hits, ...meaningOnly(hits, ids, this.byId)]);
+					})
+					.catch((e: unknown) => {
+						console.warn("[Pythia] search by meaning failed", describeErrorForLog(e));
+						resolve(hits);
+					});
 			}, MEANING_DEBOUNCE_MS);
 		});
+	}
+
+	/** Nothing asked after the next keystroke or after the modal closed. */
+	private stopMeaning(): void {
+		if (this.meaningTimer !== null) {
+			clearTimeout(this.meaningTimer);
+			this.meaningTimer = null;
+		}
+		this.meaningAbort?.abort();
+		this.meaningAbort = null;
+	}
+
+	override onClose(): void {
+		super.onClose();
+		this.stopMeaning();
 	}
 
 	renderSuggestion(conv: Conversation, el: HTMLElement): void {
