@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-16 — ADR-258 (a conversation row in the panel opens on the end of a touch and cancels the rest of it, so the tap does not fall through onto the chat the closing panel uncovers).*
+*Last updated: 2026-10-16 — ADR-258 addendum: the iPhone freeze was a Vizardry canvas in sketch mode, not the tap and not Schreibstube. `attachTap` stays on its own merits.*
+
+*Previously, 2026-10-16 — ADR-258 (a conversation row in the panel opens on the end of a touch and cancels the rest of it, so the tap does not fall through onto the chat the closing panel uncovers).*
 
 *Previously: 2026-10-16 — ADR-257 addendum (review of PR #305: the gate moved from the panel into `SchreibstubeLink`, so it holds for every caller and every leaf; a deadline frees it; the palette modal and related mode drop their questions; a rebuild for the same text reuses its question; the answer re-reads the store).*
 
@@ -5592,6 +5594,8 @@ Schreibstube changed alongside it (smsag/schreibstube#364): a source's searches 
 
 ## ADR-258 — A row that closes the panel takes the tap where it ends
 
+> **The cause below is wrong; see the addendum at the end.** The freeze was a Vizardry canvas in sketch mode, which WebKit took 16–24 s to paint. `attachTap` stays on its own merits.
+
 **Context.** The iPhone reload of ADR-257 was not the search. The reporter opened the panel *without searching*, tapped a conversation, and got the same freeze and reload. The caret appeared where they had tapped, and only with Schreibstube enabled. The same conversation opened from the command palette, through the same `setActiveConversation`, worked. With an empty conversation under the panel, every row opened fine. So the cause was the tap, not the opening: the row closed the panel inside its click handler, and WebKit, which hit-tests again for its own tap handling after the synthesized click, applied the rest of the gesture to the chat text the panel had just uncovered. ADR-257's gate stays: it is correct on its own, but it did not touch this path.
 
 **Decision.**
@@ -5601,3 +5605,20 @@ Schreibstube changed alongside it (smsag/schreibstube#364): a source's searches 
 **Not known.** Which element under the finger Schreibstube makes fatal is not established. The device log would say; the fix does not depend on it, because no tap reaches the chat any more.
 
 **Guards.** `tests/tapActivate.test.ts` (a touch opens and is cancelled; the click echo does not open twice; a moved touch is a scroll and is not cancelled; a click opens; a refused tap is still cancelled; a cancelled touch does nothing). `tests/historyPanel.test.ts`: a touch on a row opens it and its `touchend` is cancelled, which fails against the click handler.
+
+### Addendum — the cause was a Vizardry canvas, not the tap (2026-10-16)
+
+**The cause recorded above is wrong.** Later tests on the device ruled it out. The freeze followed one conversation, a fork, wherever it was opened from: the panel, the command search, or with no search typed. It still happened with Schreibstube disabled and with search by meaning off. Every other conversation opened. The Mac opened the same fork without trouble. The earlier observations above (it only happened with Schreibstube enabled, every row failed, the palette worked) were not reproduced once the tests were split by conversation.
+
+**What it was.** The fork's answers held three ` ```vizardry ` blocks. Obsidian's Markdown renderer hands those to the Vizardry plugin inside Pythia's panel. A note holding only the fork's `ost` block froze the iPhone the same way, with Pythia not involved. Since Vizardry 0.74.0 (its commit 563be02), its sketch mode applied its wobble filter (`feTurbulence` → `feDisplacementMap`) to every SVG shape with a fixed 200 000 × 200 000 user-space filter region. Chromium processes only the painted part. WebKit computes the whole region for every shape. Measured in Playwright WebKit at phone size: 16–24 s to paint one canvas, against 0.2 s in Chromium. On an iPhone, iOS ends the page before it finishes, which is the caret still blinking, then a reload. The fix is in Vizardry (branch `claude/sketch-filter-webkit-hang`, its ADR-029): the region is each shape's own box again (0.2–0.6 s in WebKit), and perfectly horizontal or vertical strokes, which such a box would hide, are left unfiltered.
+
+**How it was found.** Pythia's own paths were ruled out first, each against the reporter's real `data.json`:
+- every pattern the render path runs over a message, timed under JavaScriptCore: at most 39 ms per conversation;
+- opening all 47 conversations through the view harness, desktop and mobile settings: at most 18 ms, the fork 4–5 ms;
+- the fork's content, compared with every other conversation: the only content no other conversation had was three Vizardry framework types (`compass`, `ost`, `story`).
+
+The test note then isolated the `ost` block, and sketch mode was on in the vault.
+
+**`attachTap` stays.** It did not fix this, but what it does is right on its own terms. A control that removes its own surface should not let the rest of an iOS tap act on what it uncovered: WebKit does hit-test again after the synthesized click. It costs one helper and its tests, and the row's long-press and momentum rules would be needed with any handler. Its guards stay as they are. ADR-257's single question to Schreibstube stays for the same reason.
+
+**Lesson, again.** ADR-257 and this ADR each took the reporter's path as the cause: first the search, then the tap. The question that split the problem was *which conversation*, and it was asked only after both releases. Before a fix ships for a freeze on one platform, establish whether it follows the content, the path, or the device. A Markdown block owned by another plugin is part of what Pythia draws, and part of the search.
