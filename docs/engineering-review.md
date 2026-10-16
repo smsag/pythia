@@ -1,6 +1,8 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
+*Updated: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
+
+*Previously: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
 
 *Previously: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
 
@@ -2228,3 +2230,15 @@ An xhigh review after the merge. Nine findings, all addressed in one follow-up.
 | **German closing quotes `“` and `«` (and `’`, `]`) never closed one.** | Added to the closers. |
 | **A sentence opening with a number merged into the one before.** | A stop followed by a number is a boundary when the word before it cannot be an abbreviation: five or more letters, or a symbol such as `€`. `ca. 5`, `Abs. 2` and `inkl. 19` still do not split. **A lowercase start still never ends a sentence**, deliberately: `z.B. die` and `bzw. der` are far more common in a German summary than a sentence opening with `iPhone`. |
 | **`firstSentences(text, 0)` returned the whole text.** | It returns `""`, as before PR #296. |
+
+## Bug — a tap on a search result reloaded Obsidian on the iPhone (ADR-257), 2026-10-16
+
+**Symptom.** Reported as a scenario: in the sidebar, search for a conversation, tap a result. The conversation does not open, the caret keeps blinking as if the field still had focus, and a few seconds later Obsidian reloads.
+
+**Isolation.** Pythia's own path (search, tap, open) passes in the view harness on desktop and mobile settings. On the device, the reload stops when Schreibstube is disabled (confirmed by the reporter). So the trigger is search by meaning, which runs Schreibstube's model on the phone.
+
+**Cause (from reading both codebases; not measured on the device).** (a) The panel asked Schreibstube after every 300 ms pause in typing, with no limit on questions in flight, and a closed panel did not stop them. (b) In Schreibstube, `ConversationIndex.load` had no guard for a read already under way, so every question that arrived before the first read finished read and decoded the whole stored index again, several copies at once. A frozen main thread fits a tap that does nothing while the caret keeps blinking; the reload fits iOS ending the process at its memory limit, as in #344.
+
+**Fix.** Pythia: one question in flight, a newer one replacing a waiting one, nothing asked after close (ADR-257). Schreibstube: concurrent reads of the conversation index share one read.
+
+**Open.** Not verified on the iPhone. If it still reloads, the next step is to ask by meaning on a phone only when the person presses something, and to read Schreibstube's `semantic engine: search` debug line for the load and embed times.

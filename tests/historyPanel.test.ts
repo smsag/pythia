@@ -517,6 +517,73 @@ describe("title search and search by meaning (ADR-223)", () => {
 		expect(historyRows(pane)).toHaveLength(0);
 	});
 
+	it("asks one question at a time, and only the latest text after it (ADR-257)", async () => {
+		await seed();
+		const asked: string[] = [];
+		const answers: ((ids: string[]) => void)[] = [];
+		plugin.searchConversationsByMeaning = (text) => {
+			asked.push(text);
+			return new Promise((r) => answers.push(r));
+		};
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "küche");
+		await afterMeaning();
+		await search(pane, "küchen");
+		await afterMeaning();
+		await search(pane, "küchenplan");
+		await afterMeaning();
+		expect(asked).toEqual(["küche"]);                             // the rest wait
+
+		answers[0]([]);
+		await tick();
+		expect(asked).toEqual(["küche", "küchenplan"]);               // the middle one was replaced
+	});
+
+	it("a reopened panel waits for a question the closed one left running (ADR-257)", async () => {
+		await seed();
+		const asked: string[] = [];
+		const answers: ((ids: string[]) => void)[] = [];
+		plugin.searchConversationsByMeaning = (text) => {
+			asked.push(text);
+			return new Promise((r) => answers.push(r));
+		};
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "küche");
+		await afterMeaning();
+		open(view);                                                   // toggles shut
+		open(view);
+		await search(pane, "quartz uhr");
+		await afterMeaning();
+		expect(asked).toEqual(["küche"]);
+
+		answers[0]([]);
+		await tick();
+		expect(asked).toEqual(["küche", "quartz uhr"]);
+	});
+
+	it("a closed panel asks nothing it was still waiting to ask (ADR-257)", async () => {
+		await seed();
+		const asked: string[] = [];
+		const answers: ((ids: string[]) => void)[] = [];
+		plugin.searchConversationsByMeaning = (text) => {
+			asked.push(text);
+			return new Promise((r) => answers.push(r));
+		};
+		const { view, pane } = await mountView(plugin);
+		open(view);
+		await search(pane, "küche");
+		await afterMeaning();
+		await search(pane, "küchen");
+		await afterMeaning();
+		open(view);                                                   // closed with "küchen" waiting
+
+		answers[0]([]);
+		await tick();
+		expect(asked).toEqual(["küche"]);
+	});
+
 	it("never offers the conversation being linked from, whoever found it (ADR-143)", async () => {
 		await seed();
 		const self = idOf("Einrichtung Seestraße");

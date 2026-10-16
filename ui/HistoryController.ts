@@ -80,6 +80,16 @@ export interface HistoryDeps {
  */
 export class HistoryController {
 	private historyCleanup: (() => void) | null = null;
+	/**
+	 * One question to Schreibstube at a time (ADR-257). Each one runs its
+	 * model, and on a phone several at once — one per pause in typing — took
+	 * Obsidian past the memory iOS allows it. A question asked while one runs
+	 * waits, and a newer one replaces it, so only the latest text is asked.
+	 * Held here rather than per panel: a question outlives the panel it was
+	 * asked from, and a reopened panel must wait for it too.
+	 */
+	private meaningBusy = false;
+	private meaningNext: (() => void) | null = null;
 
 	constructor(private readonly d: HistoryDeps) {}
 
@@ -275,6 +285,7 @@ export class HistoryController {
 		let listGen = 0;
 		const stopMeaning = (): void => {
 			listGen++;
+			this.meaningNext = null;
 			if (meaningTimer !== null) { clearTimeout(meaningTimer); meaningTimer = null; }
 		};
 		let selectedIdx = 0;
@@ -444,11 +455,14 @@ export class HistoryController {
 
 				const text = meaningQuery(query);
 				if (text) {
-					meaningTimer = setTimeout(() => {
-						meaningTimer = null;
+					const ask = (): void => {
+						// Superseded or closed while it waited: nothing to ask.
+						if (gen !== listGen || !overlay.isConnected) return;
+						if (this.meaningBusy) { this.meaningNext = ask; return; }
 						// Null when Schreibstube is not there to ask (ADR-223).
 						const asked = this.d.plugin.searchConversationsByMeaning(text, SEARCH_RESULT_LIMIT);
 						if (!asked) return;
+						this.meaningBusy = true;
 						void asked.then((ids) => {
 							// The box moved on, related mode took the list, or the panel
 							// closed: this answer is stale.
@@ -459,8 +473,14 @@ export class HistoryController {
 							listEl.createDiv({ cls: "p-history-group", text: t("histMeaningGroup") });
 							for (const conv of extra) addRow(conv);
 							paintSelection();
+						}).finally(() => {
+							this.meaningBusy = false;
+							const next = this.meaningNext;
+							this.meaningNext = null;
+							next?.();
 						});
-					}, MEANING_DEBOUNCE_MS);
+					};
+					meaningTimer = setTimeout(() => { meaningTimer = null; ask(); }, MEANING_DEBOUNCE_MS);
 				}
 				return;
 			}
