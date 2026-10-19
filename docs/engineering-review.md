@@ -1,6 +1,14 @@
 # Engineering Review — Pythia
 
-*Updated: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
+*Updated: 2026-10-16 — **The iPhone freeze was a Vizardry canvas, not the tap (ADR-258 addendum).** It followed one conversation, a fork holding Vizardry blocks. In sketch mode, WebKit took 16–24 s to paint each one. Fixed in Vizardry. The tap and Schreibstube were wrong leads.*
+
+*Previously, 2026-10-16 — **The panel tap fell through onto the chat (ADR-258).** The reload on the iPhone came from the tap, not the search: a row now opens on the end of the touch and cancels the rest of it.*
+
+*Previously: 2026-10-16 — **Review of PR #305 (ADR-257 addendum): twelve findings fixed.** Every question to Schreibstube now goes through one gate in `SchreibstubeLink`, whoever asks, with a deadline; the palette modal and related mode drop their questions.*
+
+*Previously: 2026-10-16 — **Obsidian reloaded on the iPhone after a tap on a search result (ADR-257).** The conversation panel now asks Schreibstube one search-by-meaning question at a time.*
+
+*Previously: 2026-10-10 — **Review of PR #296: nine findings fixed.** The design tokens are declared on `body`, the type scale no longer shadows Obsidian's, and the sentence cut understands Spanish, German quotes and a sentence that opens with a number.*
 
 *Previously: 2026-10-10 — **The note-anchor card lost its inset and cut its summary mid-number.** The spacing tokens now reach every Pythia root; a summary ends at a sentence, never at the dot in "58.156".*
 
@@ -2228,3 +2236,73 @@ An xhigh review after the merge. Nine findings, all addressed in one follow-up.
 | **German closing quotes `“` and `«` (and `’`, `]`) never closed one.** | Added to the closers. |
 | **A sentence opening with a number merged into the one before.** | A stop followed by a number is a boundary when the word before it cannot be an abbreviation: five or more letters, or a symbol such as `€`. `ca. 5`, `Abs. 2` and `inkl. 19` still do not split. **A lowercase start still never ends a sentence**, deliberately: `z.B. die` and `bzw. der` are far more common in a German summary than a sentence opening with `iPhone`. |
 | **`firstSentences(text, 0)` returned the whole text.** | It returns `""`, as before PR #296. |
+
+## Bug — a tap on a search result reloaded Obsidian on the iPhone (ADR-257), 2026-10-16
+
+**Symptom.** Reported as a scenario: in the sidebar, search for a conversation, tap a result. The conversation does not open, the caret keeps blinking as if the field still had focus, and a few seconds later Obsidian reloads.
+
+**Isolation.** Pythia's own path (search, tap, open) passes in the view harness on desktop and mobile settings. On the device, the reload stops when Schreibstube is disabled (confirmed by the reporter). So the trigger is search by meaning, which runs Schreibstube's model on the phone.
+
+**Cause (from reading both codebases; not measured on the device).** (a) The panel asked Schreibstube after every 300 ms pause in typing, with no limit on questions in flight, and a closed panel did not stop them. (b) In Schreibstube, `ConversationIndex.load` had no guard for a read already under way, so every question that arrived before the first read finished read and decoded the whole stored index again, several copies at once. A frozen main thread fits a tap that does nothing while the caret keeps blinking; the reload fits iOS ending the process at its memory limit, as in #344.
+
+**Fix.** Pythia: one question in flight, a newer one replacing a waiting one, nothing asked after close (ADR-257). Schreibstube: concurrent reads of the conversation index share one read.
+
+**Open.** Not verified on the iPhone. If it still reloads, the next step is to ask by meaning on a phone only when the person presses something, and to read Schreibstube's `semantic engine: search` debug line for the load and embed times.
+
+## Review — PR #305, one question to Schreibstube at a time, 2026-10-16
+
+An xhigh review of the first version. Twelve findings, all addressed in the same PR (ADR-257 addendum). A review of the companion Schreibstube PR (#364) raised four of them again from that side, and its own findings are fixed there.
+
+| Finding | Fix |
+|---|---|
+| **The gate held per view**, not across leaves, a rebuilt view, the palette modal, `related` or `searchNotes`. | `QuestionGate` in `SchreibstubeLink`: every question goes through it. |
+| **The palette modal asked unbounded**, and its timer still asked after it closed. | Its question is aborted and its timer cleared on the next query and on close. |
+| **A question that never settled shut meaning off for the view's life**, silently. | 30 s deadline in the gate: logged, answered `[]`, slot freed. |
+| **A closed panel's rebuild cleared a newer panel's waiting question** (the controller-wide `meaningNext`). | The controller-wide state is gone; each panel aborts only its own question. |
+| **A waiting question ran for text the box had moved past.** | The next text replaces it in the gate's lane, and the panel aborts it. |
+| **A rebuild for the same text dropped the answer and asked again.** | The panel reuses its question by text, asked or answered. |
+| **The answer drew from conversations captured before the await** (principle 7). | Re-read from the store before drawing. |
+| **An unhandled rejection on a throw while drawing.** | The gate never rejects; the drawing step logs with `describeErrorForLog`. |
+| **The "newer one replaces the waiting one" path never ran.** | Replacement is now the gate's lane rule, tested directly. |
+| **Untested: related mode, a hung question, several callers.** | Tests for each, and for the modal. |
+| **architecture.md not updated.** | Updated, with the new module. |
+| **The spec's changelog had no entry for D-83.** | Added. |
+
+**Open.** Not verified on the iPhone.
+
+## Bug — the reload was the tap, not the search (ADR-258), 2026-10-16
+
+**What ADR-257 got wrong.** It took the reporter's scenario ("has searched") as the cause and fixed the questions Pythia asks Schreibstube. The release did not change the symptom. The reporter then found the reload without any search, by opening the panel and tapping a conversation.
+
+**How it was isolated, on the device, by the reporter:**
+1. The command palette opens the same conversation through the same `setActiveConversation`: no reload. So drawing and focusing a conversation are fine.
+2. Every conversation fails from the panel, and the caret appears where the finger was.
+3. With an empty conversation under the panel, every row opens: no reload.
+
+**Cause.** The row closed the panel inside its click handler, and the rest of the tap fell through onto the chat text below (WebKit hit-tests again for its own tap handling after the click). Only with Schreibstube enabled did that become a freeze and a reload. What in Schreibstube reacts is not established.
+
+**Fix.** `attachTap` opens on `touchend` with `preventDefault` (ADR-258).
+
+**Lesson.** A scenario's precondition ("has searched") is not its cause. The first question should have been the one that split the path: does it happen without the search? It was asked, and not answered before the fix shipped.
+
+**Open.** Not verified on the iPhone at the time of writing. A separate report in the same session, image descriptions rewritten and the vault re-indexed again and again, points at Schreibstube's `PictureArticleLinker` (a locale-dependent list order written from every device). Tracked in Schreibstube, not here.
+
+## Bug — the iPhone freeze was a Vizardry canvas, not the tap or Schreibstube (ADR-258 addendum), 2026-10-16
+
+**What ADR-257 and ADR-258 got wrong.** Both took the path the reporter used as the cause: first the search, then the tap. Neither release changed the symptom. Splitting by conversation settled it. One fork froze from the panel, from the command search and with no search typed, with Schreibstube disabled and with search by meaning off. Every other conversation opened, and the Mac opened that fork.
+
+**How it was isolated.**
+1. **Pythia's text processing:** every pattern the render path runs, timed under JavaScriptCore over the reporter's real `data.json`: at most 39 ms per conversation. The regex lead in the handoff is ruled out.
+2. **Pythia's view:** all 47 real conversations opened through the view harness, desktop and mobile settings: at most 18 ms each, the fork 4–5 ms. The fork structure and Pythia's panel are ruled out.
+3. **The fork's content:** the only content no other conversation had was three Vizardry framework types, `compass`, `ost` and `story`.
+4. **On the device:** a note holding only the fork's `ost` block froze the iPhone the same way, with Pythia not involved.
+5. **In WebKit:** Playwright WebKit at phone size with the vault's sketch mode on: 16–24 s to paint one canvas, 0.2 s in Chromium.
+
+**Cause.** Since Vizardry 0.74.0, sketch mode applied its wobble filter to every SVG shape with a fixed 200 000 × 200 000 region. WebKit computes the whole region for each shape.
+
+**Fix.** In Vizardry (branch `claude/sketch-filter-webkit-hang`, Vizardry ADR-029): each shape's own box as the region (0.2–0.6 s in WebKit). Flat strokes, which such a box hides, are left unfiltered. Nothing changes in Pythia: `attachTap` (ADR-258) and the single question to Schreibstube (ADR-257) are sound and stay.
+
+**Lesson.** For a freeze on one platform, first establish whether it follows the content, the path or the device. Here, *which conversation?* would have split it at once. A block another plugin renders is part of what Pythia draws.
+
+**Open.** The Vizardry fix has not been verified on the iPhone yet.
+

@@ -28,7 +28,8 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     conversationFinder.ts     ← pure: searchTitles (every typed word in the title, via matchStrength), meaningQuery, meaningOnly — the search box (ADR-223)
     conversationSearch.ts     ← pure: bestMatchSnippet + the lazily built snippetLines cache — why a row is in the results (ADR-106/170/223)
     leftoverEngineFiles.ts    ← isLeftoverEngineFile + removeLeftoverEngineFiles: the index, journal and Worker files the removed engine left in the plugin folder, removed at layout-ready — never the model in Cache Storage, which Schreibstube shares (ADR-237)
-    schreibstubeLink.ts       ← the ONE reader of app.plugins: readSchreibstubeApi (feature-detected API v2), toSourceItem, RELATED_RESULT_LIMIT, SchreibstubeLink (registers source `pythia` with kind, labels, icon, open/link and changes(cursor) via sourceChanges, newest MAX_SOURCE_ITEMS; a refused registration not retried per API object; status() and schreibstubeState for the settings row; consent(); asks search/searchNotes/related for `sources: ["pythia"]` and reads `item`; answers [] on any failure) (ADR-223/224/251)
+    schreibstubeLink.ts       ← the ONE reader of app.plugins: readSchreibstubeApi (feature-detected API v2), toSourceItem, RELATED_RESULT_LIMIT, SchreibstubeLink (registers source `pythia` with kind, labels, icon, open/link and changes(cursor) via sourceChanges, newest MAX_SOURCE_ITEMS; a refused registration not retried per API object; status() and schreibstubeState for the settings row; consent(); asks search/searchNotes/related for `sources: ["pythia"]` and reads `item`, every question through one `QuestionGate`; answers [] on any failure) (ADR-223/224/251/257)
+    questionGate.ts           ← pure: QuestionGate — ONE question to Schreibstube at a time, across every caller; a newer conversation search replaces one waiting; an aborted one never runs; a 30 s deadline frees the slot; never rejects (ADR-257)
     LLMRouter.ts              ← dispatches calls to the active provider
     LLMProvider.ts            ← provider interface
     ConversationStore.ts      ← in-memory store + debounced persistence
@@ -110,6 +111,7 @@ See `agents.md` for agent workflow conventions (commit style, task decomposition
     renderMarkdown.ts         ← renderAnswerMarkdown: the ONE MarkdownRenderer entry point for model output (remote media deferred, ADR-240) + renderRichMarkdown + RenderSlot (one child Component per rebuild, released on the next); tests/remoteMedia.test.ts fails on another call site
     remoteMedia.ts            ← deferRemoteMedia (markdown, before render) + blockRemoteMedia (DOM, after): a remote image/iframe/media loads only when the user presses the placeholder naming its host (ADR-240)
     mermaidSpacing.ts         ← compactMermaid: a Mermaid block without its own config gets tighter node/rank spacing on the way into the renderer — display only, never the stored message (ADR-245)
+    tapActivate.ts            ← attachTap: the ONE way a control that closes its own surface is tapped — on touch it acts on `touchend` with preventDefault, so the tap never falls through onto what the surface uncovered (the panel → chat reload on iOS, ADR-258)
     keyActivate.ts            ← makeKeyActivatable: role, tabindex and Enter/Space for a control that is not a <button> (ADR-240)
     failureNotice.ts          ← noticeFailure: the Notice + describeErrorForLog for a failed async click handler (ADR-240)
     keyboardInset.ts          ← soft-keyboard overlap rule: visualViewport and Obsidian's --keyboard-height, the larger wins (pure, unit-tested) — ADR-132/167
@@ -598,6 +600,7 @@ Web: 2 🌐 thetransmitter.org  3 🌐 sainsburywellcome.org     (🌐 = the `gl
 ### Conversation panel search row (ADR-152)
 - `.p-switcher-clear` (✕) sits after the input and is **hidden until the field has content**. It prevents `mousedown` so it cannot steal focus from the input — on a phone that dismisses the keyboard mid-search
 - **Auto-focus the input on desktop only.** On mobile the soft keyboard overlays the webview, so focusing on open hides the last conversations behind it. `Platform.isMobile` gates it
+- **A row opens through `attachTap`, never a bare click** (ADR-258). The row closes the panel, and a click would let the rest of an iOS tap act on the chat it uncovered. That was NOT the iPhone freeze and reload ADR-258 was written for: that was a Vizardry canvas in sketch mode, which WebKit took 16–24 s to paint (ADR-258 addendum). A code block that another plugin renders in an answer is part of what Pythia draws.
 - Pad `.p-history-list` with `keyboardOverlap()` from `ui/keyboardInset.ts` — **never re-derive that arithmetic locally**. The copy that did dropped `MIN_KEYBOARD_INSET` and padded the list at rest (ADR-152)
 
 ### Model comparison (ADR-160)

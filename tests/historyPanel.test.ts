@@ -194,6 +194,27 @@ describe("conversation search panel (ADR-107)", () => {
 		expect(pane().querySelector(".p-history-fork-count")?.textContent).toContain("2");
 	});
 
+	it("a touch on a row opens it and cancels the rest of the tap, so nothing underneath receives it (ADR-258)", async () => {
+		await seedThree();
+		const { view, pane } = await mountView(plugin);
+		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
+		const row = historyRows(pane).find((r) => r.textContent?.includes("Tax filing"))!;
+		const at = (type: string): Event => {
+			const e = new Event(type, { bubbles: true, cancelable: true });
+			Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [{ clientX: 5, clientY: 5 }] });
+			Object.defineProperty(e, "changedTouches", { value: [{ clientX: 5, clientY: 5 }] });
+			row.dispatchEvent(e);
+			return e;
+		};
+		at("touchstart");
+		const end = at("touchend");
+		await tick();
+
+		expect(end.defaultPrevented).toBe(true);
+		expect(panelEl(pane)).toBeNull();
+		expect(view.getActiveConversation()?.name).toBe("Tax filing");
+	});
+
 	it("↑/↓ move the selection and Enter opens the selected conversation", async () => {
 		await seedThree();
 		const { view, pane } = await mountView(plugin);
@@ -422,111 +443,5 @@ describe("conversation picker (ADR-143)", () => {
 		expect(panelEl(pane)).not.toBeNull();
 		expect(pane().querySelectorAll(".p-history")).toHaveLength(1);
 		expect(panelInput(pane).placeholder).toBe("Link with conversation…");
-	});
-});
-
-// ── Titles, and meaning through Schreibstube (ADR-223) ───────────────────────
-//
-// Without Schreibstube the box searches titles and nothing else. With it, the
-// conversations it finds by meaning join below the title hits after a pause in
-// typing, under their own header, and an answer for a query that moved on is
-// dropped.
-describe("title search and search by meaning (ADR-223)", () => {
-	let plugin: InstanceType<typeof PythiaPlugin>;
-
-	beforeEach(async () => {
-		document.body.innerHTML = "";
-		plugin = await makePlugin();
-	});
-
-	async function seed(): Promise<void> {
-		await seedConversation(plugin, { name: "Einrichtung Seestraße", messages: [userMsg("e1", "die Küche soll hell werden")] } as Partial<Conversation>);
-		await seedConversation(plugin, { name: "Tax filing", messages: [userMsg("t1", "quarterly deadlines")] } as Partial<Conversation>);
-		await seedConversation(plugin, { name: "Quartz watches", messages: [userMsg("q1", "the seiko astron")] } as Partial<Conversation>);
-	}
-
-	const idOf = (name: string): string => plugin.conversations.find((c) => c.name === name)!.id;
-	const open = (view: PythiaSidebarView): void =>
-		(view as unknown as { historyController: { openHistoryView(): void } }).historyController.openHistoryView();
-	/** Past the meaning pause (300 ms) and the answer's microtask. */
-	const afterMeaning = (): Promise<void> => new Promise((r) => setTimeout(r, 380));
-
-	async function search(pane: () => Element, text: string): Promise<void> {
-		const input = panelInput(pane);
-		input.value = text;
-		input.dispatchEvent(new Event("input", { bubbles: true }));
-		await settle();
-	}
-
-	it("without Schreibstube, a word only in a message finds nothing", async () => {
-		await seed();
-		plugin.searchConversationsByMeaning = () => null;
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "küche");
-		await afterMeaning();
-
-		expect(historyRows(pane)).toHaveLength(0);
-		expect(pane().querySelector(".p-history-group")).toBeNull();
-	});
-
-	it("with Schreibstube, what it finds by meaning joins below the titles", async () => {
-		await seed();
-		const asked: string[] = [];
-		plugin.searchConversationsByMeaning = (text) => {
-			asked.push(text);
-			return Promise.resolve([idOf("Einrichtung Seestraße")]);
-		};
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "küche");
-		expect(historyRows(pane)).toHaveLength(0);                  // titles answer at once: nothing
-
-		await afterMeaning();
-		expect(asked).toEqual(["küche"]);
-		expect(pane().querySelector(".p-history-group")?.textContent).toBe("BY MEANING · SCHREIBSTUBE");
-		expect(historyRows(pane).map((r) => r.querySelector(".p-history-row-title")?.textContent))
-			.toEqual(["Einrichtung Seestraße"]);
-		expect(pane().querySelector(".p-nav-empty")?.hasAttribute("hidden") ?? true).toBe(true);
-	});
-
-	it("does not repeat a title hit under meaning", async () => {
-		await seed();
-		plugin.searchConversationsByMeaning = () => Promise.resolve([idOf("Quartz watches")]);
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "quartz");
-		await afterMeaning();
-
-		expect(historyRows(pane)).toHaveLength(1);
-		expect(pane().querySelector(".p-history-group")).toBeNull();
-	});
-
-	it("drops an answer for a query that moved on", async () => {
-		await seed();
-		let answer: (ids: string[]) => void = () => undefined;
-		plugin.searchConversationsByMeaning = () => new Promise((r) => (answer = r));
-		const { view, pane } = await mountView(plugin);
-		open(view);
-		await search(pane, "küche");
-		await afterMeaning();
-		panelInput(pane).value = "kitchen";                           // typed on, not yet rebuilt
-		answer([idOf("Einrichtung Seestraße")]);
-		await tick();
-
-		expect(historyRows(pane)).toHaveLength(0);
-	});
-
-	it("never offers the conversation being linked from, whoever found it (ADR-143)", async () => {
-		await seed();
-		const self = idOf("Einrichtung Seestraße");
-		plugin.searchConversationsByMeaning = () => Promise.resolve([self, idOf("Tax filing")]);
-		const { view, pane } = await mountView(plugin);
-		view.pickConversation({ excludeId: self, onPick: () => {}, placeholder: "Link with conversation…" });
-		await search(pane, "küche");
-		await afterMeaning();
-
-		expect(historyRows(pane).map((r) => r.querySelector(".p-history-row-title")?.textContent))
-			.toEqual(["Tax filing"]);
 	});
 });

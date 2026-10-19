@@ -222,6 +222,69 @@ describe("SchreibstubeLink", () => {
 		expect(api.search).toHaveBeenCalledWith("küche", { kinds: ["note"], limit: 5, exclude: ["x.md"] });
 	});
 
+	it("asks Schreibstube one question at a time, whoever asks (ADR-257)", async () => {
+		let answer: (hits: unknown[]) => void = () => undefined;
+		const api = fakeApi({ search: vi.fn(() => new Promise((r) => (answer = r))) });
+		const l = link(api);
+		const panel = l.searchConversations("küche", 5);
+		const send = l.searchNotes("küche", 5, []);
+		const relatedTo = l.related("c1", 5);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(api.search).toHaveBeenCalledTimes(1);                 // the rest wait
+		expect(api.related).not.toHaveBeenCalled();
+
+		answer([]);
+		await panel;
+		await new Promise((r) => setTimeout(r, 0));
+		expect(api.search).toHaveBeenCalledTimes(2);                 // then the send's notes
+		answer([]);
+		await send;
+		expect(await relatedTo).toEqual([{ id: "c3", score: 0.8 }]);
+	});
+
+	it("asks only the latest of conversation searches typed in a row, from any caller (ADR-257)", async () => {
+		let answer: (hits: unknown[]) => void = () => undefined;
+		const api = fakeApi({ search: vi.fn(() => new Promise((r) => (answer = r))) });
+		const l = link(api);
+		void l.searchConversations("küche", 5);                        // the panel
+		const replaced = l.searchConversations("küchen", 5);           // the palette modal
+		const latest = l.searchConversations("küchenplan", 5);
+		expect(await replaced).toEqual([]);
+
+		answer([]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(api.search.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["küche", "küchenplan"]);
+		answer([]);
+		expect(await latest).toEqual([]);
+	});
+
+	it("never asks a question its caller dropped while it waited", async () => {
+		let answer: (hits: unknown[]) => void = () => undefined;
+		const api = fakeApi({ search: vi.fn(() => new Promise((r) => (answer = r))) });
+		const l = link(api);
+		void l.searchConversations("küche", 5);
+		const abort = new AbortController();
+		const dropped = l.related("c1", 5, abort.signal);
+		abort.abort();
+		expect(await dropped).toEqual([]);
+
+		answer([]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(api.related).not.toHaveBeenCalled();
+	});
+
+	it("answers nothing, and never rejects, when reading Schreibstube's API throws", async () => {
+		const app = { vault: { getName: () => "Tresor" }, plugins: { getPlugin: () => { throw new Error("registry"); } } };
+		const l = new SchreibstubeLink({
+			app: app as unknown as App,
+			conversations: () => [conversation],
+			onConversationsChanged: () => () => undefined,
+			openConversation,
+			log: () => undefined,
+		});
+		expect(await l.searchConversations("küche", 5)).toEqual([]);
+	});
+
 	it("lets Schreibstube open a conversation it recommends", () => {
 		const api = fakeApi();
 		link(api).available();
