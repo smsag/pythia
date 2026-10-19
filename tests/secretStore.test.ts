@@ -41,4 +41,14 @@ describe("SecretStore.setKey", () => {
 		expect(warn).toHaveBeenCalled();
 		warn.mockRestore();
 	});
+
+	it("a cleared picker drops the key without asking the storage", async () => {
+		const p = plugin({});
+		p.plaintextOpenAIKey = "sk-old";
+		await new SecretStore(p as never).setKey("openai", "");
+		expect(p.settings.openaiSecretName).toBe("");
+		expect(p.plaintextOpenAIKey).toBe("");
+		expect(p.llmRouter.updateApiKey).toHaveBeenCalledWith("openai", "");
+		expect(p.app.secretStorage.getSecret).not.toHaveBeenCalled();
+	});
 });

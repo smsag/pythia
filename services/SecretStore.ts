@@ -38,11 +38,14 @@ export class SecretStore {
 		p.settings[slot.setting] = secretName;
 		await p.pluginDataStore.persist();
 		let key = "";
-		try {
-			key = (await p.app.secretStorage.getSecret(secretName)) ?? "";
-		} catch (e) {
-			// Said, not swallowed: the row below the picker then reads "no key".
-			console.warn(`[Pythia] secret "${secretName}" could not be read:`, describeErrorForLog(e));
+		// A cleared picker leaves no name to look up, and nothing to warn about.
+		if (secretName) {
+			try {
+				key = (await p.app.secretStorage.getSecret(secretName)) ?? "";
+			} catch (e) {
+				// Said, not swallowed: the row below the picker then reads "no key".
+				console.warn(`[Pythia] secret "${secretName}" could not be read:`, describeErrorForLog(e));
+			}
 		}
 		p[slot.plaintext] = key;
 		if (kind === "search") p.webSearchService?.updateApiKey(key);
