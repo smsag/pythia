@@ -1,6 +1,7 @@
 import { Platform, TFile, TFolder, type App } from "obsidian";
 import type { NoteDropTarget } from "./ComposerField";
 import { getFilesInFolder } from "../utils";
+import { isAttachable } from "../services/attachable";
 
 /**
  * Notes dragged from the vault onto the composer (ADR-214).
@@ -23,9 +24,6 @@ import { getFilesInFolder } from "../utils";
  * composer's ordinary text drop handles it.
  */
 
-/** Only what a note-picker attaches: Markdown and PDF (as `InlineSuggest`). */
-const ATTACHABLE = new Set(["md", "pdf"]);
-const attachable = (f: TFile): boolean => ATTACHABLE.has(f.extension);
 
 /** A view claims a dropped file itself when this modifier is held ("open in this
  *  tab") — Obsidian's rule, read from `View.handleDrop`. The composer leaves
@@ -101,7 +99,7 @@ export function droppedNotePaths(app: App, text: string): string[] {
 	const paths: string[] = [];
 	for (const item of items) {
 		const files = item instanceof TFolder ? getFilesInFolder(item) : [item];
-		for (const f of files) if (attachable(f) && !paths.includes(f.path)) paths.push(f.path);
+		for (const f of files) if (isAttachable(f) && !paths.includes(f.path)) paths.push(f.path);
 	}
 	return paths;
 }

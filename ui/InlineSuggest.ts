@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, setIcon } from "obsidian";
 import { getFilesInFolder } from "../utils";
+import { isAttachable } from "../services/attachable";
 import { scoreRelevanceTokenSets, tokenize } from "../services/noteRelevance";
 import { t } from "../i18n";
 import type { ComposerField } from "./ComposerField";
@@ -138,7 +139,7 @@ export class InlineSuggest {
 	private vaultSnapshot(): NonNullable<InlineSuggest["snapshot"]> {
 		this.snapshot ??= {
 			files: this.app.vault.getFiles()
-				.filter((f) => f.extension === "md" || f.extension === "pdf")
+				.filter(isAttachable)
 				.map((file) => ({ file, path: file.path.toLowerCase(), name: file.basename.toLowerCase() })),
 			folders: this.app.vault.getAllFolders(),
 		};
@@ -203,7 +204,7 @@ export class InlineSuggest {
 			.slice(0, 10);
 
 		const files = folder.children
-			.filter((c): c is TFile => c instanceof TFile && (c.extension === "md" || c.extension === "pdf"))
+			.filter((c): c is TFile => c instanceof TFile && isAttachable(c))
 			.filter((f) => q === "" || f.basename.toLowerCase().includes(q))
 			.sort((a, b) => a.basename.localeCompare(b.basename))
 			.slice(0, 20 - subs.length);

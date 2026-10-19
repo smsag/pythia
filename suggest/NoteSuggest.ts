@@ -1,6 +1,7 @@
 import { App, TFile } from "obsidian";
 import { t } from "../i18n";
 import { FileSuggestModal } from "./FileSuggest";
+import { isAttachable } from "../services/attachable";
 
 export class NoteSuggestModal extends FileSuggestModal {
 	constructor(app: App, onChoose: (file: TFile) => void) {
@@ -11,8 +12,8 @@ export class NoteSuggestModal extends FileSuggestModal {
 	}
 
 	// Overrides the markdown-only base — notes can be attached as context
-	// alongside PDFs (sent as native document blocks, see ContextBuilder.ts).
+	// alongside spreadsheet exports and PDFs (sent as native document blocks, see ContextBuilder.ts).
 	override getItems(): TFile[] {
-		return this.app.vault.getFiles().filter((f) => f.extension === "md" || f.extension === "pdf");
+		return this.app.vault.getFiles().filter(isAttachable);
 	}
 }
