@@ -67,8 +67,9 @@ function keyRow(
 	row.addComponent((el) =>
 		new SecretComponent(ctx.plugin.app, el)
 			.setValue(read())
+			// A cleared picker reports null; settings spell "no secret" as "".
 			.onChange(async (secretName) => {
-				await write(secretName);
+				await write(secretName ?? "");
 				paint();
 			})
 	);
