@@ -1,10 +1,11 @@
 import { TFile, TFolder } from "obsidian";
+import { isAttachable } from "./services/attachable";
 
 export function getFilesInFolder(folder: TFolder): TFile[] {
 	const results: TFile[] = [];
 	const walk = (f: TFolder) => {
 		for (const child of f.children) {
-			if (child instanceof TFile && (child.extension === "md" || child.extension === "pdf")) {
+			if (child instanceof TFile && isAttachable(child)) {
 				results.push(child);
 			} else if (child instanceof TFolder) {
 				walk(child);
