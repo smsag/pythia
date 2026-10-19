@@ -18,11 +18,14 @@ export const MODEL_GOOD_FOR: Record<string, { en: string; de: string }> = {
 	"claude-opus-4-8":   { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
 	"claude-opus-4-7":   { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
 	"claude-opus-4-6":   { en: "Long chapters, in-depth comparisons, tricky problems", de: "Lange Kapitel, tiefe Vergleiche, knifflige Probleme" },
+	"claude-sonnet-5-5": { en: "Everyday questions, explaining topics, drafting text",  de: "Alltagsfragen, Themen erklären, Texte entwerfen" },
 	"claude-sonnet-5":   { en: "Everyday questions, explaining topics, drafting text",  de: "Alltagsfragen, Themen erklären, Texte entwerfen" },
 	"claude-sonnet-4-6": { en: "Everyday questions, explaining topics, drafting text",  de: "Alltagsfragen, Themen erklären, Texte entwerfen" },
+	"claude-haiku-5-5":  { en: "Quick facts, short rewrites, simple asks",              de: "Schnelle Fakten, kurze Umformulierungen, Einfaches" },
 	"claude-haiku-4-5":  { en: "Quick facts, short rewrites, simple asks",              de: "Schnelle Fakten, kurze Umformulierungen, Einfaches" },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
+	"gpt-6.1-sol":   { en: "Complex work and code, at a mid price",         de: "Komplexe Aufgaben und Code, zum mittleren Preis" },
 	"gpt-6-astra":   { en: "The hardest problems, long careful analysis",   de: "Die schwersten Probleme, lange sorgfältige Analyse" },
 	"gpt-6-sol":     { en: "Complex work and code, at a mid price",         de: "Komplexe Aufgaben und Code, zum mittleren Preis" },
 	"gpt-6-luna":    { en: "Quick, simple tasks, very low cost",            de: "Schnelle, einfache Aufgaben, sehr günstig" },
@@ -80,11 +83,14 @@ export const MODEL_PROFILE: Record<string, ModelProfile> = {
 	"claude-opus-4-8":   { speed: 1, depth: 3, cost: 3 },
 	"claude-opus-4-7":   { speed: 1, depth: 3, cost: 3 },
 	"claude-opus-4-6":   { speed: 1, depth: 3, cost: 3 },
+	"claude-sonnet-5-5": { speed: 2, depth: 2, cost: 2 },
 	"claude-sonnet-5":   { speed: 2, depth: 2, cost: 2 },
 	"claude-sonnet-4-6": { speed: 2, depth: 2, cost: 2 },
+	"claude-haiku-5-5":  { speed: 3, depth: 1, cost: 1 },
 	"claude-haiku-4-5":  { speed: 3, depth: 1, cost: 1 },
 
 	// ── OpenAI ───────────────────────────────────────────────────────────────
+	"gpt-6.1-sol":   { speed: 2, depth: 3, cost: 2 },
 	"gpt-6-astra":   { speed: 1, depth: 3, cost: 3 },
 	"gpt-6-sol":     { speed: 2, depth: 3, cost: 2 },
 	"gpt-6-luna":    { speed: 3, depth: 1, cost: 1 },

@@ -31,11 +31,14 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "claude-opus-4-8",   provider: "anthropic", abbreviation: "Opus 4.8",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-opus-4-7",   provider: "anthropic", abbreviation: "Opus 4.7",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-opus-4-6",   provider: "anthropic", abbreviation: "Opus 4.6",   contextWindow: 1_000_000, supportsEffort: true },
+	{ id: "claude-sonnet-5-5", provider: "anthropic", abbreviation: "Sonnet 5.5", contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-sonnet-5",   provider: "anthropic", abbreviation: "Sonnet 5",   contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-sonnet-4-6", provider: "anthropic", abbreviation: "Sonnet 4.6", contextWindow: 1_000_000, supportsEffort: true },
+	{ id: "claude-haiku-5-5",  provider: "anthropic", abbreviation: "Haiku 5.5",  contextWindow: 1_000_000, noTemperature: true, supportsEffort: true },
 	{ id: "claude-haiku-4-5",  provider: "anthropic", abbreviation: "Haiku 4.5",  contextWindow: 200_000 },
 
 	// OpenAI — GPT-5 windows are the input-side limit (272K of 400K, 922K of 1.05M): ADR-179
+	{ id: "gpt-6.1-sol",   provider: "openai", abbreviation: "GPT-6.1 Sol",   contextWindow: 922_000, isReasoning: true },
 	{ id: "gpt-6-astra",   provider: "openai", abbreviation: "GPT-6 Astra",   contextWindow: 922_000, isReasoning: true },
 	{ id: "gpt-6-sol",     provider: "openai", abbreviation: "GPT-6 Sol",     contextWindow: 922_000, isReasoning: true },
 	{ id: "gpt-6-luna",    provider: "openai", abbreviation: "GPT-6 Luna",    contextWindow: 922_000, isReasoning: true },
@@ -62,7 +65,7 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "mistral-medium-latest",   provider: "mistral", abbreviation: "Mistral Medium",    contextWindow: 262_144, supportsEffort: true },
 	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 262_144, supportsEffort: true },
 	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
-	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 262_144, isMistralReasoning: true },
+	{ id: "magistral-medium-latest", provider: "mistral", abbreviation: "Magistral Medium",  contextWindow: 262_144, isMistralReasoning: true, hidden: true },
 	{ id: "magistral-small-latest",  provider: "mistral", abbreviation: "Magistral Small",   contextWindow: 128_000, isMistralReasoning: true },
 	// GLM-5.3 reasons and takes an effort parameter, but NEITHER flag fits it, and
 	// both would be wrong on the wire (issue #194):
