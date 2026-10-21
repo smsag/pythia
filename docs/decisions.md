@@ -1,6 +1,8 @@
 # Pythia — Architectural Decision Records
 
-*Last updated: 2026-10-16 — ADR-258 addendum: the iPhone freeze was a Vizardry canvas in sketch mode, not the tap and not Schreibstube. `attachTap` stays on its own merits.*
+*Last updated: 2026-10-21 — ADR-259 (the term note has a written contract with its outside readers, `contracts/GLOSSARY.md`, and cases Pythia and Nimbus both run).*
+
+*Previously, 2026-10-16 — ADR-258 addendum: the iPhone freeze was a Vizardry canvas in sketch mode, not the tap and not Schreibstube. `attachTap` stays on its own merits.*
 
 *Previously, 2026-10-16 — ADR-258 (a conversation row in the panel opens on the end of a touch and cancels the rest of it, so the tap does not fall through onto the chat the closing panel uncovers).*
 
@@ -5622,3 +5624,15 @@ The test note then isolated the `ost` block, and sketch mode was on in the vault
 **`attachTap` stays.** It did not fix this, but what it does is right on its own terms. A control that removes its own surface should not let the rest of an iOS tap act on what it uncovered: WebKit does hit-test again after the synthesized click. It costs one helper and its tests, and the row's long-press and momentum rules would be needed with any handler. Its guards stay as they are. ADR-257's single question to Schreibstube stays for the same reason.
 
 **Lesson, again.** ADR-257 and this ADR each took the reporter's path as the cause: first the search, then the tap. The question that split the problem was *which conversation*, and it was asked only after both releases. Before a fix ships for a freeze on one platform, establish whether it follows the content, the path, or the device. A Markdown block owned by another plugin is part of what Pythia draws, and part of the search.
+
+---
+
+## ADR-259 — The term note has a written contract
+
+**Status:** Active
+
+**Context:** ADR-149 made the term note the integration surface ("Pythia captures terms, other tools drill them"), and ADR-234 gave it a first outside reader, Schreibstube. Since 2026-10-21 Nimbus drills term notes as flashcards: the term on the front, the definition on the back, the first context below it. Nimbus re-implements `parseBody` in Swift. Nothing tied the two together, so a change here — renaming `## Discussion`, moving contexts into a property — would have left Nimbus showing wrong answers without anyone noticing.
+
+**Decision:** `contracts/GLOSSARY.md` states what a reader may rely on: which notes are terms (`type: term`), where the term comes from (`term`, else the file name), and how the body splits into definition, contexts and discussion — `parseBody`'s rule, written down. `contracts/glossary-cases.json` holds the examples; `tests/glossaryContract.test.ts` runs them against `entryFromFrontmatter`, `parseBody` and `renderBody`, and Nimbus runs the same file against its reader. The cases include the rule's odd corners on purpose (a line after a quote is still definition; an indented `>` is no quote), because a second reader is where they would differ. The same files live in Nimbus (`Contracts/`), as Schreibstube and Nimbus already do for `RELATED.md`.
+
+**Consequence:** a change to the term note's body, `type` or `term` is a change in both repositories, with the cases and their `version`. Properties outside the contract (`aliases`, `theme`, translations, provenance) stay free to change. +12 tests.
