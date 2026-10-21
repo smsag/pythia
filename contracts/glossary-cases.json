@@ -1,0 +1,136 @@
+{
+  "comment": "Examples for GLOSSARY.md that Pythia (writer) and Nimbus (reader) test against. 'reads': a note (fileName, its whole content, and its frontmatter as Obsidian parses it; null: none) and what a reader takes from it: term (null: not a term note), definition, first context (null: none). 'writes': an entry Pythia renders (renderBody) to exactly 'body'; a reader of '---\\ntype: term\\n---\\n' + body takes definition and context from it.",
+  "version": 1,
+  "reads": [
+    {
+      "name": "as Pythia writes it: definition, two contexts, discussion",
+      "fileName": "Kartellrecht.md",
+      "frontmatter": {
+        "type": "term",
+        "aliases": [],
+        "theme": [
+          "[[Wettbewerb]]"
+        ],
+        "source": "model",
+        "language": "de"
+      },
+      "content": "---\ntype: term\naliases: []\ntheme:\n  - \"[[Wettbewerb]]\"\nsource: model\nlanguage: de\n---\nDas Recht gegen Absprachen und Marktmacht, die den Wettbewerb beschränken.\n\n> Das Kartellrecht verbietet Preisabsprachen.\n\n> Ein zweiter Fundort.\n\n## Discussion\n\nGilt das auch für Makler?\n> Ein Zitat in der Diskussion ist keiner.\n",
+      "term": "Kartellrecht",
+      "definition": "Das Recht gegen Absprachen und Marktmacht, die den Wettbewerb beschränken.",
+      "context": "Das Kartellrecht verbietet Preisabsprachen."
+    },
+    {
+      "name": "the term property names a term no file name can hold",
+      "fileName": "C-.md",
+      "frontmatter": {
+        "type": "term",
+        "term": "C#"
+      },
+      "content": "---\ntype: term\nterm: C#\n---\nEine Programmiersprache aus der C-Familie.\n",
+      "term": "C#",
+      "definition": "Eine Programmiersprache aus der C-Familie.",
+      "context": null
+    },
+    {
+      "name": "a person is no term",
+      "fileName": "Ada Lovelace.md",
+      "frontmatter": {
+        "type": "person"
+      },
+      "content": "---\ntype: person\n---\nMathematikerin.\n",
+      "term": null,
+      "definition": null,
+      "context": null
+    },
+    {
+      "name": "a theme is no term",
+      "fileName": "Wettbewerb.md",
+      "frontmatter": {
+        "type": "theme"
+      },
+      "content": "---\ntype: theme\n---\nBegriffe zum Wettbewerb.\n",
+      "term": null,
+      "definition": null,
+      "context": null
+    },
+    {
+      "name": "a note without frontmatter is no term",
+      "fileName": "Notiz.md",
+      "frontmatter": null,
+      "content": "Nur Text.\n\n> Ein Zitat.\n",
+      "term": null,
+      "definition": null,
+      "context": null
+    },
+    {
+      "name": "a term without a definition",
+      "fileName": "Leer.md",
+      "frontmatter": {
+        "type": "term"
+      },
+      "content": "---\ntype: term\n---\n> Nur ein Fundort.\n",
+      "term": "Leer",
+      "definition": "",
+      "context": "Nur ein Fundort."
+    },
+    {
+      "name": "every line without > before the discussion is definition, also after a quote",
+      "fileName": "Miete.md",
+      "frontmatter": {
+        "type": "term"
+      },
+      "content": "---\ntype: term\n---\nSatz eins.\n\n> Fundort\n\nNachtrag.\n",
+      "term": "Miete",
+      "definition": "Satz eins.\n\n\nNachtrag.",
+      "context": "Fundort"
+    },
+    {
+      "name": "the discussion heading in any case and spacing; > without a space; an empty > skipped",
+      "fileName": "Courtage.md",
+      "frontmatter": {
+        "type": "term"
+      },
+      "content": "---\ntype: term\n---\nDie Provision des Maklers.\n>\n>Beim Kauf zahlt der Käufer.\n\n  ##   discussion  \n\nNicht mehr Teil der Karte.\n",
+      "term": "Courtage",
+      "definition": "Die Provision des Maklers.",
+      "context": "Beim Kauf zahlt der Käufer."
+    },
+    {
+      "name": "an indented > is no quote",
+      "fileName": "Objekt.md",
+      "frontmatter": {
+        "type": "term"
+      },
+      "content": "---\ntype: term\n---\nDie Immobilie im Bestand.\n  > eingerückt\n",
+      "term": "Objekt",
+      "definition": "Die Immobilie im Bestand.\n  > eingerückt",
+      "context": null
+    }
+  ],
+  "writes": [
+    {
+      "name": "definition, contexts, discussion",
+      "entry": {
+        "definition": "  Das Recht gegen Absprachen.  ",
+        "contexts": [
+          "Erster Fundort.",
+          "Zweiter\nFundort."
+        ],
+        "discussion": "Offene Frage."
+      },
+      "body": "Das Recht gegen Absprachen.\n\n> Erster Fundort.\n\n> Zweiter Fundort.\n\n## Discussion\n\nOffene Frage.\n",
+      "definition": "Das Recht gegen Absprachen.",
+      "context": "Erster Fundort."
+    },
+    {
+      "name": "definition only",
+      "entry": {
+        "definition": "Eine Programmiersprache.",
+        "contexts": []
+      },
+      "body": "Eine Programmiersprache.\n",
+      "definition": "Eine Programmiersprache.",
+      "context": null
+    }
+  ]
+}
