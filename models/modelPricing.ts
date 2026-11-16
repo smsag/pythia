@@ -33,7 +33,7 @@ export interface ModelPricing {
 }
 
 // BEGIN GENERATED PRICES — rewritten by `npm run update:pricing` (scripts/update-pricing.mjs)
-export const PRICING_AS_OF = "2026-10-19";
+export const PRICING_AS_OF = "2026-11-16";
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
 	// ── Anthropic ─────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 	"o4-mini":       { input: 1.1, output: 4.4, cacheRead: 0.275 },
 
 	// ── Mistral ───────────────────────────────────────────────────────────────
-	"mistral-large-latest":    { input: 0.5, output: 1.5, cacheRead: 0.05 },
+	"mistral-large-latest":    { input: 0.7, output: 2.1, cacheRead: 0.07 },
 	"mistral-medium-latest":   { input: 1.5, output: 7.5, cacheRead: 0.15 },
 	"mistral-small-latest":    { input: 0.15, output: 0.6, cacheRead: 0.015 },
 	"codestral-latest":        { input: 0.3, output: 0.9, cacheRead: 0.03 },
