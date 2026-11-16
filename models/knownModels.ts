@@ -61,7 +61,7 @@ export const MODEL_CATALOG: ModelInfo[] = [
 	{ id: "o4-mini",      provider: "openai", abbreviation: "o4 mini",      contextWindow: 200_000, isReasoning: true, hidden: true },
 
 	// Mistral
-	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 262_144 },
+	{ id: "mistral-large-latest",    provider: "mistral", abbreviation: "Mistral Large",     contextWindow: 1_048_576 },
 	{ id: "mistral-medium-latest",   provider: "mistral", abbreviation: "Mistral Medium",    contextWindow: 262_144, supportsEffort: true },
 	{ id: "mistral-small-latest",    provider: "mistral", abbreviation: "Mistral Small",     contextWindow: 262_144, supportsEffort: true },
 	{ id: "codestral-latest",        provider: "mistral", abbreviation: "Codestral",         contextWindow: 256_000 },
